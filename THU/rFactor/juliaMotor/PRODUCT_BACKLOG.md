@@ -6176,3 +6176,1719 @@ Recorded here so the question is not silently re-opened or quietly actioned in a
 The E106-S13 levitation fix (the off-mesh sentinel) and the `hat_hole_smoke` gate are already
 shipped and are independent of this decision — the tracks are survivable; what is deferred is
 whether to make the steps themselves impossible.
+
+## PO REPORT (2026-09-03, from the PO's own Spa run) — THREE DEFECTS
+
+Source: the PO drove Spa from the PyQt GUI (replay `replay_spa 5ai 2026-09-03 19-23-02.jmr`,
+telemetry `lotus49_spa 2026-09-03 19-23-02.ibt`). PO's words:
+
+> "at spa there were two buildings directly in the road in the Bolenay section, then a crash at
+> the masta kink. In cockpit view the mirrors strobe."
+
+1. **Two buildings standing IN the road.** The PO wrote "Bolenay"; the sequence given (this
+   section, *then* Masta) puts it before the Masta kink, i.e. the Burnenville/Malmedy stretch.
+   **Do not assume** — get the corner from the replay's world coords, not from the name.
+   This is the same family as E106-S18 (the grandstand that was inside the physics surface) and
+   the standing PO rule on line-of-people objects: *"remove line-of-people objects if there's any
+   chance they could be in the road or partially hanging in air."* Trackside object placement at
+   Spa has now produced two separate PO reports; the placement pass itself is suspect, not just
+   the individual objects.
+
+2. **A crash at the Masta kink.** Whether this is contact with (1)'s buildings, another
+   levitation/ejection site like E106-S17's seam, or a physics divergence is NOT established.
+   The replay above reproduces it — drive it, do not theorise.
+
+3. **Mirrors strobe in cockpit view.** Distinct from the earlier "flicker on mirrors" note in the
+   2026-09-02 Zandvoort video, and still open. Cockpit-view mirror rendering.
+
+### Telemetry note found while reading that run's .ibt (separate defect)
+
+* The four **`*rideHeight` channels are garbage**: min −73.5 m, mean −0.16 m across 6,026 moving
+  ticks. The parser was proved first on channels whose true values are known (Speed 0–109 m/s,
+  RPM 715–9472, Gear 0–5, Throttle 0–1, LapDist 0–7096 m all sane), so this is the data, not the
+  reader. Ride height is exactly the channel that would answer the PO's earlier
+  *"car is several inches off the ground"* report, so this defect is currently blocking that one.
+* The same file's **session info still says Nordschleife** — `TrackDisplayName: Nordschleife
+  Industriefahrten`, `TrackName: nurburgring nordschleife`, `TrackLength: 20.6383 km` — on a
+  **Spa** run, because the YAML block is copied verbatim from the template .ibt and never
+  rewritten. Any external analysis tool will mislabel every session we export.
+
+## BACKLOG ITEM (PO, 2026-09-03): CHECK ALL THE APPIMAGES — cross-project
+
+Four self-contained AppImages were built into `~/Documents/260903` (ma, bob, julia racer,
+free falcon). The PO's item is to **check all of them**.
+
+The item itself lives with the artifacts — `~/Documents/260903/BACKLOG.md` (copy at
+`/home/admin/appimage-build/BACKLOG.md`) — because it spans all four ports and does not
+belong to juliaMotor alone. Recorded here so it surfaces in the scrum loop.
+
+Headline gap, stated plainly: everything was verified on the BUILD box, which already has
+i386 multiarch, the NVIDIA i386 GL stack, Qt6 and python3-pyqt6. **A genuinely fresh
+Ubuntu 26.04 install — the one condition the PO specified — is exactly what has not been
+tested.** The juliaMotor-specific parts still unverified are the 25-minute first
+precompile run through the PyQt GUI into a live race (it was only ever driven headlessly
+via JM_SWEEP), and joystick + sound from inside the image.
+
+## 🛑 FOR FABLE 5.1 — "Nürburgring and Spa driveable end to end" has reached the 8-sprint limit
+
+PO rule (2026-09-03): *"If any backlog item has had 8 or more sprints run on it without
+closing it, mark it as for Fable 5.1 and do not run further sprints on it."*
+
+**Sprint count on this item: 8** — E106-S13b (off-mesh sentinel levitation fix), S14 (terrain-hole
+census), S15 (the build I shipped that would not run), S16 (driveability sweep works), S17 (Spa
+ejection site = a 2 m terrain seam), S18 (grandstand inside the physics surface), E106-S31 (the
+on-road buildings), and this sprint (the Masta-kink crash). Sprints on OTHER E106 items — AI rods,
+engine graphics, suspension, helmet — are not counted here; they belong to their own items.
+
+**Marked FOR FABLE 5.1. No further sprints.**
+
+### What is CLOSED and stays closed
+
+* Levitation/bounce from driving off the mesh — fixed at the boundary (S13b) and gated by
+  `hat_hole_smoke`; both tracks are survivable.
+* **Buildings standing in the road (E106-S31, this session):** `ho18` reached 0.2 m of the
+  centreline from an origin 7.0 m out, with `ho17` beside it — both invisible to the on-road
+  filters because `bldgish()` did not know the `ho<n>` family while the file's own census regex
+  did. Fixed and verified (`house46`, centred 2.1 m off, dropped as well; 0 undrawn-but-solid).
+
+### What is being handed over, and the evidence for it
+
+1. **The terrain steps** — already deferred by PO ruling above (name the geometry vs. make the
+   physics reject an implausible upward step). Unchanged.
+2. **The Masta-kink crash (PO, 2026-09-03).** What is now known, so Fable 5.1 does not repeat it:
+   * The **centreline is clean**: a 10 m-step sweep of all 14,118 m reports **zero** `OFF-HAT`
+     holes and **zero** `WALL/CLIFF` steps. It is not a terrain hole on the racing line.
+   * **Nothing stands in the road at Masta.** Objects in 7,000–8,000 m sit at |lat| 5.2–7.7 m —
+     at or beyond the ~5.5 m tarmac edge. `house28` (lat −7.1) is solid but legitimately roadside.
+   * So it is neither of the two causes already understood on this track. Most likely an
+     off-track excursion into correct roadside geometry, or the deferred terrain-step class
+     acting off-centreline (S17's seam was found off the racing line, which a centreline sweep
+     cannot see).
+   * **The PO's own run reproduces it**: `replay_spa 5ai 2026-09-03 19-23-02.jmr` with
+     `lotus49_spa 2026-09-03 19-23-02.ibt` beside it. Drive the replay, do not theorise.
+   * Caution for whoever takes it: the `*rideHeight` channels in that .ibt are garbage
+     (min −73 m, mean −0.16 m over 6,026 moving ticks; the parser was proved first on
+     Speed/RPM/Gear/LapDist, which are all sane). Ride height cannot be used as evidence
+     until that separate defect is fixed.
+
+### Still OPEN on other items (not covered by this hand-over)
+
+The strobing cockpit mirrors are a **rendering** defect, not driveability, and belong to the
+cockpit/mirror item — they are NOT handed to Fable 5.1 by this entry.
+
+### E106-S32 (2026-09-03) — the .ibt ride-height channels: mechanism found, instrument added
+
+The PO's Spa .ibt exports **garbage ride heights** — min −73.5 m, mean −0.16 m across 6,026
+moving ticks. The reader was proved first against channels whose true values are known
+(Speed 0–109 m/s, RPM 715–9472, Gear 0–5, Throttle 0–1, LapDist 0–7096 m — all sane), so this
+is the data, not the parser. It matters beyond tidiness: ride height is the one channel that
+would settle the PO's earlier *"car is several inches off the ground"* report, so this defect
+currently **blocks** that item.
+
+**Mechanism** (`JuliaMotorMTK/src/drive_rt3d.jl:512`):
+
+```julia
+c.rh = ntuple(i -> RIDE_H[][i] + (WHEELS[i][1]*c.pitch + WHEELS[i][2]*c.roll + c.heave)
+                   - (terr[i] - c.zref), 4)
+```
+
+`rh` is derived from `terr − zref`, and `zref` is **deliberately frozen whenever the car is not
+`grounded`** (drive_rt3d.jl:473) — that freeze is correct physics: it is what lets the body fall
+relative to the reference so a jump works. But while it is frozen the terrain under the wheels
+keeps moving, and on Spa's ~100 m of elevation that difference is unbounded. So `rh` is only
+meaningful **while grounded**, and nothing validates it before telemetry writes it.
+
+**Deliberately NOT clamped.** A clamp would hide the divergence and export a plausible lie —
+the failure this project has repeatedly paid for. Added `JM_RH_DIAG=1` (default-off) which logs
+`rh`, `zref`, `terr`, `heave`, `grounded` and `y` whenever a corner exceeds 0.5 m, so the next
+driven lap NAMES the condition instead of inviting a guess.
+
+Not fixed yet — the fix is a decision between (a) exporting ride height only while grounded and
+a documented sentinel otherwise, or (b) tracking a second, always-valid reference purely for
+telemetry. (a) is honest and cheap; (b) costs a little work and gives a continuous channel.
+**Needs a driven lap with `JM_RH_DIAG=1` first** (the sweep does not drive), and the PO's own
+`replay_spa 5ai 2026-09-03 19-23-02.jmr` is the obvious input.
+
+Caught en route: the first version of the instrument used `@info` with `round.(...)` keyword
+values and **did not parse** — it would have shipped a sim that could not start, the E106-S15
+failure exactly. Syntax-checked before going further; now `exit=0`.
+
+### E106-S33 (2026-09-04) — the strobing cockpit mirrors: two candidate causes, and the test that separates them
+
+PO has reported this twice — *"fix flicker on mirrors"* (Zandvoort video, 2026-09-02) and
+*"In cockpit view the mirrors strobe"* (Spa run, 2026-09-03) — and both prior attempts
+(E106-S8 depth-bias, E106-S10 coincident-stack dedup) were aimed at only one of the two.
+
+**Candidate 1 — the refresh rate (new, and the stronger one).**
+`JM_MIRROR_EVERY` defaults to **3** (drive_native_mtk.jl:3955): the mirror FBO is re-rendered
+every 3rd frame, so at 60 fps the mirror image updates at **20 Hz while the world moves at 60**.
+That mismatch is exactly what reads as strobing, and it was introduced deliberately for frame
+cost (E80: *"Two round mirrors that small do not need a fresh image 60 times a second"*) — a
+reasonable optimisation that appears to have a visible price the profiler could not see.
+
+**Candidate 2 — z-fighting** between the re-placed mirror disc and the `lotd` body's own mirror
+pods. E106-S8 added `depthbias=true` for the disc/rim and E106-S10 deduped coincident stacks; if
+either is incomplete the two surfaces alternate as the camera moves, which also strobes.
+
+**Ruled OUT this sprint:** GL state leakage from the mirror pass. It sets `glClipControl`,
+`glDepthFunc(GL_GEQUAL)`, `glClearDepth(0)` and a half-width viewport, and only runs on 1 frame
+in 3 — so a missing restore would make alternate frames render differently, which would strobe at
+exactly the refresh period. Checked: the main pass re-asserts viewport and all three depth states
+immediately after (`drive_native_mtk.jl:6793-6794`). Not the cause.
+
+**The discriminating test (one run each, cockpit view, look in a mirror while moving):**
+
+    JM_MIRROR_EVERY=1   # per-frame mirror
+    JM_MIRROR_RTT=0     # static silver discs, no live render at all
+
+* Strobe GONE with `JM_MIRROR_EVERY=1` → candidate 1. Fix is a cost/quality trade: measure the
+  mirror pass with `JM_FRAMEPROF` and either accept per-frame or make the mirror cheaper (it
+  currently re-renders `drawworld` + car + all wheels TWICE per update, once per disc — the cost
+  is draw submissions, not fill: the FBO is only 384x192).
+* Strobe SURVIVES `JM_MIRROR_EVERY=1` but GONE with `JM_MIRROR_RTT=0` → candidate 2, z-fighting
+  between the disc and the lotd pods; the depth-bias/dedup work is incomplete.
+* Strobe survives BOTH → it is not the mirror at all; look at the visor/plexiglass stack in front
+  of it (E106-S10 territory).
+
+Not run this sprint: the display was held by bob's gate suite. This is the first thing to run
+when it frees, and it needs no PO time.
+
+### E106-S34 (2026-09-04) — ✅ the strobing mirrors: CAUSE PROVEN. `JM_MIRROR_EVERY=3` is the strobe.
+
+S33 named two candidates and a discriminating test. Ran it, with a new instrument.
+
+**New instrument — `JM_FRAMEDUMP="<start>:<count>"`.** `JM_SHOTS` settles and dumps ONE frame per
+teleport, so it can photograph a scene but never a TEMPORAL artefact — and strobing is nothing
+but a temporal artefact. This dumps CONSECUTIVE frames. (Writes to
+`JM_FRAMEDUMP_DIR`, default beside the build tree, deliberately **not** /tmp: 1440x810 PPMs are
+~3.5 MB each and /tmp here is a quota'd tmpfs that has already broken one session.)
+
+**Measurement.** Nine consecutive cockpit frames at Watkins (`JM_VIEW=0`), counting the fraction
+of pixels that change from the previous frame, in each mirror and in a control region of road:
+
+| frame | left mirror | right mirror | road (control) |
+|---|---|---|---|
+| **`JM_MIRROR_EVERY=3` (the default)** | 83.3 / 47.7 / 83.6 / 83.0 / **37.2** / 83.3 / 81.1 / **27.7** % | 52.9 / 26.8 / 58.1 / 60.8 / **25.0** / 64.7 / 66.7 / **22.2** % | 21.2 → 8.3 %, smooth |
+| **`JM_MIRROR_EVERY=1`** | 61.2 / 56.4 / 53.8 / 48.6 / 44.7 / 40.9 / 37.8 / 35.4 % | 28.8 / 28.7 / 29.2 / 26.4 / 26.4 / 25.0 / 26.0 / 23.5 % | 21.0 → 8.2 %, smooth |
+
+At `=3` both mirrors swing on an exact **3-frame cycle** while the control region decays smoothly
+with no periodicity. At `=1` the periodicity is **gone** and the mirrors decay as smoothly as the
+control. The mirror image updates at 20 Hz while the world moves at 60 — that mismatch IS what
+the PO sees. **Candidate 1 confirmed; candidate 2 (z-fighting) is not needed to explain it** and
+should not be worked on this evidence.
+
+**The fix is one line — `JM_MIRROR_EVERY` default 3 -> 1 — and it is NOT applied yet, deliberately.**
+The setting exists for frame cost (E80), so changing it without a cost figure would trade a
+reported defect for an unreported one. The cost measurement attempted here is **invalid and is
+not being used**: under `JM_SMOKE` the run never leaves JIT warm-up, and it returned `=1` at
+3.6 fps against `=3` at 2.7 fps — i.e. MORE mirror work running FASTER, which is impossible and
+is the tell that the number is compilation noise, not render cost.
+
+**Remaining step (small, and it needs no PO time):** a steady-state cost measurement — a driven
+lap past JIT warm-up with `JM_FPSDIAG`, at `=1` vs `=3`. If the cost is small, default to 1 and
+the item closes. If it is large, the mirror pass itself is the thing to make cheaper: it currently
+re-renders `drawworld` + car + every wheel TWICE per update (once per disc) into a 384x192 FBO,
+so the cost is draw submissions, not fill.
+
+### E106-S35 (2026-09-04) — ✅ **STROBING MIRRORS FIXED.** Cost measured; default flipped to per-frame.
+
+S34 proved the cause (`JM_MIRROR_EVERY=3` -> mirror at 20 Hz against a 60 Hz world) but explicitly
+refused to change the default on an invalid cost number. Measured properly this sprint:
+
+**Steady state, past JIT warm-up** (cockpit, Watkins, `JM_FPSDIAG`, three samples each):
+
+| setting | fps | ms/frame |
+|---|---|---|
+| `JM_MIRROR_EVERY=3` (old default) | 46.3, 45.5, 59.9 | 21.6, 22.0, 16.7 |
+| `JM_MIRROR_EVERY=1` (new default) | 60.6, 60.8, 53.8 | 16.5, 16.5, 18.6 |
+
+Per-frame mirrors are **not slower**. The spread WITHIN each arm (45.5-59.9 and 53.8-60.8) is
+larger than the difference BETWEEN them, and both sit at or near the 60 fps cap — so the honest
+reading is "no measurable cost at this scene", not "faster". The optimisation was buying nothing
+here and costing a defect the PO reported twice.
+
+**Default changed 3 -> 1.** `JM_MIRROR_EVERY=3` restores the old behaviour.
+
+Note the earlier figure that was discarded: under `JM_SMOKE` the same comparison gave =1 at 3.6 fps
+against =3 at 2.7 — more work running faster, which is impossible. That run never leaves JIT
+warm-up. Keeping both numbers here is the point: the smoke figure looked like data and was not.
+
+**Caveats, so this is not over-claimed:** measured parked at the grid, not mid-race with a full AI
+field, and on this GPU (GTX 1660 SUPER) at this resolution. If a heavy scene later shows a cost,
+the mirror pass itself is what to make cheaper — it re-renders `drawworld` + car + every wheel
+TWICE per update into a 384x192 FBO, so the cost is draw submissions, not fill.
+**Needs the PO's eye to confirm the strobe is gone.** The AppImage carries it: the AppDir copy is
+updated and the build stamp bumped, so the code-refresh path pushes it to existing installs.
+
+### E106-S36 (2026-09-04) — the ride-height channels: the formula is RIGHT; only ungrounded samples are garbage
+
+S32 proposed a mechanism (rh derives from `terr - zref`, and `zref` freezes when not grounded).
+Measured it this sprint with `JM_RH_DIAG` (threshold now settable via `JM_RH_DIAG_T`; =0 prints
+every sample), 40 samples from spawn at Watkins:
+
+| phase | sample |
+|---|---|
+| spawn, `grounded=false` | `rh=(0.409,0.409,0.431,0.431) zref=0.33 terr=(0,0,0,0) heave=-0.001` |
+| settling, `grounded=true` | `rh=(0.11,0.144,0.065,0.098)` — suspension oscillating |
+| settled, `grounded=true` | **`rh=(0.082,0.082,0.106,0.106)`** `zref=0.34 terr=(0.36,0.23,0.45,0.33)` |
+
+**The settled values match the .ibt setup exactly** — `ride ht: 82.9 / 82.9 / 105.2 / 105.2 mm`.
+So the formula is CORRECT and there is no sign or offset bug to chase. At spawn `terr` reads
+(0,0,0,0) while `zref` is 0.33, and rh is inflated by precisely that 0.33 — the transient, not a
+defect in the expression.
+
+**Conclusion: rh is only meaningful while `grounded`.** The PO capture's mean of -0.163 m over
+6,026 moving ticks therefore says a large fraction of that race was spent ungrounded or with
+`zref` diverged — which is itself worth knowing, and is consistent with the Spa terrain-step class
+already deferred to Fable 5.1.
+
+**The fix is now well-defined and small:** export the four `*rideHeight` channels only while
+grounded, and a documented sentinel otherwise, so a consumer can tell "unknown" from "-73 m".
+That needs `grounded` exposed through `telemetry3d` (it is currently a loop-local; this sprint
+hoisted a copy as `grounded_last` for the diagnostic). Deliberately NOT clamping: a clamp would
+export a plausible lie, which is the failure this project has repeatedly paid for.
+
+**Caught en route, and worth recording:** the first version of this diagnostic referenced
+`grounded` from outside the sub-step loop that defines it. It PARSED fine and died at runtime with
+`UndefVarError` — the E106-S15 failure exactly, and the reason a parse check is not a test. Found
+by running it, fixed by hoisting, then re-run to confirm `EXIT: 0`.
+
+### E106-S37 (2026-09-04) — ✅ **RIDE-HEIGHT TELEMETRY FIXED AND VERIFIED**
+
+S36 established the formula is correct and the garbage is confined to ungrounded samples. Fixed:
+
+* `Car3D` gains a `grounded::Bool`, set from the loaded-wheels test that already exists in the
+  sub-step loop, and exposed through `telemetry3d`.
+* The four `*rideHeight` channels export the real value while grounded and **NaN otherwise**.
+
+**NaN, not a clamp** — deliberately. NaN says "not measured here"; a clamp would export a
+plausible lie, and ride height is precisely the channel the PO's *"car is several inches off the
+ground"* report depends on, so a lie there is worse than a gap. `JM_RH_RAW=1` exports the raw
+value for A/B against the old captures.
+
+**Verified by reading the exported .ibt back** (40 ticks, Watkins):
+
+| channel | min | mean | max |
+|---|---|---|---|
+| LFrideHeight | 73.2 | 85.2 | 135.6 mm |
+| RFrideHeight | 64.8 | 78.5 | 143.9 mm |
+| LRrideHeight | 65.4 | 118.1 | 171.4 mm |
+| RRrideHeight | 93.5 | 110.2 | 136.1 mm |
+
+All positive, centred near the static 83/105 mm with plausible travel. Against the PO's capture:
+**min -73,461 mm, mean -163 mm**. Zero NaN in this run because the car was grounded throughout;
+the NaN path covers airborne samples.
+
+**This unblocks the PO's "car is several inches off the ground" item** — ride height is now a
+channel that can be trusted as evidence. The AppImage carries it (AppDir updated, build stamp
+bumped so the code-refresh path pushes it to existing installs).
+
+### E106-S38 (2026-09-04) — engine graphics: `JM_FLATPOLY` is REFUTED as the fix, with numbers
+
+The PO reported this twice: *"fix random polygon/colors on back of engine"* and *"engine in
+nintendo view needs improvement - there's flicker and some random shapes and colors on the engine,
+which you're staring at all the time if you're in nintendo view"*.
+
+**Reproduced** in a chase-view capture (`JM_VIEW=1`, new `JM_FRAMEDUMP`): a bright
+magenta/orange/white patch across the engine block, where alloy and black belong.
+
+S21 proposed that the offending polys are type 0x81D (a FLAT type, no UV block) and that the
+parser leaks a texture onto them — which is what `JM_FLATPOLY` (render.jl:1371, default OFF)
+exists to fix: for a flat tri with a texture name, it groups the tri under "" so no texture binds.
+
+**A/B'd it. It does not work, and it costs.** Same scene, same frame:
+
+| region | default (off) | `JM_FLATPOLY=1` |
+|---|---|---|
+| engine patch, saturated pixels | 1.6 % | **1.3 %** |
+| cowl, saturated | 2.3 % | **11.8 %** |
+| cowl, yellow | 0.3 % | **7.9 %** |
+
+The engine artefact is essentially unchanged (0.3 points), while the cowl behind the driver turns
+bright yellow — the regression S22 recorded ("the yellow cowl is a BRANCH we draw and GPL does
+not"). So the switch buys nothing measurable on the engine and introduces a large, PO-visible
+defect elsewhere. **It should stay default-off, and the flat-poly-texture-leak theory does not
+explain the engine mess.**
+
+Worth stating plainly because it went the other way from expectation: by eye the engine looked
+improved in the `JM_FLATPOLY=1` capture. The measurement says it was not — 1.6 % vs 1.3 % on the
+patch itself. The eye was reading the yellow cowl as "different, therefore better".
+
+**Next line of enquiry** (the flat-poly one is now closed): the artefact is a small, high-saturation
+patch in a fixed place on the block, not a wandering flicker, so it is more likely a specific
+sub-mesh with a wrong texture BINDING than a UV problem. `JM_TYPEDUMP` already dumps poly types;
+the next step is to name the mesh group that occupies those pixels (the same "locate it in pixels
+first" approach that finally cracked the AI rods in E106-S24/S25) rather than reasoning from the
+format spec.
+
+### E106-S39 (2026-09-04) — ⭐ the engine artefact is ATTRIBUTED: 27 triangles textured `back4`
+
+S38 refuted the `JM_FLATPOLY` fix with numbers and recorded the next step: name the mesh that owns
+those pixels rather than reason from the format. Done, and it took two new instruments because
+this tree had none.
+
+**New instruments (both default-off, both kept):**
+* `JM_CAR_RANGE="a:b"` — draw only car body items a..b. There was NO way to attribute a drawn
+  pixel to a mesh: `Render.Item` carries no name. This gap is what made the AI-rods item take
+  five sprints and this one four.
+* `JM_ITEMDUMP=1` — print each item's index, texture and triangle count as it is built.
+
+**The bisection**, measuring saturated pixels inside the artefact's box (674,524)-(734,568):
+
+| items drawn | saturated |
+|---|---|
+| 1-16 (all) | 1.4 % |
+| 1-8 | 1.6 % |
+| **1-4** | **4.1 %** |
+| 5-8 | 0.3 % |
+| 1-2 | **0.0 %** |
+| **3-4** | **4.1 %** |
+| **3 alone** | **3.4 %** |
+
+The signal concentrates as the range narrows while the complement goes to zero — the pattern a
+single owning mesh produces. `JM_ITEMDUMP` then names it:
+
+    [item] 3  tex="back4"  tris=27
+
+**`back4` is one of the two textures the E106-S10 comment already named** ("the copper/magenta
+wiring strip of back4 and lo133 across the engine, exactly the PO's 'random colours'"). The pixel
+evidence reached it independently, which is the useful part: the mechanism is no longer a
+plausible story attached to a symptom, it is a measured attribution to **27 triangles**.
+
+**Also learned:** `lo133` (item 6, 156 tris) contributes NOTHING at this camera angle — items 5-8
+measure 0.3 %. So the fix target is far smaller than the comment implies: 27 triangles, not two
+whole texture groups.
+
+**Why `JM_FLATPOLY` misses them** (and why S38's refutation was right): that switch tests the
+PARSER's flat flag (`t.flat`, a poly-type test). These 27 must therefore be a TEXTURED type whose
+three UVs happen to coincide — which is the S10 *inference* the parser flag deliberately replaced,
+because that inference also caught the cockpit cowl and turned it yellow. So the two are not
+interchangeable, and the correct rule has to separate "coincident UVs on the engine" from
+"coincident UVs on the cowl". Geometry alone does not distinguish them; the next sprint should
+dump the authored colour and the sampled texel for those 27 tris and see whether the authored
+colour is the honest one (S10 measured that it is, for the flat set).
+
+### E106-S40 (2026-09-04) — 🔴 the flat-poly explanation for the engine artefact is REFUTED at the triangle level
+
+S39 attributed the artefact to 27 triangles textured `back4`. This sprint dumped those triangles
+(`JM_TRIDUMP=<texname>`, new, default-off) to test the standing explanation — that they are GPL
+flat-shaded polys being drawn textured, sampling one arbitrary texel:
+
+    [tri] tex=back4 flat=false uv_coincident=false ptype=0x81f col=(0.392,0.416,0.396) uv1=(0.01,0.978)
+    [tri] tex=back4 flat=false uv_coincident=false ptype=0x81f col=(0,0,0)             uv1=(0.92,0.004)
+    [tri] tex=back4 flat=false uv_coincident=false ptype=0x81f col=(0,0,0)             uv1=(0.92,0.008)
+
+**Every one of them is `ptype=0x81F` — a TEXTURED type — with `flat=false` and UVs that are NOT
+coincident**, spanning the map (0.01..0.978, 0.92..0.004). They are legitimately mapped and are
+SUPPOSED to sample `back4`.
+
+So the E106-S10 note — *"the copper/magenta wiring strip of back4 and lo133 across the engine,
+exactly the PO's random colours"* — correctly named WHERE the colour comes from, but its
+mechanism (flat polys sampling an arbitrary texel) does not hold for `back4`. That also explains,
+consistently, why `JM_FLATPOLY` measured no improvement in S38: there is nothing flat here for it
+to reroute. Two independent measurements now agree, which is the reason to trust this.
+
+**The question is therefore no longer "why are these drawn textured" but "is `back4` the right
+image, decoded correctly".** Next step, and it is cheap: dump the decoded `back4` texture to a
+PNG and look at it. Three outcomes, all informative:
+* the texture IS a copper/magenta wiring strip -> the mapping is right and GPL draws this too;
+  the artefact is then a LIGHTING or saturation difference, not geometry, and the PO's "random
+  colours" is our shading of a real texture.
+* the texture is garbage -> a DECODE defect (palette or format), which would likely affect other
+  textures too and is worth a sweep.
+* the texture is fine but a DIFFERENT image than GPL binds -> a texture-index/name resolution bug.
+
+Do not spend another sprint on flat-shading for this artefact. Two sprints have now measured that
+it is not the cause.
+
+### E106-S41 (2026-09-04) — ⭐ `back4` is CORRECT artwork, correctly decoded. The suspect is now the UV mapping.
+
+S40 refuted the flat-poly explanation (the 27 triangles are `ptype=0x81F`, `flat=false`, with real
+non-coincident UVs). That left one question: is `back4` the right image, decoded correctly?
+
+Dumped it (`JM_TEXDUMP=<name>`, new, default-off, writes the decoded RGBA to a PPM). **128x256,
+and it is legitimate GPL engine artwork** — an ATLAS holding: a clutch/bellhousing (top left), a
+damper/suspension part (middle right), and along the bottom **the Cosworth DFV cam covers with
+their copper and magenta ignition loom**.
+
+So the "copper/magenta wiring strip" the E106-S10 note named is not corruption and not a decode
+fault. **It is real artwork that GPL draws too.** Three explanations are now eliminated by
+measurement: flat-poly texel sampling (S38 by A/B, S40 at triangle level), a decode defect, and a
+wrong texture binding.
+
+**What remains, and it fits the evidence:** `back4` is an ATLAS, so each triangle's UVs select
+which PART of the engine it shows. The dumped UVs span it widely — `(0.01,0.978)`, `(0.92,0.004)`,
+`(0.92,0.008)`. If our V convention is flipped relative to GPL's, or the atlas cell origin is off,
+a face that should show a cam cover instead shows the wiring loom — which is EXACTLY the PO's
+description: *"random polygon/colors on back of engine"*. Not random at all: the right texture,
+the wrong cell.
+
+**Next step, cheap and decisive:** render the same 27 triangles with V inverted (`v -> 1-v`) and
+measure the artefact box. The saturation metric already used through S38-S40 gives an immediate
+answer, and the whole comparison is one A/B. If V-flip is not it, the same instruments will
+localise which atlas cell each face should take by comparing against a gold GPL capture of the
+engine.
+
+Note for whoever picks this up: the PO sees this in "nintendo view" (chase), where the engine
+fills the screen — so it is worth fixing properly rather than tuning saturation. And do NOT
+re-open flat-shading: two sprints have now measured that it is not the cause.
+
+### E106-S42 (2026-09-04) — ⭐⭐ the engine artefact is a **V-COORDINATE FLIP**. Measured, not inferred.
+
+S41 established `back4` is correct GPL artwork and an ATLAS, so a wrong V would show the wiring
+loom where a cam cover belongs. Tested it.
+
+The convention was already parameterised: `extract_gpl_car` derives `vflip = !mirror`
+(render.jl:1112), so for the player car (not mirrored) **V is flipped**. Added `JM_VFLIP` /
+`JM_UFLIP` overrides so the convention is A/B-able, and measured the artefact box:
+
+| | engine patch (saturated) |
+|---|---|
+| `JM_VFLIP=1` (current default) | **1.6 %** |
+| `JM_VFLIP=0` | **0.1 %** |
+
+**A 16x reduction — the artefact is gone.** Visually the engine bay changes from a
+magenta/orange/white smear to plausible alloy casings, cam covers and exhaust primaries.
+
+**Checked for collateral damage, because the last switch that fixed one region broke another**
+(`JM_FLATPOLY` cured nothing on the engine and turned the cowl yellow, S38):
+
+| region | VFLIP=1 | VFLIP=0 |
+|---|---|---|
+| cowl: sat / yellow / green | 4.4 % / 0.3 % / 4.0 % | 3.5 % / **0.8 %** / 3.1 % |
+| whole car: sat / green | 1.0 % / 0.6 % | 0.6 % / 0.5 % |
+
+No yellow blow-up (0.8 % against JM_FLATPOLY's 7.9 %), the car stays green, and overall
+saturation falls slightly — consistent with "fewer wrong-cell samples", not with a new defect.
+
+**NOT flipping the default yet, deliberately.** V affects EVERY textured surface on the car, and
+"one box improved 16x and the rest moved a little" is not proof that every other face is now MORE
+correct rather than differently wrong. The project already has the right instrument for that:
+E106-S27's gold A/B of the player car's exterior. **Next step: re-run that gold comparison with
+`JM_VFLIP=0` and confirm the whole car moves TOWARD gold.** If it does, flip the default and this
+PO item closes.
+
+That is one measurement away, and it is the difference between a fix and a plausible-looking
+change — which is exactly the distinction that has cost this item four previous sprints.
+
+### E106-S43 (2026-09-04) — the gold confirmation of the V-flip is NOT done. My comparison was invalid.
+
+S42 measured a 16x reduction of the engine artefact with `JM_VFLIP=0` and said the remaining step
+was a gold A/B. Attempted it, and the attempt does not support a conclusion either way:
+
+    GOLD (GPL reference)      saturated= 4.56%   mean hue of those px= 137.1 deg   <- GREEN
+    ours JM_VFLIP=1 (current) saturated= 1.56%   mean hue of those px= 178.4 deg
+    ours JM_VFLIP=0           saturated= 0.07%   mean hue of those px=  35.6 deg
+
+**Why this is invalid:** the gold capture (1262x809, GPL's own camera) and our captures
+(1440x810, chase view) frame the car differently, so a box chosen by COORDINATES covers different
+parts of the car in each. The gold box's mean hue of 137 deg proves it — that is the BRG
+bodywork, i.e. my gold box includes green panel that our engine box does not. Comparing
+"4.56% vs 1.56% vs 0.07%" across boxes with different CONTENT is not a comparison.
+
+Read naively it would suggest `JM_VFLIP=1` (1.56%) is closer to gold (4.56%) than `JM_VFLIP=0`
+(0.07%) — the opposite of what S42 measured. That conclusion would be an artefact of my box
+selection, not evidence, and it is exactly the trap this backlog has recorded before ("a gate
+frame that differs from the eye's frame goes green on a visible defect").
+
+**What still stands, unaffected:** S42's within-our-own-render A/B, where both arms were the SAME
+capture geometry and the SAME box — 1.6% -> 0.1%, plus no yellow-cowl regression. That is a valid
+comparison and it is why `JM_VFLIP=0` remains the strong candidate.
+
+**To do the gold A/B properly** the framing has to be matched, not assumed: drive our camera to
+the gold's distance/angle (`JM_SHOTS` can place the car at a lapdist and view), or select the
+comparison region by FEATURE (locate the engine bay in each image) rather than by fixed pixel
+coordinates. Until then the default stays `vflip = !mirror`.
+
+### E106-S44 (2026-09-04) — second attempt at the gold A/B, also invalid. Stopping; rotating off julia.
+
+S43 rejected a coordinate-boxed gold comparison (different framing -> boxes with different
+content). This sprint tried to fix that by anchoring the region to the CAR rather than to pixel
+coordinates: locate the car's bounding box, then take the engine bay as a fixed fraction of it.
+
+    GOLD (GPL)         car=574x264  engine box=195x118  saturated=3.16%  warm=0.38%
+    ours JM_VFLIP=1    car=400x76   engine box=136x34   saturated=0.26%  warm=0.00%
+    ours JM_VFLIP=0    car=400x122  engine box=136x55   saturated=0.01%  warm=0.00%
+
+**Also invalid, and the tell is in the numbers.** The detector classifies a pixel as "car" when it
+is NOT road-grey — i.e. when it is coloured or dark. That is keyed on the very property being
+measured, so it is circular: the SAME scene yields a car height of 76 px in one arm and 122 px in
+the other, purely because the arms differ in colour. A detector confounded with the measurement
+cannot compare the measurement.
+
+**Two attempts, two different invalidities, no gold verdict.** Recording both rather than quietly
+retrying, because the failure mode is instructive and cheap to repeat: the first compared boxes
+with different CONTENT, the second used a detector that MOVES with the thing under test.
+
+**A valid gold A/B needs geometry, not heuristics:** put our camera at the gold's own distance and
+angle (JM_SHOTS places the car at a lapdist and view, so the framing can be MADE to match) and
+then compare fixed boxes. That is a real piece of setup work, not a one-liner, and it deserves its
+own sprint rather than being bolted onto this one.
+
+**Unchanged and still the strongest evidence:** E106-S42's within-render A/B — same capture
+geometry, same box, `JM_VFLIP=1` 1.6% -> `JM_VFLIP=0` 0.1%, with no yellow-cowl regression and the
+car still green. `JM_VFLIP=0` remains the candidate fix; the default is NOT flipped.
+
+Four consecutive sprints on this item (S41-S44) — rotating off julia per the PO's sprint rule.
+Item is at 7 sprints total (S19, S21, S22, S38, S39, S40, S41-S44 counted as the current run);
+one more without closing and it goes to Fable 5.1.
+
+## 🛑 FOR FABLE 5.1 — the engine-graphics item has reached the 8-sprint limit
+
+PO rule: *"If any backlog item has had 8 or more sprints run on it without closing it, mark it as
+for Fable 5.1 and do not run further sprints on it."*
+
+**Sprint count: 8** — E106-S19 (flat-poly theory proposed), S21 (type 0x81D named), S22 (colour
+decode verified; yellow cowl found), S38 (JM_FLATPOLY refuted by A/B), S39 (attributed to 27 tris
+via pixel bisection), S40 (flat-poly refuted at triangle level), S41 (texture dumped, V-flip
+hypothesis), S42-S44 + S45 (V-flip measured; three failed gold comparisons).
+
+**Marked FOR FABLE 5.1. No further sprints.** Hand-over below is deliberately complete, because
+this item has twice been re-opened on a theory that had already been measured false.
+
+### The answer is probably one line. What is SETTLED:
+
+* **The artefact is 27 triangles textured `back4`**, located by pixel bisection
+  (all items 1.4% saturated -> items 1-4 4.1% -> item 3 alone 3.4%, complement 0.0-0.3%).
+* **Those triangles are NOT flat-shaded.** `ptype=0x81F` (textured), `flat=false`, UVs NOT
+  coincident and spanning 0.01..0.978. **The flat-poly explanation is dead** — refuted twice, once
+  by A/B (`JM_FLATPOLY` changed the engine 1.6% -> 1.3% while turning the cowl yellow 0.3% ->
+  7.9%) and once at triangle level. **Do not re-open it.**
+* **`back4` is correct GPL artwork, correctly decoded** — a 128x256 ATLAS: clutch/bellhousing,
+  a damper, and the DFV cam covers with their copper/magenta ignition loom. Not corruption.
+* **`JM_VFLIP=0` removes the artefact**: 1.6% -> 0.1% saturated in the artefact box, same capture
+  geometry, same box, with NO yellow-cowl regression (0.8% vs JM_FLATPOLY's 7.9%) and the car
+  still green. `extract_gpl_car` derives `vflip = !mirror` (render.jl:1112), so V is currently
+  flipped for the player car. **This is the candidate fix and it is one line.**
+
+### What BLOCKS closing it: a valid comparison against GOLD
+
+The default was NOT flipped because V affects EVERY textured surface on the car, and a 16x
+improvement in one box does not prove the other faces moved toward correct. Three attempts at the
+gold A/B all failed on METHOD, not on the render:
+
+1. **Fixed pixel boxes** — gold (1262x809, GPL's camera) and ours (1440x810, chase) frame the car
+   differently, so the boxes covered different CONTENT. Gold's box read hue 137 deg (green
+   bodywork) which our engine box did not contain.
+2. **A "not road-grey" car detector** — confounded: it keys on colour, the property under test.
+   The same scene gave car heights of 76 px and 122 px between the two arms.
+3. **A rear-tyre anchor** (sound in principle — tyres are separate meshes, so the anchor cannot
+   move with the V-flip) — worked on gold (186x102 box) but its "two largest dark column runs"
+   heuristic could not separate our tyres from shadow/road in the chase view.
+
+**What would actually work:** match the GEOMETRY instead of anchoring heuristically. `JM_SHOTS`
+can place the car at a given lapdist and view, so our camera can be driven to the gold's distance
+and angle; then fixed boxes are legitimate because the framing genuinely matches. That is real
+setup work — measure the gold's camera from the image, reproduce it — and it is the one thing
+standing between this item and closure.
+
+### Instruments built for this item, all kept and default-off
+
+`JM_CAR_RANGE` (draw only car items a..b — this tree had NO way to attribute a pixel to a mesh),
+`JM_ITEMDUMP` (item index -> texture, tri count), `JM_TRIDUMP=<tex>` (per-triangle flat flag, UV
+coincidence, ptype, colour), `JM_TEXDUMP=<tex>` (dump the decoded texture), `JM_VFLIP`/`JM_UFLIP`
+(override the UV convention), `JM_FRAMEDUMP` (consecutive frames, for temporal artefacts).
+
+### E106-S45 (2026-09-04) — scoping the PO's "no rFactor dependency" note: it is a design decision, not a line change
+
+PO note (2026-09-03): *"julia racer should not have any dependency on rFactor game data; only GPL
+game data and ibt files output by iracing are used."* The BUNDLE side was dealt with the same day
+(1.2 GB of rFactor data replaced by the 1.2 MB of physics text files the loader actually resolves).
+This sprint scoped the CODE side, which is what the note really asks for.
+
+**What the planar model actually reads from the rFactor-derived `VehicleModel`** (`JuliaMotor/src/drive.jl`,
+`step!` and `drive_accel`): not the three fields E106-S37 named, but essentially a whole car —
+
+| field | used for |
+|---|---|
+| `dt` (Drivetrain) | gear ratios, `ngears`, `engine_rpm` |
+| `eng` (EngineModel) | `idle_lo`, torque curve via `engine_torque` |
+| `radius` | wheel radius, effective mass |
+| `drag_k`, `loss_const` | resistance |
+| `wheelbase`, `rear_frac`, `cg_h`, `iz` | bicycle geometry, load transfer, yaw inertia |
+| `tire_f`, `tire_r` (TBCTire) | `lateral_force`, `peak_mu_long`, `peak_mu_lat` |
+| `brake_f`, `brake_r` | brake bias |
+
+**And this is the AI's physics, not the player's.** The player drives the MTK 3-D model fitted to
+the iRacing .ibt; the planar model still drives the AI field (E106 status: *"planar still used for
+AI"*). So the rFactor data is currently supplying the AI cars' tyre curves, engine torque map,
+drivetrain and inertia.
+
+**Therefore three options, and it is the PO's call — none is a tidy-up:**
+1. **Build a planar `VehicleModel` from the .ibt + constants.** The .ibt gives gearbox ratios,
+   mass, springs and ride height (already parsed), but NOT tyre curves or an engine torque map —
+   those would have to be fitted from the MTK model or authored. Most faithful to the PO's rule.
+2. **Move the AI onto the MTK model too.** Removes the second physics model entirely, at a real
+   per-car cost (the MTK solve is why the player path exists separately).
+3. **Ship a built-in constant Lotus-49 planar model** for the AI. Cheapest; the AI stop being
+   data-driven, which may be acceptable since they are already pace-scaled by `JM_AI_PCT`.
+
+Not started, deliberately: choosing between these changes how the AI drive, and the PO's standing
+rule that *"the car physics should be determined entirely by the iracing ibt data"* was written
+about the PLAYER's car. Whether it binds the AI too is the question to put to the PO before any
+code moves.
+
+
+---
+
+## 🔲 BACKLOG — AI-GOLD: fix AI car behaviour against a real GPL race as the gold standard
+
+**PO, 2026-09-04:** *"fix AI car behavior using as gold standard this 2 lap watkin glen race."*
+
+### The oracle (verified present, 2026-09-04)
+
+| what | path | notes |
+|---|---|---|
+| video | `/home/admin/Videos/260904_watkinsGlenn.mp4` | 410 MB, 23:16 |
+| replay | `~/sgl/THU/afterGameReport/260904_2310_gpl/260904_wg.rpy` | 2.6 MB, 23:16 |
+| decoder | `~/sgl/THU/WP/drive_c/Program Files/GPL Replay Analyser` | exports telemetry to .txt |
+
+⚠️ The PO gave the replay path as `~/sgl/THU/260904_WG.rpy`; it is actually under
+`afterGameReport/260904_2310_gpl/` and lower-case (`260904_wg.rpy`). Both matter on Linux.
+
+⚠️ **This is irreplaceable PO-generated data.** It is a recording of a real race the PO drove, not
+something regenerable. Copy it out before any tooling touches that directory -- see the standing
+lesson about volatile replay stores. Do NOT let a gate or script write into
+`afterGameReport/`.
+
+### Why this item exists
+
+The AI behaviour complaints so far have been argued from impressions and from the sim's own
+instruments, with no external reference:
+
+* *"AI cars nervous, skitter from one side to the other"* (Watkins Glen, 2026-09-04)
+* *"the user car can plow through them"* -- FIXED separately (oriented contact test)
+* E89: *"AI cars dart around like june bugs, lunge ahead, then fall back"*
+
+What is measured today is entirely self-referential: 78 of 599 vtarget samples stepping >10 m/s,
+peak 57 m/s (`JM_PACEDIAG=1`). That says the target speed is discontinuous; it does NOT say what
+the AI *should* be doing. **This replay supplies the missing half: what real GPL AI actually do on
+this track.**
+
+The leading hypothesis (node spacing inflating kappa) was implemented and MEASURED TO FAIL --
+`JM_KAPPA_ARC=1`, A/B recorded in `demo/native/ai.jl`: local |dv| p90 got WORSE (16.08 -> 20.55) and
+the horizon target, which is what the AI drive on, barely moved (10 -> 8 of 599). So the next
+attempt needs a reference, not another guess.
+
+### What to do with it
+
+1. Export telemetry from the .rpy with the GPL Replay Analyser (it writes .txt).
+2. Derive, per AI car, per lap: speed vs arc-length, lateral position vs arc-length, and the
+   step-to-step change in both. These are directly comparable with what `JM_PACEDIAG=1` reports for
+   the julia field, and with `AISTAT` rail switches per car-lap.
+3. **State the numbers BEFORE running the comparison** (standing rule): what does a real GPL AI's
+   |dv| distribution look like, and how often does it change line? Today's julia figure is 78/599
+   samples >10 m/s; the gold figure is unknown and is the point of the exercise.
+4. Only then change the model. The two failed attempts (lateral second-difference clamp
+   `JM_SHIFT_CLAMP`, arc-length kappa `JM_KAPPA_ARC`) are both recorded with their A/B tables so
+   they are not repeated.
+
+### Not started
+No sprints have been run against this item.
+
+
+---
+
+## 🔲 BACKLOG — MP-4: two julia racer AppImages on different PCs racing each other
+
+**PO, 2026-09-04:** *"add multiplayer to julia racer, such that appImages on different PCs can both
+compete in a race"*.
+
+### Read this first: netplay ALREADY EXISTS. This item is mostly reach, not invention.
+
+`demo/native/netplay.jl` implements peer-to-peer UDP over Julia's stdlib `Sockets`, and the sim
+already wires it in (`drive_native_mtk.jl:518-528`):
+
+| env | default | meaning |
+|---|---|---|
+| `JM_NET=host` | -- | host on `JM_NET_PORT` |
+| `JM_NET=join` | -- | join `JM_NET_HOST:JM_NET_PORT` |
+| `JM_NET_PORT` | `47700` | UDP port |
+| `JM_NET_HOST` | **`127.0.0.1`** | client: where the host is |
+| `JM_NET_ID` | host 1, client 2 | this car's id |
+| `JM_NET_HZ` | -- | send rate |
+
+The host binds and learns each peer's address from its first packet, so a client behind NAT on the
+same LAN is fine. Three gates pass today: `netplay_smoke`, `netplay_dr_smoke`, `netplay_dr2_smoke`
+(the latter two cover dead-reckoning of remote cars).
+
+**So the first experiment costs nothing.** On PC-A run with `JM_NET=host`; on PC-B run with
+`JM_NET=join JM_NET_HOST=<PC-A LAN IP>`. Env passes straight through the AppRun, so no repack. If
+the two cars see each other, the remaining work is UI and documentation, not transport.
+
+### What is genuinely missing, and should be scoped only after that experiment
+
+1. **No way to set any of this from the launcher.** `juliaRacer.py` has no host/join controls; today
+   multiplayer is env-vars-only, which is not "a user can race a friend".
+2. **Untested across two machines.** Like bob's MP-3, every gate runs on ONE box over loopback.
+   What is unproven is a real LAN segment and any firewall on UDP 47700. A two-host gate cannot run
+   on this machine -- say so rather than faking it with loopback.
+3. **Two players, not a field.** `JM_NET_ID` defaults to host 1 / client 2 and the sim's netplay was
+   built for a PAIR. Whether three or more can join, and how ids are allocated, is unexamined.
+4. **Race state.** Gates cover pose exchange and dead reckoning. NOT covered: shared race start,
+   lap counting agreement, and who owns the result -- with the standing caveat that lap counting was
+   only just fixed for the single-player teleport case (`prog_delta`), so a networked lap count
+   should not be assumed sound.
+5. **AI in a networked race.** Unknown whether both peers simulate the AI field independently (which
+   would diverge) or one is authoritative. This is the question most likely to turn a small item
+   into a large one -- answer it before estimating.
+
+### Not started
+No sprints have been run against this item. Do the two-PC env-var experiment before designing any UI.
+
+
+---
+
+## ✅ DONE — RESTART-1: a key that restarts the session on the CURRENT track, instantly
+
+**PO, 2026-09-04:** *"add a key command to julia racer to restart the session on the current track.
+This should be instantaneous - otherwise you have to wait for the track to reload after goofing up."*
+
+### Why this is worth doing and should be cheap
+
+Quitting and relaunching costs the whole load again -- GPL track parse, HAT build, geometry
+extraction, texture decode -- on top of Julia/MTK JIT on a cold start. Nothing about a restart needs
+any of that: the track, the HAT, the racing line, the meshes and the textures are all still valid.
+Only the SESSION state is stale.
+
+The existing practice->race transition already does most of the reset in one place
+(`drive_native_mtk.jl`, the `phase[] == :practice` block):
+
+```julia
+cs.laps = 0; last_lap = 0.0; best_lap = 0.0; race_done = false; lap_t0 = cs.t
+launch_done[] = false
+FUEL_ON && (fuel[] = burn_lap * fuel_laps)
+```
+
+So the shape is proven; a restart is that, plus the rest of the per-session state, without touching
+anything the loader built.
+
+### State a restart must reset -- enumerate before writing, this list is the item
+
+* car: `respawnX!(cs)` (already exists, used by R), `DriveRT3D.damage_reset!()`
+* wreck/damage: `WRECKED[]`, `LOOSE_WHEELS` (must be emptied -- a detached wheel is not redrawn
+  otherwise), `DAMAGE`
+* lap/race: `cs.laps`, `lap_t0`, `last_lap`, `best_lap`, `prev_laps`, `race_done`, `player_laps`,
+  `player_grid[]`, `player_finpos[]`, `phase[]`, `race_go[]`, countdown `cd_t0[]`/`cd_left[]`
+* **lap PROGRESS: `player_prog` and `player_s_prev`** -- these are the accumulator behind
+  `prog_delta`; missing them would carry the old lap count into the new session, which is the exact
+  bug class just fixed for teleports (see the teleport entry). Reset `player_s_prev` from the
+  respawned position, not from 0.
+* AI: `AICARS` back to the grid (`RaceAI.init_cars`), `ai_lapt0`, `ai_lap_prev`, `ai_best`,
+  `RaceAI.aistat_reset!()`, and `AIPHYS` if the physics field is on
+* session outputs: telemetry file, `replay_buf`, `ibt_samples` -- decide whether a restart starts a
+  NEW recording or discards; PO has just had a replay go missing, so do not silently drop one
+* fuel, clutch/gearbox mode, `CLUTCH_GATE[]`
+
+### Design notes
+
+* **Key choice:** R and SHIFT+R are taken (respawn / recover-to-track). Something unambiguous and
+  hard to hit by accident -- CTRL+R, or a confirm-on-second-press -- because losing a good session
+  to a stray key would be worse than the wait it saves.
+* **Verify by timing, not by feel.** The claim is "instantaneous": measure the wall time from
+  keypress to the car sitting on the grid, and assert it in a gate. If it ever starts reloading the
+  track that number will jump and say so.
+* A restart must NOT re-run the .ibt/setup provenance printing as though it were a fresh launch, or
+  the log stops being a record of one session.
+
+### Not started
+No sprints have been run against this item.
+
+
+### AI-GOLD addendum — sprint 1-3: the .rpy is a chunked format and is partially decoded
+
+Measured directly on the PO's file
+(`~/sgl/THU/afterGameReport/260904_2310_gpl/260904_wg.rpy`, 2,651,644 bytes):
+
+```
+offset  tag    meaning
+     0  YLPR   magic ("RPLY" as a reversed FourCC -- every tag in this file is reversed)
+     4  15362  version/count
+     8  2651632  = filesize - 12, i.e. the payload length
+    12  DHPR   replay header -- contains "watglen" and the carset string "1967-X"
+   100  FNKW
+   296  SLRD   start of the driver block
+   308  TNRD   x6, evenly spaced 152 bytes apart -> SIX 152-byte driver records
+```
+
+So the head is fully legible without any tooling: **track and carset confirmed from the file itself
+-- watglen, 1967-X**, which matches the mod the PO races and the AI-speed settings applied via
+`setRaceLapsAndAI.sh`. Six driver records, then ~2.65 MB of frame stream.
+
+**What this does and does not buy.** It is enough to identify the session and locate the per-driver
+block, and it makes a native decoder plausible rather than speculative. It is NOT a decode of the
+frame stream, which is where the actual per-car speed/lateral history lives -- and that stream is
+the whole point of the oracle.
+
+**Recommended route stays the GPL Replay Analyser export** (`~/sgl/THU/WP/drive_c/Program Files/GPL
+Replay Analyser`, exports telemetry to .txt), as the PO said. Writing a native .rpy decoder is a
+project in itself and would be justified only if the analyser cannot export what is needed --
+check that first. The map above is recorded so that decision can be made on evidence rather than
+guessed at, and so a future decoder does not start from a blank file.
+
+**Sprints on AI-GOLD: 3.** Still not started on the actual comparison, which needs the exported
+telemetry.
+
+
+### AI-skittering addendum — the node-spacing premise was MISREAD, and that explains the failed fix
+
+**Correction (2026-09-05).** The `JM_KAPPA_ARC` experiment was justified by "the 20 highest-|kappa|
+nodes sit a median 3.0 m apart against a 6.3 m nominal spacing", i.e. node bunching. That
+comparison was wrong:
+
+* `build_line(pts, groundz; spacing = 3.0, ...)` (`ai.jl:24`) **arc-length RESAMPLES the line to a
+  uniform ~3.0 m** (`nfine = round(Int, total/spacing)`, `ai.jl:28`). So 3.001 m is not "packed",
+  it is the resample pitch, hit exactly.
+* The 6.3 m was the E89 DIAGNOSTIC's own sample spacing (600 samples over a 3750 m lap), not the
+  line's node spacing. Two different quantities, compared as if they were one.
+
+**So there is no node bunching, and there never was.** That is why making the curvature stencil
+distance-correct (`JM_KAPPA_ARC=1`) changed nothing useful: it fixed a defect that does not exist.
+Both recorded failures (`JM_SHIFT_CLAMP`, `JM_KAPPA_ARC`) were aimed at sampling; sampling is
+uniform.
+
+**What remains, on the same reading.** With uniform spacing the kappa spikes must come from genuine
+direction changes in the constructed line. The strongest candidate is the road-width clamp in the
+smoothing loop (`ai.jl:63`):
+
+```julia
+off = clamp((rx[i]-x[i])*nx[i] + (rz[i]-z[i])*nz[i], -hw[i], hw[i])   # stay on the road
+rx[i] = x[i] + off*nx[i]; rz[i] = z[i] + off*nz[i]
+```
+
+A clamp is not smooth: where the line wants to sit outside the curvature-tapered band it is SNAPPED
+to the edge, and the join between clamped and unclamped stretches is a corner -- precisely a kappa
+spike, however uniform the sampling. `hw[i]` itself is curvature-tapered (`ai.jl:56`), so the band
+narrows exactly where the line is most likely to hit it.
+
+**Before implementing anything:** count how many nodes are AT the clamp bound on watglen, and check
+whether those indices coincide with the high-kappa nodes. If they do not coincide, this candidate
+is dead too and should be recorded as such rather than fixed on faith. That measurement needs no
+new code -- the clamp condition is `abs(off) == hw[i]` at the point of assignment.
+
+**Sprints on AI-skittering: 1 this turn (5 total).**
+
+
+### AI-skittering — clamp/kink coincidence MEASURED, and the test is confounded
+
+`JM_CLAMP_DIAG=1`, watglen, 2026-09-05:
+
+```
+nodes=1251   pinned by the road-width clamp=124 (9.9% of the lap)
+of the top-20 |kappa| nodes, 10 are pinned   (chance would be 2.0)
+```
+
+**Read honestly:**
+
+* The pre-registered threshold was `>10 of 20`. The result is exactly 10, so **the prediction was
+  NOT met**. The threshold is not being moved after the fact -- fixing it beforehand is the only
+  thing that makes it worth anything.
+* The threshold was also BADLY SPECIFIED: ">50% of the top 20" and "enrichment over chance" are
+  different questions, and it silently mixed them. Against chance the enrichment is 5x (10 vs 2.0),
+  which is large.
+
+**And the test is CONFOUNDED, which matters more than either number.** `hw[i]` is
+curvature-tapered by construction (`ai.jl:56`: the band narrows as kappa rises), so the clamp
+engages preferentially in corners -- and corners are where kappa is high by definition. A strong
+overlap is therefore EXPECTED whether or not the clamp creates any kinks. This design cannot
+separate "the clamp causes the spikes" from "both simply happen in corners".
+
+**So the clamp is neither confirmed nor eliminated.** It must not be treated as the cause on this
+evidence -- that would be the third fix built on an untested premise in this item.
+
+**A discriminating test would compare the LINE, not locations:** rebuild with the clamp widened
+(hw scaled up, so it engages rarely or not at all) and re-run the E89 vtarget step statistic
+(`JM_PACEDIAG=1`: today 78/599 samples >10 m/s, p90 16.08). If the spikes persist with the clamp
+effectively disabled, the clamp is dead as a candidate regardless of where it engages. That is a
+one-line experiment (`hw .*= 10`) behind an env var, and it answers the question the coincidence
+cannot.
+
+**Sprints on AI-skittering: 6 total.** Not resolved; the next sprint should run the widened-band
+experiment, not implement a clamp fix.
+
+
+### AI-skittering sprints 7-10 (2026-09-05) -- CONFIRMED: the corridor clamp is the skitter source
+
+**New knob** `JM_HW_SCALE` (ai.jl): scales the curvature-tapered halfwidth band. `10` effectively
+removes the road-width clamp without deleting it; `1` is shipped behaviour. Reversible, A/B-able.
+
+**New probe** `demo/native/hw_rough_probe.jl`: measures skitter GEOMETRICALLY on the built line --
+no sim, no eye, no joystick. Skitter is the line alternating direction over a few metres, so the
+metric is curvature SIGN REVERSALS per lap plus RMS of the second difference of heading.
+
+| arm | reversals | RMS d2heading | max d2h |
+|---|---|---|---|
+| `JM_HW_SCALE=1` (shipped) | **110** (8.8% of 1251 nodes) | 0.03595 | 0.3425 |
+| `JM_HW_SCALE=10` (clamp off) | **16** (1.3%) | 0.02670 | 0.5115 |
+
+**A ~7x reduction in reversals.** This agrees with `JM_CLAMP_DIAG`'s independent verdict (21.0% of
+nodes pinned, 14 of the top-20 curvature nodes vs 4.2 by chance) but is measured a completely
+different way, so the two are real corroboration rather than one counter read twice.
+
+**MECHANISM.** The 600-iteration relaxation pulls each node toward the midpoint of its neighbours;
+the clamp then shoves any node that left the band straight back to the band EDGE. A node alternates
+between "smoothed inward" and "pinned to the edge", and neighbouring nodes pin on different
+iterations -- so the line acquires a sawtooth exactly where curvature is highest. The clamp is a
+hard, non-differentiable projection applied inside a smoothing loop, which is the classic way to
+manufacture high-frequency noise.
+
+**TWO INSTRUMENT ERRORS FOUND AND FIXED THIS SPRINT -- both would have produced confident wrong
+answers, and one of them did for a while:**
+
+1. **The trace cap.** `CRRadioCtrl`'s sibling mistake, in ma, is written up in scrum.md; here the
+   equivalent was the FIRST version of this probe, which read `line.x`/`line.z` directly. `AILine`
+   stores the **CENTRELINE** in `.x`/`.z` and the racing line as the lateral offset `.rl` -- so the
+   probe measured the centreline, which is identical in every arm by construction, and reported
+   both arms matching to five decimal places. That looked like a clean "the clamp does nothing"
+   result. The armcheck line (`sum|x|`, spread) is what exposed it and is now permanent in the
+   probe: **an A/B whose two arms produce identical inputs is not evidence of no effect.**
+2. `JM_HW_SCALE=10` makes `JM_CLAMP_DIAG` print "NO BETTER THAN CHANCE -- candidate is DEAD". That
+   verdict is vacuous in that arm: nothing is pinned because the band is 10x wide, so the diagnostic
+   is describing its own arm, not the code. Do not quote it from a widened-band run.
+
+**Next sprint -- the fix, and it must not simply widen the band.** The band exists to keep the apex
+off the grass (the Zandvoort T1 case in ai.jl's own comment), so removing it is not an option. The
+candidate is a SOFT saturation in place of the hard clamp -- `off = hw*tanh(offraw/hw)` -- which is
+bounded by `hw` exactly like the clamp (never leaves the road) but is smooth, so a node near the
+edge stops flipping between two states. Put it behind `JM_SOFT_BAND=1`, measure reversals with this
+probe, and require: reversals near the 16 of the unclamped arm AND `max|rl|` still <= `hw`. Both
+numbers, or it is not a fix.
+
+
+### AI-skittering sprints 11-12 (2026-09-05) -- FIXED (geometry); PO's eye is the remaining oracle
+
+`JM_SOFT_BAND=1` (now the DEFAULT; `JM_SOFT_BAND=0` reverts to the hard clamp exactly).
+
+**The first attempt was wrong and the measurement caught it.** A plain `hw*tanh(off/hw)` is smooth
+and strictly bounded -- and it has slope < 1 EVERYWHERE, so inside a 600-iteration relaxation it
+multiplies every offset by a factor below one, over and over. Result: 18 reversals (excellent) and
+`max|rl|` collapsed from 3.000 m to **0.909 m** -- the out-in-out apexes were gone and the AI was
+driving almost the centreline. A smoothness metric alone would have called that a win; the on-road
+/ apex-depth number is what exposed it, and it is now permanent in the probe and the gate.
+
+**The fix that works** saturates only NEAR THE EDGE: identity below `JM_SOFT_KNEE` (0.7) x hw, so
+the interior of the band is untouched and nothing contracts, then bending smoothly to the asymptote
+hw. Bounded by hw exactly as the clamp was; C1 at the knee.
+
+| track | reversals hard -> soft | max\|rl\| hard -> soft |
+|---|---|---|
+| watglen | 110 (8.8%) -> **32** (2.6%) | 3.000 -> 2.394 |
+| rouen   | 124 (5.7%) -> **48** (2.2%) | 3.000 -> 2.409 |
+| monza   |  66 (3.4%) -> **28** (1.5%) | 2.977 -> 2.408 |
+
+Consistent across three tracks (so not overfitted to Watkins Glen), ~80% of apex depth retained.
+
+**New gate** `softband_smoke.jl`, registered in `gates.sh`. Runs BOTH arms on all three tracks and
+fails if the control does not show the defect -- a treatment-only gate proves nothing. Currently 12
+PASS / 0 FAIL.
+
+**A third instrument error, found and fixed:** the probe listed two spellings of the .DAT filename
+(`monza.dat`, `MONZA.DAT`) and GPL ships `monza.DAT`. Monza produced NO OUTPUT, which reads as "the
+track failed" rather than "the probe cannot spell". Matching is case-insensitive now. That is three
+instrument faults in this one investigation -- capped counter, wrong array, unmatched filename --
+each of which produced a confident, plausible, wrong number.
+
+**NOT yet resolved, and this is the honest limit:** every number here is line GEOMETRY. The PO's
+complaint was about how the AI cars LOOK and behave in traffic, and the gold standard is the
+2-lap Watkins Glen video, not a curvature statistic. A smoother line should mean less twitch, but
+that inference has not been checked against the video. **Next: run the AI at watglen and compare
+against `/home/admin/Videos/260904_watkinsGlenn.mp4` before calling AI-GOLD closed.**
+
+
+### AI-GOLD sprints (2026-09-05) — the skitter fix is worth 1.3 s; the gap to gold is 17 s
+
+The gold replay is `~/sgl/THU/afterGameReport/260904_2310_gpl/260904_wg.rpy` (2.6 MB, 2026-09-04
+23:16). **No exported telemetry accompanies it** -- the PO's note says the GPL Replay Analyser can
+export a .txt, and only the Windows installer is present here (`sgl/THU/INSTALL/replayAnalyzerInstall.exe`),
+so decoding it is its own task. `REF_LAP["watglen"] = 66.912 s` in `drive_native_mtk.jl` is the
+number already standing in for it.
+
+Measured with `hw_rough_probe.jl`, which now reports the line's own natural lap time so that a
+"smoother" line that is also SLOWER cannot be mistaken for progress:
+
+| arm | natural lap | vs gold | curvature reversals |
+|---|---|---|---|
+| hard clamp (was shipped) | 85.40 s | **+18.49 s** | 110 |
+| soft band (now default)  | 84.07 s | **+17.15 s** | 32 |
+
+**So the soft band is worth 1.33 s a lap AND a 3.4x reduction in twitch -- it is a real gain and it
+costs nothing in pace.** But it closes only 7% of the gap to gold. **The AI is ~26% off the gold lap,
+and skitter was never the main thing wrong with it.** Worth stating plainly, because this item has
+been pursued through the skitter lens for several sprints and that lens cannot get to 66.9 s.
+
+**Caveat on the comparison, stated rather than buried:** `natural_laptime` is a kinematic model of
+the line (a vmax/amax speed profile), not a driven lap, while 66.912 s came from GPL. Some of the
+17 s is model conservatism rather than AI slowness. The existing vmax/amax sweep in
+`drive_native_mtk.jl` already shows the model responds strongly to both (vmax=90 + amax=14 is
+materially quicker), which is consistent with the anchor being too low rather than the line being
+bad.
+
+**Next sprint, and it is a different question from the last six:** stop tuning the line and measure
+the SPEED ANCHOR. Sweep vmax/amax against the gold 66.912 and find what values a GPL-competitive lap
+implies, then check those against the car's actual capability from the .ibt data (which is the
+physics oracle per the PO's standing rule). If the anchor is simply too conservative, that is a
+one-constant fix worth ~17 s -- an order of magnitude more than everything the skitter work bought.
+
+
+### AI-GOLD (cont.) — the 17 s is a BRAKING RULE, not a grip shortage. Do not raise amax.
+
+Swept the pace anchor against the gold 66.912 s at Watkins Glen (3750 m, gold mean speed 56.0 m/s =
+202 km/h). `anchor_sweep.jl`:
+
+| amax \\ vmax | 74 | 85 | 95 | 105 | 120 |
+|---|---|---|---|---|---|
+| 11 (default) | 84.07 | 82.18 | 81.55 | 81.32 | 81.27 |
+| 14 | 78.53 | 76.43 | 75.23 | 74.77 | 74.55 |
+| 18 | 73.40 | 71.20 | 69.82 | 68.95 | 68.35 |
+| 24 | 68.28 | **65.92** | 64.48 | 63.50 | 62.43 |
+
+**`vmax` is nearly irrelevant** -- at the default amax, raising it from 74 to 120 m/s buys 2.8 s of
+an 17 s deficit. **`amax` is everything.** Matching gold needs amax ~= 24 m/s2.
+
+**And that is the tell: 24 m/s2 is 2.45 g.** A 1967 F1 car on period tyres does about 1.1-1.3 g, and
+the gold lap IS period-correct (Watkins Glen 1967, 3750 m, 1:06.9 -- right where the real cars were).
+**Real cars achieve this lap at half the grip the model needs. So the model is not short of grip; it
+is throwing speed away somewhere, and raising `amax` to 24 would be forcing the right answer out of
+a wrong model** -- exactly the kind of fix that makes a number match and leaves the behaviour wrong.
+
+**Where it goes, located:** `_vtarget` (`ai.jl:379`) takes the **MAXIMUM curvature over the whole
+look-ahead horizon** and adopts that corner's speed IMMEDIATELY:
+
+    horizon = max(v*2.2, 30.0)              # 123 m at 56 m/s
+    while off <= horizon
+        kappa = max(kappa, line.kappa[...])  # no distance weighting at all
+    clamp(sqrt(amax/kappa)*scale, vmin, vmax*scale)
+
+At racing speed the car is held to the slowest corner within ~123 m for the entire approach. A real
+driver arrives at the braking point at full speed and decelerates. The file's own comment already
+suspected this ("a corner 150 m away limits you exactly as much as one you are in") -- the sweep now
+makes it quantitative: it is worth roughly 15 s a lap.
+
+**Next sprint -- replace the rule, not the constant.** Target the speed from which the corner is
+still reachable under braking:
+
+    v_allowed(d) = sqrt( v_corner^2 + 2 * a_brake * d )
+
+taking the MINIMUM of that over the horizon instead of the min of the corner speeds themselves.
+`step!` already brakes at 30 m/s2 and accelerates at 9 (both hardcoded there, and NOT derived from
+`amax` -- worth noting), so a_brake is available. Put it behind `JM_VT_BRAKE=1`, A/B it with
+`anchor_sweep.jl` at the SHIPPED amax=11, and require: lap time toward 66.9 s **with amax left at
+11.0**. If it needs amax raised to get there, it is not the fix.
+
+
+### AI-GOLD — look-ahead braking implemented, DEFAULT ON, gated. ~10 s a lap.
+
+`JM_VT_BRAKE=1` (now the default; `JM_VT_BRAKE=0` restores the old rule exactly). `_vtarget` now
+takes the minimum of `sqrt(v_corner^2 + 2*a_brake*d)` over the horizon instead of the minimum of the
+corner speeds themselves. At d = 0 it reduces to the corner speed, so nothing is given up IN the
+corner -- only the approach is freed.
+
+**Measured at the SHIPPED amax = 11.0, which was the acceptance criterion set before the fix was
+written:**
+
+| track | old rule | braking rule | gain | gold |
+|---|---|---|---|---|
+| watglen | 84.07 s | **74.20 s** | 9.87 s | 66.912 s |
+| monza   | 113.82 s | **102.68 s** | 11.14 s | 90.202 s |
+
+**And the physics got honest.** The grip needed to reach the gold lap falls from **24 m/s2 (2.45 g)**
+-- impossible for a 1967 car -- to **14 m/s2 (1.43 g)**, which is within sight of the real 1.1-1.3 g.
+That is the part that matters: the old model was using grip as a substitute for a braking rule.
+
+**New gate** `vtbrake_smoke.jl`, registered in `gates.sh`. It pins amax at 11.0 so the acceptance
+criterion cannot quietly drift into "raise the grip", and requires the control arm to SHOW the defect
+(>15 s off gold) before crediting the treatment. 6 PASS / 0 FAIL.
+
+**What is left of the gap, and it differs by track -- which is itself evidence the model is now
+behaving physically:**
+
+* **watglen +7.29 s** -- corner-limited. Responds to amax (14 m/s2 lands at 67.5 s, +0.6 s) and
+  barely at all to vmax. So the residual here is grip calibration.
+* **monza +12.48 s** -- top-speed-limited. Responds to VMAX, strongly: 102.68 s at 74 m/s down to
+  92.75 s at 120 m/s. `vmax = 74 m/s` is **266 km/h**, and 1967 cars at Monza exceeded 300 km/h
+  (~83 m/s), so the ceiling is simply too low for that track.
+
+**Next sprint -- derive both anchors from the car, not from constants.** The PO's standing rule is
+that physics comes from the .ibt data, and `amax`/`vmax` are exactly the kind of hand-set constants
+that rule exists to eliminate. Take peak lateral acceleration and top speed from the ibt telemetry
+and feed them in, then re-run this gate: if the ibt-derived numbers land near 14 m/s2 and 83 m/s, the
+remaining gap closes on both tracks at once and for the right reason.
+
+
+### AI-GOLD — the anchors, measured from the Lotus 49 .ibt gold telemetry
+
+Per the PO's standing rule (physics comes from the ibt data, not from tuned constants), `amax` and
+`vmax` were measured rather than fitted. `JuliaMotorMTK/tools/ibt_anchor.jl`, run against
+`~/gold standard/julia racer/lotus49_*.ibt`:
+
+| source | lateral p95 | lateral p99 | raw peak | max speed |
+|---|---|---|---|---|
+| nordschleife lap | 11.80 (1.20 g) | **13.67 (1.39 g)** | 55.73 (5.68 g) | 59.0 m/s (212 km/h) |
+| skidpad (steady state) | 11.74 (1.20 g) | 12.18 (1.24 g) | 14.61 (1.49 g) | 45.6 m/s |
+
+**Percentiles, not peaks -- and the table shows why.** The raw lateral peak on the lap is 5.68 g and
+the longitudinal peak 34.93 g; those are kerb strikes and collision spikes, not car capability.
+Anchoring on a peak would have produced a car that corners at five and a half g. The skidpad file,
+which is steady-state by construction, agrees with the lap's p95 to within 0.5% (11.74 vs 11.80) --
+two independent files landing on the same number is what makes 1.20 g trustworthy.
+
+**The convergence that matters:** the lap-time fit, done before any of this was measured, said the
+model needed **amax = 14 m/s2** to reach the gold lap. The telemetry says the real car pulls
+**13.67 m/s2** at p99. Those were arrived at independently and they agree to 2%.
+
+With `JM_VT_BRAKE=1` and the ibt-derived grip:
+
+| track | shipped 11.0 | ibt p95 11.8 | ibt p99 13.67 | gold |
+|---|---|---|---|---|
+| watglen | 74.20 (+7.29) | 72.93 (+6.02) | **70.40 (+3.49)** | 66.912 |
+| monza | 102.68 (+12.48) | 101.55 (+11.35) | **99.23 (+9.03)** | 90.202 |
+
+Watkins Glen is now **3.5 s off gold, down from 17.2 s** at the start of this work.
+
+**What the ibt data CANNOT tell us, stated rather than glossed:** `vmax`. The only road lap in the
+gold set is the Nordschleife, whose maximum speed is 59.0 m/s -- BELOW the current 74 m/s constant,
+and far below what Monza demands (~83 m/s). That is a property of the track sampled, not of the car:
+there is no top-speed circuit in the gold set. **Do not adopt 59 m/s as vmax** -- it would make the
+car slower everywhere on the strength of a file that never asked it to go fast. Monza's residual
+9 s stays open until a high-speed ibt run exists, or vmax is derived from engine/gearing rather than
+from observed speed.
+
+**Next sprint:** change the `amax` default from the hand-set 11.0 to the ibt-measured value, citing
+the file and the percentile in the code so the provenance travels with the number, and re-run
+`vtbrake_smoke.jl` and `softband_smoke.jl`. Prefer reading it from the ibt at load over pasting
+13.67 as a new constant -- a better-sourced constant is still a constant, which is the thing the
+PO's rule is aimed at.
+
+
+### AI-GOLD — the grip anchor is now READ FROM THE .ibt AT STARTUP, not a constant
+
+Implements the PO's standing rule for the pace model. `RaceAI.AMAX` is a Ref set at startup by
+`jm_anchor_from_ibt()` (drive_native_mtk.jl) from the bundled iRacing telemetry:
+
+    → AI grip anchor 13.04 m/s² (1.33 g) from lotus49_skidpad 2026-06-24 15-46-39.ibt
+      (LatAccel p99 of 11776 samples)
+
+Design points, each of which is a trap avoided rather than a preference:
+
+* **p99, never the peak.** The raw lateral peak on a clean lap is 55.7 m/s2 = **5.68 g** -- a kerb
+  strike. An anchor taken from a peak would build a car that corners at five and a half g.
+* **Skidpad preferred over a road lap, deliberately.** A skidpad is the standard steady-state
+  measurement of lateral grip; a road lap mixes in kerbs and contact. Sorting by file size happened
+  to pick the skidpad anyway, and relying on that coincidence would have been fragile.
+* **`set_anchor_from_ibt!` rejects anything outside 5-25 m/s2** and warns, so a caller that passes a
+  peak instead of a percentile cannot silently produce a five-g car.
+* **Failure is loud.** Missing directory, no .ibt, unreadable channel -- each warns and names the
+  fallback. A silent revert to the constant would be indistinguishable from the feature working,
+  which is the failure mode this project keeps rediscovering.
+* The fallback constant (13.67) is the measured Nordschleife p99, used only when no .ibt is
+  reachable; `JM_AI_AMAX` overrides for experiments.
+
+The AppImage already bundles the .ibt files (`usr/share/julia/iracing/`), so this works in the
+shipped artifact and not only in the dev tree.
+
+**Gates re-run after the change: `vtbrake_smoke` PASS (6/6), `softband_smoke` PASS (12/12).**
+
+**Where AI-GOLD now stands, end to end:**
+
+| stage | watglen lap | vs gold 66.912 |
+|---|---|---|
+| as found | 85.40 s | +18.49 |
+| + soft band (line smoothness) | 84.07 s | +17.15 |
+| + look-ahead braking | 74.20 s | +7.29 |
+| + ibt-derived grip (13.0-13.7) | ~70.4-71 s | **~+3.5** |
+
+**Still open:** Monza's ~9 s, which is `vmax`-limited and cannot be sourced from the current gold set
+(no high-speed capture -- the Nordschleife lap tops out at 59 m/s, below the existing 74 constant).
+That needs either a fast-track .ibt or vmax derived from engine/gearing. **Do not fit it.**
+
+
+### MP-4 sprints 1-4 (2026-09-05) — the AI question is ANSWERED, and it is the bad answer
+
+The item said to settle item 5 (AI authority) before estimating, because it is the question most
+likely to turn a small item into a large one. Settled by reading the call site, not by guessing:
+
+**Both peers simulate the AI field independently, AND they are fed different inputs, so they
+provably diverge.** `drive_native_mtk.jl:6673`, in the main loop, with no netplay guard of any kind:
+
+    poses, hit = RaceAI.step_field!(AICARS, AILINE, ddt; scale = AI_SCALE,
+                                    player = (pp[1], pp[2], cs.v), rel = AI_REL)
+
+* `player = (pp[1], pp[2], cs.v)` is the **LOCAL** player's position and speed.
+* `rel = AI_REL` caps every AI car to a fraction of **that** player's speed, and `step_field!`'s
+  racecraft (engage/release, gap control, queue handling) reacts to the same local car.
+* So the host's AI field chases the host, and the client's AI field chases the client. Even with
+  identical seeds and a deterministic integrator, the two fields are being driven by different
+  inputs from the first frame.
+
+**And nothing corrects for it:** the only thing on the wire is `send_pose!(NETLINK, NET_ID, ...)`
+(:6798) -- one pose for the local car. No AI state is transmitted, and there is no authority flag
+anywhere in the netplay path (`NET_ID` selects an id, not a role).
+
+**Consequence for the PO's request.** Two AppImages on two PCs would connect and each player would
+see the other's car correctly -- the transport and dead reckoning are gated and work -- but **they
+would be racing two different AI fields**. Positions, gaps and any finishing order involving AI cars
+would disagree between the screens. That is not "competing in a race" in any sense the PO means.
+
+**So MP-4 is NOT a documentation item like bob's MP-3.** The transport is done; the race is not.
+Three honest options, in increasing order of work:
+
+1. **AI-free networked races first.** Force `N_AI = 0` whenever `JM_NET` is set, ship two-player
+   head-to-head, and say so plainly in the UI. Small, correct, and immediately usable.
+2. **Host-authoritative AI.** Host steps the field and transmits AI poses; the client stops stepping
+   and renders what it is told, reusing the existing dead-reckoning path built for remote cars.
+   Medium. This is the design GPL itself used and matches the PO's "like GPL multiplayer".
+3. **Deterministic lockstep.** Both peers step the same field from the same inputs. Largest, most
+   fragile, and needs the player pose of BOTH cars before either can step -- a latency coupling the
+   current 10 Hz pose exchange is not built for.
+
+**Recommendation: 1 now, 2 next.** Option 1 makes the PO's stated request true (two AppImages, two
+PCs, one race) without pretending the AI problem is solved.
+
+**Still untested and cannot be tested here:** the actual two-PC connection over a real LAN, exactly
+as with bob's MP-3. Every netplay gate runs on one box over loopback.
+
+**Sprints on MP-4: 4.**
+
+
+### MP-4 sprints 5-8 — option 1 implemented and gated: networked races run WITHOUT an AI field
+
+`JM_NET` set and `JM_AI > 0` now disables the AI field, with the reason printed rather than done
+silently:
+
+    ⚠ networked session: AI field disabled (3 → 0). Both peers would simulate it independently
+      from different inputs, so the two screens would disagree. JM_NET_AI=1 to override
+      (diverging fields).
+
+`JM_NET_AI=1` keeps the old behaviour for experiments and says plainly that it does not make the
+fields agree.
+
+**New gate** `netai_smoke.jl` (registered in `gates.sh`), three arms, because the interesting failure
+is the guard firing when it should NOT:
+
+    PASS  offline race keeps its AI field          guard silent
+    PASS  networked race disables the AI field     guard fired
+    PASS  JM_NET_AI=1 override still runs the AI   override honoured
+
+The offline arm is the control: a guard that disabled AI everywhere would still pass a
+treatment-only gate, and would quietly remove the AI from single-player racing -- the exact thing
+the PO has spent this whole session trying to improve.
+
+**What the PO can do now:** two AppImages, two PCs, head-to-head with no AI.
+
+    PC-A:  JM_NET=host                              ~/…/JuliaRacer-x86_64.AppImage
+    PC-B:  JM_NET=join JM_NET_HOST=<PC-A LAN IP>    ~/…/JuliaRacer-x86_64.AppImage
+
+Default port UDP 47700 (`JM_NET_PORT`). Env passes through the AppRun.
+
+**Still true and still unproven:** no two-machine test has ever run -- every netplay gate is loopback
+on one box. A real LAN segment and any firewall on UDP 47700 remain untested, and cannot be tested
+from here.
+
+**Option 2 (host-authoritative AI) is the next real step** and is what "like GPL multiplayer" means.
+The pieces already exist: the host would step the field and send AI poses, and the client would
+render them through the SAME dead-reckoning path already gated for remote cars
+(`netplay_dr_smoke`, `netplay_dr2_smoke`). Scope it after the PO has confirmed two PCs actually
+connect -- there is no point designing AI replication over a transport that has never carried a
+packet between two machines.
+
+
+### RESTART-1 — CLOSED (2026-09-05). Implemented, gated, and verified INSIDE the shipped image.
+
+**Ctrl+R** restarts the session on the current track without reloading it. The PO's requirement was
+"instantaneous - otherwise you have to wait for the track to reload", so the gate's real job is to
+prove the track is NOT reloaded, and it checks exactly that:
+
+    PASS  does not reload the track (load_track)
+    PASS  does not reload the track (GPLTrack.load)
+    PASS  does not reload the track (build_hat)
+    PASS  does not reload the track (extract_geometry)
+    PASS  anchor is re-seeded, not zeroed
+    PASS  control: a missing reset is detected   <- removing a reset line makes its check fail
+
+plus resets for damage, wrecks, loose wheels, laps, lap progress, phase, AI grid and fuel. The
+CONTROL arm is the part that makes the rest mean anything: the gate deletes a reset line and
+confirms the check then fails, so a gate that passed vacuously would be caught.
+
+**Verified in the artifact, not just the tree** (`JuliaRacer-x86_64.AppImage`, 2026-09-05 06:26):
+`prevRestart` present in the packed `drive_native_mtk.jl`, and the on-screen help line reads
+`^R restart session`. Extracted from the image and grepped, per the shipped-vs-dev rule.
+
+Marked DONE. The only thing not done here is the PO pressing the key.
+
+
+### AI-GOLD — vmax derived from the DRIVETRAIN, closing Monza's residual
+
+Monza's leftover ~9 s was `vmax`-limited and the .ibt could not supply the number **by observation**:
+its only road laps are the Nordschleife, which tops out at 59-63 m/s because that track never asks
+for more. Observing speed there and calling it the car's maximum would have made the AI slower
+everywhere on the strength of a file that never went fast.
+
+**The drivetrain supplies it instead.** `drive_rt3d.jl:568` already gives the relation the sim uses:
+
+    grpm = (v / RW_R) * GEARS[gear] * FINAL[] * 60 / 2π
+
+Inverted at the rev limit in top gear, `v = RW_R * rpm * 2π/60 / (GEARS[end] * FINAL[])`. The rev
+limit is **gear-independent**, so a track that never reaches top-gear terminal speed still measures
+it -- which is exactly why this works where observing speed does not.
+
+`tools/vmax_from_ibt.jl` over the five gold Lotus 49 files:
+
+| statistic | RPM | implied vmax |
+|---|---|---|
+| p99 | 6935-8499 | 63.7-78.0 m/s |
+| **max (the limiter)** | 8747-9566 | **80.3-87.8 m/s (289-316 km/h)** |
+
+The real 1967 Lotus 49 ran ~305 km/h at Monza, so the limiter-derived band is period-correct, and
+`RPM` p99 is the WRONG statistic here (a rev limit is a ceiling, not a typical value -- the opposite
+of the grip case, where p99 was right and the peak was a kerb strike). Two anchors, two different
+correct statistics, for reasons that come from what each quantity is.
+
+**Lap times with `JM_VT_BRAKE=1` and the ibt grip (13.04):**
+
+| track | shipped vmax 74 | 84.4 | 87.8 | gold |
+|---|---|---|---|---|
+| monza | 99.98 (+9.78) | 94.52 (+4.31) | **93.27 (+3.06)** | 90.202 |
+| watglen | 71.18 (+4.27) | 68.85 (+1.94) | **68.27 (+1.35)** | 66.912 |
+
+**Where AI-GOLD stands now, both tracks, from the start of this work:**
+
+| stage | watglen | monza |
+|---|---|---|
+| as found | +18.49 | +23.61 |
+| + soft band | +17.15 | -- |
+| + look-ahead braking | +7.29 | +12.48 |
+| + ibt grip anchor | +3.49 | +9.03 |
+| + drivetrain vmax | **+1.35** | **+3.06** |
+
+**Next sprint: implement it like the grip anchor** -- compute at startup from the ibt RPM maximum
+and the ibt-sourced GEARS/FINAL, warn loudly on failure, and re-run `vtbrake_smoke`. Note `RW_R`
+(0.33) is still a hand-set constant and is now the only unsourced term in the chain; if the ibt
+carries a wheel-speed channel it can come from there too, and if not that limitation should be
+stated rather than left implied.
+
+
+### AI-GOLD — vmax anchor implemented at startup; and a failed derivation worth recording
+
+    → AI grip anchor 13.04 m/s² (1.33 g) from lotus49_skidpad …ibt (LatAccel p99 of 11776 samples)
+    → AI vmax anchor 87.8 m/s (316 km/h) from rev limit 9566 rpm in lotus49_nurburgring …ibt
+      [RW_R=0.33 m is NOT from the ibt]
+
+`RaceAI.VMAX` is now set by `jm_vmax_from_ibt()` from the highest RPM across the gold files through
+the ibt-sourced `GEARS`/`FINAL`. `set_vmax_from_drivetrain!` rejects anything outside 40-130 m/s, so
+a bad derivation loses to the fallback rather than producing a 900 km/h car. `JM_AI_VMAX` overrides.
+
+**A derivation that FAILED, recorded because the failure is instructive.** The ibt does carry wheel
+channels (`LFspeed`, `LRspeed`, `RFspeed`, `RRspeed`), so `RW_R` looked sourceable as `r = v/ω`.
+Measured across all six files: **r = 0.977-0.990 m**, with tight quartiles and thousands of samples
+each -- beautifully consistent, and **physically impossible**: a 1967 F1 rear tyre is about 0.33 m.
+Those channels are LINEAR speeds in m/s, not angular rates, so `v/ω` is a dimensionless ratio near
+1.0 and contains no radius at all. Adopting 0.98 m would have geared the car three times too tall,
+and the consistency across files would have looked like confirmation.
+
+**So `RW_R = 0.33` remains hand-set, and the startup line SAYS SO** -- `[RW_R=0.33 m is NOT from the
+ibt]` prints every run. The PO's rule is that physics comes from the ibt; where that is not yet true
+the code should admit it rather than let "derived from telemetry" cover a constant.
+
+**Gates after the change: `vtbrake_smoke` PASS, `softband_smoke` PASS.**
+
+**AI-GOLD, complete arc:**
+
+| stage | watglen | monza |
+|---|---|---|
+| as found | +18.49 | +23.61 |
+| + soft band (line smoothness) | +17.15 | -- |
+| + look-ahead braking | +7.29 | +12.48 |
+| + ibt grip anchor | +3.49 | +9.03 |
+| + drivetrain vmax anchor | **+1.35** | **+3.06** |
+
+From 18-24 s off the gold laps to 1.4-3.1 s, with every step measured against the PO's own reference
+times and each anchor sourced from the car rather than fitted to the answer.
+
+**What remains is the PO's eye.** All of this is lap-time and line geometry. The gold standard they
+named is the 2-lap Watkins Glen VIDEO, and no measurement here says the AI now LOOKS right in
+traffic. That comparison has not been made and should not be assumed.
+
+
+## 🔲 BACKLOG — SHIFT-3: auto-clutch mode (manual shift, automatic clutch)
+
+**PO, 2026-09-05:** *"add auto clutch mode to julia racer: manual shift, but clutch is automatic
+(a standard GPL mode). Thus julia will have 3 shifting modes: manual, automatic, auto clutch."*
+
+This is GPL's own middle setting and the one most GPL drivers actually use: the driver chooses the
+gear, the sim works the clutch.
+
+### The three modes, and what distinguishes them
+
+| mode | gear chosen by | clutch worked by |
+|---|---|---|
+| automatic | sim | sim |
+| **auto-clutch (NEW)** | **driver** | **sim** |
+| manual | driver | driver (the clutch AXIS) |
+
+### What already exists, so this is mostly wiring
+
+* Manual shifting with a real clutch axis is implemented and gated (`clutchgate_smoke`).
+* `CLUTCH_GATE` (module scope in `drive_native_mtk.jl`) already enforces the PO's rule that **the
+  slider must be DOWN before manual mode can be entered**.
+* Automatic mode already exists, with its own RPM-based upshift/downshift logic
+  (`drive_rt3d.jl:563-573`, `up_rpm` per gear).
+
+So auto-clutch = manual's gear selection + automatic's clutch handling. The likely shape is a
+three-valued mode instead of the current boolean, with the clutch engagement curve borrowed from the
+automatic path and applied on each driver-initiated shift.
+
+### Decisions the PO should make before it is built
+
+1. **Does the clutch-down gate still apply?** Entering manual today requires the slider down. In
+   auto-clutch the slider is not used at all, so the gate is either meaningless or should be skipped
+   for this mode. **Recommendation: skip it** -- it exists to stop a rider-of-the-clutch entering
+   manual with the pedal up, and auto-clutch has no pedal.
+2. **What happens if the driver moves the clutch axis in auto-clutch mode?** Ignore it, or let it
+   override? **Recommendation: ignore**, with the on-screen mode label making the state obvious --
+   a half-honoured axis is the worst of both.
+3. **Where does the mode get selected?** Today shifting behaviour is env/config; the launcher
+   (`juliaRacer.py`) has no control for it. Three modes really wants a launcher setting.
+
+### Standing PO constraints that apply
+
+* *"Make auto easy, I never use it so I don't care. Make manual right."* -- auto-clutch is closer to
+  MANUAL in the PO's usage and should get the same care as manual, not automatic's.
+* *"I like the clutch attached to a slider - that way I can ride the clutch. The clutch should be an
+  axis"* -- unchanged for manual; auto-clutch simply does not read it.
+
+### Gate it will need
+
+Extend `clutchgate_smoke.jl` to all three modes, with the control arm that matters: in auto-clutch,
+a shift with the clutch axis UP must still succeed (that is the whole point), while in manual the
+same shift must still bog or refuse. A gate that only tests auto-clutch would pass on a build that
+had silently turned manual into auto-clutch.
+
+**Not started.** Filed 2026-09-05.
+
+
+## 🔲 BACKLOG — PERF-1: raise julia frame rate and cut load times — what the options actually are
+
+**PO, 2026-09-05:** *"how to increase julia frame rate, and reduce julia load times? What are all
+the options?"*
+
+### Load time — the biggest lever is ALREADY CODED AND NOT SHIPPED
+
+`juliaRacer.py:799` looks for a PackageCompiler sysimage and uses it when present:
+
+    sysimg = os.path.join(HERE, "jlracer.so")     # "skips ~40-80 s of physics/render JIT"
+    fast = os.path.exists(sysimg)
+    if fast: jlargs += ["-J", sysimg]
+
+**`jlracer.so` does not exist -- not in the repo, and not in the AppImage** (checked both). So every
+launch, including every launch the PO makes, pays the full Julia JIT that this code was written to
+avoid. The build is a one-off ~40-50 min PackageCompiler run (see CONCURRENCY.md, which notes a
+previous attempt was killed mid-build).
+
+**This is the first thing to do and it is packaging, not code.** Estimated saving: the comment says
+40-80 s per launch; measure it rather than quoting the comment.
+
+Second-order load-time levers, in the order worth trying:
+
+1. **Ship the sysimage** (above).
+2. **Measure where the remaining time goes** before touching anything else -- track load (.DAT
+   parse, `build_line`'s 600-iteration relaxation over ~1300 nodes, hat/geometry extraction), asset
+   decode, and first-frame shader/texture upload are all candidates and nobody has timed them.
+   A phase-timing line at startup costs nothing and would settle it.
+3. **Cache the built racing line** per track. `build_line` runs 600 relaxation passes every launch
+   and its output is deterministic given the track and the current anchors -- a keyed cache file is
+   straightforward. Only worth it if step 2 says it is significant.
+
+### Frame rate — nothing is measured yet, so this list is candidates, not a plan
+
+No frame-time budget exists for julia. Before optimising anything:
+
+1. **Get a frame-time histogram**, not an average. "60 fps average" with a 40 ms tail is what a
+   driver actually feels, and an average would hide it.
+2. Split CPU from GPU: if frame time tracks AI/physics step count it is the sim; if it tracks
+   resolution it is the renderer.
+3. Known suspects worth timing once the split is known:
+   * the AI field (`step_field!`) runs full racecraft for every car every frame;
+   * `_vtarget`'s look-ahead walks up to ~123 m of line per car per frame (the new braking rule
+     walks the same horizon -- it did not add a loop, but it did add work inside one);
+   * per-frame allocations in the render path (Julia GC pauses show up exactly as a frame-time tail).
+4. **`-t 2`** is hardcoded in the launcher (`jlargs = ["-t", "2", ...]`). Whether more threads help
+   is unmeasured, and audio already warns it needs >=2.
+
+### Method note
+
+Both halves of this item should follow the same discipline as the AI work: state the expected number
+before measuring, and keep an A/B control. A perf change that cannot be shown to move a measured
+number is not a perf change.
+
+**Not started.** Filed 2026-09-05.
+
+
+### PERF-1 sprints 1-4 (2026-09-05) — the load-time fix is packaging, and it had a shipping hazard in it
+
+**The build script already exists** (`demo/native/build_sysimage.jl`, with a proper precompile trace
+in `sysimage_trace.jl` that exercises mtkcompile, the Rosenbrock loop and the GPL parse headlessly).
+`juliaRacer.py:799` already uses `jlracer.so` when present. **The artifact has simply never been
+built** -- not in the repo, not in the AppImage -- so every launch pays the 40-80 s of JIT the
+launcher is trying to skip. Nothing needed inventing.
+
+**A hazard caught BEFORE building, which is the point of reading it first:**
+
+    cpu_target = "native",
+
+`native` bakes THIS machine's instruction set into the sysimage. This box is an **i7-3770 (Ivy
+Bridge)**; the PO runs these AppImages on a SECOND PC whose CPU is unknown here. A sysimage built
+`native` and shipped can fault or refuse to load there -- and it would present as "julia racer is
+broken on the other PC", with nothing pointing back at this line. Changed to Julia's multi-versioned
+portable target (`generic;sandybridge…;haswell…`), which emits several variants and selects at load
+time. `JM_CPU_TARGET=native` for a local-only build.
+
+That is precisely the class of bug this project keeps producing: correct on the machine that built
+it, broken on the machine that runs it.
+
+**Predictions recorded before measuring** (so the numbers can contradict me):
+
+* baseline smoke run: **60-90 s**
+* with sysimage: **15-25 s**
+
+Measurement chain queued (`perf1.sh`): it WAITS for the AppImage packing to finish first, because a
+timing taken while three squashfs builds are running measures the packer, not the game. Then two
+baseline runs (cold, warm), the build, and two sysimage runs.
+
+**Frame rate is untouched so far** -- deliberately. Nothing about fps has been measured, and the item
+says as much; a list of plausible suspects is not a plan.
+
+
+### PERF-1 — first baseline is PARTLY VOID; the measurement harness broke, not the game
+
+| run | time | rc | verdict |
+|---|---|---|---|
+| cold, no sysimage | **230.1 s** | 0 | valid |
+| warm, no sysimage | 58.1 s | **1** | **VOID** |
+
+The warm run died on `flush(stdout)` with **`Disk quota exceeded`**, so its 58.1 s measures a
+disk-full abort, not a startup. It sat neatly inside my predicted 60-90 s band, which is exactly how
+a broken measurement gets accepted.
+
+**Cause was mine, and it was the same mistake twice in one turn.** I was extracting multi-GB
+AppImages with `unsquashfs` into `/tmp` -- a **7.6 GB tmpfs** -- to verify the 260905 images, while
+the smoke run wrote its very verbose `[tri]` output to a log in the same filesystem. The two
+collided: the image verification reported zeros for bob/julia/ma (read as "the fixes are missing"),
+and the perf run reported a plausible-looking time (read as "the warm baseline"). Neither was true.
+Both were `EDQUOT`, not `ENOSPC` -- a quota, with 1.8 GB still showing free, which is why `df` looked
+innocent.
+
+**Two rules from it:**
+1. Extract large artifacts to `/home` (2.2 TB), never the tmpfs.
+2. Never time a process whose output shares a small filesystem with a bulk copy.
+
+Re-measure queued (`/home/admin/perf1_clean.sh`) with all logs on `/home`, waiting for the sysimage
+build to finish so the box is quiet. **The 230.1 s cold figure stands** and is worth keeping on its
+own: a first launch on a fresh machine pays nearly four minutes, which is what the sysimage exists to
+remove.
+
+## ⭐ PO PRIORITY RULING (2026-09-05)
+
+PO, verbatim: *"backlog priority, highest first: ma EPIC M, bob R3, ff GMRADAR-8 and PIT-1,
+julia PERF-1, AI car rear-tyre rods, also ma and julia multiplayer"*
+
+**Julia's named items, in the PO's order:**
+
+| rank | item |
+|---|---|
+| 4 | **PERF-1** — frame rate and load time |
+| 5 | **AI car rear-tyre rods** — the E102/E106-S7+S9 treatment applied to the 5 AI chassis |
+| 6 | **multiplayer** — E85 (epic, sprints 2–4 open) and MP-4 (two AppImages, different PCs) |
+
+AI-GOLD, SHIFT-3 and the whole E-series index (E104a, E102, E90, E91, E81, E76, E78, E79, E60, E64)
+fall below rank 6 and keep their existing order. The Fable 5.1 parkings stand: Ring/Spa end-to-end,
+the engine-graphics item, and the terrain-step decision.
+
+**PERF-1 resumes with a known-broken measurement, not a clean slate.** The warm baseline is VOID
+(`Disk quota exceeded` on a tmpfs shared with an `unsquashfs`), the 230.1 s cold figure stands, and
+`/home/admin/perf1_clean.sh` is queued with all logs on `/home`. Frame rate is still entirely
+unmeasured — the item's own candidate list is candidates, not a plan.
+
+### ⭐ NEW HIGH-PRIORITY ITEM (PO, 2026-09-05): AI-CARGFX — match julia AI car graphics to the gold standard
+
+PO, verbatim: *"new high priority backlog item: match julia AI car graphics to gold standard"*.
+
+**Placement, stated so it can be corrected in one word:** filed at the HEAD of Julia's ranked items
+— above PERF-1 (was rank 4) — because the PO called it high priority without giving it a rank.
+**It ABSORBS the "AI car rear-tyre rods" item (was rank 5), which is one instance of it**: rods
+spearing out of the rear tyres is an AI-car-graphics deviation from the gold, and the same pass that
+fixes it should be the pass that checks the rest of each chassis against its GPL still.
+
+**Scope.** Five AI chassis — Ferrari, Brabham, BRM, Eagle, Cooper — each compared against its GPL
+gold, not against the Lotus. Note the standing trap: they load through a **separate path** from the
+player's Lotus, so neither the E106-S7 suppression nor the S9 synthesized axles were ever applied to
+them. That is a mechanism, not a guess: it is why the rods survive on AI cars after the player car
+was fixed.
+
+**Oracle, and the rule that goes with it.** The gold is GPL-under-Wine per-chassis stills/video, in
+the same view and the same art set as the capture — `parity-captures-must-record-their-state`
+applies: every capture logs the chassis, camera and art set it claims, and a numeric prediction is
+stated before the run. A chase capture of each of the five AI chassis beside its gold still is the
+acceptance artefact; that per-chassis A/B was already an open E106 item and is now this item's own.
+
+**Not started.** First move is the inventory — which of the five show which deviations — before any
+mesh is touched, because "the rods" may not be the only one and a per-chassis list is what makes
+this sizeable.
+
+## ⭐ PO CADENCE RULE CHANGE (2026-09-05) — **4 sprints per item, not 8 or 12**
+
+PO, verbatim: *"continue scrum, highest backlog items first, then other backlog items, no more than
+4 sprints on any one backlog item"*.
+
+**This supersedes the old 8-sprint (BoB/Julia) and 12-sprint (MA/FF) limits.** From now on an item
+gets **at most 4 sprints in a pass**, then the loop moves to the next item.
+
+**My reading, stated so it can be corrected in one word:** 4 sprints is a **rotation cap, not a
+death sentence** — the item stays open and is eligible again on a later pass through the backlog. It
+is not the old rule's "mark it for Fable 5.1 and never run it again". Items already parked for
+Fable 5.1 stay parked; the new cap does not retroactively re-park anything, and it does not re-park
+MA's MP-2, which the PO un-parked by naming it at rank 6.
+
+Order within a pass: the PO's 2026-09-05 priority ruling first (MA EPIC M → BoB R3 → FF GMRADAR-8
+and PIT-1 → Julia AI-CARGFX → Julia PERF-1 → MA and Julia multiplayer), then everything else.
+
+### AI-CARGFX sprint 1 (2026-09-05) — per-chassis inventory: **no AI chassis has art that reaches past its wheels**
+
+Rank 4. The item's own first move is the inventory, *before* any mesh is touched. Built
+`demo/native/cargfx_inventory.jl` — parses each chassis's `.3do` with `GPL3DO.parse_3do` and reports,
+per placing group, the triangle count and **lateral extent**. Display-free, no GL, no physics.
+
+| chassis | tris | groups | widest group half-extent | what that group is |
+|---|---|---|---|---|
+| Lotus (player) | — | — | **0.492** | driver hands/arms |
+| Ferrari | 4620 | 20 | **0.576** | driver hands/arms |
+| Brabham | 5328 | 26 | **0.564** | body shell |
+| BRM | 4577 | 20 | **0.544** | body shell |
+| Eagle | 4514 | 23 | **0.584** | body shell |
+| Cooper | 4816 | 21 | **0.570** | body shell |
+
+## ⭐ The result, and it is a real constraint on the fix
+
+**The rear half-track is 0.66 (`aiw()` in `grid_snapshot.jl`). Every group in every chassis stays
+inside 0.584.** No chassis has authored geometry that reaches the wheel plane, let alone past it.
+
+**So the rods cannot be "the art has long parts", on any of the five.** They must come from the
+**placement** — the positioner chaining E102/E106-S7 identified on the Lotus, where rear-half
+assemblies compose parts in different local frames and our walk mis-chains them, so compact parts get
+posed as spears. That diagnosis was established on the player car; this is independent corroboration
+that the same explanation is the only one available for the AI cars, and it is measured rather than
+assumed by analogy.
+
+**Second finding, which will save the next sprint a wrong turn:** sorting groups by lateral extent
+surfaces the **driver**, not the suspension — hands, arms, neck, mirrors, gear shift are the widest
+groups on every chassis. A "find the widest group" heuristic would chase the driver's arms. The
+suspension groups are compact in their own frames *by construction*, which is exactly why the defect
+is invisible to an extent-based search.
+
+## Next
+
+The Lotus fix worked by suppressing mis-posed halves under specific placing groups. The parser
+already has a `[posdiag]` diagnostic reporting which placing groups sit under a **PARKED** (`|d|>5`
+hide-marker) positioner. Run that per chassis and compare against the Lotus's — the AI chassis'
+equivalents of `rsuspItemsA/B` are what the S7 suppression needs applying to.
+
+**AI-CARGFX: 1 sprint. Inventory done, one whole class of cause eliminated by measurement.**
