@@ -7814,9 +7814,12 @@ PO, verbatim: *"new high priority backlog item: match julia AI car graphics to g
 
 **Placement, stated so it can be corrected in one word:** filed at the HEAD of Julia's ranked items
 — above PERF-1 (was rank 4) — because the PO called it high priority without giving it a rank.
-**It ABSORBS the "AI car rear-tyre rods" item (was rank 5), which is one instance of it**: rods
-spearing out of the rear tyres is an AI-car-graphics deviation from the gold, and the same pass that
-fixes it should be the pass that checks the rest of each chassis against its GPL still.
+**It ABSORBS the "AI car rear-tyre rods" item (was rank 5)** — and ⚠️ **that sub-item was ALREADY
+FIXED before this one was filed. See the S448 correction below: E106-S25 (2026-09-03) root-caused the
+rods as every AI car drawing TWO wheels at each corner, fixed it, and the fix is in the shipped
+2026-09-05 AppImage.** The paragraph that follows was written on the stale premise that the rods were
+still open; it is left in place because S446/S447 were run against it, and struck through rather than
+deleted so the error is visible to the next reader.
 
 **Scope.** Five AI chassis — Ferrari, Brabham, BRM, Eagle, Cooper — each compared against its GPL
 gold, not against the Lotus. Note the standing trap: they load through a **separate path** from the
@@ -7954,3 +7957,48 @@ The PO's report is *"at least one AI car"*, and this sprint predicts **BRM and E
 recording its own chassis/camera/art-set state, per `parity-captures-must-record-their-state`.
 
 **AI-CARGFX: 2 sprints.**
+
+### AI-CARGFX sprint 3 (2026-09-05) — ⛔ **the rods were ALREADY FIXED, two days before I filed this item**
+
+Found while reading `load_gpl_car` for the skip-isolation A/B this sprint was going to run. Its own
+comment names the PO's exact words, and the backlog carries the entry:
+
+> **E106-S25 (2026-09-03) — ✅ THE AI ROD DEFECT IS FIXED: every AI car was drawing TWO wheels at each
+> corner.** *"With `JM_NO_AI_WHEELS=1` a complete, better-looking wheel is STILL THERE"* — so the AI
+> body mesh carries its own wheels, the car draws two at every corner, and the lateral clip left the
+> inner part interleaving with the drawn wheel item. That is what reads as plates/rods out of the tyre.
+
+**And it is shipped.** Mounted `~/Documents/260905/JuliaRacer-x86_64.AppImage` and matched the binary:
+`JM_BODY_WHEELTEX` ×6, `JM_NO_AI_WHEELS` ×8, `wheel_dress_for` ×10. The PO can see the fix today.
+
+## ⚠️ The error is mine, and it is worth naming precisely
+
+When I filed AI-CARGFX on 2026-09-05 I wrote that the AI cars *"still show them"* and cited
+E102/E106-S7 as the mechanism. **I took that from the 2026-08-31 STATUS INDEX and never looked for a
+later entry** — E106-S25 sat 2,400 lines further down the same file, dated two days before I wrote
+it. `blocked-on-po-may-be-in-the-repo` is the note for exactly this, and the check it prescribes
+(search the item's own history before working it) takes one grep.
+
+**Cost: two sprints (S446, S447) aimed at the wrong mechanism.** S446 measured that no chassis has art
+reaching past its wheels — which, read against E106-S25, is *consistent with* the real cause (the
+overlap is at the wheel, not beyond it) but was interpreted as support for the positioner theory.
+
+## What survives, and it is not nothing
+
+**S447's parked-group map stands as a finding in its own right** — it just answers a different
+question than I claimed. It is a per-chassis inventory of **geometry GPL hides statically and this
+port draws**: BRM 26116/35320 and Eagle 29108/39200 carry parked *rear suspension*; Ferrari, Brabham
+and Cooper park their *front* ends and cockpit furniture instead. That is a live candidate for
+**other** AI-car deviations from the gold — which is precisely what AI-CARGFX is about — and it is
+now correctly labelled as untested rather than as the rods fix.
+
+## Where AI-CARGFX actually stands
+
+* **rods sub-item: CLOSED** (E106-S25, shipped). Not to be re-run.
+* **the epic ask — "match AI car graphics to the gold standard" — is open and untouched.** No
+  per-chassis A/B against a GPL gold has been done. That is the whole remaining item.
+* Next: the chase capture of each of the five chassis beside its GPL still, recording chassis, camera
+  and art set per `parity-captures-must-record-their-state`. The parked-group map gives a *prediction*
+  to test in those captures rather than a fix to apply.
+
+**AI-CARGFX: 3 sprints, one of them spent correcting my own filing.**
