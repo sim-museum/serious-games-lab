@@ -8310,3 +8310,51 @@ rather than literal), then set the default so the AI run at roughly **60 %** of 
 with the existing env knobs left as the way to raise it.
 
 **AISPEED-1: filed, not started.**
+
+## 🔴 NEW ITEM (PO, 2026-09-05): TRACKSMOOTH-1 — julia tracks are PIECEWISE LINEAR; that is AI-YAW's root cause
+
+**PO, verbatim:** *"GPL tracks are smooth while julia tracks are peicewise linear. Is that why
+rail-follower AI cars have discontinous yaw? Is this the root cause of the AI yaw jerkiness? Match
+julia tracks to GPL gold standard smoothly curving tracks"*
+
+## ⭐ Answer: YES. Measured (`demo/native/track_smooth_probe.jl`, no GL, no physics)
+
+| track | nodes | segment length (m) med / p95 / max | **turn per node (deg)** med / p95 / **MAX** |
+|---|---|---|---|
+| watglen | 1,251 | 3.0 / 3.0 / 3.0 | 0.00 / 2.92 / **21.43** |
+| rouen | 2,178 | 3.0 / 3.0 / 3.0 | 0.00 / 2.45 / **13.03** |
+| monza | 1,916 | 3.0 / 3.0 / 3.0 | 0.00 / 1.28 / **19.89** |
+
+**The centreline is a polyline resampled to a uniform 3.0 m** — every segment identical to three
+significant figures, which is the signature of resampling, not of authored geometry. Its heading is
+constant along a segment and **STEPS at each node**, by up to **21.4°** in one step at Watkins Glen.
+**13.5 % of Watkins Glen's nodes turn by more than 1 rad/s worth of heading.**
+
+**And the arithmetic closes with AI-YAW's independent measurement.** At 45 m/s a 3.0 m segment is
+crossed in 0.067 s ≈ 4 frames, so a 21.4° node step spreads over ~4 frames ≈ 5.6 rad/s of yaw-rate
+change — the same order as the **3.90 rad/s max** AI-YAW measured on the drawn pose. Two probes
+looking at different things (the track file vs. the rendered heading) agree, which is what makes
+this a root cause rather than a correlation.
+
+So the chain is: **3 m polyline → heading is a step function at nodes → `pose_at` interpolates θ
+linearly between those nodes → yaw RATE is discontinuous → the car visibly snaps, worst in corners
+where consecutive segment headings differ most.**
+
+## What this changes about the fix
+
+AI-YAW's recorded fix direction was to rate-limit or low-pass the drawn heading. **That is now the
+wrong first move** — it would smooth the symptom while the geometry every car follows stays kinked,
+and it would also flatten genuine cornering. **Fix the geometry:**
+
+1. **Fit a smooth curve through the centreline** (Catmull-Rom / cubic spline through the existing 3 m
+   nodes, or refit from GPL's own track section data if it carries arcs), and take BOTH the position
+   and the TANGENT from that curve. Then θ is C1 by construction and the yaw rate is continuous
+   without any filtering.
+2. Re-run `ai_yaw_probe.jl` — the acceptance number already exists: max yaw-rate jump per frame.
+3. Then re-check the racing line built on top of it; `JM_SOFT_BAND` was tuned against a kinked
+   centreline and may want re-tuning once the base curve is smooth.
+
+**The PO's second ask — "match julia tracks to GPL's smoothly curving tracks" — is the same work**,
+and it should improve how the track LOOKS as well as how the AI drives on it.
+
+**TRACKSMOOTH-1: filed with the root cause confirmed. AI-YAW should be worked through this item.**
