@@ -8262,3 +8262,34 @@ AI, leaving the player's own state untouched. That is a small, one-sided change 
 gate: a stationary player on the grid, five cars, assert zero `player_hit` from cars starting behind.
 
 **RACESTART-1: 1 sprint. Diagnosed from the code, not yet reproduced or fixed.**
+
+## 🔴 NEW ITEM (PO, 2026-09-05): STARTSEQ-1 — spacebar, then a 5-second countdown, as the DEFAULT
+
+**PO, verbatim:** *"every julia race should begin with 'press spacebar to start countdown', then
+countdown from 5. No more starting race when I rev."*
+
+⭐ **Most of this already exists and is switched OFF.** `JM_COUNTDOWN=<seconds>`
+(`drive_native_mtk.jl:213-216`, added for the PO's 2026-08-31 "start as a countdown timer") holds the
+whole field on the grid, counts down on the HUD and goes green for everyone at once. Its own comment
+records the choice that is now the complaint:
+
+> *"Default 0 keeps the previous behaviour exactly (green on the player's first throttle), so no
+> existing run changes."*
+
+So the shipped default IS "the race starts when you rev", which is what the PO has now rejected
+outright. **The conservative default outlived the reason for it.**
+
+⭐ **And it explains RACESTART-1.** The PO revved on the grid, that WAS the green flag, the field
+launched, and they were stationary in P3 with cars accelerating from behind. The two items are one
+sequence of events; RACESTART-1's AI-through-player defect is real independently, but this is what
+put them in that position.
+
+**To do:**
+1. Default the countdown ON at **5 seconds** (`COUNTDOWN` default 0 → 5), retiring throttle-as-green.
+2. Add the arming step the PO asked for: **"press spacebar to start countdown"** — the race does not
+   begin until the player is ready, which is the actual point (a countdown that starts before you
+   are looking is no better than a rev).
+3. Keep `JM_COUNTDOWN=0` as the documented way back to the old behaviour, so existing gates that
+   depend on throttle-green can opt out explicitly rather than breaking silently.
+
+**STARTSEQ-1: filed, not started. Small, and it should land before RACESTART-1 is judged.**
