@@ -7892,3 +7892,65 @@ hide-marker) positioner. Run that per chassis and compare against the Lotus's �
 equivalents of `rsuspItemsA/B` are what the S7 suppression needs applying to.
 
 **AI-CARGFX: 1 sprint. Inventory done, one whole class of cause eliminated by measurement.**
+
+### AI-CARGFX sprint 2 (2026-09-05) — ⭐ the per-chassis fix target is NAMED, from the game's own park markers
+
+`JM_POSDIAG=1` across all six chassis. GPL parks geometry it does not draw statically (at y=+20);
+`posmat` clamps that to 0 **and we draw it at the origin**, so a parked group is geometry the
+original hides and this port shows. Whole-car parse, last line per chassis:
+
+| chassis | placing groups | **parked** | share |
+|---|---|---|---|
+| Lotus (player, already fixed) | 23 | 8 | 35 % |
+| **Ferrari** | 18 | **14** | 78 % |
+| **Cooper** | 19 | **14** | 74 % |
+| **Brabham** | 24 | **15** | 62 % |
+| Eagle | 21 | 5 | 24 % |
+| BRM | 18 | 4 | 22 % |
+
+## ⭐ The parked sets split the five into two families, and one matches the Lotus exactly
+
+**Family A — the Lotus pattern (BRM, Eagle).** Their parked groups carry **rear** suspension:
+`*shok` + `*susp1..7` + `*brdisc`, in a **duplicated pair** of groups with identical texture tallies —
+which is the left/right rear-half pairing `rsuspItemsA/B` names.
+
+| chassis | the pair | contents |
+|---|---|---|
+| Lotus (reference) | **27288 / 39792** | `axlelot=29 lbrdisc=20 lshok=8 lsusp2=8 lsusp3=4 …` |
+| **BRM** | **26116 / 35320** | `brbdisc=20 bshok=8 bsusp1=4 bsusp2=4 …` |
+| **Eagle** | **29108 / 39200** | `eagsus=36 eshok=12 esusp2=6 esusp3=4 esusp4=2 …` |
+
+Eagle also has a **singleton parked group 32916 = `eshok=40`** — forty shock triangles parked on
+their own, with no left/right twin. Distinctive, and worth a look in its own right.
+
+**Family B — front-and-furniture (Ferrari, Brabham, Cooper).** Their large parked pairs are the
+**front** end plus cockpit fittings, not the rear:
+
+| chassis | the pair | contents |
+|---|---|---|
+| Ferrari | 3908 / 7368 | `frontfe=34 fsusp1/4/7 front1/3 inwheel=2` |
+| Brabham | 5324 / 10116 | `frontbb=34..36 front1/3 frarm* inwheel=2 rsh…` |
+| Cooper | 5708 / 10920 | `frontco=49 csusp1/4/7 front1/3 inwheelc=2` |
+
+Their remaining parked groups are dash, mirrors, driver hands/arms and steering — which is why their
+*share* is high (78 %, 74 %, 62 %) while their rear ends look clean. **A ranking by parked count
+alone would have put Ferrari first and BRM last; by rear-suspension content the order reverses.**
+Worth stating because the count is the tempting metric and it is the wrong one here.
+
+## What this gives the fix
+
+The E106-S7 suppression + S9 synthesized-axle treatment has a **named target per chassis**, derived
+from the game's own park markers rather than from guessing at part names:
+
+* **BRM → 26116 / 35320**, **Eagle → 29108 / 39200** (+ the 32916 singleton) — direct analogues of
+  the Lotus's 27288 / 39792.
+* Ferrari / Brabham / Cooper — their parked pairs are front-end; if they show rear rods, the cause is
+  **not** the same parked-rear-half mechanism, and that must be established before the same fix is
+  applied to them.
+
+⚠️ **Not established:** that any of these actually renders as rods on screen. This is a static parse.
+The PO's report is *"at least one AI car"*, and this sprint predicts **BRM and Eagle** are that car
+(or cars). **Next: a chase capture of BRM and Eagle beside their GPL golds** — with the capture
+recording its own chassis/camera/art-set state, per `parity-captures-must-record-their-state`.
+
+**AI-CARGFX: 2 sprints.**
