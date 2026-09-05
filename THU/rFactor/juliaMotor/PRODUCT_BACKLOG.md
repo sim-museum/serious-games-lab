@@ -8055,3 +8055,86 @@ chassis at the gold's viewpoint, each recording its chassis, camera and art set
 the extra unpaired parked group (32916, `eshok=40`) to explain.
 
 **AI-CARGFX: 4 sprints. No fix landed, two bad fixes averted, the oracle in hand.**
+
+## 🔴 NEW ITEM (PO, 2026-09-05): AI-YAW — AI cars make DISCONTINUOUS YAW CHANGES, especially in corners
+
+**PO, verbatim:** *"AI cars have discontinuous yaw changes, especially around corners. See replay
+starting at around the 40 minute mark in this screen-grab video:
+`/home/admin/Documents/260905/260905_wg_replay_plus_other.mp4`. This makes racing very difficult
+because it's hard to pass a car that is jerking around without getting hit. Fix the AI behavior;
+compare to the gold standard GPL replay from yesterday. **AI cars must not be allowed to make
+discontinuous yaw changes.**"*
+
+Oracle: that video (3.6 GB, 2026-09-05 13:15) at ~40 min, and the GPL gold replay from 2026-09-04.
+
+## ⚠️ First: this is NOT the skittering item, and the skitter work does not cover it
+
+`AI-skittering` was called FIXED at sprints 11-12 (`JM_SOFT_BAND`, now default). **That fix is about
+the LINE'S LATERAL GEOMETRY** — reversals of curvature in the built racing line — and its own
+closing paragraph says the limit out loud:
+
+> *"every number here is line GEOMETRY. The PO's complaint was about how the AI cars LOOK and behave
+> in traffic … that inference has not been checked against the video."*
+
+**This item is that unchecked thing, and it is a different quantity.** A perfectly smooth line does
+not imply a continuous heading: heading is how the car is POINTED over TIME, and nothing in the
+skitter work touched how the drawn heading is produced. Filed as its own item rather than reopening
+AI-skittering, which measured what it claimed.
+
+## ⭐ Mechanism, from the code
+
+`RaceAI.pose_at` (`demo/native/ai.jl:338`) produces an AI car's world heading as
+
+```julia
+θ = line.θ[i] + f*wrapπ(line.θ[j] - line.θ[i])     # i,j = bracketing line NODES, f = fraction
+```
+
+and `line.θ` is the per-node centreline tangent, `atan(z[i+1]-z[i], x[i+1]-x[i])` (`ai.jl:94`).
+
+**So the drawn heading is never integrated from the car's own yaw dynamics — it is read off the
+line.** That makes θ piecewise-linear in node index, and therefore makes **yaw RATE a step function
+that jumps at every node**. Where consecutive node tangents differ most — corners — the steps are
+biggest. That is precisely the PO's description.
+
+Two aggravating details in the same three lines:
+* the lane offset moves x and z but **keeps the CENTRELINE's tangent**, so a car running offset is
+  pointed along the wrong curve as well as stepping between tangents;
+* `car.spin` (collision yaw) is added on top and decays with `exp(-dt/0.45)`, which is continuous —
+  so it is not the cause and must not be blamed for it.
+
+## The measurement, before any fix (`demo/native/ai_yaw_probe.jl`, no GL, no physics)
+
+Walk a car along the line at 45 m/s, sample the pose every frame, and difference the heading twice:
+
+| track | frames | max abs yaw rate | yaw-rate JUMP median | p95 | **MAX** | frames jumping >1 rad/s |
+|---|---|---|---|---|---|---|
+| watglen | 4,999 | 5.23 rad/s | 0.000 | 0.244 | **3.897** | 62 (**1.24 %**) |
+| rouen | 8,704 | 3.41 rad/s | 0.000 | 0.175 | **3.133** | 34 (0.39 %) |
+| monza | 7,657 | 5.21 rad/s | 0.000 | 0.065 | **4.120** | 59 (0.77 %) |
+
+**Read the median and the max together: the heading is perfectly smooth almost all the time and then
+steps hard.** A yaw-rate change of 3.9 rad/s in one 1/60 s frame is not a car turning; it is a car
+snapping. And a peak yaw rate of 5.23 rad/s is 300°/s — a spin, not cornering. That is what makes a
+car impossible to pass safely, and it is worst exactly where the PO says it is.
+
+## Acceptance — the PO's constraint stated as a number
+
+*"AI cars must not be allowed to make discontinuous yaw changes"* is a hard bound, so it gets a
+measurable one rather than an adjective: **no frame may change yaw rate by more than a physically
+plausible amount**, with the bound taken from the gold GPL replay rather than invented here. The
+probe above already reports the distribution; the gold's own figure is the next thing to extract.
+
+## Fix direction (NOT yet implemented — this sprint is diagnosis only)
+
+The heading must stop being a lookup. Candidates, cheapest first:
+1. **Rate-limit / low-pass the drawn heading** — a first-order filter on θ with a physical yaw-rate
+   cap. Smallest change, guarantees continuity by construction, and cannot flatten the line because
+   it only touches the pose.
+2. **Take the tangent from the OFFSET path** rather than the centreline, so the lane offset stops
+   contributing an error of its own.
+3. **Integrate a real yaw state** for each AI from its own steering, which is what the controller at
+   `ai.jl:721` already computes and then throws away for drawing purposes.
+
+(1) plus (2) is likely enough and is testable entirely offline with this probe.
+
+**AI-YAW: 1 sprint. Diagnosed and quantified, not fixed.**
