@@ -8002,3 +8002,56 @@ now correctly labelled as untested rather than as the rods fix.
   to test in those captures rather than a fix to apply.
 
 **AI-CARGFX: 3 sprints, one of them spent correcting my own filing.**
+
+### AI-CARGFX sprint 4 (2026-09-05) — the oracle is located, and it PRE-EMPTS the fix S447 pointed at
+
+Rank 4's last sprint. Two results, one of them a guard against doing damage.
+
+## The gold exists, and it is per-chassis
+
+`~/gold standard/julia racer/` holds **44 GPL stills across the five AI chassis** — BRM 9, Eagle 9,
+Ferrari 9, Cooper 9, Brabham 8, all from 2026-06-26. Not video, not a lineup: **close-ups**. The
+Eagle's first frame is an in-car shot of the **rear-right corner** — rear tyre, coil-over damper,
+radius rods, exhaust megaphones, roll hoop. That is precisely the region AI-CARGFX is about, and it
+is a far better oracle than a distant chase shot.
+
+## ⭐ And it rules out the fix the previous sprint's map would have suggested
+
+S447 found BRM (26116/35320) and Eagle (29108/39200) **park** their rear-suspension groups, and named
+them as the target for the Lotus's S7 suppression treatment. **The gold shows the Eagle's rear
+suspension in full detail.** So that geometry belongs on screen, and suppressing it would delete what
+the gold has — the opposite of parity.
+
+**Re-reading S447 in that light:** a *parked* group is not "geometry GPL never draws", it is geometry
+parked in the static pose because GPL places it dynamically. So the map is a map of **parts whose
+placement is computed**, not of parts to remove. That reframes S447 from a fix list into a
+**placement-check list**, which is the useful form of it and the one that survives.
+
+Two sprints in a row now, this item has produced a reason NOT to apply a plausible fix. Both were
+cheap; applying either would not have been.
+
+## The native side is not yet a valid capture
+
+Rendered the six-car lineup natively (`grid_snapshot.jl`, offscreen, 1600x700) — all six chassis load
+and draw as distinct cars, part counts 30–39. **But it is not usable as parity evidence:** the tool's
+ground quad is authored grey `(0.55,0.54,0.50)` and renders near-black, so its lighting does not match
+the renderer the PO sees, let alone GPL's. `gate-frame-must-match-the-eye` is exactly this failure —
+a capture whose frame differs from the eye's will green or red for reasons that are not the defect.
+Recorded rather than measured off.
+
+## Where the item stands, rotating out at 4 of 4
+
+| | state |
+|---|---|
+| rods sub-item | ✅ **CLOSED** (E106-S25, shipped) — S448 |
+| the oracle | ✅ **located and characterised**: 44 per-chassis GPL close-ups |
+| "suppress the parked rear halves" | ⛔ **ruled out by the gold** — it would delete real geometry |
+| S447's parked-group map | ✅ survives, **reframed** as a placement-check list |
+| the actual per-chassis A/B | 🔨 **not done** — needs a capture matching the gold's camera and lighting |
+
+**Next, and it is now well-specified rather than open-ended:** an in-car rear-corner capture per
+chassis at the gold's viewpoint, each recording its chassis, camera and art set
+(`parity-captures-must-record-their-state`), starting with **Eagle** — it has the clearest gold and
+the extra unpaired parked group (32916, `eshok=40`) to explain.
+
+**AI-CARGFX: 4 sprints. No fix landed, two bad fixes averted, the oracle in hand.**
