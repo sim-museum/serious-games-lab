@@ -8193,3 +8193,72 @@ does not need the PO's eye — only a run that actually leaves the road.
    but on its own it let this ship.
 
 **OFFROAD-1: 1 sprint. Scoped and instrumented; not reproduced, not fixed.**
+
+## 🔴 NEW ITEM (PO, 2026-09-05): RACESTART-1 — AI cars behind drive THROUGH a stationary player at the start
+
+**PO, verbatim:** *"when stopped at start of race, in 3rd position out of 5 cars, rev engine, other
+cars take off, AI cars behind me clip off both my front wheels, leaving me dead at start line!"*
+
+## ⭐ Mechanism: the AI separate from EACH OTHER along the track, and from the PLAYER only sideways
+
+`RaceAI.step_field!` resolves contact in two places, and they are not the same rule.
+
+**AI ↔ AI (`ai.jl` step 2)** — the trailing car's ARC-LENGTH is forced back:
+
+```julia
+cars[b].s = cars[a].s - CAR_LEN          # b physically cannot occupy a's space
+cars[b].v = min(cars[b].v, cars[a].v)
+```
+
+**AI ↔ PLAYER (`ai.jl` step 3)** — the AI only moves SIDEWAYS and slows a little:
+
+```julia
+if abs(Δs) < CAR_LEN && abs(c.lane - player[2]) < CAR_WID
+    c.lane = clamp(c.lane + d*1.3, -LANE_MAX, LANE_MAX)
+    c.spin += 0.22*d
+    c.v   *= 0.9
+    player_hit = true
+end
+```
+
+**`c.s` is never touched.** Nothing stops an AI advancing along the track through the player's
+position. Against a stationary car it keeps coming, sidesteps 1.3 m per frame, and scrapes down the
+player's flanks — which is exactly "clip off both my front wheels". An AI queues politely behind
+another AI and carves through a human.
+
+## Why the start line is the worst case, specifically
+
+Step 1's blocker scan only counts the player as something to slow for when it is roughly in the
+AI's own lane:
+
+```julia
+(0.0 < g < bg && abs(player[2] - car.lane) < CAR_WID + 0.6) && (bg = g; bp = ...)
+```
+
+**A standing grid puts cars in ALTERNATING lanes** (the file says so at `ai.jl:520`). So an AI
+starting behind the player in the *other* grid column does not see the player as a blocker at all —
+it accelerates as if the road were clear — and then meets it in step 3, which cannot slow it down
+along the track. Being **stationary in P3 with cars behind** is the exact geometry that turns a
+should-be queue into a scrape.
+
+## Two things to check, not assume
+
+* **"Dead at start line" may be a second defect.** **E103** ("wheel loss in a collision hyperspaces
+  the car to the start line") was fixed by making the containment seal place the car at its last
+  on-track point, *which initialises to spawn* — and its own note says **"not yet seen in a real
+  wreck."** The PO was already AT the start line, so their words cannot distinguish "I stayed there"
+  from "I was teleported there". **This is the first real wreck to test E103 against**, and it must
+  be read from the replay rather than from the sentence.
+* **Whether the wheels come off at all** is a separate question from whether the car is drivable
+  afterwards. "Dead" needs to be resolved into: wheels detached, car immobile, or car respawned.
+
+## Fix direction (not implemented)
+
+The obvious one is to give the player the same along-track separation the AI already give each
+other — but **the player's `s` must never be written by the AI**, or the AI would shove a human
+around the track. So the correction belongs on the AI side: when an AI overlaps the player, clamp
+`c.s` to `player_s - CAR_LEN` if it is behind (and match speed), exactly as step 2 does for another
+AI, leaving the player's own state untouched. That is a small, one-sided change with an obvious
+gate: a stationary player on the grid, five cars, assert zero `player_hit` from cars starting behind.
+
+**RACESTART-1: 1 sprint. Diagnosed from the code, not yet reproduced or fixed.**
