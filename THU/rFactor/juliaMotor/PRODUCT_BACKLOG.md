@@ -8138,3 +8138,58 @@ The heading must stop being a lookup. Candidates, cheapest first:
 (1) plus (2) is likely enough and is testable entirely offline with this probe.
 
 **AI-YAW: 1 sprint. Diagnosed and quantified, not fixed.**
+
+## 🔴 NEW ITEM (PO, 2026-09-05): OFFROAD-1 — levitate-and-bounce STILL happens off-road at Watkins Glen
+
+**PO, verbatim:** *"still ran into a levitate and bounce when car went off road at Watkin's Glen."*
+
+## ⚠️ What the record claims, and why "still" is fair rather than a regression
+
+The E106 hand-over says, under **"What is CLOSED and stays closed"**:
+
+> *"Levitation/bounce from driving off the mesh — fixed at the boundary (S13b) and gated by
+> `hat_hole_smoke`; **both tracks** are survivable."*
+
+**Two things narrow that claim, and both were checked this sprint rather than assumed:**
+
+1. **"Both tracks" means the Nürburgring and Spa.** That item was the Ring/Spa end-to-end story.
+   **Watkins Glen was never in its scope.** So the PO is not reporting a regression; they are
+   reporting the same defect class on a track the fix was never exercised against.
+
+2. ⭐ **`hat_hole_smoke` does not drive anything.** It is a **SOURCE-TEXT gate**: it reads
+   `demo/native/drive_native_mtk.jl` as a string and asserts the code still maps the off-mesh
+   sentinel to NaN. Zero references to GPL data, `.dat`, or any track. Its companion
+   `offroad_smoke` proves the PHYSICS handles NaN. **Neither drives a car anywhere.**
+   So "gated" here means *"the fix is still present in the source"* — a real and useful thing to
+   pin, and **not** evidence that no track levitates. A source gate cannot see a track it never
+   loads.
+
+**Therefore the S13b fix addresses ONE mechanism** — a hole IN the mesh returning the −999 sentinel —
+and the PO's report is *off road*, which may be **outside** the mesh boundary rather than a hole
+inside it. Those are different cases and may take different ground-height paths. Establishing which
+is the first job, not patching the one already fixed.
+
+## The instrument already exists, which makes this cheap
+
+`drive_native_mtk.jl:635-637` carries a purpose-built detector:
+
+    JM_DRIVECHECK=1     enable
+    JM_DC_AIR  (0.75)   m above ground counted as "levitating"
+    JM_DC_VZ   (6.0)    m/s upward counted as "bounced"
+
+So the acceptance criterion is already expressible in the game's own numbers, and the reproduction
+does not need the PO's eye — only a run that actually leaves the road.
+
+## Next, in order
+
+1. **Reproduce at Watkins Glen with `JM_DRIVECHECK=1`, driving OFF the road** — the autodrive
+   follows the racing line and will never trigger it, so the run needs a deliberate lateral
+   excursion. Without a reproduction there is nothing to attribute.
+2. **Decide which mechanism it is**: hole-in-mesh (S13b's case, so the fix has a gap) versus
+   beyond-the-mesh-edge (a different path, so a different fix). The `groundz` closure and its
+   sentinel handling is where those two diverge.
+3. **Give `hat_hole_smoke` a companion that DRIVES**, at all five tracks, off-road, asserting the
+   `JM_DRIVECHECK` counters stay zero. The current source gate should stay — it pins the contract —
+   but on its own it let this ship.
+
+**OFFROAD-1: 1 sprint. Scoped and instrumented; not reproduced, not fixed.**
