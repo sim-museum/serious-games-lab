@@ -8293,3 +8293,20 @@ put them in that position.
    depend on throttle-green can opt out explicitly rather than breaking silently.
 
 **STARTSEQ-1: filed, not started. Small, and it should land before RACESTART-1 is judged.**
+
+## 🔴 NEW ITEM (PO, 2026-09-05): AISPEED-1 — default AI pace must be ~60 %, not 200 %
+
+**PO, verbatim:** *"by default 60% AI speed, not 200%!"*
+
+The field is currently far faster than the player by default, which makes a race unwinnable and
+unenjoyable from the first corner. The AI already has pace controls (`rel` caps every AI to
+`rel x player_speed`; `AMAX`/`VMAX` anchors set the absolute pace, and `car.pace` spreads the field
+per-car). **This is a default-value item, not new machinery** — the same shape as STARTSEQ-1, where
+the capability existed and the shipped default was the complaint.
+
+**To do:** establish what the shipped default actually resolves to (measure, do not read the
+constant — the anchors are now derived from the `.ibt` at startup, so the effective pace is computed
+rather than literal), then set the default so the AI run at roughly **60 %** of the player's pace,
+with the existing env knobs left as the way to raise it.
+
+**AISPEED-1: filed, not started.**
