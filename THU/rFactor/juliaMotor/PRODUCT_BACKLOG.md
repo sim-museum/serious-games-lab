@@ -9111,3 +9111,8 @@ maxlat). `Render.load_gpl_car(rear_groups=…, rear_lat=0.66)` now does the same
 each half extracted alone, cut at |lat| = rear_lat, dropped below −0.12 m, added to the body.
 Eye: Brabham before/after (`ai_cars/brabham_posed.png`) -- blade gone, arms and hub visible inboard
 of the wheel. `JM_AI_REAR_HIDE=1` = the S1 interim, `JM_AI_PARKED_SUSP=1` = raw. Gate updated.
+- Eye check, all three (`ai_cars/{brabham,cooper,eagle}_posed.png`): blades/plates gone on every
+  chassis, arms and hubs visible inboard of the rear wheels; nothing else moved. Shipped as
+  JuliaRacer-x86_64-aipose.AppImage (replaces -aicars). AI-CHAIN-1: 2 sprints, closed. Remaining
+  parity gaps on AI cars are now the ordinary E78 gold-vs-ours appearance class, with the headless
+  rsusp capture as the eye.
