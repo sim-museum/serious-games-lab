@@ -7031,6 +7031,9 @@ a 0.95 m circle at its origin -- v10 brought the shrunk-away parked cars back).
 censuses sharing the CPU): 36 PASS on the first run incl. `road_clear_smoke` (Spa inside=0, Ring
 0 anomalies) and `netai_smoke` (the MP-5 sim arms); `solid_box_smoke` failed only its two
 SOURCE checks (they asserted the pre-S4 text) and passes with them rewritten for the capsule.
+**v12 (dropped solids inert, 14:20): reachable 1 (`arm_sf0`, the start/finish pit-wall pillar at
+lat 9.0 = the corridor's own edge, capsule brush -0.63 m), objects standing on the road 0, edge
+barriers 79.** Shipped as `JuliaRacer-x86_64-road1.AppImage`.
 **Left (S5):** ship it (repack), and the PO's drive; the 17 edge brushes are GPL's own placements
 on the aprons -- if one of them feels wrong on the road, the census names it by lap distance.
 
