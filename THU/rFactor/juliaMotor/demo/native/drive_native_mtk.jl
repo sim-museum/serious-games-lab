@@ -321,13 +321,22 @@ end
 # the car's centreline) bounces it straight back; a hit toward a WHEEL (offset to the side) makes the
 # spinning wheel CLIMB the obstacle → a vertical launch + roll (angular + linear momentum), per the PO.
 const CARHALF = 1.4    # car collision half-extent (m)
+# SOLID-BOX: SOLIDBOX[k] is `nothing` (a disc of SOLIDS[k].r) or (hx, hz, φ): an oriented rectangle
+# from the object's own mesh footprint. Buildings were 5 m discs regardless of shape -- at Spa a
+# 5 m disc sat inside 25 x 17 m houses (drive-through) and poked past 12 x 6 m ones (air-hit).
+SOLIDBOX = Union{Nothing,NTuple{3,Float64}}[]
+"signed gap from (px,pz) to solid k's boundary and its outward normal (box if it has one, else disc)"
+@inline function solid_gap(px, pz, k)
+    (ox, oz, r, _) = SOLIDS[k]
+    b = k <= length(SOLIDBOX) ? SOLIDBOX[k] : nothing
+    b === nothing ? disc_gap(px, pz, ox, oz, r) : box_gap(px, pz, ox, oz, b[1], b[2], b[3])
+end
 function solid_hit(x, z, θ, v)
     v < 1.2 && return nothing
-    @inbounds for (ox, oz, r, _kind) in SOLIDS
-        dx = x - ox; dz = z - oz; d = hypot(dx, dz)
-        rr = r + CARHALF
-        (d >= rr || d < 1e-3) && continue
-        nx = dx/d; nz = dz/d                              # outward normal (object → car)
+    @inbounds for k in eachindex(SOLIDS)
+        (gap, nx, nz) = solid_gap(x, z, k)                # SOLID-BOX: disc or oriented box
+        gap >= CARHALF && continue
+        (ox, oz) = SOLIDS[k]; dx = x - ox; dz = z - oz    # offsets for the side/along tests below
         vn = v*cos(θ)*nx + v*sin(θ)*nz                    # car speed along it (<0 = driving INTO the object)
         vn >= -0.3 && continue                            # not closing on it
         across = -dx*sin(θ) + dz*cos(θ)                   # contact across the car (which side/wheel)
@@ -386,16 +395,15 @@ function solid_contact(x, z, θ, v, dt)
     Fx = 0.0; Fy = 0.0; Mz = 0.0; peak = 0.0
     hardpk = 0.0      # E95c: peak from NON-HEDGE objects only -- a hedge must never total the car
     closing = 0.0     # E99: peak closing speed along a NON-HEDGE contact normal (m/s)
-    @inbounds for (ox, oz, r, kind) in SOLIDS
-        dx = x - ox; dz = z - oz; d = hypot(dx, dz)
-        rr = r + CARHALF
-        (d >= rr || d < 1e-3) && continue
-        nx = dx/d; nz = dz/d
+    @inbounds for k in eachindex(SOLIDS)
+        kind = SOLIDS[k][4]
+        (gap, nx, nz) = solid_gap(x, z, k)                # SOLID-BOX: disc or oriented box
+        gap >= CARHALF && continue
         vn = WVX[]*nx + WVZ[]*nz                          # E96-S2: TRUE world velocity along the outward
                                                           # normal (<0 = into it). Was v*cos/sin(θ),
                                                           # which is unsigned and so never reported
                                                           # retreat -- see update_world_velocity!.
-        (fx, fy, mz) = DriveRT3D.contact_force(rr - d, nx, nz, vn, θ; kind = kind, dt = dt)
+        (fx, fy, mz) = DriveRT3D.contact_force(CARHALF - gap, nx, nz, vn, θ; kind = kind, dt = dt)
         Fx += fx; Fy += fy; Mz += mz; peak = max(peak, hypot(fx, fy))
         kind === :soft || (hardpk = max(hardpk, hypot(fx, fy)))
         # E99 (PO 2026-08-30: "a graze at speed should scrub you but not end your race"): keep the
@@ -445,6 +453,7 @@ const FUEL_MARGIN = max(0, tryparse(Int, get(ENV,"JM_FUEL_MARGIN","10")) |> x-> 
 # reads it) and fill the channels juliaMotor produces.
 const IBTREC0 = !haskey(ENV, "JM_NOIBT")         # .ibt telemetry ON by default (set JM_NOIBT to disable)
 include(joinpath(@__DIR__, "step_guard.jl")); using .StepGuard   # TERRAIN-STEP, see groundz_phys
+include(joinpath(@__DIR__, "solid_geom.jl")); using .SolidGeom   # SOLID-BOX: disc/box gap + normal for every solid
 const REPLAY_FILE = get(ENV, "JM_REPLAY", "")    # E18: if set, PLAY BACK this .jmr recording instead of driving
 # The repo's data/iracing/ holds only the parse/profile scripts — the reference .ibt captures live
 # in the gold-standard store, which is why every session ended with ".ibt export failed ... (2)".
@@ -2260,11 +2269,11 @@ function detach_hit_wheels!(x, z, θ, v; fence_nx = 0.0, fence_nz = 0.0, fence =
         is_loose(nm) && continue
         wx = x + bx*cθ - by*sθ
         wz = z + bx*sθ + by*cθ
-        for (ox, oz, orad, kind) in SOLIDS
+        for k in eachindex(SOLIDS)
+            kind = SOLIDS[k][4]
             kind === :soft && continue                       # a hedge takes no wheels off
-            dx = wx - ox; dz = wz - oz; d = hypot(dx, dz)
-            d >= orad + 0.35 && continue                      # 0.35 m ~ wheel radius + rim
-            nx = d > 1e-6 ? dx/d : 1.0; nz = d > 1e-6 ? dz/d : 0.0
+            (gap, nx, nz) = solid_gap(wx, wz, k)              # SOLID-BOX: disc or oriented box
+            gap >= 0.35 && continue                           # 0.35 m ~ wheel radius + rim
             push!(LOOSE_WHEELS, (wx, 0.33, wz,
                                  v*cθ + nx*3.5,               # keeps the car's momentum plus a kick off the wall
                                  3.0 + 0.15*abs(v),           # hops off the hub, harder the faster the hit
@@ -2829,7 +2838,8 @@ let objnames=Set{String}()
     obj_extra_excl(nm) = (nm=="startbox" && !haskey(ENV,"JM_STARTBOX_KEEP")) ?
         ("sfbox01","sfbox02","sfbox03","hay01","hay02") : ()
     objmesh=Dict{String,Any}(); ymn=Dict{String,Float32}(); ymx=Dict{String,Float32}(); bbinfo=Dict{String,Any}()
-    lxmn=Dict{String,Float32}(); lxmx=Dict{String,Float32}(); lzmn=Dict{String,Float32}(); lzmx=Dict{String,Float32}()   # E71-S8 local horizontal AABB
+    lxmn=Dict{String,Float32}(); lxmx=Dict{String,Float32}(); lzmn=Dict{String,Float32}(); lzmx=Dict{String,Float32}()
+    objverts=Dict{String,Any}()   # SOLID-BOX ground truth: the parts, so a hook can transform real vertices   # E71-S8 local horizontal AABB
     lverts=Dict{String,Vector{Tuple{Float32,Float32}}}()   # E71-S9 decimated local (x,z) footprint points
     # E92-S2: hat() was refuted at 0.003% of this phase, so measure what is actually left in it --
     # distinct-mesh loading. Ref accumulators, not plain locals, so the loop body mutates them
@@ -2877,7 +2887,7 @@ let objnames=Set{String}()
                         vx=pp.verts[k]; vz=pp.verts[k+2]
                         xl=min(xl,vx); xh=max(xh,vx); zl=min(zl,vz); zh=max(zh,vz)
                     end
-                    lxmn[inst.name]=xl; lxmx[inst.name]=xh; lzmn[inst.name]=zl; lzmx[inst.name]=zh
+                    lxmn[inst.name]=xl; lxmx[inst.name]=xh; lzmn[inst.name]=zl; lzmx[inst.name]=zh; objverts[inst.name]=parts
                     # E71-S9: the AABB SATURATES — GPL .3do objects are composite (several buildings,
                     # a ground plane, a whole block in one file), so a box around all of it spans the
                     # road wherever the building actually stands, and every instance scored the same
@@ -3574,6 +3584,7 @@ let objnames=Set{String}()
     global SOLIDS = Tuple{Float64,Float64,Float64,Symbol}[]
     SOLIDNAMES = String[]                        # parallel to SOLIDS, for the census only
     _solidseen = Set{Tuple{Float64,Float64,Float64,Symbol}}(); _soliddup = Ref(0)   # SPA-BARRIER: one disc per (x,z,r,kind)
+    empty!(SOLIDBOX)
     _geomn = 0
     for i in insts
         nml = lowercase(i.name)
@@ -3644,6 +3655,20 @@ let objnames=Set{String}()
         push!(_solidseen, _key)
         push!(SOLIDS, _key)
         push!(SOLIDNAMES, nml)   # E56: tag wall vs hedge/hay for the contact law
+        # SOLID-BOX: buildings (the 5/6 m whitelist) get their mesh footprint as an oriented box.
+        # Placement → physics: render = translate(x, h, -y) * roty(ψ), ψ = -yaw + objyawfix, and
+        # physics z = -render z, so a local (lx, lz) lands at x + c·lx + s·lz, y + s·lx - c·lz
+        # (a rotation plus a mirror; a rectangle is symmetric, so box_gap with φ = ψ and |lz|
+        # sees the same shape). The footprint centre is carried through the same map.
+        push!(SOLIDBOX, if r >= 5.0 && haskey(lxmn, i.name) && get(ENV, "JM_SOLID_BOX", "1") != "0"
+            ψ = Float64(-i.yaw + objyawfix(i.name)); c = cos(ψ); sn = sin(ψ)
+            hx = Float64(lxmx[i.name] - lxmn[i.name])/2; hz = Float64(lzmx[i.name] - lzmn[i.name])/2
+            clx = Float64(lxmx[i.name] + lxmn[i.name])/2; clz = Float64(lzmx[i.name] + lzmn[i.name])/2
+            SOLIDS[end] = (Float64(i.x) + c*clx + sn*clz, Float64(i.y) + sn*clx - c*clz, r, solidkind(nml))
+            (hx, hz, ψ)
+        else
+            nothing
+        end)
     end
     # SPA-BARRIER: JM_SOLIDNEAR="x,z,r" lists every collidable solid within r m of a world point
     # (name, kind, radius, distance) -- the headless way to name an "invisible barrier" at a
@@ -3661,6 +3686,44 @@ let objnames=Set{String}()
                         "  at (", round(ox, digits=1), ", ", round(oz, digits=1), ")  dist=", round(d, digits=1), " m")
             end
             isempty(rows) && println("   (none)")
+            for (d, ox, oz, r, kind, i) in rows
+                b = SOLIDBOX[i]; b === nothing && continue
+                println("   box ", rpad(SOLIDNAMES[i], 10), " half ", round(b[1], digits=1), " x ", round(b[2], digits=1),
+                        " m, yaw ", round(rad2deg(b[3]), digits=1), "°, centre (", round(ox, digits=1), ", ", round(oz, digits=1), ")")
+                # GROUND TRUTH: the box must coincide with the DRAWN footprint -- transform the real
+                # vertices through the same model matrix OBJECTS uses, then physics z = -render z.
+                let c = cos(b[3]), sn = sin(b[3])
+                    cx = [ox + sx*b[1]*c + sz*b[2]*sn for sx in (-1,1), sz in (-1,1)]
+                    cz = [oz + sx*b[1]*sn - sz*b[2]*c for sx in (-1,1), sz in (-1,1)]
+                    println("      box corners   x ", round(minimum(cx), digits=1), "..", round(maximum(cx), digits=1),
+                            "  z ", round(minimum(cz), digits=1), "..", round(maximum(cz), digits=1))
+                end
+                for inst in insts
+                    lowercase(inst.name) == SOLIDNAMES[i] || continue
+                    hypot(Float64(inst.x) - ox, Float64(inst.y) - oz) <= 20.0 || continue
+                    pv = get(objverts, inst.name, nothing); pv === nothing && continue
+                    M = Render.translate(Float32[inst.x, plozfp(inst), -inst.y]) * Render.roty(Float32(-inst.yaw + objyawfix(inst.name)))
+                    xlo = Inf; xhi = -Inf; zlo = Inf; zhi = -Inf
+                    for pp in pv, k in 1:11:length(pp.verts)
+                        q = M * Float32[pp.verts[k], pp.verts[k+1], pp.verts[k+2], 1f0]
+                        px = Float64(q[1]); pz = -Float64(q[3])
+                        xlo = min(xlo, px); xhi = max(xhi, px); zlo = min(zlo, pz); zhi = max(zhi, pz)
+                    end
+                    println("      drawn vertices x ", round(xlo, digits=1), "..", round(xhi, digits=1),
+                            "  z ", round(zlo, digits=1), "..", round(zhi, digits=1), "   (origin ", round(Float64(inst.x), digits=1), ", ", round(Float64(inst.y), digits=1), ")")
+                    break
+                end
+                spec = get(ENV, "JM_HATPROBE", "")
+                occursin(";", spec) || continue
+                for tok in split(spec, ";")
+                    isempty(strip(tok)) && continue
+                    pr = split(tok, ","); px = parse(Float64, strip(pr[1])); pz = parse(Float64, strip(pr[2]))
+                    (g, nx, nz) = box_gap(px, pz, ox, oz, b[1], b[2], b[3])
+                    (gd, _, _) = disc_gap(px, pz, ox, oz, r)
+                    println("      at (", round(px, digits=1), ", ", round(pz, digits=1), ")  box gap ", round(g, digits=2),
+                            "  disc gap ", round(gd, digits=2), (g < CARHALF ? "  <- CONTACT" : ""))
+                end
+            end
             # duplicate discs: identical (x, z, r, kind) entries stack their contact forces
             ndup = length(SOLIDS) - length(unique(SOLIDS))
             println("   SOLIDS total ", length(SOLIDS), ", exact duplicates left ", ndup, " (", _soliddup[], " dropped at build)")
@@ -3688,6 +3751,26 @@ let objnames=Set{String}()
         # printing "tower×2" while SOLIDS held 14 -- a diagnostic disagreeing with the thing it
         # describes is worse than none, since it is the instrument used to judge every fix here.
         cnt = Dict{String,Int}(); for n in SOLIDNAMES; cnt[n]=get(cnt,n,0)+1; end
+        # SPA-BARRIER follow-up: a per-NAME whitelist radius (solidR) ignores the mesh. Where it
+        # exceeds the footprint's half-extent the car hits AIR beside the object; where it is far
+        # smaller the car drives through walls. Report every whitelisted name against its mesh.
+        let seen = Set{String}()
+            println("== JM_SOLIDDIAG whitelist radius vs mesh footprint (name: r_list vs half-extents w/2 x d/2) ==")
+            for i in insts
+                nml = lowercase(i.name); nml in seen && continue
+                rl = solidR(nml); rl > 0.0 || continue
+                haskey(lxmn, i.name) || continue
+                push!(seen, nml)
+                w = Float64(lxmx[i.name] - lxmn[i.name]); d = Float64(lzmx[i.name] - lzmn[i.name])
+                hmin = min(w, d)/2; hmax = max(w, d)/2
+                tag = rl > hmax + 0.5 ? "AIR-HIT (r > long half-extent)" :
+                      rl > hmin + 0.5 ? "air on the short side" :
+                      rl < hmin - 1.0 ? "PENETRABLE (r < short half-extent)" : "ok"
+                println("   ", rpad(nml, 10), " r=", lpad(rl, 4), "  footprint ", round(w, digits=1), " x ", round(d, digits=1),
+                        "  half ", round(hmin, digits=1), "/", round(hmax, digits=1), "  ", tag)
+            end
+        end
+        println("== JM_SOLIDDIAG boxes: ", count(b -> b !== nothing, SOLIDBOX), " of ", length(SOLIDS), " solids carry a mesh-footprint box (SOLID-BOX)")
         println("== JM_SOLIDDIAG ", length(SOLIDS), " solids (", _geomn, " candidates from the shape rule): ",
                 join(["$(n)×$(c)" for (n,c) in sort(collect(cnt))], ", "))
         # and why the shape rule turned the others down, grouped by reason

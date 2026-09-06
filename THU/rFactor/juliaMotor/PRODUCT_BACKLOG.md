@@ -8953,3 +8953,19 @@ sites).
   E106 baked-scenery work). No solids exist at the Ring (SOLIDS empty by design), so no contact
   lift either. Verdict: fixed in dev before today; the PO's installed copy predates it. Needs a
   PO drive on the 260906 AppImage; a fresh Ring replay names any remaining spot in one command.
+
+### 2026-09-06 — SOLID-BOX: buildings collide as their drawn footprint, not a 5 m disc
+- Census (`JM_SOLIDDIAG`, new table "whitelist radius vs mesh footprint") at Spa: the per-name
+  5 m disc sat INSIDE 25×17 m houses (drive-through) and poked past 12×6 m ones (air-hit). house28
+  is 11.7×8.8 m with its ORIGIN on one wall: the disc reached 5 m + CARHALF into open ground and
+  the PO's car was 6.1 m from the nearest drawn wall when it "hit" -- the invisible barrier, part 2.
+- Fix: `demo/native/solid_geom.jl` (`box_gap`/`disc_gap`, pure); `SOLIDBOX[k]` = (hx, hz, ψ) from
+  the object's local vertex bbox for every 5/6 m-whitelist building; all three SOLIDS consumers
+  (solid_hit, solid_contact, wheel detach) go through `solid_gap`. Placement→physics map is
+  translate(x,h,-y)·roty(-yaw+fix) with physics z = -render z (rotation + mirror).
+- **Ground truth**: the hook transforms house28's real vertices through the render matrix:
+  box corners x -326.2..-311.7, z -3071.2..-3057.8 == drawn vertices, exactly. On the PO's recorded
+  line the box gap never drops below 4.3 m before the (now impossible) throw-back.
+- Gate `solid_box_smoke` (geometry: faces, corners, inside, rotation; the house28 numbers; wiring).
+  `JM_SOLID_BOX=0` reverts to discs. Hook `JM_SOLIDNEAR` prints each box, its corners, the drawn
+  footprint, and the box/disc gap along a `JM_HATPROBE` path.
