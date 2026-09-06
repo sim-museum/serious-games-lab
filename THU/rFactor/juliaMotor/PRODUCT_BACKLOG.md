@@ -9011,3 +9011,15 @@ were removed by the grade rule.
   without the display; (3) the left grandstand is short in ours. Next: name the slab (texture census
   at lapdist 150-300 -- JM_SPOTMESH is inside the object-pipeline block the Ring skips; move it) and
   the banner boards (XK_FLAT*/TROW_001 rows are the candidates).
+- **E81 follow-up, same sprint**: the RENDERED scenery near the Ring's S/F (lapdist 80–420, |lat|<40),
+  by texture: right side lat 11–29 `landpp1`/`grndpp1` (paddock ground rising to +6.8 m above the
+  road at lat 28 -- the grey "floating slab" the crowd stands on), lat 28–38 the stand complex
+  (`pole1a` ×30, `roof`, `side1/2`, `topsign`, `hotel`, `row1`, `row22b`, 15 untextured tris, roof at
+  +14 m); left lat −11 the control tower (`ct_balc2` at +12..16 m, `pitside2`, `pitrim2`). Every one
+  of those textures IS in nurburg.dat (checked by archive key), so the grey is not a missing mip.
+  Only one billboard (a bush) in the window -- the tall "Continental" tower is mesh, not a sprite.
+  Versus the GPL gold frame: GPL shows seated tiers with banner rows where we show a crowd standing
+  on the raised paddock plane, and the tower's texture repeats vertically. That is now a concrete,
+  reproducible visual gap; captures for the PO in ~/Documents/260906/ring_startfinish/.
+  Instruments: `JM_SCENE_AT`+`JM_SCENE_WIN` (objects with z-vs-road, dropped placements, triangle
+  drops, billboards with size/scale, rendered mesh by texture) and `JM_SMOKE=1 JM_SHOTS=…` photos.

@@ -1039,6 +1039,7 @@ function gpl_scenery(ztrk, datpack, ribbon)
     ndrop_edge = Ref(0); ndrop_road = Ref(0); nkeep_t = Ref(0)   # E76-S10 per-object drop census
     scene_at = Tuple{String,Float64,Float64,Int}[]                # E70-S5: what stands near a lapdist
     scene_drop = Tuple{String,Float64,Float64,String}[]           # E76-S11: what was placed near it but never rendered, and why
+    scene_z = Tuple{String,Float64,Float64}[]                     # E81: each rendered object's z range relative to the road beside it
     scene_tridrop = Dict{Tuple{String,String},Int}()             # E76-S11: (object, rule) -> triangles dropped inside the window
     # E76-S3: is the Ring's scenery even being LOADED? Its whole load is "184 groups / 4065 tris"
     # where Spa gets 1679 objects + 5132 billboards at a fifth the length (E76-S2), and gold's first
@@ -1138,6 +1139,13 @@ function gpl_scenery(ztrk, datpack, ribbon)
             _hr = JuliaMotor.hat(ribbon, Float64(M[1,4]), Float64(M[2,4]))
             if _hr.found && abs(_hr.lapdist - parse(Float64, ENV["JM_SCENE_AT"])) < parse(Float64, get(ENV,"JM_SCENE_WIN","250"))
                 push!(scene_at, (nm, _hr.lapdist, _hr.lateral, length(mesh)))
+                # E81: is it FLOATING? world z range of the object's vertices vs the road height beside it
+                let zlo = Inf, zhi = -Inf
+                    for tr in mesh, q in tr.p
+                        wz = Float64(M[3,1]*q[1]+M[3,2]*q[2]+M[3,3]*q[3]+M[3,4]); zlo = min(zlo, wz); zhi = max(zhi, wz)
+                    end
+                    push!(scene_z, (nm, round(zlo - _hr.height, digits=1), round(zhi - _hr.height, digits=1)))
+                end
             end
         end
         ap(q)=(Float32(M[1,1]*q[1]+M[1,2]*q[2]+M[1,3]*q[3]+M[1,4]),
@@ -1302,14 +1310,63 @@ function gpl_scenery(ztrk, datpack, ribbon)
         sort!(scene_at, by=x->abs(x[3]))
         println("== JM_SCENE_AT ", ENV["JM_SCENE_AT"], " ±250 m: ", length(scene_at), " scenery objects rendered ==")
         println("   name            lapdist   lateral   tris")
-        for r in scene_at[1:(haskey(ENV,"JM_SCENE_WIN") ? end : min(end,22))]
-            println("   ", rpad(r[1],15), rpad(round(Int,r[2]),10), rpad(round(r[3],digits=1),10), r[4])
+        for (k, r) in enumerate(scene_at[1:(haskey(ENV,"JM_SCENE_WIN") ? end : min(end,22))])
+            zr = k <= length(scene_z) ? scene_z[k] : ("", NaN, NaN)
+            println("   ", rpad(r[1],15), rpad(round(Int,r[2]),10), rpad(round(r[3],digits=1),10), rpad(r[4],7),
+                    "  z-road: ", zr[2], "..", zr[3], " m")
         end
         sort!(scene_drop, by=x->abs(x[3]))
         println("== JM_SCENE_AT: ", length(scene_drop), " placements in the window that did NOT reach the renderer ==")
         println("   name            lapdist   lateral   why")
         for r in scene_drop[1:(haskey(ENV,"JM_SCENE_WIN") ? end : min(end,40))]
             println("   ", rpad(r[1],15), rpad(round(Int,r[2]),10), rpad(round(r[3],digits=1),10), r[4])
+        end
+        # E81: the BILLBOARDS in the window (E76-S8 stubs): name, size, scale -- a tower-sized sprite is a scale bug
+        let want = parse(Float64, ENV["JM_SCENE_AT"]), win = parse(Float64, get(ENV,"JM_SCENE_WIN","250")), rows = Any[]
+            for sp in sprites
+                hr = JuliaMotor.hat(ribbon, Float64(sp.x), Float64(sp.y))
+                (hr.found && abs(hr.lapdist - want) < win && abs(hr.lateral) < 60.0) || continue
+                push!(rows, (sp.name, round(hr.lapdist), round(hr.lateral, digits=1), round(sp.h, digits=1), round(sp.w, digits=1), round(Float64(sp.z) - hr.height, digits=1), sp.texs))
+            end
+            sort!(rows, by = r -> -r[4])
+            println("== JM_SCENE_AT billboards in the window: ", length(rows), " (tallest first) ==")
+            println("   name            lapdist  lateral  h      w      z-road  tex")
+            for r in rows[1:min(end, 30)]
+                println("   ", rpad(r[1], 15), rpad(r[2], 9), rpad(r[3], 9), rpad(r[4], 7), rpad(r[5], 7), rpad(r[6], 8), r[7])
+            end
+        end
+        # E81: what MESH stands in the window, by texture -- the Ring bypasses JM_SPOTMESH's block.
+        # Two sources: the scenery groups this loader kept (`hat`) and the track's own .3do.
+        let want = parse(Float64, ENV["JM_SCENE_AT"]), win = parse(Float64, get(ENV,"JM_SCENE_WIN","250"))
+            # the RENDERED scenery lives in `groups` (tex -> interleaved verts, render frame x,up,-y);
+            # `hat` holds only the terrain-candidate tris and TRACKMESH0 the track's own .3do
+            rendered = Any[]
+            for (tex, v) in groups
+                for k in 1:33:length(v)-32
+                    pts = ntuple(i -> (Float32(v[k+11*(i-1)]), Float32(-v[k+11*(i-1)+2]), Float32(v[k+11*(i-1)+1])), 3)
+                    push!(rendered, (p = pts, tex = tex))
+                end
+            end
+            for (label, tris) in (("RENDERED scenery groups", rendered), ("terrain-candidate scenery", hat), ("track .3do", TRACKMESH0.tris))
+                acc = Dict{String,Vector{Float64}}(); lats = Dict{String,Vector{Float64}}()
+                for t in tris
+                    cx = (Float64(t.p[1][1])+Float64(t.p[2][1])+Float64(t.p[3][1]))/3
+                    cy = (Float64(t.p[1][2])+Float64(t.p[2][2])+Float64(t.p[3][2]))/3
+                    cz = (Float64(t.p[1][3])+Float64(t.p[2][3])+Float64(t.p[3][3]))/3
+                    hr = JuliaMotor.hat(ribbon, cx, cy)
+                    (hr.found && abs(hr.lapdist - want) < win && abs(hr.lateral) < 40.0) || continue
+                    lt = lowercase(t.tex); lt = lt == "" ? "<none>" : lt
+                    push!(get!(acc, lt, Float64[]), cz); push!(get!(lats, lt, Float64[]), hr.lateral)
+                end
+                println("== JM_SCENE_AT mesh in the window, ", label, ": ", length(acc), " textures ==")
+                println("   texture          tris   z_min    z_mean   z_max    lat range")
+                for (lt, zs) in sort(collect(acc), by = x -> -length(x[2]))[1:min(end, 24)]
+                    ls = lats[lt]
+                    println("   ", rpad(lt, 16), rpad(length(zs), 7), rpad(round(minimum(zs), digits=1), 9),
+                            rpad(round(sum(zs)/length(zs), digits=1), 9), rpad(round(maximum(zs), digits=1), 9),
+                            string(round(minimum(ls), digits=1), "..", round(maximum(ls), digits=1)))
+                end
+            end
         end
         println("== JM_SCENE_AT: triangles dropped by the per-triangle rules inside the window, per object ==")
         for (k, v) in sort(collect(scene_tridrop), by = x -> -x[2])[1:min(end, 30)]
