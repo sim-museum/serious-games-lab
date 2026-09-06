@@ -7614,6 +7614,14 @@ session survived both times (the scope cap did its job -- [[heavy-jobs-oom-kill-
 Until one of these lands, the `-refresh` image (0 cache rejections, 4 min 17 s to first frame) is
 the shipped state. Logs: `~/Documents/260906/logs/sysimage_build*.log`.
 
+### STARTUP-1 — POSTPONED (PO 2026-09-06 12:30): "if the sysimage build is a big load on the system, postpone that for later, it's just an optimization anyway"
+
+Third attempt (11:09→12:30, 24 GB swapfile added by the PO at 12:20, `JULIA_IMAGE_THREADS=1`,
+cap 12 GB RAM + 28 GB swap) was stopped at the PO's request while still in the image-generation
+step, so the machine goes to ROAD-1 and the gates. Resume command is at the end of
+`~/Documents/260906/logs/sysimage_build.log`; run it when the box is otherwise idle (an hour of
+swapping is expected) or on a 32 GB machine. The shipped state stays the `-refresh` image.
+
 ### RESTART-1 — CLOSED (2026-09-05). Implemented, gated, and verified INSIDE the shipped image.
 
 **Ctrl+R** restarts the session on the current track without reloading it. The PO's requirement was
