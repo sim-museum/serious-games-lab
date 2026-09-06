@@ -6941,6 +6941,45 @@ the road on both tracks**, and a negative control that places a probe 1 m off th
 barrier and finds it. Each hit is reported as (track, lap distance, lateral, object name) so the
 fix is a named object, not a guess. Then one full-lap drive per track on the display, by the PO.
 
+### ROAD-1 S1-S2 (Fable 5.1, 2026-09-06 11:40-12:40) — the census exists, and it named the invisible walls
+
+**Instrument:** `JM_ROADSWEEP=2` (drive_native_mtk.jl, exits before the window): every 2 m along
+the centreline, every 0.5 m of lateral, the point and the car's two flanks (±0.9 m) must all be
+over a road-textured triangle (the road-only HAT, `ROADHAT`); every solid within reach is asked
+through the sim's own `solid_gap` (disc or oriented box). Control: a probe at a solid's centre
+must read as a hit. Three definitions of "on the road" were tried, and the difference is the
+whole result:
+
+| Spa census | on-road definition | solids reachable |
+|---|---|---|
+| v1 | the sim's 9 m TrackSurface corridor (`on_track`) | 331 -- grandstands, shrubs, ad boards on the verge at lat 8-11.5 |
+| v2 | over tarmac (road-only HAT) | 142 |
+| v2 + car width | tarmac under the point AND both flanks | 151 with per-part boxes (see below) |
+
+**Trap on the Ring:** `TRACK=nurburg` silently loaded ZANDVOORT (the key is `nurburgring`; the
+first "Ring" census was a 4.2 km Zandvoort lap labelled nurburg). Fixed in the sweep script.
+
+**What the census named at Spa (v2):** three giants -- `gstands` (a 215 x 58 m box, yaw 127°),
+`lasad1` (99 x 110 m) and `house9` (57 x 38 m, box == drawn vertices) -- with the ROAD CENTRE 7,
+28 and 17 m inside them; then `h49woga` (-3.7 m at lat 4.5), `house221` (-2.2 at lat -4.5), and a
+long tail of armco pieces at -0.6..-1.1 m at |lat| 4.5 (standing on the `borcem` concrete edge
+strip, which the road HAT counts as road -- the car-width rule removes those).
+The giants are COMPOSITE .3do files: several buildings in one object, whose AABB fills the road
+between them. The renderer already hides buildings "centred ON the road" (E68); physics kept them
+solid -- exactly the PO's invisible barrier.
+
+**S2 fix, two parts (in the tree, census v3 running):**
+1. a composite (footprint > 16 m and ≥ 2 mesh parts) gets one box PER PART (per-part AABB through
+   the same placement map; thin/huge parts skipped) -- necessary but not sufficient: `house9` is
+   one part spanning both houses, and `lasad1`/`gstands` parts still crossed the centreline;
+2. **no solid box may cover tarmac**: the box interior is sampled on a ~2 m grid against the
+   road-only HAT and a box with any sample over tarmac is rejected (the object falls back to its
+   disc, which E31 keeps off the road). `JM_SOLID_ROADCHECK=0` disables. The rejected names are
+   printed at load, so the fallback is visible, not silent.
+Left for S3: the disc fallback means those composites are drive-through on their off-road side;
+the right footprint is the drawn triangles themselves (2-D triangle soup per composite), which
+also fixes h49woga if it is a real building beside the pit lane.
+
 **Sprint plan.** S1: the sweep tool + first census (expect hits; that is the list). S2-S4: fix each
 named object (footprint, dedup, or a genuine off-road object leaking onto the ribbon). S5: the gate
 green on both tracks, registered in `gates.sh`, shipped in the AppImage.

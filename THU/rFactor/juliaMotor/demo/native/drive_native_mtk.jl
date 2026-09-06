@@ -3687,6 +3687,26 @@ let objnames=Set{String}()
         _geomwhy[nm] = "SOLID r=$(round(r,digits=1)) $dims"
         r
     end
+    # ROAD-1 S2: NO SOLID BOX MAY COVER DRIVABLE TARMAC. The Spa census found composite .3do
+    # footprints (house9: two houses with the road between; lasad1; gstands) whose box -- whole or
+    # per part -- contained the road centre by 7-35 m: an invisible wall across the track, the exact
+    # family the PO reported at Spa. The renderer already drops buildings "centred ON the road"
+    # (E68); the physics kept them solid. Sample the box interior on a ~2 m grid against the
+    # road-only HAT (road-textured triangles): if any sample is over tarmac the box is rejected and
+    # the object falls back to its disc (which E31 already keeps off the road). Tracks without a
+    # road-only HAT (ROADHAT === TERRAIN0) skip the test. JM_SOLID_ROADCHECK=0 disables.
+    _boxrej = String[]
+    function box_covers_tarmac(cx, cz, hx, hz, ψ)
+        (ROADHAT === TERRAIN0 || get(ENV, "JM_SOLID_ROADCHECK", "1") == "0") && return false
+        c = cos(ψ); sn = sin(ψ)
+        nx = max(2, ceil(Int, hx)); nz = max(2, ceil(Int, hz))
+        for ix in 0:nx, iz in 0:nz
+            lx = -hx + 2hx*ix/nx; lz = -hz + 2hz*iz/nz
+            px = cx + c*lx + sn*lz; pz = cz + sn*lx - c*lz
+            JuliaMotor.hat3d(ROADHAT, px, pz; ref = Inf)[3] && return true
+        end
+        false
+    end
     global SOLIDS = Tuple{Float64,Float64,Float64,Symbol}[]
     global SOLIDNAMES = String[]                        # parallel to SOLIDS, for the census only
     _solidseen = Set{Tuple{Float64,Float64,Float64,Symbol}}(); _soliddup = Ref(0)   # SPA-BARRIER: one disc per (x,z,r,kind)
@@ -3766,21 +3786,63 @@ let objnames=Set{String}()
         # physics z = -render z, so a local (lx, lz) lands at x + c·lx + s·lz, y + s·lx - c·lz
         # (a rotation plus a mirror; a rectangle is symmetric, so box_gap with φ = ψ and |lz|
         # sees the same shape). The footprint centre is carried through the same map.
-        push!(SOLIDBOX, if r >= 5.0 && haskey(lxmn, i.name) && get(ENV, "JM_SOLID_BOX", "1") != "0"
+        # ROAD-1 S2 (2026-09-06): a COMPOSITE .3do (several houses, a 215 m grandstand row, the La
+        # Source ad boards) has an AABB that fills the gaps between its parts -- at Spa `house9`'s
+        # 57 x 38 m box put the ROAD CENTRE 17 m inside a "wall" (census: gap -16.8 m at lat -1).
+        # When the whole footprint is implausibly large for one object, box each mesh PART instead
+        # (its own local AABB through the same placement map); tiny or paper-thin parts are skipped.
+        # JM_SOLID_PARTS=0 restores the single AABB box.
+        if r >= 5.0 && haskey(lxmn, i.name) && get(ENV, "JM_SOLID_BOX", "1") != "0"
             ψ = Float64(-i.yaw + objyawfix(i.name)); c = cos(ψ); sn = sin(ψ)
-            hx = Float64(lxmx[i.name] - lxmn[i.name])/2; hz = Float64(lzmx[i.name] - lzmn[i.name])/2
-            clx = Float64(lxmx[i.name] + lxmn[i.name])/2; clz = Float64(lzmx[i.name] + lzmn[i.name])/2
-            SOLIDS[end] = (Float64(i.x) + c*clx + sn*clz, Float64(i.y) + sn*clx - c*clz, r, solidkind(nml))
-            (hx, hz, ψ)
+            wx = Float64(lxmx[i.name] - lxmn[i.name]); wz = Float64(lzmx[i.name] - lzmn[i.name])
+            pv = get(objverts, i.name, nothing)
+            if max(wx, wz) > 2*GEOM_RMAX && pv !== nothing && length(pv) >= 2 && get(ENV, "JM_SOLID_PARTS", "1") != "0"
+                nb = 0
+                for pp in pv
+                    xl = Inf; xh = -Inf; zl = Inf; zh = -Inf
+                    for k in 1:11:length(pp.verts)
+                        xl = min(xl, pp.verts[k]); xh = max(xh, pp.verts[k]); zl = min(zl, pp.verts[k+2]); zh = max(zh, pp.verts[k+2])
+                    end
+                    (isfinite(xl) && isfinite(zl)) || continue
+                    hx = Float64(xh - xl)/2; hz = Float64(zh - zl)/2
+                    (min(hx, hz) < 0.25 || max(hx, hz) > 60.0) && continue      # thin panel or itself a composite
+                    clx = Float64(xh + xl)/2; clz = Float64(zh + zl)/2
+                    ent = (Float64(i.x) + c*clx + sn*clz, Float64(i.y) + sn*clx - c*clz, r, solidkind(nml))
+                    if box_covers_tarmac(ent[1], ent[2], hx, hz, ψ)
+                        push!(_boxrej, string(nml, "@", round(Int, ent[1]), ",", round(Int, ent[2]))); continue
+                    end
+                    if nb == 0
+                        SOLIDS[end] = ent; push!(SOLIDBOX, (hx, hz, ψ))
+                    else
+                        push!(SOLIDS, ent); push!(SOLIDNAMES, nml); push!(SOLIDBOX, (hx, hz, ψ))
+                    end
+                    nb += 1
+                end
+                nb == 0 && push!(SOLIDBOX, nothing)      # no usable part: stays a disc at the origin
+            else
+                hx = wx/2; hz = wz/2
+                clx = Float64(lxmx[i.name] + lxmn[i.name])/2; clz = Float64(lzmx[i.name] + lzmn[i.name])/2
+                bcx = Float64(i.x) + c*clx + sn*clz; bcz = Float64(i.y) + sn*clx - c*clz
+                if box_covers_tarmac(bcx, bcz, hx, hz, ψ)
+                    push!(_boxrej, string(nml, "@", round(Int, bcx), ",", round(Int, bcz)))
+                    push!(SOLIDBOX, nothing)                      # disc at the origin (E31 keeps it off the road)
+                else
+                    SOLIDS[end] = (bcx, bcz, r, solidkind(nml))
+                    push!(SOLIDBOX, (hx, hz, ψ))
+                end
+            end
         else
-            nothing
-        end)
+            push!(SOLIDBOX, nothing)
+        end
     end
+    isempty(_boxrej) || println("  ROAD-1: ", length(_boxrej), " solid box(es) rejected for covering tarmac (disc fallback): ",
+                                join(unique(_boxrej)[1:min(end, 12)], " "), length(unique(_boxrej)) > 12 ? " …" : "")
     # SPA-BARRIER: JM_SOLIDNEAR="x,z,r" lists every collidable solid within r m of a world point
     # (name, kind, radius, distance) -- the headless way to name an "invisible barrier" at a
     # replay crash position without taking the display.
     if get(ENV,"JM_SOLIDNEAR","")!=""
-        let pr = split(get(ENV,"JM_SOLIDNEAR",""), ",")
+      for spec1 in split(get(ENV,"JM_SOLIDNEAR",""), ";")     # ROAD-1: several sites per launch ("x,z,r;x,z,r")
+        let pr = split(spec1, ",")
             qx = parse(Float64, strip(pr[1])); qz = parse(Float64, strip(pr[2]))
             qr = length(pr) >= 3 ? parse(Float64, strip(pr[3])) : 60.0
             println("== JM_SOLIDNEAR solids within ", qr, " m of (", qx, ", ", qz, ") ==")
@@ -3850,6 +3912,12 @@ let objnames=Set{String}()
                         ")  dist=", round(d, digits=1), " m  -> ", r)
             end
         end
+      end   # for spec1 (ROAD-1)
+      # ROAD-1 S2: this is a DIAGNOSTIC, so it ends here. It used to fall through into the render
+      # loop -- the "headless" probe opened a full Spa window on the PO's display (2026-09-06 12:14,
+      # "spa is up. should I try driving it?") and my kill of it was the "window disappeared".
+      # JM_SOLIDNEAR_CONTINUE=1 keeps the old fall-through for a probe-then-drive session.
+      get(ENV, "JM_SOLIDNEAR_CONTINUE", "0") == "0" && (flush(stdout); exit(0))
     end
     if get(ENV,"JM_SOLIDDIAG","")!=""
         # E95h: report what is ACTUALLY in SOLIDS. The previous version of this block recomputed
@@ -5744,11 +5812,20 @@ function main()
                 nroad += 1
                 ontar = tarmac_hat ? JuliaMotor.hat3d(ROADHAT, qx, qz; ref = Inf)[3] : true
                 ontar && (ntar += 1)
+                # A car CENTRED here needs its own width on tarmac too: an armco standing on the
+                # concrete edge strip (borcem, road-textured at old Spa) is a hit for a probe AT the
+                # strip, but no car can be centred there. Test the car's two flanks (±0.9 m) as well;
+                # only then is an object at this point "reachable while on the road".
+                fits = ontar && (!tarmac_hat || begin
+                    ql = RaceAI.pose_at(CLINE, s, lat - 0.9); qr = RaceAI.pose_at(CLINE, s, lat + 0.9)
+                    JuliaMotor.hat3d(ROADHAT, ql[1], ql[3]; ref = Inf)[3] && JuliaMotor.hat3d(ROADHAT, qr[1], qr[3]; ref = Inf)[3]
+                end)
                 @inbounds for k in eachindex(SOLIDS)
                     (ox, oz, r, _) = SOLIDS[k]
                     hypot(ox - qx, oz - qz) > r + 40.0 && continue
                     (gap, _, _) = solid_gap(qx, qz, k)
                     gap >= CARHALF && continue
+                    ontar = fits                     # an edge-strip point with no room for the car counts as verge
                     nm = k <= length(SOLIDNAMES) ? SOLIDNAMES[k] : "solid#$k"
                     key = string(nm, "@", round(Int, ox), ",", round(Int, oz))
                     if ontar
@@ -5762,7 +5839,7 @@ function main()
             s += step
         end
         println("  ", nprobe, " probes, ", nroad, " in the 9 m corridor, ", ntar, " on tarmac; ",
-                length(hits), " solid(s) reachable from the TARMAC (", length(verge), " more from the verge only):")
+                length(hits), " solid(s) reachable with the whole car on tarmac (", length(verge), " more from the verge/edge only):")
         for (key, (n, g, hs, hl)) in sort(collect(hits); by = kv -> kv[2][2])
             println("    ", rpad(key, 28), " hits=", lpad(n, 4), "  worst gap=", lpad(round(g, digits = 2), 6),
                     " m  at s=", round(Int, hs), " lat=", hl)
