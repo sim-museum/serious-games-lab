@@ -4827,7 +4827,7 @@ _ncars = max(N_AI, NETMODE == "" ? 0 : 1)
 # AI-CHAIN-1: the Brabham's blade is its UN-parked rear-suspension halves 32916/48284 (A/B by group
 # id; the untextured groups change nothing). Same interim treatment; same "not parity" caveat.
 # BRM 26116/35320 and Ferrari: hiding changes nothing visible, so they keep everything.
-const AI_PARKED_SUSP_GROUPS = Dict("eagle" => Set([29108, 39200]), "brabham" => Set([32916, 48284]))
+const AI_PARKED_SUSP_GROUPS = Dict("eagle" => Set([29108, 39200]), "brabham" => Set([32916, 48284]), "cooper" => Set([30048, 41624]))   # Cooper: its rear halves too (A/B)
 if !SKIDPAD && _ncars > 0
     for (nm, dir, body, w) in AISPECS[1:_ncars]
         print("  loading AI car: $nm … "); flush(stdout)

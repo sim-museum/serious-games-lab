@@ -9094,3 +9094,9 @@ rear halves 30048/41624 (cshok, csusp2-8, rear), untextured 31852 (44). Four hid
   blade (body, wheel, engine stay); hiding the untextured groups changes nothing. Interim hide
   extended to the Brabham (gate updated, PASS). Its rear wheel now shows a bare hub -- the real fix
   is to compose those halves in the right frame (E102 chaining), for which this capture is the eye.
+- **Cooper A/B (2026-09-06)**: hiding its rear halves 30048/41624 removes the black plate over/behind
+  the rear wheel; the untextured 31852 changes nothing. Interim hide extended to the Cooper. Map now:
+  Eagle 29108/39200 (parked), Brabham 32916/48284, Cooper 30048/41624 (un-parked rear halves); BRM
+  and Ferrari untouched. Evidence: ~/Documents/260906/ai_cars/ (before/after per chassis).
+  Shipped as JuliaRacer-x86_64-aicars.AppImage. AI-CHAIN-1 sprint 1 closes here; the parity step
+  (compose the rear halves in the right frame) is its sprint 2.
