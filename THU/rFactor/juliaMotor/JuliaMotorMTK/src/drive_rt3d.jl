@@ -502,7 +502,12 @@ function step_car3d!(c::Car3D, throttle, brake, steer, dt;
         a = c.getall(c.integ)
     end
     c.x = a[1]; c.z = a[2]; c.θ = a[3]
-    c.v = sqrt(a[4]^2 + a[5]^2); c.t = c.integ.t + c.toff;   # LAPTIME-1: session time, not integrator time c.rpm = clamp(a[6], 0.0, 9700.0); c.gear_n = c.gear
+    c.v = sqrt(a[4]^2 + a[5]^2); c.t = c.integ.t + c.toff   # LAPTIME-1: session time, not integrator time
+    # RPM-1 (2026-09-06, PO: "RPM gauge doesn't move ... no sound of revving ... if you stop, you can't get
+    # started again"): the LAPTIME-1 comment above was inserted MID-LINE and swallowed this assignment,
+    # so c.rpm was never read back from the integrator -- telemetry showed 1999.62 for 13,161 samples
+    # while speed reached 50 m/s. Its own line now, and the gate telemetry_rpm_smoke asserts it moves.
+    c.rpm = clamp(a[6], 0.0, 9700.0); c.gear_n = c.gear
     c.heave = a[15]; c.pitch = a[16]; c.roll = a[17]; c.vacc = a[18]
     # DIVERGENCE GUARD: the stiff tyre contact on extreme terrain can blow the vertical
     # subsystem up (pitch → 1e5°). If it leaves sane bounds, reset the vertical states to

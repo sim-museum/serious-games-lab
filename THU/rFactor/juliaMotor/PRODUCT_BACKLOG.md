@@ -6917,6 +6917,40 @@ No sprints have been run against this item.
 
 ---
 
+## 🔴 RPM-1 — FIXED 2026-09-06 16:20 (PO test: "RPM gauge doesn't move at spa, missing entirely at the ring ... no sound of revving, no change in RPM digital readout ... If you stop, you can't get started again")
+
+**Instrument:** the `.ibt` the PO's Ring run wrote (16:03): **RPM = 1999.62 for all 13,161 samples**
+while Speed reached 50.7 m/s and Throttle varied 0-1. The engine speed state never moved; the car
+drove because torque was looked up at that fixed rpm, and a stopped car could not get going.
+**Cause:** `drive_rt3d.jl:505` -- LAPTIME-1 (e88250c, 2026-09-05) inserted its comment MID-LINE:
+`c.t = c.integ.t + c.toff;   # LAPTIME-1: ... c.rpm = clamp(a[6], 0.0, 9700.0); c.gear_n = c.gear`
+-- the rpm read-back became part of the comment. Every image since 09-05 evening (tracksmooth,
+spabarrier, solidbox, eagle, aicars, aipose, refresh, road1) shipped a frozen engine.
+**Fix:** the assignment on its own line. **Gate** `telemetry_rpm_smoke.jl` (registered): from rest,
+full throttle 4 s headless → rpm 1725..4980, ends 4980, 1199/1200 samples off 2000, speed 16.8 m/s.
+PASS. Ships in the next Julia image. "Missing entirely at the ring": to be re-checked on that image
+(the gauge needle draws from cs.rpm; with rpm frozen at idle it sat under the dial's zero mark).
+
+## 🔴 SPA-SF-1 — the guardrail across the road at Spa's start line (PO test, other PC, road1 image)
+
+PO: *"at spa, there is a guardrail across the road just ahead of the start line, car sometimes
+collides with it - front wheels off, race over."* Census names it: `arm_sf0` (S/F armco), a box the
+tarmac check rejected → disc fallback shrunk 3.1 → 1.7 m at (-211.7, 913.6), **lat 9.0 at s=0**,
+`-> DRAWN`. A 1.7 m disc at lat 9 meets a capsule flank (0.95 m) from lat 6.4 outward: the pit-wall
+side of the start straight. v13: the disc shrink now clears the tarmac by the car's half-width too
+(`d - CARW - 0.1`). **Still open:** WHY it is drawn across the road -- a yaw/mirror error on this
+one object (the same map the boxes use), to be captured at s=0 against the Spa gold video; folded
+into TRACKGOLD-1 S3.
+
+## 🔲 RING-HAIRPIN-1 — the hairpin between the front and back grandstands is piecewise linear (PO video `/home/admin/Videos/260906_ring.mp4`)
+
+GPL's road there is smooth (gold videos per track in `/home/admin/gold standard/julia racer/`).
+Julia's Ring road surface comes from `gpl_scenery()`'s landmass sections (`nurburg.dat`), not from
+a ribbon, so the question is whether those sections are the same triangles GPL draws or a coarser
+LOD (the .dat holds several); TRACKSMOOTH-1 (the AI heading) is a different thing. Measure first:
+count road triangles per 100 m at the hairpin vs the straights, and compare a matched-viewpoint
+capture with the video frame. Part of TRACKGOLD-1.
+
 ## 🔲 BACKLOG — TRACKGOLD-1: Spa and the Ring closer to the gold standard; the Ring's missing trackside objects; no free-standing lines of people on any track  ⭐ PRIORITY (PO 2026-09-06 14:50)
 
 PO, verbatim: *"add priority backlog item: make julia spa and ring tracks closer to gold standard.
