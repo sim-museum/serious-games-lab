@@ -9023,3 +9023,12 @@ were removed by the grade rule.
   reproducible visual gap; captures for the PO in ~/Documents/260906/ring_startfinish/.
   Instruments: `JM_SCENE_AT`+`JM_SCENE_WIN` (objects with z-vs-road, dropped placements, triangle
   drops, billboards with size/scale, rendered mesh by texture) and `JM_SMOKE=1 JM_SHOTS=…` photos.
+- **E81 S/F textures, checked (2026-09-06)**: `JM_SCENE_TEX=a,b,…` dumps each rendered triangle of the
+  named textures (world verts + UVs); `JM_TEXDUMP=<name>` writes the mip. No face near S/F tiles
+  vertically in the data (v ∈ [0,1] everywhere; `hotel`/`inside`/`row*` repeat 8–16× along 148 m
+  walls -- correct for façades). `hotel` IS GPL's pit-building façade ("DEA-RECORD MOTORENOEL /
+  MARCHAL / SPORTHOTEL-TRIBÜNE" with garage doors), 148 m × 5.3 m at lat 32 behind the paddock plane;
+  `side2` is the dark windowed end wall (13 × 12 m). The vertical "Continental" logo column on the
+  right-hand tower in our capture is therefore not a UV/tiling defect in the mesh; which face carries
+  it is still unnamed (next: JM_SCENE_TEX over the remaining names, or a matched-viewpoint GPL frame).
+  Rotating out; the instruments are in place.

@@ -1344,11 +1344,12 @@ function gpl_scenery(ztrk, datpack, ribbon)
             for (tex, v) in groups
                 for k in 1:33:length(v)-32
                     pts = ntuple(i -> (Float32(v[k+11*(i-1)]), Float32(-v[k+11*(i-1)+2]), Float32(v[k+11*(i-1)+1])), 3)
-                    push!(rendered, (p = pts, tex = tex))
+                    uvs = ntuple(i -> (Float32(v[k+11*(i-1)+9]), Float32(v[k+11*(i-1)+10])), 3)
+                    push!(rendered, (p = pts, tex = tex, uv = uvs))
                 end
             end
             for (label, tris) in (("RENDERED scenery groups", rendered), ("terrain-candidate scenery", hat), ("track .3do", TRACKMESH0.tris))
-                acc = Dict{String,Vector{Float64}}(); lats = Dict{String,Vector{Float64}}()
+                acc = Dict{String,Vector{Float64}}(); lats = Dict{String,Vector{Float64}}(); uvr = Dict{String,Vector{Float64}}()
                 for t in tris
                     cx = (Float64(t.p[1][1])+Float64(t.p[2][1])+Float64(t.p[3][1]))/3
                     cy = (Float64(t.p[1][2])+Float64(t.p[2][2])+Float64(t.p[3][2]))/3
@@ -1357,6 +1358,12 @@ function gpl_scenery(ztrk, datpack, ribbon)
                     (hr.found && abs(hr.lapdist - want) < win && abs(hr.lateral) < 40.0) || continue
                     lt = lowercase(t.tex); lt = lt == "" ? "<none>" : lt
                     push!(get!(acc, lt, Float64[]), cz); push!(get!(lats, lt, Float64[]), hr.lateral)
+                    if hasproperty(t, :uv)   # E81: UV span tells mesh-tiling from sampler-tiling
+                        for q in t.uv; push!(get!(uvr, lt, Float64[]), Float64(q[1]), Float64(q[2])); end
+                        if lt in split(lowercase(get(ENV, "JM_SCENE_TEX", "\0")), ",")   # per-triangle dump for chosen textures
+                            println("      [", lt, "] ", join([string("(", round(Float64(t.p[i][1]), digits=1), ",", round(Float64(t.p[i][2]), digits=1), ",", round(Float64(t.p[i][3]), digits=1), ") uv=(", round(Float64(t.uv[i][1]), digits=2), ",", round(Float64(t.uv[i][2]), digits=2), ")") for i in 1:3], "  "))
+                        end
+                    end
                 end
                 println("== JM_SCENE_AT mesh in the window, ", label, ": ", length(acc), " textures ==")
                 println("   texture          tris   z_min    z_mean   z_max    lat range")
@@ -1364,7 +1371,9 @@ function gpl_scenery(ztrk, datpack, ribbon)
                     ls = lats[lt]
                     println("   ", rpad(lt, 16), rpad(length(zs), 7), rpad(round(minimum(zs), digits=1), 9),
                             rpad(round(sum(zs)/length(zs), digits=1), 9), rpad(round(maximum(zs), digits=1), 9),
-                            string(round(minimum(ls), digits=1), "..", round(maximum(ls), digits=1)))
+                            string(round(minimum(ls), digits=1), "..", round(maximum(ls), digits=1)),
+                            haskey(uvr, lt) ? string("   uv u ", round(minimum(uvr[lt][1:2:end]), digits=2), "..", round(maximum(uvr[lt][1:2:end]), digits=2),
+                                                     " v ", round(minimum(uvr[lt][2:2:end]), digits=2), "..", round(maximum(uvr[lt][2:2:end]), digits=2)) : "")
                 end
             end
         end
