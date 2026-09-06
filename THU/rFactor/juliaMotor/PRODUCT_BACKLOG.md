@@ -9168,3 +9168,11 @@ Sprint 1 starts when the PO's Spa session ends (a sysimage build is 20-40 min of
   Still open for the experiment: why the bundled non-stdlib pkgimages (ModelingToolkit 296 s,
   Symbolics 104 s, ...) are rejected on install -- `JULIA_DEBUG=loading` on a scratch JR_HOME.
   Next image: JuliaRacer-x86_64-refresh.AppImage (pack when the PO's session ends).
+- **Third packaging regression, from the PO's crash log (08:35)**: `readdir(…/GPL/cars/cars67/lotus): ENOENT`
+  at the Lotus load. The install's `GPL/cars` and `GPL/sound` are symlinks into a 09-04 AppImage
+  mount (`/tmp/.mount_JuliaRpaBIDe/...`), dead since that image was unmounted; today's images
+  bundle neither (only `depot juliaMotor runtime tracks`), so the launch could only ever succeed while
+  that old mount was alive. `build_julia.sh` now bundles `cars/cars67` (443 MB) and `sound` (63 MB)
+  and the AppRun re-links tracks, cars and sound on every launch (the mount path changes each time).
+  Lesson (memory: appimage-apprun-is-generated): the packer had silently lost refresh, stamp, depot
+  defaults, cars and sound relative to whatever built the 09-04 image; verify the INSTALL, not the image.
