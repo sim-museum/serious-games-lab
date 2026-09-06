@@ -3754,7 +3754,10 @@ let objnames=Set{String}()
         n = max(3, ceil(Int, 5r))                                   # v8: ~0.2 m grid
         for ix in -n:n, iz in -n:n
             px = ox + r*ix/n; pz = oz + r*iz/n
-            d = hypot(px - ox, pz - oz) - 0.1; d >= best && continue      # v10: 0.1 m margin (arm_sf0 sat at -0.05)
+            # v13 (PO 2026-09-06 Spa: "a guardrail across the road just ahead of the start line, car sometimes
+            # collides with it - front wheels off, race over" = arm_sf0, a 1.7 m disc at lat 9 that a capsule
+            # flank reaches from lat 6.4): the disc must clear the tarmac by the CAR'S half-width too.
+            d = hypot(px - ox, pz - oz) - CARW - 0.1; d >= best && continue
             if JuliaMotor.hat3d(ROADHAT, px, pz; ref = Inf)[3]
                 hr = JuliaMotor.hat(TRKSURF, px, pz)
                 (hr.found && hr.on_track) && (best = max(d, 0.0))
