@@ -9065,3 +9065,21 @@ rear/front suspension drawn at the origin, i.e. a POSING defect, exactly as S1 p
 - **BRM A/B (2026-09-06)**: `JM_HIDE_GROUP=26116,35320` on the BRM changes nothing visible at the
   rsusp camera -- no blades on the BRM in the first place. Hiding would only delete geometry the gold
   may show, so the interim hide is **Eagle-only**; the BRM entry is removed and the gate updated.
+
+### AI-CARGFX sprint 6 (2026-09-06) — all five chassis photographed at the gold's viewpoint; rotating out at 6 of 6
+Same headless method (replay, rsusp cam, WG t=3), one frame per chassis, in ~/Documents/260906/ai_cars/:
+| chassis | verdict | parked groups (JM_POSDIAG) |
+|---|---|---|
+| Ferrari | **clean** -- body, wheel, exhausts, no blades | front halves 3908/7368, arms, steering, mirrors, glass |
+| BRM | **clean** (hiding 26116/35320 changes nothing) | same classes |
+| Eagle | blades = parked groups 29108/39200 -- **hidden (interim)**, gate green | |
+| Brabham | a grey blade left of the rear wheel -- **NOT** its parked front halves 5324/10116 (A/B: unchanged) | dash ×5, front halves, arms, steering, mirrors |
+| Cooper | black plates at the rear -- **NOT** its parked front halves 5708/10920 (A/B: unchanged) | dash ×6, front halves, arms, steering, mirrors, dash/knees/windscreen |
+Every chassis parks the same classes (front-suspension halves, driver arms, steering, mirrors,
+dash) -- "parked" means "posed at runtime", not "hidden". The Brabham's and Cooper's blades come from
+UN-parked geometry, i.e. E102's positioner-chaining class (rear-half assemblies composed in the
+wrong local frame), which the Lotus needed S7's per-assembly treatment for. That is the next item's
+first move: `JM_POSDIAG=all` on brabham/coventry, find the rear-half chain, and pose it -- with
+this capture as the eye. AI-CARGFX: 6 sprints, rotating out. Shipped: Eagle interim hide
+(JuliaRacer-x86_64-eagle.AppImage), the capture method, `JM_HIDE_GROUP`/`JM_HIDE_PARKED`/
+`JM_PARK_IDENT`/`GPL3DO.HIDE_GROUPS` instruments, gate `ai_parked_susp_smoke`.
