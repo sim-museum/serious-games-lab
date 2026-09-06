@@ -4824,7 +4824,7 @@ tstamp("  [E80] AI car models begin")
 _ncars = max(N_AI, NETMODE == "" ? 0 : 1)
 # AI-CARGFX S5: per-chassis parked suspension groups that draw as blades at the origin (S447's map,
 # confirmed by A/B capture on the Eagle 2026-09-06). Interim hide; the parity fix is to POSE them.
-const AI_PARKED_SUSP_GROUPS = Dict("eagle" => Set([29108, 39200]), "brm" => Set([26116, 35320]))
+const AI_PARKED_SUSP_GROUPS = Dict("eagle" => Set([29108, 39200]))   # BRM 26116/35320 measured: hiding them changes nothing visible, so they stay
 if !SKIDPAD && _ncars > 0
     for (nm, dir, body, w) in AISPECS[1:_ncars]
         print("  loading AI car: $nm … "); flush(stdout)

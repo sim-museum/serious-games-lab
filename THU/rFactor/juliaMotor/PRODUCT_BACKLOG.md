@@ -9062,3 +9062,6 @@ rear/front suspension drawn at the origin, i.e. a POSING defect, exactly as S1 p
   Eagle 249 tris / BRM 272 tris in those groups, gone with the hide, every other group untouched.
   **Not parity yet** (the gold shows the Eagle's rear suspension posed); S6 = pose those groups
   with the player-Lotus treatment (`susp_inboard`/`_bake_clip`, E75-S8) instead of hiding them.
+- **BRM A/B (2026-09-06)**: `JM_HIDE_GROUP=26116,35320` on the BRM changes nothing visible at the
+  rsusp camera -- no blades on the BRM in the first place. Hiding would only delete geometry the gold
+  may show, so the interim hide is **Eagle-only**; the BRM entry is removed and the gate updated.
