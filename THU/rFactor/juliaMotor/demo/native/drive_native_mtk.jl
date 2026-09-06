@@ -5761,7 +5761,19 @@ function main()
         ref = get(REF_LAP, track, 0.0)
         ref <= 0 || t >= 0.5 * ref
     end
+    # TESTLAP-1 (2026-09-05): a run with NO HUMAN IN IT has no human best. My own off-road autodrive
+    # lap (2:49.443 at Watkins Glen) was banked into human_best.txt and would have preset the PO's
+    # next race to 39% instead of the 60% they asked for. It was a PLAUSIBLE lap, so AISPEED-1's
+    # gate correctly let it through -- the problem is not the lap, it is that a measurement run
+    # writes to the player's personal file at all. This is the mirror of the standing rule that
+    # gates must not READ the player tree: a test that WRITES to it looks exactly like a code
+    # regression on the player's next launch.
+    banking_allowed() = !AUTODRIVE && !SMOKE
     function save_human_best(track, t)
+        if !banking_allowed()
+            println("  (not banking a best lap: this run has no human driver)")
+            return
+        end
         if !plausible_lap(track, t)
             println("  ⚠ not banking an implausible best lap for ", track, ": ", round(t, digits=3),
                     " s (GPL reference ", round(get(REF_LAP, track, 0.0), digits=1), " s)")
@@ -6655,7 +6667,7 @@ function main()
                 # B (PO): pre-fill the AI % from the driver's MOST RECENT race AVERAGE on this track (not the
                 # best lap) — so the field is paced to how you ACTUALLY race, not a one-off hot lap.  Overwrite
                 # (most-recent, not best) with this race's mean lap time.
-                if !isempty(player_laps)
+                if !isempty(player_laps) && banking_allowed()   # TESTLAP-1: see save_human_best
                     avg = sum(player_laps)/length(player_laps)
                     if !plausible_lap(TRACKSEL, avg)
                         println("  ⚠ not banking an implausible race average for ", TRACKSEL, ": ",
