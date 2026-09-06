@@ -403,6 +403,13 @@ function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}
     end
     if get(ENV, "JM_POSDIAG", "") != ""
         println("   [posdiag] placing groups: ", length(ALL_GROUPS), " total, ", length(PARKED_GROUPS), " under a PARK (|d|>5) node")
+        if get(ENV, "JM_POSDIAG", "") == "groups"    # AI-CHAIN-1: EVERY group with its textures and tri count
+            gt = Dict{Int,Dict{String,Int}}()
+            for (t, g) in zip(tris, groups); d = get!(gt, g, Dict{String,Int}()); d[t.tex] = get(d, t.tex, 0) + 1; end
+            for g in sort(collect(keys(gt)))
+                println("   [posdiag]   group ", g, (g in PARKED_GROUPS ? " PARKED" : ""), ": ", join([string(k == "" ? "(untex)" : k, "=", v) for (k, v) in sort(collect(gt[g]))], " "))
+            end
+        end
         for g in sort(collect(PARKED_GROUPS))
             texs = Dict{String,Int}(); for (k,gg) in enumerate(groups); gg == g && (texs[tris[k].tex] = get(texs, tris[k].tex, 0) + 1); end
             println("   [posdiag]   parked group ", g, ": ", join([string(k == "" ? "(untex)" : k, "=", v) for (k,v) in sort(collect(texs))], " "))

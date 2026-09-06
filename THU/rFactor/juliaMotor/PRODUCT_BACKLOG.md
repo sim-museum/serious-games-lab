@@ -9083,3 +9083,10 @@ first move: `JM_POSDIAG=all` on brabham/coventry, find the rear-half chain, and 
 this capture as the eye. AI-CARGFX: 6 sprints, rotating out. Shipped: Eagle interim hide
 (JuliaRacer-x86_64-eagle.AppImage), the capture method, `JM_HIDE_GROUP`/`JM_HIDE_PARKED`/
 `JM_PARK_IDENT`/`GPL3DO.HIDE_GROUPS` instruments, gate `ai_parked_susp_smoke`.
+
+### AI-CHAIN-1 (2026-09-06, from AI-CARGFX S6) — Brabham/Cooper blades: un-parked rear-suspension assemblies
+`JM_POSDIAG=groups` now lists EVERY placing group with textures/tri counts (top-level block = the
+last one printed; sub-parses print their own). Brabham: rear halves 32916/48284 (axlebra, rshok,
+rsusp2-7, rear), untextured pairs 28212/42380 (32 tris) and 32196/46336 (88), 34184 (26); Cooper:
+rear halves 30048/41624 (cshok, csusp2-8, rear), untextured 31852 (44). Four hide A/Bs queued
+(brabham_rs/un, cooper_rs/un) to attribute each chassis's blade to a group before any posing work.
