@@ -8561,6 +8561,25 @@ now preset to **60%**, verified by calling `preset_ai_pct` directly.
 something still credits sub-second and negative laps. Filed below as LAPTIME-1; it is a lap-counting
 defect, not a pace defect, and it would also corrupt results tabs and best-lap displays.
 
+## 🟠 NEW ITEM (found while packaging for the PO, 2026-09-05): TESTLAP-1 — autodrive banks laps into the PLAYER'S best-lap file
+
+Found when checking what was ready for the PO to test. `human_best.txt` held **watglen 169.443 s** —
+which is 2:49.443, the lap MY OFF-ROAD AUTODRIVE RUN drove during OFFROAD-1, at 25 m/s with a 14 m
+lateral offset. It is a plausible lap, so AISPEED-1's new gate correctly let it through, and it
+would have presetting the AI to **39 %** on the PO's next Watkins Glen race instead of the 60 % they
+asked for.
+
+Removed by hand. But the mechanism stands: **a headless measurement run writes into the player's
+personal-best file, which feeds the AI-pace preset.** That is the mirror image of the standing rule
+that gates must not READ the player tree — here a test WROTE to it, and the consequence looks
+exactly like a code regression on the PO's next launch.
+
+**Fix:** `save_human_best` (and the `human_recent.txt` write) should refuse to bank when
+`JM_AUTODRIVE` or `JM_SMOKE` is set — a run with no human in it has no human best. Cheap and
+obviously correct; the only question is whether any existing gate depends on the current behaviour.
+
+**TESTLAP-1: filed, not started.**
+
 ## 🟠 NEW ITEM (found by AISPEED-1, 2026-09-05): LAPTIME-1 — sub-second and NEGATIVE laps are credited
 
 Found while tracing AISPEED-1: `human_best.txt` had banked five impossible laps across five tracks,
