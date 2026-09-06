@@ -8457,3 +8457,48 @@ from this centreline, so it improves all three at once — and unlike sprint 1's
 makes the TRACK smoother, which is the PO's actual ask.
 
 **TRACKSMOOTH-1: 2 sprints.**
+
+### TRACKSMOOTH-1 sprint 3 — rouen's remaining kink is a REAL HAIRPIN. Do not smooth it away.
+
+Sprint 2 left rouen barely improved (13.03° → 12.60°) and flagged it as a second, different defect.
+**Measured, and it is not a defect at all.** The six worst nodes are CONSECUTIVE (609-614, 28 % round,
+s ≈ 1824-1839 m), which is the signature of a corner rather than a bad joint. Walking the corner out:
+
+    corner spans nodes 601..615 (15 nodes, 41.9 m of arc)
+    total turn 170.2 deg -> implied radius 14.1 m
+    nodes >5 deg on the whole circuit: 39 of 2175 (1.79%)
+
+**170° in 42 m at a 14 m radius is the Nouveau Monde hairpin.** At a uniform 3 m resampling, 12.5° per
+segment is simply what a 14 m radius *is* — the geometry is correct and the number is the honest
+consequence of the sampling interval, not damage. **Smoothing it would flatten a real corner**, which
+is precisely the failure the AI-skittering work already paid for once (a tanh band that looked like a
+win on a smoothness metric while collapsing apex depth from 3.000 m to 0.909 m).
+
+So the per-node turn is the wrong acceptance metric on its own: it cannot distinguish a broken joint
+from a tight corner. **The ranking is what separates them** — a defect is one or two isolated nodes
+far above their neighbours (watglen's closure: 103° next to 2.24°), a corner is a run of similar
+values.
+
+## Where AI-YAW stands with all three changes in
+
+Car at 45 m/s, shipped-before vs now (loop closure + subdiv 20 + approximating tangent):
+
+| track | max \|yaw rate\| rad/s | max yaw-rate JUMP rad/s |
+|---|---|---|
+| watglen | **5.23 → 1.17** | **3.897 → 0.142** |
+| rouen | 3.41 → 3.26 | **3.133 → 0.542** |
+| monza | **5.21 → 0.55** | **4.120 → 0.100** |
+
+**Worst-case yaw-rate discontinuity is down 27x on watglen and 41x on monza**, and rouen's peak yaw
+rate stays at 3.26 rad/s because a 14 m hairpin at racing speed genuinely requires it — the car is
+turning hard there, smoothly.
+
+## What remains for the PO's "smoothly curving tracks"
+
+The centreline is still resampled at a **uniform** 3 m. That is plenty on straights and coarse
+through a 14 m-radius hairpin, where it costs 12.5° per segment of visible faceting. **Curvature-
+adaptive resampling** — shorter segments where the radius is small — is the remaining work for the
+drawn ribbon, and it is a rendering improvement rather than an AI one, since the AI heading is now
+taken from an approximating tangent that already spans the facets.
+
+**TRACKSMOOTH-1: 3 sprints. AI-YAW met and re-measured; track rendering has one named next step.**

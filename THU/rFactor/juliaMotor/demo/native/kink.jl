@@ -2,11 +2,11 @@ include("gpldat.jl"); using .GPLDat; include("gpltrack.jl"); using .GPLTrack
 include("ai.jl"); using .RaceAI
 using Printf
 wrapp(a) = atan(sin(a), cos(a))
-name="watglen"; T="/home/admin/sgl-julia-racer/THU/WP/drive_c/Sierra/GPL/tracks/"*name
+name=get(ENV,"TRACK","watglen"); T="/home/admin/sgl-julia-racer/THU/WP/drive_c/Sierra/GPL/tracks/"*name
 dat=first(filter(f->lowercase(basename(f))==lowercase(name)*".dat", joinpath.(T,readdir(T))))
 d=GPLDat.parse_dat(dat); key=first(filter(k->endswith(lowercase(k),".trk"), collect(keys(d))))
 tmp=tempname()*".trk"; write(tmp,d[key])
-for sd in (5,60)
+for sd in (20,)
     line = RaceAI.build_line(GPLTrack.trk_centreline(tmp; subdiv=sd), (x,z)->0.0)
     n=length(line.x)
     turn=[abs(wrapp(line.θ[i%n+1]-line.θ[i])) for i in 1:n]
