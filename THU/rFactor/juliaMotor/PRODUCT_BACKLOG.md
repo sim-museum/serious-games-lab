@@ -7010,6 +7010,30 @@ v7 (1 m sample grid, so a 0.74 m overlap like house36 cannot slip between sample
 result line) is running; the gate `road_clear_smoke.jl` asserts `inside=0` for Spa and 0 terrain
 anomalies for the Ring and is registered in `gates.sh`.
 
+### ROAD-1 S4 (14:15) — the car has a shape; Spa: zero objects standing on the road; full gate suite 37/37
+
+**S4, the car footprint.** Contact used one 1.4 m circle around the CG (`CARHALF`): 0.45 m wider
+than a Lotus 49 and 0.6 m short of its nose. `car_gap` is now a two-circle CAPSULE (radius 0.95 m
+at ±1.05 m along the heading = 4.0 x 1.9 m), used by the player contact law, the AI kinematic hit
+and the census; `JM_CAR_CIRCLE=1` restores the circle. Penetration is `-gap` everywhere.
+**Rule fixes found by the census on the way:** the "thin barrier" exemption from the tarmac check
+must be the census's own 0.5 m (a 0.5-1.0 m-deep part -- house36's wall slab, a bush row -- was
+exempt in one and counted in the other; v6-v9's three survivors all lived in that gap); the disc
+shrink needs a 0.1 m margin; a dropped solid needs a large NEGATIVE radius (r = 0 still "touches"
+a 0.95 m circle at its origin -- v10 brought the shrunk-away parked cars back).
+
+| Spa census | result |
+|---|---|
+| v11 (capsule, corrected metrics) | **objects standing on the road (car centre inside a solid): 0** -- the PO's acceptance; capsule brushes at the road edge: 17 (parked cars and bush rows at Stavelot s≈10780-10830 and Masta s≈5220-5250, standing 0-0.8 m from apron tarmac inside the corridor); thin edge barriers: 79 |
+| Ring | `JM_SWEEP=4`: 0 terrain anomalies / 22.8 km (no object solids exist there) |
+
+**Gates:** the whole suite ran against the capsule (`gates.sh`, 37 gates, ~40 min with two
+censuses sharing the CPU): 36 PASS on the first run incl. `road_clear_smoke` (Spa inside=0, Ring
+0 anomalies) and `netai_smoke` (the MP-5 sim arms); `solid_box_smoke` failed only its two
+SOURCE checks (they asserted the pre-S4 text) and passes with them rewritten for the capsule.
+**Left (S5):** ship it (repack), and the PO's drive; the 17 edge brushes are GPL's own placements
+on the aprons -- if one of them feels wrong on the road, the census names it by lap distance.
+
 **Sprint plan.** S1: the sweep tool + first census (expect hits; that is the list). S2-S4: fix each
 named object (footprint, dedup, or a genuine off-road object leaking onto the ribbon). S5: the gate
 green on both tracks, registered in `gates.sh`, shipped in the AppImage.

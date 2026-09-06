@@ -23,7 +23,14 @@ gb, _, _ = box_gap(5.5, 0.0, 0.0, 0.0, hx, hz, 0.0); gd, _, _ = disc_gap(5.5, 0.
 pass(gb < 0 && gd > 0, "house28 long side: at 5.5 m the disc is clear, the box is hit", @sprintf("box %.1f disc %.1f", gb, gd))
 # the sim wiring
 SRC = read(joinpath(@__DIR__, "..", "..", "demo", "native", "drive_native_mtk.jl"), String)
-pass(count(x -> true, eachmatch(r"solid_gap\((x|wx), (z|wz), k\)", SRC)) == 3, "all three SOLIDS consumers go through solid_gap", "source check")
-pass(occursin("push!(SOLIDBOX, if r >= 5.0", SRC), "buildings get a mesh-footprint box", "source check")
+# ROAD-1 S4 (2026-09-06): the player and the AI go through car_gap (the two-circle capsule, which
+# calls solid_gap at the front and rear circle); the wheel-detach path still probes a point.
+pass(count(x -> true, eachmatch(r"= car_gap\(x, z, θ, k\)", SRC)) == 2, "player + AI contact go through car_gap (capsule)", "source check")
+pass(count(x -> true, eachmatch(r"solid_gap\(wx, wz, k\)", SRC)) == 1, "the wheel-detach probe goes through solid_gap", "source check")
+pass(occursin("solid_gap(x + CARLF*cθ, z + CARLF*sθ, k)", SRC) && occursin("solid_gap(x - CARLF*cθ, z - CARLF*sθ, k)", SRC),
+     "the capsule tests both circles", "source check")
+# ROAD-1 S3: every meshed solid gets its footprint box (threshold JM_SOLID_BOX_R, default 1.2 m)
+pass(occursin("if r >= parse(Float64, get(ENV, \"JM_SOLID_BOX_R\", \"1.2\")) && haskey(lxmn, i.name)", SRC), "meshed solids get a mesh-footprint box", "source check")
+pass(occursin("function box_covers_tarmac", SRC) && occursin("function disc_clear_radius", SRC), "no fat box or disc may cover corridor tarmac (ROAD-1)", "source check")
 println(fails == 0 ? "SOLID-BOX GATE: PASS" : "SOLID-BOX GATE: FAIL ($fails)")
 exit(fails == 0 ? 0 : 1)

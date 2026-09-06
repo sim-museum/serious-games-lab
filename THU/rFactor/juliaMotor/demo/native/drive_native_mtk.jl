@@ -343,11 +343,30 @@ SOLIDBOX = Union{Nothing,NTuple{3,Float64}}[]
     b = k <= length(SOLIDBOX) ? SOLIDBOX[k] : nothing
     b === nothing ? disc_gap(px, pz, ox, oz, r) : box_gap(px, pz, ox, oz, b[1], b[2], b[3])
 end
+# ROAD-1 S4 (2026-09-06): THE CAR HAS A SHAPE. Contact used one circle of CARHALF = 1.4 m around
+# the CG -- 0.45 m wider than a Lotus 49 (1.85 m) and 0.6 m shorter than its nose (2.0 m). The Spa
+# census (v7) showed 34 parked cars and bushes at Stavelot/Masta "reachable" only through that
+# extra 0.45 m of side reach. A two-circle CAPSULE -- radius CARW at ±CARLF along the heading --
+# is a 4.0 x 1.9 m footprint: sides at 0.95 m, nose/tail at 2.0 m. `car_gap` returns the gap
+# from the CAR'S BOUNDARY (≤ 0 = touching/penetrating) and the normal at the deeper circle, so
+# every caller tests `gap >= 0` and uses `-gap` as penetration. JM_CAR_CIRCLE=1 restores the circle.
+const CARW  = parse(Float64, get(ENV, "JM_CARW",  "0.95"))    # capsule radius = car half-width (m)
+const CARLF = parse(Float64, get(ENV, "JM_CARLF", "1.05"))    # circle centres fore/aft of the CG (m)
+const CAR_CIRCLE = get(ENV, "JM_CAR_CIRCLE", "0") != "0"
+@inline function car_gap(x, z, θ, k)
+    if CAR_CIRCLE
+        (g, nx, nz) = solid_gap(x, z, k); return (g - CARHALF, nx, nz)
+    end
+    cθ = cos(θ); sθ = sin(θ)
+    (gf, nfx, nfz) = solid_gap(x + CARLF*cθ, z + CARLF*sθ, k)
+    (gr, nrx, nrz) = solid_gap(x - CARLF*cθ, z - CARLF*sθ, k)
+    gf <= gr ? (gf - CARW, nfx, nfz) : (gr - CARW, nrx, nrz)
+end
 function solid_hit(x, z, θ, v)
     v < 1.2 && return nothing
     @inbounds for k in eachindex(SOLIDS)
-        (gap, nx, nz) = solid_gap(x, z, k)                # SOLID-BOX: disc or oriented box
-        gap >= CARHALF && continue
+        (gap, nx, nz) = car_gap(x, z, θ, k)               # S4: gap from the car's capsule (≤ 0 = contact)
+        gap >= 0.0 && continue
         (ox, oz) = SOLIDS[k]; dx = x - ox; dz = z - oz    # offsets for the side/along tests below
         vn = v*cos(θ)*nx + v*sin(θ)*nz                    # car speed along it (<0 = driving INTO the object)
         vn >= -0.3 && continue                            # not closing on it
@@ -409,13 +428,13 @@ function solid_contact(x, z, θ, v, dt)
     closing = 0.0     # E99: peak closing speed along a NON-HEDGE contact normal (m/s)
     @inbounds for k in eachindex(SOLIDS)
         kind = SOLIDS[k][4]
-        (gap, nx, nz) = solid_gap(x, z, k)                # SOLID-BOX: disc or oriented box
-        gap >= CARHALF && continue
+        (gap, nx, nz) = car_gap(x, z, θ, k)               # S4: gap from the car's capsule (≤ 0 = contact)
+        gap >= 0.0 && continue
         vn = WVX[]*nx + WVZ[]*nz                          # E96-S2: TRUE world velocity along the outward
                                                           # normal (<0 = into it). Was v*cos/sin(θ),
                                                           # which is unsigned and so never reported
                                                           # retreat -- see update_world_velocity!.
-        (fx, fy, mz) = DriveRT3D.contact_force(CARHALF - gap, nx, nz, vn, θ; kind = kind, dt = dt)
+        (fx, fy, mz) = DriveRT3D.contact_force(-gap, nx, nz, vn, θ; kind = kind, dt = dt)      # penetration = -gap
         Fx += fx; Fy += fy; Mz += mz; peak = max(peak, hypot(fx, fy))
         kind === :soft || (hardpk = max(hardpk, hypot(fx, fy)))
         # E99 (PO 2026-08-30: "a graze at speed should scrub you but not end your race"): keep the
@@ -3701,9 +3720,12 @@ let objnames=Set{String}()
         # v6: only a FAT box can be an invisible wall. A thin one (a barrier, min half-extent
         # < 1 m) standing on the concrete edge strip is GPL's own armco at the road edge -- v5
         # rejected 168 of them and sent them back to discs that spill further onto the road.
-        min(hx, hz) < 1.0 && return false
+        # v10: the exemption must match the census's own "thin" (0.5 m): a 0.5-1.0 m-deep part
+        # (house36's wall slab, a bush row) was exempt here yet counted there -- the survivors of
+        # v6-v9 all lived in that gap.
+        min(hx, hz) < 0.5 && return false
         c = cos(ψ); sn = sin(ψ)
-        nx = max(2, ceil(Int, 2hx)); nz = max(2, ceil(Int, 2hz))    # v7: ~1 m grid (2 m let a 0.74 m overlap through: house36)
+        nx = max(3, ceil(Int, 5hx)); nz = max(3, ceil(Int, 5hz))    # v8: ~0.4 m grid (1 m still let house36's 0.74 m strip through)
         for ix in 0:nx, iz in 0:nz
             lx = -hx + 2hx*ix/nx; lz = -hz + 2hz*iz/nz
             px = cx + c*lx + sn*lz; pz = cz + sn*lx - c*lz
@@ -3724,13 +3746,13 @@ let objnames=Set{String}()
     function disc_clear_radius(ox, oz, r)
         (ROADHAT === TERRAIN0 || get(ENV, "JM_SOLID_ROADCHECK", "1") == "0") && return r
         best = r
-        n = max(2, ceil(Int, 2r))                                   # v7: ~0.5 m grid
+        n = max(3, ceil(Int, 5r))                                   # v8: ~0.2 m grid
         for ix in -n:n, iz in -n:n
             px = ox + r*ix/n; pz = oz + r*iz/n
-            d = hypot(px - ox, pz - oz); d >= best && continue
+            d = hypot(px - ox, pz - oz) - 0.1; d >= best && continue      # v10: 0.1 m margin (arm_sf0 sat at -0.05)
             if JuliaMotor.hat3d(ROADHAT, px, pz; ref = Inf)[3]
                 hr = JuliaMotor.hat(TRKSURF, px, pz)
-                (hr.found && hr.on_track) && (best = d)
+                (hr.found && hr.on_track) && (best = max(d, 0.0))
             end
         end
         best
@@ -3879,7 +3901,11 @@ let objnames=Set{String}()
             if r2 < r - 0.05
                 push!(_discshr, string(k <= length(SOLIDNAMES) ? SOLIDNAMES[k] : "?", "@", round(Int, ox), ",", round(Int, oz),
                                        " ", round(r, digits=1), "→", round(max(r2, 0.0), digits=1)))
-                SOLIDS[k] = (ox, oz, r2 < 0.5 ? 0.0 : r2, kd)     # r=0: never within CARHALF of anything → inert
+                # v12: a dropped solid must be INERT for the capsule too -- with r = 0 a 0.95 m car
+                # circle still "contacts" the bare origin (v10 brought the shrunk-away parked cars
+                # back). A large negative radius makes every gap positive for every caller and the
+                # census prefilter (`> r + 40`) skips it outright.
+                SOLIDS[k] = (ox, oz, r2 < 0.5 ? -1000.0 : r2, kd)
             end
         end
     end
@@ -5838,9 +5864,10 @@ function main()
     if get(ENV, "JM_ROADSWEEP", "") != "" && CLINE !== nothing
         step = (v = tryparse(Float64, get(ENV, "JM_ROADSWEEP", "")); v === nothing || v <= 0 ? 2.0 : v)
         println("\n==== JM_ROADSWEEP ", uppercasefirst(TRACKSEL), "  (step=", step, " m, lateral 0.5 m, ",
-                length(SOLIDS), " solids, ", count(!isnothing, SOLIDBOX), " boxed, CARHALF=", CARHALF, ") ====")
+                length(SOLIDS), " solids, ", count(!isnothing, SOLIDBOX), " boxed, car=",
+                CAR_CIRCLE ? "circle $(CARHALF)" : "capsule $(CARW)x±$(CARLF)", ") ====")
         ctrl = if isempty(SOLIDS); false
-               else (g, _, _) = solid_gap(SOLIDS[1][1], SOLIDS[1][2], 1); g < CARHALF end
+               else (g, _, _) = car_gap(SOLIDS[1][1], SOLIDS[1][2], 0.0, 1); g < 0.0 end
         println("  control: a probe at solid #1's centre reads as a hit -> ", ctrl ? "yes" : "NO (instrument blind)")
         # "On the road" = the TARMAC, not the sim's 9 m TrackSurface corridor: the first Spa census
         # (corridor) listed 331 objects, nearly all at |lat| 8-11.5 m -- grandstands, shrubs and
@@ -5853,6 +5880,7 @@ function main()
         hits  = Dict{String,Tuple{Int,Float64,Float64,Float64}}()   # tarmac: name → (count, worst gap, s, lat)
         verge = Dict{String,Int}()                                    # corridor-only hits, for context
         edge  = Dict{String,Int}()                                    # thin barriers at the road edge (v6)
+        inside = Dict{String,Tuple{Int,Float64}}()                    # car centre inside the solid (v11)
         s = 0.0
         while s <= CLINE.total
             for lat in -14.0:0.5:14.0
@@ -5874,8 +5902,9 @@ function main()
                 @inbounds for k in eachindex(SOLIDS)
                     (ox, oz, r, _) = SOLIDS[k]
                     hypot(ox - qx, oz - qz) > r + 40.0 && continue
-                    (gap, _, _) = solid_gap(qx, qz, k)
-                    gap >= CARHALF && continue
+                    (gapc, _, _) = solid_gap(qx, qz, k)            # centre point: "standing on the road" if < 0
+                    (gap, _, _)  = car_gap(qx, qz, q[4], k)        # S4: the car's capsule along the road heading
+                    gap >= 0.0 && continue
                     ontar = fits                     # an edge-strip point with no room for the car counts as verge
                     nm = k <= length(SOLIDNAMES) ? SOLIDNAMES[k] : "solid#$k"
                     key = string(nm, "@", round(Int, ox), ",", round(Int, oz))
@@ -5886,6 +5915,9 @@ function main()
                     elseif ontar
                         old = get(hits, key, (0, Inf, 0.0, 0.0))
                         hits[key] = (old[1] + 1, min(old[2], gap), gap < old[2] ? s : old[3], gap < old[2] ? lat : old[4])
+                        # v11: "standing ON the road" = the car's CENTRE inside the solid (an object on the
+                        # tarmac), tracked apart from the capsule brush -- v9 folded the two together.
+                        gapc < 0.0 && (oc = get(inside, key, (0, Inf)); inside[key] = (oc[1] + 1, min(oc[2], gapc)))
                     else
                         verge[key] = get(verge, key, 0) + 1
                     end
@@ -5900,8 +5932,11 @@ function main()
                     " m  at s=", round(Int, hs), " lat=", hl)
         end
         println("  edge barriers (thin, scrape-able, not counted): ", length(edge))
-        ninside = count(kv -> kv[2][2] < 0.0, hits)               # the car's CENTRE inside the solid: an object standing on the road
-        println("  objects standing ON the road (worst gap < 0): ", ninside)
+        ninside = length(inside)
+        println("  objects standing ON the road (car centre inside, ", ninside, "):")
+        for (key, (n, g)) in sort(collect(inside); by = kv -> kv[2][2])
+            println("    ", rpad(key, 28), " hits=", lpad(n, 4), "  centre gap=", round(g, digits = 2), " m")
+        end
         println("ROADSWEEP_RESULT track=", TRACKSEL, " solids_on_road=", length(hits), " inside=", ninside, " edge_barriers=", length(edge), " verge_only=", length(verge),
                 " tarmac_pred=", tarmac_hat ? "roadhat" : "corridor", " control=", ctrl ? "ok" : "blind")
         flush(stdout); exit(0)
