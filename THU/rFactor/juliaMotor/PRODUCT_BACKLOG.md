@@ -9116,3 +9116,10 @@ of the wheel. `JM_AI_REAR_HIDE=1` = the S1 interim, `JM_AI_PARKED_SUSP=1` = raw.
   JuliaRacer-x86_64-aipose.AppImage (replaces -aicars). AI-CHAIN-1: 2 sprints, closed. Remaining
   parity gaps on AI cars are now the ordinary E78 gold-vs-ours appearance class, with the headless
   rsusp capture as the eye.
+- **E81 matched-viewpoint check (2026-09-06 07:33)**: our cockpit view ~140 m before S/F (JM_SHOTS
+  22700:0) stacked against the GPL grid frame (`ring_startfinish/gold_vs_ours_grid_cockpit.png`).
+  Same structures in the same places: timing tower ahead-left, grandstand left, pit wall right, and
+  on the right the tall DUNLOP/REIFEN/SHELL advertising pylon -- i.e. the "vertical logo column" is a
+  real Ring landmark, not a UV defect. What differs is banner rows and wall art (GPL: Continental /
+  Bosch / Castrol boards along the pit wall; ours: bare wall) and the cockpit cowl colour (E106).
+  E81 as a PLACEMENT item is closed by measurement; the remaining gap is E78 appearance.
