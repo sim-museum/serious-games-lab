@@ -8358,3 +8358,54 @@ and it would also flatten genuine cornering. **Fix the geometry:**
 and it should improve how the track LOOKS as well as how the AI drives on it.
 
 **TRACKSMOOTH-1: filed with the root cause confirmed. AI-YAW should be worked through this item.**
+
+### TRACKSMOOTH-1 / AI-YAW — ⭐ FIXED: the AI's heading now comes from an approximating tangent
+
+**Result, all three tracks, car at 45 m/s (`demo/native/ai_yaw_probe.jl`):**
+
+| track | max \|yaw rate\| rad/s | max yaw-rate JUMP rad/s | frames jumping >1 rad/s |
+|---|---|---|---|
+| watglen | **5.23 → 1.55** | **3.897 → 0.824** | **62 (1.24 %) → 0** |
+| rouen | 3.41 → 3.23 | **3.133 → 0.521** | **34 (0.39 %) → 0** |
+| monza | **5.21 → 0.89** | **4.120 → 0.680** | **59 (0.77 %) → 0** |
+
+**Zero frames on any track now change yaw rate by more than 1 rad/s**, against 155 before. Peak yaw
+rate drops from 5.23 rad/s (300°/s — a spin, not cornering) to 1.55. That is the PO's constraint,
+*"AI cars must not be allowed to make discontinuous yaw changes"*, met as a measured bound rather
+than an adjective.
+
+## ⛔ The first attempt made it WORSE, and the A/B is why that is known
+
+A Catmull-Rom spline through the nodes was the obvious fix and it is the wrong one:
+
+| | watglen max jump | frames >1 rad/s | peak \|yaw rate\| |
+|---|---|---|---|
+| shipped segment lerp | 3.897 | 62 | 5.23 |
+| **Catmull-Rom** | **4.406** | **133** | **9.01** |
+
+**Catmull-Rom INTERPOLATES — it passes through every node — so a 21° kink in the node POSITIONS
+makes the curve overshoot instead of smoothing it.** The kink is in the geometry, not merely in how
+the tangent is read, so every interpolating scheme inherits and amplifies it. Kept behind
+`JM_CATMULL_TANGENT=1` as a recorded dead end rather than deleted, because it is the first thing the
+next reader will reach for.
+
+## What actually works
+
+An **approximating** tangent: read the heading from a chord spanning `JM_TANGENT_SPAN` nodes either
+side of the car (default **3**, i.e. ±9 m on a 3 m-resampled line), interpolated about the car's own
+fractional position so it also advances smoothly *within* a segment. It low-passes the kink **without
+moving the line the cars drive** — positions are untouched, so apex depth and the `JM_SOFT_BAND`
+racing line are unaffected by construction. `JM_TANGENT_SPAN=0` or `JM_SEGMENT_TANGENT=1` restores
+the old behaviour exactly.
+
+Span 6 is smoother still (max jump 0.402) but 3 already reaches zero violations, so the default is
+the *least* intervention that meets the bound.
+
+## What this does NOT do
+
+It fixes **how the cars are pointed**. It does **not** make the TRACK smooth — the centreline is
+still a 3 m polyline, and the PO's second ask ("match julia tracks to GPL's smoothly curving tracks")
+is about rendered geometry and is still open. This item stays open for that; AI-YAW's acceptance is
+met.
+
+**TRACKSMOOTH-1: 1 sprint. AI-YAW's numeric acceptance met; track geometry still to do.**

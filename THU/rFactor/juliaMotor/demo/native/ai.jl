@@ -17,6 +17,61 @@ end
 
 wrapπ(a) = a > π ? a - 2π : a < -π ? a + 2π : a
 
+# S-skitter: soft band saturation instead of the hard road-width clamp. Read once at module scope
+# (not per node) so the 1251x600 inner loop does not call getenv two million times.
+# DEFAULT ON as of S-skitter S4: measured on three tracks (watglen 110->32 curvature reversals,
+# rouen 124->48, monza 66->28) while keeping ~80% of the apex depth. JM_SOFT_BAND=0 reverts to the
+# hard clamp exactly.
+# AI-GOLD: look-ahead braking instead of adopt-the-corner-speed-on-sight. Opt-in until it is
+# measured against the gold lap; the acceptance test is that it approaches 66.9 s at Watkins Glen
+# with amax LEFT AT ITS SHIPPED 11.0 -- a fix that needs amax raised is not this fix.
+# DEFAULT ON: measured at the SHIPPED amax=11.0 -- watglen 84.07 -> 74.20 s, monza 113.82 -> 102.68 s,
+# and the grip needed to reach the gold lap falls from an impossible 2.45 g to a plausible 1.43 g.
+# JM_VT_BRAKE=0 restores the old adopt-on-sight rule exactly.
+# AI-GOLD: the AI's lateral-grip anchor. The PO's standing rule is that car physics comes from the
+# .ibt telemetry, so this is a Ref to be SET from measured data at startup (see set_anchor_from_ibt!
+# and its caller in drive_native_mtk.jl), not a tuned constant. The fallback below is the value the
+# gold Lotus 49 telemetry actually measured -- lateral p99 over a Nordschleife lap, corroborated by
+# the steady-state skidpad file's p95 (11.74 vs 11.80, agreeing to 0.5%) -- used only when no .ibt
+# is reachable. JM_AI_AMAX overrides for experiments.
+# AI-GOLD: the AI's TOP-SPEED anchor, set at startup from the drivetrain (see jm_vmax_from_ibt!
+# in drive_native_mtk.jl). Derived, not observed: the gold .ibt has no high-speed circuit -- its
+# Nordschleife laps top out at 59-63 m/s because that track never asks for more -- so observing
+# speed would understate the car badly. The rev LIMIT is gear-independent, so it yields top-gear
+# terminal speed from any track. Fallback is the drivetrain figure measured from the gold files
+# (rev limit 9566 rpm through GEARS[end]=0.916 and FINAL=4.11 at RW_R=0.33).
+# JM_AI_VMAX overrides for experiments.
+const VMAX = Ref(something(tryparse(Float64, get(ENV, "JM_AI_VMAX", "")), 87.8))
+"""Set the AI top-speed anchor [m/s]. Rejects implausible values: the fallback must win over a
+   bad derivation rather than produce a car that does 900 km/h or 40 km/h."""
+function set_vmax_from_drivetrain!(v::Real)
+    if !(isfinite(v) && 40.0 <= v <= 130.0)
+        @warn "AI vmax anchor $(v) m/s outside the plausible 40-130 range -- keeping $(VMAX[])"
+        return VMAX[]
+    end
+    VMAX[] = float(v)
+end
+const AMAX = Ref(something(tryparse(Float64, get(ENV, "JM_AI_AMAX", "")), 13.67))
+"""Set the AI grip anchor from measured telemetry. `g` is metres/s^2.
+   Ignores implausible values: a raw .ibt PEAK is a kerb strike (measured 55.7 m/s2 = 5.68 g on a
+   clean lap), so a caller passing a peak instead of a percentile must not silently produce a car
+   that corners at five g."""
+function set_anchor_from_ibt!(g::Real)
+    if !(isfinite(g) && 5.0 <= g <= 25.0)
+        @warn "AI grip anchor $(g) m/s2 is outside the plausible 5-25 range -- keeping $(AMAX[])"
+        return AMAX[]
+    end
+    AMAX[] = float(g)
+end
+const VT_BRAKE = Ref(get(ENV, "JM_VT_BRAKE", "1") != "0")
+# deceleration used for that lookahead. step! brakes at 30 m/s2 (hardcoded there, and notably NOT
+# derived from amax); keep the two consistent and tunable together.
+const BRAKE_A  = Ref(something(tryparse(Float64, get(ENV, "JM_BRAKE_A", "30.0")), 30.0))
+const SOFT_BAND = Ref(get(ENV, "JM_SOFT_BAND", "1") != "0")
+# fraction of the band that stays perfectly linear (no contraction); only beyond it does the
+# saturation bend. Tunable so the smoothness/apex trade-off can be swept rather than guessed.
+const SOFT_KNEE = Ref(something(tryparse(Float64, get(ENV, "JM_SOFT_KNEE", "0.7")), 0.7))
+
 "Build an AI racing line from centreline points `pts` (each (x,z) in physics frame)
 and a `groundz(x,z)->y` elevation function.  Resamples to ~`spacing` m so tight corners are
 well-represented (a coarse line is a polygon that the AI chord across = corner-cutting) and
@@ -55,12 +110,58 @@ function build_line(pts, groundz; spacing = 3.0, halfwidth = 3.0)   # E16: racin
     # corners (low κ) keep the full band.  Smoothed so the line stays continuous.
     hwκ = [halfwidth * (1.0 - 0.5*clamp((κ0[i]-0.018)/0.045, 0.0, 1.0)) for i in 1:n]
     hw  = similar(hwκ); for i in 1:n; a=0.0; for d in -3:3; a += hwκ[mod(i-1+d,n)+1]; end; hw[i]=a/7; end
+    # S-skitter: the widened-band experiment, as an env knob so it is A/B-able and reversible.
+    # The standing hypothesis is that the AI's twitch comes from the relaxation fighting this
+    # curvature-tapered clamp: every iteration the smoother pulls a node inward and the clamp shoves
+    # it back to the band edge, so the "racing line" is really a sequence of edge-pinned nodes.
+    # JM_HW_SCALE=10 effectively removes the clamp without deleting it. If the skitter SURVIVES a
+    # 10x band, the clamp is not the cause and this whole line of investigation is wrong -- which is
+    # the outcome worth knowing, and the reason to run it before writing any smoothing code.
+    let hs = get(ENV, "JM_HW_SCALE", "1")
+        f = something(tryparse(Float64, hs), 1.0)
+        if f != 1.0
+            hw .*= f
+            @info "AI corridor: JM_HW_SCALE=$f applied (halfwidth band scaled)"
+        end
+    end
+    pinned = falses(n)          # JM_CLAMP_DIAG: nodes the road-width clamp pinned to the edge
     for _ in 1:600
         for i in 1:n
             p = mod(i-2, n)+1; q = i % n + 1
             mx = 0.5*(rx[p]+rx[q]); mz = 0.5*(rz[p]+rz[q])
             rx[i] += 0.25*(mx-rx[i]); rz[i] += 0.25*(mz-rz[i])
-            off = clamp((rx[i]-x[i])*nx[i] + (rz[i]-z[i])*nz[i], -hw[i], hw[i])   # stay on the road (curvature-tapered band)
+            offraw = (rx[i]-x[i])*nx[i] + (rz[i]-z[i])*nz[i]
+            # S-skitter FIX (JM_SOFT_BAND=1): the hard clamp is the measured source of the AI's
+            # twitch. It is a non-differentiable projection applied INSIDE a 600-iteration smoothing
+            # loop: the smoother pulls a node inward, the clamp shoves it back to the band edge, and
+            # neighbouring nodes flip on different iterations, so the line acquires a sawtooth
+            # exactly where curvature is highest. Measured: 110 curvature reversals per lap with the
+            # clamp, 16 with the band widened 10x (hw_rough_probe.jl).
+            # tanh saturates SMOOTHLY and is bounded by hw just as strictly as clamp() is
+            # (|tanh| < 1 always), so the apex still cannot reach the grass -- which is the whole
+            # reason the band exists. Widening the band is NOT an acceptable fix.
+            # A PLAIN tanh IS WRONG HERE and the first attempt proved it: tanh has slope < 1
+            # EVERYWHERE, so inside a 600-iteration loop it multiplies every offset by a factor
+            # below one, over and over. Measured: max|rl| collapsed 3.000 m -> 0.909 m -- smooth,
+            # but the out-in-out apexes were gone and the AI was driving near the centreline.
+            # Saturate only NEAR THE EDGE instead: identity below knee*hw (so the interior of the
+            # band is untouched and nothing contracts), smoothly bending to the asymptote hw beyond
+            # it. Still strictly bounded by hw, still C1 at the knee.
+            off = if SOFT_BAND[]
+                a = SOFT_KNEE[] * hw[i]
+                if abs(offraw) <= a
+                    offraw
+                else
+                    sign(offraw) * (a + (hw[i] - a) * tanh((abs(offraw) - a) / max(hw[i] - a, 1e-6)))
+                end
+            else
+                clamp(offraw, -hw[i], hw[i])   # stay on the road (curvature-tapered band)
+            end
+            # JM_CLAMP_DIAG: remember whether THIS node was pinned to the band edge. Recorded at the
+            # point of the clamp, not reconstructed afterwards -- a reconstruction could describe a
+            # different clamp than the one that ran, which is the error this investigation has
+            # already made twice (see the AI-skittering addendum in PRODUCT_BACKLOG.md).
+            pinned[i] = (offraw != off)
             rx[i] = x[i] + off*nx[i]; rz[i] = z[i] + off*nz[i]
         end
     end
@@ -93,8 +194,75 @@ function build_line(pts, groundz; spacing = 3.0, halfwidth = 3.0)   # E16: racin
         κr[i] = abs(wrapπ(θr[j]-θr[i])) / ds
     end
     κ = zeros(n)
-    for i in 1:n
-        a = 0.0; for d in -2:2; a += κr[mod(i-1+d, n)+1]; end; κ[i] = a/5
+    if get(ENV, "JM_KAPPA_ARC", "0") == "1"
+        # E89 / PO 2026-09-04 ("AI cars nervous, skitter from one side to the other" at Watkins
+        # Glen). kappa above is dtheta/ds to the NEXT NODE, and the smoothing below averages a
+        # fixed number of NODES. Both are node-based, so where the centreline's nodes bunch up the
+        # denominator shrinks and kappa spikes however smooth the line actually is -- the
+        # node-spacing hypothesis recorded in E84-S5, which the lateral second-difference clamp
+        # (JM_SHIFT_CLAMP) failed to fix because it treats the line, not the sampling.
+        # Measured on this track: the 20 highest-|kappa| nodes sit a median 3.0 m apart against a
+        # 6.3 m nominal sample spacing, and 78 of 599 vtarget samples step by more than 10 m/s
+        # (max 57 m/s over 6.3 m). That step IS the lunge-and-fall-back.
+        # Take the angle difference over a FIXED ARC LENGTH instead, so node bunching cannot
+        # inflate it. The comment above already claimed a "~9 m window"; this makes it true.
+        #
+        # ⛔ DEFAULT OFF, ON EVIDENCE (2026-09-04). Measured A/B on one binary, Watkins Glen,
+        # the track the PO reported:
+        #             local |dv| p90   local >10 m/s   horizon >10 m/s   horizon p90   speed cost
+        #   node (current)   16.08          78/599          10/599          0.257        19.1 m/s
+        #   arc  (this)      20.55          87/599           8/599          0.151        20.3 m/s
+        # The HORIZON target is the one the AI actually drive on (maxκ over a 150 m lookahead) and
+        # it barely moves: 10 -> 8 steps out of 599. The LOCAL target gets clearly WORSE, and the
+        # horizon max is unchanged at ~49 m/s. So node spacing is NOT the whole story behind the
+        # kappa spikes -- making the derivative distance-correct does not remove them, which is
+        # evidence AGAINST the node-spacing hypothesis in E84-S5, not for it.
+        # Kept opt-in rather than deleted because the measurement is the useful part: the next
+        # reader can rerun both arms with JM_PACEDIAG=1 instead of re-deriving the idea. The
+        # remaining suspect is the racing-line construction itself (rl/shs above), not the sampling.
+        W = parse(Float64, get(ENV, "JM_KAPPA_ARC_M", "9.0")) / 2      # half-window, metres
+        arc(i, j) = begin                                              # forward arc length i -> j
+            d = 0.0; k = i
+            while k != j; kn = k % n + 1; d += hypot(rx[kn]-rx[k], rz[kn]-rz[k]); k = kn; end
+            d
+        end
+        step_to(i, dist, dir) = begin                                  # walk until `dist` metres covered
+            d = 0.0; k = i
+            while d < dist
+                kn = dir > 0 ? (k % n + 1) : (mod(k - 2, n) + 1)
+                d += hypot(rx[kn]-rx[k], rz[kn]-rz[k]); k = kn
+                k == i && break
+            end
+            (k, d)
+        end
+        for i in 1:n
+            (ib, db) = step_to(i, W, -1)
+            (ifw, df) = step_to(i, W, +1)
+            span = db + df
+            κ[i] = span > 0.5 ? abs(wrapπ(θr[ifw] - θr[ib])) / span : κr[i]
+        end
+    else
+        for i in 1:n
+            a = 0.0; for d in -2:2; a += κr[mod(i-1+d, n)+1]; end; κ[i] = a/5
+        end
+    end
+    # ── JM_CLAMP_DIAG: does the road-width clamp coincide with the kappa spikes? ────────────
+    # PREDICTION, fixed before the first run: if the clamp causes the spikes, the pinned nodes are
+    # strongly over-represented among the top-|kappa| nodes (>50% of the top 20) against a chance
+    # level equal to the pinned fraction. If the overlap is no better than chance this candidate is
+    # DEAD and must be recorded as dead, like JM_SHIFT_CLAMP and JM_KAPPA_ARC before it.
+    if get(ENV, "JM_CLAMP_DIAG", "0") == "1"
+        npin = count(pinned); frac = npin / n
+        top = sortperm(κ, rev=true)[1:min(20, n)]
+        hit = count(i -> pinned[i], top)
+        println("  [clampdiag] nodes=", n, "  pinned by the road-width clamp=", npin,
+                " (", round(100*frac, digits=1), "% of the lap)")
+        println("  [clampdiag] of the top-20 |kappa| nodes, ", hit, " are pinned",
+                "  (chance would be ", round(20*frac, digits=1), ")")
+        println("  [clampdiag] VERDICT: ", hit > 10 ? "CLAMP IS IMPLICATED -- pursue it" :
+                                           hit <= 20*frac + 2 ? "NO BETTER THAN CHANCE -- candidate is DEAD" :
+                                                                "weak/ambiguous -- do not build on this")
+        flush(stdout)
     end
     y = Float64[(h = groundz(x[i], z[i]); isfinite(h) ? h : 0.0) for i in 1:n]
     AILine(x, z, y, s, θ, κ, rl, s[end])
@@ -173,7 +341,54 @@ function pose_at(line::AILine, s, lane)
     x = line.x[i]*(1-f) + line.x[j]*f
     z = line.z[i]*(1-f) + line.z[j]*f
     y = line.y[i]*(1-f) + line.y[j]*f
-    θ = line.θ[i] + f*wrapπ(line.θ[j]-line.θ[i])
+    # ⭐ TRACKSMOOTH-1 (PO 2026-09-05): the heading must come from a SMOOTH CURVE, not from segment
+    # tangents. Measured on the shipped centreline: every segment is a uniform 3.0 m and the
+    # per-node heading STEP reaches 21.4 deg at Watkins Glen (13.5 % of nodes step by more than
+    # 1 rad/s worth). Lerping between two segment tangents, as the line below used to, makes θ
+    # piecewise-linear in node index and its RATE a step function that jumps at every node -- which
+    # is exactly the PO's "AI cars have discontinuous yaw changes, especially around corners", and
+    # AI-YAW measured it independently on the drawn pose (max 3.90 rad/s of yaw-rate change in one
+    # 1/60 s frame).
+    #
+    # Take the tangent from a Catmull-Rom spline through the four surrounding nodes instead. The
+    # spline is C1, so the heading is continuous AND its derivative is continuous across a node --
+    # no rate limiting, no filtering, and the apex geometry is untouched because the curve still
+    # passes through every original node. JM_SEGMENT_TANGENT=1 restores the old segment lerp for
+    # an A/B.
+    n = length(line.x)
+    # MEASURED: Catmull-Rom made it WORSE (watglen max jump 3.897 -> 4.406 rad/s, frames over
+    # 1 rad/s 62 -> 133, peak |yaw rate| 5.23 -> 9.01). It INTERPOLATES -- it passes through every
+    # node, so a 21 deg kink in the node positions makes the curve overshoot rather than smooth.
+    # The kink lives in the POSITIONS, not only in the tangent, so any interpolating scheme
+    # inherits it. An APPROXIMATING tangent is what is needed: take the heading from a chord
+    # spanning several nodes either side, which low-passes the kink without moving the line the
+    # cars actually drive. JM_TANGENT_SPAN sets the half-width in nodes (0 = old segment lerp).
+    tanspan = parse(Int, get(ENV, "JM_TANGENT_SPAN", "3"))
+    θ = if get(ENV, "JM_SEGMENT_TANGENT", "0") != "0" || tanspan <= 0
+        line.θ[i] + f*wrapπ(line.θ[j]-line.θ[i])
+    elseif get(ENV, "JM_CATMULL_TANGENT", "0") != "0"
+        h = mod(i-2, n) + 1          # node before i
+        k = j % n + 1                # node after j
+        # Catmull-Rom derivative at parameter f on the segment i->j
+        t = f
+        dx = 0.5*((-line.x[h] + line.x[j]) +
+                  2t*(2line.x[h] - 5line.x[i] + 4line.x[j] - line.x[k]) +
+                  3t*t*(-line.x[h] + 3line.x[i] - 3line.x[j] + line.x[k]))
+        dz = 0.5*((-line.z[h] + line.z[j]) +
+                  2t*(2line.z[h] - 5line.z[i] + 4line.z[j] - line.z[k]) +
+                  3t*t*(-line.z[h] + 3line.z[i] - 3line.z[j] + line.z[k]))
+        (dx == 0.0 && dz == 0.0) ? line.θ[i] : atan(dz, dx)
+    else
+        # Approximating tangent: the chord from `tanspan` nodes behind to `tanspan` ahead, taken
+        # about the car's own fractional position so it advances smoothly WITHIN a segment too.
+        a = mod(i - 1 - tanspan, n) + 1
+        b = mod(i - 1 + tanspan, n) + 1
+        a2 = mod(j - 1 - tanspan, n) + 1
+        b2 = mod(j - 1 + tanspan, n) + 1
+        θa = atan(line.z[b] - line.z[a], line.x[b] - line.x[a])
+        θb = atan(line.z[b2] - line.z[a2], line.x[b2] - line.x[a2])
+        θa + f*wrapπ(θb - θa)
+    end
     # ⚠️ E104(a): `y` is the CENTRELINE's height and the lane offset moves only x and z. A car
     # running `lane` metres to the side is therefore posed at the centreline's height, which is
     # wrong by lane x cross-slope wherever the road is cambered. Callers that DRAW the pose must
@@ -253,8 +468,29 @@ function _vtarget(line::AILine, s, v; amax, vmax, vmin, scale)
         end
         return clamp(vt*scale, vmin, vmax*scale)
     end
-    κ = max(line.κ[_locate(line, s)[1]], 1e-4)
+    κ0 = max(line.κ[_locate(line, s)[1]], 1e-4)
     horizon = max(v*2.2, 30.0)                              # metres to look ahead (longer the faster you go)
+    if VT_BRAKE[]
+        # AI-GOLD: BRAKE for a corner, do not ADOPT its speed on sight.
+        # The old rule took the maximum curvature anywhere in the horizon (123 m at racing speed)
+        # and drove at that corner's speed for the whole approach, so the car crawled up to every
+        # bend. Measured cost: the model needed amax = 24 m/s2 (2.45 g) to reach the 66.912 s gold
+        # lap at Watkins Glen, where the real 1967 cars did it at about 1.2 g -- the grip was
+        # standing in for a braking rule that was not there.
+        # A corner v_c metres ahead only limits you to the speed from which you can still slow to
+        # it:  v_allowed = sqrt(v_c^2 + 2*a_brake*d).  Take the minimum of THAT over the horizon.
+        # At d = 0 it reduces to the corner speed itself, so nothing is lost in the corner.
+        vt = sqrt(amax/κ0)
+        off = 5.0
+        while off <= horizon
+            κd = max(line.κ[_locate(line, s + off)[1]], 1e-4)
+            vc = sqrt(amax/κd)
+            vt = min(vt, sqrt(vc*vc + 2.0*BRAKE_A[]*off))
+            off += 6.0
+        end
+        return clamp(vt*scale, vmin, vmax*scale)
+    end
+    κ = κ0
     off = 5.0
     while off <= horizon
         κ = max(κ, line.κ[_locate(line, s + off)[1]]); off += 6.0
@@ -264,7 +500,7 @@ end
 
 "Advance one AI car by `dt` on the race line; returns its world pose.  `scale` paces it
 (see `natural_laptime`).  Single-car (no racecraft) — used for pace calibration."
-function step!(car::AICar, line::AILine, dt; amax = 11.0, vmax = 74.0, vmin = 12.0, scale = 1.0)
+function step!(car::AICar, line::AILine, dt; amax = AMAX[], vmax = VMAX[], vmin = 12.0, scale = 1.0)
     vt = _vtarget(line, car.s, car.v; amax, vmax, vmin, scale)
     car.v += clamp(vt - car.v, -30.0*dt, 9.0*dt)            # brake harder than it accelerates
     prev = mod(car.s, line.total); car.s += car.v*dt
@@ -285,7 +521,7 @@ aistat_reset!() = (AISTAT.engage = AISTAT.release = AISTAT.match = AISTAT.qsnap 
 """Free-running speed profile: one car alone on the line for a lap, sampled every `ds` metres.
 Returns (s_samples, v_samples). This is what a car does with nobody ahead -- the baseline any
 'fall back' must be measured against, because a car braking for Ascari is not falling back."""
-function free_speed_profile(line::AILine; scale = 1.0, dt = 1/60, ds = 5.0, amax = 11.0, vmax = 74.0, vmin = 12.0)
+function free_speed_profile(line::AILine; scale = 1.0, dt = 1/60, ds = 5.0, amax = AMAX[], vmax = VMAX[], vmin = 12.0)
     car = AICar(0.0, 25.0, 0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0)
     n = max(2, round(Int, line.total / ds)); vs = fill(NaN, n)
     for _ in 1:2                                     # two laps: the second overwrites the standing-start first
@@ -556,7 +792,7 @@ time (s).  Used to calibrate the pace: knowing the natural lap time at scale 1.0
 the app picks the scale that makes a clean lap hit the GPL reference laptime ×
 (100/pct).  Robust to a non-closing line (caps at ~2× the straight-line estimate)."""
 function natural_laptime(line::AILine; scale = 1.0, dt = 1/60,
-                        amax = 11.0, vmax = 74.0, vmin = 12.0)
+                        amax = AMAX[], vmax = VMAX[], vmin = 12.0)
     # E84-S2: amax/vmax forwarded so the pace anchor can be SWEPT (JM_PACEDIAG) instead of
     # guessed at.  Defaults are step!'s own, so every existing caller is unchanged.
     car = AICar(0.0, 25.0, 0, 0.0)
