@@ -8403,7 +8403,48 @@ the arms. RACESTART-1's own change was cleared the same way: the failures are by
 
 **Do not weaken these gates to make them green.** Re-baseline them deliberately against the smooth
 line, and state the new numbers with the reason, so the next person can tell a moved baseline from a
-broken one. **GATEBASE-1: filed, not started.**
+broken one.
+
+**GATEBASE-1 — DONE (S1, 2026-09-05). Both gates green, both still able to fail.**
+
+The rule followed: *restate the criterion so it stops depending on the thing that changed*, rather
+than lower a number until it fits.
+
+**`vtbrake_smoke`** — both thresholds were ABSOLUTE SECONDS against a control whose pace depends on
+the racing LINE, not on the braking rule the gate is about. So they are now FRACTIONS OF THE GOLD
+LAP, which is what they always meant:
+
+| | control | gold | off gold | rule gain |
+|---|---|---|---|---|
+| watglen | 75.87 s | 66.912 s | +8.96 s = **13.4 %** (bar 8 %) | 6.27 s = **9.4 %** (bar 5 %) |
+| monza | 100.57 s | 90.202 s | +10.37 s = **11.5 %** | 5.77 s = **6.4 %** |
+
+The rule still earns 6.3 s at the Glen and 5.8 s at Monza at the shipped grip. Nothing about it
+regressed; the line under it improved.
+
+**`softband_smoke`** — the per-track premise `rev > 60` encoded how rough the OLD line was, which is
+a property of the line, not of the soft band:
+
+| | control | soft band | reduction |
+|---|---|---|---|
+| watglen | 40 | 30 | 25.0 % |
+| monza | 60 | 40 | 33.3 % |
+| rouen | 114 | 48 | 57.9 % |
+| **suite** | **214** | **118** | **44.9 %** (bar 40 %) |
+
+The absolute premise became a SUITE-level one — at least one track must still skitter hard (rouen,
+114) — which keeps "the probe can see the defect" honest without demanding every track be rough.
+"Halves" became "removes at least a fifth", because a smoother line leaves less to remove. The
+on-road (<= 3.0 m) and apex (>= 2.0 m) checks are **unchanged**: absolute geometry, unaffected by the
+line change, and the thing that stops a "smooth" line that abandons the apex from passing.
+
+**⭐ Both re-baselines were MUTATION-TESTED, because a re-baselined gate that can no longer fail is
+worse than the red one it replaced.** Running `softband_smoke` with the soft band disabled in the
+TREATMENT arm as well (both arms control) fails **4 checks** — all three per-track reductions at
+0.0 % and the suite total at 0.0 %. The gate still catches the fix being switched off.
+
+Every number above is printed by the gates themselves on each run, so the margins are visible rather
+than buried in a threshold.
 
 ## 🔴 NEW ITEM (PO, 2026-09-05): STARTSEQ-1 — spacebar, then a 5-second countdown, as the DEFAULT
 
