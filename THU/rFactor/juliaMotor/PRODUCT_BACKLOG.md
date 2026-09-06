@@ -7061,6 +7061,7 @@ narrow in y, ≥ 0.45 m off centre) and prints their centroids = GPL's hub posit
 | Brabham  | 1.38 | -1.00 | 2.38 | 0.67 | 0.70 |
 | BRM      | 1.53 | -0.91 | 2.44 | 0.75 | 0.76 |
 | Eagle    | 1.50 | -0.96 | 2.46 | 0.76 | 0.76 |
+| Cooper   | 1.53 | -0.90 | 2.43 | 0.71 | 0.69 |
 | **the sim's table** (`WHEELS` / `aiwheels`, every car) | **1.05** | **-1.15** | **2.20** | **0.62** | **0.66** |
 
 (The Lotus body is drawn at BODY_OFF x = -0.55, so in the rig frame its mesh hubs are at 0.98 /
