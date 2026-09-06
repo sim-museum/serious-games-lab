@@ -8887,3 +8887,18 @@ drawn ribbon, and it is a rendering improvement rather than an AI one, since the
 taken from an approximating tangent that already spans the facets.
 
 **TRACKSMOOTH-1: 3 sprints. AI-YAW met and re-measured; track rendering has one named next step.**
+
+## PO STATUS (2026-09-05, verbatim) — epic #2 "as close as possible to GPL on all 5 tracks"
+
+> "monza is drivable, as is zandervoort and watkin's glenn. watkin's glen max speeds also match GPL
+> well. driving spa or the ring, I run into levitation/bounce off invisible barrier issues and cannot
+> get even half way around the track as a result"
+
+So three of five are accepted as drivable and one has its pace confirmed against GPL. **Spa and the
+Ring are the epic's blockers**, and the symptom — invisible barriers that levitate/bounce the car —
+is the terrain-step family (E106-S17/S18: a building plateau and a seam inside the physics HAT). The
+step guard decided and shipped today (`step_guard.jl`, `groundz_phys`) is the fix candidate for
+exactly this. **Acceptance = the PO gets round both circuits.** Next: a flown pass of each with the
+guard on, from the PO or as an autodrive driveability sweep on the display (`JM_AUTODRIVE=1
+JM_DRIVECHECK=1`, both tracks, expect zero levitation events and `step guard` hits only at the known
+sites).
