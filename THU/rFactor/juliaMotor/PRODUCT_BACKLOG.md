@@ -8893,6 +8893,15 @@ taken from an approximating tangent that already spans the facets.
 > "monza is drivable, as is zandervoort and watkin's glenn. watkin's glen max speeds also match GPL
 > well. driving spa or the ring, I run into levitation/bounce off invisible barrier issues and cannot
 > get even half way around the track as a result"
+>
+> (clarified) "max possible speed around curves without washing out in watkins glen match GPL well"
+
+**From the PO's own Spa replay (`replay_spa 5ai 2026-09-03 19-23-02.jmr`, read headlessly):** the run
+ends at **t = 189.8 s, s ≈ 7 826 m** (bbox-aligned frame; the record's Masta seam is s ≈ 6 759 in the
+sim's frame — same stretch), at 133 km/h: in 0.3 s the car moves 7 m SIDEWAYS (z −3075.7 → −3068.5)
+with **no height change** (y 325.5 flat), then the next frame is the start line (a respawn). That is
+not a levitation — it is a **lateral hit on something solid and invisible at (−318, −3075)**: a
+collidable trackside object. Name it from the .3do placement, not from the corner's name.
 
 So three of five are accepted as drivable and one has its pace confirmed against GPL. **Spa and the
 Ring are the epic's blockers**, and the symptom — invisible barriers that levitate/bounce the car —
@@ -8902,3 +8911,19 @@ exactly this. **Acceptance = the PO gets round both circuits.** Next: a flown pa
 guard on, from the PO or as an autodrive driveability sweep on the display (`JM_AUTODRIVE=1
 JM_DRIVECHECK=1`, both tracks, expect zero levitation events and `step guard` hits only at the known
 sites).
+
+### 2026-09-05 late — session record (PO: token limit at 95 %, resets ~00:15)
+- **Gate suite**: 32/32. The suite run showed hat_hole_smoke FAIL, but that run started before
+  commit f2f31ee (the gate regex that accepts `groundz_phys` as a function); re-run alone: PASS ✓.
+- **TRACKSMOOTH-1 is NOT shipped**: the PO's installed copy (~/.local/share/julia-racer, stamp
+  20260905-082209) predates every TRACKSMOOTH-1/AI-YAW commit (16:43–17:34). The PO's new report
+  ("coming off the sweeper at Watkins Glen the track is piecewise linear; AI yaw discontinuities")
+  is this unshipped work. Repacked: ~/Documents/260905/JuliaRacer-x86_64-tracksmooth.AppImage
+  (AppRun refreshes demo/ JuliaMotor/ JuliaMotorMTK/ on launch when the build stamp differs).
+  PO evidence video: ~/Documents/260905/260905_wg_replay_plus_other.mp4 (not yet reviewed).
+- **SPA-BARRIER (open)**: PO's Spa replay → crash at s≈7208 m, mesh-frame (158,-3290), car 40 m
+  off the centreline, ON the HAT throughout, no wall tris within 8 m. The ONLY lateral impulse
+  site (`bumpX!` ~L6965) is AI-car contact; the replay's AI are ≥3.4 km away in both frame
+  hypotheses (AI#1 on-HAT only 202/2143 frames as stored — replay AI pose frame still unproven).
+  Next: (1) confirm the .jmr AI column layout at the writer (L5912); (2) the E7 containment snap
+  and SOLID discs (peo1 29.5 m, house18 39.8 m) at that spot; (3) a display run needs PO consent.
