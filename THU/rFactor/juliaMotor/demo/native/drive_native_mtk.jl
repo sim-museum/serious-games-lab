@@ -3695,17 +3695,45 @@ let objnames=Set{String}()
     # road-only HAT (road-textured triangles): if any sample is over tarmac the box is rejected and
     # the object falls back to its disc (which E31 already keeps off the road). Tracks without a
     # road-only HAT (ROADHAT === TERRAIN0) skip the test. JM_SOLID_ROADCHECK=0 disables.
-    _boxrej = String[]
+    _boxrej = String[]; _discshr = String[]
     function box_covers_tarmac(cx, cz, hx, hz, ψ)
         (ROADHAT === TERRAIN0 || get(ENV, "JM_SOLID_ROADCHECK", "1") == "0") && return false
+        # v6: only a FAT box can be an invisible wall. A thin one (a barrier, min half-extent
+        # < 1 m) standing on the concrete edge strip is GPL's own armco at the road edge -- v5
+        # rejected 168 of them and sent them back to discs that spill further onto the road.
+        min(hx, hz) < 1.0 && return false
         c = cos(ψ); sn = sin(ψ)
-        nx = max(2, ceil(Int, hx)); nz = max(2, ceil(Int, hz))
+        nx = max(2, ceil(Int, 2hx)); nz = max(2, ceil(Int, 2hz))    # v7: ~1 m grid (2 m let a 0.74 m overlap through: house36)
         for ix in 0:nx, iz in 0:nz
             lx = -hx + 2hx*ix/nx; lz = -hz + 2hz*iz/nz
             px = cx + c*lx + sn*lz; pz = cz + sn*lx - c*lz
-            JuliaMotor.hat3d(ROADHAT, px, pz; ref = Inf)[3] && return true
+            # v4: tarmac AND inside the racing corridor -- the pit APRONS are asphalt too, and the
+            # first pass rejected every pit tower / pit box at Spa (pittow x6, housebox, …), which
+            # would make the pit buildings drive-through. A building over the apron is GPL's own
+            # placement; only tarmac within the 9 m corridor is the road the PO means.
+            if JuliaMotor.hat3d(ROADHAT, px, pz; ref = Inf)[3]
+                hr = JuliaMotor.hat(TRKSURF, px, pz)
+                (hr.found && hr.on_track) && return true
+            end
         end
         false
+    end
+    # v6: the DISC fallback can cover the road too (house37 r=5 at its origin reached lat -6 by
+    # 3.8 m). Shrink a disc to clear corridor tarmac: the largest radius whose interior holds no
+    # on-road sample, sampled on a 1 m grid; below 0.5 m the solid is dropped from contact.
+    function disc_clear_radius(ox, oz, r)
+        (ROADHAT === TERRAIN0 || get(ENV, "JM_SOLID_ROADCHECK", "1") == "0") && return r
+        best = r
+        n = max(2, ceil(Int, 2r))                                   # v7: ~0.5 m grid
+        for ix in -n:n, iz in -n:n
+            px = ox + r*ix/n; pz = oz + r*iz/n
+            d = hypot(px - ox, pz - oz); d >= best && continue
+            if JuliaMotor.hat3d(ROADHAT, px, pz; ref = Inf)[3]
+                hr = JuliaMotor.hat(TRKSURF, px, pz)
+                (hr.found && hr.on_track) && (best = d)
+            end
+        end
+        best
     end
     global SOLIDS = Tuple{Float64,Float64,Float64,Symbol}[]
     global SOLIDNAMES = String[]                        # parallel to SOLIDS, for the census only
@@ -3792,7 +3820,12 @@ let objnames=Set{String}()
         # When the whole footprint is implausibly large for one object, box each mesh PART instead
         # (its own local AABB through the same placement map); tiny or paper-thin parts are skipped.
         # JM_SOLID_PARTS=0 restores the single AABB box.
-        if r >= 5.0 && haskey(lxmn, i.name) && get(ENV, "JM_SOLID_BOX", "1") != "0"
+        # ROAD-1 S3: EVERY meshed solid gets its footprint box, not only the 5/6 m buildings. The
+        # Spa census (v3) left parked cars (r=2.4 discs: opelambu, wwpolice, f2300cp, vanww5, opelrk,
+        # r4, prinzv, lancia), bushes (r=1.5) and armco pieces (r=1.2) at the tarmac edge with the
+        # disc 0.2-1.1 m onto the road -- a disc around a 4 x 1.6 m car or an 8 x 0.3 m barrier is
+        # the wrong shape, and the mesh AABB is the right one. Threshold JM_SOLID_BOX_R (default 1.2).
+        if r >= parse(Float64, get(ENV, "JM_SOLID_BOX_R", "1.2")) && haskey(lxmn, i.name) && get(ENV, "JM_SOLID_BOX", "1") != "0"
             ψ = Float64(-i.yaw + objyawfix(i.name)); c = cos(ψ); sn = sin(ψ)
             wx = Float64(lxmx[i.name] - lxmn[i.name]); wz = Float64(lzmx[i.name] - lzmn[i.name])
             pv = get(objverts, i.name, nothing)
@@ -3823,7 +3856,9 @@ let objnames=Set{String}()
                 hx = wx/2; hz = wz/2
                 clx = Float64(lxmx[i.name] + lxmn[i.name])/2; clz = Float64(lzmx[i.name] + lzmn[i.name])/2
                 bcx = Float64(i.x) + c*clx + sn*clz; bcz = Float64(i.y) + sn*clx - c*clz
-                if box_covers_tarmac(bcx, bcz, hx, hz, ψ)
+                if hx < 0.15 && hz < 0.15                          # a point-sized mesh: keep the disc
+                    push!(SOLIDBOX, nothing)
+                elseif box_covers_tarmac(bcx, bcz, hx, hz, ψ)
                     push!(_boxrej, string(nml, "@", round(Int, bcx), ",", round(Int, bcz)))
                     push!(SOLIDBOX, nothing)                      # disc at the origin (E31 keeps it off the road)
                 else
@@ -3835,6 +3870,21 @@ let objnames=Set{String}()
             push!(SOLIDBOX, nothing)
         end
     end
+    # v6: every remaining DISC must clear the corridor tarmac (shrunk, or dropped below 0.5 m)
+    if ROADHAT !== TERRAIN0 && get(ENV, "JM_SOLID_ROADCHECK", "1") != "0"
+        for k in eachindex(SOLIDS)
+            (k <= length(SOLIDBOX) && SOLIDBOX[k] === nothing) || continue
+            (ox, oz, r, kd) = SOLIDS[k]
+            r2 = disc_clear_radius(ox, oz, r)
+            if r2 < r - 0.05
+                push!(_discshr, string(k <= length(SOLIDNAMES) ? SOLIDNAMES[k] : "?", "@", round(Int, ox), ",", round(Int, oz),
+                                       " ", round(r, digits=1), "→", round(max(r2, 0.0), digits=1)))
+                SOLIDS[k] = (ox, oz, r2 < 0.5 ? 0.0 : r2, kd)     # r=0: never within CARHALF of anything → inert
+            end
+        end
+    end
+    isempty(_discshr) || println("  ROAD-1: ", length(_discshr), " disc(s) shrunk to clear the road: ",
+                                 join(_discshr[1:min(end, 12)], " "), length(_discshr) > 12 ? " …" : "")
     isempty(_boxrej) || println("  ROAD-1: ", length(_boxrej), " solid box(es) rejected for covering tarmac (disc fallback): ",
                                 join(unique(_boxrej)[1:min(end, 12)], " "), length(unique(_boxrej)) > 12 ? " …" : "")
     # SPA-BARRIER: JM_SOLIDNEAR="x,z,r" lists every collidable solid within r m of a world point
@@ -5802,6 +5852,7 @@ function main()
         nprobe = 0; nroad = 0; ntar = 0
         hits  = Dict{String,Tuple{Int,Float64,Float64,Float64}}()   # tarmac: name → (count, worst gap, s, lat)
         verge = Dict{String,Int}()                                    # corridor-only hits, for context
+        edge  = Dict{String,Int}()                                    # thin barriers at the road edge (v6)
         s = 0.0
         while s <= CLINE.total
             for lat in -14.0:0.5:14.0
@@ -5828,7 +5879,11 @@ function main()
                     ontar = fits                     # an edge-strip point with no room for the car counts as verge
                     nm = k <= length(SOLIDNAMES) ? SOLIDNAMES[k] : "solid#$k"
                     key = string(nm, "@", round(Int, ox), ",", round(Int, oz))
-                    if ontar
+                    bk = k <= length(SOLIDBOX) ? SOLIDBOX[k] : nothing
+                    thin = bk !== nothing && min(bk[1], bk[2]) < 0.5      # a barrier at the road edge: scraping it is not a wall
+                    if ontar && thin
+                        edge[key] = get(edge, key, 0) + 1
+                    elseif ontar
                         old = get(hits, key, (0, Inf, 0.0, 0.0))
                         hits[key] = (old[1] + 1, min(old[2], gap), gap < old[2] ? s : old[3], gap < old[2] ? lat : old[4])
                     else
@@ -5844,7 +5899,10 @@ function main()
             println("    ", rpad(key, 28), " hits=", lpad(n, 4), "  worst gap=", lpad(round(g, digits = 2), 6),
                     " m  at s=", round(Int, hs), " lat=", hl)
         end
-        println("ROADSWEEP_RESULT track=", TRACKSEL, " solids_on_road=", length(hits), " verge_only=", length(verge),
+        println("  edge barriers (thin, scrape-able, not counted): ", length(edge))
+        ninside = count(kv -> kv[2][2] < 0.0, hits)               # the car's CENTRE inside the solid: an object standing on the road
+        println("  objects standing ON the road (worst gap < 0): ", ninside)
+        println("ROADSWEEP_RESULT track=", TRACKSEL, " solids_on_road=", length(hits), " inside=", ninside, " edge_barriers=", length(edge), " verge_only=", length(verge),
                 " tarmac_pred=", tarmac_hat ? "roadhat" : "corridor", " control=", ctrl ? "ok" : "blind")
         flush(stdout); exit(0)
     end
