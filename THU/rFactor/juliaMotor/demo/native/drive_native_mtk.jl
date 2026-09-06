@@ -3688,7 +3688,7 @@ let objnames=Set{String}()
         r
     end
     global SOLIDS = Tuple{Float64,Float64,Float64,Symbol}[]
-    SOLIDNAMES = String[]                        # parallel to SOLIDS, for the census only
+    global SOLIDNAMES = String[]                        # parallel to SOLIDS, for the census only
     _solidseen = Set{Tuple{Float64,Float64,Float64,Symbol}}(); _soliddup = Ref(0)   # SPA-BARRIER: one disc per (x,z,r,kind)
     empty!(SOLIDBOX)
     _geomn = 0
@@ -5724,7 +5724,16 @@ function main()
         ctrl = if isempty(SOLIDS); false
                else (g, _, _) = solid_gap(SOLIDS[1][1], SOLIDS[1][2], 1); g < CARHALF end
         println("  control: a probe at solid #1's centre reads as a hit -> ", ctrl ? "yes" : "NO (instrument blind)")
-        nprobe = 0; nroad = 0; hits = Dict{String,Tuple{Int,Float64,Float64,Float64}}()   # name → (count, worst gap, s, lat)
+        # "On the road" = the TARMAC, not the sim's 9 m TrackSurface corridor: the first Spa census
+        # (corridor) listed 331 objects, nearly all at |lat| 8-11.5 m -- grandstands, shrubs and
+        # ad boards on the verge, which the PO's rule does not cover. The road-only HAT (road-textured
+        # triangles only; Spa and the Ring build it) answers "is this point over tarmac".
+        tarmac_hat = ROADHAT !== TERRAIN0
+        println("  tarmac predicate: ", tarmac_hat ? "road-only HAT (road-textured triangles)" :
+                "NONE for this track -- falling back to the 9 m corridor (verge included)")
+        nprobe = 0; nroad = 0; ntar = 0
+        hits  = Dict{String,Tuple{Int,Float64,Float64,Float64}}()   # tarmac: name → (count, worst gap, s, lat)
+        verge = Dict{String,Int}()                                    # corridor-only hits, for context
         s = 0.0
         while s <= CLINE.total
             for lat in -14.0:0.5:14.0
@@ -5733,6 +5742,8 @@ function main()
                 nprobe += 1
                 (hr.found && hr.on_track) || continue
                 nroad += 1
+                ontar = tarmac_hat ? JuliaMotor.hat3d(ROADHAT, qx, qz; ref = Inf)[3] : true
+                ontar && (ntar += 1)
                 @inbounds for k in eachindex(SOLIDS)
                     (ox, oz, r, _) = SOLIDS[k]
                     hypot(ox - qx, oz - qz) > r + 40.0 && continue
@@ -5740,18 +5751,24 @@ function main()
                     gap >= CARHALF && continue
                     nm = k <= length(SOLIDNAMES) ? SOLIDNAMES[k] : "solid#$k"
                     key = string(nm, "@", round(Int, ox), ",", round(Int, oz))
-                    old = get(hits, key, (0, Inf, 0.0, 0.0))
-                    hits[key] = (old[1] + 1, min(old[2], gap), gap < old[2] ? s : old[3], gap < old[2] ? lat : old[4])
+                    if ontar
+                        old = get(hits, key, (0, Inf, 0.0, 0.0))
+                        hits[key] = (old[1] + 1, min(old[2], gap), gap < old[2] ? s : old[3], gap < old[2] ? lat : old[4])
+                    else
+                        verge[key] = get(verge, key, 0) + 1
+                    end
                 end
             end
             s += step
         end
-        println("  ", nprobe, " probes, ", nroad, " on the road, ", length(hits), " solid(s) reachable from the road:")
+        println("  ", nprobe, " probes, ", nroad, " in the 9 m corridor, ", ntar, " on tarmac; ",
+                length(hits), " solid(s) reachable from the TARMAC (", length(verge), " more from the verge only):")
         for (key, (n, g, hs, hl)) in sort(collect(hits); by = kv -> kv[2][2])
             println("    ", rpad(key, 28), " hits=", lpad(n, 4), "  worst gap=", lpad(round(g, digits = 2), 6),
                     " m  at s=", round(Int, hs), " lat=", hl)
         end
-        println("ROADSWEEP_RESULT track=", TRACKSEL, " solids_on_road=", length(hits), " control=", ctrl ? "ok" : "blind")
+        println("ROADSWEEP_RESULT track=", TRACKSEL, " solids_on_road=", length(hits), " verge_only=", length(verge),
+                " tarmac_pred=", tarmac_hat ? "roadhat" : "corridor", " control=", ctrl ? "ok" : "blind")
         flush(stdout); exit(0)
     end
     AILINE = (CLINE !== nothing && N_AI > 0) ? CLINE : nothing
