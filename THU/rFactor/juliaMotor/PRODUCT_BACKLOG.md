@@ -9046,3 +9046,10 @@ light-grey blades stand out sideways from the left side of the chassis (front-le
 doubled wheels). A/B queued: `JM_HIDE_PARKED=1` (new parser knob, diagnostic only) re-shoots the same
 frame without any geometry under a PARKED positioner; if the blades vanish they are S447's parked
 rear/front suspension drawn at the origin, i.e. a POSING defect, exactly as S1 predicted.
+- **S5 A/B result (Eagle, WG, t=3, rsusp cam)**: with `JM_HIDE_PARKED=1` the two flat grey blades are
+  GONE -- and so is the entire blue BODY SHELL: the car renders as a bare chassis with wheels, engine
+  and driver. So the "park" positioner (|d|>5) is not a hide-marker for junk; GPL parks the body AND
+  the dynamic suspension parts alike and poses them at runtime. Drawing everything at the clamped
+  origin happens to land the body correctly and lands the suspension parts as blades. This is a
+  POSING defect on parked parts (S1's prediction), and the fix is a rest pose for them, not removal.
+  Captures: scratchpad eagle_t3.png / eagle_t3_hideparked.png (A/B), eagle_t30.png.
