@@ -709,11 +709,32 @@ end
 right), throttle/brake/rpm bars, the four per-wheel traction circles (over the
 nose), and last/best lap times (top-left).  `tc`=(FL,FR,RL,RR) (long,lat,radius)
 or nothing; `lastlap`/`bestlap` in seconds (0 = none).  Returns the HUD vertex list."""
-function compose_hud(W,H,kmh,gear,rpm,revlim,thr,brk,clu=0.0,tc=nothing; lastlap=0.0, bestlap=0.0, manual=false, countdown=-1.0, clutchgate=-1.0)
+function compose_hud(W,H,kmh,gear,rpm,revlim,thr,brk,clu=0.0,tc=nothing; lastlap=0.0, bestlap=0.0, manual=false, countdown=-1.0, clutchgate=-1.0, finished=0, startprompt=-1.0)
     v=Float32[]
     white=(0.90,0.95,1.0); amber=(1.0,0.82,0.35); green=(0.42,0.82,0.42); red=(0.95,0.35,0.30); dim=(0.16,0.18,0.22); blue=(0.35,0.65,1.0)
     # PO 2026-08-31: "start as a countdown timer". Seconds remaining, big and central, amber while
     # counting and green on GO. Drawn first so the rest of the HUD stays on top of nothing.
+    # STARTSEQ-1 (PO 2026-09-05): "every julia race should begin with 'press spacebar to start
+    # countdown'". This HUD has no font -- only 7-seg digits and quads -- and it already says things
+    # symbolically (chequered flag = finished, clutch bar = the shift gate). So say it with the KEY:
+    # a spacebar keycap, pulsing, where the countdown digit is about to appear. `startprompt` is a
+    # 0..1 pulse phase; <0 means the prompt is not showing.
+    if startprompt >= 0.0
+        puls = 0.55 + 0.45*sin(2π*startprompt)          # 0.1 .. 1.0
+        cap  = (amber[1]*puls, amber[2]*puls, amber[3]*puls)
+        kw, kh = 420, 76
+        kx, ky = W÷2 - kw÷2, H÷2 - kh÷2
+        hquad!(v, kx-6, ky-6, kw+12, kh+12, dim)        # keycap shadow/frame
+        for (dx,dy,dw,dh) in ((0,0,kw,6), (0,kh-6,kw,6), (0,0,6,kh), (kw-6,0,6,kh))
+            hquad!(v, kx+dx, ky+dy, dw, dh, cap)        # keycap outline
+        end
+        hquad!(v, kx+40, ky+kh÷2-5, kw-80, 10, cap)     # the bar itself: this is the SPACE bar
+        # A downward chevron above the cap: "press this".
+        for k in 0:3
+            hquad!(v, W÷2 - 30 + 10k, ky - 34 + 8k, 10, 8, cap)
+            hquad!(v, W÷2 + 20 - 10k, ky - 34 + 8k, 10, 8, cap)
+        end
+    end
     if countdown >= 0.0
         n = ceil(Int, countdown)
         if n > 0
@@ -751,6 +772,25 @@ function compose_hud(W,H,kmh,gear,rpm,revlim,thr,brk,clu=0.0,tc=nothing; lastlap
         fill > 0 && hquad!(v, bx, by, fill, bh, red)                 # current clutch position
         tick = round(Int, 0.4 * bw)                                  # the threshold it must pass
         hquad!(v, bx + tick - 2, by - 8, 4, bh + 16, amber)
+    end
+    # PO 2026-09-04 (Watkins Glen): "no indication that race is over".
+    # There WAS an indication -- in the WINDOW TITLE BAR and on stdout -- and the player is looking
+    # at the game. That is the same mistake the clutch gate above already corrected: a state change
+    # announced somewhere the driver is not looking is indistinguishable from one that never
+    # happened. Draw a chequered flag and the finishing position, on screen, where the race was.
+    # `finished` = final position (1-based), 0 = still racing.
+    if finished > 0
+        bw, bh = 480, 56
+        bx, by = W÷2 - bw÷2, 60
+        sq = 30
+        hquad!(v, bx-4, by-4, bw+8, bh+8, dim)                       # frame
+        for k in 0:(bw ÷ sq - 1)                                     # chequered band, two rows offset
+            top = iseven(k) ? white : (0.10,0.10,0.13)
+            bot = iseven(k) ? (0.10,0.10,0.13) : white
+            hquad!(v, bx + k*sq, by,        sq, bh÷2, top)
+            hquad!(v, bx + k*sq, by + bh÷2, sq, bh÷2, bot)
+        end
+        hdigit!(v, W÷2 - 22, by + bh + 14, 44, 84, 12, clamp(finished, 0, 9), green)   # your position
     end
     lastlap > 0 && htime!(v, 40, 28, lastlap, white)           # last lap (white, top-left)
     bestlap > 0 && htime!(v, 40, 74, bestlap, green)           # best lap (green, below)
@@ -1110,6 +1150,12 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
     # (needs V flipped to compensate).  So uflip=false, vflip=!mirror.
     uflip === nothing && (uflip = false)
     vflip === nothing && (vflip = !mirror)
+    # JM_VFLIP / JM_UFLIP override the derived convention, so "is our V convention right"
+    # is answerable by A/B instead of argument. E106-S41 established the engine texture is
+    # correct GPL artwork and is an ATLAS, so a wrong V would show the wiring loom where a
+    # cam cover belongs -- the PO's "random colours".
+    haskey(ENV,"JM_VFLIP") && (vflip = ENV["JM_VFLIP"] != "0")
+    haskey(ENV,"JM_UFLIP") && (uflip = ENV["JM_UFLIP"] != "0")
     maxlat = Float32(maxlat)
     m = GPL3DO.parse_3do(path3do)
     groups = Dict{String,Vector{Float32}}()
@@ -1368,6 +1414,16 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
         # rather than sampling one arbitrary texel of a texture it was never mapped to. This is the
         # parser's own flag, not the "all three UVs equal" INFERENCE S10 used: that inference also
         # caught textured polys whose UVs coincide, which is what turned the cockpit cowl yellow.
+        # JM_TRIDUMP=<texname>: print each tri of that texture group -- the parser's flat flag,
+        # whether its three UVs coincide, its authored colour, and its poly type. E106-S39
+        # attributed the PO's engine artefact to 27 tris textured "back4"; this says WHY they are
+        # drawn textured when they should not be, without reasoning from the format spec.
+        if get(ENV,"JM_TRIDUMP","") == t.tex
+            _uveq = (t.uv[1] == t.uv[2] == t.uv[3])
+            println("  [tri] tex=", t.tex, " flat=", t.flat, " uv_coincident=", _uveq,
+                    " ptype=0x", string(t.ptype, base=16), " col=", round.(t.col, digits=3),
+                    " uv1=", round.(t.uv[1], digits=3))
+        end
         flatpoly = FLATPOLY_FIX && t.tex != "" && t.flat
         v = get!(groups, flatpoly ? "" : t.tex, Float32[])
         mz = mirror ? -1f0 : 1f0   # negate render-Z → right-handed track frame (gx,gz,-gy)
@@ -1503,6 +1559,21 @@ function build_gpl(parts, idx::GPLTex)
                 # between them would be guessing at the fix too.
                 _TEXSTAT.uploads[] += 1
                 _t0 = time(); r = tex_rgba(idx, key); _TEXSTAT.tdec[] += time() - _t0
+                # JM_TEXDUMP=<name>: write the DECODED texture out, so "is this the right image,
+                # decoded correctly" is answered by looking rather than inferred. E106-S40 showed
+                # the engine artefact's triangles are properly textured (ptype 0x81F, real UVs),
+                # so the remaining question is the IMAGE, not the mapping.
+                if get(ENV,"JM_TEXDUMP","") == key && r !== nothing
+                    let (w_, h_, px_) = (r[1], r[2], r[3])
+                        open("/home/admin/appimage-build/tex_" * key * ".ppm", "w") do io
+                            write(io, "P6\n$(w_) $(h_)\n255\n")
+                            for i in 0:(w_*h_-1)
+                                write(io, px_[4i+1], px_[4i+2], px_[4i+3])
+                            end
+                        end
+                        println("  [texdump] ", key, " ", w_, "x", h_, " -> /home/admin/appimage-build/tex_", key, ".ppm")
+                    end
+                end
                 _t1 = time()
                 t = r === nothing ? GLuint(0) : upload_rgba(r[1], r[2], r[3])
                 _TEXSTAT.tgl[] += time() - _t1
@@ -1511,6 +1582,11 @@ function build_gpl(parts, idx::GPLTex)
             end
         end
         push!(items, Item(vao,n,tid,p.col))
+        # JM_ITEMDUMP=1: index -> texture, so a pixel bisected to item N can be NAMED.
+        # There was no way to attribute a drawn pixel to a mesh in this tree (Item carries no
+        # name), which is what made the engine-graphics item (E106-S38) take several sprints.
+        get(ENV,"JM_ITEMDUMP","") != "" && println("  [item] ", length(items), "  tex=\"",
+            key, "\"  tris=", n ÷ 3)
     end
     if get(ENV,"JM_TEXSTAT","0") != "0" && _TEXSTAT.uploads[] > 0 && (_TEXSTAT.uploads[] % 100) == 0
         println("[texstat] uploads=", _TEXSTAT.uploads[], "  distinct=", length(_TEXSTAT.names),

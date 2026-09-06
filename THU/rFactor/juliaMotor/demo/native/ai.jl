@@ -514,9 +514,14 @@ whether an AI made contact with the human (so the app can give the player a bump
 caps every AI to `rel × player_speed` so the field never runs away from the human."""
 # E89 instrument: count the racecraft events that a spectator reads as "lunge ahead, then fall back".
 # Plain counters, reset by the harness; step_field! only increments them.
-mutable struct AIStat; engage::Int; release::Int; match::Int; qsnap::Int; sidepush::Int; mishap::Int; end
-const AISTAT = AIStat(0, 0, 0, 0, 0, 0)
-aistat_reset!() = (AISTAT.engage = AISTAT.release = AISTAT.match = AISTAT.qsnap = AISTAT.sidepush = AISTAT.mishap = 0; nothing)
+# RACESTART-1: `hardyield` counts frames where the AI's sideways yield off the player exceeded
+# 0.2 m in a single step -- a jolt rather than a swerve. It is racestart_smoke's observable.
+mutable struct AIStat; engage::Int; release::Int; match::Int; qsnap::Int; sidepush::Int; mishap::Int; hardyield::Int; end
+const AISTAT = AIStat(0, 0, 0, 0, 0, 0, 0)
+# RACESTART-1: lateral yield speed (m/s) when an AI has to get out of the player's way.
+# JM_AI_YIELD_RATE=1000 restores the pre-fix per-frame teleport -- the CONTROL arm of the gate.
+const YIELD_RATE = Ref(something(tryparse(Float64, get(ENV, "JM_AI_YIELD_RATE", "6.0")), 6.0))
+aistat_reset!() = (AISTAT.engage = AISTAT.release = AISTAT.match = AISTAT.qsnap = AISTAT.sidepush = AISTAT.mishap = AISTAT.hardyield = 0; nothing)
 
 """Free-running speed profile: one car alone on the line for a lap, sampled every `ds` metres.
 Returns (s_samples, v_samples). This is what a car does with nobody ahead -- the baseline any
@@ -660,8 +665,41 @@ function step_field!(cars::Vector{AICar}, line::AILine, dt;
             Δs = mod(c.s - player[1] + total/2, total) - total/2
             if abs(Δs) < CAR_LEN && abs(c.lane - player[2]) < CAR_WID
                 d = (c.lane - player[2]) >= 0 ? 1.0 : -1.0
-                c.lane = clamp(c.lane + d*1.3, -LANE_MAX, LANE_MAX)
-                c.spin += 0.22*d; c.v *= 0.9
+                # RACESTART-1 (PO 2026-09-05): "AI cars behind me clip off both my front wheels."
+                # The yield used to be `c.lane += d*1.3` -- 1.3 m in ONE FRAME, a lateral teleport of
+                # 78 m/s. A car does not move sideways at 78 m/s; it appears inside you and is gone,
+                # and whatever the player's collision model makes of that is what removes wheels.
+                # Rate-limit it to a hard-but-physical swerve (JM_AI_YIELD_RATE m/s, default 6) so
+                # the AI steers out of the way instead of jumping out of the overlap.
+                step = min(1.3, YIELD_RATE[]*dt)
+                step > 0.2 && (AISTAT.hardyield += 1)      # gate observable: a jolt, not a swerve
+                c.lane = clamp(c.lane + d*step, -LANE_MAX, LANE_MAX)
+                c.spin += 0.22*d*(step/1.3); c.v *= 0.9    # scale the twitch with the actual swerve
+                # OPEN (RACESTART-1, measured): the rate limit removes the JOLT but leaves a long
+                # RUB -- 283 contact frames against the old 3 -- because nudging `lane` leaves the
+                # AI's TARGET on the racing line, so it steers straight back into the car it is
+                # being pushed out of. Setting `c.tlane` here does NOT fix that: step 1 resets
+                # `tlane = 0.0` as soon as the road ahead looks clear (line ~609), which it does the
+                # moment the nudge breaks the overlap -- verified, the gate numbers did not move by
+                # one frame. A real fix needs the blocker scan to KEEP seeing a stopped car and hold
+                # a rail until it is past, which is step 1's business, not this branch's.
+                # RACESTART-1 (PO 2026-09-05): "AI cars behind me clip off both my front wheels,
+                # leaving me dead at start line!"  Until now this branch moved the AI SIDEWAYS only
+                # and never touched `c.s`, so nothing stopped an AI advancing along the track THROUGH
+                # a stationary player: it sidestepped 1.3 m per frame and scraped down the flanks.
+                # Step 2 above already gives another AI the along-track separation it refuses the
+                # human (`cars[b].s = cars[a].s - CAR_LEN`) -- an AI queues politely behind an AI and
+                # carves through a person. Give the player the same right of way.
+                #
+                # ONE-SIDED ON PURPOSE: only the AI's own `s` is written, never the player's. The AI
+                # must not be able to shove a human along the track; it may only decline to occupy
+                # the space the human is in.
+                # Tried and REJECTED (measured, 2026-09-05): also snapping `c.s` back to
+                # `player_s - CAR_LEN`, the way step 2 separates two AI. The gate says it makes
+                # things WORSE -- contact frames 3 -> 23 -- because it pins the AI against the
+                # player and re-triggers this branch every frame while the car works its way
+                # sideways, and it is exactly the backwards "queue-snap" teleport E89 fought.
+                # An AI going AROUND a parked car is legitimate racing; the defect was the jolt.
                 player_hit = true
             end
         end

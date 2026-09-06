@@ -8261,7 +8261,64 @@ around the track. So the correction belongs on the AI side: when an AI overlaps 
 AI, leaving the player's own state untouched. That is a small, one-sided change with an obvious
 gate: a stationary player on the grid, five cars, assert zero `player_hit` from cars starting behind.
 
-**RACESTART-1: 1 sprint. Diagnosed from the code, not yet reproduced or fixed.**
+**RACESTART-1 — PARTLY DONE (S1-S5, 2026-09-05). The jolt is fixed. The rub is not.**
+
+Reproduced headlessly at last: `demo/native/racestart_probe.jl` + `JuliaMotorMTK/tools/racestart_smoke.jl`
+(registered in `gates.sh`) put a stationary player in P3 of a five-car standing grid at Watkins Glen
+with two AI behind, and run the getaway for 12 s.
+
+**The code-level diagnosis in this item was WRONG about the mechanism, and the gate is what showed
+it.** The predicted fix -- give the player the same along-track separation step 2 gives another AI,
+`c.s = player_s - CAR_LEN` -- was implemented and *measured*, and it made things **worse**: contact
+frames **3 → 23**, because it pins the AI against the player and re-triggers the contact branch every
+frame while the car works its way sideways. It is also precisely the backwards "queue-snap" teleport
+E89 spent a sprint removing. Reverted. **An AI going around a parked car is legitimate racing**; the
+probe shows the AI does yield laterally and pass, so it is not "driving through" at all.
+
+**What actually takes the wheels off** is the yield itself: `c.lane += d*1.3` moved the AI **1.3 m in
+one frame — 78 m/s sideways**. A car does not move sideways at 78 m/s; it appears inside you and is
+gone, and whatever the player's collision model makes of that penetration is what removes wheels.
+Now rate-limited to a hard-but-physical swerve (`JM_AI_YIELD_RATE`, default 6 m/s), with the
+collision twitch scaled to the real swerve. `JM_AI_YIELD_RATE=1000` restores the teleport and is the
+gate's control arm.
+
+| | frames past | contact frames | jolt frames (>0.2 m in one step) |
+|---|---|---|---|
+| control (teleport) | 694 | 3 | **3** |
+| shipped (6 m/s) | 671 | **283** | **0** |
+
+**OPEN — the rub.** Removing the jolt left a long scrape: 283 contact frames where there were 3. The
+AI is nudged out of the overlap and immediately steers back in, because its TARGET is still the
+racing line. Setting `c.tlane` in the contact branch does **not** fix it -- step 1 resets
+`tlane = 0.0` as soon as the road ahead looks clear (`ai.jl:609`), which it does the instant the
+nudge breaks the overlap. Verified: the gate numbers did not move by a single frame, so that line
+was removed rather than left in looking like a fix. **The real fix belongs in step 1's blocker scan:
+keep seeing a stopped car and hold a rail until past it.** Next sprint.
+
+Still unexamined, and still worth doing: whether the PO's *"dead at start line"* is wheel loss, an
+immobile car, or **E103's hyperspace-to-spawn** firing for the first time in a real wreck. That must
+be read from a replay, not from the sentence.
+
+## 🟠 NEW ITEM (found by RACESTART-1, 2026-09-05): GATEBASE-1 — two gate PREMISES went stale when TRACKSMOOTH-1 landed
+
+`softband_smoke` and `vtbrake_smoke` both fail, and **neither is a regression**. Their CONTROL arms
+no longer show the defect they were built to catch:
+
+```
+FAIL  monza control shows skitter (premise)        rev=60      (needs > 60)
+FAIL  watglen control is far off gold (premise)    +8.96 s     (needs > ~9 s)
+```
+
+Attributed by A/B, not by assumption. With TRACKSMOOTH-1 reverted via its own switches --
+`JM_SEGMENT_TANGENT=1 JM_TRK_SUBDIV=5 JM_NO_LOOP_CLOSE=1` -- **both gates PASS**. The smoother
+racing line (S458 approximating tangent, S459 subdiv 5→20 + loop closure) means the control skitters
+less and laps closer to gold, so thresholds written against the old jagged line no longer separate
+the arms. RACESTART-1's own change was cleared the same way: the failures are byte-identical with
+`JM_AI_YIELD_RATE=1000`.
+
+**Do not weaken these gates to make them green.** Re-baseline them deliberately against the smooth
+line, and state the new numbers with the reason, so the next person can tell a moved baseline from a
+broken one. **GATEBASE-1: filed, not started.**
 
 ## 🔴 NEW ITEM (PO, 2026-09-05): STARTSEQ-1 — spacebar, then a 5-second countdown, as the DEFAULT
 
@@ -8292,7 +8349,36 @@ put them in that position.
 3. Keep `JM_COUNTDOWN=0` as the documented way back to the old behaviour, so existing gates that
    depend on throttle-green can opt out explicitly rather than breaking silently.
 
-**STARTSEQ-1: filed, not started. Small, and it should land before RACESTART-1 is judged.**
+**STARTSEQ-1 — DONE (S1, 2026-09-05). All three points shipped, and two adjacent defects with them.**
+
+`drive_native_mtk.jl` / `render.jl`:
+- `JM_COUNTDOWN` default **0 → 5**. Throttle-as-green now only exists under `JM_COUNTDOWN=0`.
+- New `START_ARM`: the countdown does not start until **SPACE**. `JM_NO_START_ARM=1` and
+  `JM_AUTODRIVE=1` self-arm, because an automated run cannot press a key.
+- The prompt is said three ways: stdout (`★ PRESS SPACEBAR TO START COUNTDOWN`), the **window
+  title**, and on the HUD as a pulsing **spacebar keycap** with a down-chevron. The HUD has no
+  font — only 7-seg digits and quads — so it says things with shapes, as it already does with the
+  chequered flag and the clutch-gate bar.
+
+Two defects found while wiring it, both in code the item did not name:
+- The **window title still said "floor the throttle to start"**, which the change had just made
+  false. A stale instruction on screen is worse than none: it is the one the player obeys.
+- The **restart path (`R`) re-derived `race_go` from a COPY of the `HOLD_START` expression**
+  instead of the flag. STARTSEQ-1 added a term to `HOLD_START` (`isempty(REPLAY_FILE)`, so a
+  replay is never held at a start nobody can give — SPACE is already replay play/pause), and the
+  copy would have kept the old spelling: a replay held forever. Now `race_go[] = !HOLD_START`,
+  and the restart also clears `cd_armed`/`cd_said` so a restart re-asks for the spacebar rather
+  than rolling straight into a countdown.
+
+**Verified** (watglen, 4 AI, real GL): held at the prompt for 10 s at 0 km/h → armed →
+`4… 3… 2… 1…` in the title → GREEN → `lap 1/1 Pos P3/5`. Gate suite run after.
+
+**Instrument note — this session is WAYLAND.** `xdotool key` (XTEST) is not delivered to a GLFW
+surface, and `/dev/uinput` is root-only, so no gate can press a key. The first "space does nothing"
+reading was the *instrument* being mute, not the code: `g`, which always prints, was equally silent,
+and `w` moved neither rpm nor km/h. Added **`JM_ARM_AFTER=<s>`** (arms after `<s>` seconds) to
+exercise arm → countdown → green from a gate — the same reason bob grew `BOB_SDL_CLICK_MS`. It does
+**not** cover `GLFW.GetKey(KEY_SPACE)` itself; that read is the same idiom as the driving keys.
 
 ## 🔴 NEW ITEM (PO, 2026-09-05): AISPEED-1 — default AI pace must be ~60 %, not 200 %
 
@@ -8309,7 +8395,58 @@ constant — the anchors are now derived from the `.ibt` at startup, so the effe
 rather than literal), then set the default so the AI run at roughly **60 %** of the player's pace,
 with the existing env knobs left as the way to raise it.
 
-**AISPEED-1: filed, not started.**
+**AISPEED-1 — DONE (S1, 2026-09-05). The 200% was not a default. It was a poisoned file.**
+
+The backlog said "measure, do not read the constant", and that is what caught it: the constant said
+**85%** (`JM_AI_PCT`), the run printed **85%** — and the PO still saw 200%, because the number the
+PO sees comes from the GUI, not the constant. `juliaRacer.py:preset_ai_pct` presets the spinbox to
+`REF_LAP / your_lap * 100`, and `demo/native/human_best.txt` held:
+
+| track | banked "best" | GPL reference | preset |
+|---|---|---|---|
+| watglen | **2.708 s** | 66.912 s | 200% (clamp) |
+| nurburgring | **4.058 s** | 501.931 s | 200% (clamp) |
+| spa | **5.851 s** | 200.342 s | 200% (clamp) |
+| zandvoort | **5.425 s** | 86.848 s | 200% (clamp) |
+| monza | **−0.083 s** | 90.202 s | 30% (clamp) |
+
+Every circuit the PO could pick was pinned to the top of the range. **The PO was not exaggerating
+and was not misreading a slider — the field really was set to 200% on every track, every launch.**
+
+Where the junk comes from: `last_lap = cs.t - lap_t0`, so a lap counter that ticks twice (or a
+restart leaving `lap_t0` ahead of `cs.t`, which is the negative one) yields a near-zero lap. And
+`improved = best_lap == 0.0 || last_lap < best_lap` only ever compares DOWNWARD — so one junk lap
+becomes "best" permanently and no honest lap can displace it. The file was a ratchet.
+
+**Fixed in three places, because one would not have held:**
+1. `drive_native_mtk.jl` — new `plausible_lap(track, t)`: nothing non-positive, nothing under half
+   the circuit's GPL reference. It gates `save_human_best`, prunes poisoned rows already on disk
+   during the merge, and gates the race-average write to `human_recent.txt`. It says so on stdout.
+2. `juliaRacer.py` — `preset_ai_pct` applies the same test before trusting either file, and the
+   note beside the spinbox no longer quotes a lap the preset just rejected ("your best 2.708s" is
+   how the poisoned file passed for plausible as long as it did).
+3. Defaults: `JM_AI_PCT` **85 → 60** and the spinbox **85 → 60**, per the PO (supersedes the
+   2026-09-04 "85%").
+
+`human_best.txt` pruned (original kept as `human_best.txt.poisoned-2026-09-05.bak`). All six tracks
+now preset to **60%**, verified by calling `preset_ai_pct` directly.
+
+**Left open — the upstream lap-counter bug.** The gate stops the corruption reaching the pace, but
+something still credits sub-second and negative laps. Filed below as LAPTIME-1; it is a lap-counting
+defect, not a pace defect, and it would also corrupt results tabs and best-lap displays.
+
+## 🟠 NEW ITEM (found by AISPEED-1, 2026-09-05): LAPTIME-1 — sub-second and NEGATIVE laps are credited
+
+Found while tracing AISPEED-1: `human_best.txt` had banked five impossible laps across five tracks,
+including **−0.083 s** at monza. They can only come from `cs.laps` incrementing when no lap was run,
+or from `lap_t0` being left ahead of `cs.t` across a restart/respawn.
+
+AISPEED-1 gated the *consumers* so the pace can no longer be poisoned, but the bad lap is still
+counted: it will appear in the per-lap results tab, in `last_lap`/`best_lap` on the HUD, and in
+`player_laps` (which feeds the race average). Reproduce around the restart path (`R`) and the
+respawn branch at `cs.laps < prev_laps`, both of which touch `lap_t0`.
+
+**LAPTIME-1: filed, not started.**
 
 ## 🔴 NEW ITEM (PO, 2026-09-05): TRACKSMOOTH-1 — julia tracks are PIECEWISE LINEAR; that is AI-YAW's root cause
 

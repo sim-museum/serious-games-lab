@@ -21,6 +21,7 @@ import os
 import re
 import shutil
 import sys
+import time
 
 from PyQt6.QtCore import QProcess, QProcessEnvironment, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QPalette
@@ -73,11 +74,22 @@ def preset_ai_pct(track_key):
     """B (PO): the AI-speed % that paces the fastest AI car at the driver's MOST RECENT race
     AVERAGE on this track (so the field matches how you actually race, not a one-off hot lap):
     % = GPLrank_ref / your_recent_average · 100.  Falls back to your best lap, then 50 % if
-    you've never raced/lapped here.  Clamped to the spinbox range [30, 200]."""
-    base = human_recents().get(track_key) or human_bests().get(track_key)
+    you've never raced/lapped here.  Clamped to the spinbox range [30, 200].
+    PO 2026-09-05 set the DEFAULT to 60% (was 85%). That default applies when there is no pace for
+    the track; once you HAVE raced here the personalised value still wins, because that is what the
+    preset was asked for in the first place."""
     ref = REF_LAP.get(track_key)
+    # AISPEED-1 (PO 2026-09-05): "by default 60% AI speed, not 200%!"  The 200% was this function
+    # faithfully computing REF_LAP/base*100 from a POISONED lap file -- watglen banked at 2.708 s,
+    # nurburgring at 4.058 s, spa at 5.851 s -- so every track saturated the clamp. The sim now
+    # refuses to bank an impossible lap, but this side must not trust the file either: a preset
+    # that silently pins the field to maximum is the most expensive way to be wrong.
+    def plausible(t):
+        return t and t > 0 and (not ref or t >= 0.5 * ref)
+    base = next((t for t in (human_recents().get(track_key), human_bests().get(track_key))
+                 if plausible(t)), None)
     if not base or not ref:
-        return 50
+        return 60          # PO 2026-09-05: 60% is the default when there is nothing to personalise
     return max(30, min(200, round(ref / base * 100)))
 
 
@@ -607,7 +619,7 @@ class DriveTab(QWidget):
         form.addWidget(self.ai, 3, 1)
         self.ai_pct_l = QLabel("AI speed %:")
         form.addWidget(self.ai_pct_l, 4, 0)
-        self.ai_pct = QSpinBox(); self.ai_pct.setRange(30, 200); self.ai_pct.setValue(100)
+        self.ai_pct = QSpinBox(); self.ai_pct.setRange(30, 200); self.ai_pct.setValue(60)   # PO 2026-09-05: 60% default
         self.ai_pct.setToolTip("Field pace as a % of the track's GPLrank reference lap time: 100% = the "
                                "fastest AI car hits the GPLrank time for this circuit. Auto-preset when you "
                                "pick a track to GPLrank/your-best-lap·100 (so the fastest AI matches your "
@@ -675,6 +687,35 @@ class DriveTab(QWidget):
         self.log.setStyleSheet("font-family:monospace;font-size:11px")
         root.addWidget(self.log, 1)
 
+    # PO 2026-09-03: "julia racer appImage needs some kind of graphical display showing that
+    # it's compiling, and how long it will take. Users are used to compiled binaries."
+    # Julia precompiles its packages on first use -- measured at over 25 minutes on the build
+    # machine -- and until now that showed as an indeterminate "compiling…" bar, which is
+    # indistinguishable from a hung application. Julia's non-TTY precompile output prints one
+    # "<ms> ✓ <package>" line per finished package, so the count is observable even though the
+    # per-round total is not announced until the round ends. Count them against a total measured
+    # on the build machine and derive an ETA from the observed rate.
+    # MEASURED, not estimated: a cold first run on the build box emitted 318 '✓' lines across
+    # 14 precompile rounds (2026-09-03). An earlier guess of 216 was wrong by a third.
+    PRECOMPILE_EXPECTED = 318
+    # Package COUNT is not linear in TIME, and assuming it was would make the progress bar lie.
+    # From the same reference run: at half the packages only 19% of the compile work is done --
+    # the tail (ModelingToolkit 283 s, SymbolicUtils 161 s, Pkg 146 s) dominates. A count-linear
+    # ETA says "5 min left" ten packages in and then runs for another hour, which is worse than
+    # no estimate because the user concludes it has hung. This is the measured curve: fraction of
+    # total work completed at each decile of package count.
+    PRECOMPILE_CURVE = [0.011, 0.026, 0.053, 0.113, 0.192, 0.379, 0.660, 0.941, 0.954, 1.0]
+
+    @classmethod
+    def _precompile_work_fraction(cls, n):
+        """Fraction of total compile WORK done after n packages (piecewise-linear on the curve)."""
+        x = max(0.0, min(1.0, n / float(cls.PRECOMPILE_EXPECTED))) * 10.0
+        i = int(x)
+        if i >= 10:
+            return 1.0
+        lo = cls.PRECOMPILE_CURVE[i - 1] if i > 0 else 0.0
+        return lo + (cls.PRECOMPILE_CURVE[i] - lo) * (x - i)
+
     # loading milestones the game flushes to stdout, in execution order → (substring, %, label)
     LOAD_STAGES = [
         ("loading GPL", 20, "loading track…"),
@@ -703,8 +744,12 @@ class DriveTab(QWidget):
         """B: pre-set AI-speed % to GPLrank / your-most-recent-race-average · 100 (best lap, then 50%, as fallback)."""
         key = TRACK_KEYS[idx] if 0 <= idx < len(TRACK_KEYS) else "zandvoort"
         self.ai_pct.setValue(preset_ai_pct(key))
-        recent = human_recents().get(key)
-        best = human_bests().get(key)
+        # AISPEED-1: show only a pace the preset would actually USE. Quoting "your best 2.708s"
+        # under a 200% field is how the poisoned file looked reasonable for as long as it did.
+        ref = REF_LAP.get(key)
+        ok = lambda t: bool(t) and t > 0 and (not ref or t >= 0.5 * ref)
+        recent = human_recents().get(key); recent = recent if ok(recent) else None
+        best = human_bests().get(key);     best = best if ok(best) else None
         if recent:
             self.ai_pct_note.setText(f"≈ your recent avg {self._fmt(recent)} vs GPLrank {self._fmt(REF_LAP.get(key,0))}")
         elif best:
@@ -753,6 +798,14 @@ class DriveTab(QWidget):
         self.proc.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
         self.proc.readyReadStandardOutput.connect(self._log)
         self.proc.finished.connect(self._done)
+        # PO 2026-09-04: the sim exited mid-session and its Julia stacktrace existed ONLY in the
+        # log pane above -- QProcess captures the child's output, so nothing reached a file and the
+        # crash could not be diagnosed afterwards.  Mirror everything to a session log.
+        try:
+            self._sim_log = open(os.path.join(HERE, "last_sim_run.log"), "w",
+                                 encoding="utf-8", errors="replace")
+        except OSError:
+            self._sim_log = None
         # use the prebuilt sysimage if present (skips ~40-80 s of physics/render JIT)
         jlargs = ["-t", "2", "--project=."]
         sysimg = os.path.join(HERE, "jlracer.so")
@@ -782,6 +835,45 @@ class DriveTab(QWidget):
     def _log(self):
         text = bytes(self.proc.readAllStandardOutput()).decode(errors="replace")
         self.log.appendPlainText(text.rstrip())
+        f = getattr(self, "_sim_log", None)
+        if f is not None:
+            try: f.write(text); f.flush()   # flush: a crash must not lose the tail
+            except (OSError, ValueError): pass
+
+        # ---- precompilation phase: a REAL count and a time estimate, not a busy spinner ----
+        done = len(re.findall(r"✓\s", text))
+        if done or "Precompiling packages" in text:
+            if getattr(self, "_pc_t0", None) is None:
+                self._pc_t0 = time.monotonic()
+                self._pc_n = 0
+            self._pc_n += done
+            n = self._pc_n
+            total = max(self.PRECOMPILE_EXPECTED, n)
+            frac = self._precompile_work_fraction(n)
+            self.progress.setRange(0, 1000)
+            self.progress.setValue(min(int(frac * 1000), 999))   # never 100% while work continues
+            elapsed = time.monotonic() - self._pc_t0
+            # ETA from the measured curve and the observed wall clock, so it self-corrects on a
+            # slower or faster machine instead of trusting the build box's timings.
+            if frac > 0.02 and elapsed > 20:
+                remain = elapsed * (1.0 / frac - 1.0)
+                mins = int(remain // 60)
+                eta = f"about {mins} min left" if mins >= 1 else "under a minute left"
+            else:
+                eta = "estimating…"
+            mm = int(elapsed // 60)
+            self.progress.setFormat(
+                f"compiling Julia packages — {n}/{total} — {mm} min elapsed, {eta}"
+                f"   (one-off: later launches start immediately)")
+            self.progress.setVisible(True)
+            return                                          # don't let LOAD_STAGES fight for the bar
+
+        if getattr(self, "_pc_t0", None) is not None and getattr(self, "_stage", 0) == 0:
+            # first real game output after compiling: hand the bar over to the load milestones
+            self.progress.setRange(0, 100)
+            self.progress.setValue(0)
+            self._pc_t0 = None
+
         for marker, pct, label in self.LOAD_STAGES:        # advance the progress bar through load milestones
             if marker in text and pct > getattr(self, "_stage", 0):
                 if self.progress.maximum() == 0:           # leave "busy" mode for a real percentage
@@ -809,6 +901,14 @@ class DriveTab(QWidget):
         self.progress.setRange(0, 100)
         self.progress.setValue(0)
         self.progress.setFormat("")
+        f = getattr(self, "_sim_log", None)
+        if f is not None:
+            try:
+                f.write("\n[juliaRacer] sim exited: code=%r status=%r\n"
+                        % (self.proc.exitCode(), self.proc.exitStatus()))
+                f.close()
+            except (OSError, ValueError, RuntimeError): pass
+            self._sim_log = None
         # A fresh best/recent lap may have been recorded this race → refresh the AI-% preset.
         self._track_changed(self.track.currentIndex())
         # PO: show the result in a TAB, not a modal — robust even if the game crashed on exit (we just

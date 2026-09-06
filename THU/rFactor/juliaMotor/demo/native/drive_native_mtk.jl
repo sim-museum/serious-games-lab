@@ -167,16 +167,37 @@ const PRACTICE_SEC = 60.0 * (tryparse(Float64, get(ENV, "JM_PRACTICE_MIN", "15")
 # In REPLAY the field size comes from the RECORDING (so every recorded car gets a chassis to
 # draw + camera-focus), not JM_AI — else focusing the replay camera on an AI shows empty track.
 const N_AI      = let rf = get(ENV, "JM_REPLAY", "")
-    if !isempty(rf) && isfile(rf)
+    n = if !isempty(rf) && isfile(rf)
         try; clamp(deserialize(rf).ncar - 1, 0, 5); catch; 5; end
     else
         clamp(tryparse(Int, get(ENV, "JM_AI", "0")) |> x -> x === nothing ? 0 : x, 0, 5)
     end
+    # MP-4: a NETWORKED race cannot currently include AI cars, and this is a correctness limit, not
+    # a preference. RaceAI.step_field! is stepped independently on BOTH peers and is handed the
+    # LOCAL player's position (`player=(pp[1],pp[2],cs.v)`) with `rel` capping AI speed to a
+    # fraction of that car's speed -- so the host's AI chases the host and the client's AI chases
+    # the client. The two fields are driven by different inputs from the first frame, nothing about
+    # AI state is transmitted (only one `send_pose!` for the local car), and there is no authority
+    # flag. Two players would see different AI positions, gaps, and finishing order.
+    # Head-to-head with no AI is exactly right; a race whose two screens disagree is not.
+    # JM_NET_AI=1 overrides for experiments -- it does NOT make the field agree.
+    if !isempty(get(ENV, "JM_NET", "")) && n > 0 && !haskey(ENV, "JM_NET_AI")
+        println("  ⚠ networked session: AI field disabled ($n → 0). Both peers would simulate it ",
+                "independently from different inputs, so the two screens would disagree. ",
+                "JM_NET_AI=1 to override (diverging fields).")
+        n = 0
+    end
+    n
 end
 const IS_RACE   = MODE == "race"
 const IS_TRAIN  = MODE == "training"
 # E11: AI speed as a percentage — 100 % = the GPL AI car laptime for the track.
-const AI_PCT    = clamp(tryparse(Float64, get(ENV, "JM_AI_PCT", "100")) |> x -> x === nothing ? 100.0 : x, 30.0, 200.0)
+# PO 2026-09-05: "by default 60% AI speed, not 200%!" (supersedes the 2026-09-04 85%).
+# 60% of the GPLrank
+# reference SPEED, i.e. a target lap of ref/0.85. At watglen that is 66.9s -> 78.7s with
+# scale 1.22 -- comfortably inside the 0.4..2.2 clamp, unlike 200% which saturates at 2.2
+# and makes every value above ~150% produce the same field.
+const AI_PCT    = clamp(tryparse(Float64, get(ENV, "JM_AI_PCT", "60")) |> x -> x === nothing ? 100.0 : x, 30.0, 200.0)
 # GPL spread: by DEFAULT the field runs its own (physics-paced) speed and SPREADS OUT — the Eagle
 # pulls away from the BRM, exactly as the PO wants.  The field pace is anchored to the human via the
 # GUI's per-track % preset (≈ the human's best lap), so it doesn't run away.  Opt back into the old
@@ -193,7 +214,19 @@ const AI_HEADSTART = max(0.0, parse(Float64, get(ENV, "JM_AI_HEADSTART", "0")))
 # PO 2026-08-31: "start as a countdown timer". JM_COUNTDOWN=<seconds> holds the whole field on the
 # grid and counts down on the HUD; at zero the race goes GREEN for everyone at once. Default 0 keeps
 # the previous behaviour exactly (green on the player's first throttle), so no existing run changes.
-const COUNTDOWN = max(0.0, parse(Float64, get(ENV, "JM_COUNTDOWN", "0")))
+# ⭐ STARTSEQ-1 (PO 2026-09-05): "every julia race should begin with 'press spacebar to start
+# countdown', then countdown from 5. No more starting race when I rev."
+# The countdown existed since 2026-08-31 but DEFAULTED TO 0, and its own comment recorded the
+# choice that became the complaint: "Default 0 keeps the previous behaviour exactly (green on the
+# player's first throttle), so no existing run changes." The conservative default outlived its
+# reason -- and it is also what put the PO on the grid in P3 while the field launched (RACESTART-1).
+# Now 5 s by default. JM_COUNTDOWN=0 restores throttle-as-green for any gate that depends on it.
+const COUNTDOWN = max(0.0, parse(Float64, get(ENV, "JM_COUNTDOWN", "5")))
+# The race must not begin until the player is ready: the countdown itself is ARMED by SPACE.
+# A countdown that starts before you are looking is no better than a rev. Automated runs cannot
+# press a key, so autodrive/headless arm themselves -- JM_NO_START_ARM=1 forces that anywhere.
+const START_ARM = get(ENV, "JM_NO_START_ARM", "0") == "0" && get(ENV, "JM_AUTODRIVE", "0") == "0"
+const ARM_AFTER = max(0.0, parse(Float64, get(ENV, "JM_ARM_AFTER", "0")))   # test hook, see the countdown block
 # PO 2026-08-28: JM_POLE=1 puts the HUMAN on pole regardless of qualifying. Without a practice lap
 # `grid_order` gives you no time and grids you LAST (correct, and what the PO saw as "P5 of 5").
 const POLE = get(ENV, "JM_POLE", "0") != "0"
@@ -210,6 +243,53 @@ const AI_PHYSICS = haskey(ENV, "JM_AI_PHYSICS")
 # legitimately ahead.  1.0 = full DFV power (GPL-fast); lower detunes them.  JM_AI_POWER tunes it.
 const AI_POWER  = clamp(tryparse(Float64, get(ENV, "JM_AI_POWER", "0.90")) |> x -> x === nothing ? 0.90 : x, 0.4, 1.0)
 const CONTACT_D = parse(Float64, get(ENV, "JM_CONTACT_D", "2.1"))   # collision = ACTUAL contact (≈ car width); no repel-from-afar
+# PO 2026-09-04 (Monza, then Watkins Glen): "the user car seems to drive right through AI cars as
+# if they aren't there, though AI cars seem to react (by making evasive maneuvers)".
+# CONTACT_D above is a CIRCULAR radius between car CENTRES, and a Lotus 49 is about 4 m long by
+# 1.8 m wide. Side by side the centres sit ~1.8 m apart -- inside 2.1 -- so side contact was
+# detected and the test looked like it worked. NOSE TO TAIL the centres are ~4 m apart at ACTUAL
+# CONTACT, well outside 2.1, so rear-ending a car registered nothing and the player passed
+# straight through it. One isotropic radius cannot describe a body twice as long as it is wide.
+# The AI still swerved because that is a separate path (RaceAI.step_field! is handed the player's
+# position regardless of whether any contact is detected) -- which is exactly the asymmetry the
+# PO described: they react, but you never touch them.
+# Model each car as an ELLIPSE and sum the two radii ALONG THE SEPARATION DIRECTION: the
+# threshold opens up to ~4 m when the cars are lined up nose-to-tail and stays ~1.8 m when they
+# are alongside. Setting JM_CONTACT_D restores the old circular test unchanged.
+"""
+    prog_delta(ps, prev, total; teleport=false) -> Float64
+
+Arc-length to add to the player's accumulated lap progress this frame.
+
+PO 2026-09-04 (Watkins Glen): "my first lap was listed at 1.19 seconds ... maybe because I hit r
+to get back on the road at one point". R (respawn) and SHIFT+R (recover) TELEPORT the car BACKWARD
+along the centreline. The unwrap here assumes every step is a small FORWARD one, so a backward jump
+of more than half a lap has `+= total` applied and comes out as a large FORWARD step -- crediting
+up to 40% of a lap in one frame, which banks an instant lap and corrupts the lap COUNT (and with it
+`cs.laps >= RACE_LAPS`, the race-over announcement, and the replay written at exit).
+
+A teleport is not motion, so it contributes NOTHING. Extracted as a function so a gate can exercise
+the real rule instead of a copy of it.
+"""
+function prog_delta(ps::Real, prev::Real, total::Real; teleport::Bool = false)
+    teleport && return 0.0
+    ds = ps - prev
+    ds < -total/2 && (ds += total)
+    ds >  total/2 && (ds -= total)
+    return abs(ds) < total*0.4 ? float(ds) : 0.0   # ignore projection jumps
+end
+
+const CAR_HALF_L = parse(Float64, get(ENV, "JM_CAR_HALF_L", "2.0"))   # half length, m
+const CAR_HALF_W = parse(Float64, get(ENV, "JM_CAR_HALF_W", "0.9"))   # half width, m
+const CONTACT_CIRCLE = haskey(ENV, "JM_CONTACT_D")                    # explicit = keep the old behaviour
+
+"""Ellipse radius of a car heading `θ` measured along the unit direction (ux,uz)."""
+carrad(θ, ux, uz) = hypot(CAR_HALF_L * (cos(θ)*ux + sin(θ)*uz),
+                          CAR_HALF_W * (-sin(θ)*ux + cos(θ)*uz))
+
+"""Contact threshold between two cars separated by (dx,dz), |d|, heading θa and θb."""
+contact_d(dx, dz, d, θa, θb) =
+    CONTACT_CIRCLE ? CONTACT_D : (carrad(θa, dx/d, dz/d) + carrad(θb, dx/d, dz/d))
 # E55/E38: a physics AI whose heading deviates more than this from the rail tangent has SPUN OUT (the
 # controller can oscillate into a spin on the hilly/blind tracks).  It won't trip the slow/off-line
 # recovery (it's still fast + near the line), so it spins forever → "flopping/strange" field.  Treat a
@@ -366,6 +446,88 @@ const IBTDIR = let repo = normpath(joinpath(@__DIR__,"..","..","data","iracing")
     d = get(ENV, "JM_IBTDIR", "")
     !isempty(d) ? d : (isdir(gold) && !isempty(filter(f->endswith(lowercase(f),".ibt"), readdir(gold))) ? gold : repo)
 end
+# AI-GOLD: derive the AI's lateral-grip anchor from the bundled iRacing telemetry, so the pace
+# model obeys the PO's rule that car physics comes from the .ibt data rather than from a tuned
+# constant. Uses the p99 of |LatAccel| over the longest available lap file: the raw PEAK is useless
+# (measured 55.7 m/s2 = 5.68 g -- a kerb strike), and the steady-state skidpad file's p95 agrees
+# with the lap's p95 to 0.5%, which is what makes the percentile trustworthy.
+# Failure is non-fatal and LOUD: without this the AI silently reverts to the fallback constant, and
+# a silent revert is indistinguishable from the feature working.
+function jm_anchor_from_ibt()
+    # Prefer a SKIDPAD capture: a skidpad is the standard steady-state measurement of lateral
+    # grip, which is exactly the quantity wanted here, whereas a road lap mixes in kerbs and
+    # collisions. (Sorting by size alone happened to pick the skidpad anyway -- make the reason
+    # explicit rather than rely on that.) Road laps remain the fallback.
+    files = try
+        all = filter(f -> endswith(lowercase(f), ".ibt"), readdir(IBTDIR; join = true))
+        skid = filter(f -> occursin("skidpad", lowercase(basename(f))), all)
+        vcat(sort(skid; by = filesize, rev = true),
+             sort(filter(!in(Set(skid)), all); by = filesize, rev = true))
+    catch e
+        @warn "AI grip anchor: cannot read $IBTDIR ($e) -- keeping fallback $(RaceAI.AMAX[])"; return
+    end
+    isempty(files) && (@warn "AI grip anchor: no .ibt in $IBTDIR -- keeping fallback $(RaceAI.AMAX[])"; return)
+    for f in files
+        try
+            v = filter(isfinite, abs.(IBT.channel(IBT.ibt_open(f), "LatAccel")))
+            length(v) < 500 && continue
+            u = sort(v); p99 = u[clamp(ceil(Int, 0.99*length(u)), 1, length(u))]
+            got = RaceAI.set_anchor_from_ibt!(p99)
+            println("  → AI grip anchor ", round(RaceAI.AMAX[], digits=2), " m/s² (",
+                    round(RaceAI.AMAX[]/9.81, digits=2), " g) from ", basename(f),
+                    " (LatAccel p99 of ", length(v), " samples)")
+            return
+        catch e
+            @warn "AI grip anchor: $(basename(f)) unusable ($e)"
+        end
+    end
+    @warn "AI grip anchor: no usable .ibt LatAccel -- keeping fallback $(RaceAI.AMAX[])"
+end
+jm_anchor_from_ibt()
+
+# AI-GOLD: the TOP-SPEED anchor, from the drivetrain rather than from observed speed.
+#   v = RW_R * rpm_limit * 2π/60 / (GEARS[end] * FINAL[])
+# The rev limit is gear-independent, so a track that never reaches top-gear terminal speed still
+# measures it -- which is why this works where observing Speed does not (the gold set's only road
+# laps are the Nordschleife, capped at 59-63 m/s by the circuit, not by the car).
+#
+# ⚠ RW_R IS STILL A HAND-SET CONSTANT (0.33 m) and is the only unsourced term in this chain. An
+# attempt to measure it from the ibt failed and the failure is worth recording: LRspeed/RRspeed are
+# LINEAR speeds in m/s, not angular rates, so v/ω came out ~0.98 on every file -- a dimensionless
+# ratio near 1, not a radius. 0.98 m is impossible for a 1967 F1 tyre (~0.33 m), and adopting it
+# would have geared the car three times too tall. Do not "derive" RW_R from those channels.
+function jm_vmax_from_ibt()
+    files = try
+        sort(filter(f -> endswith(lowercase(f), ".ibt"), readdir(IBTDIR; join = true)); by = filesize, rev = true)
+    catch e
+        @warn "AI vmax anchor: cannot read $IBTDIR ($e) -- keeping fallback $(RaceAI.VMAX[])"; return
+    end
+    isempty(files) && (@warn "AI vmax anchor: no .ibt in $IBTDIR -- keeping fallback $(RaceAI.VMAX[])"; return)
+    rpmlim = 0.0; src = ""
+    for f in files
+        try
+            r = filter(isfinite, IBT.channel(IBT.ibt_open(f), "RPM"))
+            length(r) < 500 && continue
+            m = maximum(r)
+            if m > rpmlim; rpmlim = m; src = basename(f); end
+        catch e
+            @warn "AI vmax anchor: $(basename(f)) unusable ($e)"
+        end
+    end
+    if rpmlim <= 0
+        @warn "AI vmax anchor: no usable RPM channel -- keeping fallback $(RaceAI.VMAX[])"
+        return
+    end
+    rw = 0.33                                     # hand-set; see the warning above
+    v  = rw * rpmlim * 2π/60 / (DriveRT3D.GEARS[end] * DriveRT3D.FINAL[])
+    RaceAI.set_vmax_from_drivetrain!(v)
+    println("  → AI vmax anchor ", round(RaceAI.VMAX[], digits=1), " m/s (",
+            round(Int, 3.6*RaceAI.VMAX[]), " km/h) from rev limit ", round(Int, rpmlim),
+            " rpm in ", src, "  [RW_R=", rw, " m is NOT from the ibt]")
+end
+jm_vmax_from_ibt()
+
+
 # E91 (2026-08-29): name the capture after the track it WAS. This fell through to "zandvoort"
 # for monza and watglen, so a Monza run was saved as `lotus49_zandvoort ...ibt` -- a mislabelled
 # capture is worse than no capture, because later analysis cannot tell it apart from the real
@@ -1111,14 +1273,24 @@ end
 # dies at startup.  default_gamedata()'s wine-prefix fallback doesn't exist on this box, so when
 # RFACTOR_GAMEDATA is unset prefer the repo's symlink-only `rfactor-gamedata` tree (built from the
 # mod media; juliaRacer.py launches don't set the env var).
+# PO (2026-09-03): julia racer must have NO dependency on rFactor game data -- only GPL
+# assets and iRacing .ibt telemetry.  (The earlier "zandracer" effort used rFactor data; that
+# is a different program.)  The .veh was never a physics source -- handling is the MTK Lotus 49
+# in DriveRT, fitted to iRacing .ibt -- it only filled DriveCar's `model` field, which this path
+# never reads (verified: the sole reader is JuliaMotor.step!, and this entrypoint calls
+# DriveRT.step_car!).  That field is now Union{Nothing,VehicleModel}, so the load is skipped
+# entirely when no GameData tree is present, and no rFactor data ships in the AppImage.
+# Set JM_RFACTOR_VEH=1 with a resolvable RFACTOR_GAMEDATA to restore the old load.
 const _REPO_GD = normpath(joinpath(@__DIR__,"..","..","..","..","..","rfactor-gamedata"))
-const GD = haskey(ENV,"RFACTOR_GAMEDATA") ? ENV["RFACTOR_GAMEDATA"] :
-           isdir(_REPO_GD)                ? _REPO_GD : default_gamedata()
-const VEH = load_vehicle(joinpath(GD,"Vehicles","F158","Vanwall","Teams","LewisEvans","LewisEvans.veh"))
-const MODEL = VehicleModel(VEH)              # NOT the driving physics: handling is the MTK Lotus 49
-                                             # (DriveRT, fitted to iRacing lotus49 .ibt). MODEL only fills
-                                             # DriveCar's `model` field, which this path never reads —
-                                             # see demo/native/CLAUDE.md. Vestigial; keeps the .veh load alive.
+const _GD_TRY  = haskey(ENV,"RFACTOR_GAMEDATA") ? ENV["RFACTOR_GAMEDATA"] :
+                 isdir(_REPO_GD)                ? _REPO_GD : nothing
+const MODEL = if get(ENV,"JM_RFACTOR_VEH","0") == "1" && _GD_TRY !== nothing
+    VehicleModel(load_vehicle(joinpath(_GD_TRY,"Vehicles","F158","Vanwall",
+                                       "Teams","LewisEvans","LewisEvans.veh")))
+else
+    nothing
+end
+
 const GPLBASE = normpath(joinpath(@__DIR__,"..","..","..","..","WP","drive_c","Sierra","GPL","tracks"))
 # TRACKSEL → GPL track folder (all share the .3do/.trk/.mip/.dat pipeline)
 const GPLNAME = get(Dict("nurburgring"=>"nurburg", "zandvoort"=>"zandvort",
@@ -1933,6 +2105,18 @@ const SHOTS = [let f = split(String(spec), ":")
                              length(f) >= 3 ? String(f[3]) : "shot$(i)")
                end for (i, spec) in enumerate(filter(!isempty, split(get(ENV, "JM_SHOTS", ""), ";")))]
 const SHOTS_DIR   = get(ENV, "JM_SHOTS_DIR", "/tmp")
+const FRAMEDUMP = (v = get(ENV, "JM_FRAMEDUMP", "");
+                   isempty(v) ? Int[] : [parse(Int, t) for t in split(v, ":")])
+const FRAMEDUMP_DIR = get(ENV, "JM_FRAMEDUMP_DIR", "/home/admin/appimage-build/frames")
+# JM_CAR_RANGE="a:b" draws ONLY car body items a..b (1-based, inclusive). There is no part
+# isolation instrument in this tree and Render.Item carries no name, so the only way to attribute
+# a PIXEL to a mesh is to draw subsets and look. Used to bisect the engine-graphics artefact
+# (E106-S38): the artefact is a small high-saturation patch in a fixed place, which points at one
+# sub-mesh with a wrong texture binding rather than a format-wide UV problem.
+const CAR_RANGE = (v = get(ENV, "JM_CAR_RANGE", "");
+                   isempty(v) ? nothing : (parse(Int, split(v,":")[1]), parse(Int, split(v,":")[2])))
+_in_car_range(i) = CAR_RANGE === nothing || (CAR_RANGE[1] <= i <= CAR_RANGE[2])
+
 const SHOT_SETTLE = parse(Int, get(ENV, "JM_SHOT_SETTLE", "38"))
 # E104-S4 (PO: "every car FLOATS 20-40 cm above the road"). The probes so far measured the AI LINE
 # against the terrain (E104-S2/S3: exactly 0.0) and wheel RADII against their placement (within
@@ -1993,10 +2177,25 @@ const WHEEL_NAMES  = ("lotwlf","lotwrf","lotwlr","lotwrr")
 PO 2026-08-29: "detach the wheel that hit the barrier - or both wheels, if two wheels hit before
 the car comes to a stop". So which wheels leave is decided per-wheel, per-frame, by whether that
 CORNER actually contacts something (see detach_hit_wheels!) — not by picking corners up front."""
-function wreck!(v)
+function wreck!(v; closing = NaN, bnd_peak = NaN, x = NaN, z = NaN)
     WRECKED[] && return
     WRECKED[] = true
     println("  [WRECK] hard impact at ", round(v*3.6, digits=0), " km/h — engine disconnected, race over")
+    # PO 2026-09-04, Spa: "car suddenly stops on road, nothing visible nearby, log says hard
+    # collision at 154 km/hr". The message named only the speed, so it could not distinguish the
+    # two ways `wrecks` fires -- and they have opposite meanings. A CLOSING hit means the car
+    # really did strike a solid; a BOUNDARY-peak hit is the fence/wall test, which is INVISIBLE
+    # geometry, so "nothing visible nearby" is exactly what a mis-placed boundary looks like.
+    # Say which branch, and say where, so the next occurrence locates itself.
+    closes = !isnan(closing)  && closing  > WRECK_CLOSE
+    bnds   = !isnan(bnd_peak) && bnd_peak > 1.0e3
+    println("  [WRECK]   cause: ",
+            bnds && !closes ? "BOUNDARY penetration peak $(round(bnd_peak, digits=0)) -- this is the " *
+                              "fence/wall test, which is INVISIBLE geometry, not a drawn object" :
+            closes && !bnds ? "CLOSING speed $(round(closing, digits=1)) m/s into a solid" :
+            closes && bnds  ? "BOTH: closing $(round(closing, digits=1)) m/s and boundary peak $(round(bnd_peak, digits=0))" :
+                              "neither threshold exceeded (closing=$closing bnd_peak=$bnd_peak) -- unexpected")
+    isnan(x) || println("  [WRECK]   at world (", round(x, digits=1), ", ", round(z, digits=1), ")")
     flush(stdout)
 end
 
@@ -2240,7 +2439,8 @@ const GRADE_TAB = Dict("OVERCAST"=>GRADE_OVERCAST, "NURB"=>GRADE_NURB, "MONZA"=>
 const GRADE0 = SKIDPAD ? GRADE_SKIDPAD :
               haskey(ENV, "JM_GRADE") ? get(GRADE_TAB, uppercase(ENV["JM_GRADE"]), GRADE_OVERCAST) :
               get(GRADE_BYTRACK, TRACKSEL, GRADE_OVERCAST)
-const ENG = EngineAudio.build_lotus(gamedata = GD)   # GPL Ford DFV V8, RPM-pitched; START is deferred to just before the game loop (below)
+const ENG = EngineAudio.build_lotus()   # `gamedata` was swallowed by kwargs... and never read
+                                        # (audio.jl:80); the engine sound is the GPL wav.   # GPL Ford DFV V8, RPM-pitched; START is deferred to just before the game loop (below)
 # E72-S13: per-track exposure, measured on asphalt in COCKPIT view on both sides (E72-S12).
 #   gold/native asphalt luminance: Spa 120.2/149.0 → 0.81   Watkins 120.0/143.8 → 0.83
 #                                  Monza 117.5/101.3 → 1.16  Zandvoort 128.5/131.3 → 0.98
@@ -2888,9 +3088,23 @@ let objnames=Set{String}()
     # E68 S8 (PO: Spa "oversized buildings right on the track — you drive through them").
     # lasad1's centroid sits 0.6 m from the road centre at s=13641.  A BUILDING centred on
     # the corridor cannot be right; drop building-family meshes with |lat| < 4 m (logged).
+    # E106-S31 (PO 2026-09-03: "two buildings directly in the road ... then a crash at the masta
+    # kink").  MEASURED, not guessed: JM_FOOTPRINT on Spa reports ho18 with its nearest vertex
+    # 0.2 m from the centreline (a 24.8 m-wide mesh, origin 7.0 m out, lapdist 3858) and ho17
+    # beside it at 3850 -- two buildings standing across the road, which is what the PO saw.
+    # They survive every on-road filter because BOTH filters (onroad_bldg, onroad_fp) are gated on
+    # bldgish(), and bldgish() never knew the `ho<n>` family.  The tell was in this file already:
+    # the JM_FOOTPRINT report's own building regex is ^(house|bu\d|casa|clhouse|eauhotel|ho\d) --
+    # a WIDER list than the predicate that does the dropping.  One list described buildings for
+    # REPORTING and a different one for FILTERING, so anything in the gap rendered on the asphalt.
+    # Note `eauhotel` also missed: the old test was startswith(nm,"hotel"), and eauhotel does not
+    # start with it.  Aligned to the census's list.  JM_BLDG_WIDE=0 restores the old narrow set.
+    _bldg_wide = get(ENV,"JM_BLDG_WIDE","1") != "0"
     bldgish(nm) = startswith(nm,"lasad") || startswith(nm,"chut") || startswith(nm,"haus") ||
                   startswith(nm,"house") || startswith(nm,"ferme") || startswith(nm,"bldg") ||
-                  startswith(nm,"hotel") || startswith(nm,"bld")
+                  startswith(nm,"hotel") || startswith(nm,"bld") ||
+                  (_bldg_wide && (occursin(r"^(ho|bu)\d", nm) || startswith(nm,"casa") ||
+                                  startswith(nm,"clhouse") || occursin("hotel", nm)))
     onroad_bldg(i) = bldgish(lowercase(i.name)) && begin
         hr = JuliaMotor.hat(TRKSURF, Float64(i.x), Float64(i.y))
         hit = hr.found && abs(hr.lateral) < 4.0
@@ -3642,7 +3856,14 @@ let objnames=Set{String}()
 
     global OBJINSTS = [begin
         ismesh = get(objmesh,i.name,nothing) !== nothing; isbb = get(bbinfo,i.name,nothing) !== nothing; og = onground(i)
-        kmesh  = ismesh && !drop(i.name) && !onroad_crowd(i) && !perp_crowd(i) && (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && og
+        # E106-S31: kmesh MUST list the same predicates as the render list (the `kept` comprehension
+        # below), or JM_SWEEP reports objects the renderer already dropped.  It was missing
+        # !onroad_bldg and !onroad_fp, so the on-road building fix showed a BYTE-IDENTICAL sweep --
+        # the instrument, not the fix, was wrong.  This block's own comment claims it sees "exactly
+        # what is actually rendered"; now it does.  JM_OBJINSTS_LOOSE=1 restores the old 3-filter set.
+        kmesh  = ismesh && !drop(i.name) && !onroad_crowd(i) && !perp_crowd(i) &&
+                 (get(ENV,"JM_OBJINSTS_LOOSE","0") != "0" || (!onroad_bldg(i) && !onroad_fp(i))) &&
+                 (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && og
         kbb    = isbb   && !drop(i.name) && !(standcrowd(i.name) && on_road(i.x, i.y, ROAD_HALFW+1.0)) && og && !on_road(i.x, i.y, ROAD_HALFW)   # E68 S8b: billboard crowds are camera-facing (yaw meaningless) — drop only when ON the road; perp_crowd wiped Spa's Eau Rouge line
         issolid = solidR(lowercase(i.name)) > 0.0 && og && !on_road(i.x, i.y, SOLID_EXCL_HW)
         (i.name, Float32(i.x), Float32(i.y), ploz(i), kmesh ? :mesh : kbb ? :bb : :dropped, issolid)
@@ -3931,7 +4152,15 @@ tstamp("  [E80] mirrors + wheels begin")
 const MIRROR_RTT = get(ENV,"JM_MIRROR_RTT","1") != "0"    # JM_MIRROR_RTT=0 → old static silver discs
 const MIRW, MIRH = 384, 192
 (mirfbo, mirtex) = MIRROR_RTT ? Render.make_mirror_fbo(MIRW, MIRH) : (GLuint(0), GLuint(0))
-const MIRROR_EVERY = parse(Int, get(ENV,"JM_MIRROR_EVERY","3"))   # E80: mirror RTT refresh interval
+# E106-S34/S35: default was 3 (refresh the mirror every 3rd frame, for frame cost, E80). That
+# is the PO's "mirrors strobe": at 60 fps the mirror updated at 20 Hz while the world moved at
+# 60, and consecutive-frame capture showed both mirrors swinging on an exact 3-frame cycle
+# while a control region of road decayed smoothly. Steady-state cost was then MEASURED past
+# JIT warm-up (cockpit, Watkins): =3 gave 46.3/45.5/59.9 fps, =1 gave 60.6/60.8/53.8 -- the
+# within-arm variance exceeds the difference and =1 is not slower, both near the 60 fps cap.
+# So the optimisation was costing a visible defect and buying nothing measurable here.
+# JM_MIRROR_EVERY=3 restores the old behaviour.
+const MIRROR_EVERY = parse(Int, get(ENV,"JM_MIRROR_EVERY","1"))   # per-frame mirror (was 3)
 const MIRROR_GLASS_FRAC = 0.88f0                          # glass diameter as a fraction of the disc (keeps the rim)
 function mirror_glass_quads(parts, tex)
     items = Render.Item[]
@@ -4377,14 +4606,20 @@ tstamp("  [E80] AI car models done / projection")
 const PROJ_COCKPIT = Render.perspective_revz(deg2rad(parse(Float32,get(ENV,"JM_FOV","80"))), Float32(W/H), 0.20f0, 3000f0)
 
 # ---- input: edge-detected shift, view + auto-gearbox toggle ----
-mutable struct Ctl; prevUp::Bool; prevDn::Bool; prevV::Bool; prevG::Bool; prevM::Bool; prevRec::Bool; view::Int; auto::Bool; cluWarned::Bool; end
+mutable struct Ctl; prevUp::Bool; prevDn::Bool; prevV::Bool; prevG::Bool; prevM::Bool; prevRec::Bool; prevRestart::Bool; view::Int; auto::Bool; cluWarned::Bool; end
 # shift mode: AUTO by default (auto-clutch + auto-shift) — press throttle and GO, the car never bogs
 # on the line or out of a slow corner.  Press G in-app for MANUAL (work the clutch on C, shift E/Q —
 # release the clutch too low and it crawls/bogs, just like the real thing).  ZAND_SHIFT=manual forces it.
-const CTL = Ctl(false,false,false,false,false,false, parse(Int, get(ENV,"JM_VIEW","1")), get(ENV,"ZAND_SHIFT","auto") != "manual", false)   # view 1=chase 0=cockpit; AUTO gearbox by default (G toggles)
+const CTL = Ctl(false,false,false,false,false,false,false, parse(Int, get(ENV,"JM_VIEW","1")), get(ENV,"ZAND_SHIFT","auto") != "manual", false)   # view 1=chase 0=cockpit; AUTO gearbox by default (G toggles)
 key(k) = GLFW.GetKey(win, k) == GLFW.PRESS
 const JOYREPORT = Ref(false)
 const JOYTRACE_T = Ref(-1.0)
+# PO 2026-09-04 (crash found in a live race): `read_input` set CLUTCH_GATE[] on a refused G,
+# but the Ref was a LOCAL of `main()` -- so the writer referenced a global that did not exist and
+# every refused G raised `UndefVarError: CLUTCH_GATE not defined`, killing the session. Writer and
+# reader must be the SAME binding, so it lives at module scope.
+const CLUTCH_GATE = Ref(-1.0)   # seconds left to show the clutch-gate bar after a refused G
+
 function read_input()
     thr=brk=str=clu=0.0; up=dn=false
     js = GLFW.GetJoystickAxes(GLFW.JOYSTICK_1)
@@ -4450,7 +4685,14 @@ function read_input()
     # is EDGE-triggered (one drop per press); both set `rst` so the per-frame respawn guards still apply.
     rkey  = key(GLFW.KEY_R); shift = key(GLFW.KEY_LEFT_SHIFT) || key(GLFW.KEY_RIGHT_SHIFT)
     recover = rkey && shift && !CTL.prevRec; CTL.prevRec = rkey && shift
-    rst = (rkey && !shift) || recover
+    # PO 2026-09-04: "add a key command to julia racer to restart the session on the current track.
+    # This should be instantaneous - otherwise you have to wait for the track to reload after goofing
+    # up." CTRL+R, because R and SHIFT+R are already respawn and recover, and losing a good session
+    # to a mistyped key would cost more than the reload it saves. Edge-triggered: one restart per
+    # press, never a repeat while held.
+    ctrl = key(GLFW.KEY_LEFT_CONTROL) || key(GLFW.KEY_RIGHT_CONTROL)
+    restart = rkey && ctrl && !CTL.prevRestart; CTL.prevRestart = rkey && ctrl
+    rst = (rkey && !shift && !ctrl) || recover
     # PO 2026-08-27: "pressing forward on the joystick causes the car to drift backward or stay
     # still; W has no effect" — with brake and steering working. Cause: the X3D SLIDER (axis 4) is
     # mapped to the CLUTCH, so a slider parked at the engaged end holds the clutch fully in. The
@@ -4503,7 +4745,7 @@ function read_input()
     (DriveInput(throttle=clamp(thr,0,1), brake=clamp(brk,0,1), steer=clamp(str,-1,1),
                 clutch=(WRECKED[] ? 1.0 : clu),        # E95: wrecked = engine PERMANENTLY disconnected
                 shift_up=(WRECKED[] ? false : upE), shift_down=(WRECKED[] ? false : dnE),
-                autoshift=(WRECKED[] && false) || CTL.auto), rst, recover)
+                autoshift=(WRECKED[] && false) || CTL.auto), rst, recover, restart)
 end
 
 # ---- terrain pitch: slope under the car from the HAT, sampled fore & aft ----
@@ -5495,13 +5737,32 @@ function main()
                   "$m:$(lpad(si,2,'0')).$(lpad(ms,3,'0'))")
     # A3: maintain a per-track human-best-lap file (human_best.txt: "<track>\t<seconds>") the GUI reads to
     # pre-set the AI-speed %.  Merge-and-rewrite so existing tracks survive; only overwrite if this is faster.
+    # AISPEED-1 (PO 2026-09-05, "by default 60% AI speed, not 200%!"): the 200% was NOT a bad
+    # default -- it was this file, poisoned. It held watglen 2.708 s, nurburgring 4.058 s, spa
+    # 5.851 s and monza -0.083 s, and the GUI's preset is REF_LAP/best*100, so EVERY track pinned
+    # to the 200 clamp (monza's negative pinned it to 30). A lap counter that ticks twice, or a
+    # restart that leaves lap_t0 ahead of cs.t, produces one of these -- and because `improved`
+    # only ever compares DOWNWARD, a single junk lap is banked as "best" forever and no honest lap
+    # can ever displace it. So refuse the impossible at the door: no lap under half the 1967 GPL
+    # reference for the circuit, and nothing non-positive.
+    function plausible_lap(track, t)
+        t > 0 || return false
+        ref = get(REF_LAP, track, 0.0)
+        ref <= 0 || t >= 0.5 * ref
+    end
     function save_human_best(track, t)
+        if !plausible_lap(track, t)
+            println("  ⚠ not banking an implausible best lap for ", track, ": ", round(t, digits=3),
+                    " s (GPL reference ", round(get(REF_LAP, track, 0.0), digits=1), " s)")
+            return
+        end
         try
             path = joinpath(@__DIR__, "human_best.txt")
             bests = Dict{String,Float64}()
             isfile(path) && for ln in eachline(path)
                 sp = split(strip(ln), '\t')
-                length(sp) == 2 && (v = tryparse(Float64, sp[2])) !== nothing && (bests[sp[1]] = v)
+                length(sp) == 2 && (v = tryparse(Float64, sp[2])) !== nothing &&
+                    plausible_lap(sp[1], v) && (bests[sp[1]] = v)   # prune entries banked before the gate
             end
             (!haskey(bests, track) || t < bests[track]) || return     # not an improvement → leave the file
             bests[track] = t
@@ -5520,12 +5781,18 @@ function main()
     player_grid = Ref(0); player_finpos = Ref(0)
     # Standing start: in a race the AI sit on the grid until YOU floor the throttle, then
     # the whole field launches together — so you never miss the start by looking away.
-    HOLD_START = IS_RACE && N_AI > 0 && !SKIDPAD && !SMOKE
+    # STARTSEQ-1: never hold (or prompt for) a start during a REPLAY. A replay has no player input
+    # to launch with, and SPACE is already the replay play/pause key (see the REPLAY branch below) --
+    # so an armed countdown there would both fight that key and stage a start nobody can give.
+    HOLD_START = IS_RACE && N_AI > 0 && !SKIDPAD && !SMOKE && isempty(REPLAY_FILE)
     race_go    = Ref(!HOLD_START)
+    cd_armed   = Ref(false)     # STARTSEQ-1: SPACE pressed, countdown may run
+    cd_said    = Ref(false)     # the prompt has been printed to stdout once
     cd_t0      = Ref(-1.0)      # wall time the countdown began (-1 = not started)
     cd_left    = Ref(-1.0)      # seconds remaining, for the HUD (-1 = do not draw)
     # PO 2026-09-01: seconds remaining to show the clutch-gate bar after a refused G.
-    CLUTCH_GATE = Ref(-1.0)
+    # (Defined at module scope now -- see the note above read_input(); a local here shadowed it
+    # and silently broke the write from read_input().)
     ai_release = Ref(-1.0)          # PO head start: wall time at which the FIELD may launch
     launch_done = Ref(false)     # the initial standing-start getaway is over (car has reached speed once)
     # AI reference qual times: the paced target + a small per-car spread so the grid lines
@@ -5624,7 +5891,7 @@ function main()
     telem = SMOKE ? nothing : open("$(TRACKSEL)_racer_$(round(Int,time())).txt", "w")
     telem !== nothing && write(telem,
         "# $(TRACKSEL)_racer telemetry — Lotus 49 @ $(TRACKSEL)\n# t\tlap\tlapdist\tkmh\tthr\tbrk\tsteer\tclu\tgear\trpm\tx\tz\tlat\talong\tontrack\n")
-    println("\n  Drive:  W/S gas·brake   A/D steer   E/Q shift   C clutch   R respawn   ⇧R recover-to-track   V view   G auto⇄manual   M mute   Esc quit"); flush(stdout)
+    println("\n  Drive:  W/S gas·brake   A/D steer   E/Q shift   C clutch   R respawn   ⇧R recover-to-track   ^R restart session   V view   G auto⇄manual   M mute   Esc quit"); flush(stdout)
     println("  AUTO gearbox by default — just press the throttle and go (no clutch needed).  Press G for")
     println("  MANUAL: hold the clutch (C / stick button) to shift E/Q (release it too low and it bogs).")
     println("  Lap times top-left: white = last, green = best.  Telemetry → ./$(TRACKSEL)_racer_*.txt")
@@ -5653,7 +5920,53 @@ function main()
         now = time()
         dt = FIXED_DT > 0 ? FIXED_DT : clamp(now-last, 0.0, 0.05)
         last = now
-        inp, rst, recover = read_input()
+        inp, rst, recover, restart = read_input()
+        # ── RESTART-1 (PO 2026-09-04): CTRL+R restarts the session on the CURRENT track ─────────
+        # "This should be instantaneous - otherwise you have to wait for the track to reload after
+        # goofing up." Nothing the loader built is invalidated by a restart: the GPL parse, the HAT,
+        # the centreline, the meshes and the textures all stay. Only SESSION state is stale, so this
+        # resets exactly that and touches nothing else.
+        # The list is deliberately explicit rather than a helper call: a restart that silently
+        # forgets one field is worse than no restart, and the compiler cannot catch a missing one.
+        if restart
+            t_restart = time()
+            respawnX!(cs; groundz = groundz_phys); DriveRT3D.damage_reset!()
+            WRECKED[] = false; empty!(LOOSE_WHEELS)      # a detached corner is never redrawn otherwise
+            CLUTCH_GATE[] = -1.0
+            # lap + race state
+            cs.laps = 0; lap_t0 = cs.t; last_lap = 0.0; best_lap = 0.0; prev_laps = 0
+            race_done = false; empty!(player_laps)
+            player_finpos[] = 0; player_grid[] = 0
+            launch_done[] = false
+            # accumulated arc-length progress. MUST be re-seeded from the RESPAWNED position: zeroing
+            # `player_s_prev` would make the next frame's delta a whole lap's worth of progress --
+            # the same failure mode as the teleport bug this file already fixes in `prog_delta`.
+            player_prog = 0.0
+            CLINE !== nothing && (player_s_prev = RaceAI.project(CLINE, cs.x, cs.z)[1])
+            # phase + start
+            # mirror the ORIGINAL initialisation exactly (line ~5650:
+            #   phase = Ref(DO_QUAL ? :practice : :race)
+            # -- inventing a variant here is how a restart drifts from a fresh launch.
+            phase[] = DO_QUAL ? :practice : :race
+            # ...which is `Ref(!HOLD_START)`. Spell it with the FLAG, not a copy of its expression:
+            # STARTSEQ-1 added a term (!REPLAY) and this copy would have silently kept the old one,
+            # leaving a replay held at a start it can never be given.
+            race_go[] = !HOLD_START
+            cd_t0[] = -1.0; cd_left[] = -1.0
+            # A restart re-asks for the spacebar. Leaving cd_armed latched would skip the prompt and
+            # roll straight into the countdown -- the restart would not look like a fresh start.
+            cd_armed[] = false; cd_said[] = false
+            # AI field back to the grid
+            if !isempty(AICARS)
+                AICARS .= RaceAI.init_cars(AILINE, length(AICARS); start_s = 30.0)
+                fill!(ai_lapt0, cs.t); fill!(ai_lap_prev, 0); fill!(ai_best, Inf)
+                RaceAI.aistat_reset!()
+            end
+            FUEL_ON && (fuel[] = burn_lap * fuel_laps)
+            println("  [restart] session reset on ", TRACKSEL, " in ",
+                    round((time() - t_restart)*1000, digits=1), " ms (track NOT reloaded)")
+            flush(stdout)
+        end
         # ── E85-S6: HEADLESS AUTODRIVE (JM_AUTODRIVE=1) ─────────────────────────────────────────
         # There was no way to make the PLAYER's car move without a human: `JM_AI_TEST` drives the AI
         # field with no player at all, and every headless capture so far has been of a stationary
@@ -5782,9 +6095,34 @@ function main()
             # it stayed -1, the countdown never ran -- and because a countdown also disables the
             # old throttle gate, the race could never go green at all. Caught on the grid, before
             # the PO was left sitting on it.
-            cd_t0[] < 0 && (cd_t0[] = cs.t)
-            cd_left[] = COUNTDOWN - (cs.t - cd_t0[])
-            if cd_left[] <= 0
+            # STARTSEQ-1: wait for SPACE before the clock starts. cd_armed stays false until then,
+            # the HUD shows the prompt, and nobody moves. Automated runs (START_ARM false) skip it.
+            # JM_ARM_AFTER=<s>: arm the countdown automatically after <s> seconds. This session runs
+            # on WAYLAND, where XTEST keys from xdotool are never delivered to a GLFW surface and
+            # /dev/uinput is root-only -- so there is no way to press a key from a gate. Same reason
+            # bob grew BOB_SDL_CLICK_MS. It exercises the arm -> countdown -> green sequence; it does
+            # NOT exercise GLFW.GetKey itself (that idiom is shared with the driving keys).
+            if ARM_AFTER > 0 && !cd_armed[] && cs.t >= ARM_AFTER
+                cd_armed[] = true; cd_t0[] = cs.t
+                println("  → COUNTDOWN ARMED (JM_ARM_AFTER)"); flush(stdout)
+            end
+            if START_ARM && !cd_armed[]
+                if !cd_said[]
+                    cd_said[] = true
+                    println("  ★ PRESS SPACEBAR TO START COUNTDOWN"); flush(stdout)
+                end
+                if key(GLFW.KEY_SPACE)
+                    cd_armed[] = true
+                    cd_t0[] = cs.t
+                    println("  → COUNTDOWN ARMED"); flush(stdout)
+                end
+            elseif cd_t0[] < 0
+                cd_t0[] = cs.t
+            end
+            if !(START_ARM && !cd_armed[])
+                cd_left[] = COUNTDOWN - (cs.t - cd_t0[])
+            end
+            if cd_left[] <= 0 && !(START_ARM && !cd_armed[])
                 cd_left[] = 0.0
                 race_go[] = true; lap_t0 = cs.t
                 ai_release[] = cs.t + AI_HEADSTART
@@ -5915,7 +6253,8 @@ function main()
                     if DriveRT3D.wrecks(cclose, BND_PK[], cs.v;
                                         close_ms = WRECK_CLOSE, bnd_peak_max = 1.0e3,
                                         vmin_ms = WRECK_MS)
-                        wreck!(abs(cs.v))
+                        wreck!(abs(cs.v); closing = cclose, bnd_peak = BND_PK[],
+                               x = cs.x, z = cs.z)
                     end
                     # E98: a stall in MANUAL drops straight to AUTO. Conditions, all required:
                     # MANUAL, engine below the floor, clutch ENGAGED (an idling engine with the
@@ -6038,9 +6377,19 @@ function main()
             # covered), so it counts even if you cross the line OFF the road (slid wide at the finish).
             if CLINE !== nothing
                 ps = RaceAI.project(CLINE, cs.x, cs.z)[1]
-                ds = ps - player_s_prev
-                ds < -CLINE.total/2 && (ds += CLINE.total); ds > CLINE.total/2 && (ds -= CLINE.total)  # unwrap
-                race_go[] && abs(ds) < CLINE.total*0.4 && (player_prog += ds)   # ignore projection jumps
+                # PO 2026-09-04 (Watkins Glen): "my first lap was listed at 1.19 seconds ... maybe
+                # because I hit r to get back on the road at one point". It was.
+                # R (respawn at the start) and SHIFT+R (recover) both TELEPORT the car BACKWARD along
+                # the centreline, and the unwrap below assumes every step is a small FORWARD one: a
+                # backward jump of more than half a lap gets `+= CLINE.total` applied to it and comes
+                # out as a large FORWARD step, crediting up to 40% of a lap in a single frame. Enough
+                # of that pushes player_prog past the next integer and banks an instant lap -- which
+                # is what a 1.19 s lap is. It also corrupts the lap COUNT, so `cs.laps >= RACE_LAPS`
+                # can be reached early or skipped, which is the likeliest reason the race never
+                # announced it was over and the replay (written at exit) never matched the race.
+                # A teleport is not motion: resynchronise and accumulate nothing for that frame.
+                ds = prog_delta(ps, player_s_prev, CLINE.total; teleport = rst)
+                race_go[] && (player_prog += ds)
                 player_s_prev = ps
                 while cs.laps < floor(Int, player_prog/CLINE.total); cs.laps += 1; end
             end
@@ -6173,8 +6522,22 @@ function main()
                 "LFspeed"=>tl.ωf*0.30, "RFspeed"=>tl.ωf*0.30, "LRspeed"=>tl.ωr*0.33, "RRspeed"=>tl.ωr*0.33,
                 "Alt"=>cs.y)
             if CAR3D                                   # real ride heights + body attitude (Flugplatz benchmark)
-                row["LFrideHeight"]=tl.rh[1]; row["RFrideHeight"]=tl.rh[2]
-                row["LRrideHeight"]=tl.rh[3]; row["RRrideHeight"]=tl.rh[4]
+                # E106-S37: export ride height ONLY while the wheels are loaded. Measured
+                # (E106-S36): settled and grounded it reads 0.082/0.082/0.106/0.106 m, matching
+                # the .ibt setup (82.9/82.9/105.2/105.2 mm) exactly -- the formula is right. But
+                # `zref` is frozen whenever the car is airborne (by design, so the body falls
+                # relative to it), and while frozen `terr - zref` is unbounded: the PO's Spa
+                # capture exported a minimum of -73.5 m and a mean of -0.16 m. A consumer cannot
+                # tell that from a real measurement.
+                # NaN, not a clamp: NaN says "not measured here", a clamp would export a
+                # plausible lie -- and ride height is the channel the PO's "car is several inches
+                # off the ground" report depends on, so a lie there is worse than a gap.
+                # JM_RH_RAW=1 exports the raw value for A/B against the old captures.
+                _rhok = get(ENV,"JM_RH_RAW","") != "" || getproperty(tl, :grounded)
+                row["LFrideHeight"]= _rhok ? tl.rh[1] : NaN
+                row["RFrideHeight"]= _rhok ? tl.rh[2] : NaN
+                row["LRrideHeight"]= _rhok ? tl.rh[3] : NaN
+                row["RRrideHeight"]= _rhok ? tl.rh[4] : NaN
                 row["Pitch"]=tl.pitch; row["Roll"]=tl.roll
             end
             push!(ibt_samples, row)
@@ -6250,6 +6613,10 @@ function main()
                 # (most-recent, not best) with this race's mean lap time.
                 if !isempty(player_laps)
                     avg = sum(player_laps)/length(player_laps)
+                    if !plausible_lap(TRACKSEL, avg)
+                        println("  ⚠ not banking an implausible race average for ", TRACKSEL, ": ",
+                                round(avg, digits=3), " s")
+                    else
                     try
                         rp = joinpath(@__DIR__, "human_recent.txt"); recents = Dict{String,Float64}()
                         isfile(rp) && for ln in eachline(rp)
@@ -6258,6 +6625,7 @@ function main()
                         recents[TRACKSEL] = avg
                         open(rp, "w") do io; for (k,v) in recents; println(io, "$k\t$(round(v,digits=3))"); end; end
                     catch e; @warn "human_recent write failed" e; end
+                    end
                 end
             end
             end
@@ -6423,7 +6791,7 @@ function main()
             for a in 1:length(AIPHYS)-1, b in a+1:length(AIPHYS)
                 pa = AIPHYS[a]; pb = AIPHYS[b]
                 dx = pb.x-pa.x; dz = pb.z-pa.z; d = hypot(dx,dz)
-                (d < 1e-3 || d > CONTACT_D) && continue   # actual contact only
+                (d < 1e-3 || d > contact_d(dx, dz, d, pa.θ, pb.θ)) && continue   # oriented contact
                 nx = dx/d; nz = dz/d
                 vrel = (pa.v*cos(pa.θ)-pb.v*cos(pb.θ))*nx + (pa.v*sin(pa.θ)-pb.v*sin(pb.θ))*nz
                 vrel <= 0.2 && continue
@@ -6485,7 +6853,7 @@ function main()
             pvx = WVX[]; pvz = WVZ[]
             for (k, p) in enumerate(ai_poses)
                 dx = p[1] - cs.x; dz = p[3] - cs.z; d = hypot(dx, dz)
-                (d < 1e-3 || d > CONTACT_D) && continue       # ACTUAL contact only (≈ a car width — no "repel from afar")
+                (d < 1e-3 || d > contact_d(dx, dz, d, cs.θ, p[4])) && continue   # oriented: ~4 m nose-to-tail, ~1.8 m alongside
                 nx = dx/d; nz = dz/d                          # contact normal, player → AI
                 ac = AICARS[k]; aθ = p[4]
                 lat = -dx*sin(cs.θ) + dz*cos(cs.θ)            # contact offset in the player's frame → spin sign
@@ -6757,7 +7125,7 @@ function main()
                                           fogcol=GRADE.horizon, suncol=GRADE.suncol, ambsky=GRADE.ambsky, sat=GRADE.sat)
                 Render.bind_shadow(prog, shadowtex, lightVP)
                 drawworld(mvp, meye, true)
-                for it in carItems; Render.draw(prog, it, mvp, bodyModel; bright=1.2, spec=0.08, ambfill=0.78); end   # your own tail at the inner edge
+                for (i,it) in enumerate(carItems); _in_car_range(i) || continue; Render.draw(prog, it, mvp, bodyModel; bright=1.2, spec=0.08, ambfill=0.78); end   # your own tail at the inner edge
                 for (wx,wz,steer,r,nm) in WHEELS, it in WHEELITEMS[nm]
                     is_loose(nm) && continue
                     Render.draw(prog, it, mvp, wheelmat(wx,wz,steer,r); bright=1.0, ambfill=0.75)
@@ -6790,7 +7158,7 @@ function main()
         # E106-S5: in cockpit view the body wears GPL'"'"'s interior skin (riveted aluminium);
         # every other view keeps the exterior body.
         let _items = (CTL.view == 0 && !isempty(carItemsIn)) ? carItemsIn : carItems
-            for it in _items; Render.draw(prog, it, vp, bodyModel; bright=1.2, spec=0.08, ambfill=0.78); end
+            for (i,it) in enumerate(_items); _in_car_range(i) || continue; Render.draw(prog, it, vp, bodyModel; bright=1.2, spec=0.08, ambfill=0.78); end
         end   # PO: lift the self-shadowed footwell/tub further out of black (GPL pre-lights the interior evenly)
         # E106-S4: exhausts at hub height (chrome: a touch of spec so the megaphones catch the sun)
         let pm = bodyModel * Render.translate(Float32[0, PIPE_LIFT, 0])
@@ -6882,7 +7250,14 @@ function main()
             Render.compose_hud(W, H, cs.v*3.6, cs.gear, cs.rpm, 9500.0, inp.throttle, inp.brake, inp.clutch, tc_hud;
                                lastlap=(SMOKE ? 94.3 : last_lap), bestlap=(SMOKE ? 92.1 : best_lap), manual=!CTL.auto,
                                countdown=cd_left[],
-                               clutchgate=(CLUTCH_GATE[] > 0 ? inp.clutch : -1.0)), W, H)
+                               # STARTSEQ-1: the spacebar keycap, pulsing at 1 Hz, while unarmed.
+                               startprompt=(START_ARM && !cd_armed[] && HOLD_START && !race_go[] &&
+                                            phase[] == :race && COUNTDOWN > 0) ? mod(cs.t, 1.0) : -1.0,
+                               clutchgate=(CLUTCH_GATE[] > 0 ? inp.clutch : -1.0),
+                               # PO 2026-09-04: "no indication that race is over". The finish was
+                               # announced only in the window title and on stdout; show it in the
+                               # game. player_finpos is set when race_done latches.
+                               finished=(race_done ? player_finpos[] : 0)), W, H)
         CLUTCH_GATE[] > 0 && (CLUTCH_GATE[] -= dt)
         # E80 (PO 2026-08-27): "frame rate was low (10 frames/sec or so) in cockpit view, better in
         # nintendo view ... no excuse for 10 frames/sec on a PC with a 6 GB nvidia graphics card".
@@ -6921,6 +7296,20 @@ function main()
             FPS_T0[] = _now
         end
         GLFW.SwapBuffers(win)
+        # JM_FRAMEDUMP="<start>:<count>" dumps CONSECUTIVE frames, which the existing JM_SHOTS
+        # cannot: it settles and dumps one frame per teleport, so it can photograph a scene but
+        # never a TEMPORAL artefact. The PO's strobing mirrors are exactly that -- a single frame
+        # cannot show them. Frames go to JM_FRAMEDUMP_DIR (default alongside the build tree, NOT
+        # /tmp: 1920x1080 PPMs are ~6 MB each and /tmp here is a quota'd tmpfs that has already
+        # broken a session).
+        if !isempty(FRAMEDUMP) && FRAMEDUMP[1] <= frames < FRAMEDUMP[1] + FRAMEDUMP[2]
+            buf=Vector{UInt8}(undef,W*H*3); glReadPixels(0,0,W,H,GL_RGB,GL_UNSIGNED_BYTE,buf)
+            fn = joinpath(FRAMEDUMP_DIR, "jmfd_" * lpad(frames, 5, '0') * ".ppm")
+            open(fn,"w") do io; write(io,"P6\n$W $H\n255\n")
+                for y in H:-1:1, x in 1:W; o=((y-1)*W+(x-1))*3; write(io,buf[o+1],buf[o+2],buf[o+3]); end; end
+            frames == FRAMEDUMP[1] + FRAMEDUMP[2] - 1 && (println("  JM_FRAMEDUMP: ", FRAMEDUMP[2],
+                " consecutive frames -> ", FRAMEDUMP_DIR); flush(stdout))
+        end
         if SMOKE && frames == 38 && isempty(SHOTS)  # headless self-test: dump one frame
             buf=Vector{UInt8}(undef,W*H*3); glReadPixels(0,0,W,H,GL_RGB,GL_UNSIGNED_BYTE,buf)
             open(get(ENV,"JM_DUMP","/tmp/zand_hud.ppm"),"w") do io; write(io,"P6\n$W $H\n255\n")
@@ -6951,7 +7340,10 @@ function main()
         elseif now - titleT > 0.25
             GLFW.SetWindowTitle(win, "Julia Racer — $(uppercasefirst(TRACKSEL)) — $(round(Int,cs.v*3.6)) km/h — gear $(cs.gear == 0 ? "N" : string(cs.gear)) ($(CTL.auto ? "AUTO" : "MANUAL")) — $(round(Int,cs.rpm)) rpm" *
                 (phase[] == :qual ? "  ⏱ QUALIFYING — drive a lap, then press ENTER to start the race" :
-                 (!race_go[]) ? "  🏁 GET READY — floor the throttle to start (the field launches with you)" :
+                 (!race_go[]) ? ((START_ARM && !cd_armed[] && COUNTDOWN > 0) ?
+                                 "  🏁 PRESS SPACEBAR TO START COUNTDOWN" :
+                                 cd_left[] > 0 ? "  🏁 $(ceil(Int, cd_left[]))..." :
+                                 "  🏁 GET READY — floor the throttle to start (the field launches with you)") :
                  IS_RACE ? (race_done ? "  ✦ FINISHED P$(player_finpos[])/$(length(AICARS)+1) — best $(fmt_lap(best_lap)) (started P$(player_grid[]))" :
                             "  — lap $(min(cs.laps+1,RACE_LAPS))/$RACE_LAPS" *
                             (isempty(AICARS) ? "" : "  Pos P$(findfirst(e->e[1]==0, standings()))/$(length(AICARS)+1)")) :
