@@ -5948,6 +5948,7 @@ function main()
         if restart
             t_restart = time()
             respawnX!(cs; groundz = groundz_phys); DriveRT3D.damage_reset!()
+            DC[].lastz = 0.0   # LAPTIME-1: see the respawn below
             WRECKED[] = false; empty!(LOOSE_WHEELS)      # a detached corner is never redrawn otherwise
             CLUTCH_GATE[] = -1.0
             # lap + race state
@@ -6249,7 +6250,14 @@ function main()
             cs.s_vreset(cs.integ, zeros(14))
             hR = groundz(pR[1], pR[3]; acquire=true); isfinite(hR) && (cs.zref = Float64(hR))
             cs.heave = 0.0; cs.pitch = 0.0; cs.roll = 0.0; cs.y = cs.zref
-        elseif rst; respawnX!(cs; groundz=groundz_phys); DriveRT3D.damage_reset!()   # E94-P4: a respawn is a NEW car, not a repaired one
+        # E94-P4: a respawn is a NEW car, not a repaired one.
+        elseif rst; respawnX!(cs; groundz=groundz_phys); DriveRT3D.damage_reset!(); DC[].lastz = 0.0
+            # LAPTIME-1: skip ONE frame of the bounce test after a respawn. The car settles onto the
+            # ground at a respawn exactly as it does at spawn -- a legitimate one-frame height step
+            # that the settle window (`cs.t > DC_SETTLE_S`) exists to ignore. That window used to
+            # re-arm here only BY ACCIDENT, because the respawn reset the clock to zero; now that the
+            # clock is monotonic it would not, and every respawn would be reported as a bounce.
+            # Clearing `lastz` skips the step directly, which is what was meant all along.
         else
             # E56 ALL-MODELICA human car: feed the trackside spring-damper CONTACT force (wall = bounce,
             # hedge/hay = bury & stick) + last frame's draft drag-scale into the chassis ODE BEFORE the

@@ -8607,8 +8607,43 @@ by restoring `integ.t` after `reinit!`. One change at the source, instead of reb
 consumers and missing one. Then re-run the suite: `restart_smoke` and `lapprog_smoke` both exercise
 this area and are the gates that should notice if it is wrong.
 
-**LAPTIME-1: root cause proven with a number. Fix not yet applied (the gate suite was mid-run and
-gates include `drive_rt3d.jl`; editing a file under a running suite is how the last one broke).**
+**FIXED (same sprint), and verified with the probe that proved the defect:**
+
+    before the fix:  10.000 s -> 0.017 s   *** THE CLOCK WENT BACKWARDS ***
+    after  the fix:  10.000 s -> 10.017 s  (monotonic)
+
+`Car3D` gains `toff`, the time already elapsed across each `reinit!`; `step_car3d!` now reads
+`c.t = c.integ.t + c.toff`, and `respawn3d!` banks `c.toff += c.integ.t` **before** `reinit!` throws
+the integrator's clock away. One change at the source fixes every consumer — `lap_t0`, the AI lap
+clocks, the countdown, fuel, driveability and the telemetry timestamps — instead of rebasing a dozen
+of them and missing one.
+
+**One consequence had to be handled, not just noticed.** The driveability bounce test skips the
+spawn settle via `cs.t > DC_SETTLE_S`. After a respawn that window used to re-arm **by accident**,
+because the clock reset to zero. With a monotonic clock it would not, so every respawn's settle
+would have been reported as a bounce. Both respawn sites now clear `DC[].lastz`, which skips the
+step directly — what the settle window meant all along.
+
+## 🟠 FOUND WHILE FIXING THE ABOVE (2026-09-05): the E89 field probe raced a PHANTOM PLAYER
+
+`e89_field_probe.jl` passed `player = (-1e9, 0.0, 100.0)`, intending "no player, far away". It is
+not: step 3 and the blocker scan both take `mod(c.s - player[1], total)`, which **wraps −1e9 back
+onto the circuit** — at Monza it lands at **s = 5039 m**. Every E89 number ever recorded was measured
+with a stationary phantom car parked on the track, blocking the field and taking contact.
+
+`step_field!` accepts `player = nothing` and means it. With the phantom removed the AI's true
+racecraft is far better than the gate had ever recorded:
+
+| | lunge-fall cycles / car-lap | rail switches / car-lap |
+|---|---|---|
+| with the phantom | 1.02 (bar < 1.0 — **failing**) | 2.14 (bar < 2.0 — **failing**) |
+| without it | **0.09** | **0.46** |
+
+This is why `ai_field_smoke` failed after RACESTART-1: the yield rate-limit changed how the AI
+interact with a player, and the probe had a player in it. **The gate was right to fire** — it just
+was not measuring what its name says.
+
+**LAPTIME-1: root cause proven, fixed, verified.**
 
 ## 🔴 NEW ITEM (PO, 2026-09-05): TRACKSMOOTH-1 — julia tracks are PIECEWISE LINEAR; that is AI-YAW's root cause
 

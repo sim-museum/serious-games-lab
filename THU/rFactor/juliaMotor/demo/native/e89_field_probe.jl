@@ -24,7 +24,12 @@ for (i, c) in enumerate(cars); c.pace = 1.0 + 0.01*(i-2); end       # a spread l
 # counter, so a 300 s run has a real denominator.
 cyc = zeros(Int, N); deep = falses(N); worst = zeros(N); dist = zeros(N)
 for f in 1:secs*60
-    RaceAI.step_field!(cars, line, dt; amax, vmax, player = (-1e9, 0.0, 100.0))
+    # `player = (-1e9, 0.0, 100.0)` was meant to say "no player, far away". It does not: step 3 and
+    # the blocker scan both take `mod(c.s - player[1], total)`, which WRAPS -1e9 back onto the
+    # circuit -- at Monza it lands at s = 5039 m. Every E89 number ever measured here was measured
+    # against a PHANTOM player parked on the track, blocking cars and taking contact. This gate is
+    # about AI-vs-AI racecraft; `step_field!` takes `player = nothing` and means it.
+    RaceAI.step_field!(cars, line, dt; amax, vmax, player = nothing)
     f <= warm*60 && continue
     for (i, c) in enumerate(cars)
         dist[i] += c.v*dt

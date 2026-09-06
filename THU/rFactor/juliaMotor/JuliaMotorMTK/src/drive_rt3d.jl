@@ -290,6 +290,14 @@ const TC_VHI  = parse(Float64, get(ENV, "JM_TC_VHI", "38.0"))
 # wheel body offsets (xi long +fwd, yi lat +left), from DrivenVehicle3D geometry
 const WHEELS = ((1.314, 0.75), (1.314, -0.75), (-1.096, 0.75), (-1.096, -0.75))   # FL FR RL RR
 
+const JM_RH_DIAG = Ref(get(ENV, "JM_RH_DIAG", "") != "")   # default OFF
+# threshold (m) above which a corner is called implausible. Settable because the first
+# question is whether rh is wrong ONLY when airborne (divergence) or ALSO at rest (a sign or
+# offset bug): the PO capture had mean -0.163 m where static ride height is +0.083/+0.105 m.
+# JM_RH_DIAG_T=0 prints every sample.
+const JM_RH_DIAG_T = Ref(parse(Float64, get(ENV, "JM_RH_DIAG_T", "0.5")))
+const _rhn = Ref(0)
+
 mutable struct Car3D
     sys; integ
     s_thr; s_brk; s_st; s_gr; s_clu; s_we
@@ -310,6 +318,20 @@ mutable struct Car3D
     lapdist::Float64; laps::Int; lateral::Float64; along::Float64; ontrack::Bool
     pitch::Float64; roll::Float64; vacc::Float64; heave::Float64
     rh::NTuple{4,Float64}                           # per-corner ride height [m] (FL FR RL RR)
+    # E106-S36/S37: `rh` is only meaningful while the wheels are LOADED. `zref` is deliberately
+    # frozen when airborne (so the body falls relative to it), and while frozen `terr - zref`
+    # is unbounded -- which is how the PO's Spa .ibt exported ride heights down to -73 m.
+    # Carry the loaded flag so telemetry can say "unknown" instead of exporting a wild number.
+    grounded::Bool
+    # LAPTIME-1 (2026-09-05): `t` is NOT a clock this struct keeps -- step_car3d! copies it from the
+    # ODE integrator (`c.t = c.integ.t`), and `respawn3d!` calls `reinit!`, which rewinds that
+    # integrator to zero. Measured: 10.000 s before a respawn, 0.017 s after. Every caller that
+    # treats `c.t` as monotonic SESSION time was therefore wrong after any respawn -- `lap_t0` most
+    # visibly, which is how a NEGATIVE lap time (-0.083 s at Monza) reached human_best.txt.
+    # `toff` carries the time already elapsed across each reinit, so `t` is session time again and
+    # the integrator keeps its own zero-based clock. Fixing it here fixes every consumer at once,
+    # rather than rebasing a dozen of them and missing one.
+    toff::Float64
 end
 
 # E56: build the four per-wheel μscale setters (BrushTyre only; the JM_MAGIC Tyre has no μscale →
@@ -353,7 +375,7 @@ function build_car3d(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0, y0 = 0.0,
               _musetters(sys),
               getall, 1, y0, ntuple(_->0.0,4),
               x0, y0, z0, θ0, v0, 0.0, 0.0, 1, ntuple(_->(0.0,0.0,0.0),4),
-              0.0, 0, 0.0, 0.0, true, 0.0, 0.0, 9.80665, 0.0, RIDE_H[])
+              0.0, 0, 0.0, 0.0, true, 0.0, 0.0, 9.80665, 0.0, RIDE_H[], false, 0.0)
     c.s_gr(c.integ, GEARS[c.gear]); getall(integ)
     for _ in 1:3; step_car3d!(c, 0.3, 0.0, 0.0, 1/60); end
     for _ in 1:3; step_car3d!(c, 0.3, 0.0, 0.0, 1/60; clutch = 0.5, manual = true); end
@@ -390,7 +412,7 @@ function build_cars3d(poses; brush = !haskey(ENV, "JM_MAGIC"), dt = 1/300)
                   s_fx,s_fy,s_mz,s_cda, s_mu,
                   getall, 1, 0.0, ntuple(_->0.0,4),
                   x0, 0.0, z0, θ0, v0, 0.0, 0.0, 1, ntuple(_->(0.0,0.0,0.0),4),
-                  0.0, 0, 0.0, 0.0, true, 0.0, 0.0, 9.80665, 0.0, RIDE_H[])
+                  0.0, 0, 0.0, 0.0, true, 0.0, 0.0, 9.80665, 0.0, RIDE_H[], false, 0.0)
         c.s_gr(c.integ, GEARS[c.gear]); getall(integ)
         for _ in 1:3; step_car3d!(c, 0.3, 0.0, 0.0, 1/60); end
         for _ in 1:3; step_car3d!(c, 0.3, 0.0, 0.0, 1/60; clutch=0.5, manual=true); end
@@ -443,6 +465,7 @@ function step_car3d!(c::Car3D, throttle, brake, steer, dt;
     Δ = max(dt, 1e-3); nsub = max(1, round(Int, Δ*300)); subdt = Δ/nsub
     local a = c.getall(c.integ)
     local terr = ntuple(_->0.0, 4)
+    local grounded_last = false      # copy of the loop-local `grounded`, for JM_RH_DIAG below
     for _ in 1:nsub
         x = a[1]; z = a[2]; θ = a[3]; cosθ = cos(θ); sinθ = sin(θ)
         u = a[4]; v = a[5]
@@ -466,6 +489,7 @@ function step_car3d!(c::Car3D, throttle, brake, steer, dt;
         terr_cg = sum(terr)/4
         ΣFz = a[19] + a[20] + a[21] + a[22]                     # tyre vertical loads (getall idx 19–22)
         grounded = ΣFz > 0.15 * 617 * 9.80665                   # wheels loaded?
+        grounded_last = grounded; c.grounded = grounded
         vr_cg = (vr[1]+vr[2]+vr[3]+vr[4])/4
         # ground reference: while LOADED, follow the GRADE (feed-forward vr_cg) + a correction so
         # the suspension sits at static on any slope (a fast climb no longer reads as a slam); when
@@ -478,7 +502,7 @@ function step_car3d!(c::Car3D, throttle, brake, steer, dt;
         a = c.getall(c.integ)
     end
     c.x = a[1]; c.z = a[2]; c.θ = a[3]
-    c.v = sqrt(a[4]^2 + a[5]^2); c.t = c.integ.t; c.rpm = clamp(a[6], 0.0, 9700.0); c.gear_n = c.gear
+    c.v = sqrt(a[4]^2 + a[5]^2); c.t = c.integ.t + c.toff;   # LAPTIME-1: session time, not integrator time c.rpm = clamp(a[6], 0.0, 9700.0); c.gear_n = c.gear
     c.heave = a[15]; c.pitch = a[16]; c.roll = a[17]; c.vacc = a[18]
     # DIVERGENCE GUARD: the stiff tyre contact on extreme terrain can blow the vertical
     # subsystem up (pitch → 1e5°). If it leaves sane bounds, reset the vertical states to
@@ -510,6 +534,27 @@ function step_car3d!(c::Car3D, throttle, brake, steer, dt;
     c.tc = ntuple(i -> (a[6+i]/mg4, a[10+i]/mg4, μc[i]*max(a[18+i],1.0)/mg4), 4)
     # per-corner ride height = static + chassis-mount rise − road drop (grows when a wheel droops in the air)
     c.rh = ntuple(i -> RIDE_H[][i] + (WHEELS[i][1]*c.pitch + WHEELS[i][2]*c.roll + c.heave) - (terr[i]-c.zref), 4)
+    # PO's Spa run 2026-09-03: the four *rideHeight channels exported to the .ibt are garbage --
+    # min -73.5 m, mean -0.16 m over 6026 moving ticks (the reader was proved first on
+    # Speed/RPM/Gear/LapDist, all sane, so it is the data). That BLOCKS the PO's "car is several
+    # inches off the ground" report, because ride height is the one channel that would settle it.
+    # Mechanism, from this line: rh is derived from (terr - zref), and `zref` is deliberately FROZEN
+    # whenever the car is not `grounded` (above), so the body falls relative to it in a jump. While
+    # it is frozen the terrain under the wheels keeps moving, and on Spa's ~100 m of elevation that
+    # difference is unbounded -- so rh is only meaningful while grounded. Nothing validates it
+    # before it is written to telemetry.
+    # Log the inputs when the value is implausible, so the CONDITION is named rather than guessed
+    # (and do not clamp: a clamp would hide the divergence and export a plausible lie).
+    if JM_RH_DIAG[] && any(x -> !isfinite(x) || abs(x) > JM_RH_DIAG_T[], c.rh)
+        _rhn[] += 1
+        if _rhn[] <= 40
+            local rr = round.(c.rh, digits=3)
+            local tt = round.(terr, digits=2)
+            println("  JM_RH_DIAG #", _rhn[], " rh=", rr, " zref=", round(c.zref, digits=2),
+                    " terr=", tt, " heave=", round(c.heave, digits=3),
+                    " grounded=", grounded_last, " y=", round(c.y, digits=2))
+        end
+    end
     # E6: YAW-RATE divergence guard.  The stiff 3-D tyre/contact can spin the yaw rate r up to 100s of
     # rad/s on the big elevation/speed (Spa Eau Rouge, Nürburgring) — the integrator diverging, which the
     # VERTICAL guard above can't catch and place3d! can't reset.  A real spin is < ~3 rad/s, so a > 10 rad/s
@@ -547,7 +592,7 @@ function telemetry3d(c::Car3D)
     end
     a = g(c.integ)
     (u=a[1], v=a[2], r=a[3], ax=a[4], ay=a[5], ωf=a[6], ωr=a[7], vacc=c.vacc,
-     pitch=c.pitch, roll=c.roll, rh=c.rh)
+     pitch=c.pitch, roll=c.roll, rh=c.rh, grounded=c.grounded)
 end
 
 "Fence collision: snap onto the boundary (xnew,znew) + bleed speed (E7).
@@ -582,6 +627,8 @@ function respawn3d!(c::Car3D; groundz = nothing)
     # fallback. The PO's next telemetry still read `gear=1` at t=0 and that is how it was caught.
     # Two physics models, the same function names in both: check which one the sim actually runs.
     g0 = get(ENV,"JM_SPAWN_IN_GEAR","0") != "0" ? 1 : 0
+    # LAPTIME-1: bank the elapsed time BEFORE reinit! throws the integrator's clock away.
+    c.toff += c.integ.t
     reinit!(c.integ); c.gear = g0; c.s_gr(c.integ, gearratio(g0))
     c.s_vreset(c.integ, zeros(14))                 # zero the vertical subsystem → spawn settled (no "superball" bounce)
     a = c.getall(c.integ); c.x = a[1]; c.z = a[2]; c.θ = a[3]; c.v = a[4]; c.rpm = a[6]
