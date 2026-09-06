@@ -6946,6 +6946,31 @@ objects present; (b) a gate that fails if any track loads 0 trackside objects wh
 list is non-empty; (c) the line-of-people rule gated by name census (0 free-standing lines on all
 5 tracks) and a before/after capture; (d) Spa: the E78 banner/texture items folded in here.
 
+### TRACKGOLD-1 S1 (Fable 5.1, 2026-09-06 14:55) — why the Ring is empty: the sim skips the object pipeline for it, and the .trk places 3109 objects
+
+`drive_native_mtk.jl` ~2670: `if SKIDPAD || NURB` → `OBJECTS = []`, `SOLIDS = []`, `OBJINSTS = []`,
+with the comment *"Nürburgring scenery is mostly baked into nurburg.3do — the Zandvoort-tuned .dat
+object placement below is skipped for it for now."* The Ring gets only `gpl_scenery()` (the
+landmass sections from `nurburg.dat` plus, since E76-S8, the shrub/tree sprite stubs: 1777).
+
+**Census** (`JuliaMotorMTK/tools/ring_objects_census.jl`, the sim's own `trackside_objects`
+parser on `nurburg.3do`): **3109 placements, 580 distinct names.**
+- **412 placements name a LOOSE .3do in the Ring's track directory** (375 files there) and are
+  never loaded: road signs (`si_np` 14, `si_ne` 13, `si_nenf` 12, `si_sl`, `si_or`, `signx`,
+  `si_cr5`…), the kilometre stones (`km_02_7` … `km_22_1`, one each), trees (`s_treen1` 14),
+  billboards (`billb2`), and the BUILDINGS (`ts_br`, `ts_ab`, `ts_pg`, `s_metz`, `s_esch`…). These
+  are exactly "the many more trackside objects" the PO sees in GPL.
+- 2697 placements name objects that exist only inside `nurburg.dat`: overwhelmingly the shrubs and
+  trees (`strauch*` ~1000, `stree*` ~500, `bush`, `busch01`, `t60*`), the `xk_flat*` ground
+  patches, `fake` (65), `flagger` (49 marshals), and **lines of people (`peoplefl` 16,
+  `peoplelt` 15)** -- the PO's "line of people" objects, here too.
+
+**S2 plan:** run the generic object pipeline for the Ring as well (drop `|| NURB` from the skip,
+keep `gpl_scenery` for the landmass), so the 412 loose-file placements load through the same
+path Spa's 1451 do; then the same solids/census treatment (ROAD-1's `road_clear_smoke` will
+start reporting real solids on the Ring). The free-standing `people*` lines are dropped by
+the line-of-people rule (S2 of the plan) on every track.
+
 **Sprint plan.** S1: the Ring loss (why 0) + the gate (b). S2: line-of-people removal + census
 (c). S3-S5: Ring and Spa sites against gold, worst first. S6: ship.
 
