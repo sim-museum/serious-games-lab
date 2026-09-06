@@ -4,6 +4,12 @@
 # ancestor T-005 selector.  This is the GPL analogue of RFactorData's GMT parser —
 # the first step of the GPL-asset pivot (Lotus 49 in place of the rFactor Vanwall).
 module GPL3DO
+# AI-CARGFX S5: placing groups to drop while parsing (set by the caller per chassis). GPL parks a
+# car's dynamic suspension groups under a |d|>5 positioner and poses them at runtime; drawn at the
+# clamped origin they are flat plates beside the wheels (Eagle 29108/39200, BRM 26116/35320,
+# measured by A/B capture). Hiding them is the INTERIM state -- the gold shows them posed -- so this
+# is documented as "not yet parity", and JM_AI_PARKED_SUSP=1 shows them again.
+const HIDE_GROUPS = Ref(Set{Int}())
 using LinearAlgebra
 
 export Mesh3DO, parse_3do, gpl_placements
@@ -153,7 +159,9 @@ function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}
         # (|d|>5 hide-marker), so a capture with and without it attributes a visible artefact to
         # parked-but-drawn parts. Diagnostic only -- the gold shows parked parts DO belong on screen,
         # posed dynamically (E82/S447), so this is not a fix.
-        if !(get(ENV, "JM_HIDE_PARKED", "0") != "0" && PARKDEPTH[] > 0)
+        # AI-CARGFX S5: JM_HIDE_GROUP="id,id,…" drops the named placing groups (isolation by group id)
+        hidegrp = get(ENV, "JM_HIDE_GROUP", "")
+        if !(get(ENV, "JM_HIDE_PARKED", "0") != "0" && PARKDEPTH[] > 0) && !(hidegrp != "" && string(grp) in split(hidegrp, ",")) && !(grp in HIDE_GROUPS[])
             for k in 2:length(P)-1                      # fan: (1, k, k+1)
                 push!(tris, Tri((P[1],P[k],P[k+1]), (N[1],N[k],N[k+1]), (UV[1],UV[k],UV[k+1]), tex, col, isflat, ptype))
                 push!(groups, grp)
@@ -264,7 +272,11 @@ function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}
             # draw it at the origin. JM_POSDIAG reports the parked group set at the end of the parse.
             parked = any(abs(x) > 5.0 for x in d)
             parked && (PARKDEPTH[] += 1)
-            walk(Int(i32(b, p + 8*4)), curtex, depth+1, M * posmat(d, mm, s), off)
+            # AI-CARGFX S5 A/B: JM_PARK_IDENT=1 gives a parked positioner an IDENTITY rotation/scale
+            # as well as the zero translation -- the hypothesis being that GPL's runtime replaces the
+            # whole park transform, so keeping its rotation is what lays suspension parts flat.
+            pm = (parked && get(ENV, "JM_PARK_IDENT", "0") != "0") ? posmat(d, (0.0, 0.0, 0.0), 1.0) : posmat(d, mm, s)
+            walk(Int(i32(b, p + 8*4)), curtex, depth+1, M * pm, off)
             parked && (PARKDEPTH[] -= 1)
         elseif typ == 0x19                          # bounding cuboid: 8 vert#, then child
             walk(Int(i32(b, p + 9*4)), curtex, depth+1, M, grp)

@@ -4822,6 +4822,9 @@ AICARMODELS = Render.GPLCarModel[]
 tstamp("  [E80] AI car models begin")
 # E85-S5: netplay needs a chassis to draw the remote car with, even when there is no AI field.
 _ncars = max(N_AI, NETMODE == "" ? 0 : 1)
+# AI-CARGFX S5: per-chassis parked suspension groups that draw as blades at the origin (S447's map,
+# confirmed by A/B capture on the Eagle 2026-09-06). Interim hide; the parity fix is to POSE them.
+const AI_PARKED_SUSP_GROUPS = Dict("eagle" => Set([29108, 39200]), "brm" => Set([26116, 35320]))
 if !SKIDPAD && _ncars > 0
     for (nm, dir, body, w) in AISPECS[1:_ncars]
         print("  loading AI car: $nm … "); flush(stdout)
@@ -4832,11 +4835,15 @@ if !SKIDPAD && _ncars > 0
         # band the player car throws away. Measured tris beyond 0.85: Ferrari 32, BRM 204,
         # Brabham 227, Eagle 309, Cooper 537 -- the PO's "at least one" is all five, worst on the
         # Cooper. Use the player's clip; JM_AI_MAXLAT overrides for A/B.
+        # AI-CARGFX S5 (interim): drop the parked rear-suspension groups that render as flat blades.
+        Render.GPL3DO.HIDE_GROUPS[] = get(ENV, "JM_AI_PARKED_SUSP", "0") != "0" ? Set{Int}() :
+            get(AI_PARKED_SUSP_GROUPS, lowercase(nm), Set{Int}())
         push!(AICARMODELS, Render.load_gpl_car(nm, joinpath(AIBASE,dir), body, aiwheels(w...);
                               exclude=("ltraymap","lshad"),
                               maxlat=parse(Float32, get(ENV,"JM_AI_MAXLAT", string(CARP_MAXLAT))),
                               body_floor=BODY_FLOOR))
         println("$(length(AICARMODELS[end].body)) parts")
+        Render.GPL3DO.HIDE_GROUPS[] = Set{Int}()   # never leak the per-chassis hide into later parses
     end
 end
 const PROJ = Render.perspective_revz(deg2rad(62f0), Float32(W/H), 0.35f0, 3000f0)  # reversed-Z: near-uniform depth precision → kills distant z-fight (signs on fences)

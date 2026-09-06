@@ -9053,3 +9053,12 @@ rear/front suspension drawn at the origin, i.e. a POSING defect, exactly as S1 p
   origin happens to land the body correctly and lands the suspension parts as blades. This is a
   POSING defect on parked parts (S1's prediction), and the fix is a rest pose for them, not removal.
   Captures: scratchpad eagle_t3.png / eagle_t3_hideparked.png (A/B), eagle_t30.png.
+- **S5 isolation + interim fix (2026-09-06)**: `JM_HIDE_GROUP=29108,39200` on the Eagle removes BOTH
+  blades and nothing else (body, wheels, engine, exhausts, driver all stay) -- the blades ARE S447's
+  parked rear-suspension groups, drawn at the clamped origin. Shipped as an interim: the AI loader
+  drops those groups per chassis (`AI_PARKED_SUSP_GROUPS`: Eagle 29108/39200, BRM 26116/35320 --
+  the BRM entry rests on S447's measurement, its own A/B capture is queued) via
+  `GPL3DO.HIDE_GROUPS`; `JM_AI_PARKED_SUSP=1` shows them again. Gate `ai_parked_susp_smoke`:
+  Eagle 249 tris / BRM 272 tris in those groups, gone with the hide, every other group untouched.
+  **Not parity yet** (the gold shows the Eagle's rear suspension posed); S6 = pose those groups
+  with the player-Lotus treatment (`susp_inboard`/`_bake_clip`, E75-S8) instead of hiding them.
