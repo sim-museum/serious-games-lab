@@ -6917,7 +6917,7 @@ No sprints have been run against this item.
 
 ---
 
-## 🔲 BACKLOG — ROAD-1: Spa and the Ring drivable all the way through -- no collisions while on the road  ⭐ NEXT (PO 2026-09-06)
+## ✅ SHIPPED (S5, 14:31) — ROAD-1: Spa and the Ring drivable all the way through -- no collisions while on the road (PO 2026-09-06)
 
 PO, verbatim: *"spa and the ring drivable all the way through - no collisions so long as you stay
 on the road."*
@@ -7034,6 +7034,13 @@ SOURCE checks (they asserted the pre-S4 text) and passes with them rewritten for
 **v12 (dropped solids inert, 14:20): reachable 1 (`arm_sf0`, the start/finish pit-wall pillar at
 lat 9.0 = the corridor's own edge, capsule brush -0.63 m), objects standing on the road 0, edge
 barriers 79.** Shipped as `JuliaRacer-x86_64-road1.AppImage`.
+**S5 (14:31): SHIPPED.** `~/Documents/260906/JuliaRacer-x86_64-road1.AppImage` (1.6 GB, stamp
+`20260906-142625`). Delivery proven on a scratch `JR_HOME`: the AppRun's code refresh ran
+("Updating game code from this AppImage (20260906-142625)"), the installed `drive_native_mtk.jl`
+carries `car_gap` (the capsule) and the ROAD-1 rules. Gate `road_clear_smoke` is in the suite
+(37/37). **What the PO can do:** drive Spa and the Ring end to end on this image; anything that
+still stops the car while on the road is either one of the 17 edge brushes named above (by lap
+distance) or new, and the census will name it. Five sprints used of six.
 **Left (S5):** ship it (repack), and the PO's drive; the 17 edge brushes are GPL's own placements
 on the aprons -- if one of them feels wrong on the road, the census names it by lap distance.
 
