@@ -6938,7 +6938,8 @@ collides with it - front wheels off, race over."* Census names it: `arm_sf0` (S/
 tarmac check rejected → disc fallback shrunk 3.1 → 1.7 m at (-211.7, 913.6), **lat 9.0 at s=0**,
 `-> DRAWN`. A 1.7 m disc at lat 9 meets a capsule flank (0.95 m) from lat 6.4 outward: the pit-wall
 side of the start straight. v13: the disc shrink now clears the tarmac by the car's half-width too
-(`d - CARW - 0.1`). **Still open:** WHY it is drawn across the road -- a yaw/mirror error on this
+(`d - CARW - 0.1`). **Spa census under v13 (16:45): solids_on_road=0, inside=0** -- arm_sf0 no
+longer reaches a car on the road; shipped in `rpm1`. **Still open:** WHY it is drawn across the road -- a yaw/mirror error on this
 one object (the same map the boxes use), to be captured at s=0 against the Spa gold video; folded
 into TRACKGOLD-1 S3.
 
@@ -7046,6 +7047,28 @@ which today come from a per-chassis `wheelspec` table) and the .3do positioner c
 Acceptance: a per-chassis before/after/gold triptych in `~/Documents/<day>/car_gold/` with the
 axle offsets within ~2 % of the wheelbase, plus a headless gate that asserts each chassis's
 front/rear hub positions against the values read from the GPL .3do (not from a hand table).
+
+### CARGOLD-1 S1 (Fable 5.1, 2026-09-06 16:50) — the axle census, from the cars' own meshes
+
+Every car's .3do CONTAINS its tyres (the sim strips them and draws its own wheels from a table).
+`JuliaMotorMTK/tools/wheel_mesh_census.jl` finds the tyre groups by shape (0.5-0.8 m round in x-z,
+narrow in y, ≥ 0.45 m off centre) and prints their centroids = GPL's hub positions, mesh frame:
+
+| car | front hub x | rear hub x | wheelbase | front half-track | rear half-track |
+|---|---|---|---|---|---|
+| Lotus 49 | 1.53 | -0.89 | 2.42 | 0.71 | 0.70 |
+| Ferrari  | 1.57 | -0.83 | 2.40 | 0.74 | 0.73 |
+| Brabham  | 1.38 | -1.00 | 2.38 | 0.67 | 0.70 |
+| BRM      | 1.53 | -0.91 | 2.44 | 0.75 | 0.76 |
+| Eagle    | 1.50 | -0.96 | 2.46 | 0.76 | 0.76 |
+| **the sim's table** (`WHEELS` / `aiwheels`, every car) | **1.05** | **-1.15** | **2.20** | **0.62** | **0.66** |
+
+(The Lotus body is drawn at BODY_OFF x = -0.55, so in the rig frame its mesh hubs are at 0.98 /
+-1.44: the drawn front wheels sit 7 cm behind the mesh's front hubs and the rear wheels **29 cm
+ahead** of the mesh's rear hubs, 9 cm / 4 cm too far inboard. The real Lotus 49 wheelbase is
+2.41 m; the mesh has it, the table does not.) Wheel radii in the table (0.31 / 0.34) match the tyre
+extents (0.62 / 0.67). **S2:** place each car's wheels at ITS mesh hubs (x + body offset, its own
+half-tracks), Lotus first, then the five AI chassis, with a gate reading the same census.
 
 **Sprint plan.** S1: measure -- one triptych per chassis with the current build, axle offsets in
 a table (the census). S2-S4: fix the placements, worst first (user Lotus first, then the AI five).
