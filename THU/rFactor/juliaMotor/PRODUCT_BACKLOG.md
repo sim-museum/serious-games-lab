@@ -6917,6 +6917,36 @@ No sprints have been run against this item.
 
 ---
 
+## 🔲 BACKLOG — CARGOLD-1: Julia car appearance closer to the gold standard; axles placed correctly on the user and AI cars  ⭐ PRIORITY (PO 2026-09-06 14:47)
+
+PO, verbatim: *"add priority backlog item: make julia car appearance closer to gold standard
+/home/admin/gold standard, for example place axles correctly for user and AI cars"*
+
+**Reference set** (`/home/admin/gold standard/julia racer/`): per-chassis GPL stills under
+`lotus49/`, `ferrari/`, `brabham/`, `BRM/`, `eagle/`, `cooper/` (2026-06-26 Wine screenshots, many
+angles each), the 1080p60 lap videos (cockpit and "nintendo" chase views per track), and the
+iRacing `.ibt` telemetry. The stills are the oracle for SHAPE and PLACEMENT; the videos for how the
+car sits and moves on the road.
+
+**Definition.** For each of the six chassis, a Julia Racer capture from the same viewpoint as a
+gold still must show the same car: axle/hub positions relative to the body (the PO's named
+example -- wheels sitting where GPL puts them, not floating ahead/behind or above/below the
+wheel arches), ride height and stance, wheel size, and the parts each car actually shows (the
+AI-CARGFX/AI-CHAIN work already covered the rear-suspension halves; this item is the whole car).
+
+**Method (the AI-CARGFX recipe, [[gate-frame-must-match-the-eye]]):** for each chassis, pick 2-3
+gold stills (side, three-quarter front, rear), reproduce the viewpoint in the sim with
+`JM_REPLAY_CAM`/`JM_SHOTS` on a parked car, overlay the two at matched scale, and measure the
+axle offsets in body lengths; fix in `render.jl`'s `load_gpl_car` (wheel spec / hub positions,
+which today come from a per-chassis `wheelspec` table) and the .3do positioner chain; re-capture.
+Acceptance: a per-chassis before/after/gold triptych in `~/Documents/<day>/car_gold/` with the
+axle offsets within ~2 % of the wheelbase, plus a headless gate that asserts each chassis's
+front/rear hub positions against the values read from the GPL .3do (not from a hand table).
+
+**Sprint plan.** S1: measure -- one triptych per chassis with the current build, axle offsets in
+a table (the census). S2-S4: fix the placements, worst first (user Lotus first, then the AI five).
+S5: the gate; S6: ship and the PO's eye.
+
 ## ✅ SHIPPED (S5, 14:31) — ROAD-1: Spa and the Ring drivable all the way through -- no collisions while on the road (PO 2026-09-06)
 
 PO, verbatim: *"spa and the ring drivable all the way through - no collisions so long as you stay
