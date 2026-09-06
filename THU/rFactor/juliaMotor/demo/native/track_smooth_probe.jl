@@ -13,7 +13,8 @@ for name in ["watglen","rouen","monza"]
     dat = first(filter(f -> lowercase(basename(f)) == lowercase(name)*".dat", joinpath.(T, readdir(T))))
     d = GPLDat.parse_dat(dat); key = first(filter(k -> endswith(lowercase(k), ".trk"), collect(keys(d))))
     tmp = tempname()*".trk"; write(tmp, d[key])
-    line = RaceAI.build_line(GPLTrack.trk_centreline(tmp), (x,z) -> 0.0)
+    sd = parse(Int, get(ENV,"JM_SUBDIV","5"))
+    line = RaceAI.build_line(GPLTrack.trk_centreline(tmp; subdiv=sd), (x,z) -> 0.0)
     n = length(line.x)
     seg = [hypot(line.x[i%n+1]-line.x[i], line.z[i%n+1]-line.z[i]) for i in 1:n]
     turn = [abs(wrapp(line.θ[i%n+1]-line.θ[i])) for i in 1:n]      # heading STEP at each node

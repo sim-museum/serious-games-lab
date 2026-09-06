@@ -11,7 +11,13 @@ using JuliaMotor
 const VERTICAL = Set(["wiref_s","Hayba_s","Hayba_t","Hayba_e","Armco_s","Armco_t","Armco_e"])
 
 """Walk the .trk centreline (constant-curvature arcs) → GPL (x,y) points, densified."""
-function trk_centreline(path; subdiv::Int=5)
+# TRACKSMOOTH-1 (PO 2026-09-05): subdiv was 5 points per track SECTION, i.e. a 5-chord approximation
+# of each of GPL's arcs. GPL stores the circuit as arcs (a length and a heading per section), so the
+# original is smooth and ours was a coarse polygon of it. Raising it to 20, together with the loop
+# closure below, cuts the worst heading step per node from 21.4 deg to 4.5 (watglen) and 19.9 to 5.0
+# (monza). Cost is only in this function's intermediate points -- build_line resamples to a uniform
+# 3 m afterwards, so the node count barely moves (1251 -> 1252). JM_TRK_SUBDIV overrides.
+function trk_centreline(path; subdiv::Int=parse(Int, get(ENV, "JM_TRK_SUBDIV", "20")))
     b = read(path)
     u32(o) = UInt32(b[o+1]) | UInt32(b[o+2])<<8 | UInt32(b[o+3])<<16 | UInt32(b[o+4])<<24
     i32(o) = reinterpret(Int32, u32(o)); TRK = 19685.03937
@@ -35,6 +41,31 @@ function trk_centreline(path; subdiv::Int=5)
                 t1 = th + dth/subdiv
                 x += (ll/(dth/subdiv))*(sin(t1)-sin(th)); y += (ll/(dth/subdiv))*(cos(th)-cos(t1))
             end
+        end
+    end
+    # ⭐ TRACKSMOOTH-1 (PO 2026-09-05): CLOSE THE LOOP.
+    # The arc walk integrates each section from the previous section's end, so rounding across
+    # hundreds of sections leaves the last point short of (or past) the first -- the track does not
+    # close. build_line then joins last->first with one straight chord, and that chord's heading is
+    # nothing like its neighbours'. Measured on watglen: the two worst heading steps in the whole
+    # circuit are the LAST two nodes -- 21.4 deg and 20.0 deg at subdiv=5, and 103.3 deg at
+    # subdiv=60 where every other node is <= 2.24 deg. One broken joint was producing the yaw spike
+    # the PO sees as AI cars snapping, and denser sampling made it WORSE because the same positional
+    # gap is turned through a shorter segment.
+    # Distribute the closure error smoothly around the loop (each point shifted in proportion to how
+    # far round it is) so the polyline closes exactly and no single joint absorbs it. This is the
+    # standard fix for an integrated closed curve and it moves every point by a fraction of a
+    # millimetre-scale error rather than bending any one corner. JM_NO_LOOP_CLOSE=1 reverts.
+    if length(pts) > 2 && get(ENV, "JM_NO_LOOP_CLOSE", "0") == "0"
+        gx = pts[1][1] - pts[end][1]
+        gz = pts[1][2] - pts[end][2]
+        np = length(pts)
+        for i in 1:np
+            w = (i - 1) / (np - 1)          # 0 at the start, 1 at the end
+            pts[i] = (pts[i][1] + gx*w, pts[i][2] + gz*w)
+        end
+        if get(ENV, "JM_TRACE_CLOSE", "0") != "0"
+            @info "trk_centreline: closed loop gap" gap_m=sqrt(gx^2+gz^2) points=np
         end
     end
     pts

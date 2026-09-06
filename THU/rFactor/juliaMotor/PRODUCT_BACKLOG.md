@@ -8409,3 +8409,51 @@ is about rendered geometry and is still open. This item stays open for that; AI-
 met.
 
 **TRACKSMOOTH-1: 1 sprint. AI-YAW's numeric acceptance met; track geometry still to do.**
+
+### TRACKSMOOTH-1 sprint 2 — ⭐ the track polyline itself: THE LOOP DID NOT CLOSE
+
+The PO's premise was right at a deeper level than the AI heading. **GPL stores a circuit as ARCS** —
+each `.trk` section carries a length and a heading — and `trk_centreline` integrates along them. But
+it emitted only **`subdiv=5` points per section**, so julia's centreline was a 5-chord polygon of
+each of GPL's smooth arcs, and `build_surface` draws the visible ribbon from that same polyline.
+
+## ⭐ And one joint was far worse than all the others: the start/finish
+
+Ranking every node by its heading step at Watkins Glen:
+
+| subdiv | worst node | 2nd | 3rd |
+|---|---|---|---|
+| 5 | **node 1251/1251 (100 % round): 21.43°** | 1250: 20.00° | 1178: 16.53° |
+| 60 | **node 2820/2820: 103.26°** | 2819: 103.04° | 2664: **2.24°** |
+
+**The arc walk integrates each section from the previous one's end, so accumulated rounding leaves
+the last point short of the first — the loop never closes — and `build_line` joins last→first with
+one straight chord whose heading matches nothing around it.** At subdiv 60 every node except those
+two is ≤2.24°, which is what makes the diagnosis unambiguous.
+
+⚠️ **And it explains why raising resolution alone made things WORSE** (max turn 21.4° → 27.9° → 103°
+as subdiv went 5 → 20 → 60): the same positional gap turned through an ever-shorter final segment is
+an ever-larger angle. A fix that looked obviously right was actively harmful, and only the per-node
+ranking showed why.
+
+## Fixed: close the loop, then raise the resolution
+
+The closure error is now distributed smoothly around the circuit (each point shifted in proportion to
+how far round it is) so no single joint absorbs it, and `subdiv` defaults to 20.
+`JM_NO_LOOP_CLOSE=1` and `JM_TRK_SUBDIV=5` revert each half independently.
+
+| track | worst heading step per node: before → after |
+|---|---|
+| watglen | **21.43° → 4.48°** |
+| monza | **19.89° → 4.98°** |
+| rouen | 13.03° → 12.60° |
+
+⚠️ **Rouen barely moves, so it has a SECOND kink that is not the closure** — a genuinely different
+defect, and it should not be assumed to be the same one. Left open and named rather than papered
+over by raising subdiv further.
+
+**This is upstream of everything:** the AI line, the AI heading, and the drawn ribbon are all built
+from this centreline, so it improves all three at once — and unlike sprint 1's tangent change, it
+makes the TRACK smoother, which is the PO's actual ask.
+
+**TRACKSMOOTH-1: 2 sprints.**
