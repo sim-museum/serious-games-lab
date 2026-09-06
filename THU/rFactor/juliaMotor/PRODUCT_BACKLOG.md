@@ -8572,7 +8572,43 @@ counted: it will appear in the per-lap results tab, in `last_lap`/`best_lap` on 
 `player_laps` (which feeds the race average). Reproduce around the restart path (`R`) and the
 respawn branch at `cs.laps < prev_laps`, both of which touch `lap_t0`.
 
-**LAPTIME-1: filed, not started.**
+**LAPTIME-1 — ROOT CAUSE FOUND AND PROVEN (S1, 2026-09-05). Fix pending.**
+
+**The sim clock goes BACKWARDS on a respawn.** Measured, not argued:
+
+    sim clock before respawn: 10.000 s   after: 0.017 s   *** THE CLOCK WENT BACKWARDS ***
+    lap counter before: 0   after: 0     *** UNCHANGED -- so the `laps < prev_laps` rescue never fires ***
+
+The chain: `Car3D.t` is not a field the sim maintains, it is `c.t = c.integ.t`
+(`drive_rt3d.jl:496`) — the ODE integrator's own time. `respawn3d!` calls `reinit!(c.integ)`, which
+rewinds that integrator to t0 = 0. Every `lap_t0 = cs.t` assignment in `drive_native_mtk.jl` is
+correct in isolation, so `lap_t0` is left holding a PRE-respawn value while `cs.t` restarts at zero,
+and the next completed lap is credited as `cs.t - lap_t0` = **negative**. That is the monza
+**−0.083 s** in `human_best.txt`, exactly.
+
+The one guard that could have caught it — `elseif cs.laps < prev_laps  # respawn reset the lap
+counter` (`:6669`) — **cannot fire**, because `respawn3d!` does not touch `laps`. It was written for
+a reset that does not happen.
+
+**The two junk-lap mechanisms are different, and only one was fixed.** The PO's *1.19 s* lap of
+2026-09-04 was the **teleport** path (R/SHIFT+R jumping backwards along the centreline, unwrapped as
+a huge forward step), fixed by `prog_delta(...; teleport = rst)`. The sub-second entries still in
+`human_best.txt` are most likely residue from before that fix — the file is a ratchet, so nothing
+ever displaced them. **The negative entry is NOT residue of that fix; it is this second, still-live
+mechanism.**
+
+**This is wider than lap times.** Everything that treats `cs.t` as a monotonic session clock is
+wrong after a respawn: `lap_t0`, the driveability step `DC[].lastt` and its `cs.t > DC_SETTLE_S`
+settle window, the countdown `cd_t0`, the AI lap clocks `ai_lapt0`, fuel/stint accounting, and the
+telemetry timestamps (which simply jump backwards mid-file).
+
+**Fix direction:** preserve the clock across a respawn — a respawn is a new CAR, not a new SESSION —
+by restoring `integ.t` after `reinit!`. One change at the source, instead of rebasing a dozen
+consumers and missing one. Then re-run the suite: `restart_smoke` and `lapprog_smoke` both exercise
+this area and are the gates that should notice if it is wrong.
+
+**LAPTIME-1: root cause proven with a number. Fix not yet applied (the gate suite was mid-run and
+gates include `drive_rt3d.jl`; editing a file under a running suite is how the last one broke).**
 
 ## 🔴 NEW ITEM (PO, 2026-09-05): TRACKSMOOTH-1 — julia tracks are PIECEWISE LINEAR; that is AI-YAW's root cause
 
