@@ -8258,6 +8258,23 @@ edge within 80 m anywhere", which reads exactly like a fact about the track. `dr
 carries `align_centreline` (`:843`) for this; the gate now reproduces it and **asserts the alignment
 worked** before measuring anything.
 
+**⭐ CONFIRMED BY A FULL GL LAP** (watglen, autodrive at `JM_AUTODRIVE_LAT=14`, `JM_DRIVECHECK=1`,
+3756 m covered — the first driveability verdict this project has ever collected without a human
+closing the window):
+
+    max height above ground : 0.08 m           (0 frames over 0.75 m)
+    max upward velocity     : 2.46 m/s         (0 frames over 6.0 m/s)
+    lowest groundz seen     : -4.52            the -999 sentinel NEVER reached the physics
+    frames OFF the mesh     : 0                the car never left the ground mesh
+
+Three things follow, and none of them were assumptions:
+* **E106-S13b is inert on this path, measured.** Over a whole lap the lowest ground height the
+  physics ever saw was −4.52 m. The sentinel it converts never arrives.
+* **14 m off the centreline is CLEAN at Watkins Glen** — and it never leaves the mesh, which agrees
+  with the headless probe putting the mesh edge at 44 m. The PO's excursion was **further out**.
+* **The launch site is the bank at 38–43 m**, which is where the headless gate drives and where it
+  measures 15.79 m/s. A GL reproduction needs `JM_AUTODRIVE_LAT` around 35–40, not 14.
+
 **OFFROAD-1: reproduced with a number and a site. Next: whether the launch off a 23 degrees bank is
 suspension rebound or honest ballistics — compare against the same ramp with the rebound damping
 raised, and against a rigid-body launch computed by hand.**
