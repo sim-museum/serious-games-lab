@@ -1038,6 +1038,8 @@ function gpl_scenery(ztrk, datpack, ribbon)
     hat=Render.GPL3DO.Tri[]; groups=Dict{String,Vector{Float32}}(); nskip=0
     ndrop_edge = Ref(0); ndrop_road = Ref(0); nkeep_t = Ref(0)   # E76-S10 per-object drop census
     scene_at = Tuple{String,Float64,Float64,Int}[]                # E70-S5: what stands near a lapdist
+    scene_drop = Tuple{String,Float64,Float64,String}[]           # E76-S11: what was placed near it but never rendered, and why
+    scene_tridrop = Dict{Tuple{String,String},Int}()             # E76-S11: (object, rule) -> triangles dropped inside the window
     # E76-S3: is the Ring's scenery even being LOADED? Its whole load is "184 groups / 4065 tris"
     # where Spa gets 1679 objects + 5132 billboards at a fifth the length (E76-S2), and gold's first
     # kilometre is lined with crowds and hoardings that native simply does not have. Before hunting
@@ -1071,6 +1073,16 @@ function gpl_scenery(ztrk, datpack, ribbon)
                                     h=Float32(hh*sc), w=Float32(ww*sc), texs=strs,
                                     yaw=Float32(t[4]), aax=Float32(aax)))   # for the static-panel path
                 catch
+                end
+            end
+            # E76-S11: the PO's "removed" buildings can only be placements that exist in the .dat and
+            # never reach the renderer. Under JM_SCENE_AT list every NO-MESH placement in the window
+            # with whether it became a billboard (resolved stub) or vanished (unresolvable).
+            if get(ENV,"JM_SCENE_AT","") != ""
+                let M2 = placemat(t), hr2 = JuliaMotor.hat(ribbon, Float64(M2[1,4]), Float64(M2[2,4]))
+                    if hr2.found && abs(hr2.lapdist - parse(Float64, ENV["JM_SCENE_AT"])) < parse(Float64, get(ENV,"JM_SCENE_WIN","250"))
+                        push!(scene_drop, (nm, hr2.lapdist, hr2.lateral, isfile(tp) ? "no-mesh -> billboard" : "no-mesh, UNRESOLVED (vanishes)"))
+                    end
                 end
             end
             continue
@@ -1124,7 +1136,7 @@ function gpl_scenery(ztrk, datpack, ribbon)
         # see it — this is the scenery-side equivalent. JM_SCENE_AT="lapdist" (±250 m).
         if get(ENV,"JM_SCENE_AT","") != ""
             _hr = JuliaMotor.hat(ribbon, Float64(M[1,4]), Float64(M[2,4]))
-            if _hr.found && abs(_hr.lapdist - parse(Float64, ENV["JM_SCENE_AT"])) < 250.0
+            if _hr.found && abs(_hr.lapdist - parse(Float64, ENV["JM_SCENE_AT"])) < parse(Float64, get(ENV,"JM_SCENE_WIN","250"))
                 push!(scene_at, (nm, _hr.lapdist, _hr.lateral, length(mesh)))
             end
         end
@@ -1191,6 +1203,9 @@ function gpl_scenery(ztrk, datpack, ribbon)
                 if get(ENV,"JM_SCENEDROP","") != "" && occursin(lowercase(ENV["JM_SCENEDROP"]), lowercase(nm))
                     ndrop_edge[] = ndrop_edge[] + 1
                 end
+                if get(ENV,"JM_SCENE_AT","") != "" && (let cgx=(w[1][1]+w[2][1]+w[3][1])/3; cgy=(w[1][2]+w[2][2]+w[3][2])/3; cgz=(w[1][3]+w[2][3]+w[3][3])/3; hrE = JuliaMotor.hat(ribbon, cgx, cgy); hrE.found && abs(hrE.lapdist - parse(Float64, ENV["JM_SCENE_AT"])) < parse(Float64, get(ENV,"JM_SCENE_WIN","250")) end)
+                    scene_tridrop[(nm, "stretched-edge")] = get(scene_tridrop, (nm, "stretched-edge"), 0) + 1
+                end
                 continue
             end
             # DROP scenery that intrudes into the road corridor (mis-placed/tilted objects
@@ -1201,6 +1216,9 @@ function gpl_scenery(ztrk, datpack, ribbon)
             if (hr.found && abs(hr.lateral) < 5.0 && abs(cgz - hr.height) < 3.0)
                 if get(ENV,"JM_SCENEDROP","") != "" && occursin(lowercase(ENV["JM_SCENEDROP"]), lowercase(nm))
                     ndrop_road[] = ndrop_road[] + 1
+                end
+                if get(ENV,"JM_SCENE_AT","") != "" && abs(hr.lapdist - parse(Float64, ENV["JM_SCENE_AT"])) < parse(Float64, get(ENV,"JM_SCENE_WIN","250"))
+                    scene_tridrop[(nm, "road-corridor")] = get(scene_tridrop, (nm, "road-corridor"), 0) + 1
                 end
                 continue
             end
@@ -1284,8 +1302,18 @@ function gpl_scenery(ztrk, datpack, ribbon)
         sort!(scene_at, by=x->abs(x[3]))
         println("== JM_SCENE_AT ", ENV["JM_SCENE_AT"], " ±250 m: ", length(scene_at), " scenery objects rendered ==")
         println("   name            lapdist   lateral   tris")
-        for r in scene_at[1:min(end,22)]
+        for r in scene_at[1:(haskey(ENV,"JM_SCENE_WIN") ? end : min(end,22))]
             println("   ", rpad(r[1],15), rpad(round(Int,r[2]),10), rpad(round(r[3],digits=1),10), r[4])
+        end
+        sort!(scene_drop, by=x->abs(x[3]))
+        println("== JM_SCENE_AT: ", length(scene_drop), " placements in the window that did NOT reach the renderer ==")
+        println("   name            lapdist   lateral   why")
+        for r in scene_drop[1:(haskey(ENV,"JM_SCENE_WIN") ? end : min(end,40))]
+            println("   ", rpad(r[1],15), rpad(round(Int,r[2]),10), rpad(round(r[3],digits=1),10), r[4])
+        end
+        println("== JM_SCENE_AT: triangles dropped by the per-triangle rules inside the window, per object ==")
+        for (k, v) in sort(collect(scene_tridrop), by = x -> -x[2])[1:min(end, 30)]
+            println("   ", rpad(k[1], 15), rpad(k[2], 16), v)
         end
         flush(stdout)
     end

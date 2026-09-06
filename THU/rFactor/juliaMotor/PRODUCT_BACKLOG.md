@@ -8990,3 +8990,24 @@ were removed by the grade rule.
   read correctly.
 - 2026-09-06 03:33 — full gate suite after SOLID-BOX / SPA-BARRIER / REPLAY-AUDIT: **ALL GATES PASS (34)**
   (solid_box_smoke and stacked_contact_smoke now in the suite).
+
+### E76-S11 / E81 (2026-09-06, Fable 5.1) — the Ring's start/finish, measured headlessly AND photographed headlessly
+- New census: `JM_SCENE_AT=<lapdist>` now also lists every placement in the window that did NOT reach
+  the renderer (with why) and every triangle the per-object rules dropped there; `JM_SCENE_WIN=<m>`
+  widens the window (whole-lap census with 11400/11500, no row caps).
+- Ring, lapdist 0..500 (just after S/F): 15 objects rendered (crowd rows, frnt-ho2, land1, outmg32,
+  ogrnd2); 10 placements never rendered -- km_00_3/4 and four SI_* signs (unresolvable, no such
+  object in the archive) and 3 bushes that became billboards; **0 triangles dropped** by the
+  stretched-edge / road-corridor rules; **0 sprite stubs** there. Whole lap: 816 objects rendered,
+  every NO-MESH placement is a bush/tree/flagger/FAKE stub that becomes a billboard. Building-like
+  names in the whole .dat: frnt-ho2 (272 m), tower2 (1501), frnt-hol (22759), grand116 (22837).
+  → Nothing at S/F is being "removed" by this port any more; the E76 report predates S8/S10.
+- **Headless photographs** (`JM_SMOKE=1 JM_SHOTS="20:0:..;150:1:.."`, PPM → PNG, viewed) vs the GPL
+  gold cockpit video frame at the start: our s=20 cockpit shows the left grandstand with Continental
+  banners, the timing tower ahead and the crowded pit wall right -- the same structures as GPL.
+  Differences seen: (1) GPL's pit wall carries Bosch/Castrol/Bardahl/Continental banner boards, ours
+  is a bare grey wall + crowd; (2) at s=150 (chase) the pit-side deck is a grey slab FLOATING above a
+  grey wall with the crowd standing on it -- the E81 "floating buildings" class, now reproducible
+  without the display; (3) the left grandstand is short in ours. Next: name the slab (texture census
+  at lapdist 150-300 -- JM_SPOTMESH is inside the object-pipeline block the Ring skips; move it) and
+  the banner boards (XK_FLAT*/TROW_001 rows are the candidates).
