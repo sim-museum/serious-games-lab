@@ -6928,7 +6928,7 @@ drove because torque was looked up at that fixed rpm, and a stopped car could no
 spabarrier, solidbox, eagle, aicars, aipose, refresh, road1) shipped a frozen engine.
 **Fix:** the assignment on its own line. **Gate** `telemetry_rpm_smoke.jl` (registered): from rest,
 full throttle 4 s headless → rpm 1725..4980, ends 4980, 1199/1200 samples off 2000, speed 16.8 m/s.
-PASS. Ships in the next Julia image. "Missing entirely at the ring": to be re-checked on that image
+PASS. **Shipped 16:34 as `JuliaRacer-x86_64-rpm1.AppImage`** (supersedes road1; delivery proven on a scratch install: stamp + the fix in the installed drivetrain). "Missing entirely at the ring": to be re-checked on that image
 (the gauge needle draws from cs.rpm; with rpm frozen at idle it sat under the dial's zero mark).
 
 ## 🔴 SPA-SF-1 — the guardrail across the road at Spa's start line (PO test, other PC, road1 image)
