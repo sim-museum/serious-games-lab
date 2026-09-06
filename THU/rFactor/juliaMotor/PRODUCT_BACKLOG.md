@@ -9153,3 +9153,18 @@ Sprint 1 starts when the PO's Spa session ends (a sysimage build is 20-40 min of
   depot and the copied `$W/depot/packages`, or a Manifest whose versions moved between builds),
   then ship caches that are ACCEPTED on install so a new AppImage costs seconds, not 25 minutes.
   The sysimage comes second and stacks on top. Experiment to run when the PO's session ends.
+- **STARTUP-1 root causes found from the PO's 08:17 launch (2026-09-06), two of them, both in the
+  AppImage packaging (`~/appimage-build/build_julia.sh`'s AppRun template), not in Julia:**
+  1. **The shipped AppRun had NO code-refresh block.** The refresh (stamp compare + copy) existed only
+     in a hand-edited AppDir that `build_julia.sh` regenerates from a heredoc; my first repack at 23:43
+     silently dropped it. Consequence: every install kept its first-run copy forever -- the PO's
+     `drive_native_mtk.jl` is dated 09-04 20:34 and its stamp is 20260905-033438 while the image he
+     launched is 20260906-071643. **Every Julia fix shipped today was never executed by the PO.**
+     Restored in the template, with the stamp RECORDED after a successful swap, and the packer now
+     writes the stamp itself.
+  2. **`JULIA_DEPOT_PATH` omitted Julia's default depots**, so the runtime's own stdlib pkgimages were
+     invisible and Pkg (161 s), REPL (97 s), Markdown, Test, Distributed, SparseArrays... recompiled
+     into the user's depot on every launch where they were stale. Trailing ":" appends the defaults.
+  Still open for the experiment: why the bundled non-stdlib pkgimages (ModelingToolkit 296 s,
+  Symbolics 104 s, ...) are rejected on install -- `JULIA_DEBUG=loading` on a scratch JR_HOME.
+  Next image: JuliaRacer-x86_64-refresh.AppImage (pack when the PO's session ends).
