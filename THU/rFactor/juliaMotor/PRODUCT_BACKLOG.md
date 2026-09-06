@@ -6991,6 +6991,25 @@ grabbing the car (the JM_SWEEP family, E-step). The Ring's census is therefore `
 longer disqualify pit buildings) and v5 (every meshed solid boxed, threshold 1.2 m: parked cars,
 bushes, armco) are running.**
 
+### ROAD-1 S3 (13:15) — Spa: 331 → 37 reachable, 3 with the car's centre inside a solid; Ring terrain: 0 anomalies in 22.8 km
+
+| Spa census | rule change | reachable (gap < 1.4) | centre inside (gap < 0) |
+|---|---|---|---|
+| v3 | fat-or-thin box rejected when covering tarmac | 117 | -- |
+| v4 | rejection gated to the 9 m corridor (pit aprons no longer disqualify pit buildings) | 117 | -- |
+| v5 | every meshed solid boxed (threshold 1.2 m) | 119 | -- |
+| **v6** | thin barriers exempt from rejection; fallback discs shrunk to clear the road; edge barriers reported separately (86) | **37** | **3** (`house36` -0.74 @ lat -5, `arm_sf0` -0.46 @ lat 9 = the S/F pit wall, `bushrow5` -0.37 @ lat -7.5) |
+
+The 34 others are 0..1.4 m "brush" hits: parked cars and bushes at Stavelot (s≈10780-10830) and
+Masta (s≈5224-5246) standing 0-1.1 m from asphalt inside the corridor. They are reachable only
+because the sim's car is a 1.4 m CIRCLE (`CARHALF`), 0.45 m wider than a Lotus 49's half-width;
+a real footprint (S4 candidate: a two-circle capsule, 0.95 m half-width, 2.1 m half-length) would
+not touch most of them. **Ring (`JM_SWEEP=4`, 5702 stations): 0 anomaly points** -- no HAT hole,
+wall/cliff, false grass or on-road mesh anywhere on the Nordschleife.
+v7 (1 m sample grid, so a 0.74 m overlap like house36 cannot slip between samples; `inside=` in the
+result line) is running; the gate `road_clear_smoke.jl` asserts `inside=0` for Spa and 0 terrain
+anomalies for the Ring and is registered in `gates.sh`.
+
 **Sprint plan.** S1: the sweep tool + first census (expect hits; that is the list). S2-S4: fix each
 named object (footprint, dedup, or a genuine off-road object leaking onto the ribbon). S5: the gate
 green on both tracks, registered in `gates.sh`, shipped in the AppImage.
