@@ -181,14 +181,26 @@ const N_AI      = let rf = get(ENV, "JM_REPLAY", "")
     # flag. Two players would see different AI positions, gaps, and finishing order.
     # Head-to-head with no AI is exactly right; a race whose two screens disagree is not.
     # JM_NET_AI=1 overrides for experiments -- it does NOT make the field agree.
-    if !isempty(get(ENV, "JM_NET", "")) && n > 0 && !haskey(ENV, "JM_NET_AI")
-        println("  ⚠ networked session: AI field disabled ($n → 0). Both peers would simulate it ",
-                "independently from different inputs, so the two screens would disagree. ",
-                "JM_NET_AI=1 to override (diverging fields).")
+    # MP-5 (2026-09-06): HOST-AUTHORITATIVE AI, the way GPL did it. The HOST keeps its field and
+    # sends every AI pose over the same wire as its own car; the CLIENT steps no field and draws
+    # the host's AI as remote cars (same dead-reckoned path as the other human). One field, two
+    # screens that agree. The old symmetric guard survives only for the client.
+    netm = lowercase(get(ENV, "JM_NET", ""))
+    if netm == "join" && n > 0 && !haskey(ENV, "JM_NET_AI")
+        println("  ⚠ networked session (client): AI field disabled ($n → 0) -- the HOST steps the ",
+                "field and sends its poses; they are drawn here as remote cars (MP-5). ",
+                "JM_NET_AI=1 steps a local field instead (diverging fields).")
         n = 0
+    elseif netm == "host" && n > 0
+        println("  ☑ networked session (host): host-authoritative AI -- the $n-car field is stepped ",
+                "here and its poses are sent to the client every packet interval (MP-5).")
     end
     n
 end
+# MP-5: the AI count the launcher ASKED for, before the client guard zeroed it -- the client loads
+# that many AI chassis so the host's field can be drawn with the right cars (pass the same JM_AI on
+# both PCs; a remote AI beyond the loaded models falls back to chassis 1).
+const N_AI_REQ  = clamp(tryparse(Int, get(ENV, "JM_AI", "0")) |> x -> x === nothing ? 0 : x, 0, 5)
 const IS_RACE   = MODE == "race"
 const IS_TRAIN  = MODE == "training"
 # E11: AI speed as a percentage — 100 % = the GPL AI car laptime for the track.
@@ -694,7 +706,7 @@ const AUTODRIVE_DIAG = parse(Int, get(ENV, "JM_AUTODRIVE_DIAG", "0"))
 const AI_LAPDIAG = get(ENV, "JM_AI_LAPDIAG", "0") != "0"   # report each AI lap as it completes
 # Poses of the remote cars, refreshed each frame and read by the draw pass. A Ref rather than a
 # closure capture because the draw pass is a nested function built before this is known.
-const NETPOSES = Ref(NTuple{6,Float64}[])
+const NETPOSES = Ref(Tuple{Int,NTuple{6,Float64}}[])   # MP-5: (car id, grounded pose) -- the id picks the chassis
 # E85-S7: receiver-side prediction-error census (JM_NET_ERR=1).
 const NET_ERR  = get(ENV, "JM_NET_ERR", "0") != "0"
 const NET_PREV = Ref(Dict{UInt8,NamedTuple}())
@@ -4821,7 +4833,7 @@ const AICAR_PHYS = [
 AICARMODELS = Render.GPLCarModel[]
 tstamp("  [E80] AI car models begin")
 # E85-S5: netplay needs a chassis to draw the remote car with, even when there is no AI field.
-_ncars = max(N_AI, NETMODE == "" ? 0 : 1)
+_ncars = max(N_AI, NETMODE == "" ? 0 : 1, NETMODE == "join" ? N_AI_REQ : 0)   # MP-5: the client draws the host's field
 # AI-CARGFX S5: per-chassis parked suspension groups that draw as blades at the origin (S447's map,
 # confirmed by A/B capture on the Eagle 2026-09-06). Interim hide; the parity fix is to POSE them.
 # AI-CHAIN-1: the Brabham's blade is its UN-parked rear-suspension halves 32916/48284 (A/B by group
@@ -7259,16 +7271,25 @@ function main()
                 net_last[] = cs.t
                 NetPlay.send_pose!(NETLINK, NET_ID, round(Int, cs.t*1000),
                                    cs.x, cs.y, cs.z, cs.θ, cs.v, inp.steer)
+                # MP-5: the HOST is the authority for the AI field -- one packet per AI car, ids
+                # AI_ID0.., at the same cadence as its own car. The client has no field of its own.
+                if NETMODE == "host" && !isempty(ai_poses)
+                    for (k, p) in enumerate(ai_poses)
+                        NetPlay.send_pose!(NETLINK, NetPlay.AI_ID0 + (k - 1), round(Int, cs.t*1000),
+                                           p[1], p[2], p[3], p[4],
+                                           k <= length(AICARS) ? AICARS[k].v : 0.0, 0.0)
+                    end
+                end
             end
             # ⚠️ THE E104(a) RULE, ENFORCED AT THE RECEIVING END. `predict` deliberately does not
             # extrapolate height, and the packet's y is the SENDER's ground -- which is not this
             # machine's ground if the two disagree by so much as a terrain rounding. A remote car's
             # height must come from the terrain UNDER IT, exactly as the AI field's does since
             # E104-S4, or remote cars float for the same reason the AI did.
-            netp = NTuple{6,Float64}[]
-            for (_, q) in NetPlay.remote_poses_at(NETLINK, time())
+            netp = Tuple{Int,NTuple{6,Float64}}[]
+            for (id, q) in NetPlay.remote_poses_at(NETLINK, time())
                 b = aibankK((q.x, 0.0, q.z, q.yaw))
-                push!(netp, ai_ground((q.x, q.y, q.z, q.yaw, b[1], b[2])))
+                push!(netp, (Int(id), ai_ground((q.x, q.y, q.z, q.yaw, b[1], b[2]))))
             end
             # ── E85-S7: PREDICTION ERROR, measured receiver-side with no clock sync ─────────────
             # When a NEW packet arrives for a car, we already know what the PREVIOUS packet
@@ -7419,8 +7440,8 @@ function main()
             # E85-S5: the REMOTE cars, drawn through exactly the same path as the AI field -- same
             # body/wheel transforms, so anything true of an AI car's placement is true of theirs.
             if !isempty(NETPOSES[]) && !isempty(AICARMODELS)
-                cm = AICARMODELS[1]
-                for p in NETPOSES[]
+                for (nid, p) in NETPOSES[]          # MP-5: the host's AI ids pick their own chassis
+                    cm = AICARMODELS[NetPlay.chassis_slot(nid, length(AICARMODELS))]
                     for it in cm.body; Render.draw(prog, it, vp_, aiBody(p, cm); bright=1.25, spec=0.10, ambfill=0.62); end
                     for (wx,wz,_,r,nm) in cm.wheelspec, it in cm.wheels[nm]; Render.draw(prog, it, vp_, aiWheel(p,wx,wz,r)); end
                 end

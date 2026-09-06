@@ -15,9 +15,19 @@ module NetPlay
 
 using Sockets
 export NetLink, netopen, netclose, send_pose!, poll!, remote_poses, predict, remote_poses_at,
-       EXTRAP_MAX, STALE_S, is_stale
+       EXTRAP_MAX, STALE_S, is_stale, AI_ID0, chassis_slot
 
 const MAGIC   = UInt32(0x4A4D5231)      # "JMR1" — a stray packet on a shared port must not parse
+
+# MP-5 (2026-09-06): HOST-AUTHORITATIVE AI. Car ids 1..9 are humans (host 1, client 2, …); ids from
+# AI_ID0 up are the host's AI field, sent by the host with the same packet as a human pose and drawn
+# by the client through the same remote-car path. The client steps no field of its own, so both
+# screens show the ONE field the host simulates -- which is what "like GPL" means.
+const AI_ID0 = UInt8(10)
+"""Which loaded AI chassis draws remote car `id`: AI ids map to slot 1.. in order, clamped to the
+models actually loaded; a human id draws with slot 1 (the Lotus-substitute chassis)."""
+chassis_slot(id::Integer, nmodels::Integer) =
+    nmodels <= 0 ? 0 : (id >= AI_ID0 ? clamp(Int(id) - Int(AI_ID0) + 1, 1, Int(nmodels)) : 1)
 const PKTSIZE = 4 + 1 + 4 + 2 + 6*4      # magic + car id + tick + listen port + 6 Float32
 const DEFAULT_PORT = 47700
 

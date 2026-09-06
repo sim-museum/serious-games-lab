@@ -7520,6 +7520,43 @@ connect -- there is no point designing AI replication over a transport that has 
 packet between two machines.
 
 
+### MP-5 (Fable 5.1, 2026-09-06) — HOST-AUTHORITATIVE AI: one field, two screens that agree ("the way GPL did it")
+
+PO 2026-09-06: *"also multiplayer is a priority, for all games."* MP-4's option 2, implemented.
+
+**What changed.** The HOST keeps its AI field and sends every AI car as a pose packet -- the same
+39-byte packet as its own car, ids from `NetPlay.AI_ID0` (10) up, at the same `JM_NET_HZ` cadence.
+The CLIENT steps no field of its own (the MP-4 guard now fires only for `JM_NET=join`) and draws
+the host's AI through the SAME remote-car path as the other human: dead-reckoned by `predict`,
+grounded by `ai_ground`, frozen past `EXTRAP_MAX`, dropped when stale. `NETPOSES` now carries
+`(id, pose)` and `NetPlay.chassis_slot(id, nmodels)` picks the chassis: AI id k → slot k, humans →
+slot 1, an id past the loaded models → the last one. The client loads `JM_AI` chassis
+(`N_AI_REQ`, read before the guard zeroes `N_AI`), so pass the same `JM_AI` on both PCs.
+
+Host console: `☑ networked session (host): host-authoritative AI -- the 3-car field is stepped here
+and its poses are sent to the client every packet interval (MP-5).`
+Client console: `⚠ networked session (client): AI field disabled (3 → 0) -- the HOST steps the field
+and sends its poses; they are drawn here as remote cars (MP-5).`
+
+**Gates.** `netai_host_smoke.jl` (new, registered): two real NetLinks in one process; stated before
+the run: after 1 human + 3 AI sends the client knows exactly ids {1,10,11,12}, each AI pose comes
+back with its x/z/yaw/v (Float32 wire, 1e-3), `remote_poses_at` returns all four, and the five
+`chassis_slot` cases; negative control: before any packet the client knows no ids (the assertion
+can report zero). **11/11 PASS.** `netai_smoke.jl` re-armed for the new semantics (offline keeps,
+client disables, host keeps + announces, override on the client) -- 5 sim launches, to be run once
+the STARTUP-1 sysimage build has released the machine's memory.
+
+**What the PO can do now:** two AppImages, two PCs, and the AI field is on BOTH screens in the
+same places:
+
+    PC-A:  JM_NET=host JM_AI=3                              JuliaRacer AppImage
+    PC-B:  JM_NET=join JM_NET_HOST=<PC-A LAN IP> JM_AI=3    JuliaRacer AppImage
+
+**Not done / caveats:** the client's player-vs-AI collision and slipstream use `ai_poses`, which is
+empty on the client -- a client car passes through the host's AI (contact with remote humans was
+already absent, MP-4). Lap/position scoring of remote AI is the host's. The two-machine test is
+still the PO's to run; every gate here is loopback.
+
 ### RESTART-1 — CLOSED (2026-09-05). Implemented, gated, and verified INSIDE the shipped image.
 
 **Ctrl+R** restarts the session on the current track without reloading it. The PO's requirement was
