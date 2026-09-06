@@ -2667,7 +2667,12 @@ end
 # instance records; geometry/textures resolve from loose files OR the .dat archive.
 # (skidpad is bare; Nürburgring scenery is mostly baked into nurburg.3do — the
 #  Zandvoort-tuned .dat object placement below is skipped for it for now.)
-if SKIDPAD || NURB
+# TRACKGOLD-1 S2 (2026-09-06): the Ring now goes through the generic pipeline too. Its .trk places
+# 3109 objects, 412 of them with loose .3do files (road signs, km stones, trees, billboards, the
+# Metz/Esch/bridge buildings) that this skip discarded -- the PO's "gold standard has many more
+# trackside objects than current julia ring". gpl_scenery() still supplies the landmass and the
+# .dat sprite stubs. JM_RING_OBJECTS=0 restores the old empty Ring.
+if SKIDPAD || (NURB && get(ENV, "JM_RING_OBJECTS", "1") == "0")
     global OBJECTS = Any[]
     global BILLBOARDS = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32}[]
     global STATICTREES = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32,Float32}[]

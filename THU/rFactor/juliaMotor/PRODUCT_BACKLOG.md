@@ -6965,6 +6965,19 @@ parser on `nurburg.3do`): **3109 placements, 580 distinct names.**
   patches, `fake` (65), `flagger` (49 marshals), and **lines of people (`peoplefl` 16,
   `peoplelt` 15)** -- the PO's "line of people" objects, here too.
 
+### TRACKGOLD-1 S2 (15:03) — the Ring goes through the object pipeline: 807 trackside objects, 1021 billboards, 103 solids (was 0 / 1777 / 0)
+
+`if SKIDPAD || NURB` → `if SKIDPAD || (NURB && JM_RING_OBJECTS=0)`: the Ring's .trk placements now load
+like every other track's; `gpl_scenery()` still provides the landmass. Headless load (JM_ROADSWEEP=4):
+**807 trackside objects + 1021 billboards + 103 solid**; the ROAD-1 rules applied themselves on the
+way (42 discs shrunk, 7 fat boxes rejected -- `wierd123`, `walls2`, three `shrub3`, `bridge3b`,
+`shack`), and the road census on the populated Ring reads **inside=0, 2 capsule brushes** (control
+ok), so `road_clear_smoke` keeps passing with real solids there. The billboard count dropped from
+1777 to 1021 because the generic pipeline treats the tree/shrub stubs differently from E76-S8's
+sprite path -- to be compared against gold at 3 sites in S3 (E76-S8's 1777 vs this 1021: which is
+right per site, not per count). Not yet shipped; the loose-file objects (signs, km stones,
+buildings) are what the PO will see first.
+
 **S2 plan:** run the generic object pipeline for the Ring as well (drop `|| NURB` from the skip,
 keep `gpl_scenery` for the landmass), so the 412 loose-file placements load through the same
 path Spa's 1451 do; then the same solids/census treatment (ROAD-1's `road_clear_smoke` will
