@@ -8192,7 +8192,75 @@ does not need the PO's eye — only a run that actually leaves the road.
    `JM_DRIVECHECK` counters stay zero. The current source gate should stay — it pins the contract —
    but on its own it let this ship.
 
-**OFFROAD-1: 1 sprint. Scoped and instrumented; not reproduced, not fixed.**
+**OFFROAD-1 — REPRODUCED (S2-S5, 2026-09-05). Not fixed, and the suspected mechanism is ruled OUT.**
+
+New instrument: `JuliaMotorMTK/tools/offroad_track_smoke.jl` — the companion this item asked for, the
+one that **drives**. Real Watkins Glen `.3do` mesh, the real HAT, a real perpendicular ray off the
+road, the real vehicle ODE, and **no GL**, so it runs anywhere. Deliberately **NOT registered in
+`gates.sh` yet**: it currently fails because the defect is real, and parking a permanently-red gate
+in the suite would drown the signal the suite exists to give.
+
+**THE REPRODUCTION** (Watkins Glen, car driven off the road at 25 m/s):
+
+    max climb 15.79 m/s     max height above terrain 6.12 m
+
+Against thresholds of 6.0 m/s and 0.75 m. That is the PO's levitate-and-bounce, measured.
+
+**⭐ THE GROUND-POLICY STORY IS WRONG.** Both arms give *identical* numbers:
+
+| ground policy off the mesh | max climb | max height |
+|---|---|---|
+| HOLD the last valid height (what ships) | 15.79 m/s | 6.12 m |
+| NaN (the E104(b) contract) | 15.79 m/s | 6.12 m |
+
+To the frame. So whatever launches the car happens while it is still **on** the mesh, where the two
+policies agree, and no change to the off-mesh sentinel handling can address it.
+
+**Two structural findings behind that, both from reading the code and confirmed by the numbers:**
+
+1. **There are TWO `groundz` in `drive_native_mtk.jl`.** The one at `:2921` returns the `-999`
+   off-HAT sentinel. The one actually in scope for the physics and the driveability check
+   (`:5166`, nested in `main`) **never emits it** — off the mesh it HOLDS `LASTZ[]`, the last valid
+   height, and reports the excursion through `ONTRACK[]`. So `groundz_phys`'s
+   `g > -900f0 ? g : NaN32` converts a value its own input cannot produce, and **E106-S13b's fix is
+   inert on this path**. `hat_hole_smoke` cannot see this: it greps the source for the conversion
+   and separately tests a *copy* of the arithmetic, so it proves the spelling and the maths, never
+   that the sentinel arrives.
+2. **The old `if gh > -900f0` guard around the levitation test was therefore always true**, and
+   off-mesh frames were being measured against a *stale held reference height* rather than skipped.
+   The check now reads `ONTRACK[]` — the flag the closure actually sets — and the verdict reports
+   off-mesh frames and the lowest `groundz` ever seen, so the "does the sentinel arrive" question is
+   answered by the run rather than by argument.
+
+**What the terrain actually does there** (`s` from the centreline, perpendicular):
+
+    d = 0.0 .. 38.0 m   smooth, |step| <= 0.04 m per 0.5 m
+    d = 38.5 .. 43.0 m  RISES 1.9 m over 4.5 m  — a ~23 degrees bank
+    d = 43.5 m          mesh edge
+
+So the car leaves the road, runs 38 m over smooth ground, and meets an **earth bank** at 90 km/h.
+Some of that flight is honest physics — a real car hitting a 23 degrees ramp at that speed leaves the
+ground. **What is not settled is whether 6.12 m and a driving landing is the right answer**, or
+whether the suspension rebound is adding to it. That is the next question, and it is a *physics*
+question, not a mesh-boundary one.
+
+**Also fixed, because the measurement was otherwise unreachable:** an autodrive run now **exits when
+its lap finishes** (`JM_NO_AUTOEXIT=1` to keep the window). The driveability verdict prints after the
+main loop, the loop only ended on ESC, and under Wayland no gate can press ESC — so every autodrive
+driveability run so far could produce a verdict only if a human closed the window. New
+`JM_AUTODRIVE_LAT=<m>` steers autodrive at a lateral offset; without it autodrive follows the racing
+line, which is the one path that never reproduces an off-road defect.
+
+**⚠️ Trap for anyone probing tracks headlessly:** the `.trk` centreline and the terrain HAT are in
+**different frames**. At Watkins Glen the offset is `(127, -4742)` and **0 of 940** centreline points
+land on the mesh unaligned — the z ranges do not even overlap. An unaligned probe reports "no mesh
+edge within 80 m anywhere", which reads exactly like a fact about the track. `drive_native_mtk`
+carries `align_centreline` (`:843`) for this; the gate now reproduces it and **asserts the alignment
+worked** before measuring anything.
+
+**OFFROAD-1: reproduced with a number and a site. Next: whether the launch off a 23 degrees bank is
+suspension rebound or honest ballistics — compare against the same ramp with the rebound damping
+raised, and against a rigid-body launch computed by hand.**
 
 ## 🔴 NEW ITEM (PO, 2026-09-05): RACESTART-1 — AI cars behind drive THROUGH a stationary player at the start
 

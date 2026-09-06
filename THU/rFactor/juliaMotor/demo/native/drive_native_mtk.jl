@@ -657,10 +657,21 @@ mutable struct DriveCheck
     stuck::Float64;  stuckmax::Float64; stuck_s::Float64
     lastz::Float64;  lastt::Float64;  maxs::Float64
     inair::Bool;     events::Vector{Tuple{Float64,Float64,Float64,Float64,Float64}}
+    # OFFROAD-1 (PO 2026-09-05): "still ran into a levitate and bounce when car went off road".
+    # The levitation test above sits inside `if gh > -900f0` -- so OFF THE MESH, which is exactly
+    # where the PO's car was, there is no ground height to measure against and the detector counts
+    # NOTHING. A clean verdict from a lap that left the road proved only that the instrument had
+    # looked away. Count those frames explicitly instead, with where and how high.
+    off_bad::Int;    off_s::Float64;  off_y::Float64;  offevents::Vector{Tuple{Float64,Float64,Float64}}
+    ghmin::Float64   # lowest ground height ever returned -- evidence for whether -999 can reach here
 end
-const DC = Ref(DriveCheck(0.0,0.0,0, 0.0,0.0,0, 0.0,0.0,0.0, 0.0,0.0,0.0, false, Tuple{Float64,Float64,Float64,Float64,Float64}[]))
+const DC = Ref(DriveCheck(0.0,0.0,0, 0.0,0.0,0, 0.0,0.0,0.0, 0.0,0.0,0.0, false, Tuple{Float64,Float64,Float64,Float64,Float64}[], 0, 0.0, 0.0, Tuple{Float64,Float64,Float64}[], Inf))
 const AUTODRIVE   = get(ENV, "JM_AUTODRIVE", "0") != "0"
 const AUTODRIVE_V = parse(Float64, get(ENV, "JM_AUTODRIVE_V", "45"))   # target speed m/s
+# OFFROAD-1: target LATERAL offset (m) from the centreline for autodrive. The point of autodrive is
+# to follow the racing line, which is the one path that never reproduces an off-road defect -- so a
+# deliberate excursion needs its own knob. Positive = one side, negative = the other.
+const AUTODRIVE_LAT = parse(Float64, get(ENV, "JM_AUTODRIVE_LAT", "0"))
 const AUTODRIVE_DIAG = parse(Int, get(ENV, "JM_AUTODRIVE_DIAG", "0"))
 const AI_LAPDIAG = get(ENV, "JM_AI_LAPDIAG", "0") != "0"   # report each AI lap as it completes
 # Poses of the remote cars, refreshed each frame and read by the draw pass. A Ref rather than a
@@ -5912,6 +5923,12 @@ function main()
         key(GLFW.KEY_ESCAPE) && break
         SMOKE && isempty(SHOTS) && frames >= 40 && break
         SMOKE && shots_done[] && !isempty(SHOTS) && break
+        # OFFROAD-1: an AUTODRIVE run is a MEASUREMENT run, and its measurement -- the driveability
+        # verdict -- is printed after this loop. Without an exit the car sits at the finish line
+        # forever and the verdict is never reached; under Wayland no gate can press ESC to release
+        # it (see JM_ARM_AFTER). So a finished autodrive lap ends the run. JM_NO_AUTOEXIT=1 keeps
+        # the window up for watching.
+        AUTODRIVE && race_done && !haskey(ENV, "JM_NO_AUTOEXIT") && break
         # E106-S16: the timestep is WALL-CLOCK, so a headless run spins as fast as the CPU allows
         # and advances almost no SIM time per frame -- the driveability sweep covered 0.1 s of sim
         # time in thousands of frames. JM_FIXED_DT=<seconds> advances a fixed step instead, which
@@ -5985,7 +6002,7 @@ function main()
                 # DriveRT3D.yawrate3d (aliased AIyaw), which is what the AI field itself uses.
                 # `cs.r` would have thrown FieldError at runtime; parse_smoke cannot see that.
                 yawrate = try; y = AIyaw(cs); isfinite(y) ? y : 0.0; catch; 0.0; end
-                thr, brk, st = RaceAI.controller(CLINE, s0, lat0, 0.0, AUTODRIVE_V,
+                thr, brk, st = RaceAI.controller(CLINE, s0, lat0, AUTODRIVE_LAT, AUTODRIVE_V,
                                                  cs.x, cs.z, cs.θ, cs.v, yawrate; power = 1.0)
                 # E106-S15 (PO: "ensure nurburgring and spa can be driven without obstacles
                 # (levitation, bouncing) etc on the part of the human driver"). While autodrive is
@@ -6003,6 +6020,25 @@ function main()
                     step = max(Float64(cs.t) - DC[].lastt, 1e-4)
                     DC[].lastt = Float64(cs.t)
                     gh = groundz(cs.x, cs.z)
+                    # ⚠️ `gh <= -900` CANNOT FIRE HERE, and that is the finding, not an oversight.
+                    # There are TWO groundz in this file: the top-level one at :2921 returns the
+                    # -999 "off the HAT" sentinel, but the one in scope here (:5166, nested in
+                    # main) never does -- off the mesh it HOLDS `LASTZ[]`, the last valid height,
+                    # and reports the excursion through `ONTRACK[]` instead. So the old
+                    # `if gh > -900f0` guard was always true (it was guarding against a value this
+                    # closure cannot produce), and off-mesh frames were measured against a STALE
+                    # reference height rather than skipped. Read the flag the closure actually
+                    # sets, immediately after the call that sets it.
+                    if !ONTRACK[]
+                        DC[].off_bad += 1
+                        if DC[].off_bad == 1 || Float64(cs.y) > DC[].off_y
+                            DC[].off_s = s0; DC[].off_y = Float64(cs.y)
+                        end
+                        length(DC[].offevents) < 24 && (isempty(DC[].offevents) ||
+                            abs(DC[].offevents[end][1] - s0) > 20.0) &&
+                            push!(DC[].offevents, (s0, Float64(cs.y), Float64(cs.v)*3.6))
+                    end
+                    gh < DC[].ghmin && (DC[].ghmin = Float64(gh))   # does the sentinel EVER arrive?
                     if gh > -900f0
                         air = Float64(cs.y) - Float64(gh)
                         if air > DC[].airmax; DC[].airmax = air; DC[].air_s = s0; end
@@ -7376,6 +7412,21 @@ function main()
                 "   (", d.vz_bad, " frames over ", DC_VZ_MAX, " m/s)")
         println("    longest slow spell      : ", round(d.stuckmax, digits=1), " s at s=", round(d.stuck_s, digits=1),
                 "   (stuck threshold ", DC_STUCK_S, " s under ", DC_STUCK_V, " m/s)")
+        # OFFROAD-1: report the frames the height test could not see, and say so plainly. A verdict
+        # that stayed silent about them is how "both tracks are survivable" was believed.
+        println("    lowest groundz seen     : ", round(d.ghmin, digits=2),
+                d.ghmin > -900 ? "   (the -999 off-HAT sentinel NEVER reached the physics)" : "   (sentinel seen)")
+        println("    frames OFF the mesh     : ", d.off_bad,
+                d.off_bad == 0 ? "   (the car never left the ground mesh)" :
+                string("   highest y=", round(d.off_y, digits=2), " m at s=", round(d.off_s, digits=1),
+                       "  — height there is measured against a STALE held reference, not real ground"))
+        if !isempty(d.offevents)
+            println("    off-mesh sites (s, y, km/h):")
+            for (es, ey, ekmh) in d.offevents
+                println("      s=", round(es, digits=1), "  y=", round(ey, digits=2), " m  ",
+                        round(ekmh, digits=1), " km/h")
+            end
+        end
         if !isempty(d.events)
             println("    launch SITES (each distinct excursion above ", DC_AIR_MAX, " m; height = that excursion's PEAK):")
             for (es, eair, ekmh, ex, ez) in d.events
