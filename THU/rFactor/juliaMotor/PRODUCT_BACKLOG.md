@@ -9124,3 +9124,22 @@ of the wheel. `JM_AI_REAR_HIDE=1` = the S1 interim, `JM_AI_PARKED_SUSP=1` = raw.
   Bosch / Castrol boards along the pit wall; ours: bare wall) and the cockpit cowl colour (E106).
   E81 as a PLACEMENT item is closed by measurement; the remaining gap is E78 appearance.
 - 2026-09-06 07:53 — full gate suite after AI-CHAIN-1 S2 (loader change): **ALL GATES PASS (35)**.
+
+### ⭐ STARTUP-1 (PO, 2026-09-06 08:10) — Julia Racer startup: "I feel like I'm compiling a whole library"
+PO question while Spa loaded: what speeds it up without losing the physics fidelity, and should it be
+translated to a faster language? Answer recorded: the wait is COMPILE + LOAD, not physics -- the
+7,500-line sim script and the ModelingToolkit chassis model are JIT-compiled at every launch
+(~2 min/track measured); once compiled the 60 Hz physics is native machine code. No translation:
+MTK already emits native code for the model, and could emit C if a target ever needs it.
+**Plan (numerics untouched, the gate suite proves bit-identity):**
+1. Ship a sysimage in the AppImage: `demo/native/build_sysimage.jl` exists (bakes MTK +
+   OrdinaryDiffEq + GLFW/ModernGL + the loaders; cpu_target generic, not "native"), but the
+   AppImage neither builds nor launches with it (`-J jlracer.so`). Wire it: build during
+   `build_julia.sh`, AppRun passes `-J`, fall back to plain julia if the .so is missing/incompatible.
+2. Precompile the MTK code generation (PrecompileTools workload in JuliaMotorMTK) so the chassis
+   model does not regenerate per run.
+3. Track cache: serialize HAT + scenery meshes + texture atlas per track version; reload in seconds.
+   Gate the per-triangle `[tri]` console trace at load (thousands of lines per track).
+**Acceptance**: wall-clock from launch to first rendered frame per track, before vs after, with the
+same replay/gate outputs (ALL GATES PASS, replay_audit unchanged). Target: < 20 s on Spa.
+Sprint 1 starts when the PO's Spa session ends (a sysimage build is 20-40 min of all cores).
