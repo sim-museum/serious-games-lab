@@ -6980,6 +6980,17 @@ Left for S3: the disc fallback means those composites are drive-through on their
 the right footprint is the drawn triangles themselves (2-D triangle soup per composite), which
 also fixes h49woga if it is a real building beside the pit lane.
 
+**The Ring has NO object solids (census 12:34): "0 solids, 0 boxed", control blind.** Its log has
+no `trackside objects` line at all -- GPL's Nürburgring ships its houses, walls and banks inside
+the track mesh sections, and its only placed objects are 1777 tree billboards. So at the Ring
+"collision while on the road" can only mean the TERRAIN: a HAT wall/cliff or an overpass underside
+grabbing the car (the JM_SWEEP family, E-step). The Ring's census is therefore `JM_SWEEP=4`
+(height discontinuities, off-HAT holes, false grass, on-road meshes), queued after Spa v5.
+
+**Spa v3 (tarmac check on) → 117 reachable; v4 (check gated to the 9 m corridor, so pit aprons no
+longer disqualify pit buildings) and v5 (every meshed solid boxed, threshold 1.2 m: parked cars,
+bushes, armco) are running.**
+
 **Sprint plan.** S1: the sweep tool + first census (expect hits; that is the list). S2-S4: fix each
 named object (footprint, dedup, or a genuine off-road object leaking onto the ribbon). S5: the gate
 green on both tracks, registered in `gates.sh`, shipped in the AppImage.
