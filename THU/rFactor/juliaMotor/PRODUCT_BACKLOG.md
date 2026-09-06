@@ -8969,3 +8969,14 @@ sites).
 - Gate `solid_box_smoke` (geometry: faces, corners, inside, rotation; the house28 numbers; wiring).
   `JM_SOLID_BOX=0` reverts to discs. Hook `JM_SOLIDNEAR` prints each box, its corners, the drawn
   footprint, and the box/disc gap along a `JM_HATPROBE` path.
+
+### 2026-09-06 — REPLAY-AUDIT: every PO replay scanned in one command
+`JuliaMotorMTK/tools/replay_audit.jl [files|dir]` flags, per replay: teleports (respawns), vertical
+jumps > 1 m/frame, THROW-BACKS (direction of travel reversed within 0.5 s while fast -- the SPA-BARRIER
+signature) and wall-steep CLIMBS (> 2 m at > 30 % grade), and prints the exact
+`TRACK=… JM_HATPROBE=… JM_SOLIDNEAR=…` line that localises each one in the sim's own frame.
+Across all 17 replays (08-28 → 09-04): the Spa 09-03 respawn (house28, fixed), the Ring 09-02 plateau
+(flat in today's HAT), Monza 08-28/08-31 drops of 5.0 / 2.8 m at (393,-488)/(420,-493) at 41–46 m/s
+(the banking crossover, E73 area -- probed below), three low-speed WG throw-backs from 08-28 (old
+solid rules). Nothing else in 17 replays. The real-hill false positives (Eau Rouge, the Glen's esses)
+were removed by the grade rule.
