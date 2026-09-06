@@ -9143,3 +9143,13 @@ MTK already emits native code for the model, and could emit C if a target ever n
 **Acceptance**: wall-clock from launch to first rendered frame per track, before vs after, with the
 same replay/gate outputs (ALL GATES PASS, replay_audit unchanged). Target: < 20 s on Spa.
 Sprint 1 starts when the PO's Spa session ends (a sysimage build is 20-40 min of all cores).
+- **STARTUP-1 observation (PO screenshot 08:17)**: the launcher shows "compiling Julia packages —
+  1/318 … (one-off)". The AppImage BUNDLES a depot with 408 compiled pkgimages, yet the PO's
+  install is recompiling into its own writable depot (`~/.local/share/julia-racer/depot/compiled`,
+  new .so files at 08:17 for OrdinaryDiffEq*). The launcher's own comment measured this at
+  > 25 minutes. So sprint 1's first job is not the sysimage but the CACHE: find out why the bundled
+  pkgimages are rejected (`JULIA_DEBUG=loading` on a scratch `JR_HOME` install of the AppImage will
+  print "Rejecting cache file … because …" -- candidates: source path mismatch between the bundled
+  depot and the copied `$W/depot/packages`, or a Manifest whose versions moved between builds),
+  then ship caches that are ACCEPTED on install so a new AppImage costs seconds, not 25 minutes.
+  The sysimage comes second and stacks on top. Experiment to run when the PO's session ends.
