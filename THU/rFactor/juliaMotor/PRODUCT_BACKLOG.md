@@ -6917,6 +6917,38 @@ No sprints have been run against this item.
 
 ---
 
+## 🔲 BACKLOG — TRACKGOLD-1: Spa and the Ring closer to the gold standard; the Ring's missing trackside objects; no free-standing lines of people on any track  ⭐ PRIORITY (PO 2026-09-06 14:50)
+
+PO, verbatim: *"add priority backlog item: make julia spa and ring tracks closer to gold standard.
+For example, at the ring, gold standard has many more trackside objects than current julia ring.
+Note: remove line-of-people objects that are just a line of people not related to any other
+object, such as a grandstand, from all tracks. These objects are often incongruously placed in
+julia (wrong orientation, teetering on a hill) and don't add much even if correctly placed"*
+
+**Two parts, one already half-diagnosed:**
+1. **The Ring's trackside objects are not loaded at all.** The ROAD-1 census (12:34, 14:0x) found
+   the Ring builds "0 solids" and its load log has no `trackside objects` line -- only
+   `E76-S8 Ring billboards: 1777 placed`. Spa loads 1451 trackside objects + 2428 billboards.
+   So on the Ring `GPLTrack.trackside_objects(...)` either returns nothing (a parser branch the
+   Ring's track files do not take, or a name-mapping that fails there) or is skipped by a
+   NURB-specific gate. That is the first sprint: find where the Ring's placement list is lost and
+   count what GPL actually places there (the gold stills/videos under
+   `/home/admin/gold standard/julia racer/` and the matched-viewpoint recipe of E76/E81 decide
+   what "closer" means at each site).
+2. **Free-standing lines of people go.** Any `person_like` object that is a LINE of spectators not
+   attached to a grandstand/pit/paddock object is dropped from rendering on every track (the
+   solid pass already gives people r = 0). Attached crowds stay. Report the per-track count
+   removed and capture one before/after at a known bad site (the PO's "teetering on a hill").
+
+**Acceptance.** (a) Ring: a trackside-object census (count by name) matching what the .trk
+placement list holds, with matched-viewpoint captures at 3 sites against gold showing the same
+objects present; (b) a gate that fails if any track loads 0 trackside objects while its placement
+list is non-empty; (c) the line-of-people rule gated by name census (0 free-standing lines on all
+5 tracks) and a before/after capture; (d) Spa: the E78 banner/texture items folded in here.
+
+**Sprint plan.** S1: the Ring loss (why 0) + the gate (b). S2: line-of-people removal + census
+(c). S3-S5: Ring and Spa sites against gold, worst first. S6: ship.
+
 ## 🔲 BACKLOG — CARGOLD-1: Julia car appearance closer to the gold standard; axles placed correctly on the user and AI cars  ⭐ PRIORITY (PO 2026-09-06 14:47)
 
 PO, verbatim: *"add priority backlog item: make julia car appearance closer to gold standard
