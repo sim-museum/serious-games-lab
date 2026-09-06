@@ -6,7 +6,7 @@ using Printf
 const AIBASE = normpath(joinpath(@__DIR__, "..", "..", "..", "..", "WP", "drive_c", "Sierra", "GPL", "cars", "cars67"))
 fails = 0
 pass(ok, msg, val) = (println("  ", ok ? "PASS" : "FAIL", "  ", rpad(msg, 56), val); ok || (global fails += 1))
-for (chassis, file, ids) in (("eagle", "eagle/eagle.3do", Set([29108, 39200])),)
+for (chassis, file, ids) in (("eagle", "eagle/eagle.3do", Set([29108, 39200])), ("brabham", "brabham/brabham.3do", Set([32916, 48284])))
     path = joinpath(AIBASE, file)
     isfile(path) || (pass(false, "$chassis .3do present", path); continue)
     GPL3DO.HIDE_GROUPS[] = Set{Int}()
@@ -22,7 +22,7 @@ for (chassis, file, ids) in (("eagle", "eagle/eagle.3do", Set([29108, 39200])),)
     pass(others0 == others1, "every other group untouched", "$others1 tris")
 end
 SRC = read(joinpath(@__DIR__, "..", "..", "demo", "native", "drive_native_mtk.jl"), String)
-pass(occursin("AI_PARKED_SUSP_GROUPS = Dict(\"eagle\" => Set([29108, 39200]))", SRC), "loader hides the Eagle groups only (BRM A/B: no visible change)", "source check")
+pass(occursin("AI_PARKED_SUSP_GROUPS = Dict(\"eagle\" => Set([29108, 39200]), \"brabham\" => Set([32916, 48284]))", SRC), "loader hides Eagle + Brabham blade groups (BRM/Ferrari untouched)", "source check")
 pass(occursin("Render.GPL3DO.HIDE_GROUPS[] = get(ENV, \"JM_AI_PARKED_SUSP\", \"0\") != \"0\" ? Set{Int}()", SRC), "JM_AI_PARKED_SUSP=1 restores the groups", "source check")
 pass(occursin("Render.GPL3DO.HIDE_GROUPS[] = Set{Int}()   # never leak", SRC), "the hide set is reset after the AI loop", "source check")
 println(fails == 0 ? "AI-PARKED-SUSP GATE: PASS" : "AI-PARKED-SUSP GATE: FAIL ($fails)")

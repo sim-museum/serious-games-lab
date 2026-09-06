@@ -9090,3 +9090,7 @@ last one printed; sub-parses print their own). Brabham: rear halves 32916/48284 
 rsusp2-7, rear), untextured pairs 28212/42380 (32 tris) and 32196/46336 (88), 34184 (26); Cooper:
 rear halves 30048/41624 (cshok, csusp2-8, rear), untextured 31852 (44). Four hide A/Bs queued
 (brabham_rs/un, cooper_rs/un) to attribute each chassis's blade to a group before any posing work.
+- **Brabham A/B (2026-09-06)**: hiding the un-parked rear-suspension halves 32916/48284 removes the
+  blade (body, wheel, engine stay); hiding the untextured groups changes nothing. Interim hide
+  extended to the Brabham (gate updated, PASS). Its rear wheel now shows a bare hub -- the real fix
+  is to compose those halves in the right frame (E102 chaining), for which this capture is the eye.
