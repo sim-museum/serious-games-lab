@@ -8980,3 +8980,11 @@ Across all 17 replays (08-28 → 09-04): the Spa 09-03 respawn (house28, fixed),
 (the banking crossover, E73 area -- probed below), three low-speed WG throw-backs from 08-28 (old
 solid rules). Nothing else in 17 replays. The real-hill false positives (Eau Rouge, the Glen's esses)
 were removed by the grade rule.
+- **Monza audit follow-up (2026-09-06)**: the 08-28 throw-back at (383,-483) and the 08-31 2.8 m drop at
+  (420,-493) sit on the road's north edge at the banking crossover. Today's HAT: the road there is
+  flat (-0.08 m; the drop is gone) but EVERYTHING north of z≈-485 along x 340..440 has NO SURFACE --
+  and the sim's own loader shows the same with the overpass drop OFF (95/95 lattice points, 83
+  triangles merely touch the region edge-on). So it is the mesh's true edge, not a filter: GPL models
+  no ground there either. Leaving the road northwards meets the world-edge wall, now inelastic and
+  capped (E94/E96 + cap_total_contact). Not a defect to fix; recorded so the next audit hit there is
+  read correctly.
