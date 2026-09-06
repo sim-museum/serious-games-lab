@@ -8578,7 +8578,11 @@ exactly like a code regression on the PO's next launch.
 `JM_AUTODRIVE` or `JM_SMOKE` is set — a run with no human in it has no human best. Cheap and
 obviously correct; the only question is whether any existing gate depends on the current behaviour.
 
-**TESTLAP-1: filed, not started.**
+**TESTLAP-1 — DONE (2026-09-05).** `banking_allowed() = !AUTODRIVE && !SMOKE`, applied to
+`save_human_best` and to the `human_recent.txt` race-average write. Verified by running an autodrive
+race that completed a **real lap (2:21.969)** and printed *"(not banking a best lap: this run has no
+human driver)"*, with `human_best.txt`'s md5 unchanged. The lap evidence is the point: an unchanged
+file proves nothing if no lap ran.
 
 ## 🟠 NEW ITEM (found by AISPEED-1, 2026-09-05): LAPTIME-1 — sub-second and NEGATIVE laps are credited
 
