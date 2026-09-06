@@ -582,6 +582,27 @@ function step_field!(cars::Vector{AICar}, line::AILine, dt;
             end
             if player !== nothing
                 g = mod(player[1] - car.s, total)
+                # RACESTART-1: a car that is STOPPED on the track is a wider hazard than a car you
+                # are following. With the same CAR_WID+0.6 window as a moving blocker, an AI that
+                # step 3 has nudged sideways immediately stops seeing the stalled player at all --
+                # so nothing slows it, it holds no rail, and it grinds down the flank for seconds.
+                # That is the 283-frame RUB the rate-limited yield left behind (S5): the jolt was
+                # gone but the AI still had no reason to go around. You do not squeeze past a car
+                # parked on the racing line at its own width; you give it room and you slow down.
+                # Only for a SLOW player -- a moving car is ordinary traffic and keeps the old
+                # window, so nothing changes in a normal race.
+                # ⚠️ TRIED AND REVERTED (S6, measured): widening this window for a STOPPED player
+                # (CAR_WID + 2.5 instead of + 0.6) so the AI keeps seeing a stalled car after step 3
+                # nudges it sideways. It removes the rub by removing the RACE: the gate went from
+                # "694 frames past" to **0 frames past** -- the field never gets by at all and sits
+                # behind the parked car for the whole run. Seeing a blocker only makes gap control
+                # SLOW to its speed, which for a stationary car is zero; nothing in this path makes
+                # an AI commit to a rail and go around. That is the hysteresis block below, and its
+                # own comment records that S2 tried driving engage/release from the blocker and it
+                # flapped 925 times. So the real fix is a rail commitment for a stopped obstacle,
+                # not a wider pair of eyes -- and it is a bigger change than this window.
+                # The gate's "the field still gets past" check is what caught this; a contact-only
+                # gate would have called the deadlock a success.
                 (0.0 < g < bg && abs(player[2] - car.lane) < CAR_WID + 0.6) && (bg = g; bp = (g, player[2], player[3]))
             end
             if bp !== nothing
