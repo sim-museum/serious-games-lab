@@ -5709,6 +5709,51 @@ function main()
         for a in anoms; println(a); end
         flush(stdout); exit(0)
     end
+    # ROAD-1 (PO 2026-09-06: "spa and the ring drivable all the way through - no collisions so
+    # long as you stay on the road"). JM_ROADSWEEP=1: walk the centreline every JM_ROADSWEEP_STEP m
+    # (default 2) and, at each station, every 0.5 m of lateral that the sim's own TrackSurface
+    # calls ON the road (`hat(...).on_track`, the same predicate the car uses), ask the sim's own
+    # contact model (`solid_gap`, disc or oriented box -- the loader's frame) for every solid that
+    # a car centred there would touch (gap < CARHALF). A hit names the object, so the fix is a
+    # named object and not a guess. Negative control: the first solid's own centre must read as a
+    # hit, else the instrument is blind. Prints the census and exits.
+    if get(ENV, "JM_ROADSWEEP", "") != "" && CLINE !== nothing
+        step = (v = tryparse(Float64, get(ENV, "JM_ROADSWEEP", "")); v === nothing || v <= 0 ? 2.0 : v)
+        println("\n==== JM_ROADSWEEP ", uppercasefirst(TRACKSEL), "  (step=", step, " m, lateral 0.5 m, ",
+                length(SOLIDS), " solids, ", count(!isnothing, SOLIDBOX), " boxed, CARHALF=", CARHALF, ") ====")
+        ctrl = if isempty(SOLIDS); false
+               else (g, _, _) = solid_gap(SOLIDS[1][1], SOLIDS[1][2], 1); g < CARHALF end
+        println("  control: a probe at solid #1's centre reads as a hit -> ", ctrl ? "yes" : "NO (instrument blind)")
+        nprobe = 0; nroad = 0; hits = Dict{String,Tuple{Int,Float64,Float64,Float64}}()   # name → (count, worst gap, s, lat)
+        s = 0.0
+        while s <= CLINE.total
+            for lat in -14.0:0.5:14.0
+                q = RaceAI.pose_at(CLINE, s, lat); qx, qz = q[1], q[3]
+                hr = JuliaMotor.hat(TRKSURF, qx, qz)
+                nprobe += 1
+                (hr.found && hr.on_track) || continue
+                nroad += 1
+                @inbounds for k in eachindex(SOLIDS)
+                    (ox, oz, r, _) = SOLIDS[k]
+                    hypot(ox - qx, oz - qz) > r + 40.0 && continue
+                    (gap, _, _) = solid_gap(qx, qz, k)
+                    gap >= CARHALF && continue
+                    nm = k <= length(SOLIDNAMES) ? SOLIDNAMES[k] : "solid#$k"
+                    key = string(nm, "@", round(Int, ox), ",", round(Int, oz))
+                    old = get(hits, key, (0, Inf, 0.0, 0.0))
+                    hits[key] = (old[1] + 1, min(old[2], gap), gap < old[2] ? s : old[3], gap < old[2] ? lat : old[4])
+                end
+            end
+            s += step
+        end
+        println("  ", nprobe, " probes, ", nroad, " on the road, ", length(hits), " solid(s) reachable from the road:")
+        for (key, (n, g, hs, hl)) in sort(collect(hits); by = kv -> kv[2][2])
+            println("    ", rpad(key, 28), " hits=", lpad(n, 4), "  worst gap=", lpad(round(g, digits = 2), 6),
+                    " m  at s=", round(Int, hs), " lat=", hl)
+        end
+        println("ROADSWEEP_RESULT track=", TRACKSEL, " solids_on_road=", length(hits), " control=", ctrl ? "ok" : "blind")
+        flush(stdout); exit(0)
+    end
     AILINE = (CLINE !== nothing && N_AI > 0) ? CLINE : nothing
     # E84/E89 (2026-08-30): JM_AI_GPLLINE=1 -- the AI take their target speed from GPL's OWN race.lp
     # (3.0 m records, index-aligned with our line on tracks that are not re-centred). Measured
