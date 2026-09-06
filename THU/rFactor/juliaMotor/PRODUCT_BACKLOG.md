@@ -8927,3 +8927,22 @@ sites).
   hypotheses (AI#1 on-HAT only 202/2143 frames as stored — replay AI pose frame still unproven).
   Next: (1) confirm the .jmr AI column layout at the writer (L5912); (2) the E7 containment snap
   and SOLID discs (peo1 29.5 m, house18 39.8 m) at that spot; (3) a display run needs PO consent.
+
+### 2026-09-06 — SPA-BARRIER named and fixed (epic #2: Spa/Ring drivable end to end)
+- **Localisation, in the sim's own frame** (JM_HATPROBE along the replay path: physics ground
+  present everywhere, 325.5 m = the replay's y; my earlier "different frames" reading was an
+  artefact of a probe HAT without Spa's .dat landmass). No levitation in this event (y flat).
+- **The barrier is `house28`**, a drawn trackside house 6.4 m from the crash point, whose 5 m
+  collision disc was in SOLIDS **three times** (GPL's placement list repeats it; 38 exact
+  duplicates at Spa). `contact_force` bounds ONE contact (fling cap 8 m/s/frame, outcome cap
+  0.25 m/s) but `solid_contact` sums every overlapping disc, so three copies each granted the full
+  impulse: the replay shows 37 m/s in, decel over 4 frames, then thrown back the way it came at
+  70 m/s -- the PO's "bounce off an invisible barrier".
+- **Fix (two layers)**: SOLIDS builder keeps one disc per (x, z, r, kind); `solid_contact` caps
+  the SUMMED body-frame force with `DriveRT3D.cap_total_contact` (same two bounds as one contact).
+  Gate `stacked_contact_smoke.jl` (frame-by-frame slam): one contact 0.25 m/s back; three stacked
+  control 16.2 m/s backwards; capped 0.25 m/s; cap is a no-op on one contact. Registered in gates.sh.
+- New headless hook `JM_SOLIDNEAR="x,z,r"`: solids near a point + the render verdict of every
+  placement there (the house25 "solid but not drawn" class is now one command to check).
+- Open: the 5 m per-name disc for `house*` can poke past a small house's walls (air-hit); and the
+  Ring "levitation" report is a separate event, not yet localised (needs a Ring replay).

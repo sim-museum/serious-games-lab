@@ -408,6 +408,14 @@ function solid_contact(x, z, θ, v, dt)
         # could not tell them apart.
         kind === :soft || (closing = max(closing, -vn))   # vn < 0 is approach; store it positive
     end
+    # SPA-BARRIER: the sum of several overlapping solids must obey the same outcome bound as one
+    # (see DriveRT3D.cap_total_contact) -- three stacked house discs at Spa threw the car back at 70 m/s.
+    if Fx != 0.0 || Fy != 0.0
+        cθ = cos(θ); sθ = sin(θ)
+        vbx =  WVX[]*cθ + WVZ[]*sθ; vby = -WVX[]*sθ + WVZ[]*cθ       # world velocity → body frame
+        (Fx, Fy, sc) = DriveRT3D.cap_total_contact(Fx, Fy, vbx, vby; dt = dt)
+        Mz *= sc
+    end
     (Fx, Fy, Mz, peak, hardpk, closing)
 end
 # GPL '67 AI reference laptimes (s) — the "100 %" anchor.  Sourced from GPL AI/hotlap
@@ -3565,6 +3573,7 @@ let objnames=Set{String}()
     end
     global SOLIDS = Tuple{Float64,Float64,Float64,Symbol}[]
     SOLIDNAMES = String[]                        # parallel to SOLIDS, for the census only
+    _solidseen = Set{Tuple{Float64,Float64,Float64,Symbol}}(); _soliddup = Ref(0)   # SPA-BARRIER: one disc per (x,z,r,kind)
     _geomn = 0
     for i in insts
         nml = lowercase(i.name)
@@ -3628,8 +3637,50 @@ let objnames=Set{String}()
                 (get(ymx,i.name,0f0) - get(ymn,i.name,0f0)) > 1.0f0 || continue
             end
         end
-        push!(SOLIDS, (Float64(i.x), Float64(i.y), r, solidkind(nml)))
+        # SPA-BARRIER: GPL's placement list repeats some objects at the identical spot (house28 ×3 at
+        # Spa; 38 exact duplicates track-wide). Each copy would add a full contact impulse, so keep one.
+        _key = (Float64(i.x), Float64(i.y), r, solidkind(nml))
+        if _key in _solidseen; _soliddup[] += 1; continue; end
+        push!(_solidseen, _key)
+        push!(SOLIDS, _key)
         push!(SOLIDNAMES, nml)   # E56: tag wall vs hedge/hay for the contact law
+    end
+    # SPA-BARRIER: JM_SOLIDNEAR="x,z,r" lists every collidable solid within r m of a world point
+    # (name, kind, radius, distance) -- the headless way to name an "invisible barrier" at a
+    # replay crash position without taking the display.
+    if get(ENV,"JM_SOLIDNEAR","")!=""
+        let pr = split(get(ENV,"JM_SOLIDNEAR",""), ",")
+            qx = parse(Float64, strip(pr[1])); qz = parse(Float64, strip(pr[2]))
+            qr = length(pr) >= 3 ? parse(Float64, strip(pr[3])) : 60.0
+            println("== JM_SOLIDNEAR solids within ", qr, " m of (", qx, ", ", qz, ") ==")
+            rows = [(hypot(ox-qx, oz-qz), ox, oz, r, kind, i) for (i,(ox,oz,r,kind)) in enumerate(SOLIDS) if hypot(ox-qx, oz-qz) <= qr]
+            sort!(rows)
+            for (d, ox, oz, r, kind, i) in rows
+                nm = i <= length(SOLIDNAMES) ? SOLIDNAMES[i] : "?"
+                println("   ", rpad(nm, 10), " kind=", rpad(string(kind), 6), " r=", lpad(round(r, digits=1), 5),
+                        "  at (", round(ox, digits=1), ", ", round(oz, digits=1), ")  dist=", round(d, digits=1), " m")
+            end
+            isempty(rows) && println("   (none)")
+            # duplicate discs: identical (x, z, r, kind) entries stack their contact forces
+            ndup = length(SOLIDS) - length(unique(SOLIDS))
+            println("   SOLIDS total ", length(SOLIDS), ", exact duplicates left ", ndup, " (", _soliddup[], " dropped at build)")
+            # and the RENDER verdict for every placement nearby -- a solid that is not drawn is the
+            # house25 defect class (render filter and collision filter disagreeing)
+            println("   placements within ", qr, " m and whether the renderer keeps them:")
+            for i in insts
+                d = hypot(Float64(i.x) - qx, Float64(i.y) - qz); d <= qr || continue
+                r = get(objmesh,i.name,nothing) === nothing ? "no-mesh" :
+                    drop(i.name)              ? "drop() junk filter" :
+                    onroad_crowd(i)           ? "onroad_crowd" :
+                    perp_crowd(i)             ? "perp_crowd" :
+                    onroad_bldg(i)            ? "onroad_bldg" :
+                    onroad_fp(i)              ? "onroad_fp (footprint on road)" :
+                    !((get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0) ? "under 1 m tall" :
+                    !onground(i)              ? "not on ground" : "DRAWN"
+                println("   ", rpad(i.name, 10), " at (", round(Float64(i.x), digits=1), ", ", round(Float64(i.y), digits=1),
+                        ")  dist=", round(d, digits=1), " m  -> ", r)
+            end
+        end
     end
     if get(ENV,"JM_SOLIDDIAG","")!=""
         # E95h: report what is ACTUALLY in SOLIDS. The previous version of this block recomputed

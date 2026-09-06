@@ -20,7 +20,7 @@ for f in ("tyre.jl","powertrain.jl","vehicle_3d.jl")
     include(joinpath(HERE, "components", f))
 end
 
-export Car3D, build_car3d, set_suspension!, wheel_rate, set_ride_height!, step_car3d!, telemetry3d, respawn3d!, contain3d!, extforce3d!, contact_force, wheelmu3d!, world_velocity, damage_hit!, damage_impact!, damage_engine!, damage_mu, engine_power, engine_dead, damaged, damage_reset!
+export Car3D, build_car3d, set_suspension!, wheel_rate, set_ride_height!, step_car3d!, telemetry3d, respawn3d!, contain3d!, extforce3d!, contact_force, cap_total_contact, wheelmu3d!, world_velocity, damage_hit!, damage_impact!, damage_engine!, damage_mu, engine_power, engine_dead, damaged, damage_reset!
 
 # E100: the transmission is SESSION data, not a car constant. The Lotus 49's gears are
 # adjustable and the ibt captures prove it -- Nurburgring runs [2.23,1.72,1.32,1.04,0.846]
@@ -765,6 +765,27 @@ function contact_force(δ, nx, nz, vn, θ; kind = :wall, m = 617.0, dt = 1/60, a
     rx = (-nx*cθ - nz*sθ)*arm; ry = ( nx*sθ - nz*cθ)*arm        # contact point ≈ CG − n·arm, in body frame
     Mz = rx*Fy - ry*Fx                                           # yaw from the contact lever
     (Fx, Fy, Mz)
+end
+
+"""SPA-BARRIER (PO replay 2026-09-03, Spa s≈7208 m): `contact_force` bounds ONE contact so the car
+leaves at ≤ VN_OUT_MAX -- but `solid_contact` SUMS every overlapping solid, and Spa's placement list
+carries the same house three times at one spot (38 exact duplicates track-wide). Three stacked
+discs each granted the full "cancel the approach + 0.25 m/s" impulse, so a 37 m/s hit left at
+−37 + 3·37.25 ≈ +75 m/s: the replay shows the car thrown back the way it came at 70 m/s -- the
+PO's "bounce off an invisible barrier". Cap the TOTAL body-frame contact force the same way the
+kernel caps one: along the net push direction the outcome may reach VN_OUT_MAX and never more.
+`vbx`,`vby` are the car's world velocity in the body frame (the same frame as `Fx`,`Fy`).
+Returns (Fx, Fy, scale); scale < 1 means the cap bit. Pure, so the gate can prove it."""
+function cap_total_contact(Fx, Fy, vbx, vby; m = 617.0, dt = 1/60, vout = VN_OUT_MAX)
+    F = hypot(Fx, Fy)
+    F <= 1e-9 && return (Fx, Fy, 1.0)
+    ux = Fx/F; uy = Fy/F
+    v_along = vbx*ux + vby*uy                                     # >0 = already moving the way we push
+    # the same two bounds the kernel puts on ONE contact: the per-frame fling cap and the outcome cap
+    Fmax = m*min(CONTACT_DVMAX, max(vout - v_along, 0.0))/max(dt, 1e-3)
+    F <= Fmax && return (Fx, Fy, 1.0)
+    sc = Fmax/F
+    (Fx*sc, Fy*sc, sc)
 end
 
 """E56 ALL-MODELICA CONTACT: feed body-frame external force `Fx`,`Fy` [N] + yaw moment `Mz` [N·m]
