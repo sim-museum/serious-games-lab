@@ -1883,7 +1883,8 @@ function wheel_dress_for(dir, meshname)
 end
 function load_gpl_car(name, dir, body3do, wheelspec;
                       exclude=("ltraymap","lshad"), maxlat=Inf32, exclude_groups=(),
-                      body_floor=0.0f0, wheeltint=(0.12f0,0.12f0,0.13f0))
+                      body_floor=0.0f0, wheeltint=(0.12f0,0.12f0,0.13f0),
+                      rear_groups=(), rear_lat=0.66f0, rear_ymin=-0.12f0)
     tex   = gpl_texture_index(dir)
     # E106-S25 (PO: "3 out-ward facing metal rods attached to each rear tire"). Proven by shooting
     # the SAME replay frame with the wheel items suppressed (JM_NO_AI_WHEELS=1): a complete, better
@@ -1908,7 +1909,28 @@ function load_gpl_car(name, dir, body3do, wheelspec;
             end
         end
     end
-    parts = extract_gpl_car(joinpath(dir, body3do); exclude=(exclude..., wheeltex...), maxlat=maxlat, exclude_groups=exclude_groups, drop_green=true)
+    parts = extract_gpl_car(joinpath(dir, body3do); exclude=(exclude..., wheeltex...), maxlat=maxlat,
+                            exclude_groups=(exclude_groups..., rear_groups...), drop_green=true)
+    # AI-CHAIN-1 S2: the rear-suspension halves, the PLAYER LOTUS's way. Measured (2026-09-06): on
+    # Eagle/Brabham/Cooper these groups sit exactly where the Lotus's do (x -2.5..-0.8, |lat|
+    # 0.36..1.14, hub height) -- correctly posed. What read as a flat "blade" beside the rear wheel
+    # was the shock/axle strip between |lat| 0.47 and the body clip at 0.85: the Lotus path clips its
+    # halves at the HUB plane (trim at maxlat, E82-S3) so nothing outboard of the wheel survives.
+    # Same recipe here: extract each half on its own, clip triangles at |lat| = rear_lat (cut, not
+    # dropped), discard anything below rear_ymin, and add it to the body.
+    for g in rear_groups
+        rp = extract_gpl_car(joinpath(dir, body3do); exclude=(exclude..., wheeltex...), include_groups=(g,),
+                             maxlat=rear_lat, trim=true, drop_green=true)
+        for p in rp
+            v = p.verts; keep = Float32[]
+            for t in 0:(length(v) ÷ 33)-1
+                b = t*33
+                (v[b+2] < rear_ymin || v[b+13] < rear_ymin || v[b+24] < rear_ymin) && continue
+                append!(keep, @view v[b+1:b+33])
+            end
+            isempty(keep) || push!(parts, TrackPart(keep, p.tex, p.col))
+        end
+    end
     body  = build_gpl(parts, tex)
     bb    = parts_bbox(parts)
     off_x = -(bb.xmin + bb.xmax) / 2f0

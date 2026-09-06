@@ -9100,3 +9100,14 @@ rear halves 30048/41624 (cshok, csusp2-8, rear), untextured 31852 (44). Four hid
   and Ferrari untouched. Evidence: ~/Documents/260906/ai_cars/ (before/after per chassis).
   Shipped as JuliaRacer-x86_64-aicars.AppImage. AI-CHAIN-1 sprint 1 closes here; the parity step
   (compose the rear halves in the right frame) is its sprint 2.
+
+### AI-CHAIN-1 sprint 2 (2026-09-06) — ✅ the rear halves are POSED, not hidden: the blades were the Lotus's solved problem
+Measured in car space (parse + group filter): Eagle 29108/39200, Brabham 32916/48284 and Cooper
+30048/41624 all sit exactly where the Lotus's 27288/39792 do -- x −2.5..−0.8, |lat| 0.36..1.14, hub
+height. They are correctly posed by the positioner chain (SuspPose's E82-S1 finding holds for every
+chassis). The "blade" is the shock/axle strip between |lat| 0.47 and the body's 0.85 lateral clip:
+the Lotus path never shows it because its halves are clipped at the HUB plane (E82-S3 trim at
+maxlat). `Render.load_gpl_car(rear_groups=…, rear_lat=0.66)` now does the same for the AI cars:
+each half extracted alone, cut at |lat| = rear_lat, dropped below −0.12 m, added to the body.
+Eye: Brabham before/after (`ai_cars/brabham_posed.png`) -- blade gone, arms and hub visible inboard
+of the wheel. `JM_AI_REAR_HIDE=1` = the S1 interim, `JM_AI_PARKED_SUSP=1` = raw. Gate updated.

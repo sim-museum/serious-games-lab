@@ -4828,6 +4828,10 @@ _ncars = max(N_AI, NETMODE == "" ? 0 : 1)
 # id; the untextured groups change nothing). Same interim treatment; same "not parity" caveat.
 # BRM 26116/35320 and Ferrari: hiding changes nothing visible, so they keep everything.
 const AI_PARKED_SUSP_GROUPS = Dict("eagle" => Set([29108, 39200]), "brabham" => Set([32916, 48284]), "cooper" => Set([30048, 41624]))   # Cooper: its rear halves too (A/B)
+# AI-CHAIN-1 S2: those same groups are now POSED the Lotus way (clipped at the hub plane) rather
+# than hidden -- see Render.load_gpl_car(rear_groups=...). JM_AI_REAR_HIDE=1 falls back to hiding,
+# JM_AI_PARKED_SUSP=1 draws them untreated (the blades) for an A/B.
+const AI_REAR_MODE = get(ENV, "JM_AI_PARKED_SUSP", "0") != "0" ? :raw : (get(ENV, "JM_AI_REAR_HIDE", "0") != "0" ? :hide : :pose)
 if !SKIDPAD && _ncars > 0
     for (nm, dir, body, w) in AISPECS[1:_ncars]
         print("  loading AI car: $nm … "); flush(stdout)
@@ -4839,12 +4843,14 @@ if !SKIDPAD && _ncars > 0
         # Brabham 227, Eagle 309, Cooper 537 -- the PO's "at least one" is all five, worst on the
         # Cooper. Use the player's clip; JM_AI_MAXLAT overrides for A/B.
         # AI-CARGFX S5 (interim): drop the parked rear-suspension groups that render as flat blades.
-        Render.GPL3DO.HIDE_GROUPS[] = get(ENV, "JM_AI_PARKED_SUSP", "0") != "0" ? Set{Int}() :
-            get(AI_PARKED_SUSP_GROUPS, lowercase(nm), Set{Int}())
+        _rg = get(AI_PARKED_SUSP_GROUPS, lowercase(nm), Set{Int}())
+        Render.GPL3DO.HIDE_GROUPS[] = AI_REAR_MODE === :hide ? _rg : Set{Int}()
         push!(AICARMODELS, Render.load_gpl_car(nm, joinpath(AIBASE,dir), body, aiwheels(w...);
                               exclude=("ltraymap","lshad"),
                               maxlat=parse(Float32, get(ENV,"JM_AI_MAXLAT", string(CARP_MAXLAT))),
-                              body_floor=BODY_FLOOR))
+                              body_floor=BODY_FLOOR,
+                              rear_groups=(AI_REAR_MODE === :pose ? collect(_rg) : Int[]),
+                              rear_lat=parse(Float32, get(ENV, "JM_AI_REAR_LAT", "0.66"))))
         println("$(length(AICARMODELS[end].body)) parts")
         Render.GPL3DO.HIDE_GROUPS[] = Set{Int}()   # never leak the per-chassis hide into later parses
     end
