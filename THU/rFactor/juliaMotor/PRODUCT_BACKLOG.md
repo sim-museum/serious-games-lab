@@ -9181,3 +9181,9 @@ Sprint 1 starts when the PO's Spa session ends (a sysimage build is 20-40 min of
   (20260906-083208)"; the install's `.build-stamp` = 20260906-083208, `drive_native_mtk.jl` dated
   09-06 07:00 (today's code), and `cars`/`sound`/`tracks` all resolve into the live mount. This is the
   first image today whose fixes actually reach an install.
+- **STARTUP-1 measurement (scratch install, refresh image, 08:48–08:52)**: with the runtime depot on
+  the path and a fresh install, `JULIA_DEBUG=loading` shows **0 rejected caches** apart from the two
+  path-keyed project packages (JuliaMotor, RFactorData -- expected, 3 s). A headless Watkins Glen
+  launch to first frames took **4 min 17 s** end to end -- that is the JIT of the sim script plus
+  the track load, i.e. exactly the sysimage's target. The PO's 25-minute precompile was the missing
+  default depots (stdlib) plus a 09-04 first-run depot; the refresh image removes both.
