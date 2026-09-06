@@ -68,14 +68,15 @@ end
 """A car the human drives: the physics model plus its fixed setup constants
 (steering lock, the track surfaces for height/grade and lap timing)."""
 struct DriveCar
-    model::VehicleModel
+    model::Union{Nothing,VehicleModel}   # nothing on the MTK path: handling is DriveRT,
+                                         # fitted to iRacing .ibt.  Only `step!` reads it.
     ts::TrackSurface                       # AIW ribbon: on-track, lateral, lapdist
     terrain::Union{Nothing,TriangleHAT}    # collision mesh: height + grade
     max_steer::Float64                     # steering lock (rad)
     v_couple::Float64                      # low-speed kinematic-blend threshold (m/s)
 end
 
-function DriveCar(model::VehicleModel, aiw;
+function DriveCar(model::Union{Nothing,VehicleModel}, aiw;
                   terrain::Union{Nothing,TriangleHAT}=nothing,
                   max_steer::Real=0.35, v_couple::Real=8.0)
     DriveCar(model, TrackSurface(aiw), terrain, Float64(max_steer),
@@ -83,7 +84,7 @@ function DriveCar(model::VehicleModel, aiw;
 end
 
 # build directly from a prebuilt TrackSurface (GPL tracks: no AIW)
-function DriveCar(model::VehicleModel, ts::TrackSurface;
+function DriveCar(model::Union{Nothing,VehicleModel}, ts::TrackSurface;
                   terrain::Union{Nothing,TriangleHAT}=nothing,
                   max_steer::Real=0.35, v_couple::Real=8.0)
     DriveCar(model, ts, terrain, Float64(max_steer), Float64(v_couple))
@@ -176,6 +177,9 @@ at ≤5 ms for stability when the caller's frame is long.
 """
 function step!(cs::CarState, car::DriveCar, input::DriveInput; dt::Real)
     m = car.model
+    m === nothing && error("JuliaMotor.step! needs a VehicleModel, but this DriveCar was " *
+        "built without one (no rFactor GameData).  The MTK path uses DriveRT.step_car! " *
+        "instead and never reaches here.")
     L = m.wheelbase
     a = L * m.rear_frac          # CG → front axle
     b = L - a

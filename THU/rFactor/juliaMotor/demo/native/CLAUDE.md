@@ -14,7 +14,7 @@ python3 juliaRacer.py                                  # PyQt6 front-end: launch
 julia -t 2 --project=. drive_native.jl          # opens a GLFW window on your display
 JM_SMOKE=1 julia -t 2 --project=. drive_native.jl   # headless self-test → dumps /tmp/zand_hud.ppm and exits
 ```
-### The one remaining rFactor dependency is VESTIGIAL (2026-07-20)
+### rFactor dependency: REMOVED (2026-09-04)
 julia racer is a **GPL sim using GPL data**: the track (`WP/drive_c/Sierra/GPL/tracks/<track>`), the
 Lotus 49 body/gauges/windscreen/mirrors (`.../cars/cars67/lotus`), and the engine sound
 (`.../GPL/sound/66fordV8.wav`). The **handling is the ModelingToolkit (acausal/Modelica-style) Lotus 49
@@ -34,22 +34,30 @@ So the rFactor `.veh` load at `drive_native_mtk.jl:494` feeds **nothing that aff
 - `:806` `EngineAudio.build_lotus(gamedata = GD)` — `build_lotus(; gpl_engine = GPL_ENGINE_WAV,
   kwargs...)` swallows `gamedata` into `kwargs` and **ignores it**; it loads the GPL wav.
 
-The `.veh` exists only to satisfy `DriveCar`'s `model::VehicleModel` struct field. It is therefore a
-**structural dependency, not a physics source** — but it is still *load-bearing at startup*: without it
-you get `SystemError: opening file ".../rFactor/GameData/Vehicles/F158/.../LewisEvans.veh"` and the sim
-dies before the window opens. (The stale comment on `:495` saying "Lotus-49 calibration is the future
+The `.veh` existed only to satisfy `DriveCar`'s `model::VehicleModel` struct field: a
+**structural dependency, not a physics source**. It *used* to be load-bearing at startup — without it
+you got `SystemError: opening file ".../rFactor/GameData/Vehicles/F158/.../LewisEvans.veh"` and the sim
+died before the window opened. No longer; see below. (The stale comment on `:495` saying "Lotus-49 calibration is the future
 goal" predates the MTK work and is wrong; corrected in place.)
 
-**Until that field is made optional, rFactor data is needed to start — but rFactor need NOT be
-installed.** Build a symlink-only GameData tree from the mod media and point `RFACTOR_GAMEDATA` at it:
-```
-GD=~/sgl-julia-racer/rfactor-gamedata; mkdir -p $GD/Locations
-M="~/sgl/THU/rFactor/INSTALL/F1 1958 by ORM - v4.35 COMPLETE/F1 1958 by ORM - v4.35 COMPLETE/Gamedata"
-for d in Helmets Scripts Sounds Talent Vehicles; do ln -sfn "$M/$d" $GD/$d; done
-ln -sfn ~/sgl/THU/rFactor/INSTALL/newTracks/2/Zandvoort67 $GD/Locations/Zandvoort67
-export RFACTOR_GAMEDATA=$GD          # juliaRacer.py passes its environment to the sim
-```
-Without it you get `SystemError: opening file ".../rFactor/GameData/Vehicles/F158/.../LewisEvans.veh"`.
+**That field is now optional, so no rFactor data is needed at all.** `DriveCar.model` is
+`Union{Nothing,VehicleModel}` (`JuliaMotor/src/drive.jl`), both constructors accept `nothing`, and
+`step!` -- the sole reader -- raises a named error instead of a bare `MethodError` if it is ever
+reached without one. `drive_native_mtk.jl` skips the `.veh` load entirely; `EngineAudio.build_lotus()`
+lost its `gamedata` argument, which `audio.jl:80` swallowed into `kwargs...` and never read.
+
+PO constraint (2026-09-03), which drove this: *"julia racer should not have any dependency on rFactor
+game data; only GPL game data and ibt files output by iracing are used. A previous effort 'zandracer'
+had used rFactor data, but that is different from julia racer and should not be bundled with julia
+racer."* The AppImage no longer ships the F1-1958 mod tree.
+
+To restore the old load for comparison, set `JM_RFACTOR_VEH=1` with a resolvable
+`RFACTOR_GAMEDATA`; otherwise `MODEL === nothing` and nothing reads it.
+
+Verified by running the sim with `RFACTOR_GAMEDATA` unset and no GameData tree reachable: it loaded
+the HAT, track surface, 18 track + 16 Lotus parts, 163 trackside objects and entered the render loop.
+The `RFactorData` / `RFactorTelemetry` Julia packages remain -- they are parsers (source code only,
+no assets) and are what the opt-in path uses.
 
 **tmdrv on this box** lives at `~/sgl/THU/INSTALL/tmdrv-master/` (the `/home/g/src/tmdrv` path below is
 the original author's machine).

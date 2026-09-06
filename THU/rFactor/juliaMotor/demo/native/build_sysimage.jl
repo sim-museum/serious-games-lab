@@ -18,7 +18,19 @@ create_sysimage(
     project = NATIVE,
     sysimage_path = joinpath(NATIVE, "jlracer.so"),
     precompile_execution_file = joinpath(NATIVE, "sysimage_trace.jl"),
-    cpu_target = "native",
+    # PERF-1: cpu_target must NOT be "native" for a sysimage that ships inside an AppImage.
+    # "native" bakes THIS machine's instruction set (an i7-3770, Ivy Bridge) into jlracer.so; the
+    # PO runs these images on a second PC whose CPU is unknown here. If that machine is older or
+    # merely different, the sysimage can fault or refuse to load -- and the failure would appear as
+    # "julia racer is broken on the other PC", nowhere near this line.
+    # The multi-versioned default below emits several variants and picks at load time: slightly
+    # larger, portable. JM_CPU_TARGET=native for a local-only build where the speed matters.
+    cpu_target = get(ENV, "JM_CPU_TARGET",
+                     "generic;sandybridge,-xsaveopt,clone_all;haswell,-rdrnd,base(1)"),
     include_transitive_dependencies = true,
+    # STARTUP-1 / 2026-09-06: the build julia reached 12.9 GB RSS and the kernel OOM killer took
+    # the terminal (and the Claude session) with it. A heap hint makes the GC collect early; run
+    # the build alone, inside `systemd-run --user --scope -p MemoryMax=12G` (see RUNNING.md).
+    sysimage_build_args = `--heap-size-hint=$(get(ENV, "JM_SYSIMG_HEAP", "7G"))`,
 )
 println("\nDONE → ", joinpath(NATIVE, "jlracer.so"))
