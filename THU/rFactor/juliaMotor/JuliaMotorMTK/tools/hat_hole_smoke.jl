@@ -31,7 +31,13 @@ end
 # whitespace-tolerant: the CONTRACT is "maps the sentinel to NaN", not a byte-exact spelling.
 # (The literal form failed the moment the definition was reformatted, which is a gate reporting
 #  its own brittleness rather than a real regression.)
-if occursin(r"groundz_phys\(\s*x\s*,\s*y\s*\)\s*=\s*\(\s*g\s*=\s*groundz\(\s*x\s*,\s*y\s*\)\s*;\s*g\s*>\s*-900f0\s*\?\s*g\s*:\s*NaN32\s*\)", SRC0)
+# 2026-09-05 (TERRAIN-STEP): groundz_phys grew from a one-liner into a function carrying the step
+# guard. The CONTRACT is unchanged -- the sentinel must become NaN before the physics sees it -- so the
+# test now accepts either spelling: the old ternary, or a function body whose first act on the query
+# is `g > -900f0 || return NaN32`.
+old_form = r"groundz_phys\(\s*x\s*,\s*y\s*\)\s*=\s*\(\s*g\s*=\s*groundz\(\s*x\s*,\s*y\s*\)\s*;\s*g\s*>\s*-900f0\s*\?\s*g\s*:\s*NaN32\s*\)"
+new_form = r"function groundz_phys\(\s*x\s*,\s*y\s*\)\s*\n\s*g\s*=\s*groundz\(\s*x\s*,\s*y\s*\)\s*\n\s*g\s*>\s*-900f0\s*\|\|\s*return\s+NaN32"
+if occursin(old_form, SRC0) || occursin(new_form, SRC0)
     println("  the boundary closure maps the sentinel to NaN        PASS")
 else
     println("  the boundary closure maps the sentinel to NaN        FAIL")
