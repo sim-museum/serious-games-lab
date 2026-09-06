@@ -9123,3 +9123,4 @@ of the wheel. `JM_AI_REAR_HIDE=1` = the S1 interim, `JM_AI_PARKED_SUSP=1` = raw.
   real Ring landmark, not a UV defect. What differs is banner rows and wall art (GPL: Continental /
   Bosch / Castrol boards along the pit wall; ours: bare wall) and the cockpit cowl colour (E106).
   E81 as a PLACEMENT item is closed by measurement; the remaining gap is E78 appearance.
+- 2026-09-06 07:53 — full gate suite after AI-CHAIN-1 S2 (loader change): **ALL GATES PASS (35)**.
