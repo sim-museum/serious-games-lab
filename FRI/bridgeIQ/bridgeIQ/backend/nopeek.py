@@ -118,6 +118,21 @@ def _winning_index(trick: List[Card], trump: Optional[Suit]) -> int:
     return wi
 
 
+def _unseen_higher(board: BoardState, trick: List[Card], card: Card) -> bool:
+    """Is any card of `card`'s suit that ranks ABOVE it still unseen -- not played
+    in a completed trick or the current one, and not in a hand this (redacted) board
+    exposes? Hidden hands are empty after `redact`, so "unseen" is exactly what a
+    no-peek player cannot know about. Used to tell a SURE winner from a card that
+    merely wins so far."""
+    seen = set()
+    for h in board.hands.values():
+        seen.update((c.suit, c.rank) for c in h.cards)
+    for t in board.tricks:
+        seen.update((c.suit, c.rank) for c in t.cards)
+    seen.update((c.suit, c.rank) for c in trick)
+    return any((card.suit, r) not in seen for r in Rank if r.value < card.rank.value)
+
+
 def _beats(card: Card, win_card: Card, lead: Suit, trump: Optional[Suit]) -> bool:
     """Does `card` (legal, in lead suit since we are following) beat the
     currently-winning card?"""
@@ -441,7 +456,15 @@ def _follow(board: BoardState, seat: Seat, legal: List[Card],
     high = legal[0]
 
     from . import signals
-    if our_side_winning and pos in (2, 3):
+    # PO 2026-09-06 ("biq signals on defense even when it could win a trick instead"):
+    # in THIRD hand, "our side is winning" only means partner's card is winning SO FAR --
+    # fourth hand (declarer) has not played. Signalling low there hands declarer the trick
+    # whenever an unseen higher card exists. Partner's card is a SURE winner only when no
+    # card above it is unseen (unplayed and not in our hand or an exposed hand); otherwise
+    # we fall through to the winning logic below. Fourth hand keeps the free signal: the
+    # trick is decided once we play.
+    partner_sure = pos == 3 or not _unseen_higher(board, trick, win_card)
+    if our_side_winning and pos in (2, 3) and partner_sure:
         # partner/dummy winning — play a non-winning card, but SIGNAL with it
         # (attitude if partner's suit, count if an opponent's): textbook carding
         # at zero trick cost (every legal card here loses this trick anyway).
@@ -486,11 +509,27 @@ def _follow(board: BoardState, seat: Seat, legal: List[Card],
              "Second hand low — no reason to spend an honour before seeing what "
              "third hand does.")
         return low                                     # 2nd hand low otherwise
-    if pos == 2:                                       # 3rd hand high (cheaply)
+    if pos == 2:                                       # 3rd hand: win it, or play high
+        # A card that beats the current winner AND has no unseen card above it wins the
+        # trick outright: play the cheapest such card (A Q with the K gone -> Q).
+        sure = [c for c in beating if not _unseen_higher(board, trick, c)]
+        if sure:
+            _why(explain, "Wins the trick",
+                 "Third hand: this card wins the trick outright — no higher card is "
+                 "still out — so it is played rather than a signal.")
+            return sure[-1]
+        # Otherwise THIRD HAND HIGH: the lowest of our top touching sequence, so declarer
+        # must beat our best (or partner's honour is promoted), never a signalling spot.
+        top = beating[0]
+        for c in beating[1:]:
+            if c.rank.value == top.rank.value + 1:
+                top = c
+            else:
+                break
         _why(explain, "Third hand high",
-             "Third hand high — playing the cheapest card that still wins the "
-             "trick for our side.")
-        return cheapest
+             "Third hand high — a higher card may still be out, so playing high "
+             "(the bottom of our top sequence) to win or force declarer's honour.")
+        return top
     _why(explain, "Fourth hand",
          "Fourth hand — winning as cheaply as possible.")
     return cheapest                                    # 4th hand: win as cheaply

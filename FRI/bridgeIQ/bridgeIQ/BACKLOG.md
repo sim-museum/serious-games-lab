@@ -5,7 +5,7 @@ section. Move an item to a STATUS doc under `docs/` when it's picked up.
 
 ## Backlog
 
-- **Defensive signalling overrides winning the trick (PO, 2026-09-06).** PO, verbatim: "bridgeIQ
+- **[DONE 2026-09-06 14:40, Fable 5.1] Defensive signalling overrides winning the trick (PO, 2026-09-06).** Cause: `nopeek._follow` judged "our side is winning" from partner's card being the CURRENT winner, in third hand too, where fourth hand (declarer) has not played -- so biq signalled a low spot and declarer won cheaply. Fix: `_unseen_higher` (any card above X still unplayed and not in a hand this no-peek board exposes); in third hand the free signal is kept only when partner's card is a SURE winner, otherwise biq plays the cheapest sure winner ("Wins the trick") or third-hand-high (bottom of its top sequence). Gate `test_third_hand_wins.py`: K over dummy's 2 with A/Q out (plays K, not a signal), A takes the trick (reason "Wins the trick"), control with partner's sure K (still a Signal). 6/6; existing test scripts unchanged. PO, verbatim: "bridgeIQ
   was trained using Q-Plus Bridge 17.1 as a sparring partner, but I added signalling after the
   training; unfortunately bridgeIQ now signals on defense even when it could win a trick instead,
   which spoils its cardplay." Expected order of business on defence: if a card WINS the trick (or
