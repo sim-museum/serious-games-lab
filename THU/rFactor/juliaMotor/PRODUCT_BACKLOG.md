@@ -8988,3 +8988,5 @@ were removed by the grade rule.
   no ground there either. Leaving the road northwards meets the world-edge wall, now inelastic and
   capped (E94/E96 + cap_total_contact). Not a defect to fix; recorded so the next audit hit there is
   read correctly.
+- 2026-09-06 03:33 — full gate suite after SOLID-BOX / SPA-BARRIER / REPLAY-AUDIT: **ALL GATES PASS (34)**
+  (solid_box_smoke and stacked_contact_smoke now in the suite).
