@@ -9176,3 +9176,8 @@ Sprint 1 starts when the PO's Spa session ends (a sysimage build is 20-40 min of
   and the AppRun re-links tracks, cars and sound on every launch (the mount path changes each time).
   Lesson (memory: appimage-apprun-is-generated): the packer had silently lost refresh, stamp, depot
   defaults, cars and sound relative to whatever built the 09-04 image; verify the INSTALL, not the image.
+- **Delivery PROVED on a scratch install (2026-09-06 08:45, JR_HOME=scratch)**: first launch of
+  JuliaRacer-x86_64-refresh.AppImage installed, then "Updating game code from this AppImage
+  (20260906-083208)"; the install's `.build-stamp` = 20260906-083208, `drive_native_mtk.jl` dated
+  09-06 07:00 (today's code), and `cars`/`sound`/`tracks` all resolve into the live mount. This is the
+  first image today whose fixes actually reach an install.
