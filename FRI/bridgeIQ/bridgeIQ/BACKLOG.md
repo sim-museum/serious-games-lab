@@ -5,6 +5,16 @@ section. Move an item to a STATUS doc under `docs/` when it's picked up.
 
 ## Backlog
 
+- **Defensive signalling overrides winning the trick (PO, 2026-09-06).** PO, verbatim: "bridgeIQ
+  was trained using Q-Plus Bridge 17.1 as a sparring partner, but I added signalling after the
+  training; unfortunately bridgeIQ now signals on defense even when it could win a trick instead,
+  which spoils its cardplay." Expected order of business on defence: if a card WINS the trick (or
+  is the only card that beats the current winner), play it; signal (attitude/count/suit-preference)
+  only with the cards that cannot win. Acceptance: a gate with authored defensive positions where
+  biq holds the winning card and a signalling alternative, asserting it wins the trick; plus the
+  `_why` reason showing "wins trick" rather than a signal tag. Regression: the existing signalling
+  gates still pass when no winning card is available.
+
 - **Surface reasons in the Q-NET server play loop too.** The interactive GUI
   now shows biq's actual per-card reason on click (nopeek records a `_why`
   tag/reason; `_on_engine_card` stores it keyed by board+card; the popup shows
