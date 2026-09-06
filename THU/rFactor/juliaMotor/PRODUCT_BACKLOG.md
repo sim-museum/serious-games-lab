@@ -9032,3 +9032,17 @@ were removed by the grade rule.
   right-hand tower in our capture is therefore not a UV/tiling defect in the mesh; which face carries
   it is still unnamed (next: JM_SCENE_TEX over the remaining names, or a matched-viewpoint GPL frame).
   Rotating out; the instruments are in place.
+
+### AI-CARGFX sprint 5 (2026-09-06, Fable 5.1) — the capture S4 lacked exists: the REAL renderer, headless, on an AI car
+S4 parked the item because `grid_snapshot.jl` lit the scene unlike the renderer the PO sees. The
+replay player already has what is needed: `JM_REPLAY=<jmr> JM_REPLAY_FOCUS=<car idx>
+JM_REPLAY_CAM=6` (`:rsusp`, the right-rear-corner camera -- the gold's viewpoint class)
+`JM_REPLAY_T=<s> JM_SMOKE=1 JM_FRAMEDUMP="30:1" JM_FRAMEDUMP_DIR=<dir>` dumps one frame of the actual
+game render with no display (frame 30 < the smoke exit at 40; TRACK must match the replay's track).
+Car indices follow the replay's `names`: 0 Lotus (player), 1 Ferrari, 2 Brabham, 3 BRM, 4 Eagle,
+5 Cooper. First frame (Eagle, t=3 s): the car body, Goodyear wheels and driver render; TWO large flat
+light-grey blades stand out sideways from the left side of the chassis (front-left and rear-left),
+~2 m long -- the "outward rods" class, still present on the Eagle after E106-S25 (which removed the
+doubled wheels). A/B queued: `JM_HIDE_PARKED=1` (new parser knob, diagnostic only) re-shoots the same
+frame without any geometry under a PARKED positioner; if the blades vanish they are S447's parked
+rear/front suspension drawn at the origin, i.e. a POSING defect, exactly as S1 predicted.

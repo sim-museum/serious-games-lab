@@ -149,9 +149,15 @@ function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}
         N = isempty(norms) ? [fn for _ in P] : [txn(nrm(n)) for n in norms]
         isflat = isempty(uvs)                    # no uv list authored => GPL flat-shaded poly
         UV = isflat ? [(0f0,0f0) for _ in P] : uvs
-        for k in 2:length(P)-1                      # fan: (1, k, k+1)
-            push!(tris, Tri((P[1],P[k],P[k+1]), (N[1],N[k],N[k+1]), (UV[1],UV[k],UV[k+1]), tex, col, isflat, ptype))
-            push!(groups, grp)
+        # AI-CARGFX A/B: JM_HIDE_PARKED=1 emits NO triangles for geometry under a PARKED positioner
+        # (|d|>5 hide-marker), so a capture with and without it attributes a visible artefact to
+        # parked-but-drawn parts. Diagnostic only -- the gold shows parked parts DO belong on screen,
+        # posed dynamically (E82/S447), so this is not a fix.
+        if !(get(ENV, "JM_HIDE_PARKED", "0") != "0" && PARKDEPTH[] > 0)
+            for k in 2:length(P)-1                      # fan: (1, k, k+1)
+                push!(tris, Tri((P[1],P[k],P[k+1]), (N[1],N[k],N[k+1]), (UV[1],UV[k],UV[k+1]), tex, col, isflat, ptype))
+                push!(groups, grp)
+            end
         end
         push!(ALL_GROUPS, grp); PARKDEPTH[] > 0 && push!(PARKED_GROUPS, grp)
         if get(ENV, "JM_POSDIAG", "") != ""; ps = join(string.(PATH, base=16), ">"); for _ in 2:length(P)-1; push!(TRIPATH, ps); end; end
