@@ -7585,6 +7585,35 @@ empty on the client -- a client car passes through the host's AI (contact with r
 already absent, MP-4). Lap/position scoring of remote AI is the host's. The two-machine test is
 still the PO's to run; every gate here is loopback.
 
+### STARTUP-1 (2026-09-06, 11:30) — the sysimage does NOT build on this box: two attempts, both out of memory
+
+`julia demo/native/build_sysimage.jl` (PackageCompiler, ModelingToolkit + OrdinaryDiffEq + GLFW +
+JuliaMotor, transitive deps) was run twice after the 09:21 crash, each inside its own
+`systemd-run --user --scope` so a kill could not take the session again:
+
+| attempt | threads | cap | outcome |
+|---|---|---|---|
+| 1 (10:54) | JULIA_IMAGE_THREADS default, `-t 2`, heap hint 7G | 12G→14G | 12.7 GB RSS + 5 GB swap after 8 min, still climbing; stopped by me to free the MA gates |
+| 2 (11:09) | `JULIA_IMAGE_THREADS=1`, `-t 1`, heap hint 6G | 12G + 6G swap | **OOM-killed by the kernel at 12 GB RSS + 5.9 GB swap** (systemd: `Result: oom-kill`, 19 min) |
+
+So the image-generation step needs more than ~18 GB on this 15 GB / 8 GB-swap machine, single-
+or multi-threaded; the heap hint does not help because the peak is LLVM's, not the GC's. The
+session survived both times (the scope cap did its job -- [[heavy-jobs-oom-kill-the-session]]).
+
+**Ways forward, cheapest first:**
+1. **More swap** (needs root; `sudo` here is interactive): a 24 GB swapfile lets the build finish
+   slowly (`sudo fallocate -l 24G /swap2.img && sudo chmod 600 /swap2.img && sudo mkswap /swap2.img
+   && sudo swapon /swap2.img`). One-off; the resulting `jlracer.so` ships in the AppImage.
+2. **A smaller image**: leave ModelingToolkit/Symbolics out of the sysimage (they are the bulk) and
+   bake only JuliaMotor, OrdinaryDiffEq, GLFW/ModernGL and the loaders; the mtkcompile step would
+   still JIT at launch, so the saving is partial. ~20 min per attempt.
+3. **Pkgimages instead of a sysimage**: move the sim script into a package with a PrecompileTools
+   workload, so Julia's per-package cache holds the compiled code. Peak memory is per package, far
+   lower; the real fix, but a refactor of the 7.6k-line script.
+
+Until one of these lands, the `-refresh` image (0 cache rejections, 4 min 17 s to first frame) is
+the shipped state. Logs: `~/Documents/260906/logs/sysimage_build*.log`.
+
 ### RESTART-1 — CLOSED (2026-09-05). Implemented, gated, and verified INSIDE the shipped image.
 
 **Ctrl+R** restarts the session on the current track without reloading it. The PO's requirement was
