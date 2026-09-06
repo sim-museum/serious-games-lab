@@ -2221,8 +2221,24 @@ if get(ENV,"JM_HATPROBE","") != ""
 end
 
 
-const WHEELS = (( 1.05f0, WTRACK_F,true, 0.31f0,"lotwlf"), ( 1.05f0,-WTRACK_F,true, 0.31f0,"lotwrf"),
-                (-1.15f0, WTRACK_R,false,0.34f0,"lotwlr"), (-1.15f0,-WTRACK_R,false,0.34f0,"lotwrr"))
+# CARGOLD-1 S2 (2026-09-06, PO: "place axles correctly for user and AI cars"): the Lotus's wheels go
+# where lotus.3do puts its own tyres (hubs 1.53 / -0.89 in the mesh, half-tracks 0.71 / 0.70) shifted
+# by BODY_OFF's x, instead of the hand table (+1.05 / -1.15, 0.78 / 0.74) that had the rear wheels
+# 29 cm ahead of the mesh's rear hubs. JM_WHEELS_TABLE=1 restores the table.
+const WHEELS_TABLE = (( 1.05f0, WTRACK_F,true, 0.31f0,"lotwlf"), ( 1.05f0,-WTRACK_F,true, 0.31f0,"lotwrf"),
+                      (-1.15f0, WTRACK_R,false,0.34f0,"lotwlr"), (-1.15f0,-WTRACK_R,false,0.34f0,"lotwrr"))
+const WHEELS = let hubs = get(ENV, "JM_WHEELS_TABLE", "0") == "0" ? (try Render.mesh_wheel_hubs(LOT3DO) catch e; @warn "mesh_wheel_hubs (Lotus)" e; nothing end) : nothing
+    if hubs === nothing
+        println("  [wheels] Lotus: hand table (", join(["($(w[1]),$(w[2]))" for w in WHEELS_TABLE], " "), ")")
+        WHEELS_TABLE
+    else
+        w = Tuple(Render.wheelspec_from_mesh(hubs, collect(WHEELS_TABLE), BODY_OFF[1], BODY_OFF[3]))
+        println("  [wheels] Lotus: hubs from lotus.3do  front x=", round(hubs.fx, digits=2), " rear x=", round(hubs.rx, digits=2),
+                " half-track ", round(hubs.fy, digits=2), "/", round(hubs.ry, digits=2), " (+BODY_OFF ", BODY_OFF[1], ")  now ",
+                join(["($(round(x[1],digits=2)),$(round(x[2],digits=2)))" for x in w], " "))
+        w
+    end
+end
 
 # ---- GL init (visible window on the user's display) ----
 const W, H = 1440, 810

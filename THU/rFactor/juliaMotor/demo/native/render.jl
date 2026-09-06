@@ -1881,6 +1881,58 @@ function wheel_dress_for(dir, meshname)
     end
     get(tbl, lowercase(meshname), nothing)
 end
+# CARGOLD-1 S2 (2026-09-06): THE WHEELS GO WHERE THE CAR'S OWN MESH PUTS THEM. Every GPL car .3do
+# contains its tyres; the sim strips them and draws its own wheel meshes from a hand table that put
+# every chassis's hubs at +1.05 / -1.15 (a 2.20 m wheelbase) -- the census read 1.53 / -0.89 for the
+# Lotus (2.42 m, the real car's 2.41). Detect the tyre groups by SHAPE (round in x-z, 0.5-0.8 m,
+# narrow in y, ≥ 0.45 m off centre; a texture shared by front and rear is split by x) and return
+# the hub centroids, mesh frame (x along, y lateral, z up). PO: "place axles correctly for user and
+# AI cars". Returns nothing when fewer than 4 tyres are found (the caller keeps its table).
+function mesh_wheel_hubs(path3do)
+    m = GPL3DO.parse_3do(path3do)
+    acc = Dict{Tuple{String,Int},Vector{NTuple{3,Float32}}}()
+    for t in m.tris, p in t.p
+        push!(get!(acc, (t.tex, p[2] >= 0 ? 1 : -1), NTuple{3,Float32}[]), p)
+    end
+    hubs = NTuple{7,Float64}[]                      # (x, y, z, r, weight, |y| min, |y| max)
+    for ((tex, side), ps) in acc
+        length(ps) < 30 && continue
+        xl, xh = extrema(p[1] for p in ps); zl, zh = extrema(p[3] for p in ps); yl, yh = extrema(p[2] for p in ps)
+        ez = zh - zl; ey = yh - yl
+        cy = sum(p[2] for p in ps)/length(ps)
+        (0.5 <= ez <= 0.8 && ey <= 0.45 && abs(cy) >= 0.45) || continue
+        cx = sum(p[1] for p in ps)/length(ps)
+        groups = (xh - xl) <= 0.8 ? [ps] : [[p for p in ps if p[1] >= cx], [p for p in ps if p[1] < cx]]
+        for q in groups
+            length(q) < 15 && continue
+            qxl, qxh = extrema(p[1] for p in q); (qxh - qxl) <= 0.8 || continue
+            qzl, qzh = extrema(p[3] for p in q); qyl, qyh = extrema(abs(p[2]) for p in q)
+            push!(hubs, (sum(p[1] for p in q)/length(q), sum(p[2] for p in q)/length(q), sum(p[3] for p in q)/length(q), (qzh - qzl)/2, length(q), qyl, qyh))
+        end
+    end
+    length(hubs) < 4 && return nothing
+    xm = sum(h[1]*h[5] for h in hubs)/sum(h[5] for h in hubs)     # front/rear split at the weighted mean x
+    front = [h for h in hubs if h[1] >= xm]; rear = [h for h in hubs if h[1] < xm]
+    (isempty(front) || isempty(rear)) && return nothing
+    wmean(v, i) = sum(h[i]*h[5] for h in v)/sum(h[5] for h in v)
+    # the hub's lateral = the wheel's CENTRE PLANE: midpoint of the corner's innermost and outermost
+    # tyre extents (inner sidewall .. outer sidewall). A vertex-weighted mean leans to the outer
+    # wall (0.79 for the Lotus) and the tread centroid sits inboard of centre (0.71); the gate caught
+    # the first version averaging left and right into 0.
+    amid(v) = (minimum(h[6] for h in v) + maximum(h[7] for h in v)) / 2
+    (fx = wmean(front, 1), rx = wmean(rear, 1), fy = amid(front), ry = amid(rear),
+     fr = wmean(front, 4), rr = wmean(rear, 4), fz = wmean(front, 3), rz = wmean(rear, 3))
+end
+# Rebuild a (hubX, hubZ, steers, radius, mesh) wheel spec from the mesh hubs: the table's meshes and
+# radii are kept (the radii already match the tyre extents), only the PLACEMENT changes.
+function wheelspec_from_mesh(hubs, wheelspec, off_x, off_z)
+    map(wheelspec) do (bx, bz, front, r, mesh)
+        x = (front ? hubs.fx : hubs.rx) + off_x
+        z = sign(bz) * (front ? hubs.fy : hubs.ry) + off_z
+        (Float32(x), Float32(z), front, r, mesh)
+    end
+end
+
 function load_gpl_car(name, dir, body3do, wheelspec;
                       exclude=("ltraymap","lshad"), maxlat=Inf32, exclude_groups=(),
                       body_floor=0.0f0, wheeltint=(0.12f0,0.12f0,0.13f0),
@@ -1949,6 +2001,20 @@ function load_gpl_car(name, dir, body3do, wheelspec;
             (isfile(path) ?
              build_gpl(extract_gpl_car(path; exclude=("ltraymap","lshad"), tint=wheeltint,
                                        wheel_dress=dress), tex) : Item[])
+    end
+    # CARGOLD-1 S2: wheels at the mesh's own hubs unless JM_WHEELS_TABLE=1 keeps the hand table.
+    if get(ENV, "JM_WHEELS_TABLE", "0") == "0"
+        hubs = try mesh_wheel_hubs(joinpath(dir, body3do)) catch e; @warn "mesh_wheel_hubs failed" name e; nothing end
+        if hubs !== nothing
+            old = wheelspec
+            wheelspec = wheelspec_from_mesh(hubs, wheelspec, off_x, off_z)
+            println("  [wheels] ", name, ": hubs from the mesh  front x=", round(hubs.fx, digits=2), " rear x=", round(hubs.rx, digits=2),
+                    " half-track ", round(hubs.fy, digits=2), "/", round(hubs.ry, digits=2), " (+body off ", round(off_x, digits=2), ")  was ",
+                    join(["($(round(w[1],digits=2)),$(round(w[2],digits=2)))" for w in old], " "), "  now ",
+                    join(["($(round(w[1],digits=2)),$(round(w[2],digits=2)))" for w in wheelspec], " "))
+        else
+            println("  [wheels] ", name, ": mesh tyres not found -- keeping the table")
+        end
     end
     GPLCarModel(name, body, wheels, (Float32(off_x), Float32(off_y), Float32(off_z)),
                 Vector{Tuple{Float32,Float32,Bool,Float32,String}}(wheelspec))
