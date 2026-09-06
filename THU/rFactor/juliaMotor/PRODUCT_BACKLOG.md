@@ -6917,6 +6917,34 @@ No sprints have been run against this item.
 
 ---
 
+## 🔲 BACKLOG — ROAD-1: Spa and the Ring drivable all the way through -- no collisions while on the road  ⭐ NEXT (PO 2026-09-06)
+
+PO, verbatim: *"spa and the ring drivable all the way through - no collisions so long as you stay
+on the road."*
+
+**Definition.** A car whose four contact points stay inside the road surface (the .trk ribbon at
+its true width, `ROAD_HALFW` per section) must never receive a solid-object impulse or a wheel
+detach from anything -- not a trackside house, pylon, banner, fence, bridge, hay bale or a
+mis-footprinted `SOLIDBOX` -- over the whole lap of Spa-Francorchamps and the Nürburgring
+Nordschleife. Off the road, contacts are legitimate and out of scope.
+
+**Why it is not already true.** Every barrier found so far (the Spa `house28` triplicate, the
+oriented `SolidGeom` boxes) was found by driving into it; nothing has yet proven the absence of
+the next one along 7 km and 22.8 km of road.
+
+**Acceptance (a gate, not a drive):** `road_clear_smoke.jl` sweeps the AI rail of each track at
+lateral offsets across the full road width (e.g. every 0.5 m from -ROAD_HALFW+0.3 to
++ROAD_HALFW-0.3, every 2 m along the lap) and asks the sim's own contact model
+(`solid_gap`/`SOLIDBOX` via the JM_SOLIDNEAR hook, i.e. the loader's frame, per
+[[probe-with-the-sims-own-loader]]) for the nearest solid: **zero solids with gap ≤ 0 anywhere on
+the road on both tracks**, and a negative control that places a probe 1 m off the road at a known
+barrier and finds it. Each hit is reported as (track, lap distance, lateral, object name) so the
+fix is a named object, not a guess. Then one full-lap drive per track on the display, by the PO.
+
+**Sprint plan.** S1: the sweep tool + first census (expect hits; that is the list). S2-S4: fix each
+named object (footprint, dedup, or a genuine off-road object leaking onto the ribbon). S5: the gate
+green on both tracks, registered in `gates.sh`, shipped in the AppImage.
+
 ## 🔲 BACKLOG — MP-4: two julia racer AppImages on different PCs racing each other
 
 **PO, 2026-09-04:** *"add multiplayer to julia racer, such that appImages on different PCs can both
