@@ -8946,3 +8946,10 @@ sites).
   placement there (the house25 "solid but not drawn" class is now one command to check).
 - Open: the 5 m per-name disc for `house*` can poke past a small house's walls (air-hit); and the
   Ring "levitation" report is a separate event, not yet localised (needs a Ring replay).
+- **Ring "levitation" (PO replay 2026-09-02 22:14, Nürburgring)**: the only event in that run is at
+  t=75.5–78.2, (-950,-2290)→(-928,-2256): the car climbs 1 m/frame to 7 m above the road, coasts
+  on a plateau at 627 m, then drops 6.65 m in one frame. Today's build, same coordinates,
+  JM_HATPROBE: physics ground flat 619.8→620.4 m — the plateau is GONE from the current HAT (the
+  E106 baked-scenery work). No solids exist at the Ring (SOLIDS empty by design), so no contact
+  lift either. Verdict: fixed in dev before today; the PO's installed copy predates it. Needs a
+  PO drive on the 260906 AppImage; a fresh Ring replay names any remaining spot in one command.
