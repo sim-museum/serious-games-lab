@@ -6171,6 +6171,34 @@ the Spa seam):
    steepest genuine ground on each circuit so it does not swallow the Ring's real jumps and banks.
 
 **PO ruling: ask Fable 5.1, when the token budget allows.** Not to be decided or implemented by me.
+
+**DECIDED by Fable 5.1 (2026-09-05): OPTION 2, with the threshold MEASURED.** `demo/native/step_probe.jl`
+walked every circuit's racing band (±8 m lateral, 0.5 m along) on the real physics HAT:
+
+| track | samples | steepest genuine up-step per 0.5 m | p99.9 | samples > 3.0 m |
+|---|---|---|---|---|
+| zandvoort | 83 966 | 1.05 m | 0.07 m | 0 |
+| nurburgring | 395 210 | 1.19 m | 0.11 m | 0 |
+| watglen | 71 406 | 0.17 m | 0.17 m | 0 |
+| monza | 94 788 | 2.74 m (banking edge, off the line) | 0.02 m | 0 |
+| spa | 267 169 | 1.58 m | 0.07 m | 0 |
+
+The defect to catch is the Ring's **8.4 m** building plateau (E106-S18). A 3.0 m threshold is 1.9× the
+steepest real step on the hilly circuits, 2.8× under the plateau, and is the value Monza's island guard
+has run with all along (Monza's 2.74 m is its banking edge inside the lateral band, not the line).
+
+**Why the old objection no longer applies.** `WALL_CLIMB` was Monza-only because `groundz()`'s "previous
+answer" (`LASTZ`) is shared with the AI-line build and the AI physics poses, so consecutive calls come
+from different cars and a step guard false-fires. The new guard lives in **`groundz_phys`, the player's
+own closure**, against the player's own last accepted ground (`PLAYER_G`), reset on respawn/teleport.
+Downward steps of any size and the first sample after a reset are always accepted. The rule itself is
+`demo/native/step_guard.jl` (pure, testable); `JM_STEP_GUARD=0` disables; `JM_WALL_CLIMB` tunes.
+
+**Gate:** `step_guard_smoke` — fires on the 8.4 m plateau, passes every measured real crest, accepts a
+20 m drop and a post-respawn first sample; registered in the suite. Option 1 (naming buildings into
+`HAT_EXCLUDE`) stays available for anything the guard should not have to see at all.
+
+**Not yet:** a flown pass of the Ring spawn and the Spa seam under the guard — that is a display run.
 Recorded here so the question is not silently re-opened or quietly actioned in a later sprint.
 
 The E106-S13 levitation fix (the off-mesh sentinel) and the `hat_hole_smoke` gate are already

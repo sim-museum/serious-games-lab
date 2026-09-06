@@ -436,6 +436,7 @@ const FUEL_MARGIN = max(0, tryparse(Int, get(ENV,"JM_FUEL_MARGIN","10")) |> x-> 
 # table+YAML template (so the file is byte-identical in structure / any iRacing tool
 # reads it) and fill the channels juliaMotor produces.
 const IBTREC0 = !haskey(ENV, "JM_NOIBT")         # .ibt telemetry ON by default (set JM_NOIBT to disable)
+include(joinpath(@__DIR__, "step_guard.jl")); using .StepGuard   # TERRAIN-STEP, see groundz_phys
 const REPLAY_FILE = get(ENV, "JM_REPLAY", "")    # E18: if set, PLAY BACK this .jmr recording instead of driving
 # The repo's data/iracing/ holds only the parse/profile scripts — the reference .ibt captures live
 # in the gold-standard store, which is why every session ended with ".ibt export failed ... (2)".
@@ -5150,7 +5151,36 @@ function main()
     # Defined HERE rather than beside `groundz`: that spot is inside a nested block main() cannot
     # see, so the name resolved as a missing global and threw at RUNTIME -- parse_smoke cannot
     # catch that, and the suite's gates do not run this path. Caught by driving the sim.
-    groundz_phys(x, y) = (g = groundz(x, y); g > -900f0 ? g : NaN32)
+    # TERRAIN-STEP (epic #2, decision deferred to Fable 5.1 on 2026-09-03, taken 2026-09-05):
+    # the PHYSICS rejects an implausible upward step -- option 2 -- with a threshold that is
+    # MEASURED, not guessed. step_probe.jl walked every circuit's racing band (+-8 m) at 0.5 m:
+    #   steepest genuine up-step per 0.5 m: zandvoort 1.05 m, nurburgring 1.19 m, watglen 0.17 m,
+    #   spa 1.58 m; p99.9 <= 0.17 m; samples over 3.0 m on any track: ZERO.
+    # The defects it must catch: the Ring's 8.4 m building plateau (E106-S18) and any other
+    # building/island in the HAT. 3.0 m is 1.9x the steepest real ground and 2.8x under the plateau.
+    # WHY HERE and not in groundz(): groundz() is shared with the AI-line build and the AI physics
+    # poses, whose consecutive calls come from DIFFERENT cars, so a guard against "the previous
+    # answer" false-fires there (that is why WALL_CLIMB was Monza-only). This closure is the
+    # PLAYER's alone, so "previous answer" means the player's own last ground. Reset on respawn.
+    # JM_STEP_GUARD=0 disables; JM_WALL_CLIMB sets the threshold (shared with Monza's island guard).
+    PLAYER_G = Ref(NaN)
+    STEP_GUARD_ON = get(ENV, "JM_STEP_GUARD", "1") != "0"
+    STEP_GUARD_HITS = Ref(0)
+    function groundz_phys(x, y)
+        g = groundz(x, y)
+        g > -900f0 || return NaN32
+        gf = Float64(g)
+        ok, held = STEP_GUARD_ON ? StepGuard.step_guard(gf, PLAYER_G[], WALL_CLIMB) : (true, gf)
+        if !ok
+            STEP_GUARD_HITS[] += 1
+            STEP_GUARD_HITS[] <= 5 && println("  ⚠ step guard: ground jumped ", round(gf - PLAYER_G[], digits=2),
+                                              " m at (", round(x, digits=1), ", ", round(y, digits=1),
+                                              ") -- holding ", round(PLAYER_G[], digits=2), " m (JM_STEP_GUARD=0 disables)")
+            return Float32(held)
+        end
+        PLAYER_G[] = gf
+        Float32(gf)
+    end
     cs0 = SKIDPAD ? (x=0.0, z=0.0, θ=0.0) : spawn(CAR; v0=0.0)   # spawn pose (skidpad: pad centre)
     LASTZ = Ref(0.0); ONTRACK = Ref(true)
     LASTGX = Ref(cs0.x); LASTGZ = Ref(cs0.z)   # last position INSIDE the world (terrain HAT) — for the boundary
@@ -5959,7 +5989,7 @@ function main()
         # forgets one field is worse than no restart, and the compiler cannot catch a missing one.
         if restart
             t_restart = time()
-            respawnX!(cs; groundz = groundz_phys); DriveRT3D.damage_reset!()
+            PLAYER_G[] = NaN; respawnX!(cs; groundz = groundz_phys); DriveRT3D.damage_reset!()
             DC[].lastz = 0.0   # LAPTIME-1: see the respawn below
             WRECKED[] = false; empty!(LOOSE_WHEELS)      # a detached corner is never redrawn otherwise
             CLUTCH_GATE[] = -1.0
@@ -6263,7 +6293,7 @@ function main()
             hR = groundz(pR[1], pR[3]; acquire=true); isfinite(hR) && (cs.zref = Float64(hR))
             cs.heave = 0.0; cs.pitch = 0.0; cs.roll = 0.0; cs.y = cs.zref
         # E94-P4: a respawn is a NEW car, not a repaired one.
-        elseif rst; respawnX!(cs; groundz=groundz_phys); DriveRT3D.damage_reset!(); DC[].lastz = 0.0
+        elseif rst; PLAYER_G[] = NaN; respawnX!(cs; groundz=groundz_phys); DriveRT3D.damage_reset!(); DC[].lastz = 0.0
             # LAPTIME-1: skip ONE frame of the bounce test after a respawn. The car settles onto the
             # ground at a respawn exactly as it does at spawn -- a legitimate one-frame height step
             # that the settle window (`cs.t > DC_SETTLE_S`) exists to ignore. That window used to
