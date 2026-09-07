@@ -2195,7 +2195,12 @@ const SUSP_GAIN = parse(Float32, get(ENV,"JM_SUSP_GAIN","0.9"))   # PO: cockpit 
 # tilts); a fast jolt (curb strike) does NOT roll the view — the CHASSIS rocks on screen while the head
 # stays toward vertical.  So the landscape no longer strobes back-and-forth (which gave the PO a headache).
 # τ = the follow time-constant (s): banks held >~τ are fully followed; sub-τ jolts are largely rejected.
-const CAM_TILT_TAU = parse(Float64, get(ENV,"JM_CAM_TILT_TAU","0.35"))
+# CARGOLD-1 S8 (PO 2026-09-06 21:05: "in cockpit view the tub backs too much left and right, as if connected
+# to the axles via rubber bands, in turns - compare to gold standard"): E53's 0.35 s head low-pass made the
+# CHASSIS rock on screen for a third of a second after every roll change, i.e. the tub swayed against the
+# wheels. GPL's cockpit camera is rigid on the chassis (the tub is still, the wheels and the world move), so
+# the default is now near-rigid (0.05 s, a frame-jitter filter only). JM_CAM_TILT_TAU=0.35 restores E53.
+const CAM_TILT_TAU = parse(Float64, get(ENV,"JM_CAM_TILT_TAU","0.05"))
 # wheel hubs (rig frame X fwd, Y=radius, Z left); front pair steers, all spin.  Front/rear track WIDENED
 # (was ±0.62/±0.66) — the Lotus 49 ran ~1.52 m tracks; the narrow stance read as "wheels bolted together".
 const WTRACK_F = parse(Float32, get(ENV,"JM_TRACK_F","0.78"))   # front half-track (m) — E62: 0.90 splayed the fronts well outboard of the tub in the chase gold; 0.78 (≈ the real Lotus 49 ~1.52 m track) tucks them back toward the body
@@ -2709,7 +2714,7 @@ if SKIDPAD || (NURB && get(ENV, "JM_RING_OBJECTS", "1") == "0")
     global STATICTREES = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32,Float32}[]
     global SOLIDS = Tuple{Float64,Float64,Float64,Symbol}[]   # no collidable trackside objects on skidpad / Nürburgring (scenery baked in) — without this solid_hit()/solid_contact() throws UndefVarError on the first collision check
     global OBJINSTS = Tuple{String,Float32,Float32,Float32,Symbol,Bool}[]   # no placed objects here, but JM_SWEEP/JM_SPOT still need it defined to run the HAT/molasses checks
-    global OBJ_LVERTS = Dict{String,Vector{Tuple{Float32,Float32}}}(); global OBJ_YAW = Dict{Tuple{Float64,Float64},Float64}()
+    global OBJ_LVERTS = Dict{String,Vector{Tuple{Float32,Float32}}}(); global OBJ_YAW = Dict{Tuple{Float64,Float64},Float64}(); global OBJ_YMN = Dict{String,Float32}()
     # E76-S8: THE RING'S MISSING BILLBOARDS.  The Ring does not use the GPL object pipeline below —
     # it loads scenery through its own gpl_scenery(), which had no billboard path at all, so every
     # placement whose .3do carries no geometry was silently dropped.  E76-S5 instrumented the drop
@@ -4326,6 +4331,7 @@ let objnames=Set{String}()
     # ROAD-1 S6: the JM_SWEEP census (outside this `let`) judges meshes by their footprint; hand it the
     # local footprint points and each instance's yaw.
     global OBJ_LVERTS = lverts
+    global OBJ_YMN = Dict{String,Float32}(k => v for (k, v) in ymn)   # local lowest vertex per object name (S4 census)
     global OBJ_YAW = Dict{Tuple{Float64,Float64},Float64}((round(Float64(i.x), digits=2), round(Float64(i.y), digits=2)) => -Float64(i.yaw) + Float64(objyawfix(i.name)) for i in insts)
     if get(ENV,"JM_FOOTPRINT","")!=""
         # E71-S8: rank objects by how far their FOOTPRINT penetrates the asphalt, not by how far
@@ -5269,7 +5275,12 @@ function camera(cs, pitch=0.0, roll=0.0)
     # cockpit is stationary on screen and the WORLD tilts (head → surface normal, GPL behaviour); on a fast
     # jolt the low-pass lags, so the chassis (drawn at FULL tilt) rocks on screen while the horizon stays
     # level — no headache-inducing landscape strobe.
-    ex,ey,ez,drop = parse(Float32,get(ENV,"JM_EYE_X","0.46")), parse(Float32,get(ENV,"JM_EYE_Y","0.40")), 0.0f0, parse(Float32,get(ENV,"JM_EYE_DROP","0.55"))   # GPL: low seat just behind the wheel, ~level gaze (see the road), dash fills the lower frame; tunable via JM_EYE_*
+    # CARGOLD-1 S8b (2026-09-06): the eye moves UP and BACK, 0.46/0.40 -> 0.25/0.52 m in the body frame. The
+    # gold cockpit still looks DOWN on the dash with the nose running away to the roundel and the helmet top
+    # at the bottom of the frame; at 0.46/0.40 the scuttle rose into the eye line and read as a "visor"
+    # (PO). A/B: car_gold/lotus_cockpit_eyeA.png (0.25/0.52 = this) vs eyeB.png (0.10/0.60, a helmet cam,
+    # too far back) vs gold_crop.png. FOV (JM_FOV 80) untouched -- the gold's dash may want it narrower.
+    ex,ey,ez,drop = parse(Float32,get(ENV,"JM_EYE_X","0.25")), parse(Float32,get(ENV,"JM_EYE_Y","0.52")), 0.0f0, parse(Float32,get(ENV,"JM_EYE_DROP","0.55"))   # GPL: low seat just behind the wheel, ~level gaze (see the road), dash fills the lower frame; tunable via JM_EYE_*
     R = Render.roty(Float32(cs.θ)) * Render.rotz(Float32(pitch)) * Render.rotx(Float32(roll))   # = the chassis rotation
     R3(a,b,c) = (w = R * Float32[a,b,c,0f0]; Float32[w[1],w[2],w[3]])     # rotate a body-frame direction into the world
     eye = Float32[wx,wy,wz] + R3(BODY_OFF[1]+ex, BODY_OFF[2]+ey, BODY_OFF[3]+ez)   # eye fixed in the body frame
@@ -5315,7 +5326,7 @@ function replay_camera(mode, x, y, z, θ)
     rx, rz = -fz, fx                                        # render right = forward × up (horizontal)
     P = Float32[wx, wy, wz]
     if mode === :cockpit
-        ex,ey,drop = parse(Float32,get(ENV,"JM_EYE_X","0.46")), parse(Float32,get(ENV,"JM_EYE_Y","0.40")), parse(Float32,get(ENV,"JM_EYE_DROP","0.55"))
+        ex,ey,drop = parse(Float32,get(ENV,"JM_EYE_X","0.25")), parse(Float32,get(ENV,"JM_EYE_Y","0.52")), parse(Float32,get(ENV,"JM_EYE_DROP","0.55"))
         R = Render.roty(Float32(θ))
         R3(a,b,c) = (w = R*Float32[a,b,c,0f0]; Float32[w[1],w[2],w[3]])
         eye = P + R3(BODY_OFF[1]+ex, BODY_OFF[2]+ey, 0f0)
@@ -6155,6 +6166,46 @@ function main()
         n, mseg, xseg, xst, st = stats([(TRKSURF.pos[i][1], TRKSURF.pos[i][3]) for i in ci])
         println("  centreline waypoints (", n, ", mean spacing ", round(mseg, digits = 1), " m): max heading step=", round(xst, digits = 1), " deg  (", round(sum(st)/max(1,length(st)), digits = 2), " mean)")
         println("ROADEDGE_RESULT track=", TRACKSEL, " tris=", inwin, " boundary=", length(bnd))
+        flush(stdout); exit(0)
+    end; end
+    # TRACKGOLD-1 S4 (PO 2026-09-06 20:50, the Ring): "curtain of trees ... intrude into, or even cross
+    # perpendicularly, the road", "'curtain of trees' objects floating in the air", "grandstand/building/
+    # line of billboard objects ... floating maybe 5 m above where they should be". JM_OBJCENSUS=1: every
+    # RENDERED placement (OBJINSTS mesh + billboard) with its lapdist, origin lateral, footprint-on-tarmac
+    # (meshes) and base height above the terrain (lowest local vertex + placement height - HAT), sorted
+    # by the two defects: on the road, and floating (> 1.5 m) or buried (< -1.5 m). Exits.
+    if get(ENV, "JM_OBJCENSUS", "") != ""; let
+        rows = NTuple{7,Any}[]     # (name, kind, s, lat, dy, onroad, x)
+        for (nm, ox, oz, oy, kind, issolid) in OBJINSTS
+            kind === :dropped && continue
+            hr = JuliaMotor.hat(TRKSURF, Float64(ox), Float64(oz)); hr.found || continue
+            # height reference = the TERRAIN-ONLY HAT (TERRAIN0): the full HAT includes the objects themselves,
+            # so a placement lifted onto a neighbour's roof reads dy = 0 against it. `oy` is the placement
+            # height the renderer used (groundz at the origin, which can be that roof); base = its lowest vertex.
+            g = JuliaMotor.hat3d(TERRAIN0, Float64(ox), Float64(oz); ref = Inf)
+            base = Float64(oy) + Float64(get(OBJ_YMN, nm, 0f0))
+            dy = g[3] ? Float64(oy) - Float64(g[1]) : NaN     # placement height above the bare terrain (the "floating" measure)
+            onroad = ROADHAT !== TERRAIN0 && (JuliaMotor.hat3d(ROADHAT, Float64(ox), Float64(oz); ref = Inf)[3] && hr.on_track)
+            push!(rows, (nm, kind, hr.lapdist, hr.lateral, dy, onroad, Float64(ox)))
+        end
+        nbb = count(r -> r[2] === :bb, rows); nm_ = count(r -> r[2] === :mesh, rows)
+        println("\n==== JM_OBJCENSUS ", uppercasefirst(TRACKSEL), ": ", nm_, " meshes + ", nbb, " billboards rendered ====")
+        onr = filter(r -> r[6] || abs(r[4]) < 4.5, rows)
+        flo = filter(r -> !isnan(r[5]) && r[5] > 1.5, rows)
+        bur = filter(r -> !isnan(r[5]) && r[5] < -1.5, rows)
+        println("  on/at the road (tarmac under origin or |lat| < 4.5): ", length(onr), "   floating (placement > 1.5 m above the bare terrain): ", length(flo), "   sunk (< -1.5 m): ", length(bur))
+        hist(v) = join(["$(k)=$(c)" for (k, c) in sort(collect(Dict(k => count(==(k), v) for k in unique(v))); by = kv -> -kv[2])[1:min(end, 12)]], " ")
+        println("  on-road names: ", hist([r[1] for r in onr]))
+        println("  floating names: ", hist([r[1] for r in flo]))
+        println("  --- on-road, by lapdist (first 40) ---")
+        for r in sort(onr; by = r -> r[3])[1:min(end, 40)]
+            println("   s=", lpad(round(Int, r[3]), 6), "  lat=", lpad(round(r[4], digits = 1), 6), "  dy=", lpad(round(r[5], digits = 1), 5), "  ", r[2], "  ", r[1])
+        end
+        println("  --- floating, by height (first 30) ---")
+        for r in sort(flo; by = r -> -r[5])[1:min(end, 30)]
+            println("   s=", lpad(round(Int, r[3]), 6), "  lat=", lpad(round(r[4], digits = 1), 6), "  dy=", lpad(round(r[5], digits = 1), 5), "  ", r[2], "  ", r[1])
+        end
+        println("OBJCENSUS_RESULT track=", TRACKSEL, " onroad=", length(onr), " floating=", length(flo), " buried=", length(bur))
         flush(stdout); exit(0)
     end; end
     AILINE = (CLINE !== nothing && N_AI > 0) ? CLINE : nothing

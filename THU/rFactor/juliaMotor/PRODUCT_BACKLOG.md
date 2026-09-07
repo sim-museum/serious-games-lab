@@ -7087,6 +7087,25 @@ image (the depot's compiled cache travels in the AppImage); the sysimage build s
    compliance (suspension lateral travel drawn into the body pose) or the camera's roll/lateral
    smoothing. Measure: log body lateral offset vs wheels through a Watkins corner in the replay and
    compare against the gold lap video (the wheels barely move relative to the tub in GPL).
+   **S8a (22:12):** found in the camera, not the physics: E53 gave the cockpit head a 0.35 s low-pass
+   (`CAM_TILT_TAU`) so that on a jolt the CHASSIS rocks on screen while the horizon stays level -- in a
+   turn that is exactly a tub that leans and lags against the wheels for a third of a second. GPL's
+   cockpit camera is rigid on the chassis. Default now 0.05 s (frame-jitter filter only);
+   `JM_CAM_TILT_TAU=0.35` restores E53. The body roll itself is drawn at 0.9x real (`SUSP_GAIN`),
+   unchanged. **S8b (eye):** the gold still shows the top of the helmet at the bottom of the frame,
+   i.e. the eye sits ABOVE and BEHIND the driver's eyes (ours: 0.46 m forward, 0.40 m up in the body
+   frame); A/B captures `lotus_cockpit_eyeA.png` (0.25 / 0.52) and `eyeB.png` (0.10 / 0.60, drop 0.62)
+   against `gold_crop.png`. **Result (22:30):** A is the gold's composition (looking down on the dash,
+   the scuttle a low nose running away, wheels at the sides); B is a helmet cam, too high and far back.
+   **Default = A (0.25 / 0.52).** Still missing vs gold: the silver front wishbones, the mirror stalks,
+   the helmet top at the frame bottom; and the gold's dash is larger (eye closer or FOV narrower than
+   80°) -- an FOV A/B is the next S8 step. `JM_EYE_X/Y/DROP` remain overrides.
+   **TRACKGOLD-1 S4 census (JM_OBJCENSUS=1, new hook, Ring, 22:27):** 575 meshes + 981 billboards
+   rendered; 51 at/on the road, most at |lat| 4.1-4.9 (edge shrubs/trees), plus `inhcast2` at lat 0.0
+   (s=1962) and `hohe-lg3` at lat -2.7 (s=15505): the big landscape veils ("-lg/-rg" hillside meshes)
+   are the PO's "curtains crossing the road". Against the full HAT nothing "floats" (dy = 0 by
+   construction); rerun against the terrain-only HAT (`TERRAIN0`) to catch placements lifted onto a
+   neighbour's roof (`ring_objcensus2.log`).
 
 ## 🔲 BACKLOG — TRACKGOLD-1: Spa and the Ring closer to the gold standard; the Ring's missing trackside objects; no free-standing lines of people on any track  ⭐ PRIORITY (PO 2026-09-06 14:50)
 
