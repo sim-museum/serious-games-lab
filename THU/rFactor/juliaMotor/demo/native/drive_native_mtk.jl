@@ -1713,12 +1713,25 @@ else
     const ROADTESS = get(ENV, "JM_ROADTESS", "0") != "0"
     function roadtess_parts()
         (ROADHAT === TERRAIN0) && (println("  ROADTESS: no road-only HAT on this track -- off"); return Render.TrackPart[])
-        cnt = Dict{String,Int}()
-        for t in TRACKMESH.tris; lt = lowercase(t.tex); ROAD_TEX(lt) && (cnt[lt] = get(cnt, lt, 0) + 1); end
-        isempty(cnt) && return Render.TrackPart[]
-        tex = first(sort(collect(cnt); by = kv -> -kv[2]))[1]
+        # S3b: take the ASPHALT strip's own texture, vertex colour and UV density from the .3do road parts
+        # (the first capture used the centre "groove" texture at colour 1,1,1: a white road).
+        asp = [pt for pt in TRACKMAIN if occursin("asp", lowercase(pt.tex))]
+        isempty(asp) && (asp = [pt for pt in TRACKMAIN if ROAD_TEX(lowercase(pt.tex))])
+        isempty(asp) && return Render.TrackPart[]
+        big = asp[argmax([length(pt.verts) for pt in asp])]
+        tex = big.tex
+        vv = big.verts; nv = length(vv) ÷ 11
+        col = (sum(vv[11k+7] for k in 0:nv-1) / nv, sum(vv[11k+8] for k in 0:nv-1) / nv, sum(vv[11k+9] for k in 0:nv-1) / nv)
+        # UV density: metres per texture repeat, median over the part's triangles (edge length / uv length)
+        dens = Float64[]
+        for k in 0:3:nv-3
+            a = 11k; b = 11(k+1)
+            dp = hypot(vv[a+1] - vv[b+1], vv[a+2] - vv[b+2], vv[a+3] - vv[b+3]); du = hypot(vv[a+10] - vv[b+10], vv[a+11] - vv[b+11])
+            (dp > 0.5 && du > 1e-3) && push!(dens, dp / du)
+        end
+        tile = parse(Float64, get(ENV, "JM_ROADTESS_TILE", string(isempty(dens) ? 8.0 : sort(dens)[length(dens) ÷ 2 + 1])))
         step = parse(Float64, get(ENV, "JM_ROADTESS_STEP", "0.25")); maxw = 14.0
-        tile = parse(Float64, get(ENV, "JM_ROADTESS_TILE", "8.0"))
+        println("  ROADTESS: asphalt part ", tex, " colour ", round.(col, digits = 2), " tile ", round(tile, digits = 1), " m (", length(dens), " edges)")
         n = length(TRKSURF.pos)
         edge = Vector{Union{Nothing,NTuple{2,Float64}}}(nothing, n)
         tarmac(x, z) = JuliaMotor.hat3d(ROADHAT, x, z; ref = Inf)[3]
@@ -1735,7 +1748,7 @@ else
         end
         v = Float32[]; nquad = 0
         hgt(x, z, fb) = (h = JuliaMotor.hat3d(ROADHAT, x, z; ref = Inf); h[3] ? Float64(h[1]) : fb)
-        corner!(x, y, z, u, vv) = append!(v, Float32[x, y, -z, 0f0, 1f0, 0f0, 1f0, 1f0, 1f0, u, vv])
+        corner!(x, y, z, u, vv_) = append!(v, Float32[x, y, -z, 0f0, 1f0, 0f0, col[1], col[2], col[3], u, vv_])
         for i in 1:n
             j = i == n ? 1 : i + 1
             (edge[i] === nothing || edge[j] === nothing) && continue

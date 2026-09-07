@@ -7020,6 +7020,20 @@ is rendered (TRACKMESH road tris straight from the .3do) and prototype drawing t
 TRKSURF's waypoints + halfwidths (0.9 m quads, the strips' own textures), scoped to the hairpin
 first, chase-view capture vs `track_gold/ring_gold_37s.png`.
 
+### RING-HAIRPIN-1 S3 (01:18) — the tarmac drawn from the centreline: the Südkehre's edge is SMOOTH
+
+`JM_ROADTESS=1` (new): one quad per centreline waypoint pair (0.9 m), edges where the road-only HAT
+stops finding tarmac (0.25 m sampling), heights from that HAT, the .3do's asphalt/groove strips
+skipped in the draw. Ring: 16,980 quads from all 16,980 waypoints, mean width 10.0 m.
+`track_gold/tess_ring_s600.png` vs `notess_ring_s600.png`: **the hairpin's inside edge is a
+continuous curve instead of the 5 m polyline** -- the PO's defect, gone. Wrong in the first capture:
+the first-guess texture ("groove", the centre strip) at vertex colour 1,1,1 drew the road near
+white. S3b: texture, vertex colour and UV tile taken from the track's own asphalt strip; re-captures
+queued (`tess2_ring_*`, `tess2_wg_*`, cockpit at 560 as well). Not yet: the groove line (one texture
+band), kerbs over the generated surface, the physics still runs on the .3do road (unchanged
+heights, so no behaviour change), and a gate that the generated edge stays within 0.3 m of the
+HAT's tarmac edge.
+
 
 ## 🔴 PO TEST ROUND 2 (2026-09-06 20:50, `JuliaRacer-x86_64-livery.AppImage`) — items, verbatim, with owners
 
@@ -7089,7 +7103,8 @@ image (the depot's compiled cache travels in the AppImage); the sysimage build s
    **Measured (`spa_fps3_spa.log`, chase replay lap, 00:56):** Spa 30-41 fps = 25-34 ms/frame, `[frameprof]`
    world 26.5 ms of 28.9 (the HUD 0.07) -- the WORLD draw is the cost. It tracks objects inside
    OBJ_CULL2: 915-1028 in range at s=1500-2050 (Eau Rouge/Kemmel) -> 30 fps; 587-650 at s=3600-4500 ->
-   39-41 fps; the Ring earlier: 189 in range -> 58 fps (vsync-bound). Lever 1: the 2.2 km draw radius
+   39-41 fps; the Ring control (`spa_fps3_nurburgring.log`, 01:06): 60 fps throughout, 164-190 in range
+   (vsync-bound; 16.7 ms). Lever 1: the 2.2 km draw radius
    (now `JM_OBJ_CULL_D`); A/B at 1200 and 800 m queued (`spa_fps_cull*.log`). Lever 2 after that:
    per-frame frustum/distance culling of billboards, and batching the static objects per section.
 8. **STARTSEQ-2** (PO 21:12) *"change the bar+rabbit ears object (very confusing) at the start of a julia race
