@@ -7222,8 +7222,13 @@ slab and the empty frame are all gone. First-guess scale (u over 1.9 m, v over -
 green is stretched and the roundel/"TEAM LOTUS" do not land yet. `tex_lotd.png` (decoded
 `lotd.mip`, 256x256) is the top-view livery: stripe down the vertical centre, cockpit hole at v ≈
 0.45-0.85, roundels/mirrors at the sides -- so v should span roughly the tub (x0 ≈ -1.5, L ≈ 3.0);
-that pair is queued. Then planar becomes the default for flat-typed polys with a bound texture on
-car meshes, and E106 closes.
+that pair ran (`lotus_cockpit_planar2.png`): with x0 -1.5 / L 3.0 the WHITE roundel lands on the
+scuttle instead of the stripe -- my reading of the texture's v direction was inverted; the
+first-guess scale is the better of the two and the chase view with it (`lotus_chase_planar.png`)
+shows a green surround blending into the body, the gold look. **planar is now the DEFAULT** for
+flat-typed polys with a bound texture on car meshes (`JM_FLATPOLY=0` / `=1` revert to the old
+draws). Follow-up (S6): fit x0/L/orientation so the roundel sits on the nose and "TEAM LOTUS" on
+the flanks, measured against the gold still; the full gate suite runs before the repack.
 
 **Sprint plan.** S1: measure -- one triptych per chassis with the current build, axle offsets in
 a table (the census). S2-S4: fix the placements, worst first (user Lotus first, then the AI five).

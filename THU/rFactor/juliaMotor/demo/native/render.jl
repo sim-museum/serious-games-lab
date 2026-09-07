@@ -1499,13 +1499,17 @@ end
 # because those baked colours are GPL's MODULATION colours (texture x colour), not replacements --
 # so substituting them is wrong wherever the texel matters. Kept, measured, and switchable while
 # the modulation path is worked out; JM_FLATPOLY=1 enables.
-const FLATPOLY_FIX = get(ENV,"JM_FLATPOLY","0") != "0"
+# CARGOLD-1 S5 (2026-09-06 18:12): DEFAULT = planar. Captures: `0` (leaked texel) = a pale plate over
+# the cockpit; `1` (own colour) = the whole surround yellow; `planar` = the green scuttle with the
+# yellow stripe in the cockpit view and a green surround in the chase view, i.e. the gold look.
+# JM_FLATPOLY=0 restores the old draw; =1 the colour-word draw.
+const FLATPOLY_FIX = get(ENV,"JM_FLATPOLY","planar") != "0"
 # CARGOLD-1 S5 (2026-09-06): a THIRD way to draw a flat-typed poly that carries a bound texture --
 # PLANAR projection of that texture. lotd.3DO's scuttle (60 of its 88 0x81D polys) has no textured
 # twin, yet GPL shows it green with the yellow stripe: the bound `lotd` livery is the car's top view,
 # and a poly with no UV list can only be textured by projecting it. JM_FLATPOLY=planar: u from the
 # lateral position across the car's width, v from the longitudinal position along its length.
-const FLATPOLY_PLANAR = lowercase(get(ENV,"JM_FLATPOLY","0")) == "planar"
+const FLATPOLY_PLANAR = lowercase(get(ENV,"JM_FLATPOLY","planar")) == "planar"
 const PLANAR_W = parse(Float32, get(ENV,"JM_PLANAR_W","1.9"))       # lateral extent mapped to u 0..1 (m)
 const PLANAR_X0 = parse(Float32, get(ENV,"JM_PLANAR_X0","-2.5"))    # longitudinal start of v=0 (m)
 const PLANAR_L = parse(Float32, get(ENV,"JM_PLANAR_L","5.0"))       # longitudinal extent mapped to v 0..1 (m)
