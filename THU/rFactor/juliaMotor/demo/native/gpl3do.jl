@@ -340,6 +340,14 @@ function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}
                         "  tex='", curtex, "'")
                 flush(stdout)
             end
+            if get(ENV,"JM_TYPEDUMP","") == "0x81D" && tdcount[] <= 6
+                # CARGOLD-1 S4: what FOLLOWS the vertex + normal lists? (lotd.3DO's cowl is 0x81D and
+                # textured `lotd` in GPL, so a UV block may sit here that this layout skips)
+                let c = Int(ok(u32(b,p+8))), q = p + 12 + 8*c
+                    println("      after vert+norm (", c, " each): u32 ", join([string(u32(b, q + 4i)) for i in 0:2c+3], " "))
+                    println("      as f32: ", join([string(round(f32(b, q + 4i), digits=3)) for i in 0:2c+3], " "))
+                end
+            end
             cnt = ok(u32(b,p+8)); emit(rv(p+12,cnt), [], rv(p+12+cnt*4,cnt), curtex, M, grp, rgb(u32(b,p+4)), UInt32(0x81D))
         elseif typ == 0x81E                         # smooth+normals: col, count, vert*, col*, norm*
             cnt = ok(u32(b,p+8)); emit(rv(p+12,cnt), [], rv(p+12+2*cnt*4,cnt), curtex, M, grp, rgb(u32(b,p+4)), UInt32(0x81E))

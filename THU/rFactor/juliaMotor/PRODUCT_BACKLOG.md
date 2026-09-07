@@ -7160,6 +7160,26 @@ first:
 **Order for S4+:** the cowl texture (1) is the biggest delta and has a known cause; then the
 cockpit-view mirrors/suspension (2); then eye height/FOV against the gold frame (3, 4 together).
 
+### CARGOLD-1 S4 (17:40) — the pale cowl is the COCKPIT SURROUND drawn with a leaked texture; E106's "brass plate" is the yellow stripe
+
+Type census on the car meshes: 0x81D is 424 tris on the Lotus / 504 on the Ferrari -- the tyres
+again as flat discs plus untextured plates. First reading: a far-LOD hull; a `JM_SKIP_PTYPES=0x81d`
+A/B (`car_gold/lotus_cockpit_nolod.png`, `lotus_chase_lod.png` vs `lotus_chase_nolod.png`)
+showed: WITH them, a pale slab covers the cockpit opening in the chase view (the helmet pokes
+through it) and fills the driver's forward view; WITHOUT them the cockpit is open like GPL's --
+but the cockpit view then has NO cowl at all. So they are not a LOD: in the driver-view model
+(`lotd.3DO`) the 0x81D group IS the cowl top / cockpit surround (88 tris at the plate's position,
+plus 66 textured 0x821 tris on the lower sides), and its polys carry their OWN colours: dark
+green (`0x0e160b`) for the surround and brass/yellow (`0xbfa338`) for a 0.58 m wide band down the
+centre -- **the Lotus 49's yellow stripe over the cockpit**, which E106-S22 read as "a brass plate
+GPL does not draw". GPL draws flat-typed polys in their colour (they carry no UV list; the bound
+texture is state that leaks in our parser); we sample one texel of the leaked texture, hence the
+uniform pale plate. The correct treatment is the existing `FLATPOLY_FIX` (JM_FLATPOLY=1: draw a
+flat-typed poly in its own colour), which E106 left OFF on the brass-plate theory. The skip knob
+stays for A/B only (default off). Captures with JM_FLATPOLY=1 (cockpit + chase) are running; if the
+surround comes out green with the stripe, FLATPOLY becomes the default and the E106 engine-graphics
+item closes with it.
+
 **Sprint plan.** S1: measure -- one triptych per chassis with the current build, axle offsets in
 a table (the census). S2-S4: fix the placements, worst first (user Lotus first, then the AI five).
 S5: the gate; S6: ship and the PO's eye.

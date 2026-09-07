@@ -1208,7 +1208,11 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
     # at distance, never up close. Drawn here it filled the cockpit with a flat pale plate over
     # the real dark-green lo133/frontlot cowl (the gold cockpit still). JM_SKIP_PTYPES="0x81d,..."
     # (default 0x81d for cars, nothing for tracks); JM_SKIP_PTYPES=0 keeps everything.
-    skip_ptypes = let e = get(ENV, "JM_SKIP_PTYPES", track ? "" : "0x81d")
+    # 17:40 correction: NOT the default. lotd.3DO's 0x81D polys ARE the cowl top, coloured dark
+    # green with the yellow stripe as their own flat colours (66 textured 0x821 tris form the lower
+    # sides); skipping them removed the cowl entirely. The right treatment is FLATPOLY (draw a
+    # flat-typed poly in its own colour). The knob stays for A/B only.
+    skip_ptypes = let e = get(ENV, "JM_SKIP_PTYPES", "")
         e == "0" || e == "" ? Set{UInt32}() : Set{UInt32}(parse(UInt32, strip(x)) for x in split(e, ","))
     end
     kept = [m.tris[i] for i in eachindex(m.tris) if keep(m.tris[i]) && !(m.groups[i] in exclude_groups) && !(m.tris[i].ptype in skip_ptypes) &&
