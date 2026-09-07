@@ -6952,6 +6952,29 @@ LOD (the .dat holds several); TRACKSMOOTH-1 (the AI heading) is a different thin
 count road triangles per 100 m at the hairpin vs the straights, and compare a matched-viewpoint
 capture with the video frame. Part of TRACKGOLD-1.
 
+### RING-HAIRPIN-1 S1 (17:21) — it is coarse GEOMETRY: the pits loop is drawn with 15-30 road triangles per 100 m, edges 90-150 m long
+
+`JM_ROADTRIS=1` on the Ring (33,129 road-textured triangles, 22,841 m): the lap runs ~300 road
+triangles per 100 m with a mean longest edge of ~9 m (13,900 m: 531 / 7.3 m), except the first
+1.5 km -- the pits loop between the grandstands, where both hairpins are:
+
+| lapdist | tris / 100 m | mean longest edge |
+|---|---|---|
+| 0 m | 73 | 33.8 m |
+| 100 m | 15 | 123.5 m |
+| 300 m | 28 | 149.9 m |
+| 400 m | 25 | 88.2 m |
+| 1100 m | 25 | 93.0 m |
+| 1200 m | 16 | 125.5 m |
+| 1400 m | 24 | 106.9 m |
+| elsewhere | ~250-530 | 7-10 m |
+
+A hairpin drawn with triangles 100 m long IS a polygon; no heading smoothing can round it. GPL
+draws that loop from finer geometry (the gold video is smooth there), so this loop's road comes
+from a different source than the rest of the lap -- a coarse LOD of the `nurburg.dat` sections or a
+pit-area object. Next: the hook now prints the road TEXTURES per coarse bucket (a LOD/section has
+its own name); then load the finer section for that loop the way `gpl_scenery` loads the rest.
+
 ## 🔲 BACKLOG — TRACKGOLD-1: Spa and the Ring closer to the gold standard; the Ring's missing trackside objects; no free-standing lines of people on any track  ⭐ PRIORITY (PO 2026-09-06 14:50)
 
 PO, verbatim: *"add priority backlog item: make julia spa and ring tracks closer to gold standard.
