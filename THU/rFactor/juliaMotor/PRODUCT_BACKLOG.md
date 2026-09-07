@@ -7143,8 +7143,14 @@ image (the depot's compiled cache travels in the AppImage); the sysimage build s
    on the hillside rising AWAY from the road. Mirror A/B footprints: mirrored (current) lat 6..15 (a
    wall along the road), unmirrored 6..45 (a hill rising away) -- the unmirrored one is the hillside.
    Visual A/B in flight (`ringm0_s*.png`, JM_OBJ_MIRROR=0 at s=1000/1300/20800/21200) against the
-   gold frames; if it lands the row flat and the veils on the hills, in-place objects need the
-   unmirrored frame (and yawed objects need checking for reversed text).
+   gold frames. **Result:** neither -- unmirrored, the "row" lies level but ACROSS the track at the
+   horizon and the final-straight veils float as panels in the sky (`ringm0_s*.png`). Record heights
+   match ours exactly (census5: ours-rec = 0.0 for every object), so height is not it either.
+   **`last01` is not a billboard row: its textures are asphalt / bank01 / grass -- an in-place TERRAIN
+   patch (the spectator bank painted with the crowd), 36 vertices, a surface descending from z=+4 to
+   -4.2 across its 184 x 262 m footprint.** In GPL it IS the ground there; ours draws its far end 8-9 m
+   above our terrain, i.e. the descent runs the wrong way -- a heading error that symmetric trees never
+   show. Probe: `JM_OBJ_YAW_ADD=180` on every placed object (`ringy_s*.png` at s=1000/120/8500/20800).
 
 ## 🔲 BACKLOG — TRACKGOLD-1: Spa and the Ring closer to the gold standard; the Ring's missing trackside objects; no free-standing lines of people on any track  ⭐ PRIORITY (PO 2026-09-06 14:50)
 

@@ -2517,7 +2517,10 @@ const SOLID_EXCL_HW = parse(Float64, get(ENV, "JM_SOLID_EXCL_HW", "4.0"))
 # default is 0; the relyaw≈88° reading is just the mesh's reference axis, not the visual length.  The
 # knob stays for fine angle tweaks (JM_GSTAND_YAW, deg).  Collision is centre+radius (orientation-free).
 const GSTAND_YAW = deg2rad(parse(Float64, get(ENV, "JM_GSTAND_YAW", "0")))
-objyawfix(nm) = startswith(lowercase(nm), "gstand") ? GSTAND_YAW : 0.0
+# TRACKGOLD-1 S4 probe: JM_OBJ_YAW_ADD=<deg> adds a heading to EVERY placed object (last01, an in-place
+# terrain bank with 8 m of descent along its 320 m, floats at its far end as if it ran the wrong way).
+const OBJ_YAW_ADD = deg2rad(parse(Float64, get(ENV, "JM_OBJ_YAW_ADD", "0")))
+objyawfix(nm) = (startswith(lowercase(nm), "gstand") ? GSTAND_YAW : 0.0) + OBJ_YAW_ADD
 # TRACKGOLD-1 S4 probe (2026-09-06): the Ring's in-place veils (wehr-l2/l3, last01, hohe-lg3: placement yaw 0,
 # geometry authored around, not at, the origin) land across the road. If the object meshes' Z mirror does
 # not match the placement frame, off-origin geometry flips to the other side of its origin while
@@ -2719,7 +2722,7 @@ if SKIDPAD || (NURB && get(ENV, "JM_RING_OBJECTS", "1") == "0")
     global STATICTREES = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32,Float32}[]
     global SOLIDS = Tuple{Float64,Float64,Float64,Symbol}[]   # no collidable trackside objects on skidpad / Nürburgring (scenery baked in) — without this solid_hit()/solid_contact() throws UndefVarError on the first collision check
     global OBJINSTS = Tuple{String,Float32,Float32,Float32,Symbol,Bool}[]   # no placed objects here, but JM_SWEEP/JM_SPOT still need it defined to run the HAT/molasses checks
-    global OBJ_LVERTS = Dict{String,Vector{Tuple{Float32,Float32}}}(); global OBJ_YAW = Dict{Tuple{Float64,Float64},Float64}(); global OBJ_YMN = Dict{String,Float32}(); global OBJ_YMX = Dict{String,Float32}()
+    global OBJ_LVERTS = Dict{String,Vector{Tuple{Float32,Float32}}}(); global OBJ_YAW = Dict{Tuple{Float64,Float64},Float64}(); global OBJ_YMN = Dict{String,Float32}(); global OBJ_YMX = Dict{String,Float32}(); global OBJ_RECZ = Dict{Tuple{Float64,Float64},Float64}(); global OBJ_VERTS = Dict{String,Any}()
     # E76-S8: THE RING'S MISSING BILLBOARDS.  The Ring does not use the GPL object pipeline below —
     # it loads scenery through its own gpl_scenery(), which had no billboard path at all, so every
     # placement whose .3do carries no geometry was silently dropped.  E76-S5 instrumented the drop
@@ -4338,6 +4341,9 @@ let objnames=Set{String}()
     global OBJ_LVERTS = lverts
     global OBJ_YMN = Dict{String,Float32}(k => v for (k, v) in ymn)   # local lowest vertex per object name (S4 census)
     global OBJ_YMX = Dict{String,Float32}(k => v for (k, v) in ymx)
+    global OBJ_VERTS = objverts       # full render-frame parts per object name (S4 vertex probe)
+    # the placement RECORD's own height per instance (we place on our HAT instead; the census compares the two)
+    global OBJ_RECZ = Dict{Tuple{Float64,Float64},Float64}((round(Float64(i.x), digits=2), round(Float64(i.y), digits=2)) => Float64(i.z) for i in insts)
     global OBJ_YAW = Dict{Tuple{Float64,Float64},Float64}((round(Float64(i.x), digits=2), round(Float64(i.y), digits=2)) => -Float64(i.yaw) + Float64(objyawfix(i.name)) for i in insts)
     if get(ENV,"JM_FOOTPRINT","")!=""
         # E71-S8: rank objects by how far their FOOTPRINT penetrates the asphalt, not by how far
@@ -6246,8 +6252,37 @@ function main()
                     end
                     latr = isfinite(lo) ? string(round(lo, digits = 1), "..", round(hi, digits = 1)) : "-"
                 end
+                oy_ = Float64(first(filter(t -> t[1] == r[1] && Float64(t[2]) == r[7], OBJINSTS))[4])
+                recz = get(OBJ_RECZ, k, NaN)
                 println("   s=", lpad(round(Int, r[3]), 6), "  ", rpad(r[1], 10), " ", r[2], "  lat=", lpad(round(r[4], digits = 1), 6), "  dy=", lpad(round(r[5], digits = 1), 5),
-                        "  yaw=", isnan(yaw) ? "  ?" : lpad(round(Int, rad2deg(yaw)), 4), "°  ext=", ex, "  h=", round(Float64(get(OBJ_YMX, r[1], 0f0) - get(OBJ_YMN, r[1], 0f0)), digits = 1), "  drawn lat=", latr)
+                        "  yaw=", isnan(yaw) ? "  ?" : lpad(round(Int, rad2deg(yaw)), 4), "°  ext=", ex, "  h=", round(Float64(get(OBJ_YMX, r[1], 0f0) - get(OBJ_YMN, r[1], 0f0)), digits = 1), "  drawn lat=", latr,
+                        "  ours_y=", round(oy_, digits = 1), " rec_y=", isnan(recz) ? "?" : round(recz, digits = 1), " (ours-rec=", isnan(recz) ? "?" : round(oy_ - recz, digits = 1), ")")
+            end
+        end
+        # JM_OBJVERTS="name": every vertex of the first two instances of that object in WORLD space through
+        # the renderer's own model matrix, with the bare-terrain height under it -- whether an in-place
+        # patch sits on our ground or hangs above it, vertex by vertex.
+        vn = lowercase(get(ENV, "JM_OBJVERTS", ""))
+        if vn != ""
+            ninst = 0
+            for i in insts
+                lowercase(i.name) == vn || continue; ninst += 1; ninst > 2 && break
+                pv = get(OBJ_VERTS, i.name, nothing); pv === nothing && (println("  no parts for ", i.name); continue)
+                M = Render.translate(Float32[i.x, plozfp(i), -i.y]) * Render.roty(Float32(-i.yaw + objyawfix(i.name)))
+                hr0 = JuliaMotor.hat(TRKSURF, Float64(i.x), Float64(i.y))
+                println("  --- ", i.name, " #", ninst, " origin (", round(Float64(i.x), digits=1), ", ", round(Float64(i.y), digits=1), ") placed y=", round(Float64(plozfp(i)), digits=1),
+                        " yaw=", round(rad2deg(Float64(i.yaw)), digits=1), "°  s=", hr0.found ? round(hr0.lapdist, digits=0) : -1, " lat=", hr0.found ? round(hr0.lateral, digits=1) : "?")
+                println("     world_x   world_z   vert_y  terrain_y   delta    s     lat")
+                n = 0
+                for pp in pv, k in 1:11:length(pp.verts)
+                    q = M * Float32[pp.verts[k], pp.verts[k+1], pp.verts[k+2], 1f0]
+                    px = Float64(q[1]); py = Float64(q[2]); pz = -Float64(q[3])
+                    g = JuliaMotor.hat3d(TERRAIN0, px, pz; ref = Inf); hr = JuliaMotor.hat(TRKSURF, px, pz)
+                    println("     ", lpad(round(px, digits=1), 8), "  ", lpad(round(pz, digits=1), 8), "  ", lpad(round(py, digits=1), 6), "  ",
+                            lpad(g[3] ? round(Float64(g[1]), digits=1) : "-", 8), "  ", lpad(g[3] ? round(py - Float64(g[1]), digits=1) : "-", 6), "  ",
+                            lpad(hr.found ? round(Int, hr.lapdist) : -1, 5), "  ", lpad(hr.found ? round(hr.lateral, digits=1) : "?", 6))
+                    n += 1; n >= 40 && break
+                end
             end
         end
         println("OBJCENSUS_RESULT track=", TRACKSEL, " onroad=", length(onr), " floating=", length(flo), " buried=", length(bur))
