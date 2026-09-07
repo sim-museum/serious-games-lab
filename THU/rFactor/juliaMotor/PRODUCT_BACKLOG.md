@@ -7029,10 +7029,17 @@ skipped in the draw. Ring: 16,980 quads from all 16,980 waypoints, mean width 10
 continuous curve instead of the 5 m polyline** -- the PO's defect, gone. Wrong in the first capture:
 the first-guess texture ("groove", the centre strip) at vertex colour 1,1,1 drew the road near
 white. S3b: texture, vertex colour and UV tile taken from the track's own asphalt strip; re-captures
-queued (`tess2_ring_*`, `tess2_wg_*`, cockpit at 560 as well). Not yet: the groove line (one texture
-band), kerbs over the generated surface, the physics still runs on the .3do road (unchanged
-heights, so no behaviour change), and a gate that the generated edge stays within 0.3 m of the
-HAT's tarmac edge.
+queued (`tess2_ring_*`, `tess2_wg_*`, cockpit at 560 as well). **S3b result (01:45):** geometry right
+on both tracks (Ring 16,980 quads, mean width 10.0 m; Watkins 920 quads, 12.0 m; the Südkehre's edge
+and Watkins' esses are continuous curves); the MATERIAL is wrong in opposite ways -- near-black at the
+Ring (`tess2_ring_s600.png`, "Asphalt" part, colour 0.56, tile 9.0 m) and blown-out white at Watkins
+(`tess2_wg_s900.png`, colour 0.52-0.56, tile 7.4 m), so the generated part is not going through the
+same shader inputs as the .3do strips (per-vertex colour vs Item colour, the track bright/ambfill
+grade, or the mip resolved for "Asphalt" vs the strip's own). **JM_ROADTESS stays OFF by default**
+until S3c reads Render.draw's inputs for a track item and matches them. Not yet either: the groove
+line (one texture band), kerbs over the generated surface, the physics still runs on the .3do road
+(unchanged heights, so no behaviour change), and a gate that the generated edge stays within 0.3 m
+of the HAT's tarmac edge.
 
 
 ## 🔴 PO TEST ROUND 2 (2026-09-06 20:50, `JuliaRacer-x86_64-livery.AppImage`) — items, verbatim, with owners
