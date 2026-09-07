@@ -7150,7 +7150,11 @@ image (the depot's compiled cache travels in the AppImage); the sysimage build s
    the scuttle a low nose running away, wheels at the sides); B is a helmet cam, too high and far back.
    **Default = A (0.25 / 0.52).** Still missing vs gold: the silver front wishbones, the mirror stalks,
    the helmet top at the frame bottom; and the gold's dash is larger (eye closer or FOV narrower than
-   80°) -- an FOV A/B is the next S8 step. `JM_EYE_X/Y/DROP` remain overrides.
+   80°) -- an FOV A/B is the next S8 step. `JM_EYE_X/Y/DROP` remain overrides. **S8c (03:20): FOV A/B**
+   `lotus_cockpit_fov65.png` / `fov72.png` vs `gold_crop.png`: 65° gives the gold's dash and wheel size,
+   72° keeps more of the wheels; **default now 70°** (JM_FOV overrides). Still missing: the silver
+   wishbones and mirror stalks (the `frontlot` flat polys draw one texel and vanish; GPL's cockpit car
+   draws the suspension) -- S8d.
    **TRACKGOLD-1 S4 census (JM_OBJCENSUS=1, new hook, Ring, 22:27):** 575 meshes + 981 billboards
    rendered; 51 at/on the road, most at |lat| 4.1-4.9 (edge shrubs/trees), plus `inhcast2` at lat 0.0
    (s=1962) and `hohe-lg3` at lat -2.7 (s=15505): the big landscape veils ("-lg/-rg" hillside meshes)

@@ -5197,7 +5197,10 @@ const PROJ = Render.perspective_revz(deg2rad(62f0), Float32(W/H), 0.35f0, 3000f0
 tstamp("  [E80] AI car models done / projection")
 # GPL's cockpit uses a WIDE field of view — the mirrors sit at the screen edges and you see lots of road.
 # A separate wide projection for the cockpit view (tunable via JM_FOV) reproduces that immersive look.
-const PROJ_COCKPIT = Render.perspective_revz(deg2rad(parse(Float32,get(ENV,"JM_FOV","80"))), Float32(W/H), 0.20f0, 3000f0)
+# CARGOLD-1 S8c (2026-09-07): FOV A/B against the gold cockpit still -- 65 (car_gold/lotus_cockpit_fov65.png)
+# gives the gold's dash and wheel size, 72 keeps more of the wheels in frame, 80 (the old default) made the
+# dash small and the scuttle a "visor". Default 70; JM_FOV overrides.
+const PROJ_COCKPIT = Render.perspective_revz(deg2rad(parse(Float32,get(ENV,"JM_FOV","70"))), Float32(W/H), 0.20f0, 3000f0)
 
 # ---- input: edge-detected shift, view + auto-gearbox toggle ----
 mutable struct Ctl; prevUp::Bool; prevDn::Bool; prevV::Bool; prevG::Bool; prevM::Bool; prevRec::Bool; prevRestart::Bool; view::Int; auto::Bool; cluWarned::Bool; end
