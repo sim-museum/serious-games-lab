@@ -2520,6 +2520,9 @@ const GSTAND_YAW = deg2rad(parse(Float64, get(ENV, "JM_GSTAND_YAW", "0")))
 # TRACKGOLD-1 S4 probe: JM_OBJ_YAW_ADD=<deg> adds a heading to EVERY placed object (last01, an in-place
 # terrain bank with 8 m of descent along its 320 m, floats at its far end as if it ran the wrong way).
 const OBJ_YAW_ADD = deg2rad(parse(Float64, get(ENV, "JM_OBJ_YAW_ADD", "0")))
+const SEC_TWOSIDED = get(ENV, "JM_SEC_TWOSIDED", "0") != "0"
+const OBJ_USE_RECZ = get(ENV, "JM_OBJ_RECZ", "1") != "0"
+const OBJ_RECZ_TOL = parse(Float64, get(ENV, "JM_OBJ_RECZ_TOL", "0.5"))
 objyawfix(nm) = (startswith(lowercase(nm), "gstand") ? GSTAND_YAW : 0.0) + OBJ_YAW_ADD
 # TRACKGOLD-1 S4 probe (2026-09-06): the Ring's in-place veils (wehr-l2/l3, last01, hohe-lg3: placement yaw 0,
 # geometry authored around, not at, the origin) land across the road. If the object meshes' Z mirror does
@@ -3218,7 +3221,20 @@ let objnames=Set{String}()
         end
         trkzlo
     end
-    ploz(i)  = (gz = groundz(i.x, i.y); gz > -900f0 ? gz : edgez(Float32(i.x), Float32(i.y)))
+    # TRACKGOLD-1 S4b (2026-09-07): the placement RECORD carries each object's height, and it agrees with our
+    # HAT to the centimetre wherever the HAT is sound (census5: ours-rec = 0.0 for the bank, the barriers,
+    # the veils). Where the HAT is NOT sound the record is right and we were wrong: stree11 at Ring s=20911
+    # placed 246 m BELOW its record, stree9 2.6 m above -- the PO's sunk/floating objects. Prefer the record
+    # when the two disagree by more than JM_OBJ_RECZ_TOL (0.5 m) or the HAT has no answer. JM_OBJ_RECZ=0 reverts.
+    _recz_used = Ref(0)
+    ploz(i)  = begin
+        gz = groundz(i.x, i.y); g = gz > -900f0 ? gz : edgez(Float32(i.x), Float32(i.y))
+        if OBJ_USE_RECZ && isfinite(i.z) && (!(gz > -900f0) || abs(Float64(g) - Float64(i.z)) > OBJ_RECZ_TOL)
+            _recz_used[] += 1; Float32(i.z)
+        else
+            g
+        end
+    end
     # track's own vertical band (GPL-z, = HAT height) — some classic layouts are authored with a
     # large vertical offset (Spa sits at z≈294..498 m, not ≈0), so a hard-coded height window is
     # wrong.  On-HAT objects are snapped to the terrain ⇒ grounded by construction (always keep);
@@ -6217,6 +6233,8 @@ function main()
         flo = filter(r -> !isnan(r[5]) && r[5] > 1.5, rows)
         bur = filter(r -> !isnan(r[5]) && r[5] < -1.5, rows)
         println("  on/at the road (tarmac under origin or |lat| < 4.5): ", length(onr), "   floating (placement > 1.5 m above the bare terrain): ", length(flo), "   sunk (< -1.5 m): ", length(bur))
+        ndis = count(((nm, ox, oz, oy, kind, _),) -> (rz = get(OBJ_RECZ, (round(Float64(ox), digits=2), round(Float64(oz), digits=2)), NaN); !isnan(rz) && abs(Float64(oy) - rz) > 0.5), OBJINSTS)
+        println("  placement height vs the record: ", ndis, " of ", length(OBJINSTS), " differ by > 0.5 m (JM_OBJ_RECZ=", OBJ_USE_RECZ ? "1, record used" : "0, HAT used", ")")
         hist(v) = join(["$(k)=$(c)" for (k, c) in sort(collect(Dict(k => count(==(k), v) for k in unique(v))); by = kv -> -kv[2])[1:min(end, 12)]], " ")
         println("  on-road names: ", hist([r[1] for r in onr]))
         println("  floating names: ", hist([r[1] for r in flo]))
@@ -6265,21 +6283,24 @@ function main()
         vn = lowercase(get(ENV, "JM_OBJVERTS", ""))
         if vn != ""
             ninst = 0
-            for i in insts
-                lowercase(i.name) == vn || continue; ninst += 1; ninst > 2 && break
-                pv = get(OBJ_VERTS, i.name, nothing); pv === nothing && (println("  no parts for ", i.name); continue)
-                M = Render.translate(Float32[i.x, plozfp(i), -i.y]) * Render.roty(Float32(-i.yaw + objyawfix(i.name)))
-                hr0 = JuliaMotor.hat(TRKSURF, Float64(i.x), Float64(i.y))
-                println("  --- ", i.name, " #", ninst, " origin (", round(Float64(i.x), digits=1), ", ", round(Float64(i.y), digits=1), ") placed y=", round(Float64(plozfp(i)), digits=1),
-                        " yaw=", round(rad2deg(Float64(i.yaw)), digits=1), "°  s=", hr0.found ? round(hr0.lapdist, digits=0) : -1, " lat=", hr0.found ? round(hr0.lateral, digits=1) : "?")
+            for (nm_, ox_, oz_, oy_, kind_, _) in OBJINSTS
+                lowercase(nm_) == vn || continue; ninst += 1; ninst > 2 && break
+                pv = get(OBJ_VERTS, nm_, nothing); pv === nothing && (println("  no parts for ", nm_); continue)
+                yaw_ = get(OBJ_YAW, (round(Float64(ox_), digits=2), round(Float64(oz_), digits=2)), 0.0)
+                M = Render.translate(Float32[ox_, oy_, -oz_]) * Render.roty(Float32(yaw_))
+                hr0 = JuliaMotor.hat(TRKSURF, Float64(ox_), Float64(oz_))
+                println("  --- ", nm_, " #", ninst, " origin (", round(Float64(ox_), digits=1), ", ", round(Float64(oz_), digits=1), ") placed y=", round(Float64(oy_), digits=1),
+                        " yaw=", round(rad2deg(yaw_), digits=1), "°  s=", hr0.found ? round(hr0.lapdist, digits=0) : -1, " lat=", hr0.found ? round(hr0.lateral, digits=1) : "?")
                 println("     world_x   world_z   vert_y  terrain_y   delta    s     lat")
                 n = 0
                 for pp in pv, k in 1:11:length(pp.verts)
                     q = M * Float32[pp.verts[k], pp.verts[k+1], pp.verts[k+2], 1f0]
                     px = Float64(q[1]); py = Float64(q[2]); pz = -Float64(q[3])
                     g = JuliaMotor.hat3d(TERRAIN0, px, pz; ref = Inf); hr = JuliaMotor.hat(TRKSURF, px, pz)
+                    gl = JuliaMotor.hat3d(TERRAIN, px, pz; ref = Inf)     # full ground incl. the landmass sections
                     println("     ", lpad(round(px, digits=1), 8), "  ", lpad(round(pz, digits=1), 8), "  ", lpad(round(py, digits=1), 6), "  ",
-                            lpad(g[3] ? round(Float64(g[1]), digits=1) : "-", 8), "  ", lpad(g[3] ? round(py - Float64(g[1]), digits=1) : "-", 6), "  ",
+                            lpad(g[3] ? round(Float64(g[1]), digits=1) : "-", 8), "  ", lpad(g[3] ? round(py - Float64(g[1]), digits=1) : "-", 6), "  land=",
+                            lpad(gl[3] ? round(Float64(gl[1]), digits=1) : "-", 7), " d=", lpad(gl[3] ? round(py - Float64(gl[1]), digits=1) : "-", 5), "  ",
                             lpad(hr.found ? round(Int, hr.lapdist) : -1, 5), "  ", lpad(hr.found ? round(hr.lateral, digits=1) : "?", 6))
                     n += 1; n >= 40 && break
                 end
@@ -7964,7 +7985,11 @@ function main()
                 # E68 S9b: landmass SECTIONS draw single-sided like GPL — culls the dark edge-skirt
                 # slabs (Ring s≈18400) that our two-sided draw exposed.  Winding per OBJ_FF_CW.
                 # E68 S10b: rail-family parts also draw single-sided (guardrail shimmer).
-                if ti == secfrom; glEnable(GL_CULL_FACE); glCullFace(xor(OBJ_FF_CW, flip) ? GL_FRONT : GL_BACK)
+                # TRACKGOLD-1 S4 probe: JM_SEC_TWOSIDED=1 draws the landmass sections two-sided again -- if a
+                # section's winding is the wrong way it is invisible from the road and the ground behind a bank
+                # (last01 at s=1000) is sky; the bank then reads as a ramp into the air.
+                if ti == secfrom && SEC_TWOSIDED; glDisable(GL_CULL_FACE)
+                elseif ti == secfrom; glEnable(GL_CULL_FACE); glCullFace(xor(OBJ_FF_CW, flip) ? GL_FRONT : GL_BACK)
                 elseif ti < secfrom && (@isdefined TRACK_RAILCULL) && ti <= length(TRACK_RAILCULL)
                     if TRACK_RAILCULL[ti]; glEnable(GL_CULL_FACE); glCullFace(xor(OBJ_FF_CW, flip) ? GL_FRONT : GL_BACK)
                     else; glDisable(GL_CULL_FACE); end

@@ -7150,7 +7150,30 @@ image (the depot's compiled cache travels in the AppImage); the sysimage build s
    patch (the spectator bank painted with the crowd), 36 vertices, a surface descending from z=+4 to
    -4.2 across its 184 x 262 m footprint.** In GPL it IS the ground there; ours draws its far end 8-9 m
    above our terrain, i.e. the descent runs the wrong way -- a heading error that symmetric trees never
-   show. Probe: `JM_OBJ_YAW_ADD=180` on every placed object (`ringy_s*.png` at s=1000/120/8500/20800).
+   show. Probe: `JM_OBJ_YAW_ADD=180` on every placed object (`ringy_s*.png` at s=1000/120/8500/20800):
+   wrong too (the bank hangs over the road; the pit straight ends up under a rotated patch).
+   **Per-vertex probe (JM_OBJVERTS=last01, `ring_objverts3.log`): every one of the bank's 36 vertices sits
+   EXACTLY on the full ground HAT (delta 0.0 inner and outer) -- the bank is where GPL has it.** So the
+   "row rising into the sky" is NOT last01 at all: the VEITH-PIRELLI/PENTOSIN advertising row is another
+   object whose origin lies outside the 150 m census window (the row is ~300 m long) -- a 400 m window run
+   is in flight. Two-sided landmass draw (JM_SEC_TWOSIDED=1, `ring2s_s*.png`): no change at any site, so
+   culling is not it either. **Real defect found on the way:** `stree11` at s=20911 is placed 246 m BELOW
+   its record height and `stree9` 2.6 m above -- our HAT lookup at the origin fails in places while the
+   placement record already carries the right height. **S4b fix:** `ploz` prefers the record height when
+   the HAT disagrees by > 0.5 m or has no answer (JM_OBJ_RECZ=0 reverts); the census counts how many
+   objects that moves on the Ring and Spa (`recz_census_*.log`): **682 of 3102 Ring placements and 708 of
+   9086 Spa placements sit > 0.5 m from their record height on our HAT.** And the 400 m window names the
+   row: **`bkbill` at s=1383, lat 28.6 -- a 476 x 458 m in-place bank-with-billboards object, 26.6 m tall,
+   placed 5.3 m ABOVE its record** (ours 619.5, record 614.2). That is the advertising row rising into the
+   sky, and the same class as the PO's "grandstands floating maybe 5 m". Record heights are now the
+   default. **Photographs (00:21): `recz_ring_s1000.png` -- the VEITH-PIRELLI/PENTOSIN row lies FLAT along
+   the left of the straight, converging to the horizon, exactly the gold's `g_t55`; `recz_ring_s20800.png`
+   -- the road is clear, no slab; `recz_spa_s150.png` -- Spa's start area unchanged and right.** Still
+   open after this: the hillside veils (`wehr-l2` at 8.5 km standing vertical at the road edge; the thin
+   spires on the final-straight horizon) -- an orientation matter for in-place hillside meshes, S4c; and
+   the s=120 teleport still lands the chase camera inside the pit building (an instrument matter, the
+   PO's own video shows the start normally). Ships as `JuliaRacer-x86_64-heights.AppImage` after the fast
+   object gates (people, solid_box, wheel_hubs, telemetry_rpm).
 
 ## 🔲 BACKLOG — TRACKGOLD-1: Spa and the Ring closer to the gold standard; the Ring's missing trackside objects; no free-standing lines of people on any track  ⭐ PRIORITY (PO 2026-09-06 14:50)
 
