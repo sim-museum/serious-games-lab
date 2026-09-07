@@ -1434,7 +1434,7 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
         # whether its three UVs coincide, its authored colour, and its poly type. E106-S39
         # attributed the PO's engine artefact to 27 tris textured "back4"; this says WHY they are
         # drawn textured when they should not be, without reasoning from the format spec.
-        if get(ENV,"JM_TRIDUMP","") == t.tex
+        if get(ENV,"JM_TRIDUMP","") != "" && get(ENV,"JM_TRIDUMP","") == t.tex   # unset == "" matched every UNTEXTURED tri: ~11k log lines per run
             _uveq = (t.uv[1] == t.uv[2] == t.uv[3])
             println("  [tri] tex=", t.tex, " flat=", t.flat, " uv_coincident=", _uveq,
                     " ptype=0x", string(t.ptype, base=16), " col=", round.(t.col, digits=3),
