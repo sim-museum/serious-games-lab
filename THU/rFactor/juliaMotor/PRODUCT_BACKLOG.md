@@ -7071,6 +7071,34 @@ ahead** of the mesh's rear hubs, 9 cm / 4 cm too far inboard. The real Lotus 49 
 extents (0.62 / 0.67). **S2:** place each car's wheels at ITS mesh hubs (x + body offset, its own
 half-tracks), Lotus first, then the five AI chassis, with a gate reading the same census.
 
+### CARGOLD-1 S2 (Fable 5.1, 2026-09-06 17:00) — wheels at each car's own hubs; Lotus and Eagle captured before/after
+
+`Render.mesh_wheel_hubs(path)` finds a car's tyre groups by shape and returns hub x (tread
+centroid) and the half-track (the wheel's centre plane = midpoint of inner and outer sidewall
+extents); `load_gpl_car` places each AI chassis's wheels there (+ its own body centring offset) and
+the Lotus `WHEELS` come from `lotus.3do` + BODY_OFF. `JM_WHEELS_TABLE=1` restores the shared table.
+Derived placements (rig frame, front / rear x, half-track), from the headless load:
+
+| car | was (all) | now |
+|---|---|---|
+| Lotus   | +1.05 / -1.15, 0.78 / 0.74 | +0.98 / -1.43, 0.76 / 0.77 |
+| Ferrari | +1.05 / -1.15, 0.62 / 0.66 | +1.04 / -1.36, 0.78 / 0.77 |
+| Brabham | " | +1.11 / -1.27, 0.67 / 0.70 |
+| BRM     | " | +1.01 / -1.43, 0.75 / 0.76 |
+| Eagle   | " | +1.40 / -1.05, 0.76 / 0.76 |
+| Cooper  | " | (mesh 1.55 / -0.88, 0.75 / 0.73) |
+
+**Gate** `wheel_hubs_smoke.jl` (registered): four tyres found on all six chassis, hub x within 3 cm
+of the census, half-tracks in the '67 range and symmetric, none equal to the old table; source
+checks that both loaders use the mesh. It caught two bugs in the helper before anything shipped
+(left/right laterals averaging to 0; a vertex-weighted lateral leaning to the outer wall).
+**Captures** (`~/Documents/260906/car_gold/`, the AI-CARGFX replay recipe, WG t=3 s, right-rear
+camera): `lotus_axles_before.png` -- the rear wheel sits AHEAD of the gearbox, exhausts and
+uprights trailing behind it; `lotus_axles_after.png` -- the wheel centred on the rear uprights where
+the driveshafts meet it, the front wheel forward by the same rule; `eagle_axles_before.png` /
+`eagle_axles_after.png` -- the same on the Eagle. The gold stills per chassis are the next
+comparison (S3: matched viewpoints, the whole car, not only the axles).
+
 **Sprint plan.** S1: measure -- one triptych per chassis with the current build, axle offsets in
 a table (the census). S2-S4: fix the placements, worst first (user Lotus first, then the AI five).
 S5: the gate; S6: ship and the PO's eye.
