@@ -6978,6 +6978,23 @@ groove 69) -- so it is not a distinct LOD material, it is the same road drawn wi
 triangles. Next: the scene census at lapdist 300 and 1200 (`JM_SCENE_AT`, E76-S11): is a finer
 road SECTION for the pits loop placed in `nurburg.dat` and dropped or unplaced by `gpl_scenery`?
 
+### RING-HAIRPIN-1 S1b (17:58) — matched frames, and the two censuses disagree on the pits loop
+
+`track_gold/ring_gold_37s.png` (the gold chase lap at the Südkehre: a smooth, continuous road edge
+past the grandstand bank) vs `track_gold/ring_600.png` (Julia, `JM_SHOTS` at lapdist 600: the same
+corner, the road/grass edge in straight segments with sharp joins -- the PO's "piecewise linear").
+So the Südkehre is the 600 m bucket, not the 100-500 m coarse run. The textures per coarse bucket
+are the fine road's own (asphalt, atog, groove, concrete), not a LOD material. **Contradiction to
+resolve first:** the bucketed density (`hat(TRKSURF)` lapdist of each triangle's centroid) counts
+15-28 road tris per 100 m over 100-500 m, but the scene census at lapdist 300 ±250 m counts ~430
+road tris from the track .3do (groove 195, asphalt 155, concrete 80) -- the bucketed attribution is
+unreliable where the pits loop folds the corridor back on itself. **S2:** dump the road-EDGE
+polyline (asphalt/groove boundary vertices, ordered by lapdist) over 550-700 m, count heading steps
+and segment lengths, compare with the gold frame's curve; then find which mesh (track .3do vs a
+`nurburg.dat` section, and which LOD) supplies that edge. The PO's `260906_ring.mp4` is a
+recording of Julia itself (launcher windows, the frozen 2000 rpm readout in every frame), so it is
+the defect's evidence, not the gold; the gold is the 15-minute chase lap.
+
 ## 🔲 BACKLOG — TRACKGOLD-1: Spa and the Ring closer to the gold standard; the Ring's missing trackside objects; no free-standing lines of people on any track  ⭐ PRIORITY (PO 2026-09-06 14:50)
 
 PO, verbatim: *"add priority backlog item: make julia spa and ring tracks closer to gold standard.
