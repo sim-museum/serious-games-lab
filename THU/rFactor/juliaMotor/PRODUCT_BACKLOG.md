@@ -7137,6 +7137,26 @@ the driveshafts meet it, the front wheel forward by the same rule; `eagle_axles_
 `eagle_axles_after.png` -- the same on the Eagle. The gold stills per chassis are the next
 comparison (S3: matched viewpoints, the whole car, not only the axles).
 
+### CARGOLD-1 S3 (17:25) — the whole-car census, cockpit view, Lotus at Watkins Glen vs gold
+
+`car_gold/lotus_cockpit_gold.png` (GPL, 2026-06-26 still) beside `car_gold/lotus_cockpit_after.png`
+(the sim's cockpit view, same track, replay recipe, JM_REPLAY_CAM=0, t=12 s). What differs, largest
+first:
+1. **The cowl.** Gold: dark glossy British-racing green with the yellow centre stripe, rivet lines,
+   a white cockpit rim. Julia: flat pale-green (teal) untextured polygons, no stripe, no rim -- the
+   E106-S19/S21 family (flat-TYPE polys that carry a bound texture GPL still draws with it).
+2. **Nothing beside the cowl.** Gold shows both wing mirrors, the front wishbones/uprights and the
+   dampers in view. Julia shows none of them from the cockpit (the E64 mirrors exist as RTT
+   discs; the chase view draws the suspension halves).
+3. **Steering wheel scale/position.** Julia's wheel fills a third of the frame and sits at the eye;
+   gold's is smaller and lower with both hands on it.
+4. **Front wheels.** Gold: large, close, tread visible, tops near the frame's middle. Julia: smaller
+   and further out/forward -- partly camera (eye height/FOV), partly the wheel radius/placement.
+5. Right: gauges, Lotus badge, red rim, the dash. Ground in the capture is grass (the replay's
+   car is on the verge at t=12; a tarmac frame is the same comparison).
+**Order for S4+:** the cowl texture (1) is the biggest delta and has a known cause; then the
+cockpit-view mirrors/suspension (2); then eye height/FOV against the gold frame (3, 4 together).
+
 **Sprint plan.** S1: measure -- one triptych per chassis with the current build, axle offsets in
 a table (the census). S2-S4: fix the placements, worst first (user Lotus first, then the AI five).
 S5: the gate; S6: ship and the PO's eye.
