@@ -2714,7 +2714,7 @@ if SKIDPAD || (NURB && get(ENV, "JM_RING_OBJECTS", "1") == "0")
     global STATICTREES = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32,Float32}[]
     global SOLIDS = Tuple{Float64,Float64,Float64,Symbol}[]   # no collidable trackside objects on skidpad / Nürburgring (scenery baked in) — without this solid_hit()/solid_contact() throws UndefVarError on the first collision check
     global OBJINSTS = Tuple{String,Float32,Float32,Float32,Symbol,Bool}[]   # no placed objects here, but JM_SWEEP/JM_SPOT still need it defined to run the HAT/molasses checks
-    global OBJ_LVERTS = Dict{String,Vector{Tuple{Float32,Float32}}}(); global OBJ_YAW = Dict{Tuple{Float64,Float64},Float64}(); global OBJ_YMN = Dict{String,Float32}()
+    global OBJ_LVERTS = Dict{String,Vector{Tuple{Float32,Float32}}}(); global OBJ_YAW = Dict{Tuple{Float64,Float64},Float64}(); global OBJ_YMN = Dict{String,Float32}(); global OBJ_YMX = Dict{String,Float32}()
     # E76-S8: THE RING'S MISSING BILLBOARDS.  The Ring does not use the GPL object pipeline below —
     # it loads scenery through its own gpl_scenery(), which had no billboard path at all, so every
     # placement whose .3do carries no geometry was silently dropped.  E76-S5 instrumented the drop
@@ -4332,6 +4332,7 @@ let objnames=Set{String}()
     # local footprint points and each instance's yaw.
     global OBJ_LVERTS = lverts
     global OBJ_YMN = Dict{String,Float32}(k => v for (k, v) in ymn)   # local lowest vertex per object name (S4 census)
+    global OBJ_YMX = Dict{String,Float32}(k => v for (k, v) in ymx)
     global OBJ_YAW = Dict{Tuple{Float64,Float64},Float64}((round(Float64(i.x), digits=2), round(Float64(i.y), digits=2)) => -Float64(i.yaw) + Float64(objyawfix(i.name)) for i in insts)
     if get(ENV,"JM_FOOTPRINT","")!=""
         # E71-S8: rank objects by how far their FOOTPRINT penetrates the asphalt, not by how far
@@ -6204,6 +6205,23 @@ function main()
         println("  --- floating, by height (first 30) ---")
         for r in sort(flo; by = r -> -r[5])[1:min(end, 30)]
             println("   s=", lpad(round(Int, r[3]), 6), "  lat=", lpad(round(r[4], digits = 1), 6), "  dy=", lpad(round(r[5], digits = 1), 5), "  ", r[2], "  ", r[1])
+        end
+        # JM_OBJCENSUS="s1,s2,..." (any number): every rendered placement within +-JM_OBJCENSUS_WIN (150 m) of
+        # each lapdist, with its yaw and local extent -- to NAME the object behind a photographed defect.
+        sites = [tryparse(Float64, t) for t in split(get(ENV, "JM_OBJCENSUS", ""), ",")]
+        for s0 in sites
+            s0 === nothing && continue
+            win = parse(Float64, get(ENV, "JM_OBJCENSUS_WIN", "150"))
+            println("  --- placements within ", win, " m of s=", s0, " (name kind lat dy yaw extent_x extent_z height) ---")
+            near = sort(filter(r -> abs(r[3] - s0) < win, rows); by = r -> r[3])
+            for r in near
+                k = (round(r[7], digits = 2), round(Float64(first(filter(t -> t[1] == r[1] && Float64(t[2]) == r[7], OBJINSTS))[3]), digits = 2))
+                yaw = get(OBJ_YAW, k, NaN)
+                vs = get(OBJ_LVERTS, r[1], nothing)
+                ex = vs === nothing || isempty(vs) ? "-" : string(round(maximum(getindex.(vs, 1)) - minimum(getindex.(vs, 1)), digits = 1), "x", round(maximum(getindex.(vs, 2)) - minimum(getindex.(vs, 2)), digits = 1))   # `last` is a local in main()
+                println("   s=", lpad(round(Int, r[3]), 6), "  ", rpad(r[1], 10), " ", r[2], "  lat=", lpad(round(r[4], digits = 1), 6), "  dy=", lpad(round(r[5], digits = 1), 5),
+                        "  yaw=", isnan(yaw) ? "  ?" : lpad(round(Int, rad2deg(yaw)), 4), "°  ext=", ex, "  h=", round(Float64(get(OBJ_YMX, r[1], 0f0) - get(OBJ_YMN, r[1], 0f0)), digits = 1))
+            end
         end
         println("OBJCENSUS_RESULT track=", TRACKSEL, " onroad=", length(onr), " floating=", length(flo), " buried=", length(bur))
         flush(stdout); exit(0)

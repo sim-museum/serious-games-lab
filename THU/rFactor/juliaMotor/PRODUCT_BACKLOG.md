@@ -7105,7 +7105,17 @@ image (the depot's compiled cache travels in the AppImage); the sysimage build s
    (s=1962) and `hohe-lg3` at lat -2.7 (s=15505): the big landscape veils ("-lg/-rg" hillside meshes)
    are the PO's "curtains crossing the road". Against the full HAT nothing "floats" (dy = 0 by
    construction); rerun against the terrain-only HAT (`TERRAIN0`) to catch placements lifted onto a
-   neighbour's roof (`ring_objcensus2.log`).
+   neighbour's roof (`ring_objcensus2.log`): **nothing floats by placement** (only `bridge3a`, 4.5 m,
+   legitimately). Photographs at the PO's sites (`track_gold/ringpo_s*.png`, 22:39): s=120 the pit
+   straight looks right; **s=1000: a billboard row + crowd panel rises diagonally from the ground into
+   the sky on the LEFT** (the PO's "row of billboards a km down the road ... floating") and a
+   boomerang-shaped veil hangs in the sky behind -- placement is on the ground, so it is the object's
+   ORIENTATION (pitch/roll from a yaw-only placement on a slope, or a mirrored frame); **s=20800 (final
+   straight): the car under a slab again**, with tall green "cliff" veils on the horizon -- the landscape
+   veils (`*-lg/-rg/-l2..l4`, `anton-r`, `doho-rg2`, `meus-lg1`) are what crosses over the road; s=15350
+   /15550 (Hohe Acht): clean road, no banner in frame -- the fallen banner is elsewhere in that climb.
+   JM_OBJCENSUS="1000,8500,20800" (per-site listing with yaw/extent, new) names the objects
+   (`ring_objcensus3.log`).
 
 ## 🔲 BACKLOG — TRACKGOLD-1: Spa and the Ring closer to the gold standard; the Ring's missing trackside objects; no free-standing lines of people on any track  ⭐ PRIORITY (PO 2026-09-06 14:50)
 
