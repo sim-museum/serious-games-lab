@@ -5974,6 +5974,32 @@ function main()
                 " tarmac_pred=", tarmac_hat ? "roadhat" : "corridor", " control=", ctrl ? "ok" : "blind")
         flush(stdout); exit(0)
     end
+    # RING-HAIRPIN-1 (PO 2026-09-06: the hairpin between the grandstands "is piecewise linear instead of
+    # smoothly curving as in GPL"). JM_ROADTRIS=1: road-textured triangles per 100 m of lapdist over
+    # the lap, with the road's mean triangle length -- a hairpin drawn with few, long triangles is
+    # coarse geometry (a LOD or a section choice), many short ones is a smooth road. Exits.
+    if get(ENV, "JM_ROADTRIS", "") != ""
+        rt = [t for t in TRACKMESH.tris if ROAD_TEX(lowercase(t.tex))]
+        cnt = Dict{Int,Int}(); len = Dict{Int,Float64}()
+        for t in rt
+            cx = (Float64(t.p[1][1]) + Float64(t.p[2][1]) + Float64(t.p[3][1]))/3
+            cy = (Float64(t.p[1][2]) + Float64(t.p[2][2]) + Float64(t.p[3][2]))/3
+            hr = JuliaMotor.hat(TRKSURF, cx, cy); (hr.found && abs(hr.lateral) < 12) || continue
+            b = floor(Int, hr.lapdist/100)
+            cnt[b] = get(cnt, b, 0) + 1
+            emax = maximum(hypot(Float64(t.p[i][1]) - Float64(t.p[j][1]), Float64(t.p[i][2]) - Float64(t.p[j][2])) for (i, j) in ((1,2),(2,3),(3,1)))
+            len[b] = get(len, b, 0.0) + emax
+        end
+        println("\n==== JM_ROADTRIS ", uppercasefirst(TRACKSEL), "  (", length(rt), " road tris, lap ", round(Int, TRKSURF.lap_length), " m) ====")
+        println("  lapdist   tris/100m   mean longest edge (m)")
+        for b in sort(collect(keys(cnt)))
+            println("  ", lpad(b*100, 6), "   ", lpad(cnt[b], 6), "      ", round(len[b]/cnt[b], digits = 1))
+        end
+        coarse = sort(collect(keys(cnt)); by = b -> len[b]/cnt[b], rev = true)[1:min(end, 8)]
+        println("  coarsest (longest mean edge): ", join(["$(b*100)m:$(round(len[b]/cnt[b],digits=1))m/$(cnt[b])" for b in coarse], "  "))
+        println("ROADTRIS_RESULT track=", TRACKSEL, " buckets=", length(cnt))
+        flush(stdout); exit(0)
+    end
     AILINE = (CLINE !== nothing && N_AI > 0) ? CLINE : nothing
     # E84/E89 (2026-08-30): JM_AI_GPLLINE=1 -- the AI take their target speed from GPL's OWN race.lp
     # (3.0 m records, index-aligned with our line on tracks that are not re-centred). Measured
