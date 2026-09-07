@@ -7105,8 +7105,13 @@ image (the depot's compiled cache travels in the AppImage); the sysimage build s
    OBJ_CULL2: 915-1028 in range at s=1500-2050 (Eau Rouge/Kemmel) -> 30 fps; 587-650 at s=3600-4500 ->
    39-41 fps; the Ring control (`spa_fps3_nurburgring.log`, 01:06): 60 fps throughout, 164-190 in range
    (vsync-bound; 16.7 ms). Lever 1: the 2.2 km draw radius
-   (now `JM_OBJ_CULL_D`); A/B at 1200 and 800 m queued (`spa_fps_cull*.log`). Lever 2 after that:
-   per-frame frustum/distance culling of billboards, and batching the static objects per section.
+   (now `JM_OBJ_CULL_D`). **A/B (01:30):** 1200 m -> 34-47 fps with 214-445 in range; 800 m -> 35-50 fps
+   with 130-280 in range. So halving the radius twice buys 5-8 fps and the floor stays at 20-28 ms:
+   the trackside meshes are a quarter of the cost at most. The rest is in the track items (Spa's
+   .3do + sections drawn twice: once in the SHADOW depth pass over every trackItem, once lit), the
+   1566 billboards inside BB_CULL2, or the AI cars. **S2:** `[frameprof]` now splits the world draw
+   into depth / track / objects / billboards / cars (`spa_prof.log`); the fix follows the split
+   (shadow pass restricted to the near track, billboard frustum cull, or a smaller radius by default).
 8. **STARTSEQ-2** (PO 21:12) *"change the bar+rabbit ears object (very confusing) at the start of a julia race
    to a box with 3 red lights. That better suggests that you need to do something to start the race. Then
    start the countdown whenever the user presses any keyboard key - not only spacebar"* -- the HUD's pulsing

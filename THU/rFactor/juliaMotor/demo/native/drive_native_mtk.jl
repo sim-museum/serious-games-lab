@@ -2391,6 +2391,8 @@ const WHEELGAP = parse(Int, get(ENV, "JM_WHEELGAP", "0"))
 const FPSDIAG = parse(Int, get(ENV, "JM_FPSDIAG", "0"))   # E80: frame-time report, per view
 const FRAMEPROF = parse(Int, get(ENV, "JM_FRAMEPROF", "0"))  # E80: per-PHASE frame profiler
 const PROF_WORLD = Ref(0.0); const PROF_HUD = Ref(0.0); const PROF_N = Ref(0); const PROF_TOT = Ref(0.0)
+# SPA-FPS-1 S2: the world draw split by phase (shadow depth pass, track items, trackside objects, billboards, AI cars)
+const PROF_DEPTH = Ref(0.0); const PROF_TRACK = Ref(0.0); const PROF_OBJ = Ref(0.0); const PROF_BB = Ref(0.0); const PROF_CARS = Ref(0.0)
 # ---- E95 (PO 2026-08-29): "This is not a game of bumper cars. You hit something hard, your race
 # is over." A hard impact WRECKS the car: the engine is PERMANENTLY disconnected from the
 # drivetrain, the motion damps out, and the wheels nearest the impact come off and roll away.
@@ -8024,6 +8026,7 @@ function main()
             flush(stdout)
         end
         # ---- shadow pass: scene depth from the sun, light box on the car ----
+        _tp_d = time()
         lightVP = Render.light_vp(Float32[cs.x, cs.y, -cs.z], LIGHTDIR)
         Render.shadow_pass(depthprog, shadowfbo, lightVP) do dp
             for it in trackItems; Render.draw_depth(dp, it, Render.ident()); end
@@ -8050,6 +8053,7 @@ function main()
             # un-mirror back faces; give the track mesh the same treatment (road/kerb back faces are unseen).
             glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 1)
             secfrom = (@isdefined SEC_FROM) ? SEC_FROM : typemax(Int)
+            PROF_DEPTH[] += time() - _tp_d; _tp_t = time()
             for (ti, it) in enumerate(trackItems)                        # ambfill lifts shadowed walls/fences out of the "carbonized" black under the flat overcast light
                 # RING-HAIRPIN-1 S3: with the tessellated road on, the .3do's asphalt/groove strips are not drawn
                 if ROADTESS && ti <= length(TRACKMAIN) && (lt_ = lowercase(TRACK[ti].tex); occursin("asp", lt_) || startswith(lt_, "groove"))
@@ -8089,6 +8093,7 @@ function main()
                 glEnable(GL_CULL_FACE); glCullFace(xor(OBJ_FF_CW, flip) ? GL_FRONT : GL_BACK)
                 glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 0)
             end
+            PROF_TRACK[] += time() - _tp_t; _tp_o = time()
             for (items,mat,grz,opos,onm) in OBJECTS                   # trackside objects (trees graze-fade; uBackFlip stays 1 when un-culled)
                 (eye_[1]-opos[1])^2+(eye_[2]-opos[2])^2+(eye_[3]-opos[3])^2 > OBJ_CULL2 && continue   # distance cull
                 ob, oa = 1.05, 0.55                                    # default object grade (grandstands/buildings)
@@ -8099,6 +8104,7 @@ function main()
                 otint = is_crowd_obj(onm) ? CROWD_TINT : (1f0,1f0,1f0)   # E46: warm/de-blue the over-blue grandstand crowd MIP
                 for it in items; Render.draw(prog, it, vp_, mat; bright=ob, ambfill=oa, graze=grz, tint=otint); end   # grandstands/buildings: ambfill kills the "post-Hiroshima carbonized" shadow faces → vibrant GPL look
             end
+            PROF_OBJ[] += time() - _tp_o; _tp_b = time()
             for (it,pos,w,h,yaw) in STATICTREES                      # wide forest-edge panels (authored yaw, graze-fade)
                 (eye_[1]-pos[1])^2+(eye_[2]-pos[2])^2+(eye_[3]-pos[3])^2 > BB_CULL2 && continue
                 Render.draw(prog, it, vp_, Render.translate(Float32[pos[1],pos[2],pos[3]])*Render.roty(yaw)*Render.scalexyz(w,h,1f0); bright=1.3, ambfill=0.8, graze=true, unlit=!BB_LIT)   # E63/MZ3: the comment always claimed graze-fade but the call never passed it → a wide Monza forest strip seen EDGE-ON rendered as a dark triangular SLAB at the S/F. graze=true fades edge-on quads (uGraze) so the strip shows face-on as a tree-line and vanishes edge-on
@@ -8109,6 +8115,7 @@ function main()
                 (eye_[1]-pos[1])^2+(eye_[2]-pos[2])^2+(eye_[3]-pos[3])^2 > BB_CULL2 && continue       # distance cull
                 Render.draw(prog, it, vp_, Render.billboard_model(pos,w,h,eye_); bright=BB_BRIGHT, ambfill=BB_AMB, unlit=!BB_LIT)  # E83-S3: unlit by default (GPL pre-lit art); E70-S7 tunables only matter with JM_BILLBOARD_LIT=1
             end
+            PROF_BB[] += time() - _tp_b; _tp_c = time()
             for (p, cm) in zip(ai_poses, AICHASSIS)                 # AI grid (Ferrari/Brabham/BRM/Eagle/Cooper)
                 for it in cm.body; Render.draw(prog, it, vp_, aiBody(p, cm); bright=1.25, spec=0.10, ambfill=0.62); end
                 # E106-S25: JM_NO_AI_WHEELS=1 suppresses the AI wheel draw. The rods on the AI rear
@@ -8119,6 +8126,7 @@ function main()
                     for (wx,wz,_,r,nm) in cm.wheelspec, it in cm.wheels[nm]; Render.draw(prog, it, vp_, aiWheel(p,wx,wz,r)); end
                 end
             end
+            PROF_CARS[] += time() - _tp_c
             # E85-S5: the REMOTE cars, drawn through exactly the same path as the AI field -- same
             # body/wheel transforms, so anything true of an AI car's placement is true of theirs.
             if !isempty(NETPOSES[]) && !isempty(AICARMODELS)
@@ -8309,10 +8317,14 @@ function main()
                 tot = PROF_TOT[] > 0 ? PROF_TOT[]/nn*1000 : NaN
                 println("  [frameprof] ", nn, " frames:  world ", round(1000*PROF_WORLD[]/nn, digits=2),
                         " ms   hud ", round(1000*PROF_HUD[]/nn, digits=2), " ms",
+                        "   [depth ", round(1000*PROF_DEPTH[]/nn, digits=2), " track ", round(1000*PROF_TRACK[]/nn, digits=2),
+                        " objects ", round(1000*PROF_OBJ[]/nn, digits=2), " billboards ", round(1000*PROF_BB[]/nn, digits=2),
+                        " cars ", round(1000*PROF_CARS[]/nn, digits=2), "]",
                         isnan(tot) ? "   (total not measured -- set JM_FPSDIAG too)" :
                                      "   of " * string(round(tot, digits=2)) * " ms total")
                 flush(stdout)
                 PROF_WORLD[] = 0.0; PROF_HUD[] = 0.0; PROF_N[] = 0; PROF_TOT[] = 0.0
+                PROF_DEPTH[] = 0.0; PROF_TRACK[] = 0.0; PROF_OBJ[] = 0.0; PROF_BB[] = 0.0; PROF_CARS[] = 0.0
             end
         end
         if FPSDIAG > 0
