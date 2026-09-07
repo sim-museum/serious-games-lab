@@ -460,11 +460,16 @@ gpl_rail(line::AILine, s, side) = (g = GPLLAT[]; g === nothing ? nothing :
 function _vtarget(line::AILine, s, v; amax, vmax, vmin, scale)
     g = GPLV[]
     if g !== nothing
-        n = length(g); i0 = mod(floor(Int, mod(s, line.total) / 3.0), n) + 1
+        # AI-PACE-1 (PO 2026-09-07, Spa: "AI lunges forward and back and sometimes slows down for no clear
+        # reason"): GPL's race.lp is one record per 3 m of ITS lap; our line is re-centred on Spa/Ring/
+        # Watkins, so a raw s/3 index drifts along the lap. Index by lap FRACTION instead (the record
+        # spacing becomes total/n), which keeps the table aligned at every point to within the re-centring.
+        n = length(g); rec = line.total / n
+        i0 = mod(floor(Int, mod(s, line.total) / rec), n) + 1
         vt = g[i0]
-        horizon = max(v*2.2, 30.0); off = 3.0             # same look-ahead shape: brake for what is coming
+        horizon = max(v*2.2, 30.0); off = rec             # same look-ahead shape: brake for what is coming
         while off <= horizon
-            vt = min(vt, g[mod(i0 - 1 + round(Int, off/3.0), n) + 1]); off += 3.0
+            vt = min(vt, g[mod(i0 - 1 + round(Int, off/rec), n) + 1]); off += rec
         end
         return clamp(vt*scale, vmin, vmax*scale)
     end

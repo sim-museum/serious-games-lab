@@ -727,7 +727,7 @@ function compose_hud(W,H,kmh,gear,rpm,revlim,thr,brk,clu=0.0,tc=nothing; lastlap
         puls = 0.55 + 0.45*sin(2π*startprompt)          # 0.1 .. 1.0
         lamp = (red[1]*puls, 0.08*puls, 0.08*puls)
         bw, bh = 300, 110
-        bx, by = W÷2 - bw÷2, H÷2 - bh÷2
+        bx, by = W÷2 - bw÷2, 24                          # PO 2026-09-07: the lights at the TOP of the screen, not the centre
         hquad!(v, bx-6, by-6, bw+12, bh+12, dim)        # box frame
         hquad!(v, bx, by, bw, bh, (0.07, 0.07, 0.08))   # box face
         for k in 0:2
@@ -1463,7 +1463,13 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
             # cockpit surround's inner walls (|y| = 0.38) landed on the flank "TEAM LOTUS" lettering as white
             # streaks; the gold shows those walls plain green, so a face whose normal is within 60 deg of
             # horizontal samples one green texel (JM_PLANAR_SIDE_UV, default the body green left of the stripe).
+            # CARGOLD-1 S9 (PO 2026-09-07: "front of car has blotchy green and gold pattern"): the fitted
+            # projection lands the roundel, the flank lettering and the cockpit-hole edge on the surround --
+            # atlas fragments. The gold shows the surround as plain green with the stripe centred, which is
+            # the atlas's centre band above the hole (u 0.37..0.63, v 0.25..0.50): JM_PLANAR_BAND=1 (default)
+            # maps the surround INTO that band only (y across the stripe, x along it); =0 is the full fit.
             planar && (uv = (PLANAR_SIDE && abs(t.n[i][3]) < 0.5f0) ? PLANAR_SIDE_UV :
+                            PLANAR_BAND ? (0.5f0 - 0.34f0*p[2], 0.25f0 + 0.25f0*clamp((p[1] + 0.18f0)/1.22f0, 0f0, 1f0)) :
                             ((p[2] + PLANAR_W/2f0)/PLANAR_W, (p[1] - PLANAR_X0)/PLANAR_L))
             # E36: untextured COCKPIT tris (the tub/floor) take the `grey` shade when JM_TUB_GREY makes it
             # silver — the `grey` param was a no-op before (baked vertex colour used t.col).  Gated on
@@ -1540,6 +1546,7 @@ const PLANAR_W = parse(Float32, get(ENV,"JM_PLANAR_W","-1.32"))     # lateral ex
 const PLANAR_X0 = parse(Float32, get(ENV,"JM_PLANAR_X0","2.64"))    # longitudinal position of v=0 (m): the nose
 const PLANAR_L = parse(Float32, get(ENV,"JM_PLANAR_L","-3.24"))     # longitudinal extent mapped to v 0..1 (m); v = 0.815 - 0.309 x
 const PLANAR_SIDE = get(ENV,"JM_PLANAR_SIDE","1") != "0"             # S6: vertical planar faces take one green texel
+const PLANAR_BAND = get(ENV,"JM_PLANAR_BAND","1") != "0"             # S9: the surround maps into the atlas centre band (green + stripe)
 const PLANAR_SIDE_UV = let v = parse.(Float32, split(get(ENV,"JM_PLANAR_SIDE_UV","0.3,0.42"), ",")); (v[1], v[2]) end
 const STEER_TEX = ("sterlot","lotster","lsterlog")
 """Extract the steering wheel as its own parts + pivot (centre, column axis) in the

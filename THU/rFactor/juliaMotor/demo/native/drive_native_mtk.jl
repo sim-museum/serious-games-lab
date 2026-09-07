@@ -2227,7 +2227,14 @@ const GAUGE_S = parse(Float32, get(ENV,"JM_GAUGE_S","1.0"))
 # tachometer directly above the wheel hub — so the axis that needs testing is the one nobody could
 # adjust. JM_GAUGE_Z (default 0.0 = shipped behaviour unchanged).
 const GAUGE_DZ = parse(Float32, get(ENV,"JM_GAUGE_Z","0.10"))   # E74-S7 SHIPPED (was 0.0 — see GAUGE_DY)
-const GAUGEFLIP = Render.translate(Float32[GAUGE_DX,GCY+GAUGE_DY,GAUGE_DZ]) * Render.scalexyz(GAUGE_S,-GAUGE_S,GAUGE_S) * Render.translate(Float32[0,-GCY,0])
+# CARGOLD-1 S9 (PO 2026-09-07: "Dashboard is upside down"): this matrix mirrors the cluster about its
+# (tilted) plane; A/B captures/dash_before.png vs dash_after.png (JM_GAUGE_YFLIP=0): WITHOUT it the dial
+# faces read mirrored, and the layout (five small dials above, the big tacho below the hub) is the same
+# either way -- the layout is in the extracted cluster itself, while the gold has the tacho ABOVE the hub.
+# The mirror stays on (faces upright); the cluster layout is CARGOLD-1 S9b. JM_GAUGE_YFLIP=0 for A/Bs.
+const GAUGE_YFLIP = get(ENV,"JM_GAUGE_YFLIP","1") != "0"
+const SW_ROT = deg2rad(parse(Float64, get(ENV,"JM_SW_ROT","180")))
+const GAUGEFLIP = Render.translate(Float32[GAUGE_DX,GCY+GAUGE_DY,GAUGE_DZ]) * Render.scalexyz(GAUGE_S, GAUGE_YFLIP ? -GAUGE_S : GAUGE_S, GAUGE_S) * Render.translate(Float32[0,-GCY,0])
 const SWPARTS, SWCENTER, SWAXIS = Render.extract_gpl_steering(LOT3DO)   # steering wheel + pivot
 # Mirrors: GPL gold standard = two round discs LOW at the screen edges (level with the front-tyre
 # tops), on outward stalks — NOT high near the wheel.  Mesh frame: x=fwd, y=up, z=lateral (the two
@@ -2601,7 +2608,11 @@ const SOLID_EXCL_HW = parse(Float64, get(ENV, "JM_SOLID_EXCL_HW", "4.0"))
 # `gstand` is ALREADY ~parallel (a +90° test swung it fully ACROSS the track — clearly wrong), so the
 # default is 0; the relyaw≈88° reading is just the mesh's reference axis, not the visual length.  The
 # knob stays for fine angle tweaks (JM_GSTAND_YAW, deg).  Collision is centre+radius (orientation-free).
-const GSTAND_YAW = deg2rad(parse(Float64, get(ENV, "JM_GSTAND_YAW", "0")))
+# SPA-ROUTE-1 (2026-09-07): Spa's main grandstand `gstands` (44 x 215 m) lay diagonally ACROSS the pit
+# straight at yaw 0 (its roof read as a forest curtain over the road, its face as the PO's dead end);
+# A/B captures/spa_gs90_s14100.png (along the left of the straight, facing the track -- the gold) vs
+# spa_gs-90 (over the road). Spa gets 90 deg; Watkins keeps its tuned 0. JM_GSTAND_YAW overrides.
+const GSTAND_YAW = deg2rad(parse(Float64, get(ENV, "JM_GSTAND_YAW", TRACKSEL == "spa" ? "90" : "0")))
 # TRACKGOLD-1 S4 probe: JM_OBJ_YAW_ADD=<deg> adds a heading to EVERY placed object (last01, an in-place
 # terrain bank with 8 m of descent along its 320 m, floats at its far end as if it ran the wrong way).
 const OBJ_YAW_ADD = deg2rad(parse(Float64, get(ENV, "JM_OBJ_YAW_ADD", "0")))
@@ -3494,13 +3505,22 @@ let objnames=Set{String}()
             false
         else
             th = -Float64(i.yaw) + Float64(objyawfix(i.name)); c, sn = cos(th), sin(th)
-            near = Inf
+            near = Inf; ontar = false
+            # SPA-MASTA-1 (PO 2026-09-07: "a house is protruding into the road a little bit at the masta kink"):
+            # house37/38/39 at s=10812-10928 sit 7-8 m off the centreline where the kink's tarmac is wider than
+            # the 4.1 m edge, so the centreline test kept them. A BUILDING whose footprint has tarmac under it
+            # (road-only HAT + on_track) is dropped too. JM_ONROAD_FP_TARMAC=0 reverts.
+            tarmac_test = get(ENV, "JM_ONROAD_FP_TARMAC", "1") != "0" && ROADHAT !== TERRAIN0 && bldgish(lowercase(i.name))
             for (lx, lz) in vs
                 rx =  lx*c + lz*sn; rz = -lx*sn + lz*c
-                hr = JuliaMotor.hat(TRKSURF, Float64(i.x) + rx, Float64(i.y) - rz)
+                px_ = Float64(i.x) + rx; pz_ = Float64(i.y) - rz
+                hr = JuliaMotor.hat(TRKSURF, px_, pz_)
                 hr.found && (near = min(near, abs(hr.lateral)))
+                if tarmac_test && !ontar && hr.found && hr.on_track && JuliaMotor.hat3d(ROADHAT, px_, pz_; ref = Inf)[3]
+                    ontar = true
+                end
             end
-            hit = near < onroad_fp_edge
+            hit = near < onroad_fp_edge || ontar
             hit && get(ENV,"JM_ONROAD_FP_DIAG","") != "" &&
                 println("  E69-S5: ", i.name, " footprint reaches ", round(near,digits=1),
                         " m of the centreline — dropped")
@@ -6406,7 +6426,9 @@ function main()
     # tracks whose centreline is the raw .trk (Monza, Zandvoort): re-centring shifts the dlat frame
     # and the dlong index with it. Says which file it used -- a silent fallback is the defect again.
     if AILINE !== nothing && get(ENV, "JM_AI_GPLLINE", "1") != "0"     # DEFAULT ON (S2): JM_AI_GPLLINE=0 reverts to the κ model
-        if MONZA || ZANDV
+        # AI-PACE-1 (2026-09-07): every track with a race.lp uses it -- the lookup now indexes by lap fraction,
+        # so re-centred centrelines (Spa, the Ring, Watkins) align too. JM_AI_GPLLINE_ALL=0 restores Monza/Zandvoort only.
+        if MONZA || ZANDV || get(ENV, "JM_AI_GPLLINE_ALL", "1") != "0"
             lp = joinpath(ZD, "race.lp")
             if isfile(lp)
                 gv = GPLLP.lp_speed_mps(GPLLP.read_lp(lp))
@@ -6929,6 +6951,12 @@ function main()
         dt = FIXED_DT > 0 ? FIXED_DT : clamp(now-last, 0.0, 0.05)
         last = now
         inp, rst, recover, restart = read_input()
+        # STARTSEQ-3 (PO 2026-09-07): "don't allow the car to move until a key has been pressed to start the
+        # countdown" -- until the countdown is armed the car is held: throttle ignored, brakes on.
+        if START_ARM && HOLD_START && !cd_armed[] && phase[] == :race && !race_go[]
+            inp = JuliaMotor.DriveInput(throttle = 0.0, brake = 1.0, steer = inp.steer, clutch = inp.clutch,
+                                        shift_up = inp.shift_up, shift_down = inp.shift_down, autoshift = inp.autoshift)
+        end
         # ── RESTART-1 (PO 2026-09-04): CTRL+R restarts the session on the CURRENT track ─────────
         # "This should be instantaneous - otherwise you have to wait for the track to reload after
         # goofing up." Nothing the loader built is invalidated by a restart: the GPL parse, the HAT,
@@ -8280,7 +8308,10 @@ function main()
             for it in mirGlassItems; Render.draw(prog, it, vp, bodyModel*MIRRORMAT; mirrorglass=true, depthbias=true); end   # live glass (E106-S8: biased)
         end
         # steering wheel — spin about its column axis with steering input
-        swModel = bodyModel * Render.translate(SWCENTER) * Render.rotaxis(SWAXIS, Float32(inp.steer*2.5)) * Render.translate(-SWCENTER)
+        # CARGOLD-1 S9 (PO 2026-09-07: "Steering wheel is also installed upside down"): the gold's three spokes
+        # are a Y (two up, one down to the hub); ours had the single spoke UP. A half turn about the column
+        # (JM_SW_ROT, degrees, default 180) puts the wheel as the gold has it; the steering input adds to it.
+        swModel = bodyModel * Render.translate(SWCENTER) * Render.rotaxis(SWAXIS, Float32(inp.steer*2.5 + SW_ROT)) * Render.translate(-SWCENTER)
         for it in swItems; Render.draw(prog, it, vp, swModel; bright=1.2, ambfill=0.34); end
         # E64 S2 (Z-CK4): gloved hands + forearms, cockpit view only (the chase driver figure has its
         # own DRIVER_TEX arms).  Hands turn with the wheel, forearms stay put — GPL-era articulation.

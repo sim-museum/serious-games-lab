@@ -7042,6 +7042,85 @@ line (one texture band), kerbs over the generated surface, the physics still run
 of the HAT's tarmac edge.
 
 
+## 🔴 PO TEST ROUND 3 (2026-09-07 14:20, Spa, `JuliaRacer-x86_64-260907.AppImage`) — items, verbatim, with owners
+
+Video `~/Videos/260907_spa.mp4` (13 min). PO: *"Overall, a big improvement!"*
+
+1. **CARGOLD-1 S9** *"front of car has blotchy green and gold pattern - check gold standard"* -- the planar
+   livery projection on the scuttle/nose flat polys smears the atlas (roundel/stripe fragments); the
+   gold's nose is a clean green with the stripe and roundel. Check first whether those flat polys carry
+   their own COLOUR words (green, with yellow stripe polys) -- GPL may simply flat-shade them.
+   **Done (15:22):** the flat lotd polys carry GOLD (48) and grey (40) colour words -- own-colour draw =
+   a gold slab (`captures/chase_owncol.png`), so GPL does not flat-shade them; the fitted projection put
+   roundel/lettering fragments on them. `JM_PLANAR_BAND=1` (default) maps the surround into the atlas's
+   centre band (green + stripe, u 0.37-0.63, v 0.25-0.50): `chase_band.png` / `cockpit_band.png` -- a clean
+   green surround with the centred stripe, no fragments.
+2. **CARGOLD-1 S9** *"Dashboard is upside down. Steering wheel is also installed upside down."* -- the gold
+   has the big tacho at the TOP centre above the hub and the wheel's single spoke DOWN (a Y); ours has the
+   gauge row at the bottom and the spoke UP: the cockpit assembly (dash + wheel) is rolled 180 deg about
+   the longitudinal axis (it was so in the evening image too -- the PO's "dashboard upside down" of round 2).
+   **Done (15:00):** the wheel -- a half turn about the column (JM_SW_ROT, default 180) puts the spoke down
+   as in the gold (`captures/cockpit_dashfix.png`). The dash -- A/B `dash_before/after.png`: GAUGEFLIP's
+   mirror keeps the dial FACES upright (without it they read mirrored) and the layout (five dials above,
+   the tacho below the hub) is in the extracted cluster either way, while the gold has the tacho above
+   the hub: **S9b = the cluster layout** (which dial is which in lotus.3do's gauge group vs the gold).
+3. **SPA-MASTA-1** *"A house is protruding into the road a little bit at the masta kink"* -- a building whose
+   footprint filter (onroad_fp, edge 4.1 m) passes but whose geometry reaches the tarmac at the kink.
+4. **RING-HAIRPIN-1** *"curves in road are still piecewise linear"* -- known; S3 tessellation is opt-in until
+   its material is right.
+5. **SPA-FPS-1 S4** *"Frame rate is low - 10-20 fps? ... the ring has good frame rate"* -- my 49-60 fps was a
+   CHASE-view replay; the PO drives in COCKPIT view with two mirror passes (each a full world draw), and
+   records the screen. Measure the cockpit view with mirrors; the mirror passes need their own culling
+   and a smaller radius.
+6. **SPA-ROUTE-1** ⭐ *"At the hairpin a strange thing happens - I get routed into some dead end, there seems
+   to be no way to get to the start finish line, the hairpin leads to the wrong place!"* -- at La Source
+   the road continues into a dead end (old pit road / the new-circuit link?) instead of down to Eau Rouge;
+   the drivable road/centreline near the hairpin must be checked against the gold lap.
+7. **TRACKGOLD-1 S4 (Spa)** *"Some curtains of trees are misplaced, but only a few"*; *"Coming up toward the
+   start finish line, I can see a ribbon of track in the distance - check gold standard to see what
+   should be there"* -- the missing backdrop before the S/F (the same in-place hillside class as the Ring).
+6b. (PO 14:45) *"I've never seen the dead end area before. I tried driving around to find a way out - no
+   luck."* -- NEW since the previous image: the suspects are last night's changes at Spa -- the record
+   placement heights (708 Spa placements moved; an in-place paddock/apron patch lifted onto the hairpin
+   would read as a road that ends, the white surface in the video at 11:00) or the armco footprint
+   filter. JM_OBJCENSUS at s=14100 (`spa_hairpin_census.log`) and JM_ROADEDGE 13850-14210 first.
+   **Found (14:55):** the road is continuous through the hairpin (1121 road tris 13850-14210, no gap; the
+   pit apron "borcem" counts as road, 15-18 m wide at the pits), and nothing there moved by height (the
+   record-height rule changed 1 of 9086 Spa placements > 0.5 m at load). The wall across the straight is
+   **`gstands`, the 44 x 215 m main grandstand at s=14123, yaw 127°, drawn from lateral -35 to +47 m --
+   diagonally ACROSS the pit straight** (its twin `gstend` 92 x 38 m beside it); the video's "dead end"
+   frame faces its base with the yellow line along it. Same class as Watkins' `gstand` (E58's
+   JM_GSTAND_YAW knob): grandstands authored in place need a yaw we do not apply. A/B captures with
+   JM_GSTAND_YAW=90 / -90 at s=14100/14160/40 (`spa_gs*_*.png`). **Captures (15:07, `captures/spa_s14040/
+   14100/14160/40.png`):** at 14100 and 14160 the pit straight is CLEAR ahead (Englebert tower right, the
+   pits, the yellow edge line) -- no wall across it; at 14040 the hairpin exit shows the big grandstand
+   ahead at the corner's outside with the yellow line curving left along its base, and the light "borcem"
+   apron as wide as the road inviting a straight line into the paddock. The PO's dead-end frame is that
+   apron/grass from the paddock side. So: the road is continuous; the defect is that the apron is
+   indistinguishable from the road and drivable (our HAT counts "borcem" as road: no grass slowdown),
+   plus possibly the grandstand's yaw. Next: (a) treat "borcem" as off-road for the on-track test at
+   Spa (a drivable apron, but grass-like resistance and no AI/racing-line pull), (b) the gstand A/B.
+   **gstand A/B (15:16, `spa_gs90_s14100.png` / `spa_gs-90_s14100.png`):** +90° = the stand ALONG the left
+   of the straight facing the track, flags up, no curtain overhead (the "forest curtain" over the road at
+   yaw 0 was the stand's roof from below); -90° = the stand over the road. **Spa's GSTAND_YAW default is
+   now 90°** (Watkins keeps 0). The apron stays road-classified (E71-S13: it is the concrete edge strip
+   old Spa drives on); the paddock confusion at La Source is recorded, not changed.
+5b. (PO 15:15) *"GPL running under wine on this PC gets 60 fps at spa (and all other tracks), using
+   openGL"* -- the bar for SPA-FPS-1: 60 fps in the COCKPIT view. Cockpit measurement with the two mirror
+   passes queued (`spa_fps_cockpit.log`).
+9. **AI-AVOID-1** (PO 14:45) *"The AI cars are not very good at avoiding collision, except in wide
+   straights"* -- the AI blocker/avoidance logic (step_field!) in corners; RACESTART-1's gate covers only
+   the grid.
+10. **STARTSEQ-3** (PO 14:50) *"at the start, don't allow the car to move until a key has been pressed to
+   start the countdown. And put the red lights at the top of the screen, not the center"* -- done: the
+   input is replaced by brakes-on/throttle-0 until `cd_armed`; the light box sits at y=24.
+8. **AI-PACE-1** *"AI lunges forward and back and sometimes slows down for no clear reason"* -- the AI
+   target-speed model at Spa (E84's GPL race.lp path applies only to Monza/Zandvoort; Spa uses the
+   curvature model with its speed steps). **Done (15:10):** the race.lp lookup now indexes by lap
+   FRACTION (record spacing = lap/n) so re-centred lines align, and every track with a race.lp uses it
+   (Spa, the Ring, Watkins; JM_AI_GPLLINE_ALL=0 restores Monza/Zandvoort only). ai_field_smoke and
+   racestart_smoke pass; the PO's eye decides the lunge.
+
 ## 🔴 PO TEST ROUND 2 (2026-09-06 20:50, `JuliaRacer-x86_64-livery.AppImage`) — items, verbatim, with owners
 
 PO: *"only tested julia."* Videos: `~/Videos/260906_wg_race.mp4`, `260906_wg_dash_upside_down_windscreen_isssue.mp4`,
