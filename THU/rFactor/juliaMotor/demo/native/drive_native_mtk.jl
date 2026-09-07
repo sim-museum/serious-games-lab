@@ -1704,8 +1704,62 @@ else
         ndrop[] > 0 && println("  E68 S10: rail/fence dedup dropped ", ndrop[], " coplanar-duplicate tris")
         out
     end
-    const TRACK = [TRACKMAIN; SECPARTS]
-    const SEC_FROM = length(TRACKMAIN) + 1        # E68 S9b: trackItems[SEC_FROM:end] = landmass sections
+    # RING-HAIRPIN-1 S3 (PO 2026-09-06: "piecewise linear rather than smooth curves, at all tracks"): the
+    # track .3do draws its road as 3-7 m strips; the .trk centreline is 0.9 m fine. JM_ROADTESS=1 draws the
+    # tarmac from the centreline instead: one quad per waypoint pair, its edges where the road-only HAT
+    # stops finding tarmac (sampled every JM_ROADTESS_STEP m outward), heights from that HAT, the track's
+    # dominant road texture tiled every JM_ROADTESS_TILE m; the original asphalt/groove strips are skipped
+    # in the draw. Prototype: one texture band (the groove line is lost), kerbs keep their own tris.
+    const ROADTESS = get(ENV, "JM_ROADTESS", "0") != "0"
+    function roadtess_parts()
+        (ROADHAT === TERRAIN0) && (println("  ROADTESS: no road-only HAT on this track -- off"); return Render.TrackPart[])
+        cnt = Dict{String,Int}()
+        for t in TRACKMESH.tris; lt = lowercase(t.tex); ROAD_TEX(lt) && (cnt[lt] = get(cnt, lt, 0) + 1); end
+        isempty(cnt) && return Render.TrackPart[]
+        tex = first(sort(collect(cnt); by = kv -> -kv[2]))[1]
+        step = parse(Float64, get(ENV, "JM_ROADTESS_STEP", "0.25")); maxw = 14.0
+        tile = parse(Float64, get(ENV, "JM_ROADTESS_TILE", "8.0"))
+        n = length(TRKSURF.pos)
+        edge = Vector{Union{Nothing,NTuple{2,Float64}}}(nothing, n)
+        tarmac(x, z) = JuliaMotor.hat3d(ROADHAT, x, z; ref = Inf)[3]
+        for i in 1:n
+            p = TRKSURF.pos[i]; q = TRKSURF.perp[i]
+            px, pz = Float64(p[1]), Float64(p[3]); qx, qz = Float64(q[1]), Float64(q[3])
+            nq = hypot(qx, qz); nq < 1e-6 && continue; qx /= nq; qz /= nq
+            tarmac(px, pz) || continue
+            lo = 0.0; t = step
+            while t <= maxw && tarmac(px - qx*t, pz - qz*t); lo = t; t += step; end
+            hi = 0.0; t = step
+            while t <= maxw && tarmac(px + qx*t, pz + qz*t); hi = t; t += step; end
+            edge[i] = (-lo, hi)
+        end
+        v = Float32[]; nquad = 0
+        hgt(x, z, fb) = (h = JuliaMotor.hat3d(ROADHAT, x, z; ref = Inf); h[3] ? Float64(h[1]) : fb)
+        corner!(x, y, z, u, vv) = append!(v, Float32[x, y, -z, 0f0, 1f0, 0f0, 1f0, 1f0, 1f0, u, vv])
+        for i in 1:n
+            j = i == n ? 1 : i + 1
+            (edge[i] === nothing || edge[j] === nothing) && continue
+            si = Float64(TRKSURF.lapdist[i]); sj = j == 1 ? Float64(TRKSURF.lap_length) : Float64(TRKSURF.lapdist[j])
+            (sj - si) > 20 && continue
+            pts = Tuple{Float64,Float64,Float64,Float64,Float64}[]
+            for (k, l, s_) in ((i, edge[i][1], si), (i, edge[i][2], si), (j, edge[j][2], sj), (j, edge[j][1], sj))
+                p = TRKSURF.pos[k]; q = TRKSURF.perp[k]; nq = hypot(Float64(q[1]), Float64(q[3]))
+                x = Float64(p[1]) + Float64(q[1]) / nq * l; z = Float64(p[3]) + Float64(q[3]) / nq * l
+                push!(pts, (x, hgt(x, z, Float64(p[2])) + 0.02, z, l / tile, s_ / tile))
+            end
+            for (a, b, d) in ((1, 2, 3), (1, 3, 4))
+                for k in (a, b, d); corner!(pts[k]...); end
+            end
+            nquad += 1
+        end
+        valid = count(!isnothing, edge)
+        println("  ROADTESS: ", nquad, " quads from ", valid, "/", n, " waypoints, texture ", tex, ", mean width ",
+                round(sum(e[2] - e[1] for e in edge if e !== nothing; init = 0.0) / max(valid, 1), digits = 1), " m")
+        isempty(v) ? Render.TrackPart[] : [Render.TrackPart(v, tex, (1f0, 1f0, 1f0))]
+    end
+    const ROADPARTS = ROADTESS ? roadtess_parts() : Render.TrackPart[]
+    const TRACK = [TRACKMAIN; ROADPARTS; SECPARTS]
+    const SEC_FROM = length(TRACKMAIN) + length(ROADPARTS) + 1        # E68 S9b: trackItems[SEC_FROM:end] = landmass sections
     # E68 S10b: rails/fences are modeled as OFFSET front+back faces; GPL culls the back single-
     # sided, we drew both → grazing-angle poke-through = the PO's "z-fighting on guardrails
     # throughout".  (Exact-duplicate dedup was a near-no-op: extraction already collapses those.)
@@ -2271,7 +2325,9 @@ const W, H = 1440, 810
 # JM_OBJ_FF flips the winding convention if the culled world renders inside-out (mirror remap parity).
 const OBJ_CULLFACE = get(ENV,"JM_OBJ_CULL","0") != "0"
 const OBJ_FF_CW    = get(ENV,"JM_OBJ_FF","cw") == "cw"
-const OBJ_CULL2 = 2200f0^2      # mesh objects (buildings/grandstands/trees) — keep distant landmarks
+# SPA-FPS-1 (2026-09-07): Spa's replay lap runs 30-41 fps (world draw 26 of 29 ms) with 600-1000 trackside
+# meshes inside this radius, the Ring 58 fps with ~190. JM_OBJ_CULL_D=<m> A/Bs the radius (2200 = the old value).
+const OBJ_CULL2 = parse(Float32, get(ENV, "JM_OBJ_CULL_D", "2200"))^2      # mesh objects (buildings/grandstands/trees) — keep distant landmarks
 # E70-S7: the restored billboards render vegetation CYAN (3.42% of frame vs 0.01% with them off).
 # Several Ring bush textures are blue-green at source (hgbush 20,69,56; bush 39,80,70; kwbush6
 # 30,67,62 — blue well above red), and drawing them at bright=1.55 pushes them past cyan.
@@ -7982,6 +8038,10 @@ function main()
             glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 1)
             secfrom = (@isdefined SEC_FROM) ? SEC_FROM : typemax(Int)
             for (ti, it) in enumerate(trackItems)                        # ambfill lifts shadowed walls/fences out of the "carbonized" black under the flat overcast light
+                # RING-HAIRPIN-1 S3: with the tessellated road on, the .3do's asphalt/groove strips are not drawn
+                if ROADTESS && ti <= length(TRACKMAIN) && (lt_ = lowercase(TRACK[ti].tex); occursin("asp", lt_) || startswith(lt_, "groove"))
+                    continue
+                end
                 # E68 S9b: landmass SECTIONS draw single-sided like GPL — culls the dark edge-skirt
                 # slabs (Ring s≈18400) that our two-sided draw exposed.  Winding per OBJ_FF_CW.
                 # E68 S10b: rail-family parts also draw single-sided (guardrail shimmer).

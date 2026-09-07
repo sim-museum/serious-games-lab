@@ -7086,6 +7086,12 @@ image (the depot's compiled cache travels in the AppImage); the sysimage build s
    Spa's dense valley (1270 meshes + 1566 billboards on a 14 km lap) keeps most of the layout in range at
    any point, while the Ring's 22.8 km spreads its 575 meshes thin. Replay runs `spa_fps_spa.log` /
    `spa_fps_nurburgring.log` (chase, FPSDIAG=90, FRAMEPROF=90) give ms/frame vs lapdist vs objects in range.
+   **Measured (`spa_fps3_spa.log`, chase replay lap, 00:56):** Spa 30-41 fps = 25-34 ms/frame, `[frameprof]`
+   world 26.5 ms of 28.9 (the HUD 0.07) -- the WORLD draw is the cost. It tracks objects inside
+   OBJ_CULL2: 915-1028 in range at s=1500-2050 (Eau Rouge/Kemmel) -> 30 fps; 587-650 at s=3600-4500 ->
+   39-41 fps; the Ring earlier: 189 in range -> 58 fps (vsync-bound). Lever 1: the 2.2 km draw radius
+   (now `JM_OBJ_CULL_D`); A/B at 1200 and 800 m queued (`spa_fps_cull*.log`). Lever 2 after that:
+   per-frame frustum/distance culling of billboards, and batching the static objects per section.
 8. **STARTSEQ-2** (PO 21:12) *"change the bar+rabbit ears object (very confusing) at the start of a julia race
    to a box with 3 red lights. That better suggests that you need to do something to start the race. Then
    start the countdown whenever the user presses any keyboard key - not only spacebar"* -- the HUD's pulsing
