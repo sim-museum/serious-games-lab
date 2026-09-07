@@ -7008,8 +7008,9 @@ the defect's evidence, not the gold; the gold is the 15-minute chase lap.
 boundary edges (groove 88, asphalt 62). The first dump zig-zagged between |lat| 0.1-3 and 3.8-4.2
 because the road is drawn as STRIPS (groove centre, asphalt edges) whose vertices do not coincide, so
 the groove/asphalt seam's T-junctions count as boundary too (S2b filters to |lat| >= 3.3, one vertex
-per 0.2 m). The OUTER edge on the left: vertices 6.6, 5.8, 6.4, 5.8 m apart on the approach, then
-3.6, 3.7, 4.0, 3.3, 3.2, 3.9, 5.2 m through the corner; the right side 4.3 m mean. The .trk
+per 0.2 m). The OUTER edge (S2b rerun, 19:46): left 24 vertices over the 150 m, mean segment
+5.0 m, longest 23.2 m, max heading step 11.3° (2 steps > 8°); right 22 vertices, 6.3 m mean,
+8.7° max. The .trk
 centreline through the same 150 m has 171 waypoints (0.9 m spacing) turning 2.66° per waypoint on
 average, 24.9° max -- i.e. ~3°/m: a 3.5 m mesh segment there turns ~10°, which is the visible
 polygon (GPL's road at the Südkehre is smooth). So the coarse edge is the track .3do's own road
@@ -7291,6 +7292,44 @@ the 900 s timeout while two FF instances and three scratch Julias shared the box
 progress.
 a table (the census). S2-S4: fix the placements, worst first (user Lotus first, then the AI five).
 S5: the gate; S6: ship and the PO's eye.
+
+### ROAD-1 S6 (19:10-19:55) — REOPENED for the Ring: the objects switched on this afternoon put slabs and hedges across the track
+
+The full gate suite (`gates_full_1812.log`, run against the planar livery) failed `road_clear_smoke`
+on the 900 s cap; alone it takes ~15 min (cap now 1800 s), and alone it FAILS on the Ring: **1365
+anomaly points** where the S5 proof had 0. TRACKGOLD-1 S3 turned the Ring's GPL object pipeline on
+(JM_RING_OBJECTS=1) after that proof, and that is what the census now sees. Two layers:
+
+1. **The census's frame was wrong** (instrument first): (a) it read the PRE-clearance solid flag,
+   while the load log says `45 disc(s) shrunk to clear the road: bush 1.5→0.0 ...` -- 165 of the
+   "collidable" points were discs the physics had already inerted; (b) "on road" was |lat| <
+   ROAD_HALFW-1 = 8 m, and the Ring's road is ~8 m WIDE, so verge trees at lat 5-7 counted (1241
+   mesh points, every one dy=0). JM_SWEEP now judges solids by their LIVE radius and by tarmac
+   within r of the origin (a car entirely on the tarmac keeps its centre CARW inside the edge, so
+   CARW cancels), and meshes/billboards by tarmac under the origin (ROADHAT + on_track).
+   Re-framed: **654** -- 647 meshes, 7 solids (two bushes at lat 7.3/-6.7 that the reach test with
+   r+CARW over-flagged; fixed to r).
+2. **The 647 are real.** Photographed (`track_gold/ring_s*.png`, chase view at the census's own
+   sites): s=8500 `half1s`, s=16564 `half07`, s=18152 `out_tn_1` -- the car UNDER a dark slab that
+   spans the road (the world visible only at the horizon below its edge); s=6156 `xk_flatc` -- a
+   hedge texture engulfing the car; s=8696 `s_tree02` -- a tree trunk on the right-hand asphalt
+   edge; s=1384 `backgar` -- the pits, fine. The Ring's object names (half*, xk_flat*, s_tree*,
+   out_tn*, trow*) belong to none of the families the on-road FOOTPRINT filter covers
+   (vegetation, crowds, buildings), so nothing filtered them. **Fix:** at the Ring every mesh
+   takes the footprint test (JM_ONROAD_FP_ALL=0 reverts). The gate rerun with it and the six
+   re-shoots (`ring2_s*.png`, 20:13): the tree on the asphalt edge at s=8696 is GONE (807 -> 602
+   objects load), but the slab at s=8500/16564/18152 and the hedge at s=6156 are UNCHANGED -- they
+   are not instances of the filtered pipeline (gpl_scenery groups, billboards, or a JM_SHOTS
+   teleport under a doubled surface: the "slab" views show the road's underside from below).
+   Census after the filter: 0 solids, 166 origin-on-edge meshes -> the census now judges meshes by
+   their transformed footprint (OBJ_LVERTS/OBJ_YAW exported from the object pipeline). PO (20:12):
+   "stop the scrum, update all the appImages" -- shipped as `JuliaRacer-x86_64-livery.AppImage`
+   with these two sites listed as open in the test list; the gate rerun follows the pack.
+   **S7 next:** identify the 8500/6156 sources (JM_SCENE_AT at those s values with JM_SCENEDIAG),
+   and check whether the JM_SHOTS teleport itself sits under the road there.
+   TRACKGOLD-1 S4 owns placing the dropped objects where GPL has them (orientation/height), with
+   the gold lap as the reference.
+
 
 ## ✅ SHIPPED (S5, 14:31) — ROAD-1: Spa and the Ring drivable all the way through -- no collisions while on the road (PO 2026-09-06)
 

@@ -2709,6 +2709,7 @@ if SKIDPAD || (NURB && get(ENV, "JM_RING_OBJECTS", "1") == "0")
     global STATICTREES = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32,Float32}[]
     global SOLIDS = Tuple{Float64,Float64,Float64,Symbol}[]   # no collidable trackside objects on skidpad / Nürburgring (scenery baked in) — without this solid_hit()/solid_contact() throws UndefVarError on the first collision check
     global OBJINSTS = Tuple{String,Float32,Float32,Float32,Symbol,Bool}[]   # no placed objects here, but JM_SWEEP/JM_SPOT still need it defined to run the HAT/molasses checks
+    global OBJ_LVERTS = Dict{String,Vector{Tuple{Float32,Float32}}}(); global OBJ_YAW = Dict{Tuple{Float64,Float64},Float64}()
     # E76-S8: THE RING'S MISSING BILLBOARDS.  The Ring does not use the GPL object pipeline below —
     # it loads scenery through its own gpl_scenery(), which had no billboard path at all, so every
     # placement whose .3do carries no geometry was silently dropped.  E76-S5 instrumented the drop
@@ -3361,10 +3362,17 @@ let objnames=Set{String}()
     # origin sits 6.0 m out (E71-S7), so an origin test can never catch it. This is the PO's headline
     # Spa complaint — "houses in the case of the spa track that are on the actual road".
     # JM_ONROAD_FP_BLDG=0 restores the vegetation/crowd-only scope.
+    # ROAD-1 S6 (2026-09-06, the Ring with its objects on -- TRACKGOLD-1 S3): the Ring's object names are
+    # its own (half01/half1s = hillside slabs, xk_flat* = ground carpets, s_tree*/out_tn*/trow* =
+    # trees), none in the families above, so nothing here filtered them: track_gold/ring_s8500_half1s.png
+    # is the car UNDER a slab that spans the road, ring_s6156_flatc.png a hedge engulfing it (the census:
+    # 647 on-road meshes, 398 of them in the first 500 m). At the Ring EVERY mesh takes the footprint
+    # test; JM_ONROAD_FP_ALL=0 restores the family scope there.
     vegcrowd(nm) = startswith(nm,"bush") || startswith(nm,"shrub") || startswith(nm,"strauch") ||
                    startswith(nm,"hedge") || startswith(nm,"haie") || standcrowd(nm) ||
                    startswith(nm,"ppl") || startswith(nm,"people") || startswith(nm,"pplrow") ||
-                   (get(ENV,"JM_ONROAD_FP_BLDG","1") != "0" && bldgish(nm))
+                   (get(ENV,"JM_ONROAD_FP_BLDG","1") != "0" && bldgish(nm)) ||
+                   (NURB && get(ENV,"JM_ONROAD_FP_ALL","1") != "0")
     onroad_fp(i) = get(ENV,"JM_ONROAD_FP","1") != "0" && vegcrowd(lowercase(i.name)) && begin
         vs = get(lverts, i.name, nothing)
         if vs === nothing || isempty(vs)
@@ -4303,6 +4311,10 @@ let objnames=Set{String}()
         issolid = solidR(lowercase(i.name)) > 0.0 && og && !on_road(i.x, i.y, SOLID_EXCL_HW)
         (i.name, Float32(i.x), Float32(i.y), ploz(i), kmesh ? :mesh : kbb ? :bb : :dropped, issolid)
     end for i in insts]
+    # ROAD-1 S6: the JM_SWEEP census (outside this `let`) judges meshes by their footprint; hand it the
+    # local footprint points and each instance's yaw.
+    global OBJ_LVERTS = lverts
+    global OBJ_YAW = Dict{Tuple{Float64,Float64},Float64}((round(Float64(i.x), digits=2), round(Float64(i.y), digits=2)) => -Float64(i.yaw) + Float64(objyawfix(i.name)) for i in insts)
     if get(ENV,"JM_FOOTPRINT","")!=""
         # E71-S8: rank objects by how far their FOOTPRINT penetrates the asphalt, not by how far
         # their ORIGIN sits from the centreline. E71-S4 showed the origin ordering is not the
@@ -5878,13 +5890,26 @@ function main()
         use_tarmac = ROADHAT !== TERRAIN0 && get(ENV, "JM_SWEEP_CORRIDOR", "0") == "0"
         tarmac_at(x, z) = JuliaMotor.hat3d(ROADHAT, Float64(x), Float64(z); ref=Inf)[3] &&
                           (hr_ = JuliaMotor.hat(TRKSURF, Float64(x), Float64(z)); hr_.found && hr_.on_track)
+        # A car that is ENTIRELY on the tarmac keeps its centre >= CARW inside the edge, so it can touch a
+        # disc of radius r only if the tarmac edge lies within r of the disc's origin (the CARW cancels);
+        # the same radius the clearance pass samples. r + CARW over-flagged bushes 2 m beyond the edge.
         solid_reaches(ox, oz, r) = begin
-            R = r + CARW + 0.1; n = max(3, ceil(Int, 4R)); hit = false
+            R = r + 0.1; n = max(3, ceil(Int, 4R)); hit = false
             for ix in -n:n, iz in -n:n
                 hypot(ix, iz) > n && continue
                 tarmac_at(ox + R*ix/n, oz + R*iz/n) && (hit = true; break)
             end
             hit
+        end
+        # A mesh is "on the road" when its FOOTPRINT touches tarmac -- the renderer's own on-road filter
+        # judges the transformed local AABB (onroad_fp), so the census must too; the origin test flagged
+        # 166 Ring objects whose origin sits on the asphalt EDGE (|lat| 4.0-4.9) with every vertex beyond it.
+        # Footprint = the instance's local (x,z) corners rotated by its yaw (as JM_FOOTPRINT does).
+        mesh_on_tarmac(nm, ox, oz) = begin
+            vs = get(OBJ_LVERTS, nm, nothing)
+            (vs === nothing || isempty(vs)) && return tarmac_at(ox, oz)
+            th = get(OBJ_YAW, (round(Float64(ox), digits=2), round(Float64(oz), digits=2)), 0.0); c_, s_ = cos(th), sin(th)
+            any(((lx, lz),) -> tarmac_at(Float64(ox) + lx*c_ + lz*s_, Float64(oz) - (-lx*s_ + lz*c_)), vs)
         end
         kept_solid = [(nm,ox,oz,olat(ox,oz),objdy(ox,oz,oy),live_r(ox,oz)) for (nm,ox,oz,oy,kind,issolid) in OBJINSTS if issolid && live_r(ox,oz) > 0]
         n_inert = count(((nm,ox,oz,oy,kind,issolid),) -> issolid && live_r(ox,oz) <= 0, OBJINSTS)
@@ -5906,7 +5931,7 @@ function main()
             (!hr.found || abs(hr.lateral) > ROAD_HALFW) && push!(flags, "FALSE-GRASS lat=$(hr.found ? round(hr.lateral,digits=1) : "MISS")")
             sobs = ["$nm(lat=$lat,dy=$dy,r=$(round(r,digits=1)))" for (nm,ox,oz,lat,dy,r) in kept_solid if hypot(ox-px, oz-pz) < ROAD_HALFW + r && dy < OBJ_MAX_DY &&
                     (use_tarmac ? solid_reaches(ox, oz, r) : abs(lat) < ROAD_HALFW)]
-            mobs = ["$nm(lat=$lat,dy=$dy)" for (nm,ox,oz,lat,dy) in kept_mesh if hypot(ox-px, oz-pz) < ROAD_HALFW && dy < OBJ_MAX_DY && (use_tarmac ? tarmac_at(ox, oz) : abs(lat) < BLOCK_LAT)]
+            mobs = ["$nm(lat=$lat,dy=$dy)" for (nm,ox,oz,lat,dy) in kept_mesh if hypot(ox-px, oz-pz) < ROAD_HALFW && dy < OBJ_MAX_DY && (use_tarmac ? mesh_on_tarmac(nm, ox, oz) : abs(lat) < BLOCK_LAT)]
             bobs = ["$nm(lat=$lat,dy=$dy)" for (nm,ox,oz,lat,dy) in kept_bb   if hypot(ox-px, oz-pz) < ROAD_HALFW && dy < OBJ_MAX_DY && (use_tarmac ? tarmac_at(ox, oz) : abs(lat) < BLOCK_LAT)]
             isempty(sobs) || push!(flags, "SOLID-ON-ROAD(collidable!): " * join(unique(sobs)[1:min(end,4)], ","))
             isempty(mobs) || push!(flags, "ON-ROAD MESH: " * join(unique(mobs)[1:min(end,4)], ","))
