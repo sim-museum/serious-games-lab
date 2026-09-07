@@ -3372,6 +3372,7 @@ let objnames=Set{String}()
                    startswith(nm,"hedge") || startswith(nm,"haie") || standcrowd(nm) ||
                    startswith(nm,"ppl") || startswith(nm,"people") || startswith(nm,"pplrow") ||
                    (get(ENV,"JM_ONROAD_FP_BLDG","1") != "0" && bldgish(nm)) ||
+                   (get(ENV,"JM_ONROAD_FP_ARMCO","1") != "0" && startswith(nm,"arm")) ||   # SPA-SF-1: the S/F armco drawn diagonally across the road (arm_sf0)
                    (NURB && get(ENV,"JM_ONROAD_FP_ALL","1") != "0")
     onroad_fp(i) = get(ENV,"JM_ONROAD_FP","1") != "0" && vegcrowd(lowercase(i.name)) && begin
         vs = get(lverts, i.name, nothing)
@@ -3808,7 +3809,7 @@ let objnames=Set{String}()
     global SOLIDNAMES = String[]                        # parallel to SOLIDS, for the census only
     _solidseen = Set{Tuple{Float64,Float64,Float64,Symbol}}(); _soliddup = Ref(0)   # SPA-BARRIER: one disc per (x,z,r,kind)
     empty!(SOLIDBOX)
-    _geomn = 0
+    _geomn = 0; _undrawn_solid = Ref(0)
     for i in insts
         nml = lowercase(i.name)
         r = solidR(nml)
@@ -3817,6 +3818,17 @@ let objnames=Set{String}()
         end
         (r <= 0.0 || !onground(i)) && continue
         on_road(i.x, i.y, SOLID_EXCL_HW) && continue   # E31: don't make a collidable wall ON the road (the trapping hedge-box) — but DO keep edge barriers/haybales solid (PO)
+        # SPA-WALL-1 (PO 2026-09-06 20:50: "turning left and going downhill toward burnenville I still hit
+        # something invisible on the track and stop dead" -- [WRECK] into a solid at (527.9, -870.4)).
+        # JM_SOLIDNEAR: armcow3 boxes 0.1 x 4.8 m at (526.0, -872.3) etc., each box exactly on its own
+        # drawn footprint -- but the renderer had DROPPED those instances (the on-road footprint
+        # filter), while this loop kept them solid because walls are exempt from the road exclusion.
+        # A solid without a drawn object is an invisible wall: no instance the renderer drops may be
+        # solid, whatever its kind. JM_SOLID_UNDRAWN=1 restores the old behaviour.
+        if get(ENV, "JM_SOLID_UNDRAWN", "0") == "0" && get(objmesh, i.name, nothing) !== nothing &&
+           (drop(i.name) || onroad_crowd(i) || perp_crowd(i) || onroad_bldg(i) || onroad_fp(i))
+            _undrawn_solid[] += 1; continue
+        end
         # E71-S18 (PO 2026-08-27, Spa: "just driving along and suddenly I'm levitating and bouncing
         # like a ball"). Telemetry pinned it: at lapdist 6896 the car's speed doubled in one 0.2 s
         # tick (66 -> 131 km/h), lapdist ran BACKWARDS, and it flew 34 m sideways in 1.2 s. That is
@@ -5075,6 +5087,16 @@ mutable struct Ctl; prevUp::Bool; prevDn::Bool; prevV::Bool; prevG::Bool; prevM:
 # release the clutch too low and it crawls/bogs, just like the real thing).  ZAND_SHIFT=manual forces it.
 const CTL = Ctl(false,false,false,false,false,false,false, parse(Int, get(ENV,"JM_VIEW","1")), get(ENV,"ZAND_SHIFT","auto") != "manual", false)   # view 1=chase 0=cockpit; AUTO gearbox by default (G toggles)
 key(k) = GLFW.GetKey(win, k) == GLFW.PRESS
+# STARTSEQ-2 (PO 2026-09-06): "start the countdown whenever the user presses any keyboard key - not only
+# spacebar". Polled like every other key here (no callback): letters, digits, space, enter, tab, arrows,
+# shift/ctrl/alt. ESC stays quit and is not in the list.
+const ANYKEYS = Tuple(vcat([GLFW.KEY_SPACE, GLFW.KEY_ENTER, GLFW.KEY_TAB, GLFW.KEY_BACKSPACE,
+                            GLFW.KEY_UP, GLFW.KEY_DOWN, GLFW.KEY_LEFT, GLFW.KEY_RIGHT,
+                            GLFW.KEY_LEFT_SHIFT, GLFW.KEY_RIGHT_SHIFT, GLFW.KEY_LEFT_CONTROL, GLFW.KEY_RIGHT_CONTROL,
+                            GLFW.KEY_LEFT_ALT, GLFW.KEY_RIGHT_ALT],
+                           [getfield(GLFW, Symbol("KEY_", c)) for c in 'A':'Z'],
+                           [getfield(GLFW, Symbol("KEY_", c)) for c in '0':'9']))
+anykey() = any(key(k) for k in ANYKEYS)
 const JOYREPORT = Ref(false)
 const JOYTRACE_T = Ref(-1.0)
 # PO 2026-09-04 (crash found in a live race): `read_input` set CLUTCH_GATE[] on a refused G,
@@ -6539,9 +6561,14 @@ function main()
         # PO: force the human to the front, keeping the AI's own pace order behind.
         POLE && (order = vcat(0, filter(!=(0), order)))
         prank = findfirst(==(0), order)
+        # RACESTART-2 (PO 2026-09-06: "every time I start a race, AI sideswipes me and knocks off both my
+        # wheels before I can even move" -- the grid frame showed an AI at the player's right rear on a
+        # P6/6 grid where every AI should be AHEAD). The rows were laid from AILINE s=0, but the player
+        # spawns at its own waypoint, not at s=0: form the grid relative to the PLAYER's arc-length.
+        sp = RaceAI.project(AILINE, cs0.x, cs0.z)[1]
         for (i, c) in enumerate(AICARS)
             r = findfirst(==(i), order)
-            c.s = mod(-(r - prank)*ROW, AILINE.total)      # ahead (+s) if it out-qualified the player
+            c.s = mod(sp - (r - prank)*ROW, AILINE.total)  # ahead (+s) if it out-qualified the player
             # a car gridded BEHIND the player wraps to just-behind S/F, so it crosses the line on the first
             # frames — that start-line crossing is NOT a completed lap, so start it on lap −1 to absorb it
             # (else its lap count runs 1 high and it "laps" you in the standings).
@@ -6554,7 +6581,7 @@ function main()
         for (p, id) in enumerate(order)
             println("   P$p  ", id==0 ? (isfinite(qtime) ? "You — $(fmt_lap(qtime))" : "You (no practice lap)") : AICHASSIS[id].name)
         end
-        println("  → You start P$prank of $(length(order)) — $(COUNTDOWN > 0 ? "wait for the countdown" : "floor it to launch the field")\n"); flush(stdout)
+        println("  → You start P$prank of $(length(order)) at s=", round(sp, digits=1), " m — $(COUNTDOWN > 0 ? "wait for the countdown" : "floor it to launch the field")\n"); flush(stdout)
         prank
     end
     COUNTDOWN > 0 && HOLD_START && println("\n  COUNTDOWN START — ", round(Int, COUNTDOWN),
@@ -6870,9 +6897,9 @@ function main()
             if START_ARM && !cd_armed[]
                 if !cd_said[]
                     cd_said[] = true
-                    println("  ★ PRESS SPACEBAR TO START COUNTDOWN"); flush(stdout)
+                    println("  ★ PRESS ANY KEY TO START COUNTDOWN"); flush(stdout)
                 end
-                if key(GLFW.KEY_SPACE)
+                if anykey()
                     cd_armed[] = true
                     cd_t0[] = cs.t
                     println("  → COUNTDOWN ARMED"); flush(stdout)
@@ -8118,7 +8145,7 @@ function main()
             GLFW.SetWindowTitle(win, "Julia Racer — $(uppercasefirst(TRACKSEL)) — $(round(Int,cs.v*3.6)) km/h — gear $(cs.gear == 0 ? "N" : string(cs.gear)) ($(CTL.auto ? "AUTO" : "MANUAL")) — $(round(Int,cs.rpm)) rpm" *
                 (phase[] == :qual ? "  ⏱ QUALIFYING — drive a lap, then press ENTER to start the race" :
                  (!race_go[]) ? ((START_ARM && !cd_armed[] && COUNTDOWN > 0) ?
-                                 "  🏁 PRESS SPACEBAR TO START COUNTDOWN" :
+                                 "  🏁 PRESS ANY KEY TO START COUNTDOWN" :
                                  cd_left[] > 0 ? "  🏁 $(ceil(Int, cd_left[]))..." :
                                  "  🏁 GET READY — floor the throttle to start (the field launches with you)") :
                  IS_RACE ? (race_done ? "  ✦ FINISHED P$(player_finpos[])/$(length(AICARS)+1) — best $(fmt_lap(best_lap)) (started P$(player_grid[]))" :

@@ -720,19 +720,20 @@ function compose_hud(W,H,kmh,gear,rpm,revlim,thr,brk,clu=0.0,tc=nothing; lastlap
     # a spacebar keycap, pulsing, where the countdown digit is about to appear. `startprompt` is a
     # 0..1 pulse phase; <0 means the prompt is not showing.
     if startprompt >= 0.0
+        # STARTSEQ-2 (PO 2026-09-06): "change the bar+rabbit ears object (very confusing) ... to a box with
+        # 3 red lights. That better suggests that you need to do something to start the race." A dark
+        # gantry box with three red lamps in a row, pulsing together; the countdown digit takes its place
+        # once a key is pressed, and GO is the three green bars below.
         puls = 0.55 + 0.45*sin(2π*startprompt)          # 0.1 .. 1.0
-        cap  = (amber[1]*puls, amber[2]*puls, amber[3]*puls)
-        kw, kh = 420, 76
-        kx, ky = W÷2 - kw÷2, H÷2 - kh÷2
-        hquad!(v, kx-6, ky-6, kw+12, kh+12, dim)        # keycap shadow/frame
-        for (dx,dy,dw,dh) in ((0,0,kw,6), (0,kh-6,kw,6), (0,0,6,kh), (kw-6,0,6,kh))
-            hquad!(v, kx+dx, ky+dy, dw, dh, cap)        # keycap outline
-        end
-        hquad!(v, kx+40, ky+kh÷2-5, kw-80, 10, cap)     # the bar itself: this is the SPACE bar
-        # A downward chevron above the cap: "press this".
-        for k in 0:3
-            hquad!(v, W÷2 - 30 + 10k, ky - 34 + 8k, 10, 8, cap)
-            hquad!(v, W÷2 + 20 - 10k, ky - 34 + 8k, 10, 8, cap)
+        lamp = (red[1]*puls, 0.08*puls, 0.08*puls)
+        bw, bh = 300, 110
+        bx, by = W÷2 - bw÷2, H÷2 - bh÷2
+        hquad!(v, bx-6, by-6, bw+12, bh+12, dim)        # box frame
+        hquad!(v, bx, by, bw, bh, (0.07, 0.07, 0.08))   # box face
+        for k in 0:2
+            lx = bx + 30 + 90k; ly = by + 20
+            hquad!(v, lx-4, ly-4, 78, 78, (0.18, 0.18, 0.2))   # lamp bezel
+            hquad!(v, lx, ly, 70, 70, lamp)                    # the red lamp
         end
     end
     if countdown >= 0.0
@@ -1145,6 +1146,7 @@ function _clip_lat(t, maxlat::Float32)
 end
 
 function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0.72f0,0.74f0,0.76f0), smooth=true, tint=nothing, track=false, mirror=false, exclude_groups=(), include_groups=(), cockpit_clean=false, maxedge=Inf32, uflip=nothing, vflip=nothing, maxlat=Inf32, trim=false, dedup=nothing, drop_green=false, min_component=0, min_component_tex=(), wheel_dress=nothing, cockpit_dress=nothing)
+    livery = lowercase(first(splitext(basename(String(path3do)))))   # S7: the wrapper's own texture name (lotd, ferd, ...) = the livery
     # text reads right when the texture mapping preserves handedness: the mirror=true
     # remap (gx,gz,-gy) is a rotation (no flip needed); mirror=false is a reflection
     # (needs V flipped to compensate).  So uflip=false, vflip=!mirror.
@@ -1438,8 +1440,21 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
                     " ptype=0x", string(t.ptype, base=16), " col=", round.(t.col, digits=3),
                     " uv1=", round.(t.uv[1], digits=3))
         end
-        flatpoly = FLATPOLY_FIX && !FLATPOLY_PLANAR && t.tex != "" && t.flat
-        planar   = FLATPOLY_PLANAR && t.tex != "" && t.flat
+        # CARGOLD-1 S7 (PO 2026-09-06 20:50, Watkins cockpit video): "dashboard is upside down and visor,
+        # which should be almost transparent, is a solid object with bright green and gold". S5/S6 applied
+        # the livery projection to EVERY flat-typed poly with a bound texture -- the instrument panel
+        # (lotinsa), the front suspension (frontlot: the green "wings" reaching the wheels where the gold
+        # shows silver wishbones) and the windscreen (the lotd-bound flat polys, x -0.18..1.04, up to
+        # z 0.35 -- the "visor"). The projection now applies to the LIVERY texture only (the wrapper's own
+        # name, e.g. lotd). JM_FLATPOLY=glass (a probe) draws none of them: car_gold/lotus_cockpit_glass.png
+        # then shows NOTHING ahead of the dash but the ground, so they are the SCUTTLE (the bonnet top the
+        # gold shows green with the stripe), not a perspex -- what makes it read as a "visor" is the eye
+        # height/FOV (CARGOLD-1 S8). DEFAULT stays planar; every other flat textured poly keeps its
+        # authored draw (its own UVs, as before S5): that is what puts the dash and the suspension back.
+        liv_flat = t.flat && t.tex != "" && t.tex == livery
+        FLATPOLY_GLASS && liv_flat && continue
+        flatpoly = FLATPOLY_FIX && !FLATPOLY_PLANAR && liv_flat
+        planar   = FLATPOLY_PLANAR && liv_flat
         v = get!(groups, flatpoly ? "" : t.tex, Float32[])
         mz = mirror ? -1f0 : 1f0   # negate render-Z → right-handed track frame (gx,gz,-gy)
         for i in 1:3
@@ -1509,6 +1524,7 @@ end
 # yellow stripe in the cockpit view and a green surround in the chase view, i.e. the gold look.
 # JM_FLATPOLY=0 restores the old draw; =1 the colour-word draw.
 const FLATPOLY_FIX = get(ENV,"JM_FLATPOLY","planar") != "0"
+const FLATPOLY_GLASS = lowercase(get(ENV,"JM_FLATPOLY","planar")) == "glass"   # S7 probe: =glass draws NO livery-bound flat poly -- the capture showed nothing ahead of the dash, so they are the SCUTTLE, not a perspex
 # CARGOLD-1 S5 (2026-09-06): a THIRD way to draw a flat-typed poly that carries a bound texture --
 # PLANAR projection of that texture. lotd.3DO's scuttle (60 of its 88 0x81D polys) has no textured
 # twin, yet GPL shows it green with the yellow stripe: the bound `lotd` livery is the car's top view,

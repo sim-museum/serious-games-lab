@@ -7021,6 +7021,73 @@ TRKSURF's waypoints + halfwidths (0.9 m quads, the strips' own textures), scoped
 first, chase-view capture vs `track_gold/ring_gold_37s.png`.
 
 
+## 🔴 PO TEST ROUND 2 (2026-09-06 20:50, `JuliaRacer-x86_64-livery.AppImage`) — items, verbatim, with owners
+
+PO: *"only tested julia."* Videos: `~/Videos/260906_wg_race.mp4`, `260906_wg_dash_upside_down_windscreen_isssue.mp4`,
+`260906_spa_invisible_wall.mp4`, `260906_ring.mp4` (19 min). Also: *"with julia it just loads the track now,
+there's no 25 minute delay while it compiles everything anymore"* -- **STARTUP-1 closed** by the shipped
+image (the depot's compiled cache travels in the AppImage); the sysimage build stays postponed.
+
+1. **RACESTART-2** ⭐ *"watkins glen: every time I start a race, AI sideswipes me and knocks off both my wheels
+   before I can even move"* (`260906_wg_race.mp4`: P6/6 on the grid; at the "PRESS SPACEBAR" frame an AI
+   already sits at the player's right rear, overlapping the slot). RACESTART-1's gate covers an AI driving
+   THROUGH a stationary player from behind; this is a lateral hit at the lights. Reproduce with the grid
+   geometry of P6/6 at Watkins (ROW 9.0 / GRID_LANE 2.2, init stagger) -- see the code note below.
+2. **CARGOLD-1 S7** ⭐ *"still no axles"* + *"cockpit view much improved but - dashboard is upsidedown and visor,
+   which should be almost transparent, is a solid object with bright green and gold color"*. Root cause is
+   mine (S5/S6): the livery projection was applied to EVERY flat-typed poly with a bound texture -- the
+   instrument panel (`lotinsa`), the front suspension (`frontlot` -> the green "wings" reaching the wheels
+   where the gold shows silver wishbones: that is the missing "axles"), and the windscreen (the lotd-bound
+   flat polys = the "visor"). Fix (render.jl): the projection applies only to the wrapper's own livery
+   texture; other flat textured polys keep their authored draw (dash, suspension). The "visor" itself was
+   probed with `JM_FLATPOLY=glass` (draw none of the livery-bound flat polys): `car_gold/lotus_cockpit_glass.png`
+   shows NOTHING ahead of the dash but the ground -- so those polys are the SCUTTLE (the bonnet top the
+   gold shows green with the stripe), not a perspex; the gold has no visible screen at all. What makes
+   ours read as a visor is the EYE: the scuttle sits high and close in our cockpit view, low and far in
+   GPL's (compare `gold_crop.png`: the eye looks down on the dash, the nose runs away to the roundel).
+   **S8 = eye height / FOV / eye x** against the gold still, plus the suspension arms (the `frontlot` flat
+   polys draw one texel and vanish; GPL's cockpit car draws silver wishbones). Default stays planar with
+   the livery-only scope; captures `lotus_{cockpit,chase}_planar6.png`.
+3. **RING-HAIRPIN-1 (wider)** *"I still see piecewise linear rather than smooth curves, at all tracks I tested
+   just now (wg, spa, ring)"* -- the S2 measurement generalises: the road strips of every track .3do are
+   5 m polylines; S3 (tarmac tessellated from the .trk centreline) is the fix, all tracks.
+4. **SPA-SF-1 reopened** *"armco is still diagonally across the road just beyond start line"* -- the S5
+   capsule rule inerted its DISC; the object still RENDERS across the road (arm_sf0). Move or drop the
+   instance (TRACKGOLD-1 placement), not just its solid.
+5. **SPA-WALL-1** ⭐ *"turning left and going downhill toward burenville I still hit something invisible on
+   the track and stop dead"* -- the PO's console: `[WRECK] hard impact at 94.0 km/h ... CLOSING speed 21.9
+   m/s into a solid at world (527.9, -870.4)`. `JM_SOLIDNEAR="527.9,-870.4,25"` names it
+   (`logs/spa_wall_probe.log`).
+6. **The Ring** *"I was able to drive all the way around the circuit - great job!"* -- ROAD-1's rule holds
+   at the Ring for the PO. Open (TRACKGOLD-1 S4, all from `260906_ring.mp4`):
+   a. *"a lot of 'curtain of trees' 2D veil-like objects that intrude into, or even cross perpendicularly,
+      the road"* and *"'curtain of trees' objects floating in the air, mostly along the final straight"* --
+      the Ring's tree-row BILLBOARDS (kbb path: origin test only, no footprint filter, no ground snap).
+   b. *"near the start ... several grandstand/building/line of billboard objects vertically offset from the
+      ground, floating maybe 5 m above where they should be"* -- Ring placements' height (the .dat/
+      gpl_scenery placement y vs HAT).
+   c. *"a row of billboards object a km or so down the road on the left that should be back in the
+      start/grandstand area"* -- a placement with the wrong origin (or the wrong section).
+   d. *"just before ... 'high 8' a fallen-apart-into-pieces banner hanging over the road, which included a
+      piece lying across the road, which my car treated as a speedbump"* -- a banner object whose parts
+      fell (per-part boxes?) and one part on the tarmac that the HAT sees: the only physical contact the
+      PO had at the Ring. Find the banner (JM_SCENE_AT near the Hohe Acht crest), check its parts' y.
+   e. (PO 21:20) *"at the ring you can sometimes see the road ribbon ascending skyward in the distance -
+      there should be background objects (curtains of trees, perhaps?) blocking that view - see gold
+      standard"* -- the Ring's distant tree curtains/horizon backdrops are missing or dropped (the same
+      billboard family as a., placed correctly this time), so far road sections show through.
+8. **STARTSEQ-2** (PO 21:12) *"change the bar+rabbit ears object (very confusing) at the start of a julia race
+   to a box with 3 red lights. That better suggests that you need to do something to start the race. Then
+   start the countdown whenever the user presses any keyboard key - not only spacebar"* -- the HUD's pulsing
+   spacebar keycap (compose_hud `startprompt`) becomes a three-red-light box; `anykey()` (letters, digits,
+   space, enter, tab, arrows, modifiers; ESC stays quit) arms the countdown.
+7. **CARGOLD-1 S8** (PO 21:05) *"in cockpit view the tub backs too much left and right, as if connected to
+   the axles via rubber bands, in turns - compare to gold standard"* -- the cockpit camera/tub shows far
+   more lateral sway relative to the wheels than GPL: either the rendered body-vs-wheel lateral
+   compliance (suspension lateral travel drawn into the body pose) or the camera's roll/lateral
+   smoothing. Measure: log body lateral offset vs wheels through a Watkins corner in the replay and
+   compare against the gold lap video (the wheels barely move relative to the tub in GPL).
+
 ## 🔲 BACKLOG — TRACKGOLD-1: Spa and the Ring closer to the gold standard; the Ring's missing trackside objects; no free-standing lines of people on any track  ⭐ PRIORITY (PO 2026-09-06 14:50)
 
 PO, verbatim: *"add priority backlog item: make julia spa and ring tracks closer to gold standard.
