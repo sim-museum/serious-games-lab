@@ -8248,8 +8248,15 @@ function main()
                 FPS_ACC[] += _now - FPS_T0[]; FPS_N[] += 1; FRAMEPROF > 0 && (PROF_TOT[] += _now - FPS_T0[])
                 if FPS_N[] >= FPSDIAG
                     _ms = 1000*FPS_ACC[]/FPS_N[]
+                    # SPA-FPS-1 (PO 2026-09-06: "spa has low frame rate at places, but the ring does not"): each
+                    # report carries WHERE (lapdist) and HOW MUCH is in draw range (objects within OBJ_CULL2,
+                    # billboards within BB range) -- the frame time's suspects, not just its value.
+                    _hr = JuliaMotor.hat(TRKSURF, cs.x, cs.z)
+                    _nobj = count(o -> (o[4][1] - cs.x)^2 + (-o[4][3] - cs.z)^2 < OBJ_CULL2, OBJECTS)
                     println("  [fps] view=", CTL.view == 0 ? "cockpit" : "chase  ",
-                            "  ", round(1000/_ms, digits=1), " fps  (", round(_ms, digits=1), " ms/frame)")
+                            "  ", round(1000/_ms, digits=1), " fps  (", round(_ms, digits=1), " ms/frame)",
+                            "  s=", _hr.found ? round(Int, _hr.lapdist) : -1, "  objs_in_range=", _nobj, "/", length(OBJECTS),
+                            "  billboards=", length(BILLBOARDS), "  trees=", length(STATICTREES))
                     flush(stdout); FPS_ACC[] = 0.0; FPS_N[] = 0
                 end
             end

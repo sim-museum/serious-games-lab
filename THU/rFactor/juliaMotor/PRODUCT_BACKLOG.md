@@ -7081,7 +7081,11 @@ image (the depot's compiled cache travels in the AppImage); the sysimage build s
    so its per-frame object count is far higher; measure first: a per-section frame-time profile along a
    Spa lap (draw calls, objects/billboards in frustum, triangles) vs the Ring, then the usual levers --
    distance culling for billboards/objects, merging static objects into per-section batches, texture
-   residency. A JM_FPSLOG hook (lapdist, ms/frame, objects drawn) is the first step.
+   residency. **S1 (00:35):** `JM_FPSDIAG` now reports lapdist and objects-in-range with each frame time;
+   leading suspect before measuring: `OBJ_CULL2 = 2200 m` -- trackside meshes draw out to 2.2 km, which on
+   Spa's dense valley (1270 meshes + 1566 billboards on a 14 km lap) keeps most of the layout in range at
+   any point, while the Ring's 22.8 km spreads its 575 meshes thin. Replay runs `spa_fps_spa.log` /
+   `spa_fps_nurburgring.log` (chase, FPSDIAG=90, FRAMEPROF=90) give ms/frame vs lapdist vs objects in range.
 8. **STARTSEQ-2** (PO 21:12) *"change the bar+rabbit ears object (very confusing) at the start of a julia race
    to a box with 3 red lights. That better suggests that you need to do something to start the race. Then
    start the countdown whenever the user presses any keyboard key - not only spacebar"* -- the HUD's pulsing
