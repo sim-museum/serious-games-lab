@@ -7106,8 +7106,13 @@ Video `~/Videos/260907_spa.mp4` (13 min). PO: *"Overall, a big improvement!"*
    now 90°** (Watkins keeps 0). The apron stays road-classified (E71-S13: it is the concrete edge strip
    old Spa drives on); the paddock confusion at La Source is recorded, not changed.
 5b. (PO 15:15) *"GPL running under wine on this PC gets 60 fps at spa (and all other tracks), using
-   openGL"* -- the bar for SPA-FPS-1: 60 fps in the COCKPIT view. Cockpit measurement with the two mirror
-   passes queued (`spa_fps_cockpit.log`).
+   openGL"* -- the bar for SPA-FPS-1: 60 fps in the COCKPIT view. **Cockpit measurement (15:32,
+   `spa_fps_cockpit.log`, replay lap with the two mirror passes): 39-56 fps, 18-25 ms/frame -- objects
+   5-9 ms, billboards 7.5-11 ms, depth 1.7, track 1.0, cars 1.8.** The mirrors cost ~10 fps over the
+   chase view; the sprite loop (1566 billboards, one draw call each, every pass) is now the largest
+   item. The PO's 10-20 fps in a live race also carries the physics of six cars, the AI, and the screen
+   recorder. **S5:** batch the billboards into one instanced draw per pass (target: sprites < 2 ms),
+   then a cheaper mirror pass (smaller radius, no shadow, half resolution).
 9. **AI-AVOID-1** (PO 14:45) *"The AI cars are not very good at avoiding collision, except in wide
    straights"* -- the AI blocker/avoidance logic (step_field!) in corners; RACESTART-1's gate covers only
    the grid.
