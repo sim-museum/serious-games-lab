@@ -7216,10 +7216,14 @@ have none** (plate region: 88, 28 twinned). So the surface GPL shows green-with-
 the dash is drawn from those very 0x81D polys, which carry no UV list -- the only way to texture
 them is a projection of the bound texture, and `lotd.mip` is the car's top-view livery.
 `JM_FLATPOLY=planar` (new): u from the lateral position across `JM_PLANAR_W` (1.9 m), v from the
-longitudinal position from `JM_PLANAR_X0` (-2.5) over `JM_PLANAR_L` (5.0 m). Captures queued
-(cockpit + chase). If the stripe lands on the scuttle, the projection axes/scales are then measured
-against the gold still rather than guessed, and this becomes the default for flat-typed polys with
-a bound texture on car meshes; E106 (engine graphics / yellow cowl) closes with it.
+longitudinal position from `JM_PLANAR_X0` (-2.5) over `JM_PLANAR_L` (5.0 m). **Result (`car_gold/lotus_cockpit_planar.png`, 18:03): the scuttle is GREEN with the yellow stripe
+at its centre** -- the livery, for the first time in the cockpit view; the pale plate, the yellow
+slab and the empty frame are all gone. First-guess scale (u over 1.9 m, v over -2.5..2.5): the
+green is stretched and the roundel/"TEAM LOTUS" do not land yet. `tex_lotd.png` (decoded
+`lotd.mip`, 256x256) is the top-view livery: stripe down the vertical centre, cockpit hole at v ≈
+0.45-0.85, roundels/mirrors at the sides -- so v should span roughly the tub (x0 ≈ -1.5, L ≈ 3.0);
+that pair is queued. Then planar becomes the default for flat-typed polys with a bound texture on
+car meshes, and E106 closes.
 
 **Sprint plan.** S1: measure -- one triptych per chassis with the current build, axle offsets in
 a table (the census). S2-S4: fix the placements, worst first (user Lotus first, then the AI five).
