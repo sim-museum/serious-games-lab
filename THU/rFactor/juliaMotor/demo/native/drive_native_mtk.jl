@@ -1084,6 +1084,12 @@ function gpl_scenery(ztrk, datpack, ribbon)
         n_offered += 1
         scene_names[nm] = get(scene_names,nm,0) + 1
         if startswith(nm,"treesrb"); n_treesrb += 1; continue; end   # forest-BACKDROP "paintings"
+        # TRACKGOLD-1 S3b (2026-09-06): the Ring's lines of people are MESH placements here too --
+        # `peoplefl` is a 6-triangle flat quad, so it passed the sprite-only rule and the scene census
+        # at the pits loop still rendered eleven of them at lateral 9-16 m. Same rule, both paths.
+        if PeopleFilter.is_loose_person(lowercase(nm)) && get(ENV, "JM_KEEP_CROWDROWS", "0") == "0"
+            n_people_dropped[] += 1; continue
+        end
         mesh=getmesh(nm)
         if (mesh===nothing || isempty(mesh))
             n_nomesh += 1
