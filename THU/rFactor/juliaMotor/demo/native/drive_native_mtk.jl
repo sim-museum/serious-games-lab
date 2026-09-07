@@ -2341,6 +2341,20 @@ const OBJ_FF_CW    = get(ENV,"JM_OBJ_FF","cw") == "cw"
 # SPA-FPS-1 (2026-09-07): Spa's replay lap runs 30-41 fps (world draw 26 of 29 ms) with 600-1000 trackside
 # meshes inside this radius, the Ring 58 fps with ~190. JM_OBJ_CULL_D=<m> A/Bs the radius (2200 = the old value).
 const OBJ_CULL2 = parse(Float32, get(ENV, "JM_OBJ_CULL_D", "2200"))^2      # mesh objects (buildings/grandstands/trees) — keep distant landmarks
+const FRUSTUM_CULL = get(ENV, "JM_FRUSTUM_CULL", "1") != "0"
+# clip-space visibility of a sphere (centre pos, radius r) under the pass's view-projection: behind the
+# camera (w < -r) or beyond the left/right/top/bottom planes by more than the radius -> not drawn.
+@inline function infrustum(vp::AbstractMatrix{Float32}, pos, r::Float32)
+    x = Float32(pos[1]); y = Float32(pos[2]); z = Float32(pos[3])
+    cx = vp[1,1]*x + vp[1,2]*y + vp[1,3]*z + vp[1,4]
+    cy = vp[2,1]*x + vp[2,2]*y + vp[2,3]*z + vp[2,4]
+    cw = vp[4,1]*x + vp[4,2]*y + vp[4,3]*z + vp[4,4]
+    cw < -r && return false
+    lim = cw + r * 1.2f0                 # generous: a bounding sphere in clip units, no exact projection of r
+    abs(cx) > lim && return false
+    abs(cy) > lim && return false
+    true
+end
 # E70-S7: the restored billboards render vegetation CYAN (3.42% of frame vs 0.01% with them off).
 # Several Ring bush textures are blue-green at source (hgbush 20,69,56; bush 39,80,70; kwbush6
 # 30,67,62 — blue well above red), and drawing them at bright=1.55 pushes them past cyan.
@@ -8094,8 +8108,13 @@ function main()
                 glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 0)
             end
             PROF_TRACK[] += time() - _tp_t; _tp_o = time()
+            # SPA-FPS-1 S3 (2026-09-07): Spa's frame was 9-15 ms of trackside objects + 9-15 ms of billboards, one
+            # draw call each for everything inside the radius -- behind the camera and off to the sides included.
+            # A clip-space test skips what this pass's camera cannot see (each mirror pass brings its own vp_,
+            # so it culls for its own view). JM_FRUSTUM_CULL=0 reverts.
             for (items,mat,grz,opos,onm) in OBJECTS                   # trackside objects (trees graze-fade; uBackFlip stays 1 when un-culled)
                 (eye_[1]-opos[1])^2+(eye_[2]-opos[2])^2+(eye_[3]-opos[3])^2 > OBJ_CULL2 && continue   # distance cull
+                FRUSTUM_CULL && !infrustum(vp_, opos, 80f0) && continue
                 ob, oa = 1.05, 0.55                                    # default object grade (grandstands/buildings)
                 if MONZA                                               # E57: tone the combined-circuit paved/banking object surfaces
                     g = monza_obj_grade(onm)
@@ -8107,12 +8126,14 @@ function main()
             PROF_OBJ[] += time() - _tp_o; _tp_b = time()
             for (it,pos,w,h,yaw) in STATICTREES                      # wide forest-edge panels (authored yaw, graze-fade)
                 (eye_[1]-pos[1])^2+(eye_[2]-pos[2])^2+(eye_[3]-pos[3])^2 > BB_CULL2 && continue
+                FRUSTUM_CULL && !infrustum(vp_, pos, max(w, h) + 5f0) && continue
                 Render.draw(prog, it, vp_, Render.translate(Float32[pos[1],pos[2],pos[3]])*Render.roty(yaw)*Render.scalexyz(w,h,1f0); bright=1.3, ambfill=0.8, graze=true, unlit=!BB_LIT)   # E63/MZ3: the comment always claimed graze-fade but the call never passed it → a wide Monza forest strip seen EDGE-ON rendered as a dark triangular SLAB at the S/F. graze=true fades edge-on quads (uGraze) so the strip shows face-on as a tree-line and vanishes edge-on
             end
             OBJ_CULLFACE && glDisable(GL_CULL_FACE)
             glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 0)
             for (it,pos,w,h) in BILLBOARDS                            # trees/sprites
                 (eye_[1]-pos[1])^2+(eye_[2]-pos[2])^2+(eye_[3]-pos[3])^2 > BB_CULL2 && continue       # distance cull
+                FRUSTUM_CULL && !infrustum(vp_, pos, max(w, h) + 5f0) && continue
                 Render.draw(prog, it, vp_, Render.billboard_model(pos,w,h,eye_); bright=BB_BRIGHT, ambfill=BB_AMB, unlit=!BB_LIT)  # E83-S3: unlit by default (GPL pre-lit art); E70-S7 tunables only matter with JM_BILLBOARD_LIT=1
             end
             PROF_BB[] += time() - _tp_b; _tp_c = time()

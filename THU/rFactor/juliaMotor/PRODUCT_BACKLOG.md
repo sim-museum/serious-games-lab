@@ -7119,6 +7119,14 @@ image (the depot's compiled cache travels in the AppImage); the sysimage build s
    1566 billboards inside BB_CULL2, or the AI cars. **S2:** `[frameprof]` now splits the world draw
    into depth / track / objects / billboards / cars (`spa_prof.log`); the fix follows the split
    (shadow pass restricted to the near track, billboard frustum cull, or a smaller radius by default).
+   **S2 split (`spa_prof.log`, 01:54):** depth 1.6 / track 1.0 / objects 9-15 / billboards 9-15 / cars 1.7
+   ms -- the two per-item loops are 80 % of the frame: one draw call per object or sprite inside the
+   radius, behind the camera and off to the sides included. **S3 fix: a clip-space frustum test on both
+   loops** (`infrustum(vp_, pos, r)`: behind the camera or beyond the side planes by more than the
+   radius -> skipped; each mirror pass culls for its own vp_). `spa_prof2.log` (02:04): **Spa 49-60 fps**
+   (objects 4-8 ms, billboards 6-8 ms; the slowest stretch Eau Rouge/Kemmel 49-51, everywhere else
+   at the 60 fps vsync). JM_FRUSTUM_CULL=0 reverts. Ships as `JuliaRacer-x86_64-fps.AppImage`. If a
+   tree pops at the screen edge, the 1.2x margin is the knob.
 8. **STARTSEQ-2** (PO 21:12) *"change the bar+rabbit ears object (very confusing) at the start of a julia race
    to a box with 3 red lights. That better suggests that you need to do something to start the race. Then
    start the countdown whenever the user presses any keyboard key - not only spacebar"* -- the HUD's pulsing
