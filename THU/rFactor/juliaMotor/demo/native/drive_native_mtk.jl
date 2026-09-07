@@ -1854,13 +1854,13 @@ const _COCKPIT_ONLY = ("dash7","dash7a","ldashr")   # dial faces only; lotinsa/l
 # only when moving)"); :orient collapses same-facing stacks while KEEPING opposite-facing pairs,
 # so double-sided panels still read correctly from each side. JM_CAR_DEDUP=0 reverts.
 const _CAR_DEDUP = get(ENV,"JM_CAR_DEDUP","1") != "0" ? :orient : false
-const CARP   = Render.extract_gpl_car(_CARP_SRC; exclude=(_HAND_EXC...,_LOTBLACK_EXC...,_EXTRA_EXC...,_GARBAGE_EXC...,DRIVER_TEX...,MIRROR_TEX...,Render.STEER_TEX...,"pipe3","plaface","plahelm",_COCKPIT_ONLY...), exclude_groups=(6600,3560,27288,39792), cockpit_clean=true, maxlat=CARP_MAXLAT, dedup=_CAR_DEDUP, grey=(TUB_GREY,TUB_GREY+0.01f0,TUB_GREY+0.02f0))   # driver body + gauge + windscreen + mirrors drawn separately; hands kept unless JM_HANDS=0.  E64 S4 (D12): groups 27288/39792 are WHOLE DISPLACED ASSEMBLIES (suspension+exhaust+driver textures at y 0.42…1.16 / −1.12…−0.42, mirror copies) — GPL runtime-hidden branches our positioner walk mis-places; they were the chase view's "chrome spider-legs" through the rear tyres
-const DRIVERP = Render.extract_gpl_car(LOT3DO; only=DRIVER_TEX, maxlat=0.95f0, exclude_groups=(6600,3560,27288,39792))   # the driver figure — drawn only in CHASE view (occludes the cockpit from the in-car eye).  E64 S4: the displaced assemblies 27288/39792 carry lid/arms-textured tris too — without the group filter they drew as the chase view's remaining "spears"
+const CARP   = Render.extract_gpl_car(_CARP_SRC; exclude=(_HAND_EXC...,_LOTBLACK_EXC...,_EXTRA_EXC...,_GARBAGE_EXC...,DRIVER_TEX...,MIRROR_TEX...,Render.STEER_TEX...,"pipe3","plaface","plahelm",_COCKPIT_ONLY...), exclude_groups=Tuple(parse(Int, x) for x in split(get(ENV, "JM_CAR_EXCL_GROUPS", "6600,3560,27288,39792"), ",") if !isempty(strip(x))), cockpit_clean=true, maxlat=CARP_MAXLAT, dedup=_CAR_DEDUP, grey=(TUB_GREY,TUB_GREY+0.01f0,TUB_GREY+0.02f0))   # driver body + gauge + windscreen + mirrors drawn separately; hands kept unless JM_HANDS=0.  E64 S4 (D12): groups 27288/39792 are WHOLE DISPLACED ASSEMBLIES (suspension+exhaust+driver textures at y 0.42…1.16 / −1.12…−0.42, mirror copies) — GPL runtime-hidden branches our positioner walk mis-places; they were the chase view's "chrome spider-legs" through the rear tyres
+const DRIVERP = Render.extract_gpl_car(LOT3DO; only=DRIVER_TEX, maxlat=0.95f0, exclude_groups=Tuple(parse(Int, x) for x in split(get(ENV, "JM_CAR_EXCL_GROUPS", "6600,3560,27288,39792"), ",") if !isempty(strip(x))))   # the driver figure — drawn only in CHASE view (occludes the cockpit from the in-car eye).  E64 S4: the displaced assemblies 27288/39792 carry lid/arms-textured tris too — without the group filter they drew as the chase view's remaining "spears"
 const GAUGEP = Render.extract_gpl_car(LOT3DO; only=("dash7a",), maxlat=0.85f0)   # gauge cluster — drawn separately, bright (dial faces in the texture's lower-V region; keep default vflip)
 const WINDP  = Render.extract_gpl_car(LOT3DO; only=("windlot",), maxlat=0.95f0)  # the plexiglass windscreen — drawn LAST, faintly visible glass, so the suspension shows through (GPL gold standard)
 # FRONT SUSPENSION (lsusp1 = the front rocker/wishbone, only in the front groups 6600/3560 — so no
 # double-draw with CARP) — drawn with the body so the wishbones show ahead through the plexiglass (PO).
-# E75-S7 FIX: this used to read `only=("lsusp1",) … exclude_groups=(6600,3560,27288,39792)` — it
+# E75-S7 FIX: this used to read `only=("lsusp1",) … exclude_groups=Tuple(parse(Int, x) for x in split(get(ENV, "JM_CAR_EXCL_GROUPS", "6600,3560,27288,39792"), ",") if !isempty(strip(x)))` — it
 # asked for lsusp1 while excluding EVERY GROUP THAT CONTAINS IT (all 36 tris are in 6600+3560), so
 # FSUSPP was empty and the front suspension was drawn NOWHERE (E75-S6). The exclusion was added for a
 # real reason — E64-S4's "group 6600 carries 1.65 m-edge lsusp1 garbage 2 m ahead of the car" — but
@@ -1868,7 +1868,7 @@ const WINDP  = Render.extract_gpl_car(LOT3DO; only=("windlot",), maxlat=0.95f0) 
 # Clip the garbage by EXTENT instead: maxedge=1.0 drops the 1.65 m-edge tris and keeps the wishbones
 # (a Lotus 49 front wishbone is well under 1 m). JM_FSUSP_OLD=1 restores the empty-FSUSPP behaviour.
 const FSUSPP = haskey(ENV,"JM_FSUSP_OLD") ?
-    Render.extract_gpl_car(LOT3DO; only=("lsusp1",), maxlat=1.3f0, exclude_groups=(6600,3560,27288,39792)) :
+    Render.extract_gpl_car(LOT3DO; only=("lsusp1",), maxlat=1.3f0, exclude_groups=Tuple(parse(Int, x) for x in split(get(ENV, "JM_CAR_EXCL_GROUPS", "6600,3560,27288,39792"), ",") if !isempty(strip(x)))) :
     # E82-S2: the front carries the same overhang -- 4 of its 98 triangles are 1.3 m strips spanning
     # x 1.54..2.73 at z = +-1.12, i.e. forward of the nose and outside the wheels. Clip at the wheel
     # face like the rear; the 94 that make up the actual wishbone assembly (x <= 1.8, |z| <= 0.63) stay.
@@ -2030,7 +2030,7 @@ const RSUSPP_B = _RSONLY == "" ? Render.extract_gpl_car(LOT3DO; include_groups=(
 # entirely. plaface/plahelm (the player face/helmet the mirrors reflect) are excluded here because
 # the helmet is drawn separately at the head pivot (E60), as are the hands, pipes and windscreen.
 const CARPIN = get(ENV,"JM_COCKPIT_DRESS","1") != "0" ?
-    Render.extract_gpl_car(joinpath(LOTDIR,"lotd.3DO"); exclude=(_HAND_EXC...,_LOTBLACK_EXC...,_EXTRA_EXC...,_GARBAGE_EXC...,DRIVER_TEX...,MIRROR_TEX...,Render.STEER_TEX...,"pipe3","plaface","plahelm"), exclude_groups=(6600,3560,27288,39792), cockpit_clean=true, maxlat=parse(Float32,get(ENV,"JM_COCKPIT_MAXLAT","0.30")), dedup=_CAR_DEDUP, grey=(TUB_GREY,TUB_GREY+0.01f0,TUB_GREY+0.02f0)) :   # E106-S10: dedup coincident stacks (visor/mirror flicker)
+    Render.extract_gpl_car(joinpath(LOTDIR,"lotd.3DO"); exclude=(_HAND_EXC...,_LOTBLACK_EXC...,_EXTRA_EXC...,_GARBAGE_EXC...,DRIVER_TEX...,MIRROR_TEX...,Render.STEER_TEX...,"pipe3","plaface","plahelm"), exclude_groups=Tuple(parse(Int, x) for x in split(get(ENV, "JM_CAR_EXCL_GROUPS", "6600,3560,27288,39792"), ",") if !isempty(strip(x))), cockpit_clean=true, maxlat=parse(Float32,get(ENV,"JM_COCKPIT_MAXLAT","0.30")), dedup=_CAR_DEDUP, grey=(TUB_GREY,TUB_GREY+0.01f0,TUB_GREY+0.02f0)) :   # E106-S10: dedup coincident stacks (visor/mirror flicker)
     Render.TrackPart[]
 # The lotd body carries its own MIRROR PODS, which land exactly where the port's live-RTT round
 # mirrors already draw -- so the pods (and only the pods) are cut here, by centroid box in the
@@ -4862,7 +4862,7 @@ end
 if get(ENV,"JM_CARGROUPS","") != ""
     # E75-S6: WHICH excluded group holds gold's rear linkage? E75-S5 named the missing parts
     # (lshok, lsusp5/7, lsusp1, lbrdisc, frontlot — all present in the .3do, none excluded by name)
-    # and refuted CARP_MAXLAT as the cause, leaving exclude_groups=(6600,3560,27288,39792) by
+    # and refuted CARP_MAXLAT as the cause, leaving exclude_groups=Tuple(parse(Int, x) for x in split(get(ENV, "JM_CAR_EXCL_GROUPS", "6600,3560,27288,39792"), ",") if !isempty(strip(x))) by
     # elimination. Extract each excluded group ALONE and list what it carries: that says whether the
     # exclusions are removing geometry gold displays, and which exclusion to re-examine.
     for g in (6600, 3560, 27288, 39792)

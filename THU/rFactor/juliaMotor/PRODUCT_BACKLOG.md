@@ -7176,9 +7176,12 @@ GPL does not draw". GPL draws flat-typed polys in their colour (they carry no UV
 texture is state that leaks in our parser); we sample one texel of the leaked texture, hence the
 uniform pale plate. The correct treatment is the existing `FLATPOLY_FIX` (JM_FLATPOLY=1: draw a
 flat-typed poly in its own colour), which E106 left OFF on the brass-plate theory. The skip knob
-stays for A/B only (default off). Captures with JM_FLATPOLY=1 (cockpit + chase) are running; if the
-surround comes out green with the stripe, FLATPOLY becomes the default and the E106 engine-graphics
-item closes with it.
+stays for A/B only (default off). **JM_FLATPOLY=1 result (`car_gold/lotus_cockpit_flatpoly.png`): the WHOLE surround is bright yellow**
+-- so GPL does not draw these polys by their colour word either; S22's "a branch GPL never draws"
+stands for the plate, and the yellow is not a stripe. The other half of the "no cowl" frame: the
+cockpit model EXCLUDES groups 6600/3560 -- the `frontlot` NOSE (x 1.45-3.09) -- so nothing green
+can appear ahead of the dash at all. Next A/B (queued): nose groups back in, plate skipped
+(`JM_CAR_EXCL_GROUPS=27288,39792 JM_SKIP_PTYPES=0x81d`), cockpit + chase.
 
 **Sprint plan.** S1: measure -- one triptych per chassis with the current build, axle offsets in
 a table (the census). S2-S4: fix the placements, worst first (user Lotus first, then the AI five).
