@@ -1201,7 +1201,17 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
                 # every existing call keeps the historic 2.0 m limit unchanged.
                 (!(t.tex in exclude) && !istray(t.tex) && !(t.tex=="" && traygreen(t.col)) && L <= min(2.0f0, maxedge) && A >= 1f-7 && !(A > 0 && L/(2A/L) > 200f0))
     end
-    kept = [m.tris[i] for i in eachindex(m.tris) if keep(m.tris[i]) && !(m.groups[i] in exclude_groups) &&
+    # CARGOLD-1 S4 (2026-09-06): SKIP THE FAR-LOD POLY TYPE ON CAR MESHES. The type census on the
+    # Lotus (424 x 0x81D) and Ferrari (504) shows 0x81D is the tyres AGAIN as flat discs plus the
+    # untextured cockpit-fill plates (E106-S22's 48 brass polys, group 116576, the size of the
+    # cockpit opening, and 40 light-grey ones at the scuttle) -- a coarse representation GPL draws
+    # at distance, never up close. Drawn here it filled the cockpit with a flat pale plate over
+    # the real dark-green lo133/frontlot cowl (the gold cockpit still). JM_SKIP_PTYPES="0x81d,..."
+    # (default 0x81d for cars, nothing for tracks); JM_SKIP_PTYPES=0 keeps everything.
+    skip_ptypes = let e = get(ENV, "JM_SKIP_PTYPES", track ? "" : "0x81d")
+        e == "0" || e == "" ? Set{UInt32}() : Set{UInt32}(parse(UInt32, strip(x)) for x in split(e, ","))
+    end
+    kept = [m.tris[i] for i in eachindex(m.tris) if keep(m.tris[i]) && !(m.groups[i] in exclude_groups) && !(m.tris[i].ptype in skip_ptypes) &&
             (isempty(include_groups) || m.groups[i] in include_groups)]   # E64 S7: include_groups = keep ONLY these placing-node groups
     # E82-S3: cut the survivors at the lateral limit. Runs after the group/texture/garbage filters
     # so trimming can only ever reshape geometry those already accepted.

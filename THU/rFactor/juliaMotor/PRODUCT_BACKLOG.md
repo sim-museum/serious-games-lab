@@ -6972,8 +6972,11 @@ triangles per 100 m with a mean longest edge of ~9 m (13,900 m: 531 / 7.3 m), ex
 A hairpin drawn with triangles 100 m long IS a polygon; no heading smoothing can round it. GPL
 draws that loop from finer geometry (the gold video is smooth there), so this loop's road comes
 from a different source than the rest of the lap -- a coarse LOD of the `nurburg.dat` sections or a
-pit-area object. Next: the hook now prints the road TEXTURES per coarse bucket (a LOD/section has
-its own name); then load the finer section for that loop the way `gpl_scenery` loads the rest.
+pit-area object. **Textures per coarse bucket (17:33): the same materials as the fine road**
+(300 m: asphalt 10, atog 6, concrete 6, groove 6; 13,900 m: asphalt 183, atog 182, concrete 92,
+groove 69) -- so it is not a distinct LOD material, it is the same road drawn with a few huge
+triangles. Next: the scene census at lapdist 300 and 1200 (`JM_SCENE_AT`, E76-S11): is a finer
+road SECTION for the pits loop placed in `nurburg.dat` and dropped or unplaced by `gpl_scenery`?
 
 ## 🔲 BACKLOG — TRACKGOLD-1: Spa and the Ring closer to the gold standard; the Ring's missing trackside objects; no free-standing lines of people on any track  ⭐ PRIORITY (PO 2026-09-06 14:50)
 
