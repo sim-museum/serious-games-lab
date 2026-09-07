@@ -7002,6 +7002,24 @@ and segment lengths, compare with the gold frame's curve; then find which mesh (
 recording of Julia itself (launcher windows, the frozen 2000 rpm readout in every frame), so it is
 the defect's evidence, not the gold; the gold is the 15-minute chase lap.
 
+### RING-HAIRPIN-1 S2 (19:25) — the road EDGE at the Südkehre is a 3.3-6.6 m polyline; the centreline under it turns 2.7°/m
+
+`JM_ROADEDGE=550:700` (new hook; exits headless): 219 road-textured triangles in the window, 150
+boundary edges (groove 88, asphalt 62). The first dump zig-zagged between |lat| 0.1-3 and 3.8-4.2
+because the road is drawn as STRIPS (groove centre, asphalt edges) whose vertices do not coincide, so
+the groove/asphalt seam's T-junctions count as boundary too (S2b filters to |lat| >= 3.3, one vertex
+per 0.2 m). The OUTER edge on the left: vertices 6.6, 5.8, 6.4, 5.8 m apart on the approach, then
+3.6, 3.7, 4.0, 3.3, 3.2, 3.9, 5.2 m through the corner; the right side 4.3 m mean. The .trk
+centreline through the same 150 m has 171 waypoints (0.9 m spacing) turning 2.66° per waypoint on
+average, 24.9° max -- i.e. ~3°/m: a 3.5 m mesh segment there turns ~10°, which is the visible
+polygon (GPL's road at the Südkehre is smooth). So the coarse edge is the track .3do's own road
+strips, not a LOD choice and not the .trk: GPL must tessellate the driving surface itself (its
+centreline data is 0.9 m fine) rather than draw the .3do strips. **S3:** find how the road surface
+is rendered (TRACKMESH road tris straight from the .3do) and prototype drawing the tarmac from
+TRKSURF's waypoints + halfwidths (0.9 m quads, the strips' own textures), scoped to the hairpin
+first, chase-view capture vs `track_gold/ring_gold_37s.png`.
+
+
 ## 🔲 BACKLOG — TRACKGOLD-1: Spa and the Ring closer to the gold standard; the Ring's missing trackside objects; no free-standing lines of people on any track  ⭐ PRIORITY (PO 2026-09-06 14:50)
 
 PO, verbatim: *"add priority backlog item: make julia spa and ring tracks closer to gold standard.
@@ -7231,6 +7249,46 @@ draws). Follow-up (S6): fit x0/L/orientation so the roundel sits on the nose and
 the flanks, measured against the gold still; the full gate suite runs before the repack.
 
 **Sprint plan.** S1: measure -- one triptych per chassis with the current build, axle offsets in
+
+### CARGOLD-1 S6b (19:35) — fitted projection + plain-green walls: the surround reads as the gold's
+
+`car_gold/lotus_cockpit_planar4.png` (fitted constants, JM_NOSOUND=1 -- the first attempt died in
+portaudio while two FF instances held ALSA): the surround is green with the stripe on its top faces,
+but its inner WALLS carried white streaks -- the flank "TEAM LOTUS" lettering, because a top-view
+projection of a vertical face at |y| = 0.38 lands exactly on the side panels of the atlas. The
+gold's walls are plain green, so S6b: a planar face whose normal is within 60° of horizontal
+samples one green texel (`JM_PLANAR_SIDE=0` reverts, `JM_PLANAR_SIDE_UV` picks the texel; default
+0.3,0.42 = body green left of the stripe). `lotus_cockpit_planar5.png`: green surround, yellow
+stripe on the scuttle top, no white; `lotus_chase_planar4.png`: green body, TEAM LOTUS on the
+flank, green surround blending into the tub -- the gold look in both views. **Defaults changed**
+(render.jl): `JM_PLANAR_W=-1.32 JM_PLANAR_X0=2.64 JM_PLANAR_L=-3.24`, side rule on. Left for the
+PO's eye: the stripe's exact width/centre on the scuttle top (the top faces span v 0.49-0.59
+where the atlas stripe is still narrow). Ships in the next repack once the road_clear rerun with
+the re-framed census (ROAD-1 S6) is green.
+
+
+### CARGOLD-1 S6 (19:05) — the projection fitted to the livery's own UVs, not guessed
+
+Measured from `lotd.3DO` (scratch `cowl_fit*.jl`, reads the parser's UVs): the 96 flat `lotd`-bound
+polys span x -0.18..1.04, y ±0.38, z -0.11..0.35 -- they are the cockpit SURROUND (56 face
+fore/aft, 18 sideways, 38 up), not a horizontal scuttle; the other 142 flat textured polys are
+`lo133` (engine), `frontlot` (front suspension), `pipe3`, `axlelot`, `knees`, `lohand`, `lotinsa`.
+The textured `lotd` polys next to the surround (x -0.18..1.74, z>0.1, 207 tris) map u = 0.428 -
+0.695 y and v = 0.815 - 0.309 x (rms 0.17 / 0.10); at the surround's front edge x=1.45 the mesh's
+own UVs are u 0.20/0.35/0.65/0.80 at y +0.39/+0.21/-0.21/-0.39, v 0.358. So the texture's v runs
+nose-to-tail DOWN the image (v 0 = nose) and u runs right-to-left across the car -- the S5 default
+(v = (x+2.5)/5, u = (y+0.95)/1.9) has both axes inverted and twice the scale, which is the
+"stretched green" of `lotus_cockpit_planar.png`; S5's second guess (x0 -1.5, L 3) kept the wrong
+direction, hence the roundel. Fitted constants: `JM_PLANAR_W=-1.32 JM_PLANAR_X0=2.64
+JM_PLANAR_L=-3.24` (u = 0.5 - 0.76 y, v = (x - 2.64)/-3.24 = 0.815 - 0.309 x). In the texture that
+puts the surround at v 0.49..0.87, u 0.21..0.79: the region around the cockpit hole -- green with
+the wide stripe ahead of the hole, exactly what the gold cockpit still shows in front of the
+driver. Captures `car_gold/lotus_{cockpit,chase}_planar3.png` are queued behind the gate rerun
+(`planar3_shots.sh`); the constants become the default only if the cockpit frame matches the gold.
+Full gate suite (`gates_full_1812.log`): 37/39 PASS; `wheel_hubs_smoke` failed on the gate's
+project (render.jl needs GLFW -- fixed in gates.sh, 9 s PASS alone) and `road_clear_smoke` hit
+the 900 s timeout while two FF instances and three scratch Julias shared the box; rerun alone in
+progress.
 a table (the census). S2-S4: fix the placements, worst first (user Lotus first, then the AI five).
 S5: the gate; S6: ship and the PO's eye.
 

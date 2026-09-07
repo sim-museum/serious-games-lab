@@ -1444,7 +1444,12 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
         mz = mirror ? -1f0 : 1f0   # negate render-Z → right-handed track frame (gx,gz,-gy)
         for i in 1:3
             p=t.p[i]; n = smooth ? sm(p, t.n[i]) : t.n[i]; uv=t.uv[i]
-            planar && (uv = ((p[2] + PLANAR_W/2f0)/PLANAR_W, (p[1] - PLANAR_X0)/PLANAR_L))   # S5: project the livery
+            # S5: project the livery. S6: a top-view projection means nothing on a VERTICAL face -- the
+            # cockpit surround's inner walls (|y| = 0.38) landed on the flank "TEAM LOTUS" lettering as white
+            # streaks; the gold shows those walls plain green, so a face whose normal is within 60 deg of
+            # horizontal samples one green texel (JM_PLANAR_SIDE_UV, default the body green left of the stripe).
+            planar && (uv = (PLANAR_SIDE && abs(t.n[i][3]) < 0.5f0) ? PLANAR_SIDE_UV :
+                            ((p[2] + PLANAR_W/2f0)/PLANAR_W, (p[1] - PLANAR_X0)/PLANAR_L))
             # E36: untextured COCKPIT tris (the tub/floor) take the `grey` shade when JM_TUB_GREY makes it
             # silver — the `grey` param was a no-op before (baked vertex colour used t.col).  Gated on
             # cockpit_clean + a >0.2 grey so the DEFAULT dark tub is unchanged (no regression); only an
@@ -1510,9 +1515,16 @@ const FLATPOLY_FIX = get(ENV,"JM_FLATPOLY","planar") != "0"
 # and a poly with no UV list can only be textured by projecting it. JM_FLATPOLY=planar: u from the
 # lateral position across the car's width, v from the longitudinal position along its length.
 const FLATPOLY_PLANAR = lowercase(get(ENV,"JM_FLATPOLY","planar")) == "planar"
-const PLANAR_W = parse(Float32, get(ENV,"JM_PLANAR_W","1.9"))       # lateral extent mapped to u 0..1 (m)
-const PLANAR_X0 = parse(Float32, get(ENV,"JM_PLANAR_X0","-2.5"))    # longitudinal start of v=0 (m)
-const PLANAR_L = parse(Float32, get(ENV,"JM_PLANAR_L","5.0"))       # longitudinal extent mapped to v 0..1 (m)
+# S6 (2026-09-06 19:30): the constants are FITTED to the livery's own UVs on lotd.3DO's textured polys
+# next to the surround (u = 0.428 - 0.695 y, v = 0.815 - 0.309 x; at x = 1.45 the mesh maps y +0.39 to
+# u 0.20 and y -0.39 to u 0.80, v 0.358): the texture's v runs nose-to-tail DOWN the image and u
+# right-to-left, so both extents are NEGATIVE and the first guess (1.9 / -2.5 / 5.0) had both axes
+# inverted at twice the scale. Captures car_gold/lotus_{cockpit,chase}_planar5.png vs the gold stills.
+const PLANAR_W = parse(Float32, get(ENV,"JM_PLANAR_W","-1.32"))     # lateral extent mapped to u 0..1 (m); u = 0.5 - 0.76 y
+const PLANAR_X0 = parse(Float32, get(ENV,"JM_PLANAR_X0","2.64"))    # longitudinal position of v=0 (m): the nose
+const PLANAR_L = parse(Float32, get(ENV,"JM_PLANAR_L","-3.24"))     # longitudinal extent mapped to v 0..1 (m); v = 0.815 - 0.309 x
+const PLANAR_SIDE = get(ENV,"JM_PLANAR_SIDE","1") != "0"             # S6: vertical planar faces take one green texel
+const PLANAR_SIDE_UV = let v = parse.(Float32, split(get(ENV,"JM_PLANAR_SIDE_UV","0.3,0.42"), ",")); (v[1], v[2]) end
 const STEER_TEX = ("sterlot","lotster","lsterlog")
 """Extract the steering wheel as its own parts + pivot (centre, column axis) in the
 rig frame (X fwd, Y up, Z left), so the app can rotate it with steering input."""

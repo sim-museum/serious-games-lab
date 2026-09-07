@@ -5862,7 +5862,34 @@ function main()
         objdy(ox,oz,oy) = (rh = JuliaMotor.hat3d(TERRAIN, Float64(ox), Float64(oz); ref=Inf); rh[3] ? round(Float64(oy)-rh[1],digits=1) : 0.0)
         kept_mesh  = [(nm,ox,oz,olat(ox,oz),objdy(ox,oz,oy)) for (nm,ox,oz,oy,kind,issolid) in OBJINSTS if kind===:mesh]
         kept_bb    = [(nm,ox,oz,olat(ox,oz),objdy(ox,oz,oy)) for (nm,ox,oz,oy,kind,issolid) in OBJINSTS if kind===:bb]
-        kept_solid = [(nm,ox,oz,olat(ox,oz),objdy(ox,oz,oy)) for (nm,ox,oz,oy,kind,issolid) in OBJINSTS if issolid]
+        # ROAD-1 S6 (2026-09-06, the Ring with its objects on): the census is now judged in the SAME frame
+        # as the physics. (a) `issolid` in OBJINSTS is the pre-clearance flag -- the SOLIDS loop later
+        # shrinks/inerts any disc that reaches the tarmac (r = -1000), so a "collidable!" here could be a
+        # disc the car can never touch; read the LIVE radius from SOLIDS instead. (b) "on road" for a
+        # mesh/billboard means tarmac under its ORIGIN (ROADHAT + on_track), and for a solid that tarmac
+        # lies within r + CARW of its origin -- not |lat| < ROAD_HALFW-1 (9 m corridor), which at the
+        # Ring's 8 m road counted verge furniture at lat 5-7 as blockers (1241 "anomalies", all dy=0).
+        # Tracks without a road-only HAT keep the corridor test. JM_SWEEP_CORRIDOR=1 restores it everywhere.
+        _slive = Dict{Tuple{Float64,Float64},Float64}()
+        for (sx, sz, sr, _) in SOLIDS
+            k = (round(Float64(sx), digits=2), round(Float64(sz), digits=2)); _slive[k] = max(get(_slive, k, -Inf), Float64(sr))
+        end
+        live_r(ox, oz) = get(_slive, (round(Float64(ox), digits=2), round(Float64(oz), digits=2)), -1.0)
+        use_tarmac = ROADHAT !== TERRAIN0 && get(ENV, "JM_SWEEP_CORRIDOR", "0") == "0"
+        tarmac_at(x, z) = JuliaMotor.hat3d(ROADHAT, Float64(x), Float64(z); ref=Inf)[3] &&
+                          (hr_ = JuliaMotor.hat(TRKSURF, Float64(x), Float64(z)); hr_.found && hr_.on_track)
+        solid_reaches(ox, oz, r) = begin
+            R = r + CARW + 0.1; n = max(3, ceil(Int, 4R)); hit = false
+            for ix in -n:n, iz in -n:n
+                hypot(ix, iz) > n && continue
+                tarmac_at(ox + R*ix/n, oz + R*iz/n) && (hit = true; break)
+            end
+            hit
+        end
+        kept_solid = [(nm,ox,oz,olat(ox,oz),objdy(ox,oz,oy),live_r(ox,oz)) for (nm,ox,oz,oy,kind,issolid) in OBJINSTS if issolid && live_r(ox,oz) > 0]
+        n_inert = count(((nm,ox,oz,oy,kind,issolid),) -> issolid && live_r(ox,oz) <= 0, OBJINSTS)
+        println("  census frame: ", use_tarmac ? "tarmac (ROADHAT + on_track)" : "corridor |lat| < ROAD_HALFW-1",
+                "  live solids=", length(kept_solid), "  inert by clearance=", n_inert)
         println("\n==== JM_SWEEP ", uppercasefirst(TRACKSEL), "  (step=", round(Int,step),
                 " m, total=", round(Int,CLINE.total), " m, ROAD_HALFW=", ROAD_HALFW, ") ====")
         groundz(RaceAI.pose_at(CLINE,0.0,0.0)[1], RaceAI.pose_at(CLINE,0.0,0.0)[3]; acquire=true)
@@ -5877,9 +5904,10 @@ function main()
             top[3] || push!(flags, "OFF-HAT(hole)")
             (top[3] && prevtop[3] && abs(top[1]-prevtop[1]) > 3.0) && push!(flags, "WALL/CLIFF Δh=$(round(top[1]-prevtop[1],digits=1))m")
             (!hr.found || abs(hr.lateral) > ROAD_HALFW) && push!(flags, "FALSE-GRASS lat=$(hr.found ? round(hr.lateral,digits=1) : "MISS")")
-            sobs = ["$nm(lat=$lat,dy=$dy)" for (nm,ox,oz,lat,dy) in kept_solid if hypot(ox-px, oz-pz) < ROAD_HALFW && abs(lat) < ROAD_HALFW && dy < OBJ_MAX_DY]
-            mobs = ["$nm(lat=$lat,dy=$dy)" for (nm,ox,oz,lat,dy) in kept_mesh if hypot(ox-px, oz-pz) < ROAD_HALFW && abs(lat) < BLOCK_LAT && dy < OBJ_MAX_DY]
-            bobs = ["$nm(lat=$lat,dy=$dy)" for (nm,ox,oz,lat,dy) in kept_bb   if hypot(ox-px, oz-pz) < ROAD_HALFW && abs(lat) < BLOCK_LAT && dy < OBJ_MAX_DY]
+            sobs = ["$nm(lat=$lat,dy=$dy,r=$(round(r,digits=1)))" for (nm,ox,oz,lat,dy,r) in kept_solid if hypot(ox-px, oz-pz) < ROAD_HALFW + r && dy < OBJ_MAX_DY &&
+                    (use_tarmac ? solid_reaches(ox, oz, r) : abs(lat) < ROAD_HALFW)]
+            mobs = ["$nm(lat=$lat,dy=$dy)" for (nm,ox,oz,lat,dy) in kept_mesh if hypot(ox-px, oz-pz) < ROAD_HALFW && dy < OBJ_MAX_DY && (use_tarmac ? tarmac_at(ox, oz) : abs(lat) < BLOCK_LAT)]
+            bobs = ["$nm(lat=$lat,dy=$dy)" for (nm,ox,oz,lat,dy) in kept_bb   if hypot(ox-px, oz-pz) < ROAD_HALFW && dy < OBJ_MAX_DY && (use_tarmac ? tarmac_at(ox, oz) : abs(lat) < BLOCK_LAT)]
             isempty(sobs) || push!(flags, "SOLID-ON-ROAD(collidable!): " * join(unique(sobs)[1:min(end,4)], ","))
             isempty(mobs) || push!(flags, "ON-ROAD MESH: " * join(unique(mobs)[1:min(end,4)], ","))
             isempty(bobs) || push!(flags, "ON-ROAD BILLBOARD: " * join(unique(bobs)[1:min(end,4)], ","))
@@ -6017,6 +6045,71 @@ function main()
         println("ROADTRIS_RESULT track=", TRACKSEL, " buckets=", length(cnt))
         flush(stdout); exit(0)
     end
+    # RING-HAIRPIN-1 S2: JM_ROADEDGE="550:700" -- the road-EDGE polyline over a lapdist window. Boundary
+    # edges are the road-textured triangles' edges used by exactly one road triangle; their vertices,
+    # split by lateral sign and ordered by lapdist, are the visible asphalt/grass edge. Prints each
+    # side's segment lengths and heading steps (a smooth GPL curve is many short segments with small
+    # steps; the PO's "piecewise linear" is few long segments with big steps), the same statistics for
+    # the centreline through the window (a smooth centreline under a coarse edge means the mesh, not
+    # the .trk, is the source), and the textures of the triangles that supply the edge. Exits.
+    if get(ENV, "JM_ROADEDGE", "") != ""; let   # `let`: every helper here stays local (a file-scope `key`
+        # function shadowed the sweep's own `key` at line ~6104 and broke every non-hook run)
+        a_, b_ = parse.(Float64, split(get(ENV, "JM_ROADEDGE", "550:700"), ":"))
+        rt = [t for t in TRACKMESH.tris if ROAD_TEX(lowercase(t.tex))]
+        key(p) = (round(Float64(p[1]), digits = 2), round(Float64(p[2]), digits = 2), round(Float64(p[3]), digits = 2))
+        ecount = Dict{Tuple{Any,Any},Int}(); etex = Dict{Tuple{Any,Any},String}(); inwin = 0
+        for t in rt
+            cx = (Float64(t.p[1][1]) + Float64(t.p[2][1]) + Float64(t.p[3][1]))/3
+            cy = (Float64(t.p[1][2]) + Float64(t.p[2][2]) + Float64(t.p[3][2]))/3
+            hr = JuliaMotor.hat(TRKSURF, cx, cy); (hr.found && abs(hr.lateral) < 12 && a_ <= hr.lapdist <= b_) || continue
+            inwin += 1
+            for (i, j) in ((1,2),(2,3),(3,1))
+                k1 = key(t.p[i]); k2 = key(t.p[j]); e = k1 < k2 ? (k1, k2) : (k2, k1)
+                ecount[e] = get(ecount, e, 0) + 1; etex[e] = lowercase(t.tex)
+            end
+        end
+        bnd = [e for (e, c) in ecount if c == 1]
+        println("\n==== JM_ROADEDGE ", uppercasefirst(TRACKSEL), " lapdist ", a_, "-", b_, ": ", inwin, " road tris, ", length(ecount), " edges, ", length(bnd), " boundary edges ====")
+        tex = Dict{String,Int}(); for e in bnd; tex[etex[e]] = get(tex, etex[e], 0) + 1; end
+        println("  boundary-edge textures: ", join(["$(k)=$(v)" for (k, v) in sort(collect(tex); by = kv -> -kv[2])], " "))
+        verts = Dict{Any,Tuple{Float64,Float64}}()   # vertex -> (lapdist, lateral)
+        for e in bnd, k in e
+            haskey(verts, k) && continue
+            hr = JuliaMotor.hat(TRKSURF, k[1], k[2]); hr.found || continue
+            verts[k] = (hr.lapdist, hr.lateral)
+        end
+        stats(pts) = begin
+            n = length(pts); n < 3 && return (n, 0.0, 0.0, 0.0, Int[])
+            seg = [hypot(pts[i+1][1] - pts[i][1], pts[i+1][2] - pts[i][2]) for i in 1:n-1]
+            hd = [atan(pts[i+1][2] - pts[i][2], pts[i+1][1] - pts[i][1]) for i in 1:n-1]
+            st = [abs(rad2deg(rem(hd[i+1] - hd[i], 2pi, RoundNearest))) for i in 1:n-2]
+            (n, sum(seg)/length(seg), maximum(seg), maximum(st), st)
+        end
+        # S2b: the road is drawn as STRIPS (groove centre, asphalt edges) whose vertices do not coincide,
+        # so texture-boundary T-junctions at |lat| 0-3 also count as "boundary"; the visible road edge is
+        # the OUTER polyline -- keep |lat| >= JM_ROADEDGE_MINLAT (3.3 m) and one vertex per 0.2 m of lapdist.
+        minlat = parse(Float64, get(ENV, "JM_ROADEDGE_MINLAT", "3.3"))
+        for (side, sel) in (("left (lateral>0)", v -> v[2] > 0), ("right (lateral<0)", v -> v[2] < 0))
+            seen = Set{Int}()
+            ks = sort([k for (k, v) in verts if sel(v) && abs(v[2]) >= minlat && a_ <= v[1] <= b_]; by = k -> verts[k][1])
+            ks = [k for k in ks if (b = round(Int, verts[k][1]*5); b in seen ? false : (push!(seen, b); true))]
+            pts = [(Float64(k[1]), Float64(k[2])) for k in ks]
+            n, mseg, xseg, xst, st = stats(pts)
+            big = count(s -> s > 8, st)
+            println("  ", rpad(side, 18), " verts=", n, "  mean seg=", round(mseg, digits = 1), " m  longest=", round(xseg, digits = 1), " m  max heading step=", round(xst, digits = 1), " deg  steps>8deg=", big)
+            for (k, kk) in enumerate(ks)
+                k > 40 && (println("     ..."); break)
+                v = verts[kk]; s = k <= length(st) + 1 && k >= 2 ? round(st[k-1], digits = 1) : 0.0
+                println("     lap=", lpad(round(v[1], digits = 1), 7), "  lat=", lpad(round(v[2], digits = 2), 6), "  step=", s)
+            end
+        end
+        # the centreline through the same window, sampled every 5 m
+        ci = [i for i in eachindex(TRKSURF.lapdist) if a_ <= TRKSURF.lapdist[i] <= b_]
+        n, mseg, xseg, xst, st = stats([(TRKSURF.pos[i][1], TRKSURF.pos[i][3]) for i in ci])
+        println("  centreline waypoints (", n, ", mean spacing ", round(mseg, digits = 1), " m): max heading step=", round(xst, digits = 1), " deg  (", round(sum(st)/max(1,length(st)), digits = 2), " mean)")
+        println("ROADEDGE_RESULT track=", TRACKSEL, " tris=", inwin, " boundary=", length(bnd))
+        flush(stdout); exit(0)
+    end; end
     AILINE = (CLINE !== nothing && N_AI > 0) ? CLINE : nothing
     # E84/E89 (2026-08-30): JM_AI_GPLLINE=1 -- the AI take their target speed from GPL's OWN race.lp
     # (3.0 m records, index-aligned with our line on tracks that are not re-centred). Measured

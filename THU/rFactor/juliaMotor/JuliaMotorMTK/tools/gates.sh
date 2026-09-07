@@ -28,7 +28,10 @@ for g in $SMOKES; do
   # Gates that go through demo/native/render.jl (extract_gpl_car) need the app's project, which
   # carries GLFW/ModernGL; the physics project does not. susp_pose_smoke failed on exactly that.
   gproj="$PROJ"; case "$g" in susp_pose_smoke|netplay_smoke|setup_tab_smoke|reground_smoke|netplay_dr_smoke|netplay_dr2_smoke|wheel_hubs_smoke) gproj="$PROJ/../demo/native" ;; esac
-  timeout 900 julia --project="$gproj" "$HERE/$g.jl" > "$log" 2>&1
+  # road_clear_smoke sweeps Spa and the Ring end to end (four census runs): ~15 min alone on this box,
+  # so it gets its own cap; everything else stays at 900 s.
+  tmo=900; case "$g" in road_clear_smoke) tmo=1800 ;; esac
+  timeout $tmo julia --project="$gproj" "$HERE/$g.jl" > "$log" 2>&1
   rc=$?
   # Exit status FIRST -- it is the only signal a crashed run gives. The text is a second
   # opinion for the smokes that report "✓ OK" rather than an exit code they set themselves.
