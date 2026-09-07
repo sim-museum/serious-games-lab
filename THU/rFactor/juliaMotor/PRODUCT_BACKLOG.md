@@ -5887,6 +5887,13 @@ nothing wrong has reached the PO's build. Switching projects per the standing ru
 
 Suite 23/23.
 
+### E106 — pointer (2026-09-06): the cowl/brass-plate thread continues under CARGOLD-1 S4/S5
+The 48 "brass" 0x81D polys are the scuttle in front of the driver (group 116576 in lotd.3DO's
+view, 60 of them with no textured twin); GPL draws them by projecting the top-view livery
+`lotd.mip` (green, yellow stripe, cockpit hole) -- not by their colour word (JM_FLATPOLY=1 paints
+the whole surround yellow) and not by skipping them (no cowl at all). `JM_FLATPOLY=planar` is
+the candidate; see CARGOLD-1 S4/S5 for the captures. Do not resume the "hidden branch" search.
+
 ### E106-S23 (2026-09-03) — 🔴 **S20's RATIONALE WAS WRONG. The clipped band is TYRES, not suspension — and the AI rods are still unidentified.**
 
 S20 aligned the AI chassis clip with the player's `0.85` and justified it from a code comment
