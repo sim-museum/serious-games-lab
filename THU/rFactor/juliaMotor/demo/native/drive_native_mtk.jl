@@ -2518,6 +2518,11 @@ const SOLID_EXCL_HW = parse(Float64, get(ENV, "JM_SOLID_EXCL_HW", "4.0"))
 # knob stays for fine angle tweaks (JM_GSTAND_YAW, deg).  Collision is centre+radius (orientation-free).
 const GSTAND_YAW = deg2rad(parse(Float64, get(ENV, "JM_GSTAND_YAW", "0")))
 objyawfix(nm) = startswith(lowercase(nm), "gstand") ? GSTAND_YAW : 0.0
+# TRACKGOLD-1 S4 probe (2026-09-06): the Ring's in-place veils (wehr-l2/l3, last01, hohe-lg3: placement yaw 0,
+# geometry authored around, not at, the origin) land across the road. If the object meshes' Z mirror does
+# not match the placement frame, off-origin geometry flips to the other side of its origin while
+# origin-centred objects (trees) look right. JM_OBJ_MIRROR=0 loads object meshes unmirrored -- an A/B.
+const OBJ_MIRROR = get(ENV, "JM_OBJ_MIRROR", "1") != "0"
 const KEEP_GRASS = haskey(ENV, "JM_KEEP_GRASS")    # E17 experiment: render the GPL green grass-cover planes (dropped by default)
 println(CAR3D ? "  PHYSICS: full-3D vehicle (default) — heave/pitch/roll + suspension travel + jumps" :
                 "  PHYSICS: planar 2-D model (JM_2D)")
@@ -3017,7 +3022,7 @@ let objnames=Set{String}()
         p = objpath(inst.name)
         if p == ""; objmesh[inst.name]=nothing; continue; end
         try
-            _te = time(); full = Render.extract_gpl_car(p; track=true, mirror=true); _e92.ext[] += time() - _te; _e92.n[] += 1   # un-stripped: decides stub vs geometry
+            _te = time(); full = Render.extract_gpl_car(p; track=true, mirror=OBJ_MIRROR); _e92.ext[] += time() - _te; _e92.n[] += 1   # un-stripped: decides stub vs geometry
             # E65 S3: the treeish() force flattened every tree strip to a synthesized quad even when
             # the .3do carries REAL geometry — the E22-era anti-wall move, pre-graze-fade.  Monza's
             # strips are FOLDED PANORAMAS (S2 finding) that only render correctly as their real
@@ -3039,7 +3044,7 @@ let objnames=Set{String}()
                 # the bilbrd01 ad sheet, with per-face winding INCONSISTENT inside the object (Castrol
                 # correct while MARTINI flips in every config).  Full closure needs per-face
                 # track-aware face selection at scenery-build time (instance transform × centreline).
-                parts = Render.extract_gpl_car(p; track=true, mirror=true, dedup=(get(ENV,"JM_OBJ_DEDUP","old")=="orient" ? :orient : true), exclude=(CROWD_TEX..., obj_extra_excl(inst.name)...))  # strip painted-on crowds + per-object roadward parts (E58 startbox)
+                parts = Render.extract_gpl_car(p; track=true, mirror=OBJ_MIRROR, dedup=(get(ENV,"JM_OBJ_DEDUP","old")=="orient" ? :orient : true), exclude=(CROWD_TEX..., obj_extra_excl(inst.name)...))  # strip painted-on crowds + per-object roadward parts (E58 startbox)
                 if isempty(parts); objmesh[inst.name]=nothing    # was an all-crowd object → drop (NOT a billboard)
                 else
                     lo=Inf32; hi=-Inf32; for pp in parts, k in 2:11:length(pp.verts); v=pp.verts[k]; lo=min(lo,v); hi=max(hi,v); end
@@ -5783,6 +5788,17 @@ function main()
         DriveRT3D.place3d!(cs, p[1], p[3], p[4]; v = 0.0)
         cs.s_vreset(cs.integ, zeros(14))                    # zero the vertical subsystem (no spawn bounce)
         h = groundz(p[1], p[3]; acquire=true); isfinite(h) && (cs.zref = Float64(h))
+        # TRACKGOLD-1 S4 (2026-09-06): where the road is embanked over the base terrain the full HAT can hand
+        # the teleport the LOWER surface, and every JM_SHOTS frame there is the road's underside (the
+        # "slab over the road" photos at Ring s=8500/16564/18152/20800 -- an artefact, not a veil). Land
+        # on the ROAD surface when the road-only HAT has one at this point; then re-acquire there.
+        if ROADHAT !== TERRAIN0
+            rh = JuliaMotor.hat3d(ROADHAT, p[1], p[3]; ref = Inf)
+            if rh[3] && (!isfinite(h) || abs(Float64(rh[1]) - Float64(h)) > 0.3)
+                cs.zref = Float64(rh[1]); PLAYER_G[] = cs.zref
+                println("  place_at_s!: full HAT gave ", round(Float64(h), digits = 2), " m, road surface ", round(Float64(rh[1]), digits = 2), " m -- using the road")
+            end
+        end
         cs.heave = 0.0; cs.pitch = 0.0; cs.roll = 0.0; cs.y = cs.zref
         p
     end
@@ -6219,8 +6235,19 @@ function main()
                 yaw = get(OBJ_YAW, k, NaN)
                 vs = get(OBJ_LVERTS, r[1], nothing)
                 ex = vs === nothing || isempty(vs) ? "-" : string(round(maximum(getindex.(vs, 1)) - minimum(getindex.(vs, 1)), digits = 1), "x", round(maximum(getindex.(vs, 2)) - minimum(getindex.(vs, 2)), digits = 1))   # `last` is a local in main()
+                # drawn footprint in the ROAD frame: each local point through the same yaw the renderer applies,
+                # projected onto the centreline -> its lateral; a veil "beside" the road drawn across it shows here
+                latr = "-"
+                if vs !== nothing && !isempty(vs) && !isnan(yaw)
+                    c_, s_ = cos(yaw), sin(yaw); lo = Inf; hi = -Inf
+                    for (lx, lz) in vs
+                        h_ = JuliaMotor.hat(TRKSURF, r[7] + lx*c_ + lz*s_, k[2] - (-lx*s_ + lz*c_))
+                        h_.found || continue; lo = min(lo, h_.lateral); hi = max(hi, h_.lateral)
+                    end
+                    latr = isfinite(lo) ? string(round(lo, digits = 1), "..", round(hi, digits = 1)) : "-"
+                end
                 println("   s=", lpad(round(Int, r[3]), 6), "  ", rpad(r[1], 10), " ", r[2], "  lat=", lpad(round(r[4], digits = 1), 6), "  dy=", lpad(round(r[5], digits = 1), 5),
-                        "  yaw=", isnan(yaw) ? "  ?" : lpad(round(Int, rad2deg(yaw)), 4), "°  ext=", ex, "  h=", round(Float64(get(OBJ_YMX, r[1], 0f0) - get(OBJ_YMN, r[1], 0f0)), digits = 1))
+                        "  yaw=", isnan(yaw) ? "  ?" : lpad(round(Int, rad2deg(yaw)), 4), "°  ext=", ex, "  h=", round(Float64(get(OBJ_YMX, r[1], 0f0) - get(OBJ_YMN, r[1], 0f0)), digits = 1), "  drawn lat=", latr)
             end
         end
         println("OBJCENSUS_RESULT track=", TRACKSEL, " onroad=", length(onr), " floating=", length(flo), " buried=", length(bur))

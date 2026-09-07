@@ -7076,6 +7076,12 @@ image (the depot's compiled cache travels in the AppImage); the sysimage build s
       there should be background objects (curtains of trees, perhaps?) blocking that view - see gold
       standard"* -- the Ring's distant tree curtains/horizon backdrops are missing or dropped (the same
       billboard family as a., placed correctly this time), so far road sections show through.
+9. **SPA-FPS-1** (PO 23:02) *"spa has low frame rate at places, but the ring does not. How to improve spa
+   frame rate?"* -- Spa loads 1679 objects + 5132 billboards at a fifth of the Ring's length (E76-S8 note),
+   so its per-frame object count is far higher; measure first: a per-section frame-time profile along a
+   Spa lap (draw calls, objects/billboards in frustum, triangles) vs the Ring, then the usual levers --
+   distance culling for billboards/objects, merging static objects into per-section batches, texture
+   residency. A JM_FPSLOG hook (lapdist, ms/frame, objects drawn) is the first step.
 8. **STARTSEQ-2** (PO 21:12) *"change the bar+rabbit ears object (very confusing) at the start of a julia race
    to a box with 3 red lights. That better suggests that you need to do something to start the race. Then
    start the countdown whenever the user presses any keyboard key - not only spacebar"* -- the HUD's pulsing
@@ -7115,7 +7121,30 @@ image (the depot's compiled cache travels in the AppImage); the sysimage build s
    veils (`*-lg/-rg/-l2..l4`, `anton-r`, `doho-rg2`, `meus-lg1`) are what crosses over the road; s=15350
    /15550 (Hohe Acht): clean road, no banner in frame -- the fallen banner is elsewhere in that climb.
    JM_OBJCENSUS="1000,8500,20800" (per-site listing with yaw/extent, new) names the objects
-   (`ring_objcensus3.log`).
+   (`ring_objcensus4.log`): s=1058 `last01` (50 x 20 m, 8 m tall, placement yaw 0), s=8587/8623
+   `wehr-l2/l3` (42 x 44 and 24 x 73 m, 25 m tall, yaw 0), i.e. in-place-authored veils. The placement
+   file really carries yaw 0 for them. Mirror A/B (`JM_OBJ_MIRROR=0`, `ring_census_mirror*.log`): the
+   drawn footprint of `wehr-l2` lies at lateral 5.9..14.6 m (mirrored, the default) vs 6.0..44.8
+   (unmirrored) -- BESIDE the road either way, and `last01` at 13.6..40 m. So the "slab over the road"
+   in the JM_SHOTS photos at 8500/16564/18152/20800 is NOT the veil: it is the photo hook's teleport
+   landing UNDER the road mesh where the base terrain lies below an embanked road (the same view at
+   every such site, the world visible only at the horizon) -- an instrument artefact; the earlier claim
+   in the test list is withdrawn. Two consequences: (1) the JM_SHOTS/JM_START_S ground pick must take
+   the ROAD surface (ROADHAT) where one exists; (2) the PO's curtain sites must be read from the PO's
+   own video (`260906_ring.mp4`), not from teleports. `last01` rising into the sky at s=1000 IS real
+   (its photo is a normal chase view). **Gold check (`260802_nurburgring_cockpit.mp4` t=55):** GPL draws
+   that same VEITH-PIRELLI/PENTOSIN row FLAT on the ground along the left of the straight; ours tilts
+   it into the sky -- orientation, not height. The file (`/tmp/jl_*/last01.3do`, parsed): 39 tris, a
+   320 m diagonal strip 8 m tall, LEVEL in its own frame, no parked positioner (so the car parser's
+   |d|>5 park clamp is not it). `wehr-l2.3do`: a 24 m tall sheet over 83 x 70 m, i.e. a hillside face.
+   **Teleport fixed** (`place_at_s!` lands on the ROADHAT surface): `ring3_s8500.png` now shows the real
+   scene -- the car on the road and `wehr-l2` standing as a VERTICAL sheet at the left road edge,
+   running across the road ahead: the PO's "curtain crossing perpendicularly". In GPL that face lies
+   on the hillside rising AWAY from the road. Mirror A/B footprints: mirrored (current) lat 6..15 (a
+   wall along the road), unmirrored 6..45 (a hill rising away) -- the unmirrored one is the hillside.
+   Visual A/B in flight (`ringm0_s*.png`, JM_OBJ_MIRROR=0 at s=1000/1300/20800/21200) against the
+   gold frames; if it lands the row flat and the veils on the hills, in-place objects need the
+   unmirrored frame (and yawed objects need checking for reversed text).
 
 ## 🔲 BACKLOG — TRACKGOLD-1: Spa and the Ring closer to the gold standard; the Ring's missing trackside objects; no free-standing lines of people on any track  ⭐ PRIORITY (PO 2026-09-06 14:50)
 
