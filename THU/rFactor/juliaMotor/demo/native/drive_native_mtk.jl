@@ -1078,6 +1078,7 @@ function gpl_scenery(ztrk, datpack, ribbon)
     # filters, count what this loop is OFFERED versus what each rule removes. JM_SCENEDIAG=1.
     local n_offered=0; local n_treesrb=0; local n_nomesh=0; local n_kept=0
     sprites = NamedTuple[]                                   # E76-S8: billboard-stub placements
+    n_people_dropped = Ref(0)                                # TRACKGOLD-1 S3: loose-people sprites removed
     scene_names=Dict{String,Int}()
     for (nm,t) in pls
         n_offered += 1
@@ -1101,6 +1102,13 @@ function gpl_scenery(ztrk, datpack, ribbon)
                     hh, ww, strs, aax = Render.billboard_stub(tp)
                     M = placemat(t)
                     sc = t[7] <= 0 ? 1.0 : t[7]
+                    # TRACKGOLD-1 S3 (PO 2026-09-06: "remove line-of-people objects that are just a line of people not
+                    # related to any other object ... from all tracks"): the Ring's sprite stubs bypassed drop() and
+                    # its PeopleFilter -- peoplefl x16 / peoplelt x15 / flagger x49 came through here as sprites.
+                    # Same rule as every other track; JM_KEEP_CROWDROWS=1 keeps them for an A/B.
+                    if PeopleFilter.is_loose_person(lowercase(nm)) && get(ENV, "JM_KEEP_CROWDROWS", "0") == "0"
+                        n_people_dropped[] += 1; continue
+                    end
                     push!(sprites, (name=nm, x=Float32(M[1,4]), y=Float32(M[2,4]), z=Float32(M[3,4]),
                                     h=Float32(hh*sc), w=Float32(ww*sc), texs=strs,
                                     yaw=Float32(t[4]), aax=Float32(aax)))   # for the static-panel path
@@ -1292,6 +1300,7 @@ function gpl_scenery(ztrk, datpack, ribbon)
         println("   offered              ", n_offered)
         println("   dropped: treesrb*    ", n_treesrb)
         println("   dropped: NO MESH     ", n_nomesh, "   <-- placement exists but its object could not be loaded")
+        println("   dropped: LOOSE PEOPLE ", n_people_dropped[], "   <-- TRACKGOLD-1 S3: lines of people / marshals as sprites (JM_KEEP_CROWDROWS=1 keeps)")
         println("   dropped: sprite stub ", nskip)
         println("   reached the renderer ", n_kept - nskip)
         println("   distinct object names: ", length(scene_names))

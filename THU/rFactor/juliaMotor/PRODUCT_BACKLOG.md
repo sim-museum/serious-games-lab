@@ -7019,6 +7019,18 @@ path Spa's 1451 do; then the same solids/census treatment (ROAD-1's `road_clear_
 start reporting real solids on the Ring). The free-standing `people*` lines are dropped by
 the line-of-people rule (S2 of the plan) on every track.
 
+### TRACKGOLD-1 S3 (17:03) — the line-of-people rule reaches the Ring's sprite path; census of what the .trk still supplies
+
+The generic pipeline already drops loose people and, since E88, every free-standing crowd ROW
+(`_dropcrowdrows`, all tracks; `JM_KEEP_CROWDROWS=1` keeps them) -- but the Ring's own sprite-stub
+path (`gpl_scenery`, E76-S8) bypassed `drop()` entirely, so `peoplefl` x16, `peoplelt` x15 and the
+49 `flagger` marshals reached the Ring as sprites. Now filtered by the same `PeopleFilter` rule at
+the placement, with a `dropped: LOOSE PEOPLE n` line in the scenery census; `people_smoke` gained a
+source check for it. With objects (S2) and this rule, the Ring loads 807 trackside objects, 1021
+billboards, 103 solids; road census inside=0 (1 capsule brush at the pit tower). Free-standing
+crowd rows anywhere else were already gone since E88; what the PO saw "teetering on a hill" on the
+Ring were these sprite lines. Attached crowds (grandstand/pit-wall) stay. Ships in the next image.
+
 **Sprint plan.** S1: the Ring loss (why 0) + the gate (b). S2: line-of-people removal + census
 (c). S3-S5: Ring and Spa sites against gold, worst first. S6: ship.
 
