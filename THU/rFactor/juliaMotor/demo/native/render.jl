@@ -1438,11 +1438,13 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
                     " ptype=0x", string(t.ptype, base=16), " col=", round.(t.col, digits=3),
                     " uv1=", round.(t.uv[1], digits=3))
         end
-        flatpoly = FLATPOLY_FIX && t.tex != "" && t.flat
+        flatpoly = FLATPOLY_FIX && !FLATPOLY_PLANAR && t.tex != "" && t.flat
+        planar   = FLATPOLY_PLANAR && t.tex != "" && t.flat
         v = get!(groups, flatpoly ? "" : t.tex, Float32[])
         mz = mirror ? -1f0 : 1f0   # negate render-Z → right-handed track frame (gx,gz,-gy)
         for i in 1:3
             p=t.p[i]; n = smooth ? sm(p, t.n[i]) : t.n[i]; uv=t.uv[i]
+            planar && (uv = ((p[2] + PLANAR_W/2f0)/PLANAR_W, (p[1] - PLANAR_X0)/PLANAR_L))   # S5: project the livery
             # E36: untextured COCKPIT tris (the tub/floor) take the `grey` shade when JM_TUB_GREY makes it
             # silver — the `grey` param was a no-op before (baked vertex colour used t.col).  Gated on
             # cockpit_clean + a >0.2 grey so the DEFAULT dark tub is unchanged (no regression); only an
@@ -1498,6 +1500,15 @@ end
 # so substituting them is wrong wherever the texel matters. Kept, measured, and switchable while
 # the modulation path is worked out; JM_FLATPOLY=1 enables.
 const FLATPOLY_FIX = get(ENV,"JM_FLATPOLY","0") != "0"
+# CARGOLD-1 S5 (2026-09-06): a THIRD way to draw a flat-typed poly that carries a bound texture --
+# PLANAR projection of that texture. lotd.3DO's scuttle (60 of its 88 0x81D polys) has no textured
+# twin, yet GPL shows it green with the yellow stripe: the bound `lotd` livery is the car's top view,
+# and a poly with no UV list can only be textured by projecting it. JM_FLATPOLY=planar: u from the
+# lateral position across the car's width, v from the longitudinal position along its length.
+const FLATPOLY_PLANAR = lowercase(get(ENV,"JM_FLATPOLY","0")) == "planar"
+const PLANAR_W = parse(Float32, get(ENV,"JM_PLANAR_W","1.9"))       # lateral extent mapped to u 0..1 (m)
+const PLANAR_X0 = parse(Float32, get(ENV,"JM_PLANAR_X0","-2.5"))    # longitudinal start of v=0 (m)
+const PLANAR_L = parse(Float32, get(ENV,"JM_PLANAR_L","5.0"))       # longitudinal extent mapped to v 0..1 (m)
 const STEER_TEX = ("sterlot","lotster","lsterlog")
 """Extract the steering wheel as its own parts + pivot (centre, column axis) in the
 rig frame (X fwd, Y up, Z left), so the app can rotate it with steering input."""

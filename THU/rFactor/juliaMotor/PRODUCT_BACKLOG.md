@@ -7200,6 +7200,20 @@ cockpit model EXCLUDES groups 6600/3560 -- the `frontlot` NOSE (x 1.45-3.09) -- 
 can appear ahead of the dash at all. Next A/B (queued): nose groups back in, plate skipped
 (`JM_CAR_EXCL_GROUPS=27288,39792 JM_SKIP_PTYPES=0x81d`), cockpit + chase.
 
+### CARGOLD-1 S5 (18:05) — the scuttle has no textured twin; GPL must project the livery onto it
+
+Nose A/B (groups 6600/3560 back, plate skipped): identical frame -- the nose is not what is
+missing. Twin test on `lotd.3DO`: of its 136 0x81D tris, 33 have a textured twin with the same
+three positions (mirror mounts, windscreen frame, `frontlot` bits), **60 `lotd`-bound scuttle polys
+have none** (plate region: 88, 28 twinned). So the surface GPL shows green-with-stripe in front of
+the dash is drawn from those very 0x81D polys, which carry no UV list -- the only way to texture
+them is a projection of the bound texture, and `lotd.mip` is the car's top-view livery.
+`JM_FLATPOLY=planar` (new): u from the lateral position across `JM_PLANAR_W` (1.9 m), v from the
+longitudinal position from `JM_PLANAR_X0` (-2.5) over `JM_PLANAR_L` (5.0 m). Captures queued
+(cockpit + chase). If the stripe lands on the scuttle, the projection axes/scales are then measured
+against the gold still rather than guessed, and this becomes the default for flat-typed polys with
+a bound texture on car meshes; E106 (engine graphics / yellow cowl) closes with it.
+
 **Sprint plan.** S1: measure -- one triptych per chassis with the current build, axle offsets in
 a table (the census). S2-S4: fix the placements, worst first (user Lotus first, then the AI five).
 S5: the gate; S6: ship and the PO's eye.
