@@ -10758,3 +10758,51 @@ the material mismatch is now bounded to three geometric causes with everything e
 measurement, and **two plausible "fixes" were caught not working before they shipped** — the part
 colour (which made it slightly worse) and the normal (a no-op). The geometry, which is what the PO
 actually complained about, has been right since S3b.
+
+
+### CARGOLD-1 S9b (2026-09-13) — the layout inversion IS the face-fix mirror. One mechanism, not two defects.
+
+PO round 3: *"the layout still has the big tacho below the hub where the gold has it above."* The
+round-3 note filed this as a separate item — "which dial is which in lotus.3do's gauge group" — on
+the assumption that the cluster's internal arrangement was wrong. It is not an arrangement problem.
+
+**Measured from `lotus.3do`** (every part within the dash envelope, by world extent):
+
+| part | tris | centre z | z range | x span |
+|---|---|---|---|---|
+| `sterlot` / `lotster` (steering wheel) | 2 | 0.218 | 0.071 … 0.365 | 0.026 |
+| **`dash7a` (the gauge cluster)** | **6** | 0.142 | 0.078 … 0.208 | **0.000** |
+
+⭐ **`dash7a` is SIX triangles with ZERO x-span — a flat decal plane.** There is no dial geometry to
+rearrange: the whole layout (which dial sits where, and how big) is painted into the texture. "Which
+dial is which in the gauge group" was never a question the model could answer.
+
+**And the cluster is mirrored in height to make the faces readable** (`drive_native_mtk.jl:2261`):
+
+```julia
+GAUGEFLIP = translate(GAUGE_DX, GCY+GAUGE_DY, GAUGE_DZ) * scalexyz(S, GAUGE_YFLIP ? -S : S, S) * translate(0, -GCY, 0)
+```
+
+`scalexyz(S, **-S**, S)` is a geometric mirror about the cluster's own centre. On a flat textured
+plane that flips the painted content top-to-bottom as well as the facing — **so a tacho painted at
+the top of `dash7a` is drawn at the bottom.** That is the PO's sentence, produced by the line that
+fixes the faces.
+
+**So round 2's "dashboard upside down" and round 3's "tacho below the hub" are the same defect at two
+stages:** the mirror was introduced to fix the first and necessarily created the second. Fixing the
+faces by mirroring geometry cannot preserve the layout.
+
+**S9c (next Julia rotation) — correct the FACING without mirroring the GEOMETRY.** The mirror is
+being used to turn a plane that faces the wrong way; that is a winding/normal problem, not a
+position one. In order of cheapness:
+1. flip the plane's winding or normal (or its cull mode) and drop the `-S`, then capture: faces
+   should stay readable with the tacho back at the top;
+2. if the plane genuinely needs inverting, flip the **V texture coordinate** at the same time so the
+   two inversions cancel in the painted content while the facing change survives.
+**Predict before capturing:** with the fix, the tacho's painted centre should sit ABOVE
+`sterlot`'s hub at z 0.218 + `GAUGE_DY`, not below it — a measurable claim, not "looks right".
+
+Note `GAUGE_DY` (0.20) is already tuned against two competing constraints — E74-S7 raised it to 0.28
+for legibility and E106 cut it back because the cluster then filled the windscreen and hid the road.
+**S9c must not move it**: this is a layout inversion at a correct height, and re-tuning the height to
+compensate would break the road-visibility half of that trade again.
