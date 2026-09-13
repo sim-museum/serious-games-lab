@@ -10447,3 +10447,49 @@ enough for the clamp to bite, so that arm is untested rather than ineffective.)
 `ai_field_smoke` but calling the brain the race calls, on a track with real corners (Spa, not Monza).
 Then re-run both arms with the firing counters and report contact events, not lunge cycles. Until
 that exists, no claim should be made about AI collision behaviour from the gate suite.
+
+
+### AI-AVOID-1 S2 (2026-09-13) — ⚠️ S1's mechanism is real but is NOT the Spa complaint. The threshold is.
+
+The new `plan!` probe (`demo/native/aiavoid_probe.jl`) runs, and its first honest output kills S1's
+framing. Measuring Spa's own curvature:
+
+| | κ | radius |
+|---|---|---|
+| median of the lap | 0.00040 | **2500 m** |
+| p90 | 0.00364 | **275 m** |
+| max (La Source) | 0.05442 | 18 m |
+| **the code's `straight` threshold** | 1/75 | **75 m** |
+
+⭐ **Only 0.5 % of Spa's 13,988 m has a radius under 75 m.** `straight = maxκ(car.s, zone) < 1/75.0`
+therefore calls essentially the whole circuit a straight — Eau Rouge/Radillon, Pouhon and
+Blanchimont included. The corner-yield branch S1 identified fires almost nowhere here, so
+**it cannot be the cause of the PO's Spa report**, and S1's "this branch is the PO's sentence in
+code" overstated it. The branch is still wrong in the way S1 describes; it is simply not what the PO
+was watching.
+
+**The revised reading, and it fits the complaint better.** The PO said avoidance is poor *"except in
+wide straights"*. At 75 m the threshold does not distinguish a wide straight from a fast curve: a
+275 m-radius bend — Spa's 90th percentile — is emphatically not a place to commit to a pass, and the
+AI treats it as a slingshot straight. So the AI attempts passes through fast curves, where there is
+neither room nor grip, and the PO sees exactly the contacts reported. The defect is **the threshold,
+not the yield**: the AI does not consider a fast corner to be a corner at all.
+
+**Probe state, stated plainly — it is not yet trustworthy and its numbers must not be quoted:**
+
+    contact episodes in CORNERS   0        (consistent: 99.5% of the lap is "straight" by that test)
+    contact episodes on STRAIGHTS 6
+    corner-proximity frames       0
+    car-laps                      0        <- my own bug: the probe advances `s` by hand and never
+                                              increments `lap`, so the denominator is broken
+    fix firings (AVOIDSTAT)       0        <- consistent with 0.5 % corner coverage
+
+The contact counter works (6 episodes); the classification and the denominator do not. Recorded
+rather than reported.
+
+**S3 (next Julia rotation), in order:** (1) fix the probe — count laps from distance travelled as
+`e89_field_probe` does, and classify by a curvature threshold that is swept rather than assumed;
+(2) sweep the `straight` threshold (75 m / 150 m / 300 m / 500 m radius) against contact episodes on
+Spa and report the curve; (3) only then change it. The number to beat is the current 6 contact
+episodes in 200 s with 6 cars. S1's corner sidestep stays in (it is harmless and correct for real
+hairpins) but it is not the fix and should not be described as one.
