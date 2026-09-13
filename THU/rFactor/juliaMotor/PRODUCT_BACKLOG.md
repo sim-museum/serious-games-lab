@@ -7128,7 +7128,49 @@ car. Two readings remain, and they are distinguishable:
    radius rod whose rest pose is not the drawn pose), in which case the gold's silver arms come from
    another part and the hunt continues there.
 
-**S10e (next):** print the same local/world pairs for the REAR (`lsusp5`, which draws correctly at
+### CARGOLD-1 S10e (2026-09-12) — front and rear differ ONLY in length, and that kills the transform theory
+
+`JM_TEXVERTS` now takes a comma list with a per-texture budget, so the front arm and a
+correctly-drawn rear arm come out of ONE parse:
+
+| | mount (M.translation) | local x span | local y span | world x | world \|y\| max | tris |
+|---|---|---|---|---|---|---|
+| `lsusp1` (front) | (1.525, 0.762, 0.02) | 0.003 … 1.675 = **1.67 m** | −0.176 … +0.323 | 1.536 … 3.189 | 1.131 | 12 |
+| `lsusp5` (rear) | (−0.893, 0.772, 0.03) | −0.183 … 0.120 = **0.30 m** | −0.341 … +0.351 | −1.088 … −0.765 | 1.117 | 16 |
+
+⭐ **The two share their lateral geometry and differ only longitudinally.** Both are authored with
+local y spanning roughly ±0.33 and both therefore reach world \|y\| ≈ 1.12, about 0.35 m outboard of a
+wheel at 0.76. Whatever that lateral overhang is, it is a property of the PART CLASS, not a front-end
+defect — so S10c/d's reading ("the front chain's rotation is what we rebuild wrongly") is dead: a
+rotation error in the front chain could not reproduce itself identically in a rear chain built from
+different nodes.
+
+What is unique to the front is its LENGTH: 1.67 m against the rear's 0.30 m. A 0.30 m span is a
+wishbone; 1.67 m is not. Combined with the direction — `lsusp1` runs FORWARD and OUTBOARD from the
+wheel, (1.54, 0.59) → (3.19, 1.13), i.e. past the nose — this settles reading 2 of S10d:
+**`lsusp1` is not the front wishbone.** The front wishbone assembly is the 94 triangles of
+`frontlot` that the existing comment already identifies (`x <= 1.8, |z| <= 0.63`), and those are
+drawn.
+
+**What this means for the PO's "axles still missing".** The extraction is
+
+    only=("lsusp1","frontlot"), maxlat=JM_FSUSP_MAXLAT (default 0.85), maxedge=JM_FSUSP_MAXEDGE (1.5)
+
+`maxlat` trims at the 0.85 lateral face. Every one of `lsusp1`'s 12 triangles lies between \|y\| 0.586
+and 1.131, so trimming leaves only inboard stubs of a part that should not be drawn as an arm at all;
+meanwhile the rear's own extraction (`RSUSPP2`, `only=("lshok","lsusp5","lsusp7","lbrdisc")`) trims
+rather than drops because "its driveshafts genuinely run out to the hub". So the silver arms the PO
+is looking for are not `lsusp1` at all, and no amount of tuning `JM_FSUSP_MAXLAT` will produce them.
+
+**S10f (next Julia rotation):** stop tuning the clip and identify the part by shape. List every
+texture in `lotus.3do` whose world geometry lies within the wishbone envelope (x 1.2…1.8,
+\|y\| 0.25…0.85, \|z\| < 0.4) and count triangles; the silver arms in the gold cockpit still are a
+handful of long thin quads and should be obvious by extent. Then check whether that part is in the
+cockpit extraction's `only=` list at all — the earlier "un-clipping draws them in chase but not in
+the cockpit" says the cockpit and chase paths do not draw the same set, which is a second, separate
+defect worth naming.
+
+**S10e superseded:** print the same local/world pairs for the REAR (`lsusp5`, which draws correctly at
 x −1.09..−0.77 against a rear wheel at −0.88) and compare the local frames. If the rear's locals are
 short and inboard while the front's are long and outboard, reading 1 is settled and the fix is in the
 front chain's rotation; if both are long, reading 2 is.

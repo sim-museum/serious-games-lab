@@ -146,8 +146,10 @@ function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}
         # texture, the LOCAL vertices, the accumulated matrix's translation, and the WORLD result.
         # "The front suspension lands 1.6 m ahead of the wheel" cannot be attributed to the data or
         # to the transform without seeing both sides of that multiply.
-        if get(ENV, "JM_TEXVERTS", "") == tex && TEXVERT_N[] < 4
-            TEXVERT_N[] += 1
+        # S10e: accepts a COMMA LIST so the front arm and a correctly-drawn rear arm can be compared
+        # in one parse, with a separate print budget per texture.
+        if tex in TEXVERT_WANT && get(TEXVERT_N, tex, 0) < 3
+            TEXVERT_N[tex] = get(TEXVERT_N, tex, 0) + 1
             println("  [texverts] ", tex, " grp=", grp,
                     "  M.translation=(", round(M[1,4], digits=3), ", ", round(M[2,4], digits=3), ", ", round(M[3,4], digits=3), ")")
             for (i, v) in enumerate(verts)
@@ -196,7 +198,8 @@ function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}
     # "the tree contains only types X and Y, and we handle neither". JM_PRIMDIAG=<name substring>.
     PRIMTALLY = Dict{UInt32,Int}()
     PARKDEPTH = Ref(0); PARKED_GROUPS = Set{Int}(); ALL_GROUPS = Set{Int}()
-    TEXVERT_N = Ref(0)      # S10d: JM_TEXVERTS print budget
+    TEXVERT_WANT = Set(filter(!isempty, split(get(ENV, "JM_TEXVERTS", ""), ',')))
+    TEXVERT_N = Dict{String,Int}()   # S10d/S10e: per-texture JM_TEXVERTS print budget
     PATH = UInt32[]; TRIPATH = String[]          # E82 diag: node-type path per triangle (JM_POSDIAG)
     function walk(off::Int, curtex::String, depth::Int, M, grp::Int)
         n0 = length(PATH); _walk(off, curtex, depth, M, grp); resize!(PATH, n0)   # path bookkeeping (diag)
