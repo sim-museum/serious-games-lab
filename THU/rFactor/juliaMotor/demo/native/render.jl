@@ -449,6 +449,26 @@ function program()
         _fs = replace(_fs, "float shadow(vec3 N){" => "float shadow(vec3 N){ return 1.0;")
         println("  [noshadow] shadow() forced to 1.0 (JM_NOSHADOW=1)")
     end
+    # NOSE-1 S3: split the "blotchy car front" between SHADING and TEXTURE. S2 eliminated the
+    # shadow map (forcing shadow()=1.0 moved nothing, every region below the noise floor), leaving
+    # a dark smear plus harsh faceted green/yellow banding down the cowl sides. Those two causes
+    # separate cleanly with one arm each:
+    #   JM_FLATLIT=1  the diffuse term becomes constant, so only the TEXTURE is visible.
+    #                 Bands that survive are painted; bands that vanish are lit.
+    #   JM_NOTEX=1    the sampled texel becomes white, so only the SHADING is visible.
+    #                 Bands that survive are per-vertex normals/colour.
+    # Exactly one of the two should keep the bands -- if both do, or neither, the framing is wrong
+    # and that is worth knowing too.
+    if get(ENV,"JM_FLATLIT","0") != "0"
+        _fs = replace(_fs, "float diff=max(dot(N,normalize(uLightDir)),0.0)*shadow(N);" =>
+                           "float diff=1.0;   // JM_FLATLIT")
+        println("  [flatlit] diffuse forced to 1.0 (JM_FLATLIT=1) -- texture only")
+    end
+    if get(ENV,"JM_NOTEX","0") != "0"
+        _fs = replace(_fs, "vec4 t = uHasTex==1 ? texture(uTex,uv) : vec4(vC,1.0);" =>
+                           "vec4 t = vec4(1.0);   // JM_NOTEX")
+        println("  [notex] texture forced to white (JM_NOTEX=1) -- shading only")
+    end
     p=glCreateProgram(); glAttachShader(p,compile(VSRC,GL_VERTEX_SHADER)); glAttachShader(p,compile(_fs,GL_FRAGMENT_SHADER)); glLinkProgram(p); p
 end
 function skyprogram()
