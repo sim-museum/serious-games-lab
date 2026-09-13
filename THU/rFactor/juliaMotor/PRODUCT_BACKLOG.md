@@ -10354,3 +10354,43 @@ only then read the node-path buckets to find where S10g's 24 intruder triangles 
 groups. Three sprints have now been spent on a diagnostic rather than on the defect — worth saying
 plainly — but the defect is not findable without it, and every conclusion so far has come from
 one-off census scripts written beside it.
+
+
+### CARGOLD-1 S10k (2026-09-13) — the push line never executes, proven; and this thread is rotating off
+
+An independent counter (`TRIPATH_PUSHES`, declared beside `TRIPATH` and incremented on the same line
+as the push) settles what three sprints of reading could not:
+
+    [posdiag] path report SKIPPED: TRIPATH=0 (pushes counted=0) but tris=296
+
+**`pushes counted=0` while `tris=296`.** The two counters live in the same scope, so this is not a
+"different array" problem — the statement at `gpl3do.jl:188` simply never runs, even though
+`push!(tris, ...)` at line 183 (the file's ONLY `push!(tris)` site, five lines above, inside the same
+`emit`) ran 296 times. Both are gated on the identical `get(ENV,"JM_POSDIAG","") != ""`, and that
+condition is demonstrably true because the report itself printed.
+
+That narrows it to control flow inside `emit` between 183 and 188: the fan loop at 182 sits inside an
+`if` that closes at 185, so either `emit` returns before its tail on the path that produces these
+triangles, or `P` is rebound between the two identical `2:length(P)-1` ranges. **The next step is one
+unconditional print at `emit`'s tail** (not gated on `JM_POSDIAG`) to see whether the tail is reached
+at all — that distinguishes the two in a single run.
+
+⚠️ **Rotating off. CARGOLD-1's diagnostic thread has now had S10h, S10i, S10j and S10k — four
+sprints on the instrument, and the PO's cap is four.** It is worth saying plainly that those four
+sprints produced no change the PO can see: they turned a diagnostic that printed a false clean bill
+of health into one that reports honestly, which is necessary but is not the axles.
+
+**What still stands, and does not depend on the broken report** (all measured with one-off census
+scripts written alongside it, which is why it survives):
+
+- The front mounts are correct — groups 6600/3560 sit at (1.526, ±0.762), exactly the front wheel.
+- 24 triangles in EACH front group, spanning five nose textures, are placed 1.6 m past the nose,
+  against 36 in the same groups that are placed correctly (S10g).
+- `lsusp1` is not the wishbone (0.30 m rear arm vs 1.67 m front "arm" running outboard-forward), and
+  `loftex1` is the tyre tread (S10e/S10f).
+- So the working hypothesis is unchanged: **a mis-parented sub-mesh**, and the 24 intruders should
+  land at x ≈ 1.66 with the front mount NOT applied.
+
+**When CARGOLD-1 comes back round, start from the defect, not the instrument:** dump those 24
+triangles' node offsets directly from a census script (the approach that has produced every real
+finding here) rather than repairing `JM_POSDIAG` first.

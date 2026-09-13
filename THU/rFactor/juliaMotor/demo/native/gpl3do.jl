@@ -185,7 +185,7 @@ function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}
             end
         end
         push!(ALL_GROUPS, grp); PARKDEPTH[] > 0 && push!(PARKED_GROUPS, grp)
-        if get(ENV, "JM_POSDIAG", "") != ""; ps = join(string.(PATH, base=16), ">"); for _ in 2:length(P)-1; push!(TRIPATH, ps); end; end
+        if get(ENV, "JM_POSDIAG", "") != ""; ps = join(string.(PATH, base=16), ">"); for _ in 2:length(P)-1; push!(TRIPATH, ps); TRIPATH_PUSHES[] += 1; end; end
     end
 
     # ---- walk the PRIM node tree (offsets are byte offsets into PRIM data) ----
@@ -201,6 +201,11 @@ function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}
     TEXVERT_WANT = Set(filter(!isempty, split(get(ENV, "JM_TEXVERTS", ""), ',')))
     TEXVERT_N = Dict{String,Int}()   # S10d/S10e: per-texture JM_TEXVERTS print budget
     PATH = UInt32[]; TRIPATH = String[]          # E82 diag: node-type path per triangle (JM_POSDIAG)
+    # S10k: count the pushes independently of the array. If pushes > 0 while length(TRIPATH) == 0,
+    # the emit closure and the report are not looking at the same array -- which is the only
+    # remaining explanation, since there is exactly ONE push!(tris) site and it sits two lines above
+    # the TRIPATH push under the identical JM_POSDIAG condition.
+    TRIPATH_PUSHES = Ref(0)
     function walk(off::Int, curtex::String, depth::Int, M, grp::Int)
         n0 = length(PATH); _walk(off, curtex, depth, M, grp); resize!(PATH, n0)   # path bookkeeping (diag)
     end
@@ -451,7 +456,8 @@ function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}
     # one. (Cause to fix next: TRIPATH is pushed only from the textured-poly fan path, `length(P)-2`
     # entries per poly, so any primitive that appends triangles by another route desynchronises it.)
     if get(ENV, "JM_POSDIAG", "") != "" && length(TRIPATH) != length(tris)
-        println("   [posdiag] path report SKIPPED: TRIPATH=", length(TRIPATH), " but tris=", length(tris),
+        println("   [posdiag] path report SKIPPED: TRIPATH=", length(TRIPATH),
+                " (pushes counted=", TRIPATH_PUSHES[], ") but tris=", length(tris),
                 " -- the node-path buckets below would be wrong, so they are not printed.",
                 " This is the chassis case; the per-group counts above are still valid.")
     end
