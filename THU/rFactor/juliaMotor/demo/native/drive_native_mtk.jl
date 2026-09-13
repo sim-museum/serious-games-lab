@@ -1768,7 +1768,17 @@ else
         valid = count(!isnothing, edge)
         println("  ROADTESS: ", nquad, " quads from ", valid, "/", n, " waypoints, texture ", tex, ", mean width ",
                 round(sum(e[2] - e[1] for e in edge if e !== nothing; init = 0.0) / max(valid, 1), digits = 1), " m")
-        isempty(v) ? Render.TrackPart[] : [Render.TrackPart(v, tex, (1f0, 1f0, 1f0))]
+        # ROADTESS S3c (2026-09-13): the generated part carried a HARDCODED WHITE part colour while
+        # copying the source strip's per-vertex colour into its vertices. The .3do strips are shaded
+        # by (part colour x vertex colour); this part was shaded by (1,1,1 x vertex colour), so it
+        # could never match the road beside it no matter how well the vertex colour was copied --
+        # which is exactly S3b's symptom, a material wrong while the geometry is right.
+        # Take the SOURCE part's colour, the same way its texture and UV density are already taken.
+        if get(ENV, "JM_ROADTESS_DIAG", "") != ""
+            println("  ROADTESS S3c: part colour ", round.(Float64.(big.col), digits = 3),
+                    " (was hardcoded 1,1,1); vertex colour ", round.(col, digits = 3))
+        end
+        isempty(v) ? Render.TrackPart[] : [Render.TrackPart(v, tex, big.col)]
     end
     const ROADPARTS = ROADTESS ? roadtess_parts() : Render.TrackPart[]
     const TRACK = [TRACKMAIN; ROADPARTS; SECPARTS]

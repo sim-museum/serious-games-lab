@@ -10589,3 +10589,43 @@ exists, and the one plausible-looking fix was caught making the game worse befor
 **S5, when it comes round again:** N seeds per arm (5 minimum), report mean ± spread for both
 contacts and overtakes, and only then pick a threshold — or conclude that the threshold is the wrong
 lever and the AI needs a second passing mechanism instead.
+
+
+### ROADTESS S3c (2026-09-13) — the material mismatch is a HARDCODED WHITE part colour
+
+S3b left the smooth-road prototype with correct geometry and a wrong material, and named the next
+step: *"read Render.draw's inputs for a track item and match them."* Done, and the mismatch is one
+argument.
+
+A `TrackPart` is `(verts, tex, col)` — eleven floats per vertex (position, normal, **per-vertex
+colour**, UV) plus a **part colour**. The generator went to some trouble over the vertex side,
+taking the asphalt strip's own texture, its mean per-vertex colour and its UV density:
+
+```julia
+col = (mean of the source strip's per-vertex colours)
+corner!(...) = append!(v, Float32[x, y, -z, 0,1,0, col[1], col[2], col[3], u, v])
+...
+[Render.TrackPart(v, tex, (1f0, 1f0, 1f0))]      # <- and then threw the part colour away
+```
+
+⭐ **The part colour was hardcoded to white.** The .3do strips are shaded by
+`part colour x vertex colour`; the generated strip was shaded by `(1,1,1) x vertex colour`. So it
+could never match the road beside it however carefully the vertex colour was copied — which is
+precisely S3b's symptom: geometry right, material wrong, and wrong by a per-track factor, because
+`big.col` differs per track (S3b measured 0.56 at the Ring and 0.52-0.56 at Watkins).
+
+Fixed by taking the source part's colour the same way its texture and UV density are already taken:
+`Render.TrackPart(v, tex, big.col)`. `JM_ROADTESS_DIAG=1` prints both colours so the substitution is
+visible in a log rather than inferred.
+
+⚠️ **Not verified by eye, and `JM_ROADTESS` stays OFF by default.** This is a code-level match of a
+renderer input, argued from the two shading paths, not a capture. The prototype needs
+`tess3_ring_s600.png` / `tess3_wg_s900.png` against the existing `tess2_*` pair before it can ship,
+and S3b's other gaps are untouched: the groove line, kerbs over the generated surface, the physics
+still running on the .3do road, and a gate that the generated edge stays within 0.3 m of the HAT's
+tarmac edge.
+
+**Why this matters to the PO:** *"curves in road are still piecewise linear rather than smooth"* is
+one of the round-3 items, and S3b already showed the generated road fixes it (the Ring's hairpin
+inside edge is a continuous curve instead of a 5 m polyline). The material was the only thing keeping
+it behind a flag.
