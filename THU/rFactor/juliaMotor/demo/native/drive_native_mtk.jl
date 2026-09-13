@@ -1946,6 +1946,46 @@ const _COCKPIT_ONLY = ("dash7","dash7a","ldashr")   # dial faces only; lotinsa/l
 # so double-sided panels still read correctly from each side. JM_CAR_DEDUP=0 reverts.
 const _CAR_DEDUP = get(ENV,"JM_CAR_DEDUP","1") != "0" ? :orient : false
 const CARP   = Render.extract_gpl_car(_CARP_SRC; exclude=(_HAND_EXC...,_LOTBLACK_EXC...,_EXTRA_EXC...,_GARBAGE_EXC...,DRIVER_TEX...,MIRROR_TEX...,Render.STEER_TEX...,"pipe3","plaface","plahelm",_COCKPIT_ONLY...), exclude_groups=Tuple(parse(Int, x) for x in split(get(ENV, "JM_CAR_EXCL_GROUPS", "6600,3560,27288,39792"), ",") if !isempty(strip(x))), cockpit_clean=true, maxlat=CARP_MAXLAT, dedup=_CAR_DEDUP, grey=(TUB_GREY,TUB_GREY+0.01f0,TUB_GREY+0.02f0))   # driver body + gauge + windscreen + mirrors drawn separately; hands kept unless JM_HANDS=0.  E64 S4 (D12): groups 27288/39792 are WHOLE DISPLACED ASSEMBLIES (suspension+exhaust+driver textures at y 0.42…1.16 / −1.12…−0.42, mirror copies) — GPL runtime-hidden branches our positioner walk mis-places; they were the chase view's "chrome spider-legs" through the rear tyres
+# ── NOSE-1 S1: is the "blotchy car front" (PO 2026-09-07) a residual coincident stack? ─────────
+# E106-S10 collapsed 467 coincident SAME-facing triangles with dedup=:orient, which by design KEEPS
+# coincident OPPOSITE-facing pairs (render.jl:1391 -- a double-sided panel must still read from both
+# sides). If the nose carries such pairs, they z-fight exactly like the ones :orient removed, and
+# that is what blotchy would look like. Census the SHIPPED CARP -- the real extraction, not a rebuilt
+# one -- by centroid, splitting front from rear and same-facing from opposite. JM_NOSE_CENSUS=1.
+if get(ENV,"JM_NOSE_CENSUS","0") != "0"
+    let xsplit = parse(Float32, get(ENV,"JM_NOSE_X","0.6"))
+        key = Dict{NTuple{9,Int32},Vector{Tuple{Int,Float32,Float32}}}()   # quantised tri -> (part, nx, cx)
+        q(v) = Int32(round(v*2048))
+        for (pi,p) in enumerate(CARP)
+            v = p.verts
+            for t in 0:(div(length(v),33)-1)
+                b = t*33
+                P = ((v[b+1],v[b+2],v[b+3]), (v[b+12],v[b+13],v[b+14]), (v[b+23],v[b+24],v[b+25]))
+                cx = (P[1][1]+P[2][1]+P[3][1])/3
+                # sort the three vertices so a stack keys the same regardless of winding
+                sp = sort(collect(P))
+                k = (q(sp[1][1]),q(sp[1][2]),q(sp[1][3]), q(sp[2][1]),q(sp[2][2]),q(sp[2][3]),
+                     q(sp[3][1]),q(sp[3][2]),q(sp[3][3]))
+                e1 = P[2] .- P[1]; e2 = P[3] .- P[1]
+                nx = e1[2]*e2[3] - e1[3]*e2[2]
+                push!(get!(key, k, Tuple{Int,Float32,Float32}[]), (pi, Float32(nx), Float32(cx)))
+            end
+        end
+        nstack = 0; nfront = 0; nopp = 0; nsame = 0; ntris = 0
+        for (_,g) in key
+            ntris += length(g)
+            length(g) < 2 && continue
+            nstack += 1
+            front = any(x -> x[3] > xsplit, g)
+            front && (nfront += 1)
+            opp = any(x -> x[2] * g[1][2] < 0, g)
+            opp ? (nopp += 1) : (nsame += 1)
+        end
+        println("  [nose] CARP ", ntris, " tris, ", length(key), " distinct positions")
+        println("  [nose] coincident stacks: ", nstack, "  (front of x>", xsplit, ": ", nfront, ")",
+                "  opposite-facing: ", nopp, "  same-facing: ", nsame)
+    end
+end
 const DRIVERP = Render.extract_gpl_car(LOT3DO; only=DRIVER_TEX, maxlat=0.95f0, exclude_groups=Tuple(parse(Int, x) for x in split(get(ENV, "JM_CAR_EXCL_GROUPS", "6600,3560,27288,39792"), ",") if !isempty(strip(x))))   # the driver figure — drawn only in CHASE view (occludes the cockpit from the in-car eye).  E64 S4: the displaced assemblies 27288/39792 carry lid/arms-textured tris too — without the group filter they drew as the chase view's remaining "spears"
 const GAUGEP = Render.extract_gpl_car(LOT3DO; only=("dash7a",), maxlat=0.85f0)   # gauge cluster — drawn separately, bright (dial faces in the texture's lower-V region; keep default vflip)
 const WINDP  = Render.extract_gpl_car(LOT3DO; only=("windlot",), maxlat=0.95f0)  # the plexiglass windscreen — drawn LAST, faintly visible glass, so the suspension shows through (GPL gold standard)
