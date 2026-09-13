@@ -4797,7 +4797,14 @@ const MIRROR_EVERY = parse(Int, get(ENV,"JM_MIRROR_EVERY","1"))   # per-frame mi
 # world is moving too slowly for a stale mirror to read as a strobe anyway.
 # JM_MIRROR_ADAPT=0 disables (fixed JM_MIRROR_EVERY); JM_MIRROR_ADAPT_MS sets the budget.
 const MIRROR_ADAPT    = get(ENV,"JM_MIRROR_ADAPT","1") != "0"
-const MIRROR_ADAPT_MS = parse(Float64, get(ENV,"JM_MIRROR_ADAPT_MS","22.0"))   # >22 ms (<45 fps) = no headroom
+# S7: HYSTERESIS. A single threshold cannot work, because Watkins' own frame time straddles it:
+# measured there at 17.0 / 20.7 / 23.1 / 34.1 / 18.0 ms against a 22 ms budget, the mirror flip-
+# flopped between every-frame and every-3rd (35 skips in one run) -- which is exactly the
+# intermittent strobing E106 fixed, reintroduced by the fix for Spa. Back off only above the HIGH
+# mark and resume only below the LOW mark, so the mode is stable in the band between.
+const MIRROR_ADAPT_MS = parse(Float64, get(ENV,"JM_MIRROR_ADAPT_MS","30.0"))      # back off above this
+const MIRROR_RESUME_MS = parse(Float64, get(ENV,"JM_MIRROR_RESUME_MS","24.0"))    # resume below this
+const MIRROR_STARVED  = Ref(false)   # current mode, held between the two marks
 const MIRROR_ADAPT_N  = parse(Int,     get(ENV,"JM_MIRROR_ADAPT_N","3"))       # refresh rate when starved
 const MIRROR_EMA      = Ref(0.0)    # smoothed frame time, seconds
 const MIRROR_T0       = Ref(0.0)    # previous frame timestamp
@@ -8245,7 +8252,11 @@ function main()
         # JM_MIRROR_RTT=0's static discs.
         # S6: `every` is MIRROR_EVERY normally, but MIRROR_ADAPT_N once the smoothed frame time says
         # there is no headroom. MIRROR_EMA is updated at the end of the frame loop.
-        _mir_every = (MIRROR_ADAPT && MIRROR_EMA[] * 1000 > MIRROR_ADAPT_MS) ? MIRROR_ADAPT_N : MIRROR_EVERY
+        if MIRROR_ADAPT
+            _ms = MIRROR_EMA[] * 1000
+            MIRROR_STARVED[] = MIRROR_STARVED[] ? (_ms > MIRROR_RESUME_MS) : (_ms > MIRROR_ADAPT_MS)
+        end
+        _mir_every = (MIRROR_ADAPT && MIRROR_STARVED[]) ? MIRROR_ADAPT_N : MIRROR_EVERY
         mirror_live = MIRROR_RTT && CTL.view == 0 && !REPLAY &&
                       (_mir_every <= 1 || (frames % _mir_every) == 0)
         (MIRROR_RTT && CTL.view == 0 && !REPLAY && !mirror_live) && (MIRROR_SKIPPED[] += 1)
@@ -8500,9 +8511,8 @@ function main()
         # instrument that cannot speak in the arm it is being compared to. Gate on FPSDIAG alone.
         if FPSDIAG > 0 && frames % FPSDIAG == 0
             println("  [mirror] adapt=", MIRROR_ADAPT ? 1 : 0,
-                    "  frame EMA ", round(MIRROR_EMA[]*1000, digits=1), " ms   budget ",
-                    MIRROR_ADAPT_MS, " ms   -> every ",
-                    (MIRROR_ADAPT && MIRROR_EMA[]*1000 > MIRROR_ADAPT_MS ? MIRROR_ADAPT_N : MIRROR_EVERY),
+                    "  frame EMA ", round(MIRROR_EMA[]*1000, digits=1), " ms   marks ", MIRROR_RESUME_MS, "/", MIRROR_ADAPT_MS, " ms   -> every ",
+                    (MIRROR_ADAPT && MIRROR_STARVED[] ? MIRROR_ADAPT_N : MIRROR_EVERY),
                     " frame(s);  mirror renders skipped ", MIRROR_SKIPPED[]); flush(stdout)
         end
         if now - titleT > 0.25 && REPLAY

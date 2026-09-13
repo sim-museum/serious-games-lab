@@ -10892,3 +10892,43 @@ mine, twenty minutes old.
 live number will differ; and the strobing E106 fixed is *not* re-introduced at Watkins, where the
 frame time stays under budget and the mirror keeps refreshing every frame — but that half has not
 been re-measured today and should be before this is called done.
+
+
+### SPA-FPS-1 S7 (2026-09-13) — the Watkins half, which found a flaw in S6's own fix
+
+S6 shipped the adaptive mirror on the Spa numbers and recorded explicitly that *"Watkins smoothness
+is unchanged in principle but not re-measured today"*. Measured now, and "in principle" was wrong.
+
+**Watkins with S6's single 22 ms threshold:**
+
+    frame EMA 17.0 / 20.7 / 23.1 / 34.1 / 18.0 ms   budget 22.0   ->  every 1 / 1 / 3 / 3 / 1
+    mirror renders skipped: 35
+
+⭐ **Watkins' frame time straddles the threshold**, so the mirror flip-flopped between every-frame
+and every-third within a single run — which is the intermittent version of exactly the strobing E106
+fixed. **S6's fix for Spa reintroduced the Watkins defect it was written to preserve**, and only
+running the other half caught it. A single threshold cannot sit inside the operating range of the
+thing it is switching on.
+
+**Fixed with hysteresis** — back off only above 30 ms, resume only below 24 ms, so the mode is stable
+in the band between (`JM_MIRROR_ADAPT_MS` / `JM_MIRROR_RESUME_MS`):
+
+| track | frame EMA range | mode | mirror renders skipped |
+|---|---|---|---|
+| **Watkins** | 17.8 – 31.9 ms | every frame, backing off only on genuine spikes above 30 ms | **23** (was 35) |
+| **Spa** | 32.5 – 56.8 ms | stably every 3rd frame throughout | 99 |
+
+Watkins now holds per-frame mirrors except when its frame time genuinely exceeds 30 ms — which is
+the behaviour wanted, not a compromise: at 30 ms+ a stale mirror is the lesser defect. Spa never
+oscillates at all.
+
+**Both halves of the trade are now measured**, which is what every previous attempt at this knob
+failed to do: E80 measured Spa and ignored Watkins' smoothness; E106 measured Watkins and ignored
+Spa's cost; S6 measured Spa again and asserted Watkins "in principle". The pattern is three sprints
+of each fix breaking the other's property, and it stopped only when both were measured in the same
+sprint.
+
+⚠️ **Still not claimed:** these are headless smoke runs with AI physics but no screen recorder, so
+the PO's live frame rate will differ from 24.7 fps; and "no strobing" here is inferred from the mode
+staying stable, not from a consecutive-frame capture of the kind E106 used. That capture is the
+honest way to close it.
