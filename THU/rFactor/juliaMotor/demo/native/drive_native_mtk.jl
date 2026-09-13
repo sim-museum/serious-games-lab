@@ -2123,6 +2123,75 @@ const RSUSPP_B = _RSONLY == "" ? Render.extract_gpl_car(LOT3DO; include_groups=(
 const CARPIN = get(ENV,"JM_COCKPIT_DRESS","1") != "0" ?
     Render.extract_gpl_car(joinpath(LOTDIR,"lotd.3DO"); exclude=(_HAND_EXC...,_LOTBLACK_EXC...,_EXTRA_EXC...,_GARBAGE_EXC...,DRIVER_TEX...,MIRROR_TEX...,Render.STEER_TEX...,"pipe3","plaface","plahelm"), exclude_groups=Tuple(parse(Int, x) for x in split(get(ENV, "JM_CAR_EXCL_GROUPS", "6600,3560,27288,39792"), ",") if !isempty(strip(x))), cockpit_clean=true, maxlat=parse(Float32,get(ENV,"JM_COCKPIT_MAXLAT","0.30")), dedup=_CAR_DEDUP, grey=(TUB_GREY,TUB_GREY+0.01f0,TUB_GREY+0.02f0)) :   # E106-S10: dedup coincident stacks (visor/mirror flicker)
     Render.TrackPart[]
+# ── CARGOLD-1 S9c: THE DASH IS UPSIDE DOWN BECAUSE ITS V RUNS THE WRONG WAY ────────────────────
+# PO 2026-09-07: "Dashboard is upside down".  E74 through S9b chased this on GAUGEP -- the separate
+# dash7a BILLBOARD -- and could not move it, because since E106-S7 `gaugeItems` is EMPTY whenever
+# JM_COCKPIT_DRESS is on, which is the default.  Every GAUGE_* knob (GAUGE_DY/DX/DZ/S/YFLIP) drives
+# a mesh the renderer never uploads.  The dash the PO sees arrives with CARPIN, from lotd.3DO.
+#
+# Measured (demo/native/dash_dress_probe.jl, lotd.3DO, the demo's own extraction call):
+#   dash7a  20 tris  y[0.078,0.322]  v[0.000,0.984]  slope(v on y) = +3.535  r = +0.958
+#   dash7    7 tris  y[0.079,0.332]  v[0.023,1.000]  slope(v on y) = +3.857  r = +1.000
+#   ldashr   7 tris  y[0.079,0.332]  v[0.023,1.000]  slope(v on y) = +3.857  r = +1.000
+# and the art (all three are the same 256x256 dashboard picture, decoded and looked at) has its
+# visual TOP at v=0: mean luma 100.8 over v 0-0.125 (the scuttle top and the track beyond) falling
+# monotonically to 26.6 over v 0.875-1.0 (the dark footwell).  Decode emits row 0 first and
+# glTexImage2D binds row 0 to v=0, so v=0 is the top of the image.  v rising with y therefore puts
+# the art's FOOTWELL at the panel's top edge and the sky band at its bottom, every numeral inverted.
+#
+# The billboard path has the flip already, as a y-MIRROR (GAUGEFLIP's -GAUGE_S).  On a panel whose
+# geometry is flat that mirror is arithmetically identical to flipping v -- which is why S9b's A/B
+# showed the faces turning over while "the layout stayed the same": there is no layout to move, the
+# dials are painted.  The dress path, added later in E106-S6, never got the equivalent.
+# Fix it where it belongs, on the UVs, for the dash textures only.  JM_DASH_VFLIP=0 reverts.
+const _DASH_TEX = ("dash7a","dash7","ldashr")
+# Mirror about each part's OWN v span, not about 0.5.  First attempt used `1 - v`, which mirrors
+# the whole IMAGE: these panels cover only a band of it (measured below), so the art slid to a
+# different band instead of turning over -- the capture showed the dials climbing out of the
+# binnacle with their numerals still inverted.  (vmin+vmax) - v keeps the band and reverses its
+# vertical sense, which is exactly "turn this panel's picture upside down".
+function _dash_vflip!(parts)
+    for p in parts   # diagnostic first: it must run in the JM_DASH_VFLIP=0 control arm too
+        lowercase(p.tex) in _DASH_TEX || continue
+        v = p.verts
+        if get(ENV,"JM_DASH_DIAG","0") != "0"
+            for t in 0:(div(length(v),33) - 1)
+                b = t*33
+                ys = (v[b+2], v[b+13], v[b+24]); vs = (v[b+11], v[b+22], v[b+33])
+                println("    [dashdiag] ", p.tex, " tri", t,
+                        " y[", round(minimum(ys),digits=3), ",", round(maximum(ys),digits=3), "]",
+                        " v[", round(minimum(vs),digits=3), ",", round(maximum(vs),digits=3), "]",
+                        " u[", round(min(v[b+10],v[b+21],v[b+32]),digits=3), ",",
+                              round(max(v[b+10],v[b+21],v[b+32]),digits=3), "]")
+            end
+        end
+    end
+    if get(ENV,"JM_DASH_VFLIP","1") == "0"
+        println("  [dashvflip] OFF (JM_DASH_VFLIP=0)"); return parts
+    end
+    n = 0
+    for p in parts
+        lowercase(p.tex) in _DASH_TEX || continue
+        v = p.verts
+        # JM_DASH_DIAG=1: per-TRIANGLE y and v spans, from inside the shipped extraction.  Two
+        # whole-part mirrors (about 0.5, then about the part's own span) both relocated the art
+        # without turning any numeral over, which a genuine v mirror on one panel cannot do -- so
+        # the panel is not one quad, and this says what it actually is.
+        vmn = Inf32; vmx = -Inf32
+        @inbounds for i in 11:11:length(v); vmn = min(vmn, v[i]); vmx = max(vmx, v[i]); end
+        sum2 = vmn + vmx
+        @inbounds for i in 11:11:length(v); v[i] = sum2 - v[i]; n += 1; end
+        # print the population this actually ran on -- a probe that rebuilt the extraction with a
+        # different call reported 34 tris here where the shipped CARPIN has far fewer (dedup=:orient
+        # plus the exclusion lists), which is why the first prediction missed
+        println("  [dashvflip] ", p.tex, ": ", length(v) / 33, " tris, v[",
+                round(vmn,digits=3), ",", round(vmx,digits=3), "] -> mirrored about ",
+                round(sum2/2,digits=3))
+    end
+    println("  [dashvflip] flipped v on ", n, " dash vertices")   # a zero here means the fix did not fire
+    parts
+end
+const _DASH_VFLIPPED = _dash_vflip!(CARPIN)   # mutates CARPIN in place; the const just forces it to run
 # The lotd body carries its own MIRROR PODS, which land exactly where the port's live-RTT round
 # mirrors already draw -- so the pods (and only the pods) are cut here, by centroid box in the
 # render frame (x fwd, y up, z lateral). Stride 11 floats/vertex (pos+normal+uv+col).
