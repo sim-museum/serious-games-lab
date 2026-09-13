@@ -439,7 +439,17 @@ function compile(src,kind)
     s
 end
 function program()
-    p=glCreateProgram(); glAttachShader(p,compile(VSRC,GL_VERTEX_SHADER)); glAttachShader(p,compile(FSRC,GL_FRAGMENT_SHADER)); glLinkProgram(p); p
+    # NOSE-1 S2 / ROADTESS S3g: force shadow() to return 1.0. Named as "the cheapest decisive test"
+    # for the generated road's darkness and never built; it separates a SHADOW-MAP artefact from a
+    # texture/UV or vertex-shading one in a single capture, and the PO's "blotchy car front" needs
+    # exactly that split (a dark smear over the nose, plus faceted green/yellow banding down the
+    # cowl sides). JM_NOSHADOW=1; unset changes nothing.
+    _fs = FSRC
+    if get(ENV,"JM_NOSHADOW","0") != "0"
+        _fs = replace(_fs, "float shadow(vec3 N){" => "float shadow(vec3 N){ return 1.0;")
+        println("  [noshadow] shadow() forced to 1.0 (JM_NOSHADOW=1)")
+    end
+    p=glCreateProgram(); glAttachShader(p,compile(VSRC,GL_VERTEX_SHADER)); glAttachShader(p,compile(_fs,GL_FRAGMENT_SHADER)); glLinkProgram(p); p
 end
 function skyprogram()
     p=glCreateProgram(); glAttachShader(p,compile(SKY_VS,GL_VERTEX_SHADER)); glAttachShader(p,compile(SKY_FS,GL_FRAGMENT_SHADER)); glLinkProgram(p); p
