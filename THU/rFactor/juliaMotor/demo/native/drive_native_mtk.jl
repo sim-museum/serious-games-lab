@@ -2326,9 +2326,46 @@ const GAUGE_DZ = parse(Float32, get(ENV,"JM_GAUGE_Z","0.10"))   # E74-S7 SHIPPED
 # either way -- the layout is in the extracted cluster itself, while the gold has the tacho ABOVE the hub.
 # The mirror stays on (faces upright); the cluster layout is CARGOLD-1 S9b. JM_GAUGE_YFLIP=0 for A/Bs.
 const GAUGE_YFLIP = get(ENV,"JM_GAUGE_YFLIP","1") != "0"
-const SW_ROT = deg2rad(parse(Float64, get(ENV,"JM_SW_ROT","180")))
+const SW_ROT = deg2rad(parse(Float64, get(ENV,"JM_SW_ROT","0")))   # SWGOLD-1 S1: was 180 -- see _sw_uvfix! above
 const GAUGEFLIP = Render.translate(Float32[GAUGE_DX,GCY+GAUGE_DY,GAUGE_DZ]) * Render.scalexyz(GAUGE_S, GAUGE_YFLIP ? -GAUGE_S : GAUGE_S, GAUGE_S) * Render.translate(Float32[0,-GCY,0])
 const SWPARTS, SWCENTER, SWAXIS = Render.extract_gpl_steering(LOT3DO)   # steering wheel + pivot
+# ── SWGOLD-1 S1: "steering wheel upside down" (PO 2026-09-07) ─────────────────────────────────
+# The wheel is two flat quads, both centred exactly on the pivot (SWCENTER = 0.750,0.218,0.032):
+#   sterlot   2 tris  y[0.071,0.365] z[-0.116,0.180]   the WHOLE wheel painted on one quad
+#   lsterlog  2 tris  y[0.184,0.253] z[-0.003,0.067]   the hub badge disc
+# Their UV mappings are exact negatives of each other on BOTH axes -- measured:
+#   lsterlog  slope(v on y) -14.946 r -0.999   slope(u on z) +15.392 r +0.999
+#   sterlot   slope(v on y)  +3.498 r +0.999   slope(u on z)  -3.602 r -0.999
+# i.e. sterlot is authored rotated by 180 degrees in the UV plane relative to lsterlog. Both art
+# images are upright (v=0 is the image top -- the same convention CARGOLD-1 S9c established on the
+# dash), so ONE rigid in-plane rotation can only ever make one of them read correctly.
+# JM_SW_ROT=180 was that rotation: it turns sterlot upright and turns the badge UPSIDE DOWN, which
+# is exactly what the PO sees -- a wheel that looks right with an inverted LOTUS wordmark on the hub.
+# Fix the authoring instead: rotate sterlot's UVs 180 degrees and drop the rigid rotation (SW_ROT
+# now defaults to 0). Because both quads are centred on the pivot, a 180 degree rotation maps each
+# quad exactly onto itself, so these two operations CANCEL for sterlot -- the rim and spokes must
+# render identically -- while lsterlog, which was only ever wrong because of the rotation, comes
+# back upright. JM_SW_UVFIX=0 (with JM_SW_ROT=180) restores the old look for A/B.
+const _SW_UVFIX_TEX = ("sterlot",)
+function _sw_uvfix!(parts)
+    if get(ENV,"JM_SW_UVFIX","1") == "0"
+        println("  [swuv] OFF (JM_SW_UVFIX=0)"); return parts
+    end
+    n = 0
+    for p in parts
+        lowercase(p.tex) in _SW_UVFIX_TEX || continue
+        v = p.verts
+        @inbounds for i in 10:11:length(v)-1
+            v[i]   = 1f0 - v[i]      # u
+            v[i+1] = 1f0 - v[i+1]    # v
+            n += 1
+        end
+        println("  [swuv] ", p.tex, ": rotated UVs 180 deg on ", div(length(v),11), " vertices")
+    end
+    println("  [swuv] parts fixed: ", n, " vertices")   # a zero here means the fix did not fire
+    parts
+end
+const _SW_UVFIXED = _sw_uvfix!(SWPARTS)
 # Mirrors: GPL gold standard = two round discs LOW at the screen edges (level with the front-tyre
 # tops), on outward stalks — NOT high near the wheel.  Mesh frame: x=fwd, y=up, z=lateral (the two
 # discs sit at z=±0.36).  So MIRROR_Y lowers them, MIRROR_X moves them fwd, and MIRROR_SPREAD scales
