@@ -282,6 +282,14 @@ AICar(s, v, lap, lane) = AICar(s, v, lap, lane, lane, 0.0, 0.0, 1.0, 0.0)   # tl
 
 const RAIL     = 2.4    # pass-deviation offset to either side of the racing line (m)
 const LANE_MAX = 3.8    # E16 (PO): never get within ~a car-width of either edge — road half-width 5.5 − car 1.7 = 3.8
+# AI-AVOID-1: choose the pass/avoid side by the room left after the LANE_MAX clamp, not by the
+# blocker alone. Default ON; JM_AI_AVOID_ROOM=0 is the control arm.
+const AVOID_ROOM = get(ENV, "JM_AI_AVOID_ROOM", "1") != "0"
+# AI-AVOID-1: in a corner, keep lateral separation when contact is imminent instead of tucking the
+# offset to zero. Default ON; JM_AI_AVOID_CORNER=0 is the control arm. AVOIDSTAT counts the firings,
+# so a null result can be told apart from a treatment that never ran.
+const AVOID_CORNER = get(ENV, "JM_AI_AVOID_CORNER", "1") != "0"
+const AVOIDSTAT = Ref(0)
 # E12/G2 physics-AI anti-spin band (yaw rate rad/s): below SPIN_LO = normal cornering (controller
 # unchanged); SPIN_LO→SPIN_HI ramps the slide-catch (ease line-chase, add counter-yaw, lift throttle).
 const SPIN_LO  = parse(Float64, get(ENV, "JM_AI_SPIN_LO", "1.0"))
@@ -628,7 +636,33 @@ function step_field!(cars::Vector{AICar}, line::AILine, dt;
         #  original hysteresis stays; gap control changes only WHOM we follow and HOW we close.)
         if car.tlane == 0.0
             if gap < car.v*1.0 + 14.0 && abs(car.lane - blane) < 2.2
-                car.tlane = blane >= 0.0 ? -RAIL : RAIL     # pick ONE side and commit
+                # AI-AVOID-1 (PO 2026-09-07: "the AI cars are not very good at avoiding collision,
+                # EXCEPT IN WIDE STRAIGHTS"). The side used to be chosen from the blocker alone, and
+                # the resulting target is clamped to +-LANE_MAX afterwards -- so when the racing line
+                # already leans the way we pick, the clamp eats the deviation and the two cars never
+                # separate. Measured against RAIL=2.4, LANE_MAX=3.8, CAR_WID=1.7:
+                #     race-line offset 0.0 m -> deviation 2.40 m   (clears a car)
+                #                      2.0 m -> deviation 1.80 m   (clears a car)
+                #                      3.0 m -> deviation 0.80 m   *** under HALF a car width ***
+                # A straight has the line near 0, so the full rail is available -- which is exactly
+                # the PO's "except in wide straights". In a fast corner the line sits out near the
+                # corridor edge and the move collapses.
+                # Fix: pick the side by the room ACTUALLY achievable after the clamp, and only fall
+                # back to "away from the blocker" when the two sides offer the same room. This costs
+                # nothing on a straight (both sides give the full RAIL, so the tie-break decides and
+                # the old behaviour is reproduced exactly).
+                # JM_AI_AVOID_ROOM=0 restores the blocker-only choice as the A/B control arm.
+                rl0  = something(gpl_racelane(line, car.s), racelane(line, car.s))
+                devL = clamp(rl0 + RAIL, -LANE_MAX, LANE_MAX) - rl0      # room going left
+                devR = rl0 - clamp(rl0 - RAIL, -LANE_MAX, LANE_MAX)      # room going right
+                away = blane >= 0.0 ? -RAIL : RAIL                       # the old, blocker-only pick
+                car.tlane = if !AVOID_ROOM || abs(devL - devR) < 0.15
+                    away                                                 # equal room (a straight): unchanged
+                elseif devL > devR
+                    RAIL
+                else
+                    -RAIL
+                end
                 AISTAT.engage += 1
             end
         else
@@ -795,7 +829,30 @@ function plan!(cars::Vector{AICar}, line::AILine; player = nothing, scale = 1.0,
             if gap > car.v*1.7 + 30.0                                   # clear ahead → ease back to the racing line
                 car.tlane = 0.0
             elseif !straight && !overlap                                # corner here and NOT alongside → yield it:
-                car.tlane = 0.0; vt = min(vt, bv)                       #   tuck back in behind (don't dive-bomb)
+                # AI-AVOID-1 (PO 2026-09-07: "the AI cars are not very good at avoiding collision,
+                # EXCEPT IN WIDE STRAIGHTS"). This branch is the PO's sentence in code. `straight` is
+                # a corner radius > 75 m, so in anything tighter the AI drops its lateral offset to
+                # ZERO unless it is already overlapping, and tucks back onto the leader's line. That
+                # is correct RACECRAFT -- the GPL rule that you may not take a corner you do not own
+                # -- but it was also being used as the COLLISION response, so the one moment the car
+                # most needs to be somewhere else laterally is the moment it steers back into line.
+                # Yielding the corner and refusing to move aside are separate decisions. Keep the
+                # yield (we still lift: `vt = min(vt, bv)` below, so no dive-bomb), but when contact
+                # is imminent hold a half-car-width of lateral separation instead of zero.
+                # JM_AI_AVOID_CORNER=0 restores the old tuck-to-zero as the control arm.
+                imminent = gap < CAR_LEN*1.6 && dlane < CAR_WID
+                if AVOID_CORNER && imminent
+                    side = blane >= 0.0 ? -1.0 : 1.0
+                    car.tlane = side * min(RAIL, CAR_WID*0.9)           # ~0.77 m: enough to miss, not a pass
+                    AVOIDSTAT[] += 1
+                    if get(ENV, "JM_TRACE_AVOID", "") != "" && (AVOIDSTAT[] <= 3 || AVOIDSTAT[] % 200 == 0)
+                        println("  [avoid] corner sidestep #", AVOIDSTAT[], "  gap=", round(gap, digits=2),
+                                " dlane=", round(dlane, digits=2), " -> tlane=", round(car.tlane, digits=2))
+                    end
+                else
+                    car.tlane = 0.0
+                end
+                vt = min(vt, bv)                                        #   lift either way (don't dive-bomb)
             elseif gap < car.v*0.6 + CAR_LEN && dlane < 1.6
                 vt = min(vt, bv)                                        # still stuck behind in the passing lane → match speed
             end

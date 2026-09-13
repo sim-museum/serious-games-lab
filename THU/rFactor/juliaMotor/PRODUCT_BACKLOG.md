@@ -10394,3 +10394,56 @@ scripts written alongside it, which is why it survives):
 **When CARGOLD-1 comes back round, start from the defect, not the instrument:** dump those 24
 triangles' node offsets directly from a census script (the approach that has produced every real
 finding here) rather than repairing `JM_POSDIAG` first.
+
+
+### AI-AVOID-1 S1 (2026-09-13) — the PO's sentence, found in code; fixed in the path the race uses; the gate cannot see it
+
+PO: *"The AI cars are not very good at avoiding collision, **except in wide straights**."* That
+"except" is the whole diagnostic, and it is one branch of `plan!` (`ai.jl:826`):
+
+```julia
+straight = maxκ(car.s, zone) < 1/75.0        # a "straight" is a corner of radius > 75 m
+...
+elseif !straight && !overlap                 # corner here and NOT alongside → yield it:
+    car.tlane = 0.0; vt = min(vt, bv)        #   tuck back in behind (don't dive-bomb)
+```
+
+⭐ **In any corner tighter than 75 m radius, unless already overlapping, the AI sets its lateral
+offset to ZERO and steers back onto the leader's line.** As racecraft that is right — it is GPL's
+rule that you may not take a corner you do not own. But it was also serving as the *collision*
+response, so the moment a car most needs to be somewhere else laterally is the moment it tucks back
+into the one place it must not be. On a straight the branch never runs, the rail is held, and
+avoidance looks fine — exactly the PO's "except in wide straights".
+
+**Fix (in `plan!`, default ON, `JM_AI_AVOID_CORNER=0` is the control):** yielding the corner and
+refusing to move aside are separated. The lift stays (`vt = min(vt, bv)`, so still no dive-bomb),
+but when contact is imminent (`gap < CAR_LEN*1.6 && dlane < CAR_WID`) the car holds
+`±min(RAIL, CAR_WID*0.9)` ≈ 0.77 m of lateral separation instead of zero — enough to miss, not
+enough to be a pass.
+
+**Also found and changed, in the OTHER AI (`step_field!`, `ai.jl:654`):** the pass rail is added to
+the racing-line offset and only then clamped to a constant `LANE_MAX = 3.8`, so when the line
+already leans the way the AI picks, the clamp eats the move — measured at `RAIL=2.4`,
+`CAR_WID=1.7`: line offset 0.0 m → 2.40 m of deviation, 2.0 m → 1.80 m, **3.0 m → 0.80 m, under half
+a car width**. The side is now chosen by the room achievable *after* the clamp
+(`JM_AI_AVOID_ROOM=0` reverts), with the old blocker-based pick as the tie-break so straights are
+bit-identical.
+
+⚠️⚠️ **NEITHER change is measured, and the reason matters more than the changes do.**
+
+    JM_AI_AVOID_CORNER=0 → cycles 0.09  switches 0.46  queue-snaps 0
+    JM_AI_AVOID_CORNER=1 → cycles 0.09  switches 0.46  queue-snaps 0      (identical)
+    [avoid] corner sidestep ... — ZERO firings
+
+**`ai_field_smoke.jl` exercises `step_field!`. The race runs `plan!`.** They are two different AI
+implementations in one file, and `grep -l 'plan!'` finds it called from exactly one place:
+`drive_native_mtk.jl`, the game. So **the AI the PO actually watches has no headless gate at all**,
+while the gate suite's AI numbers describe code the race never runs. The firing counter is the only
+reason this was caught instead of the identical numbers being read as "no regression" and shipped.
+(And `JM_AI_AVOID_ROOM` showed identical numbers too — on Monza the racing line never leans far
+enough for the clamp to bite, so that arm is untested rather than ineffective.)
+
+**S2 (next Julia rotation), in order:** build a headless gate that drives `plan!` — the same shape as
+`ai_field_smoke` but calling the brain the race calls, on a track with real corners (Spa, not Monza).
+Then re-run both arms with the firing counters and report contact events, not lunge cycles. Until
+that exists, no claim should be made about AI collision behaviour from the gate suite.
