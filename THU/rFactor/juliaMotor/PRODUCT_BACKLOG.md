@@ -10629,3 +10629,46 @@ tarmac edge.
 one of the round-3 items, and S3b already showed the generated road fixes it (the Ring's hairpin
 inside edge is a continuous curve instead of a 5 m polyline). The material was the only thing keeping
 it behind a flag.
+
+
+### ROADTESS S3d (2026-09-13) — ⚠️ S3c did NOT fix the material. Measured: the generated road is 2.4x too dark.
+
+S3c found the generated part carrying a hardcoded white part colour while the .3do strips carry
+their own, called that "the material mismatch", and shipped it as a fix (still behind the flag).
+**Captured both arms today, same view, same build, and measured the road band instead of trusting
+the argument:**
+
+| capture | road-band mean RGB |
+|---|---|
+| `tess3_ring_s600` — `JM_ROADTESS=1`, S3c's fix in | **(40.6, 42.0, 33.6)** |
+| `notess3_ring_s600` — `JM_ROADTESS=0`, the shipped .3do road | **(97.8, 99.3, 93.6)** |
+
+⭐ **The generated road is 2.4x darker than the road it is meant to replace.** The two should be
+indistinguishable — same texture, same track, same frame. So the material still does not match, and
+S3c's headline was wrong.
+
+**Worse, the fix moved it the wrong way.** S3c changed the part colour from `(1,1,1)` to the source's
+`(0.72, 0.74, 0.76)`, i.e. darkened the generated road by ~1.36x. Working backwards, before the
+change the band would have read roughly 55 against the target's 98 — already far too dark. **The
+part colour was never the cause**; it was a genuine inconsistency sitting next to the real one, and
+fixing it made the visible defect slightly worse. That is worth stating plainly: a correct-looking
+code fix, argued from the right principle, verified only by reading.
+
+**What the diagnostic did establish**, and it is still useful:
+
+    ROADTESS S3c: part colour (0.72, 0.74, 0.76) (was hardcoded 1,1,1); vertex colour (0.559, 0.559, 0.559)
+
+so both inputs are now known and neither accounts for a 2.4x gap.
+
+**S3e (next Julia rotation) — instrument the draw, do not reason about it.** Candidates, in the order
+they are cheap to eliminate:
+1. **The normal.** The generated quads hardcode `(0, 1, 0)`; the .3do strips carry their own
+   per-vertex normals. If the shader takes any N·L term, a flat up-normal on a banked, undulating
+   Nordschleife is exactly the kind of thing that darkens a surface by a constant-ish factor.
+2. **The per-track bright/ambfill grade** the backlog already suspects, applied to track items
+   somewhere the generated part does not pass through.
+3. The mip/filtering resolved for the shared "Asphalt" texture.
+
+Print the actual shader inputs for one .3do road triangle and one generated triangle in the same
+frame and diff them. **`JM_ROADTESS` stays OFF**, and the flag is now doing real work: this would
+have shipped a visibly wrong road.
