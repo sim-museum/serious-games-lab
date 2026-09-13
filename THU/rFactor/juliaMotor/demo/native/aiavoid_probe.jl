@@ -41,6 +41,9 @@ dt    = 1/60
 amax  = 8.0; vmax = 74.0
 
 cars = RaceAI.init_cars(line, N; start_s = 30.0)
+# S3: the probe advances `s` itself and never touches `car.lap`, so `sum(c.lap)` was always 0 and the
+# denominator was broken. Accumulate distance instead, as e89_field_probe does.
+travelled = zeros(N)
 for (i, c) in enumerate(cars); c.pace = 1.0 + 0.01*(i-2); end
 RaceAI.aistat_reset!()
 
@@ -49,9 +52,18 @@ RaceAI.aistat_reset!()
 # scrape is one event; and split by whether the road there is a corner, because the PO's complaint
 # is specifically that straights are fine.
 CAR_LEN = 3.8; CAR_WID = 1.7
+# S2 measured Spa: median radius 2500 m, p90 275 m, only 0.5 % of the lap under the code's own 75 m
+# `straight` threshold. So "corner" must be a SWEEPABLE parameter here, not the code's constant --
+# the whole S3 question is what radius the AI should stop treating as a straight.
+CORNER_R = parse(Float64, get(ENV, "JM_AVOID_CORNER_R", "300.0"))   # metres; corner if radius < this
+CORNER_K = 1.0 / CORNER_R
 pairs   = [(i,j) for i in 1:N for j in (i+1):N]
 intouch = Dict(p => false for p in pairs)
 corner_contacts = 0; straight_contacts = 0
+# S3: record the RADIUS at every contact. Sweeping a classification threshold answers the question
+# indirectly and needs one run per value; the radii themselves answer it in one run and cannot be
+# biased by the threshold I happened to pick.
+contact_radii = Float64[]
 minsep_corner = Inf
 frames_in_corner = 0
 
@@ -59,7 +71,7 @@ for f in 1:secs*60
     vts = RaceAI.plan!(cars, line; player = nothing, amax = amax, vmax = vmax, dt = dt)
     for (i, c) in enumerate(cars)
         c.v = RaceAI.advance_speed(c.v, vts[i], dt)
-        c.s = mod(c.s + c.v*dt, line.total)
+        c.s = mod(c.s + c.v*dt, line.total); travelled[i] += c.v*dt
         tgt = RaceAI.racelane(line, c.s) + c.tlane
         c.lane += clamp(tgt - c.lane, -2.4*dt, 2.4*dt)
     end
@@ -71,23 +83,38 @@ for f in 1:secs*60
         touching = dl < CAR_LEN && dw < CAR_WID
         if touching && !intouch[p]
             κ = line.κ[RaceAI._locate(line, cars[i].s)[1]]
-            κ > 1/75.0 ? (global corner_contacts += 1) : (global straight_contacts += 1)
+            push!(contact_radii, κ > 1e-6 ? 1.0/κ : Inf)
+            κ > CORNER_K ? (global corner_contacts += 1) : (global straight_contacts += 1)
         end
         intouch[p] = touching
         κ2 = line.κ[RaceAI._locate(line, cars[i].s)[1]]
-        if κ2 > 1/75.0 && dl < CAR_LEN*3
+        if κ2 > CORNER_K && dl < CAR_LEN*3
             global minsep_corner = min(minsep_corner, dw)
             global frames_in_corner += 1
         end
     end
 end
 
-laps = sum(c -> c.lap, cars)
+laps = sum(travelled) / line.total
 println("AI-AVOID probe: track=", name, " cars=", N, " secs=", secs,
-        " AVOID_CORNER=", get(ENV, "JM_AI_AVOID_CORNER", "1"))
-println("  contact episodes in CORNERS   ", corner_contacts)
+        " AVOID_CORNER=", get(ENV, "JM_AI_AVOID_CORNER", "1"),
+        "  corner<", CORNER_R, "m")
+println("  contact episodes in CORNERS   ", corner_contacts,
+        "   per car-lap ", laps > 0 ? round(corner_contacts/laps, digits=3) : -1.0)
 println("  contact episodes on STRAIGHTS ", straight_contacts)
 println("  min lateral separation in corners (when within 3 car lengths) ",
         isfinite(minsep_corner) ? round(minsep_corner, digits=3) : -1.0, " m")
 println("  corner-proximity frames ", frames_in_corner, "  car-laps ", laps)
 println("  fix firings (AVOIDSTAT) ", RaceAI.AVOIDSTAT[])
+if !isempty(contact_radii)
+    r = sort(filter(isfinite, contact_radii))
+    if !isempty(r)
+        q(p) = r[clamp(round(Int, p*length(r)), 1, length(r))]
+        println("  RADIUS AT CONTACT (m): min ", round(r[1],digits=0), "  p25 ", round(q(0.25),digits=0),
+                "  median ", round(q(0.5),digits=0), "  p75 ", round(q(0.75),digits=0),
+                "  max ", round(r[end],digits=0))
+        for thr in (75.0, 150.0, 300.0, 500.0, 1000.0)
+            println("    contacts at radius < ", Int(thr), " m: ", count(<(thr), r), " / ", length(r))
+        end
+    end
+end

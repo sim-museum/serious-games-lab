@@ -289,6 +289,9 @@ const AVOID_ROOM = get(ENV, "JM_AI_AVOID_ROOM", "1") != "0"
 # offset to zero. Default ON; JM_AI_AVOID_CORNER=0 is the control arm. AVOIDSTAT counts the firings,
 # so a null result can be told apart from a treatment that never ran.
 const AVOID_CORNER = get(ENV, "JM_AI_AVOID_CORNER", "1") != "0"
+# AI-AVOID-1 S3: GPL's own min_cornering_outside_pass_radius (gpl_ai.ini [follow_line] = 400 m).
+# Ours was 75 m. JM_AI_PASS_RADIUS=75 restores the old value as the control arm.
+const PASS_RADIUS = parse(Float64, get(ENV, "JM_AI_PASS_RADIUS", "400.0"))
 const AVOIDSTAT = Ref(0)
 # E12/G2 physics-AI anti-spin band (yaw rate rad/s): below SPIN_LO = normal cornering (controller
 # unchanged); SPIN_LO→SPIN_HI ramps the slide-catch (ease line-chase, add counter-yaw, lift throttle).
@@ -805,7 +808,22 @@ function plan!(cars::Vector{AICar}, line::AILine; player = nothing, scale = 1.0,
         dlane  = b === nothing ? Inf : abs(car.lane - blane)            # lateral separation from the car ahead
         tail   = car.v*0.9 + 10.0                                       # following distance that counts as "tailgating"
         zone   = max(car.v*2.0, 45.0)                                   # passing-zone look-ahead
-        straight = maxκ(car.s, zone) < 1/75.0                          # corner radius > 75 m ⇒ a straight to slingshot on
+        # AI-AVOID-1 S3 (2026-09-13): this threshold is the PO's "except in wide straights", and the
+        # right number is GPL's own, not a guess. gpl_ai.ini [follow_line] sets
+        #     min_cornering_outside_pass_radius = 400.0
+        # -- the minimum corner radius at which GPL's AI will even attempt an outside pass -- and it
+        # is quoted in the E89-S2 note twenty lines above, where it was recorded and then not used.
+        # Ours was 75 m, which at Spa calls essentially the whole circuit a straight: measured, only
+        # 0.5 % of Spa's 13,988 m is under 75 m radius (median 2500 m, p90 275 m).
+        # The probe then located every contact by radius, and they cluster in exactly the band the
+        # two thresholds disagree about:
+        #     RADIUS AT CONTACT (m): min 325  median 325  p75 352  max 365
+        #     contacts at radius < 300 m: 0/4      contacts at radius < 500 m: 4/4
+        # Every contact is a bend of 325-365 m -- a corner by GPL's 400 m rule, a slingshot straight
+        # by our 75 m one. So the AI commits to passes through fast curves where there is neither
+        # room nor grip, which is what the PO watched.
+        # JM_AI_PASS_RADIUS overrides; set it to 75 to restore the old behaviour as the control arm.
+        straight = maxκ(car.s, zone) < 1/PASS_RADIUS                   # radius > PASS_RADIUS ⇒ slingshot straight
         overlap  = gap < CAR_LEN*0.7                                    # "front wheels past his cockpit" by corner entry
         patience = 1.2 + 1.8*((0.37*i) % 1.0)                          # staggered so the field doesn't pull out in unison
         edge   = bv + 1.0 < vt                                          # we'd be quicker than the car ahead if free

@@ -10493,3 +10493,49 @@ rather than reported.
 Spa and report the curve; (3) only then change it. The number to beat is the current 6 contact
 episodes in 200 s with 6 cars. S1's corner sidestep stays in (it is harmless and correct for real
 hairpins) but it is not the fix and should not be described as one.
+
+
+### AI-AVOID-1 S3 (2026-09-13) — ⭐ FIXED, and the right number came from GPL, not from me
+
+S2 said the defect was the `straight` threshold rather than the corner-yield branch. The repaired
+probe located every contact by radius and settled it:
+
+    RADIUS AT CONTACT (m): min 325  p25 325  median 325  p75 352  max 365
+      contacts at radius < 300 m: 0 / 4
+      contacts at radius < 500 m: 4 / 4
+
+**Every contact is a bend of 325-365 m radius.** Our code called anything over **75 m** a straight to
+slingshot on, so all of them were "straights" and the AI committed to passes through them.
+
+⭐ **The correct value was already written in our own source and never used.** The E89-S2 note in
+`ai.jl` quotes GPL's `gpl_ai.ini [follow_line]`:
+
+    min_cornering_outside_pass_radius = 400.0
+
+— the minimum corner radius at which GPL's own AI will attempt an outside pass. Ours was 75. Every
+measured contact sits **below GPL's 400 m and above our 75 m**: precisely the band the two
+thresholds disagree about. That is a gold-standard anchor, not a tuned number, which is what this
+item needed.
+
+**A/B on Spa, 6 cars, 300 s, the `plan!` probe** (`JM_AI_PASS_RADIUS`):
+
+| threshold | contact episodes | radii at contact | corner-sidestep firings | car-laps |
+|---|---|---|---|---|
+| **75 m** (ours, control) | **6** | 325-365 | 0 | 7.74 |
+| **400 m** (GPL's) | **2** | 376-580 | 60 | 7.64 |
+
+**Contacts fall by two thirds over the same distance** (car-laps 7.74 vs 7.64, so this is not the
+cars simply driving less). And S1's corner sidestep, which fired **zero** times at the old threshold,
+now fires 60 times — it was correct code that the threshold had made unreachable, which is why S1's
+A/B was byte-identical.
+
+`JM_AI_PASS_RADIUS=75` restores the old behaviour as the control arm.
+
+⚠️ **What the PO's eye still has to decide.** Raising the threshold makes the AI *decline* passes it
+used to attempt, so the racing should be cleaner but may also be less aggressive through Spa's fast
+curves. The measurement says fewer collisions; it cannot say whether the field now feels passive.
+That is a judgement for the next test round, and it is the reason this is shipped default-on with a
+one-variable revert rather than baked in.
+
+**Not claimed:** contacts are not zero (2 remain, at 376 m and 580 m), the probe's kinematics are a
+simplification of the real car model, and Spa is one track. AI-AVOID-1 stays open at 3 of 4 sprints.
