@@ -7042,6 +7042,66 @@ line (one texture band), kerbs over the generated surface, the physics still run
 of the HAT's tarmac edge.
 
 
+### CARGOLD-1 S10 (Opus 5, 2026-09-12) — the missing wishbones are EXCLUDED geometry, not absent geometry
+
+PO, twice: *"also axles still missing"* / *"still no axles"*. Measured in `lotd.3DO` rather than
+guessed (scratch `susp.jl`, the corridor between tub and wheel, |y| 0.40-0.85, x > 0.6):
+
+| part | group | flat? | x span | note |
+|---|---|---|---|---|
+| `frontlot` | **3560 / 6600** | both | **1.35 → 3.09 m** | 28 textured + 12 flat tris per side |
+| `lsusp1` | **3560 / 6600** | no | 1.54 → 3.19 m | the wishbone itself |
+| `front1`, `front3`, `lobrali` | **3560 / 6600** | no | 1.51 → 3.19 m | links / brake line |
+| `helblack`, `lotd` | 0 / 116576 | no | 1.18 → 1.74 m | drawn today |
+
+**Both suspension groups are in `JM_CAR_EXCL_GROUPS`'s default `6600,3560,27288,39792`** — they are
+dropped on purpose, because the assembly renders displaced. The displacement is in the data in front
+of us: every excluded part spans **x 1.4 → 3.1 m** on a car whose nose ends at 2.5 m, i.e. one end at
+the wheel and the other a metre and a half out in front. That is E82's parked-positioner signature
+(GPL parks geometry it does not draw at a large offset; `posmat` clamps the translation to 0 but
+KEEPS the rotation/scale, and `JM_PARK_IDENT=1` is the existing A/B for "GPL's runtime replaces the
+whole park transform").
+
+⚠️ **Flat-shading them by their own colour word would NOT give the gold's silver arms** — measured:
+`frontlot` (0.0,0.0,0.0) and (0.12,0.12,0.12), `axlelot` (0.16,0.16,0.16), `lo133` (0.13,0.16,0.13).
+Near-black. The arms' silver is in the TEXTURE, so they must be drawn textured and in the right
+place, not colour-shaded. (This is why S9's own-colour probe made the nose gold rather than silver.)
+
+**A/B results (22:03).** Un-excluding 3560/6600, with and without `JM_PARK_IDENT=1`, changes the
+cockpit picture not at all (`captures/susp_B_parkident.png`, `susp_C_plain.png`) — and the parse
+proves why: **`JM_PARK_IDENT=1` moves no vertex of `lsusp1`/`front1`/`front3`/`lobrali`.** They are
+not under a parked positioner, so E82's hypothesis does not apply to them. The group exclusion is
+also not what hides them: the front suspension is extracted SEPARATELY as `FSUSPP`
+(`only=("lsusp1","frontlot")`, drawn at `drive_native_mtk.jl:8302`).
+
+⭐ **What actually drops the wishbone is the lateral clip.** Per-triangle measurement of
+`lotus.3do` (scratch `fsusp.jl`):
+
+| texture | tris | kept at `JM_FSUSP_MAXLAT=0.85` (the default) | kept at 1.3 |
+|---|---|---|---|
+| **`lsusp1`** (the wishbone) | 12 | **0** | 12 |
+| `frontlot` (inner fairing) | 114 | 94 | 114 |
+
+Every `lsusp1` triangle reaches |y| 1.11–1.13, so the default clip removes **all twelve** and leaves
+only `frontlot`'s inner 94 — which is exactly the picture the PO keeps reporting as "no axles".
+E82-S2's note ("the 94 that make up the actual wishbone assembly stay") counted `frontlot`'s 94 and
+read them as the wishbone; they are not.
+
+**But un-clipping is not the fix either.** With `JM_FSUSP_MAXLAT=1.3` the chase view gains silver
+suspension pieces beside the front wheel (`captures/susp_maxlat13_chase.png`) while the COCKPIT view
+is unchanged (`susp_maxlat13_pit.png`): the parts are drawn, just not where the gold has them. Their
+own extents say so — `lsusp1` spans **x 1.54 → 3.19 m** on a car whose nose ends at 2.5 m and whose
+front wheels are at x 1.53, i.e. one end at the wheel and the other 1.6 m out in front, and |y| to
+1.13 against a 0.76 m half-track. Compare the REAR, which draws correctly: `lsusp5` x −1.09 → −0.77
+against a rear wheel at −0.88.
+
+**S10c (next):** find the transform GPL applies to the front assembly. Two candidates the data
+supports: (a) the front parts are authored in a different local frame and placed by a positioner our
+parser resolves differently from the rear's (compare the node chains for `lsusp5` and `lsusp1` with
+`JM_POSDIAG`), or (b) they are a LOD/animation variant that GPL swaps at runtime. Whatever lands
+them, the acceptance test is the gold cockpit still: silver arms in the gap between tub and wheel,
+with the mirror stalks.
+
 ## 🔴 PO TEST ROUND 3 (2026-09-07 14:20, Spa, `JuliaRacer-x86_64-260907.AppImage`) — items, verbatim, with owners
 
 Video `~/Videos/260907_spa.mp4` (13 min). PO: *"Overall, a big improvement!"*
