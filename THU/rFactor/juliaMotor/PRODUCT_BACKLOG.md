@@ -10233,3 +10233,56 @@ Sprint 1 starts when the PO's Spa session ends (a sysimage build is 20-40 min of
   launch to first frames took **4 min 17 s** end to end -- that is the JIT of the sim script plus
   the track load, i.e. exactly the sysimage's target. The PO's 25-minute precompile was the missing
   default depots (stdlib) plus a 09-04 first-run depot; the refresh image removes both.
+
+
+### CARGOLD-1 S10f/S10g (2026-09-12) — it is ONE mis-parented sub-mesh, not five authored parts
+
+**S10f — identify the wishbone by shape, not by tuning the clip.** Every texture with geometry in
+the front-suspension box (x 1.15..1.95, |y| 0.25..0.95), by triangle count:
+
+| texture | tris | x span | \|y\| max | z span |
+|---|---|---|---|---|
+| `l1out` | 498 | −1.234..1.834 | 0.951 | −0.306..0.366 |
+| `frontlot` | 114 | −1.063..3.091 | 1.200 | −0.053..0.250 |
+| `loftex1` | 104 | **1.21..1.84 (0.63)** | 0.901 | −0.292..0.332 |
+| `helblack` | 64 | 0.01..1.628 | 0.871 | 0.106..0.442 |
+| `lbrdisc` | 46 | −1.057..1.706 | 0.647 | −0.157..0.200 |
+| `lsusp1` | 12 | 1.536..3.189 | 1.131 | −0.056..0.097 |
+| `front1` | 8 | 1.510..3.189 | 1.196 | −0.030..0.250 |
+| `lobrali` | 4 | 1.395..2.958 | 1.200 | 0.144..0.304 |
+| `front3` | 4 | 1.617..3.189 | 1.131 | −0.053..0.076 |
+
+`loftex1`'s 0.63 m span centred on the front wheel looked exactly like a wishbone — **it is the tyre
+tread** (`drive_native_mtk.jl:4866`, "fronts tread with loftex1"). Checked before it was believed,
+and it would otherwise have been the sprint's conclusion.
+
+⭐ **S10g — the real finding.** Five unrelated textures all reach *exactly* x ≈ 3.189 / \|y\| ≈ 1.13–1.20.
+Five coincidences, or one badly-placed sub-assembly? Group membership of every triangle beyond
+x = 2.2:
+
+    group   6600  far tris= 24  near tris in same group= 36  textures: front1, front3, frontlot, lobrali, lsusp1
+    group   3560  far tris= 24  near tris in same group= 36  textures: front1, front3, frontlot, lobrali, lsusp1
+    group 116576  far tris=174  near tris in same group=1181 textures: lotblack   (the body shell, separate case)
+
+**The far geometry is confined to the two FRONT suspension groups, and each holds exactly 24 far +
+36 near triangles across the same five textures.** So it is one fault, not five — and it is *inside*
+a group, since the same group also places 36 triangles correctly. `JM_TEXVERTS` already showed the
+accumulated matrix is identical for near and far polys of `lsusp1` (`M.translation=(1.525, 0.762,
+0.02)` on every one), so the two sets differ only in their vertex data.
+
+**Hypothesis, and it is testable.** `front1`/`front3`/`frontlot`/`lobrali` are NOSE textures. Their
+far vertices sit at local x ≈ 1.66, \|y\| ≈ 0.32 — which, placed at the **chassis origin**, lands them
+at x 1.66 inside a body whose nose reaches x 2.48. They only end up past the nose because they
+inherit the wishbone mount's +1.525. So the parser is applying group 6600/3560's positioner to
+geometry that should not inherit it: **a mis-parented sub-mesh, not authored garbage.** That also
+retires S10e's "the local data carries the overhang" reading — the local data does carry it, but only
+because the wrong 24 triangles are sitting in this group at all.
+
+This matters beyond tidiness: the current defence is `maxlat`/`maxedge` clipping, which filters by
+extent and therefore cannot separate the 24 intruders from the 36 legitimate triangles that share
+their textures. That is why no clip setting has ever produced the PO's silver arms.
+
+**S10h (next Julia rotation):** walk the node tree under 6600 with `JM_POSDIAG` and find where the
+24 triangles enter — look for a child or sibling node whose own positioner is being composed with
+6600's instead of replacing it (the 0x0E external-mesh and 0x13/0x16 positioner cases are the
+candidates). The check is direct: those 24 should land at x ≈ 1.66 with the mount NOT applied.
