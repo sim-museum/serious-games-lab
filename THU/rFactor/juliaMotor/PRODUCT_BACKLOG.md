@@ -10672,3 +10672,45 @@ they are cheap to eliminate:
 Print the actual shader inputs for one .3do road triangle and one generated triangle in the same
 frame and diff them. **`JM_ROADTESS` stays OFF**, and the flag is now doing real work: this would
 have shipped a visibly wrong road.
+
+
+### ROADTESS S3e (2026-09-13) — ⚠️ the normal was NOT the cause either. I measured the wrong array.
+
+S3d left the generated road 2.4x too dark and named the normal as the first candidate: the shader
+shades with `max(dot(N, uLightDir), 0)` (render.jl:375), and the generated quads hardcoded `(0,1,0)`.
+I measured the Ring's asphalt normals and got **(0.002, -0.000, 0.996)** with not one of 8,287
+triangles above `|ny| > 0.9` — apparently decisive: the road faces +Z, we said +Y.
+
+**It was the wrong array.** Those came from `parse_3do`'s `t.n`, which is the raw 3DO space. The
+`TrackPart` vertex buffer the renderer actually consumes is a different space, and the new diagnostic
+printed it the moment the fix ran:
+
+    ROADTESS S3e: source normal (0.004, 1.0, 0.002) (was hardcoded 0,1,0)
+
+**The source normal IS +Y — exactly what was hardcoded.** So the change is a no-op, and the capture
+confirms it:
+
+| capture | road-band mean RGB |
+|---|---|
+| `tess3` (S3c part-colour only) | (40.6, 42.0, 33.6) |
+| `tess4` (S3c + S3e normal) | **(40.5, 42.0, 33.6)** — unchanged |
+| `notess3` (the shipped road, the target) | (97.8, 99.3, 93.6) |
+
+**Two "obvious" inputs have now been matched to the source and neither moved the picture.** The
+change is kept — taking the normal from the source strip is more correct than hardcoding it, and it
+costs nothing — but it is **not a fix**, and the 2.4x gap is exactly where S3d left it.
+
+⭐ **The lesson is mine, not the code's: I compared two arrays without checking they were in the same
+space.** `t.n` (3DO space, +Z up) and the TrackPart's per-vertex normals (render space, +Y up) are
+both "the normals", and only one of them is what the shader reads. The diagnostic line that printed
+the value actually used is what caught it — in one run, before a capture was even needed.
+
+**S3f (next Julia rotation) — stop guessing inputs and diff the draw.** Both remaining candidates are
+per-draw state rather than per-vertex data, which is why matching vertex attributes keeps failing:
+1. the `uBright` uniform and the per-track bright/ambfill grade, which the backlog has suspected
+   since S3b and which nothing has yet measured;
+2. the `shadow(N)` term in `diff = max(dot(N, uLightDir), 0.0) * shadow(N)` — a generated surface
+   outside the shadow map's coverage would come back uniformly darker, which fits a constant factor
+   far better than any vertex attribute does.
+Print the uniforms for one .3do road draw and one generated draw in the same frame and diff them.
+`JM_ROADTESS` stays OFF.

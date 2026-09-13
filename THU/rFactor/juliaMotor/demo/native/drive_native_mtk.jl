@@ -1748,7 +1748,21 @@ else
         end
         v = Float32[]; nquad = 0
         hgt(x, z, fb) = (h = JuliaMotor.hat3d(ROADHAT, x, z; ref = Inf); h[3] ? Float64(h[1]) : fb)
-        corner!(x, y, z, u, vv_) = append!(v, Float32[x, y, -z, 0f0, 1f0, 0f0, col[1], col[2], col[3], u, vv_])
+        # ROADTESS S3e (2026-09-13): the normal was hardcoded (0,1,0) and that is a BRIGHTNESS error,
+        # because the fragment shader shades with `max(dot(N, uLightDir), 0)` (render.jl:375).
+        # Measured on the Ring's own asphalt (8,287 triangles of nurburg.3do): mean normal
+        # (0.002, -0.000, 0.996) and NOT ONE triangle with |ny| > 0.9 -- the road's normals point
+        # along +Z in this space, not +Y. So the generated quads were lit as though they faced a
+        # direction no real road triangle faces, which is why S3d measured them 2.4x too dark while
+        # the geometry was right.
+        # Take the normal from the SOURCE strip, exactly as the texture, vertex colour and UV
+        # density already are, rather than inventing one.
+        nrm = (sum(vv[11k+4] for k in 0:nv-1) / nv, sum(vv[11k+5] for k in 0:nv-1) / nv, sum(vv[11k+6] for k in 0:nv-1) / nv)
+        let n = hypot(nrm[1], nrm[2], nrm[3]); n > 1f-6 && (nrm = (nrm[1]/n, nrm[2]/n, nrm[3]/n)); end
+        if get(ENV, "JM_ROADTESS_DIAG", "") != ""
+            println("  ROADTESS S3e: source normal ", round.(Float64.(nrm), digits = 3), " (was hardcoded 0,1,0)")
+        end
+        corner!(x, y, z, u, vv_) = append!(v, Float32[x, y, -z, nrm[1], nrm[2], nrm[3], col[1], col[2], col[3], u, vv_])
         for i in 1:n
             j = i == n ? 1 : i + 1
             (edge[i] === nothing || edge[j] === nothing) && continue
