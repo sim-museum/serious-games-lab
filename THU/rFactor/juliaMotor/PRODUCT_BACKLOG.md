@@ -10539,3 +10539,53 @@ one-variable revert rather than baked in.
 
 **Not claimed:** contacts are not zero (2 remain, at 376 m and 580 m), the probe's kinematics are a
 simplification of the real car model, and Spa is one track. AI-AVOID-1 stays open at 3 of 4 sprints.
+
+
+### AI-AVOID-1 S4 (2026-09-13) — ⚠️ S3's fix is REVERTED. One run per arm could not support it.
+
+S3 changed the pass-radius threshold from 75 m to GPL's 400 m on the strength of "contacts 6 -> 2",
+and flagged that the cost to overtaking was unmeasured. S4 measured it, then swept:
+
+| radius | contact episodes | completed overtakes | overtakes / car-lap |
+|---|---|---|---|
+| **75 m** (shipped baseline) | 6 | **9** | 1.16 |
+| 150 m | 4 | **18** | 2.34 |
+| 250 m | **0** | 2 | 0.26 |
+| 320 m | 3 | 6 | 0.79 |
+| **400 m** (GPL's, S3's choice) | 2 | **1** | 0.13 |
+
+Two things follow, and the second is the important one.
+
+**1. GPL's 400 m nearly stops the racing.** Overtakes fall 9 -> 1, a 89 % drop against a 67 % drop in
+contacts. The cure costs more than the disease. GPL presumably affords that threshold because its AI
+has passing mechanisms we do not model (inside passes, slipstream), so in our sim this one constant
+carries all the overtaking. **A gold-standard constant is only as good as the model around it** —
+that is worth remembering the next time one is lifted across.
+
+⭐ **2. The sweep is NOT MONOTONIC, so none of these numbers can choose a value.** 150 m more than
+doubles the baseline's overtaking; 250 m records zero contacts while 320 m records three. A six-car
+race is chaotic and every arm here is a SINGLE run on ONE fixed seed (`Random.seed!(11)`), so a
+threshold change perturbs the trajectory and the outcome differences are of unknown size against
+run-to-run variance. I measured five points and learned that I cannot rank them.
+
+**So the default reverts to 75 m** — the shipped behaviour — rather than ship a racing change on
+evidence that cannot distinguish itself from noise. `JM_AI_PASS_RADIUS` stays as the knob, and the
+probe now takes `JM_AI_SEED` so the next attempt can run N seeds per arm and report a mean with a
+spread instead of a single number.
+
+**What survives from S1-S3, and is not reverted:**
+
+- The corner-yield branch at `ai.jl:826` still drops lateral offset to zero in a corner, and the
+  sidestep that keeps ~0.77 m of separation when contact is imminent stays in
+  (`JM_AI_AVOID_CORNER`). At the reverted 75 m threshold it fires rarely, as S1 measured.
+- `step_field!`'s room-aware side choice stays (`JM_AI_AVOID_ROOM`).
+- The `plan!` probe itself — the AI the race actually runs had **no headless coverage at all** before
+  S1, and now has a gate that counts contacts, contact radii, overtakes and lap distance.
+
+**AI-AVOID-1 closes at 4 of 4 sprints, unfixed and honestly so.** The PO's report stands. What the
+four sprints bought: the mechanism is understood (the threshold, not the yield), the measurement
+exists, and the one plausible-looking fix was caught making the game worse before it shipped.
+
+**S5, when it comes round again:** N seeds per arm (5 minimum), report mean ± spread for both
+contacts and overtakes, and only then pick a threshold — or conclude that the threshold is the wrong
+lever and the AI needs a second passing mechanism instead.

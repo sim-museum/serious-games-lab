@@ -291,7 +291,13 @@ const AVOID_ROOM = get(ENV, "JM_AI_AVOID_ROOM", "1") != "0"
 const AVOID_CORNER = get(ENV, "JM_AI_AVOID_CORNER", "1") != "0"
 # AI-AVOID-1 S3: GPL's own min_cornering_outside_pass_radius (gpl_ai.ini [follow_line] = 400 m).
 # Ours was 75 m. JM_AI_PASS_RADIUS=75 restores the old value as the control arm.
-const PASS_RADIUS = parse(Float64, get(ENV, "JM_AI_PASS_RADIUS", "400.0"))
+# ⚠️ S4 REVERTED THE DEFAULT TO 75. S3 changed it to GPL's 400 m on a single run per arm; S4 swept
+# 75/150/250/320/400 and the result is NOT MONOTONIC -- contacts 6/4/0/3/2 and overtakes 9/18/2/6/1.
+# 150 m more than DOUBLES the baseline's overtaking; 250 m gives zero contacts while 320 m gives
+# three. One run of a chaotic six-car race, on one seed, cannot separate those from noise, and
+# shipping a racing-behaviour change on that basis is not justified. The knob stays so a proper
+# multi-seed sweep can settle it (JM_AI_SEED), and the shipped behaviour stays what it was.
+const PASS_RADIUS = parse(Float64, get(ENV, "JM_AI_PASS_RADIUS", "75.0"))
 const AVOIDSTAT = Ref(0)
 # E12/G2 physics-AI anti-spin band (yaw rate rad/s): below SPIN_LO = normal cornering (controller
 # unchanged); SPIN_LO→SPIN_HI ramps the slide-catch (ease line-chase, add counter-yaw, lift throttle).

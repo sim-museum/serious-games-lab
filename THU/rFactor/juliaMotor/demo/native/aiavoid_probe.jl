@@ -17,7 +17,7 @@
 # Arms via env: JM_AI_AVOID_CORNER (the fix), JM_AI_GPLLINE / JM_AI_GAPCTL as usual.
 include("gpldat.jl"); using .GPLDat; include("gpltrack.jl"); using .GPLTrack; include("ai.jl"); using .RaceAI
 using Statistics, Random
-Random.seed!(11)
+Random.seed!(parse(Int, get(ENV, "JM_AI_SEED", "11")))   # S4: sweepable, so repeats can separate signal from noise
 
 T = get(ENV, "JM_AVOID_TRACK", "/home/admin/sgl-julia-racer/THU/WP/drive_c/Sierra/GPL/tracks/spa")
 name = basename(T)
@@ -59,11 +59,18 @@ CORNER_R = parse(Float64, get(ENV, "JM_AVOID_CORNER_R", "300.0"))   # metres; co
 CORNER_K = 1.0 / CORNER_R
 pairs   = [(i,j) for i in 1:N for j in (i+1):N]
 intouch = Dict(p => false for p in pairs)
+# lead[p] = which of the pair is ahead, by the shorter arc; an overtake is a sustained flip
+lead    = Dict(p => 0 for p in pairs)
+leadrun = Dict(p => 0 for p in pairs)
 corner_contacts = 0; straight_contacts = 0
 # S3: record the RADIUS at every contact. Sweeping a classification threshold answers the question
 # indirectly and needs one run per value; the radii themselves answer it in one run and cannot be
 # biased by the threshold I happened to pick.
 contact_radii = Float64[]
+# S4: the fix makes the AI DECLINE passes it used to attempt, so "fewer contacts" is only half the
+# story -- a field that never passes is also wrong. Count completed OVERTAKES (a pair's along-track
+# order actually swapping and staying swapped) so benefit and cost are measured in the same run.
+overtakes = 0
 minsep_corner = Inf
 frames_in_corner = 0
 
@@ -87,6 +94,17 @@ for f in 1:secs*60
             κ > CORNER_K ? (global corner_contacts += 1) : (global straight_contacts += 1)
         end
         intouch[p] = touching
+        # who is ahead right now (the one the other is chasing over the shorter gap)
+        gij = mod(cars[j].s - cars[i].s, line.total)
+        nowlead = gij < line.total/2 ? j : i
+        if nowlead == lead[p]
+            leadrun[p] += 1
+        else
+            # require the new order to hold for 3 s before calling it an overtake, so jitter at
+            # a dead heat is not counted a dozen times
+            if lead[p] != 0 && leadrun[p] > 180; global overtakes += 1; end
+            lead[p] = nowlead; leadrun[p] = 0
+        end
         κ2 = line.κ[RaceAI._locate(line, cars[i].s)[1]]
         if κ2 > CORNER_K && dl < CAR_LEN*3
             global minsep_corner = min(minsep_corner, dw)
@@ -105,6 +123,8 @@ println("  contact episodes on STRAIGHTS ", straight_contacts)
 println("  min lateral separation in corners (when within 3 car lengths) ",
         isfinite(minsep_corner) ? round(minsep_corner, digits=3) : -1.0, " m")
 println("  corner-proximity frames ", frames_in_corner, "  car-laps ", laps)
+println("  completed overtakes ", overtakes,
+        "   per car-lap ", laps > 0 ? round(overtakes/laps, digits=3) : -1.0)
 println("  fix firings (AVOIDSTAT) ", RaceAI.AVOIDSTAT[])
 if !isempty(contact_radii)
     r = sort(filter(isfinite, contact_radii))
