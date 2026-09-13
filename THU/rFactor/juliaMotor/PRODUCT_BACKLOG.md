@@ -10806,3 +10806,50 @@ Note `GAUGE_DY` (0.20) is already tuned against two competing constraints — E7
 for legibility and E106 cut it back because the cluster then filled the windscreen and hid the road.
 **S9c must not move it**: this is a layout inversion at a correct height, and re-tuning the height to
 compensate would break the road-visibility half of that trade again.
+
+
+### SPA-FPS-1 S5 (2026-09-13) — ⭐ the per-frame mirror was re-enabled on a measurement taken where it could not matter
+
+PO round 3: *"Frame rate is low - 10-20 fps? This is not a hard limitation - the ring has good frame
+rate."* Two measurements already in `drive_native_mtk.jl` answer this between them, and they were
+taken on different tracks and reached opposite conclusions.
+
+**E80 measured the mirror pass AT SPA** (`drive_native_mtk.jl:8216`):
+
+    mirrors ON   cockpit 6.7-7.0 fps (144-149 ms)   chase 11.4-20.3 fps
+    mirrors OFF  cockpit 14.9-16.4 fps ( 61- 67 ms) chase 13.5-16.0 fps (unchanged)
+    "this second render pass costs ~80 ms/frame and IS the whole cockpit/chase asymmetry"
+
+It re-renders the whole scene into a 384x192 texture every frame, in cockpit view only — which is
+why the PO's chase view is fine and the cockpit is not, and why the Ring (a lighter scene) survives
+it. E80 therefore introduced `MIRROR_EVERY=3`.
+
+**E106-S34/S35 then measured AT WATKINS and set it back to 1:**
+
+    =3 gave 46.3/45.5/59.9 fps, =1 gave 60.6/60.8/53.8 -- the within-arm variance exceeds the
+    difference and =1 is not slower ... the optimisation was costing a visible defect and buying
+    nothing measurable HERE.
+
+⭐ **"Here" is doing all the work in that sentence, and it was not Spa.** Both arms at Watkins sit at
+or near the 60 fps vsync cap, so the arm with headroom cannot show the cost of an 80 ms pass — the
+cap hides it. The strobing E106 found was real and worth fixing; the conclusion that the optimisation
+"buys nothing" was drawn on the one track where it could not be seen to buy anything.
+
+**So the per-frame mirror is a live regression for the PO's Spa cockpit frame rate**, introduced by a
+correct local measurement generalised past its own conditions. This is the same shape as today's
+`AI_PASS_RADIUS` revert and today's GMRADAR transient: a number that is right where it was taken and
+wrong where it is applied.
+
+⚠️ **And the naive fix is wrong too.** Simply restoring `MIRROR_EVERY=3` reinstates the strobing —
+worse, in fact: E106 measured strobing at 20 Hz against a 60 Hz world, but at Spa's ~15 fps a 3-frame
+refresh is 5 Hz, which would look far worse than what the PO originally complained about.
+
+**S6 — make it adaptive, then measure both properties.** Refresh the mirror every frame while there
+is headroom and back off only when the frame budget is already blown, so Watkins keeps its smooth
+mirrors and Spa gets its frame time back. Both halves must be measured, on both tracks, because each
+previous attempt verified one and broke the other:
+1. Spa cockpit frame time, mirrors adaptive vs per-frame (the E80 comparison, re-run today — the
+   frustum culling added since E80 means its absolute numbers are stale even if its finding holds).
+2. Watkins mirror smoothness, adaptive vs per-frame (E106's consecutive-frame capture).
+**Predict first:** if the mirror pass still costs ~80 ms at Spa, backing it off to every 3rd frame
+should move cockpit frame time by roughly 2/3 of that, i.e. ~50 ms — a falsifiable number.
