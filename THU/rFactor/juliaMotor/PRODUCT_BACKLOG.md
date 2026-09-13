@@ -10714,3 +10714,47 @@ per-draw state rather than per-vertex data, which is why matching vertex attribu
    far better than any vertex attribute does.
 Print the uniforms for one .3do road draw and one generated draw in the same frame and diff them.
 `JM_ROADTESS` stays OFF.
+
+
+### ROADTESS S3f (2026-09-13) — `uBright` eliminated by reading the draw loop; the item rotates off at 4
+
+S3e named two remaining candidates, both per-draw state. One dies immediately on inspection, without
+a run.
+
+**`uBright` and the bright/ambfill grade are NOT the difference.** The generated parts are not a
+separate draw path at all:
+
+```julia
+const TRACK = [TRACKMAIN; ROADPARTS; SECPARTS]
+...
+Render.draw(prog, it, vp_, Render.ident(); bright=TRACK_BRIGHT, ambfill=TRACK_AMB)   # every item
+```
+
+`roadtess_parts()` output is concatenated into the same `trackItems` array and drawn by the same loop
+with the same uniforms. (The only per-item grade is the `MONZA` branch, and the Ring is not Monza.)
+So brightness, ambient fill, tint, shader and texture binding are all common to both roads.
+
+**Which makes the 2.4x gap sharper, not vaguer.** Everything checked is now identical between the
+two: uniforms (this sprint), per-vertex normal (S3e, both +Y), part colour and per-vertex colour
+(S3c, both taken from the source strip), texture name, and the draw loop itself. The surviving
+differences are only three, and they are all geometric:
+
+1. **`shadow(N)`** — `diff = max(dot(N,uLightDir),0.0) * shadow(N)`. The generated quads sit at HAT
+   heights, not the .3do's vertex heights; a surface even slightly below the shadow-map's depth
+   reference reads as shadowed, and a uniformly-shadowed road is exactly a constant darkening
+   factor. **This is the strongest remaining candidate and the next thing to test.**
+2. **UV density** — 9.0 m per repeat over 0.9 m quads versus the strips' own mapping: a different mip
+   level, hence a different average texel.
+3. **Quad size** — 16,980 quads of 0.9 m versus a few thousand 3-7 m strips, which changes nothing in
+   principle but is the one structural difference left.
+
+**The cheapest decisive test, for whoever picks this up:** force `shadow()` to return 1.0 and
+re-capture. If the generated road jumps from ~40 to ~98, it is the shadow map and the fix is to
+sample the generated surface's depth the way the .3do road does. If it does not move, the answer is
+in the UV/mip column. One capture separates them.
+
+**ROADTESS rotates off at 4 sprints (S3c-S3f), unfixed and behind its flag.** What the four bought:
+the material mismatch is now bounded to three geometric causes with everything else eliminated by
+measurement, and **two plausible "fixes" were caught not working before they shipped** — the part
+colour (which made it slightly worse) and the normal (a no-op). The geometry, which is what the PO
+actually complained about, has been right since S3b.
