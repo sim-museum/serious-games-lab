@@ -7095,7 +7095,45 @@ front wheels are at x 1.53, i.e. one end at the wheel and the other 1.6 m out in
 1.13 against a 0.76 m half-track. Compare the REAR, which draws correctly: `lsusp5` x −1.09 → −0.77
 against a rear wheel at −0.88.
 
-**S10c (next):** find the transform GPL applies to the front assembly. Two candidates the data
+### CARGOLD-1 S10c/S10d (2026-09-12) — the mounts are RIGHT; the geometry under them runs the wrong way
+
+`JM_POSDIAG=all` on `lotus.3do` gives the front chain, and it is correct:
+
+    node 6636 type 0xd depth 7  d=(1.526, 0.762, 0.0)  rot=(0, -0.0436, +0.0297)   <- LEFT front mount
+      node 6600 type 0xd depth 8  d=(0,0,0.02)   parent translation (1.526,0.762,0)
+    node 3596 type 0xd depth 7  d=(1.526,-0.762, 0.0)  rot=(0, -0.0436, -0.0297)   <- RIGHT front mount
+      node 3560 ...                                    (node 12208 under it: rot=(pi,0,0), the mirror)
+
+**1.526, ±0.762 is exactly the front wheel** (measured hub: front x=1.53, half-track 0.76), with a
+small camber/caster rotation — so the placement is right and the parked-positioner and
+excluded-group readings are both dead.
+
+`JM_TEXVERTS="lsusp1"` (new parser hook: prints LOCAL vertices, the accumulated matrix's
+translation, and the world result — the two sides of the multiply the argument needs):
+
+    [texverts] lsusp1 grp=6600  M.translation=(1.525, 0.762, 0.02)
+       local=(0.099, -0.176, 0.002)  ->  world=(1.629, 0.589, 0.026)     <- wheel-side pickup, right
+       local=(1.664,  0.320, 0.004)  ->  world=(3.177, 1.131, 0.097)     <- the other end, 1.66 m out
+
+⭐ **The arm's far end is authored 1.66 m along local +x and 0.32 m OUTBOARD.** A Lotus 49 front
+wishbone is ~0.4 m long and runs INBOARD from the upright to the tub, so neither the length nor the
+direction can be read as "our transform lost a term": the local data itself points away from the
+car. Two readings remain, and they are distinguishable:
+
+1. **The local frame is not the one we assume** — e.g. GPL applies the 0xd rotation in a different
+   order (we build Rz*Ry*Rx) or with a per-side mirror we drop; note the RIGHT chain carries an
+   explicit `rot=(pi,0,0)` node that the LEFT does not, so the two sides are not symmetric in the
+   data and one of them is being reconstructed.
+2. **`lsusp1` is not the wishbone at all** but a long link GPL poses dynamically (a steering rod or
+   radius rod whose rest pose is not the drawn pose), in which case the gold's silver arms come from
+   another part and the hunt continues there.
+
+**S10e (next):** print the same local/world pairs for the REAR (`lsusp5`, which draws correctly at
+x −1.09..−0.77 against a rear wheel at −0.88) and compare the local frames. If the rear's locals are
+short and inboard while the front's are long and outboard, reading 1 is settled and the fix is in the
+front chain's rotation; if both are long, reading 2 is.
+
+**S10c (superseded):** find the transform GPL applies to the front assembly. Two candidates the data
 supports: (a) the front parts are authored in a different local frame and placed by a positioner our
 parser resolves differently from the rear's (compare the node chains for `lsusp5` and `lsusp1` with
 `JM_POSDIAG`), or (b) they are a LOD/animation variant that GPL swaps at runtime. Whatever lands

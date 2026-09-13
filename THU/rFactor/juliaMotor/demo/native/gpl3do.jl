@@ -142,6 +142,21 @@ function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}
             l=sqrt(x*x+y*y+z*z); l<1e-9 && (l=1.0); (Float32(x/l),Float32(y/l),Float32(z/l))
         end
         P = [txp(vert(v)) for v in verts]
+        # CARGOLD-1 S10d (2026-09-12): JM_TEXVERTS="<tex>" prints, for the first few polys of that
+        # texture, the LOCAL vertices, the accumulated matrix's translation, and the WORLD result.
+        # "The front suspension lands 1.6 m ahead of the wheel" cannot be attributed to the data or
+        # to the transform without seeing both sides of that multiply.
+        if get(ENV, "JM_TEXVERTS", "") == tex && TEXVERT_N[] < 4
+            TEXVERT_N[] += 1
+            println("  [texverts] ", tex, " grp=", grp,
+                    "  M.translation=(", round(M[1,4], digits=3), ", ", round(M[2,4], digits=3), ", ", round(M[3,4], digits=3), ")")
+            for (i, v) in enumerate(verts)
+                i > 4 && break
+                lv = vert(v); wv = txp(lv)
+                println("     local=(", round(lv[1], digits=3), ", ", round(lv[2], digits=3), ", ", round(lv[3], digits=3),
+                        ")  ->  world=(", round(wv[1], digits=3), ", ", round(wv[2], digits=3), ", ", round(wv[3], digits=3), ")")
+            end
+        end
         # face normal (Newell) as fallback, in the transformed frame
         fn = (0f0,0f0,0f0)
         let nx=0f0,ny=0f0,nz=0f0
@@ -181,6 +196,7 @@ function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}
     # "the tree contains only types X and Y, and we handle neither". JM_PRIMDIAG=<name substring>.
     PRIMTALLY = Dict{UInt32,Int}()
     PARKDEPTH = Ref(0); PARKED_GROUPS = Set{Int}(); ALL_GROUPS = Set{Int}()
+    TEXVERT_N = Ref(0)      # S10d: JM_TEXVERTS print budget
     PATH = UInt32[]; TRIPATH = String[]          # E82 diag: node-type path per triangle (JM_POSDIAG)
     function walk(off::Int, curtex::String, depth::Int, M, grp::Int)
         n0 = length(PATH); _walk(off, curtex, depth, M, grp); resize!(PATH, n0)   # path bookkeeping (diag)
