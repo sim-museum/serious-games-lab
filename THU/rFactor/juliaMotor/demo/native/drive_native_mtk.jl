@@ -2223,11 +2223,9 @@ end
 # the positioner chain. JM_AXLES=0 removes them; JM_AXLE_Y/R tune.
 const AXLE_Y = parse(Float32, get(ENV, "JM_AXLE_Y", "0.02"))
 const AXLE_R = parse(Float32, get(ENV, "JM_AXLE_R", "0.024"))
-function _axle_part(zsign)
-    segs = 10; x0 = -1.15f0
-    # WTRACK_R is defined ~300 lines below -- "a forward reference here parses fine and dies at
-    # load" (the file's own warning, now hit a third time). Read the same env/default it does.
-    z0, z1 = zsign*0.16f0, zsign*parse(Float32, get(ENV,"JM_TRACK_R","0.74"))
+function _axle_part(zsign, x0::Float32, zhub::Float32)
+    segs = 10
+    z0, z1 = zsign*0.16f0, zsign*zhub
     v = Float32[]
     for k in 0:segs-1
         a0 = 2f0*Float32(pi)*k/segs; a1 = 2f0*Float32(pi)*(k+1)/segs
@@ -2246,7 +2244,6 @@ function _axle_part(zsign)
     end
     Render.TrackPart(v, "axlelot", (1f0,1f0,1f0))
 end
-const AXLEP = get(ENV,"JM_AXLES","1") != "0" ? [_axle_part(1f0), _axle_part(-1f0)] : Render.TrackPart[]
 const PIPE_LIFT = parse(Float32, get(ENV, "JM_PIPE_LIFT", "0.18"))
 # E106-S8 (PO: "still need to make those exhaust pipes symmetrical"): pipe3 carries a 5-tri
 # bracket authored on the RIGHT side only (its own connected solid); min_component=6 drops exactly
@@ -2461,6 +2458,38 @@ const WHEELS = let hubs = get(ENV, "JM_WHEELS_TABLE", "0") == "0" ? (try Render.
                 " half-track ", round(hubs.fy, digits=2), "/", round(hubs.ry, digits=2), " (+BODY_OFF ", BODY_OFF[1], ")  now ",
                 join(["($(round(x[1],digits=2)),$(round(x[2],digits=2)))" for x in w], " "))
         w
+    end
+end
+
+# ── AXLE-1 S1: the driveshafts must reach the hubs the WHEELS actually use ─────────────────────
+# PO 2026-09-07: "axles still missing" -- STILL, after E106-S9 built them. They are built and drawn
+# unconditionally, so "missing" never meant "absent from the draw list". Measured:
+#     [axlediag] AXLEP bbox x[-1.174,-1.126]  z[-0.74,0.74]
+#     [wheels]   rear hub raw x=-0.88, half-track 0.77   (drawn at -1.43 after BODY_OFF -0.55)
+# and bodyModel applies BODY_OFF to the axles too, so they sat at x = -1.70, a quarter of a metre
+# BEHIND the rear wheel centres, ending 3 cm short of each hub in z. The chase capture shows exactly
+# that: a shaft across the tail with a visible gap to each tyre.
+# The two numbers -1.15 and 0.74 are the SUPERSEDED HAND TABLE. CARGOLD-1 S2 moved the wheels onto
+# mesh-derived hubs for this very reason -- its own comment says the table "had the rear wheels 29 cm
+# ahead of the mesh's rear hubs" -- and the axles, written separately, kept the old constants. So the
+# axles were aimed at where the wheels used to be.
+# Derive both from WHEELS itself, undoing BODY_OFF because bodyModel re-applies it.
+# JM_AXLE_HAND=1 restores the hardcoded pair for A/B.
+const AXLE_X0, AXLE_ZHUB = let hand = get(ENV,"JM_AXLE_HAND","0") != "0"
+    if hand
+        (-1.15f0, parse(Float32, get(ENV,"JM_TRACK_R","0.74")))
+    else
+        (Float32(WHEELS[3][1] - BODY_OFF[1]), Float32(abs(WHEELS[3][2] - BODY_OFF[3])))
+    end
+end
+const AXLEP = get(ENV,"JM_AXLES","1") != "0" ?
+    [_axle_part(1f0, AXLE_X0, AXLE_ZHUB), _axle_part(-1f0, AXLE_X0, AXLE_ZHUB)] : Render.TrackPart[]
+if !isempty(AXLEP)
+    let b = Render.parts_bbox(AXLEP)
+        println("  [axle] x0=", round(AXLE_X0,digits=3), " hub z=", round(AXLE_ZHUB,digits=3),
+                "  bbox x[", round(b.xmin,digits=3), ",", round(b.xmax,digits=3),
+                "] z[", round(b.zmin,digits=3), ",", round(b.zmax,digits=3), "]",
+                "  (rear hub raw x=", round(WHEELS[3][1] - BODY_OFF[1], digits=3), ")")
     end
 end
 
