@@ -443,6 +443,17 @@ function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}
         end
     end
     if get(ENV, "JM_POSDIAG", "") != "" && length(TRIPATH) == length(tris)
+        # S10i (2026-09-12): this report printed FOUR EMPTY LINES against lotus.3do while m.groups
+        # demonstrably held 60 triangles in each of 3560/6600 -- and four well-formed empty lines
+        # read as "no long strips in the front groups", i.e. a clean bill of health, rather than as
+        # "nothing was examined". Say what was actually looked at, every time, so it cannot be
+        # silently empty again. (parse_3do recurses for external meshes, so this block runs once per
+        # mesh and most runs are NOT the chassis -- which is the likeliest reason for the zeros.)
+        let seen = sort(collect(Set(groups)))
+            println("   [posdiag] path report over ", length(tris), " tris in ", length(seen),
+                    " group(s); front groups present: 3560=", (3560 in seen), " 6600=", (6600 in seen),
+                    seen == Int[] ? "" : string("  (ids ", first(seen), "..", last(seen), ")"))
+        end
         # which node-type paths carry the LONG strips (max edge > 1.4 m) vs the rest, per front group
         for g in (3560, 6600)
             long = Dict{String,Int}(); short = Dict{String,Int}()
