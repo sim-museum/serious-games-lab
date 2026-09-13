@@ -10286,3 +10286,34 @@ their textures. That is why no clip setting has ever produced the PO's silver ar
 24 triangles enter — look for a child or sibling node whose own positioner is being composed with
 6600's instead of replacing it (the 0x0E external-mesh and 0x13/0x16 positioner cases are the
 candidates). The check is direct: those 24 should land at x ≈ 1.66 with the mount NOT applied.
+
+
+### CARGOLD-1 S10h (2026-09-12) — the diagnostic built to answer this question is itself broken
+
+S10g left one question: *where* do the 24 intruder triangles enter groups 6600/3560? `gpl3do.jl`
+already carries the report meant to answer it (`JM_POSDIAG`, lines 445-456) — it buckets each front
+group's triangles by node-type path, long-edge strips against the rest, which is exactly the
+partition needed. Run against `lotus.3do`:
+
+    [posdiag] group 3560 LONG-strip paths:
+    [posdiag] group 3560 short paths:
+    [posdiag] group 6600 LONG-strip paths:
+    [posdiag] group 6600 short paths:
+
+**All four empty**, and printed twice (so the block executes twice per parse). The outer gate
+`length(TRIPATH) == length(tris)` passed — the lines printed at all — so the failure is inside:
+`groups[k] == g` never matches for g in (3560, 6600), even though `m.groups` demonstrably contains
+both (S10g counted 60 triangles in each from exactly that field). Either the block runs against a
+different mesh than the one whose groups it names, or `groups` at that point is not yet the array
+that reaches `Mesh3DO`.
+
+Worth recording rather than working around: a report that prints four well-formed empty lines looks
+like "no long strips in the front groups" — a clean bill of health — when the truth is that it never
+examined them. Both prior sprints' conclusions about the front groups came from my own census code,
+not from this report, which is the only reason it did not mislead.
+
+**S10i (next Julia rotation), in order:** (1) fix the report — print `length(tris)`, the distinct
+group ids actually seen, and which mesh is being reported, so it cannot be silently empty again;
+(2) then use it to find the node boundary the 24 intruders come in on. The hypothesis to test is
+unchanged and specific: those 24 should land at x ≈ 1.66 with group 6600/3560's +1.525 mount NOT
+applied, which puts them inside a body whose nose reaches 2.48.
