@@ -442,6 +442,19 @@ function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}
             println("   [posdiag]   parked group ", g, ": ", join([string(k == "" ? "(untex)" : k, "=", v) for (k,v) in sort(collect(texs))], " "))
         end
     end
+    # S10j (2026-09-12): the gate below is the reason the report never ran on the CHASSIS. S10i made
+    # the report self-describing and it then showed only two parses reporting at all -- 20 tris and
+    # 296 tris, one group each, ids 0..0 -- i.e. small external sub-meshes, never lotus.3do's own
+    # thousands of triangles across dozens of groups. For the chassis `length(TRIPATH) != length(tris)`
+    # and the whole block is skipped in silence, so "no long strips in the front groups" was never
+    # even a claim about the car. Say so when it happens: a skipped report must not look like a clean
+    # one. (Cause to fix next: TRIPATH is pushed only from the textured-poly fan path, `length(P)-2`
+    # entries per poly, so any primitive that appends triangles by another route desynchronises it.)
+    if get(ENV, "JM_POSDIAG", "") != "" && length(TRIPATH) != length(tris)
+        println("   [posdiag] path report SKIPPED: TRIPATH=", length(TRIPATH), " but tris=", length(tris),
+                " -- the node-path buckets below would be wrong, so they are not printed.",
+                " This is the chassis case; the per-group counts above are still valid.")
+    end
     if get(ENV, "JM_POSDIAG", "") != "" && length(TRIPATH) == length(tris)
         # S10i (2026-09-12): this report printed FOUR EMPTY LINES against lotus.3do while m.groups
         # demonstrably held 60 triangles in each of 3560/6600 -- and four well-formed empty lines

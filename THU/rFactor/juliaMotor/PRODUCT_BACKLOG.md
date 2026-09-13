@@ -10317,3 +10317,40 @@ group ids actually seen, and which mesh is being reported, so it cannot be silen
 (2) then use it to find the node boundary the 24 intruders come in on. The hypothesis to test is
 unchanged and specific: those 24 should land at x ≈ 1.66 with group 6600/3560's +1.525 mount NOT
 applied, which puts them inside a body whose nose reaches 2.48.
+
+
+### CARGOLD-1 S10j (2026-09-12) — the node-path report never ran on the car, and now says so
+
+S10i made the report state what it examined. Running it immediately exposed the rest:
+
+    [posdiag] path report over 68 tris in 1 group(s); front groups present: 3560=false 6600=false (ids 0..0)
+    [posdiag] path report over 20 tris  in 1 group(s); front groups present: 3560=false 6600=false (ids 0..0)
+    [posdiag] path report over 296 tris in 1 group(s); front groups present: 3560=false 6600=false (ids 0..0)
+    [posdiag] path report SKIPPED: TRIPATH=0 but tris=296 -- ...
+
+Two separate faults, both of which had been invisible:
+
+1. **The report only ever ran on small external sub-meshes** (68 / 20 / 296 triangles, one group
+   each, group id 0) — never on the chassis, whose front groups 3560/6600 hold 60 triangles each and
+   whose texture list runs to thousands. `front groups present: false/false` on every line.
+2. ⭐ **`TRIPATH` is empty — 0 entries, always.** The gate `length(TRIPATH) == length(tris)` then
+   fails for any mesh with triangles, and the whole block was skipped **in silence**. So the four
+   empty lines S10h found were not even a claim about the car: nothing had been measured, and a
+   skipped report looked identical to a clean one.
+
+`TRIPATH` is pushed at one place only (`gpl3do.jl:188`, `length(P)-2` entries per textured poly,
+inside the `JM_POSDIAG` guard), and it is declared at line 203 — *after* the code that pushes to it.
+That ordering is the first thing to check, and it explains a count of exactly zero better than any
+"some primitives take another route" theory does.
+
+**Fixed this sprint (honesty, not the diagnostic itself):** the skip now prints
+`path report SKIPPED: TRIPATH=n but tris=m`, so the report can no longer be mistaken for a clean
+bill of health. Together with S10i's "what was examined" line, this diagnostic can now only be
+right or visibly broken — never quietly wrong.
+
+**S10k (next Julia rotation):** fix the `TRIPATH` declaration/push ordering so the array actually
+fills, confirm a chassis parse reports `3560=true 6600=true` with a non-zero triangle count, and
+only then read the node-path buckets to find where S10g's 24 intruder triangles enter the front
+groups. Three sprints have now been spent on a diagnostic rather than on the defect — worth saying
+plainly — but the defect is not findable without it, and every conclusion so far has come from
+one-off census scripts written beside it.
