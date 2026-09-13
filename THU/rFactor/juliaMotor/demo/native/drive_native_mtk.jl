@@ -1984,6 +1984,69 @@ if get(ENV,"JM_NOSE_CENSUS","0") != "0"
         println("  [nose] CARP ", ntris, " tris, ", length(key), " distinct positions")
         println("  [nose] coincident stacks: ", nstack, "  (front of x>", xsplit, ": ", nfront, ")",
                 "  opposite-facing: ", nopp, "  same-facing: ", nsame)
+        # NOSE-1 S4: the UV census. S3 showed the blotch is carried by the TEXTURE (with the
+        # lighting removed the band contrast survives; with the texture removed it collapses),
+        # so measure the mapping the way CARGOLD-1 S9c and SWGOLD-1 S1 did -- slope of u and v
+        # against the geometry axes, per texture, over the SHIPPED CARP. A part whose u or v
+        # span is far outside its neighbours', or whose slope sign disagrees with the rest of
+        # the body, is a stretched or wrapped coordinate: that is what smears one region of
+        # the atlas across a facet.
+        function _slope(a, b)
+            n = length(a); n < 2 && return (NaN, NaN)
+            ma = sum(a)/n; mb = sum(b)/n
+            sab = sum((a .- ma) .* (b .- mb)); saa = sum((a .- ma).^2); sbb = sum((b .- mb).^2)
+            (saa == 0 || sbb == 0) ? (NaN, NaN) : (sab/saa, sab/sqrt(saa*sbb))
+        end
+        println("  [noseuv] per-texture UV census over the shipped CARP (front = centroid x > ", xsplit, ")")
+        for p in CARP
+            v = p.verts
+            ntri = div(length(v), 33)
+            ntri < 2 && continue
+            ys = Float32[]; zs = Float32[]; us = Float32[]; vs = Float32[]
+            nfronttri = 0
+            for t in 0:(ntri-1)
+                b = t*33
+                cx = (v[b+1] + v[b+12] + v[b+23])/3
+                cx > xsplit && (nfronttri += 1)
+                for o in (b, b+11, b+22)
+                    push!(ys, v[o+2]); push!(zs, v[o+3])
+                    push!(us, v[o+10]); push!(vs, v[o+11])
+                end
+            end
+            svy, rvy = _slope(ys, vs); suz, ruz = _slope(zs, us)
+            # TEXTURE DENSITY, the scale-free metric. Raw slope is confounded by part SIZE -- a
+            # 2-triangle part spanning the whole atlas shows slope -33 merely for being small, so
+            # the first census could not tell "stretched" from "little". Density is uv-area per
+            # world-area: a facet that smears one region of the atlas across itself has a density
+            # far BELOW its neighbours', and one sampling a tiny patch has a far higher one.
+            # Reported as a distribution because a single value cannot show an outlier.
+            dens = Float64[]
+            for t in 0:(ntri-1)
+                b = t*33
+                cx = (v[b+1] + v[b+12] + v[b+23])/3
+                cx > xsplit || continue
+                p0 = (v[b+1], v[b+2], v[b+3]); p1 = (v[b+12], v[b+13], v[b+14]); p2 = (v[b+23], v[b+24], v[b+25])
+                e1 = p1 .- p0; e2 = p2 .- p0
+                cr = (e1[2]*e2[3]-e1[3]*e2[2], e1[3]*e2[1]-e1[1]*e2[3], e1[1]*e2[2]-e1[2]*e2[1])
+                wa = sqrt(cr[1]^2 + cr[2]^2 + cr[3]^2)/2
+                du1 = v[b+21] - v[b+10]; dv1 = v[b+22] - v[b+11]
+                du2 = v[b+32] - v[b+10]; dv2 = v[b+33] - v[b+11]
+                ua = abs(du1*dv2 - dv1*du2)/2
+                wa > 1e-9 && push!(dens, ua/wa)
+            end
+            dtxt = isempty(dens) ? "  density: (no front tris)" :
+                let sd = sort(dens)
+                    string("  density uv/m2 min=", round(sd[1], digits=4),
+                           " med=", round(sd[cld(length(sd),2)], digits=4),
+                           " max=", round(sd[end], digits=4))
+                end
+            println("    ", rpad(p.tex, 12), " tris=", lpad(ntri, 4),
+                    " front=", lpad(nfronttri, 4),
+                    "  u[", round(minimum(us), digits=2), ",", round(maximum(us), digits=2), "]",
+                    " v[", round(minimum(vs), digits=2), ",", round(maximum(vs), digits=2), "]",
+                    "  slope(v on y)=", round(svy, digits=3), " r=", round(rvy, digits=3),
+                    dtxt)
+        end
     end
 end
 const DRIVERP = Render.extract_gpl_car(LOT3DO; only=DRIVER_TEX, maxlat=0.95f0, exclude_groups=Tuple(parse(Int, x) for x in split(get(ENV, "JM_CAR_EXCL_GROUPS", "6600,3560,27288,39792"), ",") if !isempty(strip(x))))   # the driver figure — drawn only in CHASE view (occludes the cockpit from the in-car eye).  E64 S4: the displaced assemblies 27288/39792 carry lid/arms-textured tris too — without the group filter they drew as the chase view's remaining "spears"
