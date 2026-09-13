@@ -4783,6 +4783,25 @@ const MIRW, MIRH = 384, 192
 # So the optimisation was costing a visible defect and buying nothing measurable here.
 # JM_MIRROR_EVERY=3 restores the old behaviour.
 const MIRROR_EVERY = parse(Int, get(ENV,"JM_MIRROR_EVERY","1"))   # per-frame mirror (was 3)
+# SPA-FPS-1 S6 (2026-09-13): ADAPTIVE mirror refresh, because the two measurements in this file
+# disagree and BOTH are right on their own track:
+#   E80  (Spa, cockpit):     mirrors ON 6.7-7.0 fps (144-149 ms) vs OFF 14.9-16.4 fps (61-67 ms)
+#                            -- "this second render pass costs ~80 ms/frame".        -> wants EVERY=3
+#   E106 (Watkins, cockpit): =3 gave 46/45/60 fps, =1 gave 61/61/54, "buying nothing measurable
+#                            HERE" -- and =3 STROBED at 20 Hz against a 60 Hz world. -> wants EVERY=1
+# Watkins sits at the vsync cap, so the arm with headroom cannot show the cost of an 80 ms pass;
+# E106's conclusion was correct there and was generalised past its own conditions, which is how the
+# per-frame mirror became a live regression for the PO's Spa cockpit frame rate.
+# A fixed number cannot satisfy both. Refresh EVERY frame while there is headroom, and back off only
+# once the frame budget is already blown -- where strobing is the lesser of the two evils and the
+# world is moving too slowly for a stale mirror to read as a strobe anyway.
+# JM_MIRROR_ADAPT=0 disables (fixed JM_MIRROR_EVERY); JM_MIRROR_ADAPT_MS sets the budget.
+const MIRROR_ADAPT    = get(ENV,"JM_MIRROR_ADAPT","1") != "0"
+const MIRROR_ADAPT_MS = parse(Float64, get(ENV,"JM_MIRROR_ADAPT_MS","22.0"))   # >22 ms (<45 fps) = no headroom
+const MIRROR_ADAPT_N  = parse(Int,     get(ENV,"JM_MIRROR_ADAPT_N","3"))       # refresh rate when starved
+const MIRROR_EMA      = Ref(0.0)    # smoothed frame time, seconds
+const MIRROR_T0       = Ref(0.0)    # previous frame timestamp
+const MIRROR_SKIPPED  = Ref(0)      # count of frames where the mirror was skipped (so a null is legible)
 const MIRROR_GLASS_FRAC = 0.88f0                          # glass diameter as a fraction of the disc (keeps the rim)
 function mirror_glass_quads(parts, tex)
     items = Render.Item[]
@@ -8224,8 +8243,12 @@ function main()
         # every Nth frame instead. The car's own motion between updates is what a real mirror at
         # this size would blur away anyway. JM_MIRROR_EVERY=1 restores per-frame; =0 uses
         # JM_MIRROR_RTT=0's static discs.
+        # S6: `every` is MIRROR_EVERY normally, but MIRROR_ADAPT_N once the smoothed frame time says
+        # there is no headroom. MIRROR_EMA is updated at the end of the frame loop.
+        _mir_every = (MIRROR_ADAPT && MIRROR_EMA[] * 1000 > MIRROR_ADAPT_MS) ? MIRROR_ADAPT_N : MIRROR_EVERY
         mirror_live = MIRROR_RTT && CTL.view == 0 && !REPLAY &&
-                      (MIRROR_EVERY <= 1 || (frames % MIRROR_EVERY) == 0)
+                      (_mir_every <= 1 || (frames % _mir_every) == 0)
+        (MIRROR_RTT && CTL.view == 0 && !REPLAY && !mirror_live) && (MIRROR_SKIPPED[] += 1)
         if mirror_live
             glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE); glDepthFunc(GL_GEQUAL); glClearDepth(0.0)   # same reversed-Z as the main pass
             glBindFramebuffer(GL_FRAMEBUFFER, mirfbo); glViewport(0,0,MIRW,MIRH)
@@ -8462,6 +8485,26 @@ function main()
         end
 
         frames += 1
+        # SPA-FPS-1 S6: smoothed frame time for the adaptive mirror decision above. An EMA rather
+        # than the instantaneous dt so one slow frame (a texture upload, a GC pause) cannot flip the
+        # mirror off and on, which would itself look like strobing.
+        let _nowt = time()
+            if MIRROR_T0[] > 0
+                dtf = _nowt - MIRROR_T0[]
+                MIRROR_EMA[] = MIRROR_EMA[] == 0.0 ? dtf : (0.9 * MIRROR_EMA[] + 0.1 * dtf)
+            end
+            MIRROR_T0[] = _nowt
+        end
+        # S6b: report in BOTH arms. The first version gated this on MIRROR_ADAPT, so the control arm
+        # (JM_MIRROR_ADAPT=0) printed nothing and there was no frame time to compare against -- an
+        # instrument that cannot speak in the arm it is being compared to. Gate on FPSDIAG alone.
+        if FPSDIAG > 0 && frames % FPSDIAG == 0
+            println("  [mirror] adapt=", MIRROR_ADAPT ? 1 : 0,
+                    "  frame EMA ", round(MIRROR_EMA[]*1000, digits=1), " ms   budget ",
+                    MIRROR_ADAPT_MS, " ms   -> every ",
+                    (MIRROR_ADAPT && MIRROR_EMA[]*1000 > MIRROR_ADAPT_MS ? MIRROR_ADAPT_N : MIRROR_EVERY),
+                    " frame(s);  mirror renders skipped ", MIRROR_SKIPPED[]); flush(stdout)
+        end
         if now - titleT > 0.25 && REPLAY
             carname = rep_focus[] == 0 ? (isempty(repd.names) ? "Player" : repd.names[1]) :
                       (rep_focus[] < length(repd.names) ? repd.names[rep_focus[]+1] : "AI $(rep_focus[])")

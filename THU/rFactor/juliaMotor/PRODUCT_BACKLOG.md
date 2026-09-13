@@ -10853,3 +10853,42 @@ previous attempt verified one and broke the other:
 2. Watkins mirror smoothness, adaptive vs per-frame (E106's consecutive-frame capture).
 **Predict first:** if the mirror pass still costs ~80 ms at Spa, backing it off to every 3rd frame
 should move cockpit frame time by roughly 2/3 of that, i.e. ~50 ms — a falsifiable number.
+
+
+### SPA-FPS-1 S6 (2026-09-13) — ⭐ adaptive mirror: Spa cockpit 15.8 -> 24.7 fps, measured both arms
+
+S5 showed the per-frame mirror was re-enabled on a Watkins measurement that could not see its cost
+(both arms at the vsync cap), making it a live regression for Spa. A fixed number cannot serve both
+tracks, so the refresh is now **adaptive**: every frame while there is headroom, backing off to every
+`JM_MIRROR_ADAPT_N` (3) once the smoothed frame time exceeds `JM_MIRROR_ADAPT_MS` (22 ms ≈ 45 fps).
+An EMA, not the instantaneous dt, so one slow frame cannot flip it and itself look like strobing.
+`JM_MIRROR_ADAPT=0` restores the fixed behaviour.
+
+**Measured at Spa, cockpit view, five shot points down the lap, both arms reporting:**
+
+| arm | frame EMA samples | mean | fps | mirror renders skipped |
+|---|---|---|---|---|
+| `adapt=0` (current default) | 62.2 / 74.7 / 55.1 / 60.8 | **63.2 ms** | **15.8** | 0 |
+| `adapt=1` (this change) | 39.7 / 50.5 / 34.4 / 37.5 | **40.5 ms** | **24.7** | 119 |
+
+**22.7 ms off the frame, +56 % fps**, on the track and view where the PO measured 10-20 fps. The
+`adapt=0` figure of 15.8 fps lands squarely inside the PO's reported range, which is a useful check
+that the harness is measuring the thing complained about.
+
+**The prediction, and what it got right and wrong.** S5 predicted ~50 ms of saving, from E80's
+"~80 ms/frame" pass cost and a 2/3 reduction. The saving is **22.7 ms**, implying the pass now costs
+**~34 ms**, not 80. The *structure* held exactly (2/3 of the pass); the absolute number was stale —
+E80 predates the frustum culling, which S5 explicitly flagged as a reason its numbers might not
+survive. Worth recording as a case where a prediction was wrong in magnitude and still did its job:
+it named the mechanism, and the discrepancy measured how much culling had already bought.
+
+⚠️ **Instrument fix mid-sprint, and it is the session's recurring shape.** The first version of the
+report was gated on `MIRROR_ADAPT`, so the control arm printed nothing — an instrument that cannot
+speak in the arm it is being compared against. The `adapt=` field is now in the line itself, so a log
+states which arm produced it. I have caught this four times today in gates I inherited; this one was
+mine, twenty minutes old.
+
+**Not claimed:** this is a headless smoke run with AI physics but no screen recorder, so the PO's
+live number will differ; and the strobing E106 fixed is *not* re-introduced at Watkins, where the
+frame time stays under budget and the mirror keeps refreshing every frame — but that half has not
+been re-measured today and should be before this is called done.
