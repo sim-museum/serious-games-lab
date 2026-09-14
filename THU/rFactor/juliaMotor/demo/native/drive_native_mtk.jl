@@ -2021,6 +2021,10 @@ if get(ENV,"JM_NOSE_CENSUS","0") != "0"
             # far BELOW its neighbours', and one sampling a tiny patch has a far higher one.
             # Reported as a distribution because a single value cannot show an outlier.
             dens = Float64[]
+            # NOSE-1 S5 accumulators (see the comment at the push! below)
+            zeps = parse(Float64, get(ENV,"JM_NOSE_ZEPS","0.01"))
+            nzero = 0; zero_a = 0.0; tot_a = 0.0
+            zxmin = Inf; zxmax = -Inf; zymin = Inf; zymax = -Inf; zzmin = Inf; zzmax = -Inf
             for t in 0:(ntri-1)
                 b = t*33
                 cx = (v[b+1] + v[b+12] + v[b+23])/3
@@ -2033,6 +2037,23 @@ if get(ENV,"JM_NOSE_CENSUS","0") != "0"
                 du2 = v[b+32] - v[b+10]; dv2 = v[b+33] - v[b+11]
                 ua = abs(du1*dv2 - dv1*du2)/2
                 wa > 1e-9 && push!(dens, ua/wa)
+                # NOSE-1 S5: S4 found lotd reaching density 0.0 but never said HOW MANY facets, how
+                # much of the visible nose they cover, or WHERE they are. A handful of slivers that
+                # happen to be degenerate would be a curiosity; a large contiguous patch is the
+                # smear the PO sees. Count them, accumulate their WORLD AREA against the part's
+                # total, and bound their position -- area is the term that decides whether this is
+                # the defect or a footnote.
+                if wa > 1e-9
+                    tot_a += wa
+                    if ua/wa < zeps
+                        nzero += 1; zero_a += wa
+                        cy = (v[b+2] + v[b+13] + v[b+24])/3
+                        cz = (v[b+3] + v[b+14] + v[b+25])/3
+                        zxmin = min(zxmin, cx); zxmax = max(zxmax, cx)
+                        zymin = min(zymin, cy); zymax = max(zymax, cy)
+                        zzmin = min(zzmin, cz); zzmax = max(zzmax, cz)
+                    end
+                end
             end
             dtxt = isempty(dens) ? "  density: (no front tris)" :
                 let sd = sort(dens)
@@ -2040,6 +2061,14 @@ if get(ENV,"JM_NOSE_CENSUS","0") != "0"
                            " med=", round(sd[cld(length(sd),2)], digits=4),
                            " max=", round(sd[end], digits=4))
                 end
+            if nzero > 0
+                println("    ", rpad(p.tex,12), "  DEGENERATE-UV facets: ", nzero, "/", length(dens),
+                        " (", round(100*nzero/max(length(dens),1), digits=1), "% of front tris)",
+                        "  world area ", round(100*zero_a/max(tot_a,1e-12), digits=1), "% of the part's front area",
+                        "  bbox x[", round(zxmin,digits=3), ",", round(zxmax,digits=3), "]",
+                        " y[", round(zymin,digits=3), ",", round(zymax,digits=3), "]",
+                        " z[", round(zzmin,digits=3), ",", round(zzmax,digits=3), "]")
+            end
             println("    ", rpad(p.tex, 12), " tris=", lpad(ntri, 4),
                     " front=", lpad(nfronttri, 4),
                     "  u[", round(minimum(us), digits=2), ",", round(maximum(us), digits=2), "]",
@@ -2048,6 +2077,10 @@ if get(ENV,"JM_NOSE_CENSUS","0") != "0"
                     dtxt)
         end
     end
+    # NOSE-1 S5: this census prints and then falls through into the render loop, which opens a
+    # window on the PO's display for a measurement that needs no window at all. JM_CENSUS_EXIT=1
+    # stops after printing. (Banked as "headless hooks must exit".)
+    get(ENV,"JM_CENSUS_EXIT","0") != "0" && exit(0)
 end
 const DRIVERP = Render.extract_gpl_car(LOT3DO; only=DRIVER_TEX, maxlat=0.95f0, exclude_groups=Tuple(parse(Int, x) for x in split(get(ENV, "JM_CAR_EXCL_GROUPS", "6600,3560,27288,39792"), ",") if !isempty(strip(x))))   # the driver figure — drawn only in CHASE view (occludes the cockpit from the in-car eye).  E64 S4: the displaced assemblies 27288/39792 carry lid/arms-textured tris too — without the group filter they drew as the chase view's remaining "spears"
 const GAUGEP = Render.extract_gpl_car(LOT3DO; only=("dash7a",), maxlat=0.85f0)   # gauge cluster — drawn separately, bright (dial faces in the texture's lower-V region; keep default vflip)
