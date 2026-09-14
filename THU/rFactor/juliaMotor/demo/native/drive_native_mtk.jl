@@ -4700,10 +4700,17 @@ let objnames=Set{String}()
                     ys = (v[11t+2], v[11(t+1)+2], v[11(t+2)+2])
                     zs = (v[11t+3], v[11(t+1)+3], v[11(t+2)+3])
                     cx = sum(xs)/3; cz = sum(zs)/3
-                    k = (floor(Int, cx/cell), floor(Int, cz/cell))
+                    kx = floor(Int, cx/cell); kz = floor(Int, cz/cell)
+                    k = (kx, kz)
                     e = get!(acc, k, [Inf, -Inf, Inf, -Inf, Inf, -Inf])
-                    e[1] = min(e[1], minimum(xs)); e[2] = max(e[2], maximum(xs))
-                    e[3] = min(e[3], minimum(zs)); e[4] = max(e[4], maximum(zs))
+                    # S4: CLAMP each triangle's contribution to its OWN cell. Bucketing by centroid
+                    # while taking whole-triangle extents made boxes far larger than a cell -- the
+                    # census caught half-extents of 22.9 m, i.e. 45 m across, which would wall off a
+                    # quarter of a corner. Rail meshes carry long strip triangles, so this is not an
+                    # edge case.
+                    lo_x = kx*cell; hi_x = (kx+1)*cell; lo_z = kz*cell; hi_z = (kz+1)*cell
+                    e[1] = min(e[1], clamp(minimum(xs), lo_x, hi_x)); e[2] = max(e[2], clamp(maximum(xs), lo_x, hi_x))
+                    e[3] = min(e[3], clamp(minimum(zs), lo_z, hi_z)); e[4] = max(e[4], clamp(maximum(zs), lo_z, hi_z))
                     e[5] = min(e[5], minimum(ys)); e[6] = max(e[6], maximum(ys))
                     ntri += 1
                 end
@@ -4732,6 +4739,31 @@ let objnames=Set{String}()
                     length(SOLIDS) - nadded, " -> ", length(SOLIDS))
             flush(stdout)
         end
+    end
+
+    # E90 S4 (2026-09-14): ASK THE COLLISION FUNCTION ITSELF. A census proves boxes exist; only
+    # solid_hit() decides whether the car bounces, and it is the function the driving loop calls.
+    # JM_SOLIDHIT="x,z,heading_deg,speed_kmh[;...]" runs it at that state and prints the impulse.
+    # With JM_RAIL_SOLID=0 a point at a barrier must report NO CONTACT (that is E90, the defect);
+    # with it on, the same point must report one.
+    if get(ENV,"JM_SOLIDHIT","") != ""
+        for spec2 in split(get(ENV,"JM_SOLIDHIT",""), ";")
+            pr = split(spec2, ",")
+            length(pr) >= 4 || continue
+            hx0 = parse(Float64, strip(pr[1])); hz0 = parse(Float64, strip(pr[2]))
+            hth = deg2rad(parse(Float64, strip(pr[3]))); hv = parse(Float64, strip(pr[4]))/3.6
+            res = solid_hit(hx0, hz0, hth, hv)
+            if res === nothing
+                println("== JM_SOLIDHIT (", hx0, ", ", hz0, ") hdg ", strip(pr[3]), "deg ",
+                        strip(pr[4]), "km/h  ->  NO CONTACT")
+            else
+                println("== JM_SOLIDHIT (", hx0, ", ", hz0, ") hdg ", strip(pr[3]), "deg ",
+                        strip(pr[4]), "km/h  ->  CONTACT  impulse dvx=", round(res[1],digits=2),
+                        " dvz=", round(res[2],digits=2), " dr=", round(res[3],digits=3),
+                        " lift=", round(res[4],digits=2))
+            end
+        end
+        flush(stdout)
     end
 
     # SPA-BARRIER: JM_SOLIDNEAR="x,z,r" lists every collidable solid within r m of a world point

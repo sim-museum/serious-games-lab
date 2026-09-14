@@ -11274,3 +11274,36 @@ not. Also measure the frame cost with the flag on — S2 predicted a 17× larger
 number is now 15.7× (535 of 34), which is the figure to check against the FPS.
 
 **E90: 3 sprints this pass.**
+
+### E90 S4 (Opus 5, 2026-09-14) — ⭐ the collision function now reports CONTACT at a barrier where it used to report nothing
+
+S3 built the boxes and said a census cannot show that a car bounces. S4 asks the function that
+decides it — `solid_hit()`, the one the driving loop calls — with a new probe
+(`JM_SOLIDHIT="x,z,heading,speed"`).
+
+⚠️ **First, the census caught a defect in my own builder.** `JM_SOLIDNEAR` listed rail boxes with
+half-extents of **22.9 m** — 45 m across, six times the cell. Bucketing by triangle CENTROID while
+taking WHOLE-triangle extents does that, because rail meshes carry long strip triangles, and such a
+box would wall off a quarter of a corner. Each triangle's contribution is now **clamped to its own
+cell**, and every box is ≤ 4 m half-extent. 517 boxes, 28 rejected for covering tarmac.
+
+**MEASURED, the same three states with the flag on and off:**
+
+| state (x, z, heading, speed) | rails solid | rails not solid |
+|---|---|---|
+| (−12, 6.2) 90° 80 km/h — nose into the barrier | **CONTACT**, impulse dvz = −32.2 m/s, yaw 0.89 | **NO CONTACT** |
+| (−12, 5.0) 90° 80 km/h — 2.4 m short of it | no contact | no contact |
+| (−12, 12.0) 90° 80 km/h — inside the box, driving out | no contact | no contact |
+
+⭐ **The first row is E90 in one line: the car drove through a drawn barrier and now bounces off it.**
+The other two are the controls that make it meaningful — a car short of the barrier is not stopped,
+and a car already past it is not trapped (the closing-speed test declines it), which is the behaviour
+that stops a barrier becoming an invisible wall.
+
+⚠️ **Still default OFF and still not the PO's test.** A bounce impulse is what the physics loop
+consumes, so this is the mechanism; what the PO will judge is a drive. The remaining unknowns are the
+frame cost (S2 predicted 17×, the real list is 551 of 34 ≈ 16×) and whether 8 m boxes feel like armco
+rather than a kerb.
+
+**E90: 4 sprints this pass — AT THE CAP. The defect is demonstrated, the fix is built and gated, and
+what is left is a drive and a frame-time measurement.**
