@@ -4763,6 +4763,32 @@ let objnames=Set{String}()
                     dt = (time_ns() - t0) / 1e9
                     println("== JM_SOLIDHIT_BENCH ", nb, " calls in ", round(dt, digits=3), " s = ",
                             round(1e6*dt/nb, digits=3), " us/call   (", length(SOLIDS), " solids)")
+
+                    # E90 S6: WHY is that 4.5 us per solid? SOLIDS and SOLIDBOX are NON-CONST
+                    # globals (`global SOLIDS = ...` at load), so every access inside solid_hit is a
+                    # dynamically-typed lookup -- the standard cause of microsecond-scale iterations
+                    # in Julia. Test it without changing behaviour: the same arithmetic in a function
+                    # that takes them as ARGUMENTS, so the compiler knows their types.
+                    function _bench_typed(x, z, th, v, solids::Vector{Tuple{Float64,Float64,Float64,Symbol}},
+                                          boxes::Vector{Union{Nothing,NTuple{3,Float64}}})
+                        acc = 0.0
+                        @inbounds for k in eachindex(solids)
+                            (ox, oz, r, _) = solids[k]
+                            b = k <= length(boxes) ? boxes[k] : nothing
+                            g = b === nothing ? hypot(x-ox, z-oz) - r :
+                                                max(abs((x-ox)*cos(b[3]) + (z-oz)*sin(b[3])) - b[1],
+                                                    abs(-(x-ox)*sin(b[3]) + (z-oz)*cos(b[3])) - b[2])
+                            acc += g
+                        end
+                        acc
+                    end
+                    _bench_typed(hx0, hz0, hth, hv, SOLIDS, SOLIDBOX)     # compile
+                    t1 = time_ns()
+                    for _ in 1:nb; _bench_typed(hx0, hz0, hth, hv, SOLIDS, SOLIDBOX); end
+                    dt1 = (time_ns() - t1) / 1e9
+                    println("== JM_SOLIDHIT_BENCH typed-args equivalent: ", round(dt1, digits=3), " s = ",
+                            round(1e6*dt1/nb, digits=3), " us/call  ->  ", round(dt/max(dt1,1e-9), digits=1),
+                            "x faster than the global-reading loop")
                 end
             end
             res = solid_hit(hx0, hz0, hth, hv)

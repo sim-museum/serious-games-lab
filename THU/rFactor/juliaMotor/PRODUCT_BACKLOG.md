@@ -11338,3 +11338,37 @@ without any spatial structure at all — and it would speed up every car in ever
 
 **E90: 5 sprints. The defect is proven, the fix works, and the cost says it needs an index before it
 can be default-on.**
+
+### E90 S6 (Opus 5, 2026-09-14) — ⭐⭐ the collision scan is **60× slower than its own arithmetic**, and the cause is two non-const globals
+
+S5 measured `solid_hit()` at **151.8 µs per call for 34 solids** — 4.5 µs per box test, which is
+roughly a thousand times what the arithmetic costs — and flagged it as worth its own look. S6 looked.
+
+**`SOLIDS` and `SOLIDBOX` are NON-CONST globals** (`global SOLIDS = …` at load, `SOLIDBOX = …` at
+file scope). Every read inside the hot loop is therefore a dynamically-typed lookup, which is the
+standard cause of microsecond-scale iterations in Julia.
+
+**MEASURED, same data, same track, 100,000 calls:**
+
+| loop | per call |
+|---|---|
+| `solid_hit()` as it stands (reads the globals) | **151.4 µs** |
+| the same arithmetic in a function TAKING them as typed arguments | **2.54 µs** |
+| | **59.6× faster** |
+
+⚠️ **What the comparison does and does not say.** The typed function is not `solid_hit` — it omits
+the capsule and the closing-speed test — so **2.54 µs is not `solid_hit`'s true cost**. What is
+isolated is the ACCESS PATTERN over the same containers and the same per-solid work, and that alone
+accounts for a 60× factor.
+
+⭐ **This changes E90's economics completely.** S5 concluded the barrier fix was unshippable because
+535 solids × 151 µs would burn 0.86 s of CPU per second of game. With typed access the same 535
+solids cost on the order of **40 µs per call — a quarter of what the game pays TODAY for 34 solids.**
+**Fixing the access makes the barriers affordable and makes every existing race faster.**
+
+**S7:** give the collision data a typed, const home — a `const SOLIDS_REF = Ref(...)` or a small
+struct the loop takes as an argument — and re-run this benchmark plus `bob`-style drive gates. The
+prize is bigger than E90: `solid_hit` runs for every car on every tick of every race.
+
+**E90: 6 sprints. The barrier defect is proven and fixed behind a flag; the thing that was blocking
+it turns out to be a performance bug worth fixing on its own.**
