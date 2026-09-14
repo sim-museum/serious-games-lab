@@ -10932,3 +10932,33 @@ sprint.
 the PO's live frame rate will differ from 24.7 fps; and "no strobing" here is inferred from the mode
 staying stable, not from a consecutive-frame capture of the kind E106 used. That capture is the
 honest way to close it.
+
+### SWGOLD-1 S2 (Opus 5, 2026-09-14) — ✅ verified against the GPL gold: the hub badge is upright and matches
+
+S1 rotated `sterlot`'s UVs 180° and dropped the rigid `JM_SW_ROT=180`, on the argument that the two
+quads are authored 180° apart so one rotation can never satisfy both. It measured the badge against
+its own art. S2 measures it against the **gold**, which is what the PO reported against.
+
+**Gold:** `gold standard/julia racer/lotus49/Screenshot From 2026-06-26 17-43-46.png`, GPL cockpit.
+**Ours:** default configuration, no env overrides, Zandvoort cockpit (`JM_SMOKE=1 JM_VIEW=0
+JM_FRAMEDUMP="30:2"`). Crops written to
+`parity/swgold_s2_badge_vs_gold.png` and `parity/swgold_s2_wheel_vs_gold.png` (that directory is
+git-ignored, so they are on disk, not in the history).
+
+**RESULT: the badge matches.** In both, the yellow disc carries the green Lotus roundel with the
+wing above and the LOTUS wordmark below it, reading left to right. The PO's "steering wheel upside
+down" is not present in the default build. The wheel around it also agrees: red rim, three chrome
+spokes, two upper and one at six o'clock (the gold's lower spoke is occluded by the driver's body,
+so that one is unfalsifiable from this frame, not contradicted).
+
+⚠️ **What is NOT claimed.** The two frames are different tracks, different eye points and different
+light, so nothing about scale, brightness or rim tone is measured here — ours simply looks bigger
+and brighter in frame, and that is camera, not evidence. Only the ORIENTATION question S1 asked is
+answered, because orientation survives all three differences.
+
+**One visible gap, already owned elsewhere:** the gold fills the lower cockpit with the driver's
+gloved hands and forearms on the wheel; ours shows bare tub there. That is `JM_HANDS=0`, deliberately
+off since E106-S7 ("an absent arm is a smaller lie than a detached one"), and it is that item's work,
+not this one's.
+
+**SWGOLD-1: 2 sprints. CLOSED against the gold.**
