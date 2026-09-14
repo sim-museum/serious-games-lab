@@ -11000,3 +11000,35 @@ hub line is exposed, or deliberately non-scale geometry), and it should be asked
 made thicker than the real car's.
 
 **AXLE-1: 2 sprints.**
+
+### E102 S5 (Opus 5, 2026-09-14) — the "sticks" are PHOTOGRAPHED at last: two dark-green flat wedges hanging outboard and down
+
+E102 has been parked since S4 with "needs a capture; three headless approaches are enough". AXLE-1 S2
+built the missing instrument this morning — `JM_NO_WHEELS=1`, which drops the road wheels from the
+draw pass — and with it the rear corner is finally legible. Same frame as AXLE-1 S2 (replay player,
+right-rear-corner camera, Watkins, t=6 s); crop saved as `parity/e102_s5_sticks.png`.
+
+**What the capture shows**, with the wheels gone:
+
+* the gearbox, exhausts, radius arms and the thin suspension rods all render, in place;
+* and **two dark-GREEN flat wedges** hang off the rear, one high and one low, tilted outboard and
+  downward — flat plates, not tubes, roughly the size of a bodywork panel;
+* plus a mid-grey flat slab above them, the same "flat blade" shape AI-CARGFX S5 found standing out
+  of the Eagle's left side.
+
+⭐ **They are body-COLOURED.** `axlelot` — S4's candidate, the isolated 3-triangle sliver — wears the
+axle texture, not the green livery. So the best existing hypothesis for the PO's "sticks" looks
+wrong, and the wedges are far more likely to be the displaced-assembly class the CARP exclusion list
+already names (`JM_CAR_EXCL_GROUPS=6600,3560,27288,39792`, "WHOLE DISPLACED ASSEMBLIES ... mirror
+copies") or AI-CARGFX S5's parked suspension drawn at the clamped origin.
+
+⚠️ **Not claimed:** which part they are. Colour is a strong hint and nothing more; the sprint that
+names them must do it by bisection, not by eye.
+
+**S6:** bisect. The capture is cheap now (one headless frame), so re-shoot the same frame with
+`JM_AXLES=0` (they should NOT vanish — that would refute the axle hypothesis outright), then with the
+displaced groups added back one at a time via `JM_CAR_EXCL_GROUPS`, and with `JM_EXTRA_EXCLUDE`
+naming candidate textures. Score the wedge region against a same-configuration repeat, as AXLE-1 S2
+had to.
+
+**E102: 5 sprints total, 1 in this pass.**
