@@ -2115,6 +2115,53 @@ if get(ENV,"JM_NOSE_CENSUS","0") != "0"
                     end
                 end
             end
+            # NOSE-1 S7: the FRONT facets' own uv bounds. The part-wide u[0,1] v[0,1] the census
+            # already prints is the whole part and says nothing about where the NOSE samples. The
+            # atlas (lotd.mip, 256x256, dumped this sprint) carries a large black radiator-grille
+            # oval in a yellow surround at lower-centre, and the in-game nose shows exactly a dark
+            # patch in a yellow surround -- so the question is whether the nose's uv box sits over
+            # that grille instead of over the nose paint near the top.
+            if nfronttri > 0
+                fu0=1f9; fu1=-1f9; fv0=1f9; fv1=-1f9
+                for t in 0:(ntri-1)
+                    b = t*33
+                    cx = (v[b+1] + v[b+12] + v[b+23])/3
+                    cx > xsplit || continue
+                    for o in (b, b+11, b+22)
+                        fu0=min(fu0,v[o+10]); fu1=max(fu1,v[o+10])
+                        fv0=min(fv0,v[o+11]); fv1=max(fv1,v[o+11])
+                    end
+                end
+                println("    ", rpad(p.tex,12), "  FRONT-facet uv box: u[", round(fu0,digits=3), ",", round(fu1,digits=3),
+                        "] v[", round(fv0,digits=3), ",", round(fv1,digits=3), "]  -> atlas px x[",
+                        round(Int,fu0*256), ",", round(Int,fu1*256), "] y[", round(Int,fv0*256), ",", round(Int,fv1*256), "]")
+            end
+            # NOSE-1 S7b: the decisive question is not where the whole part samples (that is the
+            # whole atlas, 327 facets covering the front of the car) but WHICH facets sample the
+            # black radiator-grille oval, and WHERE THEY SIT ON THE CAR. If facets on the NOSE map
+            # into the grille, the mapping is misplaced and that is the blotch. Grille box measured
+            # off the dumped atlas: u 0.36..0.61, v 0.57..0.91. JM_GRILLE_UV="u0,u1,v0,v1" overrides.
+            if nfronttri > 0
+                gb = [parse(Float64,x) for x in split(get(ENV,"JM_GRILLE_UV","0.36,0.61,0.57,0.91"), ",")]
+                ng=0; gx0=1f9; gx1=-1f9; gy0=1f9; gy1=-1f9; gz0=1f9; gz1=-1f9
+                for t in 0:(ntri-1)
+                    b = t*33
+                    cu = (v[b+10] + v[b+21] + v[b+32])/3
+                    cv = (v[b+11] + v[b+22] + v[b+33])/3
+                    (gb[1] <= cu <= gb[2] && gb[3] <= cv <= gb[4]) || continue
+                    ng += 1
+                    cx = (v[b+1] + v[b+12] + v[b+23])/3
+                    cy = (v[b+2] + v[b+13] + v[b+24])/3
+                    cz = (v[b+3] + v[b+14] + v[b+25])/3
+                    gx0=min(gx0,cx); gx1=max(gx1,cx); gy0=min(gy0,cy); gy1=max(gy1,cy); gz0=min(gz0,cz); gz1=max(gz1,cz)
+                end
+                if ng > 0
+                    println("    ", rpad(p.tex,12), "  facets sampling the GRILLE box: ", ng, "/", ntri,
+                            "  world x[", round(gx0,digits=2), ",", round(gx1,digits=2), "]",
+                            " y[", round(gy0,digits=2), ",", round(gy1,digits=2), "]",
+                            " z[", round(gz0,digits=2), ",", round(gz1,digits=2), "]")
+                end
+            end
             dtxt = isempty(dens) ? "  density: (no front tris)" :
                 let sd = sort(dens)
                     string("  density uv/m2 min=", round(sd[1], digits=4),
