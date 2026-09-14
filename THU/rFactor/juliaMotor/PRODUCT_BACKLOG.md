@@ -11245,3 +11245,32 @@ acceptance test is a drive, not a census: S1 established the barriers are not co
 census cannot show that they have become so.
 
 **E90: 2 sprints this pass.**
+
+### E90 S3 (Opus 5, 2026-09-14) — the barrier boxes are BUILT (flag off), and 44 of them would have walled off the track
+
+S2 costed the fix at 545 boxes. S3 builds them, from the same `railfam` test the RENDERER uses, so a
+barrier becomes solid exactly where it is drawn: one axis-aligned box per occupied 8 m cell, taken
+from the rail triangles' own extents. `JM_RAIL_SOLID=1` enables, `JM_RAIL_CELL` sets the cell.
+
+**MEASURED at Watkins:**
+
+    == JM_RAIL_SOLID: 2435 rail tris -> 501 collision boxes of <=8.0 m (44 rejected for covering tarmac); solids 34 -> 535
+
+⭐ **44 of 545 boxes — 8% — would have covered TARMAC**, and they are rejected by the same
+`box_covers_tarmac` guard the other solids get. That guard is not defensive decoration: this tree has
+been bitten by exactly this class four times (E31's hedge-box that trapped the car on the road,
+ROAD-1, SPA-WALL-1's invisible wall, E71-S18's origin-vs-footprint test). A rail that crosses the
+road — a pit entry, a bridge — would otherwise have walled the circuit off, and **the first drive
+would have blamed the collision model rather than the box-builder.**
+
+⚠️ **Default OFF, and it stays off until a DRIVE says the car stops at a barrier.** A census cannot
+show that: S1 established the barriers were not collidable by reading the two paths, and the
+acceptance test for making them collidable has to be the behaviour the PO reported. Nothing about
+501 boxes existing proves a car bounces off one.
+
+**S4:** drive into a barrier with the flag on. The replay player can be aimed off-line, or the
+physics stepped from a position beside the rail; either produces a `[WRECK]`/contact line or does
+not. Also measure the frame cost with the flag on — S2 predicted a 17× larger scan and the real
+number is now 15.7× (535 of 34), which is the figure to check against the FPS.
+
+**E90: 3 sprints this pass.**

@@ -4676,6 +4676,64 @@ let objnames=Set{String}()
                                  join(_discshr[1:min(end, 12)], " "), length(_discshr) > 12 ? " …" : "")
     isempty(_boxrej) || println("  ROAD-1: ", length(_boxrej), " solid box(es) rejected for covering tarmac (disc fallback): ",
                                 join(unique(_boxrej)[1:min(end, 12)], " "), length(unique(_boxrej)) > 12 ? " …" : "")
+    # E90 S3 (2026-09-14): MAKE THE BAKED BARRIERS COLLIDABLE. S1 measured Watkins' armco as 2,435
+    # drawn triangles against ONE collidable object -- the renderer takes rails from the baked track
+    # mesh while this list is built from loose .3do instances, and nothing bridges them, so the car
+    # drives through the barriers. S2 costed the bridge: one box per occupied 8 m cell is 545 boxes
+    # at Watkins, taking a LINEAR per-car-per-tick scan from 34 to 579 entries (x17).
+    # Built here from the same railfam test the renderer uses, so a barrier is solid exactly where it
+    # is drawn. JM_RAIL_SOLID=1 enables (default OFF until a drive confirms the car stops);
+    # JM_RAIL_CELL sets the cell size.
+    if get(ENV,"JM_RAIL_SOLID","0") != "0"
+        let cell = parse(Float64, get(ENV,"JM_RAIL_CELL","8.0")),
+            acc = Dict{Tuple{Int,Int},Vector{Float64}}(),      # cell -> [xmin,xmax,zmin,zmax,ymin,ymax]
+            railtex2(tx) = (lt = lowercase(String(tx)); startswith(lt,"armco") || startswith(lt,"fenc") ||
+                            startswith(lt,"stfce") || startswith(lt,"sarmc") || startswith(lt,"yarmc") ||
+                            startswith(lt,"gd_rail") || startswith(lt,"rail") || startswith(lt,"brdgarm") ||
+                            startswith(lt,"brdgfen")),
+            ntri = 0
+            for prt in TRACKMAIN
+                railtex2(prt.tex) || continue
+                v = prt.verts; n = length(v) ÷ 11
+                for t in 0:3:(n-3)
+                    xs = (v[11t+1], v[11(t+1)+1], v[11(t+2)+1])
+                    ys = (v[11t+2], v[11(t+1)+2], v[11(t+2)+2])
+                    zs = (v[11t+3], v[11(t+1)+3], v[11(t+2)+3])
+                    cx = sum(xs)/3; cz = sum(zs)/3
+                    k = (floor(Int, cx/cell), floor(Int, cz/cell))
+                    e = get!(acc, k, [Inf, -Inf, Inf, -Inf, Inf, -Inf])
+                    e[1] = min(e[1], minimum(xs)); e[2] = max(e[2], maximum(xs))
+                    e[3] = min(e[3], minimum(zs)); e[4] = max(e[4], maximum(zs))
+                    e[5] = min(e[5], minimum(ys)); e[6] = max(e[6], maximum(ys))
+                    ntri += 1
+                end
+            end
+            nadded = 0; nreject = 0
+            for (_, e) in acc
+                hx = (e[2] - e[1]) / 2; hz = (e[4] - e[3]) / 2
+                (hx < 0.05 && hz < 0.05) && continue        # degenerate sliver: nothing to hit
+                ox = (e[1] + e[2]) / 2; oz = (e[3] + e[4]) / 2
+                # A BOX THAT COVERS TARMAC IS A TRAP, and this tree has been bitten by that class
+                # four times (E31's hedge-box, ROAD-1, SPA-WALL-1's invisible wall, E71-S18's
+                # origin-vs-footprint test). Rail boxes are built from mesh triangles, so a rail
+                # that crosses the road -- a pit entry, a bridge -- would otherwise wall the track
+                # off. Reuse the same guard the other solids get.
+                if box_covers_tarmac(ox, oz, hx, hz, 0.0)
+                    nreject += 1
+                    continue
+                end
+                push!(SOLIDS, (ox, oz, max(hx, hz), :wall))
+                push!(SOLIDNAMES, "railbox")
+                push!(SOLIDBOX, (hx, hz, 0.0))
+                nadded += 1
+            end
+            println("== JM_RAIL_SOLID: ", ntri, " rail tris -> ", nadded, " collision boxes of <=",
+                    cell, " m (", nreject, " rejected for covering tarmac); solids ",
+                    length(SOLIDS) - nadded, " -> ", length(SOLIDS))
+            flush(stdout)
+        end
+    end
+
     # SPA-BARRIER: JM_SOLIDNEAR="x,z,r" lists every collidable solid within r m of a world point
     # (name, kind, radius, distance) -- the headless way to name an "invisible barrier" at a
     # replay crash position without taking the display.
