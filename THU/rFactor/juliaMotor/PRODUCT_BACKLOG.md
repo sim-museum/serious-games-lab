@@ -11372,3 +11372,49 @@ prize is bigger than E90: `solid_hit` runs for every car on every tick of every 
 
 **E90: 6 sprints. The barrier defect is proven and fixed behind a flag; the thing that was blocking
 it turns out to be a performance bug worth fixing on its own.**
+
+### E90 S7 (Opus 5, 2026-09-14) — ⭐⭐ the typed home is in, and `solid_hit()` is **30.6× faster measured A/B on the same build**; the barrier fix is now cheap enough to ship
+
+S6 proved the access pattern was the cost by comparing `solid_hit()` with a typed-argument
+equivalent. S7 gives the data the typed home and then does the only comparison that settles it: the
+**same build, same track, same 152 solids, the annotations on and off.**
+
+```julia
+const SolidT    = Tuple{Float64,Float64,Float64,Symbol}
+const SolidBoxT = Union{Nothing,NTuple{3,Float64}}
+global SOLIDS::Vector{SolidT}      = SolidT[]
+global SOLIDBOX::Vector{SolidBoxT} = SolidBoxT[]
+```
+
+Nothing at the call sites changed — the `global SOLIDS = …` rebuilds in the track loaders still run,
+they just have to keep their type.
+
+**MEASURED at Watkins, 200,000 calls, one run each:**
+
+| `SOLIDS`/`SOLIDBOX` binding | per call (152 solids) | per solid |
+|---|---|---|
+| untyped (as shipped) | **636.14 µs** | 4.19 µs |
+| typed | **20.77 µs** | 0.137 µs |
+| | **30.6× faster** | |
+
+⭐ **And the run carries its own control.** `_bench_typed`, which takes the vectors as arguments and
+therefore cannot be affected by the annotation, measured **6.48 µs and 6.43 µs** in the two runs —
+the same number to within 1%. The 30× is the change, not the weather. *(It also reconciles S5: 4.19
+µs per solid here against S5's 4.46 µs per solid at 34 solids — the same per-solid cost, so S5's
+"34 solids" and this run's 152 are two different Watkins solid sets, not two different measurements.)*
+
+⭐ **E90's blocking question is answered: the barriers are affordable.** With rails collidable at
+Watkins the scan costs **21.7 µs** (156 solids) — 4.5% more than without them, and **29× less than
+the 636 µs the game pays today**. Watkins only gains 4 boxes; the heavy case is Spa's 517, and at
+0.137 µs per solid that whole set lands near **92 µs per call — still 7× cheaper than today.** S5's
+"unshippable" verdict was a verdict on the access pattern, and the access pattern is fixed.
+
+**The win is not E90's alone.** `solid_hit()` runs for every car on every tick of every race; this
+takes 636 µs off each of those calls whether or not the barrier flag is ever turned on.
+
+**S8:** turn `JM_RAIL_SOLID` on by default behind the drive gates — the cost objection is gone, so
+what remains is the PO's judgement of whether 8 m boxes feel like armco. Run the Spa bench first to
+confirm the 92 µs estimate with a measurement rather than a multiplication.
+
+**E90: 3 sprints this pass (S5–S7). The barrier defect is fixed behind a flag and the thing that
+blocked it is now a 30× speed-up for every race.**

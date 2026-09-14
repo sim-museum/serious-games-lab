@@ -336,7 +336,15 @@ const CARHALF = 1.4    # car collision half-extent (m)
 # SOLID-BOX: SOLIDBOX[k] is `nothing` (a disc of SOLIDS[k].r) or (hx, hz, φ): an oriented rectangle
 # from the object's own mesh footprint. Buildings were 5 m discs regardless of shape -- at Spa a
 # 5 m disc sat inside 25 x 17 m houses (drive-through) and poked past 12 x 6 m ones (air-hit).
-SOLIDBOX = Union{Nothing,NTuple{3,Float64}}[]
+# E90 S7: SOLIDS/SOLIDBOX are read once per solid per car per tick by solid_hit(); as UNTYPED
+# globals every one of those reads is a dynamically-typed lookup (S6 measured the same arithmetic
+# with the vectors passed as ARGUMENTS at 60x the speed).  Declaring the binding types here costs
+# nothing at the call sites -- the `global SOLIDS = ...` rebuilds below still work, they just have
+# to stay this type -- and lets the compiler specialise the scan.
+const SolidT    = Tuple{Float64,Float64,Float64,Symbol}
+const SolidBoxT = Union{Nothing,NTuple{3,Float64}}
+global SOLIDS::Vector{SolidT}      = SolidT[]
+global SOLIDBOX::Vector{SolidBoxT} = SolidBoxT[]
 "signed gap from (px,pz) to solid k's boundary and its outward normal (box if it has one, else disc)"
 @inline function solid_gap(px, pz, k)
     (ox, oz, r, _) = SOLIDS[k]
