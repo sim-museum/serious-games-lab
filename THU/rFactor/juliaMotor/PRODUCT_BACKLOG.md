@@ -11068,3 +11068,39 @@ with its texture and group id. The wedges are large and far outboard, so they wi
 that list, and the census costs one headless frame.
 
 **E102: 6 sprints total, 2 in this pass.**
+
+### E102 S7 (Opus 5, 2026-09-14) — the geometry census comes back NEGATIVE, and the reason it must is the finding
+
+S6 refuted both axle hypotheses and said the next step was to let the geometry name the wedges rather
+than guess texture names. `JM_OUTBOARD_CENSUS=1` now walks every drawn car part and lists any whose
+vertices reach past the half-track or hang below the hub line.
+
+**MEASURED, walking CARP, CARPIN, AXLEP, FSUSPP, DRIVERP, MIRRORP, WINDP, GAUGEP and HELMP:**
+
+    [outboard] half-track=0.74 hub y=0.02  parts reaching past them: 4
+      CARP#16  tex=(none)  tris=685  |z|max=0.849 (0.109 outboard)  ymin=-0.14  x[-0.69,1.69]
+      CARP#8   tex=helblack tris=26  |z|max=0.840 (0.100 outboard)  ymin=0.106  x[0.01,1.63]
+      AXLEP#1/2 tex=axlelot tris=20  |z|max=0.772 (0.032 outboard)  — the driveshafts, by construction
+
+⛔ **Nothing in the model reaches out where the wedges appear.** The first pass walked only three
+lists and I extended it to all nine before believing that — a census that omits a draw list can only
+exonerate the lists it holds — and the answer did not change.
+
+⭐ **And that negative is informative, because of WHAT the census measures.** It reads MODEL-space
+vertices. The hypothesis left standing after S6 is a POSING defect: a part drawn through a transform
+that puts it somewhere its own coordinates do not. Such a part is invisible to this instrument by
+construction. So the census has not failed; it has ruled out the other half of the space — the wedges
+are not authored outboard, they are *placed* outboard.
+
+**One lead worth pulling first.** `CARP#16` is **685 triangles with NO texture**, spanning the whole
+car (x −0.69…1.69) and reaching furthest outboard of anything drawn. An untextured part is drawn in a
+flat colour, which is exactly what the wedges look like — and it is the same class as BoB's R20
+("a flat dark square floats in the sky", one flat colour, an untextured quad). If the extractor
+merges untextured geometry into one part, the wedges are inside it.
+
+**S8, one capture each:** tint `CARP#16` a signal colour and re-shoot the rear-corner frame. If the
+wedges change colour they are in that part, and the question becomes why 685 untextured triangles are
+merged and posed as one. If they do not, the transform that places them is elsewhere, and the next
+instrument must report POST-transform positions rather than model space.
+
+**E102: 7 sprints total, 3 in this pass.**

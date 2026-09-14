@@ -2837,6 +2837,50 @@ if !isempty(AXLEP)
     end
 end
 
+# E102 S7 (2026-09-14): NAME THE STICKS BY GEOMETRY, not by colour or by guessing texture names.
+# S5 photographed two dark-green flat wedges hanging outboard and down at the rear; S6 refuted both
+# standing hypotheses (the synthesized driveshafts, and S4's axlelot sliver) by bisection. The wedges
+# are large and far outboard, so the mesh itself can identify them: list every drawn car part whose
+# vertices reach beyond the half-track or below the hub plane, worst first, with its texture.
+# JM_OUTBOARD_CENSUS=1 prints and continues; add JM_CENSUS_EXIT=1 to stop after printing.
+if get(ENV,"JM_OUTBOARD_CENSUS","0") != "0"
+    let half = Float32(WTRACK_R), hubz = Float32(AXLE_Y), rows = Any[]
+        # S7 second pass: the first version walked only CARP/CARPIN/AXLEP and named nothing that
+        # looks like the wedges. The rear suspension and the other separately-extracted sets are
+        # drawn from their own lists, so walk those too -- a census that omits a draw list can only
+        # ever exonerate the lists it happens to hold.
+        for (setname, parts) in (("CARP", CARP), ("CARPIN", CARPIN), ("AXLEP", AXLEP),
+                                 ("FSUSPP", FSUSPP), ("DRIVERP", DRIVERP), ("MIRRORP", MIRRORP),
+                                 ("WINDP", WINDP), ("GAUGEP", GAUGEP), ("HELMP", HELMP))
+            for (i, prt) in enumerate(parts)
+                v = prt.verts
+                n = length(v) ÷ 11
+                n == 0 && continue
+                zmax = -Inf32; ymin = Inf32; xlo = Inf32; xhi = -Inf32
+                for k in 0:n-1
+                    x = v[11k+1]; y = v[11k+2]; z = v[11k+3]
+                    zmax = max(zmax, abs(z)); ymin = min(ymin, y)
+                    xlo = min(xlo, x); xhi = max(xhi, x)
+                end
+                # outboard of the wheel plane, or hanging below the hub line
+                if zmax > half + 0.02f0 || ymin < hubz - 0.25f0
+                    push!(rows, (zmax - half, setname, i, prt.tex, n ÷ 3, zmax, ymin, xlo, xhi))
+                end
+            end
+        end
+        sort!(rows, by = r -> -r[1])
+        println("  [outboard] half-track=", round(half,digits=3), " hub y=", round(hubz,digits=3),
+                "  parts reaching past them: ", length(rows))
+        for r in rows[1:min(end,12)]
+            println("    ", r[2], "#", r[3], " tex=", r[4], " tris=", r[5],
+                    "  |z|max=", round(r[6],digits=3), " (", round(r[1],digits=3), " outboard)",
+                    "  ymin=", round(r[7],digits=3), "  x[", round(r[8],digits=2), ",", round(r[9],digits=2), "]")
+        end
+        flush(stdout)
+        get(ENV,"JM_CENSUS_EXIT","0") != "0" && exit(0)
+    end
+end
+
 # ---- GL init (visible window on the user's display) ----
 const W, H = 1440, 810
 # distance culling (squared, render-world units = m): skip far trackside objects/billboards
