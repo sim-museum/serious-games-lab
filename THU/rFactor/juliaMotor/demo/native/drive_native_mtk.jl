@@ -8828,8 +8828,14 @@ function main()
         # (AI grid drawn in drawworld — shared with the E64 mirror pass)
         # E59 parity: default lighting rendered the tyres as solid BLACK silhouettes from the cockpit —
         # the GPL gold cockpit shows readable dark-grey tread + sidewall.  Lift the fill (not the sun).
+        # AXLE-1 S2 (2026-09-14): JM_NO_WHEELS=1 is a DIAGNOSTIC -- it drops the road wheels from
+        # this pass so the driveshafts behind them can be photographed. S1 fixed the axles'
+        # placement arithmetically and said plainly that the on-screen change was modest because
+        # the wheel and gearbox occlude the shaft; a matched-viewpoint capture confirmed that the
+        # gap is not visible from the rear-corner camera either. Never ship this on.
         for (wx,wz,steer,r,nm) in WHEELS, it in WHEELITEMS[nm]
             is_loose(nm) && continue
+            get(ENV,"JM_NO_WHEELS","0") != "0" && continue
             Render.draw(prog, it, vp, wheelmat(wx,wz,steer,r); bright=1.0, ambfill=0.75)
         end
         for (lx,ly,lz,_,_,_,sp,_,nm) in LOOSE_WHEELS, it in WHEELITEMS[nm]

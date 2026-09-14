@@ -10962,3 +10962,41 @@ off since E106-S7 ("an absent arm is a smaller lie than a detached one"), and it
 not this one's.
 
 **SWGOLD-1: 2 sprints. CLOSED against the gold.**
+
+### AXLE-1 S2 (Opus 5, 2026-09-14) — the driveshafts ARE drawn, in the right place; "missing" is a visibility question, not a placement one
+
+S1 re-aimed the shafts from the superseded hand table onto the mesh-derived hubs and said plainly
+that the on-screen change was modest because the wheel and gearbox occlude them. S2 answers the
+question S1 deferred: is the shaft actually on screen?
+
+**Matched viewpoint.** The GPL gold has a rear-corner frame of the Lotus (`lotus49/Screenshot From
+2026-06-26 17-44-05.png`: DFV, rear suspension, near rear wheel). Ours is the replay player's
+right-rear-corner camera, the same viewpoint class: `JM_REPLAY_CAM=6 JM_REPLAY_T=6 TRACK=watglen`
+on `replay_watglen 5ai 2026-09-01`.
+
+**At that viewpoint the shaft cannot be seen at all**, in ours or in the gold — the road wheel covers
+the hub line. So a new diagnostic was added, `JM_NO_WHEELS=1` (drops the road wheels from the draw
+pass; diagnostic only, never shipped on), and with the wheels gone the rear end is legible: gearbox,
+exhausts, links. **The shaft still cannot be picked out by eye** — it is a 4.8 cm rod among all that.
+
+**So the question was settled by measurement instead, with a positive control.** `JM_AXLE_R` was
+raised from 0.024 to 0.09 (3.75× fatter) and the frames scored, against a same-configuration repeat
+for the noise floor (the rule this tree earned on SWGOLD-1: this scene is not deterministic, whole-
+frame counts have a floor):
+
+| comparison | whole frame | rear-axle region (740,300)-(1020,470) |
+|---|---|---|
+| fat vs thin axle | 13296 px, mean 1.005 | 6691 px, **mean 10.765** |
+| fat vs fat (control) | 4168 px, mean 0.314 | 2228 px, mean 2.62 |
+
+⭐ **4.1× above its own noise floor, localised to the hub-to-diff region.** Widening the shaft
+changes the picture exactly where the shaft is, so the shafts are built, drawn, and placed on the hub
+line — S1's fix reaches the screen.
+
+**What this means for the PO's "axles still missing".** It is not absence and not misplacement; it is
+that a correctly-sized driveshaft is invisible behind the wheel from outside the car, which is also
+true of the gold. If the PO wants them *seen*, that is a different request (a viewpoint where the
+hub line is exposed, or deliberately non-scale geometry), and it should be asked before anything is
+made thicker than the real car's.
+
+**AXLE-1: 2 sprints.**
