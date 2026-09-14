@@ -2022,8 +2022,10 @@ end
 # facets scattered through it, but here the target is one region, so the model is fitted only on
 # FRONT facets that do NOT sample the grille -- i.e. the nose paint around them -- and applied only
 # to front facets that do. A whole-part fit would drag in the sides and the cockpit surround.
-# JM_NOSE_GRILLEFIX=1 enables (default OFF until the capture decides); JM_GRILLE_UV moves the box.
-if get(ENV,"JM_NOSE_GRILLEFIX","0") != "0"
+# DEFAULT ON since S10: the GPL gold (gold standard/julia racer/lotus49, cockpit frame) shows a
+# GREEN nose with a YELLOW centre stripe and NO black anywhere, while the unfixed nose carries a
+# large black patch. The fix removes it. JM_NOSE_GRILLEFIX=0 reverts; JM_GRILLE_UV moves the box.
+if get(ENV,"JM_NOSE_GRILLEFIX","1") != "0"
     let gb = [parse(Float64,x) for x in split(get(ENV,"JM_GRILLE_UV","0.36,0.61,0.57,0.91"), ",")],
         xsplit = parse(Float32, get(ENV,"JM_NOSE_X","0.6")), nfix = 0, nparts = 0
         for p in CARP
@@ -2426,7 +2428,7 @@ const CARPIN = get(ENV,"JM_COCKPIT_DRESS","1") != "0" ?
 # dress is on, which is the default). Measured this sprint: with JM_COCKPIT_DRESS=0 the nose is not
 # in the cockpit view at all, so the nose the PO sees belongs to the dress build.
 # Same switch, same box: JM_NOSE_GRILLEFIX=1, JM_GRILLE_UV overrides.
-if get(ENV,"JM_NOSE_GRILLEFIX","0") != "0" && !isempty(CARPIN)
+if get(ENV,"JM_NOSE_GRILLEFIX","1") != "0" && !isempty(CARPIN)
     let gb = [parse(Float64,x) for x in split(get(ENV,"JM_GRILLE_UV","0.36,0.61,0.57,0.91"), ",")],
         xsplit = parse(Float32, get(ENV,"JM_NOSE_X","0.6")), nfix = 0, nparts = 0
         for p in CARPIN
