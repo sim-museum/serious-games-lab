@@ -11104,3 +11104,39 @@ merged and posed as one. If they do not, the transform that places them is elsew
 instrument must report POST-transform positions rather than model space.
 
 **E102: 7 sprints total, 3 in this pass.**
+
+### E102 S8 (Opus 5, 2026-09-14) — ⛔ the tint never reaches the screen, twice: what is drawn is not simply `CARP`
+
+S7 named `CARP#16` — 685 untextured triangles spanning the whole car, the furthest-outboard thing
+drawn — and set S8 one job: tint it and see whether the wedges change colour.
+
+**Attempt 1: set `TrackPart.col`.** Zero magenta pixels anywhere in the frame.
+⚠️ **That is not evidence about `CARP#16`; it is an instrument that cannot speak.** `render.jl:1508`
+bakes the shading colour into the VERTEX array at extraction time, so changing `.col` afterwards
+cannot repaint anything.
+
+**Attempt 2: write the per-vertex rgb**, which is what the draw reads — 11 floats per vertex, rgb at
+offsets 9–11 — AND leave `.col` magenta as well, so both candidate paths are covered. The hook
+reports it did the work:
+
+    [tint] CARP#16 -> magenta on 2055 vertices (tex="")
+
+**And the frame still contains ZERO magenta pixels.**
+
+⭐ **So the finding is not about the wedges at all: 685 triangles were recoloured in `CARP` and
+nothing on screen changed.** Either that part is not drawn in this view, or what reaches the screen
+is not this array. Both possibilities say the same thing — **`CARP` is not the last word on what is
+drawn**, and every identification attempt that edits it (S6's exclusions included) is measuring one
+step too early in the pipeline.
+
+This is the same trap NOSE-1 fell into for three sprints, where S6 and S8 both repaired `CARP` while
+the cockpit drew `CARPIN`. The rule was written down then — *prove the mesh you are tuning is the
+mesh being drawn* — and this sprint is the first time the rule has been applied BEFORE a conclusion
+rather than after one.
+
+**S9:** instrument at the DRAW site. `Render.build_gpl(CARP, …)` produces the `Item` list that the
+frame actually renders; report each Item's vertex count, texture and bounding box there, and tint by
+Item index rather than by `CARP` index. If the wedges are in an Item with no `CARP` ancestor, that
+alone names the mechanism.
+
+**E102: 8 sprints total, 4 in this pass — AT THE CAP, rotating off.**

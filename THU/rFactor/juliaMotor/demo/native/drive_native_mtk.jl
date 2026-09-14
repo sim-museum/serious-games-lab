@@ -2837,6 +2837,29 @@ if !isempty(AXLEP)
     end
 end
 
+# E102 S8 (2026-09-14): a DIAGNOSTIC tint. S7's census named CARP#16 -- 685 triangles with no
+# texture, spanning the whole car and reaching furthest outboard of anything drawn -- as the one
+# part that could hold the wedges. An untextured part draws in its flat colour, so recolouring it
+# answers the question directly: if the wedges change colour they are in it.
+# JM_TINT_PART="<index>" tints that CARP entry magenta. Never ship this on.
+if get(ENV,"JM_TINT_PART","") != ""
+    let idx = parse(Int, get(ENV,"JM_TINT_PART","0"))
+        if 1 <= idx <= length(CARP)
+            # The first version of this hook set TrackPart.col and NOTHING turned magenta -- the
+            # shading colour is baked into the VERTEX array at extraction time (render.jl:1508),
+            # so a later change to .col cannot repaint anything. Write the per-vertex rgb, which is
+            # what the draw actually reads: 11 floats per vertex, rgb at offsets 9,10,11.
+            v = copy(CARP[idx].verts)
+            for k in 0:(length(v) ÷ 11 - 1)
+                v[11k+9] = 1f0; v[11k+10] = 0f0; v[11k+11] = 1f0
+            end
+            CARP[idx] = Render.TrackPart(v, CARP[idx].tex, (1f0, 0f0, 1f0))
+            println("  [tint] CARP#", idx, " -> magenta on ", length(v) ÷ 11, " vertices (tex=\"",
+                    CARP[idx].tex, "\")"); flush(stdout)
+        end
+    end
+end
+
 # E102 S7 (2026-09-14): NAME THE STICKS BY GEOMETRY, not by colour or by guessing texture names.
 # S5 photographed two dark-green flat wedges hanging outboard and down at the rear; S6 refuted both
 # standing hypotheses (the synthesized driveshafts, and S4's axlelot sliver) by bisection. The wedges
