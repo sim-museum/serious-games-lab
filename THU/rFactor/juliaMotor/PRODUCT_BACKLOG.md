@@ -11032,3 +11032,39 @@ naming candidate textures. Score the wedge region against a same-configuration r
 had to.
 
 **E102: 5 sprints total, 1 in this pass.**
+
+### E102 S6 (Opus 5, 2026-09-14) — both axle hypotheses REFUTED: the wedges survive with the driveshafts gone AND with `axlelot` excluded
+
+S5 photographed the "sticks" as two dark-green flat wedges hanging outboard and down, and said
+plainly that colour was a hint and not an identification. S6 bisects, with the prediction stated
+before each run.
+
+**Run 1 — `JM_AXLES=0`** (drops the synthesized driveshafts). *Predicted: the wedges do NOT vanish.*
+They do not. Both wedges are present, unchanged.
+
+⚠️ The pixel score in the wedge box moved anyway — 1293 px / mean 4.327 against a control-repeat
+floor of 272 px / 0.628 — because **my "wedge box" overlapped the hub-to-diff line where the axle
+itself lives**, so the box was not an isolation of the wedges at all. The A/B is settled by the
+image, not by that number, and the number is reported here only so it is not mistaken later for
+evidence that the axles are the wedges.
+
+**Run 2 — `JM_EXTRA_EXCLUDE=axlelot`** (drops S4's candidate, the isolated 3-triangle `axlelot`
+sliver that reaches the wheel plane). *Predicted: if S4 was right, the wedges vanish.* They do not.
+Both are still there. The exclusion did take effect — the `axlelot`-textured slab further inboard
+changes appearance between the two frames — so this is a real negative, not a switch that did
+nothing.
+
+⛔ **So E102's standing hypothesis since S4 is refuted.** The sticks are neither the synthesized
+driveshafts nor the `axlelot` sliver.
+
+**What is left, and it matches the colour.** The wedges are body-green and flat, which points at the
+displaced-assembly class the car extractor already knows about (`JM_CAR_EXCL_GROUPS`, "WHOLE
+DISPLACED ASSEMBLIES ... mirror copies") or at AI-CARGFX S5's parked parts drawn at the clamped
+origin. Both are about POSING, which is what the PO described ("point outward/downward").
+
+**S7:** stop guessing texture names and let the geometry name them. Add a census that walks the drawn
+car parts and reports any part whose vertices lie outboard of the half-track or below the hub plane,
+with its texture and group id. The wedges are large and far outboard, so they will be at the top of
+that list, and the census costs one headless frame.
+
+**E102: 6 sprints total, 2 in this pass.**
