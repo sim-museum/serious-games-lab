@@ -4752,6 +4752,19 @@ let objnames=Set{String}()
             length(pr) >= 4 || continue
             hx0 = parse(Float64, strip(pr[1])); hz0 = parse(Float64, strip(pr[2]))
             hth = deg2rad(parse(Float64, strip(pr[3]))); hv = parse(Float64, strip(pr[4]))/3.6
+            # E90 S5: the cost of the change is the cost of THIS call, because solid_hit is a linear
+            # scan run for every car every tick. Time it directly rather than inferring from a frame
+            # rate that a headless smoke run never prints. JM_SOLIDHIT_BENCH=<n> times n calls.
+            let nb = parse(Int, get(ENV,"JM_SOLIDHIT_BENCH","0"))
+                if nb > 0
+                    solid_hit(hx0, hz0, hth, hv)           # warm up / compile
+                    t0 = time_ns()
+                    for _ in 1:nb; solid_hit(hx0, hz0, hth, hv); end
+                    dt = (time_ns() - t0) / 1e9
+                    println("== JM_SOLIDHIT_BENCH ", nb, " calls in ", round(dt, digits=3), " s = ",
+                            round(1e6*dt/nb, digits=3), " us/call   (", length(SOLIDS), " solids)")
+                end
+            end
             res = solid_hit(hx0, hz0, hth, hv)
             if res === nothing
                 println("== JM_SOLIDHIT (", hx0, ", ", hz0, ") hdg ", strip(pr[3]), "deg ",

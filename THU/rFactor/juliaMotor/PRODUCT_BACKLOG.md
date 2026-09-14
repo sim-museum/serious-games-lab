@@ -11307,3 +11307,34 @@ rather than a kerb.
 
 **E90: 4 sprints this pass — AT THE CAP. The defect is demonstrated, the fix is built and gated, and
 what is left is a drive and a frame-time measurement.**
+
+### E90 S5 (Opus 5, 2026-09-14) — ⛔ the naive version is UNSHIPPABLE: the collision scan costs 152 µs per call at 34 solids, and the flag adds 16× more
+
+S4 left the frame cost as the open question and the frame-rate print never fires in a headless smoke
+run. So S5 timed the thing that actually scales: `solid_hit()` itself, which the driving loop calls
+for every car on every tick (`JM_SOLIDHIT_BENCH=<n>`, new).
+
+**MEASURED at Watkins, same call site, 200,000 calls:**
+
+    rails NOT solid (34 solids):   30.353 s  =  151.8 us/call
+    rails solid    (535 solids):   did not finish in 300 s
+
+⛔ **The "on" arm could not even complete the benchmark**, which is the result: at ~16× the scan it
+is ~2.4 ms per call. At 60 Hz with six cars that is **360 calls a second — 0.86 s of CPU per second
+of game**, against 0.055 s now. **The barrier fix cannot ship as a flat list.** S2's 17× estimate was
+right about the ratio and understated what it means.
+
+⚠️ **And 151.8 µs for THIRTY-FOUR box tests is itself suspicious** — about 4.5 µs per solid, which is
+far more than an oriented-box distance test should cost. Something in that loop is doing much more
+work than the arithmetic requires (a boxed `Vector{Tuple}` walk and per-call allocation would do it).
+**That is worth its own look**, because a 3× cheaper scan would make the barrier fix affordable
+without any spatial structure at all — and it would speed up every car in every race today.
+
+**S6 (two paths, and the second may make the first unnecessary):**
+1. bucket the rail boxes by `lapdist` so only the local bucket is tested — the track is a ribbon and
+   every car already knows its lap distance;
+2. first, find out why a 34-entry scan costs 152 µs. If it is allocation or type instability, fixing
+   it helps everything, and the answer changes what (1) needs to achieve.
+
+**E90: 5 sprints. The defect is proven, the fix works, and the cost says it needs an index before it
+can be default-on.**
