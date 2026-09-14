@@ -2012,6 +2012,57 @@ if get(ENV,"JM_NOSE_UVFIX","0") != "0"
     end
 end
 
+# NOSE-1 S8 (2026-09-14): re-map the facets that sample the RADIATOR GRILLE. S7 measured 46 of
+# lotd's 490 facets whose uv centroid lands in the grille box (u 0.36..0.61, v 0.57..0.91 on the
+# dumped 256x256 atlas), running out to world x = 2.21 m -- the nose tip -- and the in-game nose
+# shows exactly the atlas's dark-oval-in-yellow motif. This is the proof by construction S7 asked
+# for: give those facets the mapping their NON-grille neighbours have.
+#
+# The fit is deliberately LOCAL. S6 fitted a whole part and that was fine for repairing degenerate
+# facets scattered through it, but here the target is one region, so the model is fitted only on
+# FRONT facets that do NOT sample the grille -- i.e. the nose paint around them -- and applied only
+# to front facets that do. A whole-part fit would drag in the sides and the cockpit surround.
+# JM_NOSE_GRILLEFIX=1 enables (default OFF until the capture decides); JM_GRILLE_UV moves the box.
+if get(ENV,"JM_NOSE_GRILLEFIX","0") != "0"
+    let gb = [parse(Float64,x) for x in split(get(ENV,"JM_GRILLE_UV","0.36,0.61,0.57,0.91"), ",")],
+        xsplit = parse(Float32, get(ENV,"JM_NOSE_X","0.6")), nfix = 0, nparts = 0
+        for p in CARP
+            v = p.verts; ntri = div(length(v), 33)
+            ntri < 4 && continue
+            X = Float64[]; Y = Float64[]; Z = Float64[]; U = Float64[]; V = Float64[]
+            bad = Int[]
+            for t in 0:(ntri-1)
+                b = t*33
+                cx = (v[b+1] + v[b+12] + v[b+23])/3
+                cx > xsplit || continue
+                cu = (v[b+10] + v[b+21] + v[b+32])/3
+                cv = (v[b+11] + v[b+22] + v[b+33])/3
+                if gb[1] <= cu <= gb[2] && gb[3] <= cv <= gb[4]
+                    push!(bad, t)
+                else
+                    for o in (b, b+11, b+22)
+                        push!(X, v[o+1]); push!(Y, v[o+2]); push!(Z, v[o+3])
+                        push!(U, v[o+10]); push!(V, v[o+11])
+                    end
+                end
+            end
+            (isempty(bad) || length(X) < 12) && continue
+            A = hcat(ones(length(X)), X, Y, Z)
+            au = A \ U; av = A \ V
+            for t in bad
+                b = t*33
+                for o in (b, b+11, b+22)
+                    x = Float64(v[o+1]); y = Float64(v[o+2]); z = Float64(v[o+3])
+                    v[o+10] = Float32(clamp(au[1] + au[2]*x + au[3]*y + au[4]*z, 0f0, 1f0))
+                    v[o+11] = Float32(clamp(av[1] + av[2]*x + av[3]*y + av[4]*z, 0f0, 1f0))
+                end
+            end
+            nfix += length(bad); nparts += 1
+        end
+        nfix > 0 && println("  [noseuv] GRILLE-FIX re-mapped ", nfix, " facet(s) across ", nparts,
+                            " part(s) from their non-grille front neighbours (JM_NOSE_GRILLEFIX=0 reverts)")
+    end
+end
 if get(ENV,"JM_NOSE_CENSUS","0") != "0"
     let xsplit = parse(Float32, get(ENV,"JM_NOSE_X","0.6"))
         key = Dict{NTuple{9,Int32},Vector{Tuple{Int,Float32,Float32}}}()   # quantised tri -> (part, nx, cx)
