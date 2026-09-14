@@ -11140,3 +11140,42 @@ Item index rather than by `CARP` index. If the wedges are in an Item with no `CA
 alone names the mechanism.
 
 **E102: 8 sprints total, 4 in this pass — AT THE CAP, rotating off.**
+
+### E91-S5 (Opus 5, 2026-09-14) — the excess cannot be apportioned by its SHAPE either, and S4's table survives the check that would have voided it
+
+S4 established the acceptance criterion (median sim/ref off-throttle deceleration 1.67×, all eight
+bands above 1.0) and said plainly that this telemetry cannot say WHICH term is responsible. S5 tries
+a second, independent method that needs no new data: the shape of the excess across gears and speeds.
+
+**The reasoning.** Engine braking in this model is `-(1−throttle)·eb·rpm` (`powertrain.jl:48`), and
+rpm ∝ speed × gear × final, so an engine-braking excess must scale as **v·r** at the crank and
+**v·r²** at the wheels. Aero scales as **v²** and is gear-independent; rolling is roughly constant.
+Those are distinguishable shapes — if the excess follows one of them, the term is named.
+
+**MEASURED from S4's own eight bands** (GEARS = 2.23/1.72/1.32/1.09, final 4.11):
+
+| normalisation | mean | sd | coefficient of variation |
+|---|---|---|---|
+| excess / (v·r) | 4.726 | 2.118 | **0.45** |
+| excess / (v·r²) | 0.772 | 0.328 | **0.43** |
+
+⛔ **Neither shape fits, and they fit equally badly.** A term that explained the excess would collapse
+the scatter; both leave it at ~44%. Two bands do most of the damage — gear 4 at 90 km/h (excess
+0.07 m/s²) and gear 3 at 90 (0.31) are places where the sim nearly matches the reference, while gear
+2 at the same speed is 1.23 out. **So the excess is not a single mis-scaled term**, and S3's negative
+("this telemetry cannot determine ENGBRAKE") now has independent support from a completely different
+direction.
+
+⭐ **And the check that would have voided the whole item.** S4's reference is "clutch OUT". If that
+meant the clutch DISENGAGED, the reference would exclude engine braking while the sim includes it,
+and the entire 1.67× would be an artefact of comparing two different things. **It does not:** this
+tree's own clutch mapping has **1.0 = engaged**, dipping to 0.0 only at a shift, confirmed across
+four places (backlog line 3142/3167), and `powertrain.jl`'s comment block reads "clutch OUT (in
+gear)". Driver usage, not engineering usage. **S4's table is a like-for-like comparison and stands.**
+
+**S6 remains what S4 said it was:** a straight-line in-gear coast-down capture, ~200→60 km/h, against
+which `engbrake_probe.jl` can measure `eb` instead of inventing it. Nothing in this sprint licenses
+touching the constant — and S5 now adds that even if it were touched, no single value can fix all
+eight bands, because the excess does not have a single term's shape.
+
+**E91: 5 sprints.**
