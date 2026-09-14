@@ -11215,3 +11215,33 @@ derive collision boxes from the track mesh's rail parts (they are already identi
 the PO's complaint asks for; the second is what the engine currently does.
 
 **E90: 1 sprint this pass.**
+
+### E90 S2 (Opus 5, 2026-09-14) — the fix is feasible and now COSTED: 545 boxes, a 17× bigger collision scan
+
+S1 measured that Watkins' barriers are 2,435 drawn triangles against one collidable object, and left
+the design choice open. S2 sizes it, because the cost decides which design is acceptable.
+
+⚠️ **`solid_hit()` is a LINEAR scan over `SOLIDS` for every car on every tick** — no spatial index,
+no early-out beyond the per-solid gap test. So "make the rails collidable" is not free: it multiplies
+that scan for the player and every AI car.
+
+**MEASURED (`JM_RAILSOLID=1`, extended to size the change):**
+
+    2435 rail tris occupy 545 cells of 8.0 m  ->  solids would go 34 -> 579  (x17.0 on the scan)
+
+**What that says.** One collision box per occupied 8 m cell — the natural granularity for a barrier
+that runs along the track — gives **545 boxes at Watkins**, taking the collision list from 34 to 579.
+The scan is per car per tick, so at 60 Hz with six cars that is ~208,000 gap tests a second against
+~12,000 now.
+
+**So the design is feasible but should not be naive.** Two mitigations are natural and neither is
+speculative: the track is a ribbon and every car already knows its `lapdist`, so rail boxes can be
+bucketed by lapdist and only the local bucket tested; or the same cells used to build them can serve
+as a uniform grid. Either makes the added cost roughly constant instead of 17×.
+
+**S3: build the boxes behind a flag** (`JM_RAIL_SOLID=1`, default off), bucketed by lapdist, and test
+the thing the PO actually reported — drive into a barrier and see whether the car stops. The
+acceptance test is a drive, not a census: S1 established the barriers are not collidable, and a
+census cannot show that they have become so.
+
+**E90: 2 sprints this pass.**

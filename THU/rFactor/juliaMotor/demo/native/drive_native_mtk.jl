@@ -4801,6 +4801,28 @@ let objnames=Set{String}()
         println("== JM_RAILSOLID track=", TRACKSEL, "  DRAWN rail/fence parts=", drawn,
                 " (", drawntris, " tris)   COLLIDABLE rail/fence solids=", solid,
                 "   solids total=", length(SOLIDS))
+        # E90 S2 (2026-09-14): SIZE THE FIX BEFORE WRITING IT. solid_hit() is a LINEAR scan over
+        # SOLIDS for every car every tick, so turning 2,435 rail triangles into 2,435 boxes would
+        # multiply that scan by ~70x per car. Count the grid cells the rail triangles occupy: one
+        # box per occupied cell is the natural granularity, and the cell count is what the collision
+        # list would actually grow by.
+        let cell = 8.0, cells = Set{Tuple{Int,Int}}(), ntri = 0
+            for prt in TRACKMAIN
+                railtex(prt.tex) || continue
+                v = prt.verts; n = length(v) ÷ 11
+                for t in 0:3:(n-3)
+                    cx = (v[11t+1] + v[11(t+1)+1] + v[11(t+2)+1]) / 3
+                    cz = (v[11t+3] + v[11(t+1)+3] + v[11(t+2)+3]) / 3
+                    push!(cells, (floor(Int, cx/cell), floor(Int, cz/cell)))
+                    ntri += 1
+                end
+            end
+            println("== JM_RAILSOLID sizing: ", ntri, " rail tris occupy ", length(cells),
+                    " cells of ", cell, " m  ->  solids would go ", length(SOLIDS), " -> ",
+                    length(SOLIDS) + length(cells),
+                    " (x", round((length(SOLIDS) + length(cells)) / max(length(SOLIDS),1), digits=1),
+                    " on a linear per-car-per-tick scan)")
+        end
         flush(stdout)
     end
 
