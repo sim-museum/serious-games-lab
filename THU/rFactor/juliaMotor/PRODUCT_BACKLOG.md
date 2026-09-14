@@ -11179,3 +11179,39 @@ touching the constant — and S5 now adds that even if it were touched, no singl
 eight bands, because the excess does not have a single term's shape.
 
 **E91: 5 sprints.**
+
+### E90 S1 (Opus 5, 2026-09-14) — ⭐ answered by reading the two paths, then measured: at Watkins the armco is DRAWN from the track mesh and is NOT collidable
+
+E90 was retracted-then-relocated in August: Monza's and Watkins' armco is baked track geometry rather
+than props, and the open question became *"can the car drive THROUGH the baked armco? That needs a
+drive, not a census."* It did not need a drive. **The two code paths never meet:**
+
+* the RENDER path takes armco and fences from the baked track mesh (`TRACKMAIN0`, `railfam()` at
+  `drive_native_mtk.jl:1646`);
+* the COLLISION path builds `SOLIDS`/`SOLIDBOX` from **loose `.3do` instances only** — and the code
+  says so itself at the Nürburgring branch: *"no collidable trackside objects on skidpad /
+  Nürburgring (scenery baked in)"*.
+
+Nothing bridges them, so a barrier that comes from the track mesh is drawn and not solid.
+
+**MEASURED (`JM_RAILSOLID=1`, new, counting both sides at load):**
+
+| track | drawn rail/fence | collidable rail/fence | solids total |
+|---|---|---|---|
+| **Watkins Glen** | 2 parts, **2,435 triangles** | **1** | 34 |
+| Zandvoort | 1 part, 8 triangles | 0 | 152 |
+
+⭐ **At Watkins the whole circuit's barriers are 2,435 drawn triangles against ONE collidable rail
+object.** That is E90's question answered with a number: the car drives through them.
+
+⚠️ **The Zandvoort row is NOT evidence and I am not using it.** Eight triangles of rail for a whole
+circuit is implausible, which says my texture-name filter (`armco`/`fenc`/`stfce`/`sarmc`/`yarmc`/
+`gd_rail`/`rail`/`brdgarm`/`brdgfen`) does not cover that track's naming rather than that Zandvoort
+has no rails. The filter must be widened per track before any other circuit is quoted.
+
+**S2:** decide what to do about it, and it is a design choice worth stating before coding — either
+derive collision boxes from the track mesh's rail parts (they are already identified by the same
+`railfam` test the renderer uses), or accept baked barriers as scenery and say so. The first is what
+the PO's complaint asks for; the second is what the engine currently does.
+
+**E90: 1 sprint this pass.**

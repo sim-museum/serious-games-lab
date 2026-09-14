@@ -4783,6 +4783,27 @@ let objnames=Set{String}()
                         "  half ", round(hmin, digits=1), "/", round(hmax, digits=1), "  ", tag)
             end
         end
+    # E90 S1 (2026-09-14): ARE THE DRAWN RAILS COLLIDABLE? The render path takes armco and fences from
+    # the baked TRACK mesh (TRACKMAIN0 / railfam), while THIS list is built from loose .3do instances
+    # only -- the code's own comment at the Nurburgring branch says "no collidable trackside objects
+    # ... scenery baked in". If nothing bridges the two, a drawn barrier is not a wall. Count both
+    # sides. JM_RAILSOLID=1.
+    if get(ENV,"JM_RAILSOLID","0") != "0"
+        railtex(tx) = (lt = lowercase(String(tx)); startswith(lt,"armco") || startswith(lt,"fenc") ||
+                        startswith(lt,"stfce") || startswith(lt,"sarmc") || startswith(lt,"yarmc") ||
+                        startswith(lt,"gd_rail") || startswith(lt,"rail") || startswith(lt,"brdgarm") ||
+                        startswith(lt,"brdgfen"))
+        drawn = 0; drawntris = 0
+        for prt in TRACKMAIN
+            if railtex(prt.tex); drawn += 1; drawntris += length(prt.verts) ÷ 33; end
+        end
+        solid = count(railtex, SOLIDNAMES)
+        println("== JM_RAILSOLID track=", TRACKSEL, "  DRAWN rail/fence parts=", drawn,
+                " (", drawntris, " tris)   COLLIDABLE rail/fence solids=", solid,
+                "   solids total=", length(SOLIDS))
+        flush(stdout)
+    end
+
         println("== JM_SOLIDDIAG boxes: ", count(b -> b !== nothing, SOLIDBOX), " of ", length(SOLIDS), " solids carry a mesh-footprint box (SOLID-BOX)")
         println("== JM_SOLIDDIAG ", length(SOLIDS), " solids (", _geomn, " candidates from the shape rule): ",
                 join(["$(n)×$(c)" for (n,c) in sort(collect(cnt))], ", "))
