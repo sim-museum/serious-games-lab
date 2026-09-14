@@ -1952,6 +1952,66 @@ const CARP   = Render.extract_gpl_car(_CARP_SRC; exclude=(_HAND_EXC...,_LOTBLACK
 # sides). If the nose carries such pairs, they z-fight exactly like the ones :orient removed, and
 # that is what blotchy would look like. Census the SHIPPED CARP -- the real extraction, not a rebuilt
 # one -- by centroid, splitting front from rear and same-facing from opposite. JM_NOSE_CENSUS=1.
+# NOSE-1 S6 (2026-09-13): repair the degenerate nose UVs S4/S5 measured. S5 established that 25 of
+# lotd's 327 front facets have zero uv-area -- 7.6% by count but 18.3% by AREA -- so one texel is
+# stretched across nearly a fifth of the visible nose paint, which is the blotch. The repair must not
+# invent coordinates: fit the part's OWN mapping from its NON-degenerate facets (an affine map from
+# world xyz to uv, least squares) and evaluate it at the broken facets' vertices, so the patched
+# facets are consistent with the neighbours whose density they should have shared. Applied before the
+# census so the census verifies it.
+#
+# S6 RESULT, and it is NEGATIVE: the repair works on the numbers (lotd's 25 degenerate facets become
+# none, min density 0.0 -> 0.0107, median untouched at 0.247) and changes the PICTURE by 12x less
+# than the frame-to-frame noise floor -- cockpit view, nose region scored: A/B mean 0.029 / 0.08% of
+# pixels against a same-config noise floor of 0.357 / 1.50%. The dark smear is pixel-for-pixel the
+# same. So the degenerate UVs are real, are now fixable, and are NOT the blotch; S4's inference
+# ("a zero uv-area facet stretches one texel, which is exactly what a flat dark blotch looks like")
+# was plausible and is refuted by the capture.
+# DEFAULT OFF for that reason: it touches 143 facets across 4 parts for no demonstrated visible gain,
+# and leaving it on would confound the A/B for whatever the real fix turns out to be.
+# JM_NOSE_UVFIX=1 enables it.
+if get(ENV,"JM_NOSE_UVFIX","0") != "0"
+    let eps = parse(Float64, get(ENV,"JM_NOSE_ZEPS","0.01")), nfix = 0, nparts = 0
+        for p in CARP
+            v = p.verts; ntri = div(length(v), 33)
+            ntri < 4 && continue
+            X = Float64[]; Y = Float64[]; Z = Float64[]; U = Float64[]; V = Float64[]
+            bad = Int[]
+            for t in 0:(ntri-1)
+                b = t*33
+                p0 = (v[b+1], v[b+2], v[b+3]); p1 = (v[b+12], v[b+13], v[b+14]); p2 = (v[b+23], v[b+24], v[b+25])
+                e1 = p1 .- p0; e2 = p2 .- p0
+                cr = (e1[2]*e2[3]-e1[3]*e2[2], e1[3]*e2[1]-e1[1]*e2[3], e1[1]*e2[2]-e1[2]*e2[1])
+                wa = sqrt(cr[1]^2 + cr[2]^2 + cr[3]^2)/2
+                du1 = v[b+21] - v[b+10]; dv1 = v[b+22] - v[b+11]
+                du2 = v[b+32] - v[b+10]; dv2 = v[b+33] - v[b+11]
+                ua = abs(du1*dv2 - dv1*du2)/2
+                if wa > 1e-9 && ua/wa < eps
+                    push!(bad, t)
+                elseif wa > 1e-9
+                    for o in (b, b+11, b+22)
+                        push!(X, v[o+1]); push!(Y, v[o+2]); push!(Z, v[o+3])
+                        push!(U, v[o+10]); push!(V, v[o+11])
+                    end
+                end
+            end
+            (isempty(bad) || length(X) < 8) && continue
+            A = hcat(ones(length(X)), X, Y, Z)
+            au = A \ U; av = A \ V
+            for t in bad
+                b = t*33
+                for o in (b, b+11, b+22)
+                    x = Float64(v[o+1]); y = Float64(v[o+2]); z = Float64(v[o+3])
+                    v[o+10] = Float32(au[1] + au[2]*x + au[3]*y + au[4]*z)
+                    v[o+11] = Float32(av[1] + av[2]*x + av[3]*y + av[4]*z)
+                end
+            end
+            nfix += length(bad); nparts += 1
+        end
+        nfix > 0 && println("  [noseuv] REPAIRED ", nfix, " degenerate-UV facets across ", nparts, " part(s) by affine fit from their non-degenerate neighbours (JM_NOSE_UVFIX=0 reverts)")
+    end
+end
+
 if get(ENV,"JM_NOSE_CENSUS","0") != "0"
     let xsplit = parse(Float32, get(ENV,"JM_NOSE_X","0.6"))
         key = Dict{NTuple{9,Int32},Vector{Tuple{Int,Float32,Float32}}}()   # quantised tri -> (part, nx, cx)
