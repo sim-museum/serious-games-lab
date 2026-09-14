@@ -2417,6 +2417,54 @@ const RSUSPP_B = _RSONLY == "" ? Render.extract_gpl_car(LOT3DO; include_groups=(
 const CARPIN = get(ENV,"JM_COCKPIT_DRESS","1") != "0" ?
     Render.extract_gpl_car(joinpath(LOTDIR,"lotd.3DO"); exclude=(_HAND_EXC...,_LOTBLACK_EXC...,_EXTRA_EXC...,_GARBAGE_EXC...,DRIVER_TEX...,MIRROR_TEX...,Render.STEER_TEX...,"pipe3","plaface","plahelm"), exclude_groups=Tuple(parse(Int, x) for x in split(get(ENV, "JM_CAR_EXCL_GROUPS", "6600,3560,27288,39792"), ",") if !isempty(strip(x))), cockpit_clean=true, maxlat=parse(Float32,get(ENV,"JM_COCKPIT_MAXLAT","0.30")), dedup=_CAR_DEDUP, grey=(TUB_GREY,TUB_GREY+0.01f0,TUB_GREY+0.02f0)) :   # E106-S10: dedup coincident stacks (visor/mirror flicker)
     Render.TrackPart[]
+
+# NOSE-1 S9 (2026-09-14): apply the grille re-map to CARPIN TOO. S6 (degenerate-UV repair) and S8
+# (grille re-map) both worked on the numbers and changed the picture by less than the frame-to-frame
+# noise -- because both mutate CARP, and the COCKPIT view draws CARPIN, a SEPARATE extraction from
+# the same lotd.3DO with a different exclude set. This is the exact trap recorded immediately below
+# for the dash (CARGOLD-1 S9c: every GAUGE_* knob drove a mesh that is not drawn when the cockpit
+# dress is on, which is the default). Measured this sprint: with JM_COCKPIT_DRESS=0 the nose is not
+# in the cockpit view at all, so the nose the PO sees belongs to the dress build.
+# Same switch, same box: JM_NOSE_GRILLEFIX=1, JM_GRILLE_UV overrides.
+if get(ENV,"JM_NOSE_GRILLEFIX","0") != "0" && !isempty(CARPIN)
+    let gb = [parse(Float64,x) for x in split(get(ENV,"JM_GRILLE_UV","0.36,0.61,0.57,0.91"), ",")],
+        xsplit = parse(Float32, get(ENV,"JM_NOSE_X","0.6")), nfix = 0, nparts = 0
+        for p in CARPIN
+            v = p.verts; ntri = div(length(v), 33)
+            ntri < 4 && continue
+            X = Float64[]; Y = Float64[]; Z = Float64[]; U = Float64[]; V = Float64[]
+            bad = Int[]
+            for t in 0:(ntri-1)
+                b = t*33
+                cx = (v[b+1] + v[b+12] + v[b+23])/3
+                cx > xsplit || continue
+                cu = (v[b+10] + v[b+21] + v[b+32])/3
+                cv = (v[b+11] + v[b+22] + v[b+33])/3
+                if gb[1] <= cu <= gb[2] && gb[3] <= cv <= gb[4]
+                    push!(bad, t)
+                else
+                    for o in (b, b+11, b+22)
+                        push!(X, v[o+1]); push!(Y, v[o+2]); push!(Z, v[o+3])
+                        push!(U, v[o+10]); push!(V, v[o+11])
+                    end
+                end
+            end
+            (isempty(bad) || length(X) < 12) && continue
+            A = hcat(ones(length(X)), X, Y, Z)
+            au = A \ U; av = A \ V
+            for t in bad
+                b = t*33
+                for o in (b, b+11, b+22)
+                    x = Float64(v[o+1]); y = Float64(v[o+2]); z = Float64(v[o+3])
+                    v[o+10] = Float32(clamp(au[1] + au[2]*x + au[3]*y + au[4]*z, 0f0, 1f0))
+                    v[o+11] = Float32(clamp(av[1] + av[2]*x + av[3]*y + av[4]*z, 0f0, 1f0))
+                end
+            end
+            nfix += length(bad); nparts += 1
+        end
+        println("  [noseuv] CARPIN grille-fix: ", nfix, " facet(s) across ", nparts, " part(s)")
+    end
+end
 # ── CARGOLD-1 S9c: THE DASH IS UPSIDE DOWN BECAUSE ITS V RUNS THE WRONG WAY ────────────────────
 # PO 2026-09-07: "Dashboard is upside down".  E74 through S9b chased this on GAUGEP -- the separate
 # dash7a BILLBOARD -- and could not move it, because since E106-S7 `gaugeItems` is EMPTY whenever
