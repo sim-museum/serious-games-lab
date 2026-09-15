@@ -11677,3 +11677,38 @@ mirrors do not strobe, which `JM_FRAMEDUMP="<n>:6"` and `JM_SMOKE_FRAMES` now ma
 run.
 
 **SPA-FPS-1: 1 sprint this pass. The PO's "Spa has a low frame rate at places" is 45 fps today.**
+
+### SPA-FPS-1 S9 (Opus 5, 2026-09-14) — the consecutive-frame capture now exists, and it says the HEADLESS path cannot answer the strobe question
+
+S7 named the honest close: *"'no strobing' here is inferred from the mode staying stable, not from a
+consecutive-frame capture"*. S8's `JM_SMOKE_FRAMES` makes that capture one headless run, so S9 took
+it — **six consecutive cockpit frames at Watkins** (`JM_REPLAY_CAM=0 JM_FRAMEDUMP="150:6"`).
+
+⛔ **And the mirror glass is dark in every one of them.**
+
+| arm | mirror-glass mean rgb | max |
+|---|---|---|
+| adaptive (default) | **[24, 26, 25]** | 26 |
+| `JM_MIRROR_ADAPT=0 JM_MIRROR_EVERY=1` (forced per-frame) | **[24, 26, 25]** | 26 |
+
+**Identical to the byte in both arms**, so the adaptive logic S6 added is not the cause — and with
+nothing in the glass there is nothing that could strobe. The consecutive-frame differences confirm
+it: over the mirror the frame-to-frame change is 0.007–0.209, against 0.148–0.223 for the road ahead
+in the same frames.
+
+⚠️ **This is a statement about the HARNESS, not about the game.** The smoke run uses a hidden window,
+and the mirror is a render-to-texture pass; an RTT that does not run offscreen would look exactly like
+this. **The PO's original report was that the mirrors STROBE**, which means they see something in
+them — so a black mirror is the headless capture's property, not theirs.
+
+⭐ **What this is worth: it closes a method, not the item.** Every future mirror measurement in this
+tree must either run on real GL (as BoB's tracer captures did today) or first prove the RTT filled.
+Recording it costs one paragraph; rediscovering it costs a sprint, which is what S7's "inferred from
+the mode staying stable" was already working around without knowing why.
+
+**S10:** add the cheap proof — count non-black texels in the mirror RTT right after the pass and print
+it. A headless run that says `mirror RTT: 0 of 16384 texels lit` can then be trusted to say so, and
+one that says 12,000 can be trusted for the strobe test. Only if the counter says the RTT *is* filled
+and the glass is still dark does this become a defect.
+
+**SPA-FPS-1: 2 sprints this pass.**
