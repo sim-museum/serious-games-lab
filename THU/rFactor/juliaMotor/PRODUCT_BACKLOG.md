@@ -11600,3 +11600,39 @@ question is which list they ARE in — which the item dump can answer directly b
 `build_gpl` call site.
 
 **E102: 11 sprints total, 3 in this pass.**
+
+### E102 S12 (Opus 5, 2026-09-14) — `PIPEP` and `AXLEP` excluded too; every list the sprint thought was left is now clear, and the census names the one it missed
+
+S11 left two lists. Both were tinted in **one** run by giving them the same tag — item indices
+restart per list, so `JM_TINT_ITEM="extra:1-2"` reaches all three items at once:
+
+    [tint-item] extra:1 -> magenta on 804 vertices (tex="pipe3")     <- PIPEP, the exhausts
+    [tint-item] extra:1 -> magenta on  60 vertices (tex="axlelot")   <- AXLEP, driveshaft
+    [tint-item] extra:2 -> magenta on  60 vertices (tex="axlelot")   <- AXLEP, driveshaft
+    magenta pixels = 10,101
+
+| | baseline | extra:1-2 |
+|---|---|---|
+| lower wedge sample | [46,54,45] | **[46,54,45]** |
+| upper wedge sample | [74,78,71] | [75,78,71] *(one channel by one — the pipe's edge)* |
+
+⭐ **So `CARP` (16 items), `PIPEP` (1) and `AXLEP` (2) are all excluded, on evidence, with a positive
+control in every run.** E102 S6's axle refutation is independently confirmed: tinting the
+driveshafts magenta leaves the wedges dark.
+
+⭐⭐ **And re-reading S9's census names what this sprint was wrong about.** `JM_NO_WHEELS=1` — set in
+every run of this pass — drops the road WHEELS, and I took that to mean the wheel assemblies were not
+drawn. **The census shows four assembly blocks of six items each still being built**, and the fourth
+item of every block is:
+
+    [item]   4  tex=""  tris=13  bbox x[-1.0,-0.77] y[-0.08,0.23] z[-0.59,-0.43]
+
+**A 13-triangle UNTEXTURED plate per corner** — small, dark, outboard and low, four of them, two of
+which would face this camera. **That is the shape, the colour, the count and the position of the
+PO's wedges**, and it has been in the census since S9 without being read.
+
+**S13:** tag the wheel-assembly `build_gpl` call and tint item 4 of the rear blocks. This is the
+first candidate in twelve sprints that matches on all four of shape, colour, count and place.
+
+**E102: 12 sprints total, 4 in this pass — AT THE CAP, with the whole car body excluded and a
+candidate that fits.**

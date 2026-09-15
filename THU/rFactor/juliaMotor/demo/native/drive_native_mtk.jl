@@ -5502,8 +5502,11 @@ if get(ENV,"JM_TEXDIAG","")!=""
 end
 
 carItems   = Render.build_gpl(CARP, GPLTEX; tag="carp")   # Lotus body, GPL .mip textures (E102 S9: tag for JM_TINT_ITEM)
-pipeItems  = Render.build_gpl(PIPEP, GPLTEX)       # E106-S4: exhausts, drawn lifted (see PIPEP)
-axleItems  = Render.build_gpl(AXLEP, GPLTEX)       # E106-S9: straight synthesized driveshafts
+# E102 S12: both tagged "extra" ON PURPOSE. Item indices restart per list, so
+# JM_TINT_ITEM="extra:1-2" covers PIPEP's one item and AXLEP's two in a SINGLE run --
+# three candidates for one four-minute capture. A hit is then bisected with a narrower range.
+pipeItems  = Render.build_gpl(PIPEP, GPLTEX; tag="extra")   # E106-S4: exhausts, drawn lifted (see PIPEP)
+axleItems  = Render.build_gpl(AXLEP, GPLTEX; tag="extra")   # E106-S9: straight synthesized driveshafts
 carItemsIn = isempty(CARPIN) ? Render.Item[] : Render.build_gpl(CARPIN, GPLTEX)  # E106-S5: cockpit-view body
 # PO 2026-08-27: "remove the cockpit gauge panel, hands and sleeves". JM_GAUGE=0 hides the cluster
 # (hands + sleeves are JM_HANDS=0, which already existed).
