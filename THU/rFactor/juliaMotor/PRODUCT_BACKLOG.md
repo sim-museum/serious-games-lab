@@ -11564,3 +11564,39 @@ four runs name the item. If no CARP item lights them, the wedges are not in `CAR
 next list to sweep is the one the census showed after it.
 
 **E102: 10 sprints total, 2 in this pass.**
+
+### E102 S11 (Opus 5, 2026-09-14) — ⭐⭐ **ALL SIXTEEN `CARP` items swept in two runs, and none of them is the wedges**
+
+S10 left thirteen items to test and a method to avoid thirteen runs. `JM_TINT_ITEM` now takes a
+RANGE, and the bisect took **two runs**:
+
+| run | items tinted | magenta pixels | the two wedge samples |
+|---|---|---|---|
+| `carp:1-7` | rebroll, axlelot, back4, lotinsid, lotshift, lo133, linjline | **25,497** | unchanged |
+| `carp:9-15` | lotback, lsusp2, lotinsa, lpat4, trump, lotd, lo134 | **51,322** | unchanged |
+
+**The wedge test is a pixel comparison, not an impression.** Two 12×12 boxes at the wedges' screen
+positions, read out of the baseline frame and out of each tinted frame:
+
+    lower wedge  baseline [46,54,45]   items1-7 [46,54,45]   items9-15 [46,54,45]   item16 [46,54,45]
+    upper wedge  baseline [74,78,71]   items1-7 [74,78,71]   items9-15 [74,78,71]   item16 [74,78,71]
+
+**Identical to the byte in every configuration**, while ~77,000 pixels around them changed colour.
+
+⭐⭐ **So `CARP` is excluded — all sixteen items, each run with a large positive control in the same
+frame. The wedges are not in the car's body list at all.** S8 guessed this from two failed tints and
+was right for the wrong reason; it is now a measurement.
+
+**S12, and the remaining field is small.** The census shows exactly what else is submitted for this
+car after `CARP`: **`PIPEP`** (1 item, `pipe3`, 268 tris — the exhausts) and **`AXLEP`** (2 items,
+`axlelot`, 20 tris each). Give those lists a `tag` as `CARP` has, and sweep them the same way.
+*(`CARPIN` is the cockpit list and is not drawn in this exterior view; the wheel assemblies are not
+drawn either — every run in this sprint sets `JM_NO_WHEELS=1` and the wedges are still there, which
+rules them out without a sprint. E102 S6 already refuted the axle hypothesis on other evidence, so a
+positive on `AXLEP` would be a genuine surprise and worth the run.)*
+
+**If neither lights them, the wedges are not in the player car's draw lists at all**, and the next
+question is which list they ARE in — which the item dump can answer directly by tagging every
+`build_gpl` call site.
+
+**E102: 11 sprints total, 3 in this pass.**

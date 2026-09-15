@@ -1645,16 +1645,28 @@ function build_gpl(parts, idx::GPLTex; tag::String="")
     # repaint) and then the CARP per-vertex rgb (2055 vertices, still zero magenta pixels), which
     # proved only that CARP is not what reaches the screen. This is the last writable copy before
     # the GPU, so if tinting here changes nothing, nothing downstream is reading these vertices.
+    # E102 S11: accept a RANGE ("carp:1-7") as well as a single index. Thirteen remaining items is
+    # thirteen four-minute runs; a bisect is four. The half that lights the wedges is the half that
+    # contains them.
     _tint = get(ENV, "JM_TINT_ITEM", "")
-    _tintidx = 0
+    _tintlo, _tinthi = 0, 0
     if _tint != "" && tag != ""
         pr = split(_tint, ":")
         if length(pr) == 2 && lowercase(strip(pr[1])) == lowercase(tag)
-            _tintidx = something(tryparse(Int, strip(pr[2])), 0)
+            spec = strip(pr[2])
+            if occursin('-', spec)
+                ab = split(spec, '-')
+                _tintlo = something(tryparse(Int, strip(ab[1])), 0)
+                _tinthi = something(tryparse(Int, strip(ab[2])), 0)
+            else
+                _tintlo = something(tryparse(Int, spec), 0)
+                _tinthi = _tintlo
+            end
         end
     end
+    _intint(k) = _tintlo > 0 && _tintlo <= k <= _tinthi
     for p in parts
-        if _tintidx > 0 && length(items) + 1 == _tintidx
+        if _intint(length(items) + 1)
             v = p.verts; nv = length(v) ÷ 11
             # E102 S9: the COLOUR is attribute loc 2, byte offset 6*4 -- see upload(): the
             # attributes are (0,0) xyz, (1,3*4), (2,6*4) and (3,9*4) which is the 2-float UV.
@@ -1664,7 +1676,7 @@ function build_gpl(parts, idx::GPLTex; tag::String="")
             for i in 0:(nv-1)
                 v[11i+7] = 1.0f0; v[11i+8] = 0.0f0; v[11i+9] = 1.0f0
             end
-            println("  [tint-item] ", tag, ":", _tintidx, " -> magenta on ", nv,
+            println("  [tint-item] ", tag, ":", length(items) + 1, " -> magenta on ", nv,
                     " vertices (tex=\"", p.tex, "\")")
             flush(stdout)
         end
@@ -1707,7 +1719,7 @@ function build_gpl(parts, idx::GPLTex; tag::String="")
         # zero purple pixels, so the shader ignores the vertex colour wherever a texture is bound --
         # which means a zero from a TEXTURED item says nothing at all. Dropping the texture id puts
         # the item on the untextured path, the one item 16 proved honours the colour.
-        push!(items, Item(vao, n, (_tintidx > 0 && length(items) + 1 == _tintidx) ? GLuint(0) : tid, p.col))
+        push!(items, Item(vao, n, _intint(length(items) + 1) ? GLuint(0) : tid, p.col))
         # JM_ITEMDUMP=1: index -> texture, so a pixel bisected to item N can be NAMED.
         # There was no way to attribute a drawn pixel to a mesh in this tree (Item carries no
         # name), which is what made the engine-graphics item (E106-S38) take several sprints.
