@@ -4852,6 +4852,63 @@ mechanism nobody can now find.
 
 **E104: 3 sprints.**
 
+### E104-S4 (2026-09-15) — ⭐⭐ the close-up capture E104 has wanted since 2026-09-01 was in the GOLD STORE, and it names something no sprint had considered: **our car casts no contact shadow**
+
+E104-S4 (2026-09-01) ended by asking for *"a capture with a KNOWN SCALE — the car close to the
+camera, ideally side-on, where a 20–40 cm gap is tens of pixels rather than three"*, and for the
+PO's own view. **The first half did not need the PO.** `~/gold standard/julia racer/monza/`
+holds `260802_monza_nintendo.mp4` — a full Monza lap of GPL under Wine in the chase ("nintendo")
+camera, 1920x1080, with the car filling a third of the frame.
+
+Beside it, the same car on the same track in our chase view (`JM_SHOTS="600:1:chase_monza"`).
+`doc/ref/e104-contact-shadow-gold-vs-port-2026-09-15.png` is the pair (untracked — this
+repo's `.gitignore` excludes `*.png`; it was sent to the PO).
+
+**1. The wheels are planted, measured by the sim's own instrument.** `JM_WHEELGAP` — the probe
+E104-S4 built for exactly this question — reads the player at **0.0 m and −0.0 m**. (A third
+sample reads −0.741 m one frame after a `JM_SHOTS` teleport, before the car has settled; that is a
+teleport artefact of the capture harness and is **not** claimed as a defect. A run without
+teleports is the way to sample it properly.)
+
+⭐⭐ **2. And the gold's car is anchored to the road by a SHADOW that ours does not have.** Mean
+road brightness in 24x24 px patches, each measured inside its own frame:
+
+| | under the car | road beside it | just behind the car |
+|---|---|---|---|
+| **gold (GPL/Wine)** | **91.7** | 111.7 | 111.1 |
+| **port** | **110.6** | 101.1 | 105.1 |
+
+**The gold darkens by 18% under the car. Ours BRIGHTENS by 9%.** There is no contact shadow at all
+in our chase view — and a contact shadow is the single strongest cue the eye uses to decide whether
+something is resting on a surface. *"All cars are displayed as floating about 20 cm – 40 cm above
+the road"* is exactly what a correctly-placed car with no ground shadow looks like.
+
+**This is consistent with every measurement the item has collected and contradicts none of them:**
+E104-S2/S3 (2026-09-01) found the AI line at 0.0 against the terrain, S4 found wheel radii within
+4 mm of their placements, and today's E104-S3 found the drawn body hub on the drawn wheel hub within
+10 mm. Four clean geometry results and one persistent visual report is what a MISSING CUE looks
+like, not a misplacement.
+
+⚠️ **A correction to my own E104-S3, this morning.** It reported "drawn body underside −0.006 m
+above the contact plane". That number is the body mesh's **bbox minimum**, and `lotus.3do` contains
+its own tyres — so −0.006 m is the mesh's own tyre bottom, not the chassis. It should not have been
+presented as the body underside. S3's conclusion is untouched: it rests on the hub comparison, which
+is computed from the tyre GROUPS specifically.
+
+**S5: why is there no shadow?** The car is not missing from the depth pass — `Render.shadow_pass`
+(`drive_native_mtk.jl:8905`) draws `carItems` under `bodyModel`, every wheel under `wheelmat`, the
+loose wheels, and all the AI cars. So either the road beneath the car does not SAMPLE the shadow
+map, or the depth bias / light frustum erases contact-range occlusion. **`JM_NOSHADOW=1` forces
+`shadow()` to 1.0 and already exists**: capture the same chase frame with and without it and diff
+the patch under the car. If the two are identical there, the road under the car is not shadow-lit at
+all and that is the defect; if it changes, the shadow is being computed and then biased away.
+
+*(Not claimed from this pair: our car looks slightly wider-tracked relative to its body than the
+gold's. The two frames are at different camera distances, so that reading is not safe — it is the
+same mistake E104-S2 made with a 4x upscale, and it needs a matched camera before anyone acts on it.)*
+
+**E104: 4 sprints (2 this pass).**
+
 ### E102-S1 (2026-09-01) — ⭐ measured: the WHOLE rear assembly sits ~0.3 m below the wheel centre, and that may be E104(a) too
 
 PO: *"axles should be horizontal between center of wheel and chassis, not sticks pointing outward
