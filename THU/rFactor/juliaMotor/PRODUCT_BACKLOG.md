@@ -11870,3 +11870,47 @@ either way, and the splitter must stay default-off until that is decided.
 
 **E102: 16 sprints total, 4 in this pass — AT THE CAP, with the defect isolated in a single 34-triangle
 item behind a flag.**
+
+### SPA-FPS-1 S10 (Opus 5, 2026-09-14) — ⛔ S9's black mirror was the `!REPLAY` term, not the hidden window; and with it lifted **the strobe is measured**
+
+S9 concluded *"a hidden window may not run the RTT"* and left the strobe question open. **The reason
+was one term, found by reading:**
+
+    mirror_live = MIRROR_RTT && CTL.view == 0 && !REPLAY && (…)
+
+⭐ **The mirror render-to-texture pass does not run in a REPLAY at all** — and every S9 capture was a
+replay. The glass was black because nothing had ever drawn into it, and the hidden window had nothing
+to do with it. *(S9's own conclusion — "a statement about the harness, not the game" — was right;
+its reason was wrong.)*
+
+**`JM_MIRROR_IN_REPLAY=1` lifts the term** (diagnostic, default off), and the glass fills:
+
+| | glass mean rgb | max |
+|---|---|---|
+| replay, as shipped | [24, 26, 25] | **26** |
+| replay, `JM_MIRROR_IN_REPLAY=1` | **[78, 91, 85]** | **255** |
+
+⭐⭐⭐ **And now the strobe test the item has wanted since S7 can be taken. Six consecutive cockpit
+frames, mean |difference| between each adjacent pair:**
+
+| region | f0→f1 | f1→f2 | f2→f3 | f3→f4 | f4→f5 |
+|---|---|---|---|---|---|
+| **mirror glass** | **60.66** | **0.00** | **59.68** | **59.68** | **0.00** |
+| road ahead (control) | 0.13 | 0.25 | 0.18 | 0.11 | 0.15 |
+
+⭐⭐ **The mirror is bit-identical on two of five frame pairs and jumps by ~60 levels on the other
+three, while the world beneath it moves by 0.1–0.25 per frame.** That is the PO's *"mirrors strobe"*,
+as a number, for the first time — and the jump is far larger than the motion could explain, so the
+mirror is alternating between two different images, not merely updating late.
+
+⚠️ **Two limits, stated because they bound the claim.** (1) `JM_MIRROR_IN_REPLAY=1` runs a pass the
+replay path deliberately skips, so the strobe measured here could in principle be an artefact of
+forcing it — a live drive is the confirming test. (2) The frozen pairs are consistent with the
+adaptive back-off (S6's `MIRROR_STARVED`) firing in a headless run whose frame times are high; the
+~60-level jumps are not.
+
+**S11:** separate those two. Run the same six frames with `JM_MIRROR_ADAPT=0 JM_MIRROR_EVERY=1`
+(forced per-frame): if the 0.00 pairs vanish but the ~60 jumps remain, the freeze is the adaptive
+logic and the jump is a second, real defect — two different fixes, and the PO feels the second one.
+
+**SPA-FPS-1: 3 sprints this pass. The strobe is reproduced headlessly.**

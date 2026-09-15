@@ -9022,9 +9022,15 @@ function main()
             MIRROR_STARVED[] = MIRROR_STARVED[] ? (_ms > MIRROR_RESUME_MS) : (_ms > MIRROR_ADAPT_MS)
         end
         _mir_every = (MIRROR_ADAPT && MIRROR_STARVED[]) ? MIRROR_ADAPT_N : MIRROR_EVERY
-        mirror_live = MIRROR_RTT && CTL.view == 0 && !REPLAY &&
+        # SPA-FPS-1 S10: the `!REPLAY` term is why S9's mirror glass was black in every capture --
+        # the RTT pass does not run in a replay AT ALL, so there was nothing in the mirror to
+        # strobe and the "hidden window may not run the RTT" reading was wrong. The PO's report is
+        # about a LIVE drive; JM_MIRROR_IN_REPLAY=1 drops the term so the strobe test can be taken
+        # headlessly from a replay, which is the only way to take it without the display.
+        _mir_noreplay = !REPLAY || get(ENV, "JM_MIRROR_IN_REPLAY", "0") != "0"
+        mirror_live = MIRROR_RTT && CTL.view == 0 && _mir_noreplay &&
                       (_mir_every <= 1 || (frames % _mir_every) == 0)
-        (MIRROR_RTT && CTL.view == 0 && !REPLAY && !mirror_live) && (MIRROR_SKIPPED[] += 1)
+        (MIRROR_RTT && CTL.view == 0 && _mir_noreplay && !mirror_live) && (MIRROR_SKIPPED[] += 1)
         if mirror_live
             glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE); glDepthFunc(GL_GEQUAL); glClearDepth(0.0)   # same reversed-Z as the main pass
             glBindFramebuffer(GL_FRAMEBUFFER, mirfbo); glViewport(0,0,MIRW,MIRH)
