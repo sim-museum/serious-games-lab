@@ -5646,7 +5646,10 @@ if get(ENV,"JM_SUSP_INBOARD_DIAG","") != ""
     flush(stdout); exit(0)
 end
 
-fsuspItems  = Render.build_gpl(susp_inboard(FSUSPP), GPLTEX)     # front suspension wishbones (visible through the screen)
+# E102 S13: the suspension lists all share tag "susp". The census block that holds the
+# 13-triangle untextured plate per corner is one of these, not a wheel list --
+# JM_NO_WHEELS drops the road wheels and the wedges survive.
+fsuspItems  = Render.build_gpl(susp_inboard(FSUSPP), GPLTEX; tag="fsusp")     # front suspension wishbones (visible through the screen)
 driverItems = Render.build_gpl(DRIVERP, GPLTEX)    # driver figure — drawn only in chase view (E36)
 helmItems   = Render.build_gpl(HELMP, GPLTEX)      # Clark-blue helmet at the head pivot (chase view, E60)
 # four Lotus wheels — keep the untextured black tyre body (only the car body drops "")
@@ -5684,9 +5687,9 @@ tstamp("  [E80] wheel models loaded")
 swItems = Render.build_gpl(SWPARTS, GPLTEX)        # steering wheel (rotated with steer)
 handItems = Render.build_gpl(HANDP, GPLTEX)        # E64 S2: gloved hands (cockpit view, rotate with the wheel)
 armItems  = Render.build_gpl(ARMP, GPLTEX)         # E64 S2: forearms (cockpit view, static)
-rsusp2Items = Render.build_gpl(RSUSPP2, GPLTEX)     # E75-S8: rear suspension taken directly, no fold
-rsuspItemsA = Render.build_gpl(susp_inboard(RSUSPP_A), GPLTEX)   # E64 S7: high-detail rear suspension halves (chase view)
-rsuspItemsB = Render.build_gpl(susp_inboard(RSUSPP_B), GPLTEX)
+rsusp2Items = Render.build_gpl(RSUSPP2, GPLTEX; tag="rsusp2")     # E75-S8: rear suspension taken directly, no fold
+rsuspItemsA = Render.build_gpl(susp_inboard(RSUSPP_A), GPLTEX; tag="rsuspa")   # E64 S7: high-detail rear suspension halves (chase view)
+rsuspItemsB = Render.build_gpl(susp_inboard(RSUSPP_B), GPLTEX; tag="rsuspb")
 # Corrective transform per side (E64 S8, settled by the POSITIONER-CHAIN DUMP): the chain to each
 # half is [park d=(0,20,0) → clamped 0] · [LOD selectors] · [hub placement d=(−0.893, ±0.772, 0.02),
 # yaw 2°, s=1.0] — so scale IS 1.0 and the hub translations are honoured; what remains is that the
@@ -5750,8 +5753,8 @@ function _bake_clip(parts, M; zmax=Float32(WTRACK_R), ymin=-0.12f0)
 end
 const RS_BAKECLIP = get(ENV,"JM_RS_BAKECLIP","1") != "0"
 if RS_BAKECLIP
-    global rsuspItemsA = Render.build_gpl(_bake_clip(susp_inboard(RSUSPP_A), RSFIX_A), GPLTEX)
-    global rsuspItemsB = Render.build_gpl(_bake_clip(susp_inboard(RSUSPP_B), RSFIX_B), GPLTEX)
+    global rsuspItemsA = Render.build_gpl(_bake_clip(susp_inboard(RSUSPP_A), RSFIX_A), GPLTEX; tag="rsuspa")
+    global rsuspItemsB = Render.build_gpl(_bake_clip(susp_inboard(RSUSPP_B), RSFIX_B), GPLTEX; tag="rsuspb")
 end
 # E64 S8: ON by default — the positioner-chain dump settled the transform (hub-line fold; see
 # rsfix above); the gold nintendo chase shows this articulated rear end, so it ships.

@@ -11712,3 +11712,44 @@ one that says 12,000 can be trusted for the strobe test. Only if the counter say
 and the glass is still dark does this become a defect.
 
 **SPA-FPS-1: 2 sprints this pass.**
+
+### E102 S13 (Opus 5, 2026-09-14) — ⭐⭐⭐ **THE WEDGES ARE NAMED: item 1 of the FRONT SUSPENSION list, `frontlot`, drawn at the REAR of the car**
+
+Thirteen sprints, and the answer took four bisect runs once the instrument worked.
+
+**S12 said the remaining lists were the wheel assemblies. They are not — they are the SUSPENSION
+lists**, and the census blocks that looked like wheels (`axlelot`/`lbrdisc`/`lsusp6`/`frontlot`) are
+`fsuspItems`, `rsusp2Items`, `rsuspItemsA` and `rsuspItemsB`. Tagged them all and bisected:
+
+| run | magenta px | lower wedge sample | upper wedge sample |
+|---|---|---|---|
+| baseline | 0 | [46,54,45] | [74,78,71] |
+| `susp:1-8` | 2,701 | **[181,9,195]** | **[163,60,167]** |
+| `susp:4` (the 13-triangle untextured plate S12 predicted) | **0** | [46,54,45] | [75,78,71] |
+| `susp:1-2` | 2,701 | [181,9,195] | [163,60,167] |
+| `susp:1` | 2,699 | [181,9,195] | [163,59,167] |
+| **`fsusp:1`** (FRONT suspension only) | **2,699** | **[181,9,195]** | **[163,59,167]** |
+| `rsusp2:1` (rear suspension) | **0** | [46,54,45] | [74,78,71] |
+
+⭐⭐ **`fsuspItems[1]` — texture `frontlot`, 282 vertices — paints both wedges and NOTHING else in the
+frame.** The capture is filed as `parity/e102_s13_wedges_are_front_suspension.png`: two magenta
+plates, one high and one low, exactly the shapes the PO called "sticks" and S5 photographed as "two
+dark-green flat wedges hanging outboard and down" — and they sit by the **gearbox and exhausts, at
+the REAR**.
+
+⭐ **So this is the displaced-assembly class after all, and the displaced thing is the FRONT
+suspension.** `fsuspItems = build_gpl(susp_inboard(FSUSPP), …)`, whose own comment says it is
+"visible through the screen" — a cockpit part. Its first item is being drawn at the other end of
+the car.
+
+⛔ **And S12's prediction was wrong, which is worth as much as the hit.** The 13-triangle untextured
+plate per corner matched on shape, colour, count and position, and tinting it produced **zero**
+magenta with the wedges untouched. A candidate that fits four criteria is still a candidate.
+
+**S14 — the fix is a transform question, not a search any more:** compare `susp_inboard(FSUSPP)`'s
+output with `FSUSPP`'s own coordinates for item 1, and with the rear lists' handling. Either
+`susp_inboard` mirrors/translates this part wrongly, or the part is placed by a matrix meant for a
+different corner. The bisect harness stays: one run per hypothesis, with the wedge samples as the
+oracle.
+
+**E102: 13 sprints total, 1 in this pass. The PO's oldest visual defect has a name.**
