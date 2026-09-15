@@ -1638,7 +1638,58 @@ const _TEXSTAT = (uploads=Ref(0), lookups=Ref(0), names=Set{String}(),
 # (E92-S4 looked at an early sample, saw 7%, and called this negligible. It is not -- and the error
 # was generalising from one reading, not the reading itself.)
 const _TEXCACHE = Dict{String,GLuint}()
-function build_gpl(parts, idx::GPLTex; tag::String="")
+"""E102 S16: split a part whose triangles fall into two fore/aft clusters separated by a large gap.
+
+`fsusp:1` measured 102 vertices at x <= -0.94 and 180 at x >= 1.35 with 2.29 m of nothing between
+them (S15) -- one draw call holding two groups two metres apart, which is a MERGE, and the rear group
+gets the front suspension's model matrix. Splitting is the precondition for any fix: it puts the
+stray group in its own item so it can be tinted, re-placed or dropped on its own.
+
+Splits by TRIANGLE (never through one), at the midpoint of the largest empty gap, and only when that
+gap exceeds `gap` metres. JM_SPLIT_CLUSTERS=<metres> enables it; unset = off, nothing changes."""
+function split_x_clusters(parts, gap::Float64)
+    out = TrackPart[]
+    for p in parts
+        v = p.verts; nv = length(v) ÷ 11; ntri = nv ÷ 3
+        if ntri < 2
+            push!(out, p); continue
+        end
+        tx = Vector{Float32}(undef, ntri)
+        for t in 0:(ntri-1)
+            tx[t+1] = (v[11*(3t)+1] + v[11*(3t+1)+1] + v[11*(3t+2)+1]) / 3f0
+        end
+        ord = sortperm(tx)
+        bestgap = 0f0; bestat = 0f0
+        for k in 1:(ntri-1)
+            g = tx[ord[k+1]] - tx[ord[k]]
+            if g > bestgap; bestgap = g; bestat = (tx[ord[k+1]] + tx[ord[k]]) / 2f0; end
+        end
+        if bestgap <= Float32(gap)
+            push!(out, p); continue
+        end
+        lo = Float32[]; hi = Float32[]
+        for t in 0:(ntri-1)
+            dst = tx[t+1] < bestat ? lo : hi
+            append!(dst, @view v[(33t+1):(33t+33)])
+        end
+        isempty(lo) || push!(out, TrackPart(lo, p.tex, p.col))
+        isempty(hi) || push!(out, TrackPart(hi, p.tex, p.col))
+        println("  [split] ", p.tex == "" ? "(untextured)" : p.tex, " ", ntri, " tris -> ",
+                length(lo) ÷ 33, " + ", length(hi) ÷ 33, " at x=", round(bestat, digits=2),
+                " (gap ", round(bestgap, digits=2), " m)")
+        flush(stdout)
+    end
+    out
+end
+
+function build_gpl(parts0, idx::GPLTex; tag::String="")
+    # Only the TAGGED (car) lists. First run split 244 TRACK parts as well -- a track mesh has
+    # genuine gaps of tens of metres between its pieces, so the rule is meaningless there and the
+    # splits are pure extra draw calls. The car lists are exactly the ones that carry a tag.
+    parts = let e = get(ENV, "JM_SPLIT_CLUSTERS", "")
+        (e == "" || tag == "") ? parts0 :
+            split_x_clusters(parts0, something(tryparse(Float64, e), 1.0))
+    end
     cache=_TEXCACHE; items=Item[]
     # E102 S9: JM_TINT_ITEM="<tag>:<n>" paints item n of this list magenta AT THE DRAW SITE, in the
     # vertex array that is about to be uploaded. S8 tinted TrackPart.col (baked earlier, cannot

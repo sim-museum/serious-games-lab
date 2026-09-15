@@ -11834,3 +11834,39 @@ after the split, `fsusp:1` should light only the front and the wedges should van
 
 **E102: 15 sprints total, 3 in this pass. From "a screenshot with no way in" to a merge with a
 measured 2.29 m gap.**
+
+### E102 S16 (Opus 5, 2026-09-14) — ✅ the merge is SPLIT and the wedges are isolated in their own item: 34 triangles, `frontlot`, x[−1.06,−0.94]
+
+S15 proved `fsusp:1` is two clusters 2.29 m apart. S16 builds the split — `JM_SPLIT_CLUSTERS=<metres>`,
+**default off** — which divides a part **by triangle** (never through one) at the midpoint of its
+largest empty gap, and only when that gap exceeds the threshold.
+
+⚠️ **The first version split 244 parts, and almost all of them were TRACK.** `edge1` 771 tris →
+150+621 (gap 7.5 m), `curb` 524 → 166+358 (gap 96.7 m), `groove`, `Wiref_s`, `sideroad`, `sline` …
+A track mesh has genuine gaps of tens of metres between its pieces, so the rule is meaningless there
+and every split is a pure extra draw call. **Confined it to the TAGGED (car) lists** — which are
+exactly the ones this item tagged — and the whole car yields **three**:
+
+    [split] helblack  26 tris -> 16 + 10  at x=0.81  (gap 1.23 m)
+    [split] frontlot  94 tris -> 34 + 60  at x=0.20  (gap 2.32 m)
+    [split] lbrdisc   46 tris -> 44 +  2  at x=0.36  (gap 2.23 m)
+
+**Three parts on the whole car, and they are precisely the three the census flagged as car-sized.**
+
+⭐⭐ **And the wedges are now a thing you can point at:**
+
+    [tint-item] fsusp:1 -> magenta on 102 vertices (tex="frontlot")
+    magenta pixels = 1,865    lower wedge [46,54,45] -> [181,9,195]    upper wedge [74,78,71] -> [163,59,167]
+
+**`fsusp:1` is now 34 triangles at x[−1.06,−0.94] — the stray rear cluster alone — and tinting it
+lights both wedges and nothing else.** `fsusp:2` holds the real front suspension, 60 triangles at
+x[1.35,1.63].
+
+**S17 — what to DO with it, and the question is answerable:** is `fsusp:1` a DUPLICATE of geometry
+the rear lists already draw, or the only copy? Compare its 34 triangles against `rsusp*`'s parts at
+the same coordinates. **Duplicate → drop it** (the car loses nothing and the wedges go); **only copy →
+it needs the rear placement**, and dropping it would remove real bodywork. The tint harness answers
+either way, and the splitter must stay default-off until that is decided.
+
+**E102: 16 sprints total, 4 in this pass — AT THE CAP, with the defect isolated in a single 34-triangle
+item behind a flag.**
