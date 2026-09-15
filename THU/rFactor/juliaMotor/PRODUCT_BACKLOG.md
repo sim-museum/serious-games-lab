@@ -12648,6 +12648,50 @@ until there is one the exclusion is the better of two wrong pictures.
 **E75: 1 sprint this pass. The absence is explained, the groups are named, and "hidden or posed" is
 settled against the gold.**
 
+### E75 S2 this pass (2026-09-15) — ⛔ **the Lotus has NO parked positioners at all**, so S1's "GPL parks and poses them" does not apply to the player's car. And the FRONT groups show what a correct placement looks like
+
+S1 leaned on AI-CARGFX S5's mechanism — *"GPL parks a car's dynamic suspension groups under a |d|>5
+positioner and poses them at runtime"* — to explain why the Lotus's rear suspension is excluded.
+`JM_POSDIAG` says that is wrong for this car.
+
+⛔ **Across the whole `lotus.3do` parse, every report reads:**
+
+    [posdiag] placing groups: 1 total, 0 under a PARK (|d|>5) node
+
+**Not one parked positioner.** The park-and-pose mechanism is real — AI-CARGFX S5 measured it on the
+Eagle (29108/39200) and the BRM (26116/35320) — but the **player's Lotus does not use it**. S1's
+framing is withdrawn; what stands from S1 is the group map, which is a direct measurement:
+`lshok`, `lsusp3/4/5/6/7` and `frontlot` live only in 27288/39792/3560/6600, and
+`JM_CAR_EXCL_GROUPS` drops all four.
+
+⭐ **And the front pair shows what a correctly-placed group looks like**, which gives the rear pair
+something to be compared against:
+
+    [posdiag] node 6600 type 0xd depth 8  d=(0.0, 0.0, 0.02)  rot=(0,0,0)  s=1.0
+              parent: translation ( 1.526,  0.762, 0.0) scale 1.0
+    [posdiag] node 3560 type 0xd depth 8  d=(0.0, 0.0, 0.02)  rot=(0,0,0)  s=1.0
+              parent: translation ( 1.526, -0.762, 0.0) scale 1.0
+
+**Those are the FRONT HUBS** — fore/aft 1.526, lateral ±0.762, a 2 cm local offset, no rotation, unit
+scale. Ordinary, sane placement. (And note they are excluded anyway, which is why `frontlot` is drawn
+through the separate `FSUSPP` extraction rather than through `CARP` — the wedges' route onto the
+screen, from E102 S18.)
+
+⚠️ **27288 and 39792 printed nothing**, because `JM_POSDIAG`'s node report only fires inside the
+type-`0xd` positioner branch. So they are placed by a node of some other type, which is itself the
+next question rather than an inconvenience.
+
+**S3, and it is a two-number test:** extend the diag to print the accumulated parent transform for
+**any** listed node offset, not only `0xd` ones, and read 27288/39792. The answer is already
+constrained by measurement: a correctly-placed rear group must land its geometry on the drawn rear
+hub at **fore/aft −1.436, up 0.340, lateral ±0.770** (E102 S18), exactly as the front pair lands on
+(1.526, ±0.762). **If the rear pair's accumulated translation is not that, the difference is the
+mis-placement E64-S4 named but never measured** — and a corrective transform becomes arithmetic
+rather than a search.
+
+**E75: 2 sprints this pass. One mechanism eliminated for this car, and the comparison the fix needs
+is set up on both sides.**
+
 ### SPA-FPS-1 S10 (Opus 5, 2026-09-14) — ⛔ S9's black mirror was the `!REPLAY` term, not the hidden window; and with it lifted **the strobe is measured**
 
 S9 concluded *"a hidden window may not run the RTT"* and left the strobe question open. **The reason
