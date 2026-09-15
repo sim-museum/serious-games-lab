@@ -12493,6 +12493,56 @@ either way, and the splitter must stay default-off until that is decided.
 **E102: 16 sprints total, 4 in this pass — AT THE CAP, with the defect isolated in a single 34-triangle
 item behind a flag.**
 
+### E102 S17 (2026-09-15) — ⛔ **`fsusp:1` is NOT a duplicate — it is the only copy**, so it must not be dropped; and the GOLD says what is actually wrong back there
+
+S16 isolated the wedges into a 34-triangle item and named S17's question: *"is `fsusp:1` a DUPLICATE
+of geometry the rear lists already draw, or the only copy? Duplicate → drop it; only copy → it needs
+the rear placement."*
+
+**Answered geometrically, no renderer needed** (`JuliaMotorMTK/tools/fsusp_dup_probe.jl`: for each of
+the 34 triangles, the nearest triangle anywhere else in `lotus.3do` by centroid, and whether its
+three vertices coincide):
+
+    fsusp:1 candidate = 34 triangles (tex="frontlot", centroid x in [-1.10, -0.90])
+    nearest OTHER triangle, centroid distance:  min 0.0141 m   median 0.0376 m   max 0.0617 m
+    with a neighbour closer than 5 cm:          25 of 34
+    of those, with all three vertices coincident: 0
+    the close neighbours belong to: lsusp6 x16, lbrdisc x5, l1in x3, fondo x1
+
+⛔ **Not one exact twin.** The cluster sits *among* the left rear suspension (`lsusp6`), the brake
+disc (`lbrdisc`) and the inner bodywork — 1.4 to 6.2 cm away — but it duplicates none of it.
+**`fsusp:1` is real rear-suspension geometry that happens to carry the front part's texture**, and
+dropping it would remove bodywork the car needs. The splitter stays default-off and S16's "drop it"
+branch is closed.
+
+⭐ **So what IS wrong? The gold answers, and it is not the wedges' existence.**
+`~/gold standard/julia racer/monza/260802_monza_nintendo.mp4` shows the real car's rear end at chase
+distance; ours is the same camera on the same track
+(`doc/ref/e102-rear-gold-vs-port-2026-09-15.png`):
+
+| | gold (GPL under Wine) | port |
+|---|---|---|
+| driveshaft | **horizontal, at HUB height, reaching the wheel** | a horizontal bar sits **higher**, at chassis height, and **stops short of the hub** |
+| lower wishbone | present, hub to chassis | present |
+| the gap between gearbox and wheel | filled by the shaft | **empty** |
+| struts near the ground | radius rods, tucked | struts angling **down and outward** |
+
+**That is the PO's sentence, photographed on both sides:** *"axles should be horizontal between
+center of wheel and chassis, not sticks pointing outward and downward from the back wheels."* The
+sticks are there because the thing that should join hub to chassis at hub height is drawn at the
+wrong height and does not reach.
+
+⚠️ **This overlaps AXLE-1** (*"the driveshafts must reach the hubs the WHEELS actually use"*,
+2026-09-07) and the two should be read together before either is touched — the same bar is very
+likely both items' subject seen from different angles. **Do not fix them separately.**
+
+**S18:** with the drop branch closed, the question is placement, not existence. Print the drawn
+world-space endpoints of the `fsusp:1` cluster and of the drawn rear hub (`WHEELS[3]`) in the same
+frame, and compare to the gold's proportions — the gold's shaft runs from the gearbox side to the
+hub centre at a constant height, which is a two-number test.
+
+**E102: 17 sprints, 1 in this pass.**
+
 ### SPA-FPS-1 S10 (Opus 5, 2026-09-14) — ⛔ S9's black mirror was the `!REPLAY` term, not the hidden window; and with it lifted **the strobe is measured**
 
 S9 concluded *"a hidden window may not run the RTT"* and left the strobe question open. **The reason
