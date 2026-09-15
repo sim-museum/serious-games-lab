@@ -742,6 +742,37 @@ const AUTODRIVE_V = parse(Float64, get(ENV, "JM_AUTODRIVE_V", "45"))   # target 
 # deliberate excursion needs its own knob. Positive = one side, negative = the other.
 const AUTODRIVE_LAT = parse(Float64, get(ENV, "JM_AUTODRIVE_LAT", "0"))
 const AUTODRIVE_DIAG = parse(Int, get(ENV, "JM_AUTODRIVE_DIAG", "0"))
+# SKIDPAD-GOLD-1 S3 (2026-09-15): a CONSTANT-INPUT driver, the same design as FreeFalcon's FF_STICK.
+# S2 revived the skidpad and found that NOBODY DRIVES IT: JM_AUTODRIVE is the race AI and a skidpad
+# has no race, so the car idled in gear 1 for 4,000 frames and every telemetry channel read 0.000.
+# A skidpad needs nothing more than a fixed lock and enough power to hold the circle.
+#   JM_SKIDPAD_DRIVE="<steer>,<throttle>[,<ramp_s>]"    steer in [-1,1], throttle in [0,1]
+# The steering RAMPS IN over ramp_s (default 4 s) instead of being slammed to full lock at t=0: a
+# stationary car given instant lock and full throttle spins rather than settling onto a circle, and
+# the gold's own steady-state filter only keeps samples where the wheel is held still.
+# One fixed lock measures ONE radius, and the first run showed why that is not enough: at full lock
+# the car settles at 8.8 m/s and 0.64 g, which is inside the gold's unusable 5-10 m/s band. A tyre
+# limit is found by SWEEPING the radius, so the hook takes a list of segments, each held for its own
+# number of seconds -- one load, several steady states, and the gold's own steady-state filter throws
+# away the transitions between them automatically.
+#   JM_SKIDPAD_DRIVE="<steer>,<throttle>[,<secs>][;<steer>,<throttle>,<secs>...]"
+# Omitted secs = hold to the end of the run. JM_SKIDPAD_RAMP (default 4 s) is the time taken to
+# blend from the previous segment's lock to this one's.
+const SKIDRAMP  = max(1e-3, parse(Float64, get(ENV, "JM_SKIDPAD_RAMP", "4.0")))
+const SKIDDRIVE = let s = get(ENV, "JM_SKIDPAD_DRIVE", "")
+    if isempty(s)
+        nothing
+    else
+        segs = NamedTuple{(:steer, :throttle, :dur), Tuple{Float64, Float64, Float64}}[]
+        for part in split(s, ';', keepempty = false)
+            f = parse.(Float64, strip.(split(part, ',')))
+            length(f) >= 2 || error("JM_SKIDPAD_DRIVE segment needs \"<steer>,<throttle>[,<secs>]\", got \"$part\"")
+            push!(segs, (steer = clamp(f[1], -1.0, 1.0), throttle = clamp(f[2], 0.0, 1.0),
+                         dur = length(f) >= 3 ? max(f[3], 0.0) : Inf))
+        end
+        segs
+    end
+end
 const AI_LAPDIAG = get(ENV, "JM_AI_LAPDIAG", "0") != "0"   # report each AI lap as it completes
 # Poses of the remote cars, refreshed each frame and read by the draw pass. A Ref rather than a
 # closure capture because the draw pass is a nested function built before this is known.
@@ -7943,6 +7974,25 @@ function main()
                 inp = DriveInput(throttle = clamp(thr, 0, 1), brake = clamp(brk, 0, 1),
                                  steer = clamp(st, -1, 1), clutch = inp.clutch,
                                  shift_up = false, shift_down = false, autoshift = true)
+            end
+        end
+        # SKIDPAD-GOLD-1 S3: the constant-input driver. Overrides whatever the human or the AI
+        # produced, holds the clutch engaged and leaves autoshift on so the car actually pulls.
+        if SKIDDRIVE !== nothing
+            sd_t = Float64(cs.t); sd_i = 1; sd_t0 = 0.0
+            while sd_i < length(SKIDDRIVE) && sd_t >= sd_t0 + SKIDDRIVE[sd_i].dur
+                sd_t0 += SKIDDRIVE[sd_i].dur; sd_i += 1
+            end
+            sd_prev = sd_i == 1 ? 0.0 : SKIDDRIVE[sd_i-1].steer
+            sd_k = clamp((sd_t - sd_t0) / SKIDRAMP, 0.0, 1.0)
+            inp = DriveInput(throttle = SKIDDRIVE[sd_i].throttle, brake = 0.0,
+                             steer = sd_prev + (SKIDDRIVE[sd_i].steer - sd_prev) * sd_k,
+                             clutch = 0.0, shift_up = false, shift_down = false, autoshift = true)
+            if AUTODRIVE_DIAG > 0 && (frames % AUTODRIVE_DIAG) == 0
+                println("  [skid] seg ", sd_i, "/", length(SKIDDRIVE), "  t=", round(cs.t,digits=1),
+                        " v=", round(cs.v*3.6,digits=1), " km/h  thr=", round(inp.throttle,digits=2),
+                        " steer=", round(inp.steer,digits=3))
+                flush(stdout)
             end
         end
         if REPLAY                                   # E18 PLAYBACK: VCR + set poses from the recording, skip the sim

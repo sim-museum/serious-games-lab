@@ -51,3 +51,21 @@ for lo in 5:5:45
     isempty(b) && continue
     @printf("  %5.0f .. %-5.0f %7d %9.2f %9.2f\n", lo, lo+5, length(b), g(median(b)), g(quantile(b, 0.95)))
 end
+
+# SKIDPAD-GOLD-1 S3: the same statistic by STEERING LOCK. Our own sweep holds several fixed locks in
+# one run, and lateral g is a function of the radius the lock commands -- a speed band mixes locks
+# and hides where the tyre saturates. Harmless on the gold capture (a human's wheel angle is
+# continuous, so the bands simply spread).
+println()
+println("lateral g by |steering| band (steady state):")
+@printf("  %-14s %7s %9s %9s %9s\n", "|steer| rad", "n", "med v", "med g", "p95 g")
+swk = [abs(sw[i]) for i in keep]
+edges = [0.0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.28, 0.30, 0.35, 1.0]
+for j in 1:length(edges)-1
+    lo, hi = edges[j], edges[j+1]
+    idx = [k for k in 1:length(keep) if lo <= swk[k] < hi]
+    isempty(idx) && continue
+    b = la[idx]
+    @printf("  %5.2f .. %-6.2f %7d %9.1f %9.2f %9.2f\n", lo, hi, length(idx),
+            median(sk[idx]), g(median(b)), g(quantile(b, 0.95)))
+end

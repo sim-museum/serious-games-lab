@@ -12870,6 +12870,59 @@ and the answer is one number against the gold's **1.2–1.3 g**.
 
 **SKIDPAD-GOLD-1: 2 sprints. A dead mode revived; the measurement is one input hook away.**
 
+### SKIDPAD-GOLD-1 S3 (Opus 5, 2026-09-15) — ⭐⭐ **the answer: our Lotus pulls 0.81 g where the real one pulls 1.02 g.** The first quantified tyre-grip gap this project has had
+
+S2 left the pad running with nobody at the wheel. S3 adds the input and takes the number.
+
+⭐ **`JM_SKIDPAD_DRIVE="<steer>,<throttle>[,<secs>][;...]"`** — a constant-input driver, the same
+design as FreeFalcon's `FF_STICK` (two ports, same week, same gap, now the same shape of fix). Each
+segment is held for its own number of seconds, so ONE load measures several steady states; the
+steering blends into each segment over `JM_SKIDPAD_RAMP` (4 s) because a stationary car given instant
+full lock and power spins instead of settling, and the gold's own filter only keeps a held wheel.
+
+⭐⭐ **The comparison S1 asked for, one number against one number** (`skidpad_gold.jl`, unmodified,
+run on our own `.ibt` — same tool, same filter, same bands):
+
+| 10–15 m/s, steady state | median | p95 |
+|---|---|---|
+| **gold (iRacing Lotus 49)** | **1.02 g** | **1.26 g** |
+| **ours** | **0.81 g** | **0.98 g** |
+
+**We reach about 80% of the real car's steady cornering**, and our best single steady sample in the
+whole run is **1.01 g** against the gold's 1.22 g p95. The tyre model is not wildly wrong — it is
+consistently, measurably short.
+
+⚠️ **And the AI is calibrated to the grip the player cannot have.** `jm_anchor_from_ibt()` sets the
+race AI's lateral anchor from the gold's p99 — printed every launch as *"AI grip anchor 13.04 m/s²
+(1.33 g)"* — while the player's own car tops out at 1.01 g steady, 1.09 g peak. **The field is driven
+by a 1.33 g assumption in a car that delivers 1.0 g.** That is a PO-facing consequence (the AI
+corners quicker than the same car can be cornered) and it follows directly from the two numbers
+above; it was invisible until our side of the comparison existed.
+
+⭐ **Three runs, and the two failed shapes are worth recording** because each one looks like a result:
+
+* **full lock, 60% throttle** — stable circle, 92% of samples steady, **0.60 g at 8.8 m/s**. Clean,
+  but SPEED-limited: 8.8 m/s sits inside the gold's unusable 5–10 m/s band.
+* **sweeping the lock at full throttle** (1.0 → 0.14 over five segments) — **1.6% steady**. The car
+  spins continuously; `[skid]` shows speed oscillating 57 → 8 → 51 km/h. Full throttle in a 630 kg,
+  400 bhp car on a 13 m circle is not a measurement, it is a donut.
+* **full lock, throttle stepped 0.60 → 0.90** — 36% steady, reaching 13.2 m/s, and this is the run
+  the table above comes from. Holding the RADIUS and raising the POWER is what walks the car up to
+  its own limit; sweeping the radius does not.
+
+⚠️ **Honest limits.** Our pad radius at full lock settles near 13 m (v²/a), the gold capture's radius
+is unrecorded, and lateral g is radius-independent only once both cars are at the limit — which ours
+reaches (it is sliding) and the gold's likely does too. The two 15–20 m/s rows cannot be compared at
+all: ours never gets there on this radius.
+
+**S4 (if taken):** the gap is now a number, so it can be attributed — the brush-tyre μ in
+`JuliaMotorMTK/src/drive_rt.jl` is the obvious suspect (comment says μ≈1.4, we measure 1.0), and
+`fit_skidpad.jl` already exists to refit it against this same gold file. A refit that moves our p95
+from 0.98 to ~1.25 g would be the first physics change this project has made with a gold number on
+both sides of it.
+
+**SKIDPAD-GOLD-1: 3 sprints. The oracle, the input, and the answer.**
+
 ### SPA-FPS-1 S10 (Opus 5, 2026-09-14) — ⛔ S9's black mirror was the `!REPLAY` term, not the hidden window; and with it lifted **the strobe is measured**
 
 S9 concluded *"a hidden window may not run the RTT"* and left the strobe question open. **The reason
