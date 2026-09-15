@@ -3823,6 +3823,43 @@ changing its coefficient until that number exists.**
 
 **E99: 3 sprints.**
 
+#### E99-S4 (2026-09-15) — ⛔ **S3's "the Δv never arrives" is WITHDRAWN**: the body receives 89–98% of `F·dt/m`
+
+S3 inferred, from a 39 kN force failing to change `vn`, that the impulse never reached the car and
+therefore that every force-level cap in `contact_force` was sized against a fiction. **That inference
+was wrong, and it took one direct measurement to say so.**
+
+New `JuliaMotorMTK/tools/impulse_probe.jl` applies a known force through the SAME path a contact uses
+(`extforce3d!` then `step_car3d!`) and subtracts a no-force control step, so drag, rolling and tyre
+response are removed:
+
+| v0 | F | expected Δu = F·dt/m | measured Δu | ratio |
+|---|---|---|---|---|
+| 18 km/h | 5 kN | −0.1351 | −0.1197 | **0.887** |
+| 18 km/h | 39 kN | −1.0535 | −0.9534 | **0.905** |
+| 18 km/h | 296 kN | −7.9957 | −7.7925 | **0.975** |
+| 108 km/h | 5 kN | −0.1351 | −0.1285 | **0.952** |
+| 108 km/h | 39 kN | −1.0535 | −1.0023 | **0.951** |
+| 108 km/h | 296 kN | −7.9957 | −7.7797 | **0.973** |
+
+⭐ **The impulse lands.** The 3–11% shortfall is the tyre and drag response to the new velocity within
+the same step, and it shrinks as the force grows — exactly what one expects. **So the caps are sized
+against a Δv that does arrive, and S3's headline is withdrawn.**
+
+⚠️ **Which makes the 28-frame drag a sharper question, not a resolved one.** At f21 the bleed applies
+39 kN inward, the car therefore receives ≈ **0.95 m/s** of inward Δv that frame — and `vn` still reads
++1.28 on the next frame and stays above +1.1 for another 27. **Something re-supplies about a metre per
+second of separation every frame**, and the bleed's condition (`vn > VN_OUT_MAX`) keeps being true
+because of it. The contact is not failing to act; it is being fought.
+
+**NEXT (E99-S5):** log the car's full velocity state across those 28 frames — body `(u,v)`, yaw rate,
+and the tyre forces — with the bleed on and with it disabled. The term that keeps pushing the car
+outward while a 39 kN contact force pushes in is the actual defect; the bleed is only the thing that
+makes it visible by dragging the car through the obstacle.
+
+**E99: 4 sprints — AT THE CAP. One of its own conclusions retracted by measurement, which is the
+sprint working as intended.**
+
 ## E100 — 🔴 The gearbox is HARDCODED, and it is the wrong car setup for every track but one
 
 **Violates the PO's standing constraint** (2026-08-27, verbatim): *"the car physics should be
