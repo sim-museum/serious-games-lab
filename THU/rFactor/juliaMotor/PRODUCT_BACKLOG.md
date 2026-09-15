@@ -3352,6 +3352,45 @@ contents (as above), or drive the sim directly inside the extracted AppDir.
 
 **DELIVERY 260915: 1 sprint.**
 
+### E80-S4 (2026-09-15) — ⛔ the sysimage **cannot be built on this box**: four configurations, four OOM kills, peak child RSS **12.4 GB** on a 15 GB machine
+
+S3 established that ~146 s of every load is Julia compile latency and named the sysimage as the only
+lever that touches it. S4 tried to pull it, four ways, and the honest result is negative — with
+numbers, and with the cause identified.
+
+| # | configuration | outcome |
+|---|---|---|
+| 1 | as shipped: 7 packages, transitive deps, 3 CPU targets, heap 7G, cap 12G, **other work running** | OOM (`ProcessSignaled(9)`), *"free system memory dropped to 28 KiB"* |
+| 2 | `TMPDIR` moved **off the 7.6 GB tmpfs** to disk, heap 4G, cap 9G, run alone | OOM, *"…dropped to 0 bytes"* |
+| 3 | single CPU target (`JM_CPU_TARGET=native`, local-only), heap 5G, cap 12G | OOM — **child RSS measured at 12.4 GB** while running |
+| 4 | **ModelingToolkit + OrdinaryDiffEq only**, `JM_SYSIMG_TRANSITIVE=0`, heap 4G, cap 11G | OOM |
+
+⭐ **Attempt 4 is the informative one.** Cutting the package list from seven to two and turning off
+transitive dependencies changed nothing — because **the precompile EXECUTION TRACE is what drives the
+peak, not the package list.** `sysimage_trace.jl` includes `render.jl`, `gpltrack.jl`, the 3-D
+contact solve and the GPL loaders, so the compile pulls them in whatever `create_sysimage` is asked
+to bake.
+
+⚠️ **The tmpfs was a real second fault, found on the way.** PackageCompiler writes its intermediate
+`--output-o=…-o.a` into `TMPDIR`, which here is a **RAM-backed 7.6 GB tmpfs** — so the object file
+was competing with the compiler for the same 15 GB. That is the "never materialise into /tmp" rule
+in a new costume, and it is now avoided explicitly (`TMPDIR` on disk) rather than by luck.
+
+**Two settings added, both defaulting to the old behaviour:** `JM_SYSIMG_PKGS="A,B,C"` and
+`JM_SYSIMG_TRANSITIVE=0`. They exist because a build that cannot fit has to be narrowed
+reproducibly, not by editing the script each time.
+
+**And the cap did its job.** Every kill landed on the build's child process inside
+`systemd-run --user --scope -p MemoryMax=…`; the session survived all four. The 2026-09-06 attempt,
+without a cap, took the terminal with it.
+
+**NEXT (E80-S5): cut the TRACE, not the package list.** `JM_SYSIMG_TRACE=<file>` with a physics-only
+workload (`build_car` + `step_car!`, no render, no GPL parse) targets exactly the measured 96 s of
+`mtkcompile` and should fit. If it still will not fit, this is a "build it on a bigger machine" task
+and should be labelled as one rather than retried here — four kills is enough evidence for that call.
+
+**E80: 4 sprints this pass — AT THE CAP.**
+
 ### E93 (PO 2026-08-29) — "starting from stationary in 1st, the clutch is reversed"
 
 PO: *"The slider has to be DOWN to start; slider UP prevents the car from moving. As soon as the car moves in first, the slider sense reverses."* Also: *"I can only shift with the slider at the bottom."*
