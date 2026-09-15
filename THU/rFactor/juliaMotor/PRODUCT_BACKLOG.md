@@ -12594,6 +12594,60 @@ textures — whether it also reads the node/positioner records, and what they sa
 
 **E102: 18 sprints, 2 in this pass. Merged into E75 for the fix.**
 
+### E75 S1 this pass (2026-09-15) — ⭐⭐⭐ **the rear suspension is EXCLUDED BY GROUP, 27288/39792 are the only copies, and the gold proves GPL POSES them rather than hiding them**
+
+E102 S18 handed this over: the rear suspension is not drawn, and the wedges are the residue. S1 asks
+which filter removes it, and the answer is one table (`JuliaMotorMTK/tools/susp_group_map.jl` — for
+every rear-suspension texture, which positioner groups carry it):
+
+| texture | groups (tris) | verdict |
+|---|---|---|
+| `lshok` | 27288:8  39792:8 | **all excluded — not drawn at all** |
+| `lsusp3` | 27288:4  39792:4 | **all excluded** |
+| `lsusp4` | 27288:2  39792:2 | **all excluded** |
+| `lsusp5` | 27288:8  39792:8 | **all excluded** |
+| `lsusp6` | 27288:4  39792:4 | **all excluded** |
+| `lsusp7` | 27288:8  39792:8 | **all excluded** |
+| `frontlot` | 3560:40 6600:40 27288:17 39792:17 | **all excluded** |
+| `axlelot` | 27288:29 39792:29 **116576:18** | partly — the 18 are the residue |
+| `lsusp2` | 27288:8 39792:8 **116576:4** | partly |
+| `lbrdisc` | 27288:20 39792:20 **0:6** | partly |
+
+⭐ **`JM_CAR_EXCL_GROUPS` defaults to `6600,3560,27288,39792`, and those four groups hold the ENTIRE
+rear suspension.** Not the lateral clip (E102 S18 disproved that with a 14-pixel A/B), not the
+unfolded-strip theory on its own — **a group exclusion**. And what survives is exactly what the PO
+photographed: 18 `axlelot` triangles, 4 `lsusp2`, 6 `lbrdisc` and FSUSPP's `frontlot` wedges,
+scattered where a suspension should be.
+
+⭐⭐ **And the gold settles the question the two exclusions disagree about.** E64-S4 excluded
+27288/39792 as *"GPL runtime-HIDDEN branches our positioner walk mis-places"*. AI-CARGFX S5 says the
+opposite of the same structure: *"GPL PARKS a car's dynamic suspension groups under a |d|>5
+positioner and POSES them at runtime … the gold shows them posed"*. Both cannot be right, and the
+counts plus the gold decide it:
+
+* **27288 and 39792 carry identical counts for every texture** (8/8, 4/4, 29/29, 17/17). They are the
+  LEFT and RIGHT sides of one assembly, not redundant mirror copies.
+* **They are the only copies.** No other group carries `lshok`, `lsusp3/4/5/6/7`.
+* **The GPL gold chase frame shows a full articulated rear suspension** — horizontal driveshaft,
+  lower wishbone, radius rods (E102 S17's pair).
+
+**A branch GPL hides cannot appear in GPL's own picture. So GPL POSES 27288/39792, and excluding them
+is why our rear end is bare.** E64-S4's reading is corrected: the groups are mis-placed by our walk
+(which is true — they draw as plates), and the answer is to place them correctly, not to drop them.
+
+**S2:** read the parked positioner for 27288/39792 — `posmat(d, m, s)`, which the parser already
+models and then clamps at |d|>5 — and print `d`, `m`, `s` for those two groups. The rest pose is
+constrained by geometry we have measured: `lsusp5/7` and the driveshaft must reach the drawn rear hub
+at **fore/aft −1.436, up 0.340, lateral ±0.770** (E102 S18). A static rest pose that satisfies that
+is already the whole visual fix; the dynamic pose is a later refinement.
+
+⚠️ **Do not simply set `JM_CAR_EXCL_GROUPS=""`.** E64-S4 measured what that looks like — "chrome
+spider-legs through the rear tyres" — and it is worse than the wedges. The groups need the pose, and
+until there is one the exclusion is the better of two wrong pictures.
+
+**E75: 1 sprint this pass. The absence is explained, the groups are named, and "hidden or posed" is
+settled against the gold.**
+
 ### SPA-FPS-1 S10 (Opus 5, 2026-09-14) — ⛔ S9's black mirror was the `!REPLAY` term, not the hidden window; and with it lifted **the strobe is measured**
 
 S9 concluded *"a hidden window may not run the RTT"* and left the strobe question open. **The reason
