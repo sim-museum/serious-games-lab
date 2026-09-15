@@ -12543,6 +12543,57 @@ hub centre at a constant height, which is a two-number test.
 
 **E102: 17 sprints, 1 in this pass.**
 
+### E102 S18 (2026-09-15) — ⛔ two of my own readings withdrawn, and the item turns out to be **E75's unfolded rear suspension** seen from the other side
+
+S17 closed the "drop it" branch and left placement. S18 measures it
+(`JuliaMotorMTK/tools/fsusp_place_probe.jl`, in the car frame the renderer draws in):
+
+    DRAWN REAR HUB:        fore/aft -1.436   up 0.340   lateral ±0.770
+    DRAWN fsusp:1 cluster: fore/aft -1.613 .. -1.491
+                           up        0.258 .. 0.460     (centre 0.019 m ABOVE the hub)
+                           lateral  -0.603 .. 0.603     (0.168 m short of the hub)
+
+⛔ **1. S17's "the bar sits higher, at chassis height" is WITHDRAWN.** It was my eye on a chase
+render; the geometry is at **hub height to within 19 mm**. The item does not have a height defect.
+
+⭐ **2. And the lateral end is not arbitrary — it is the TYRE.** The drawn rear wheel mesh spans
+lateral **0.582 … 0.938** (left) and **0.602 … 0.958** (right): the cluster ends at **0.603**, i.e.
+**exactly at the tyre's inner sidewall**. So the visible "sticks" are what is left of something that
+was cut at the wheel — which is E106-S25's failure shape, in its own words: *"the lateral clip
+trimmed the outer part of the body's wheel and left the inner part interleaving with the drawn wheel
+item, which reads as angular plates/rods sticking out of the tyre."*
+
+⛔ **3. But the lateral clip is NOT the cause, and the A/B says so flatly.** `CARP_MAXLAT` defaults to
+0.85 and **519 rear-half triangles have a vertex beyond it** — `lsusp3`, `lsusp4`, `lsusp5`,
+`lsusp7`, `lshok`, `lexhsup` are **100% past the clip**, `lsusp2` 40%, `axlelot` 14%. That looked
+like the answer. **Opening it changes 14 pixels of 1,166,400** (`JM_CARP_MAXLAT=1.15`, same track,
+same camera, same shot). **Rejected.** Those parts are removed by something else.
+
+⭐⭐ **4. And the tree already knows what, six sprints ago.** `RSUSPP2` (`drive_native_mtk.jl:2310`)
+pulls exactly `lshok/lsusp5/lsusp7/lbrdisc` and is **default OFF**, with E75-S8's verdict recorded
+beside it:
+
+> *"the raw parts are UNFOLDED flat strips, so drawing them in place lays panels under the car."*
+
+**GPL folds the rear suspension at runtime and we do not know the transform, so the rear suspension
+is not drawn at all.** What the PO sees as *"sticks pointing outward and downward from the back
+wheels"* is the RESIDUE — the `frontlot` rear cluster and `axlelot`, the parts that happen to be
+authored in place — sitting where a full suspension should be.
+
+**So E102 is not a separate defect. It is E75's unfolded-strip problem, photographed from the
+chase camera**, and the gold pair from S17 shows what is missing: GPL's horizontal driveshaft, lower
+wishbone and radius rods, none of which we draw. **The two items should be worked as one, and no fix
+should be attempted on the wedges alone** — moving or hiding them cannot produce the gold picture,
+because the geometry that makes that picture is not being drawn.
+
+**S19 (as E75, not E102):** find the fold. E75-S7 fixed the FRONT by taking the parts directly with
+an extent clip, which worked *because the front parts are authored in place*; the rear ones are not,
+so the transform has to come out of the `.3do`'s own node hierarchy. `gpl3do.jl` parses triangles and
+textures — whether it also reads the node/positioner records, and what they say for `lsusp5/7` and
+`lshok`, is the question, and it is answerable headlessly.
+
+**E102: 18 sprints, 2 in this pass. Merged into E75 for the fix.**
+
 ### SPA-FPS-1 S10 (Opus 5, 2026-09-14) — ⛔ S9's black mirror was the `!REPLAY` term, not the hidden window; and with it lifted **the strobe is measured**
 
 S9 concluded *"a hidden window may not run the RTT"* and left the strobe question open. **The reason
