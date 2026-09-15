@@ -12923,6 +12923,52 @@ both sides of it.
 
 **SKIDPAD-GOLD-1: 3 sprints. The oracle, the input, and the answer.**
 
+### SKIDPAD-GOLD-1 S4 (Opus 5, 2026-09-15) — ⛔ **S3's "we pull 0.81 g" is RETRACTED: at the gold's own speed band our car pulls 1.27 g.** The gap is not grip, it is that the car cannot HOLD the limit
+
+S3 measured 0.81 g median at full lock and called it a 20% tyre-grip shortfall. **That was a
+measurement of one condition read as a property of the tyre**, and the tyre model said so plainly:
+`brush_tyre.jl` carries μy = 1.36 front / 1.40 rear. A car whose tyres are given 1.4 g of lateral
+friction does not corner at 0.8 g because of its tyres.
+
+⭐ **The corrected measurement.** Full lock puts the car on a ~13 m circle where the rear tyres spend
+their friction on traction (the friction ellipse) and it spins before it corners. A real skidpad uses
+a wider circle: 0.45 of lock (δ ≈ 0.135 rad), throttle stepped 0.55 → 0.85:
+
+| steady state | gold | ours (S3, full lock) | **ours (S4, 0.45 lock)** |
+|---|---|---|---|
+| 10–15 m/s median / p95 | 1.02 / 1.26 g | 0.81 / 0.98 g | 0.44 / 0.64 g |
+| **15–20 m/s median / p95** | **1.13 / 1.25 g** | never reached | **1.27 / 1.30 g** |
+| best steady sample | 1.22 g (p95) | 1.01 g | **1.32 g** |
+
+⭐⭐ **At the gold's 15–20 m/s band our car matches and slightly exceeds it** — 1.27 g against 1.13 g
+median, 1.30 against 1.25 p95. **The tyre model is not short of grip.** S3's number, and its
+inference that the AI's 1.33 g anchor is unreachable for the player, are both withdrawn: the player's
+car reached 1.32 g in this run.
+
+⚠️ **What IS wrong, and it is a driving-feel defect rather than a physics one.** Only **19 of 5,000
+samples** land in that band, and the `[skid]` trace shows why — at a fixed lock and fixed throttle
+the speed does not settle, it CYCLES:
+
+    t=14.9  62.4 km/h    t=19.9  29.5    t=24.9  50.2    t=29.9  23.0
+    t=34.9  17.1         t=39.8  53.4    t=44.8  17.8    t=49.8  54.5
+
+**A 10-second spin-and-recover oscillation with a 3:1 speed ratio, from a constant input.** A real
+car on a skidpad settles; ours snaps, scrubs off two thirds of its speed, winds up again and snaps
+again. That is what a driver feels as "it lets go without warning", and it is the reason only 19% of
+this run counts as steady state at all (92% at the tame 0.6-throttle condition in S3).
+
+⚠️ **Honest limits.** 19 samples is a thin band; the match at 15–20 m/s should be repeated before it
+is leaned on. The oscillation is measured but not attributed — candidates are the rear tyre's
+combined-slip behaviour past the peak, the differential, and the throttle being held flat through a
+slide (a driver would lift).
+
+**S5 (next pass):** the oscillation, not the grip. Log per-wheel slip angle and slip ratio through one
+cycle and find which end lets go first — with the same hook, since a constant input is exactly the
+right instrument for a stability question.
+
+**SKIDPAD-GOLD-1: 4 sprints — AT THE CAP, parked.** The oracle exists, our side of it exists, the
+tyre is exonerated, and the real defect is now named and one sprint from being attributed.
+
 ### SPA-FPS-1 S10 (Opus 5, 2026-09-14) — ⛔ S9's black mirror was the `!REPLAY` term, not the hidden window; and with it lifted **the strobe is measured**
 
 S9 concluded *"a hidden window may not run the RTT"* and left the strobe question open. **The reason
