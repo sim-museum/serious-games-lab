@@ -11914,3 +11914,36 @@ adaptive back-off (S6's `MIRROR_STARVED`) firing in a headless run whose frame t
 logic and the jump is a second, real defect — two different fixes, and the PO feels the second one.
 
 **SPA-FPS-1: 3 sprints this pass. The strobe is reproduced headlessly.**
+
+### SPA-FPS-1 S11 (Opus 5, 2026-09-14) — ⭐⭐⭐ the strobe **IS the adaptive back-off**: forced per-frame, the mirror moves smoothly and the ~60-level jumps vanish
+
+S10 measured the strobe and offered two candidates: the frozen pairs (the adaptive logic) and the
+~60-level jumps (*"a second, real defect"*). S11 runs the same six frames with the adaptation off.
+
+**MEASURED — mean |difference| between adjacent frames, same replay, same camera, same box:**
+
+| arm | mirror glass | road ahead (control) |
+|---|---|---|
+| adaptive (**default**) | **60.66, 0.00, 59.68, 59.68, 0.00** | 0.13, 0.25, 0.18, 0.11, 0.15 |
+| `JM_MIRROR_ADAPT=0 JM_MIRROR_EVERY=1` | **2.19, 2.21, 2.35, 3.54, 0.73** | 0.13, 0.20, 0.19, 0.15, 0.15 |
+
+⭐⭐ **With per-frame updates there are no frozen pairs and no jumps — the mirror changes by 0.7–3.5
+a frame, the same order as the world beneath it.** ⛔ **So S10's "second, real defect" is withdrawn:
+there is ONE defect, and it is the adaptive mirror logic this item added in S6.** The freeze and the
+jump are the same event seen from either side — skip frames, accumulate, then catch up all at once.
+
+⭐ **And that makes the PO's original report this item's own doing.** S6 introduced the back-off to
+protect frame time on Spa; the PO's *"mirrors strobe"* is what the back-off looks like from the
+cockpit.
+
+⭐⭐ **The ground for removing it has already moved.** S8 measured Spa at **21.6–24.1 ms/frame**
+where S7 recorded 32.5–56.8, because E90's typed globals took ~30 ms of collision scan out of every
+frame. **The headroom the adaptation was compensating for may simply exist now.**
+
+**S12 — one measurement decides it:** run Spa in COCKPIT view (the expensive case, where the mirror
+pass costs the most) with `JM_MIRROR_ADAPT=0` and read `JM_FPSDIAG`. If it holds the budget, turn the
+adaptation off by default and the strobe goes with it; if it does not, the trade is real and the PO
+should be given the choice rather than the current silent compromise.
+
+**SPA-FPS-1: 4 sprints this pass — AT THE CAP, with the PO's symptom reproduced, attributed, and one
+measurement from a decision.**
