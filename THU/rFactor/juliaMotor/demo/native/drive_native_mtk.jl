@@ -2964,6 +2964,7 @@ const BB_BRIGHT = parse(Float32, get(ENV,"JM_BB_BRIGHT","1.55"))
 const BB_AMB    = parse(Float32, get(ENV,"JM_BB_AMB","0.85"))
 const BB_CULL2  = 1300f0^2      # billboards (tree/shrub/crowd sprites) — far ones add little
 const SMOKE = haskey(ENV, "JM_SMOKE")     # headless self-test: hidden window, auto-exit
+const SMOKE_FRAMES = parse(Int, get(ENV, "JM_SMOKE_FRAMES", "40"))   # SPA-FPS-1 S8: 40 is JIT warm-up
 # E59 multi-shot smoke: JM_SHOTS="s:view:name;s:view:name;…" photographs MANY points of the lap in ONE
 # session (Julia startup is ~2 min/track — the relaunch, not the render, is the expensive part).
 # s = metres along the centreline, view = 0 cockpit / 1 chase, name = output basename.  Each frame lands
@@ -7741,7 +7742,11 @@ function main()
     while !GLFW.WindowShouldClose(win)
         GLFW.PollEvents()
         key(GLFW.KEY_ESCAPE) && break
-        SMOKE && isempty(SHOTS) && frames >= 40 && break
+        # SPA-FPS-1 S8: the smoke run's 40 frames are JIT warm-up, so a headless FRAME-TIME
+        # measurement was impossible -- JM_FPSDIAG's first report never arrived, and any report that
+        # did would have been timing the compiler. JM_SMOKE_FRAMES=<n> raises the bound so the
+        # frame cost can be measured without taking the PO's display.
+        SMOKE && isempty(SHOTS) && frames >= SMOKE_FRAMES && break
         SMOKE && shots_done[] && !isempty(SHOTS) && break
         # OFFROAD-1: an AUTODRIVE run is a MEASUREMENT run, and its measurement -- the driveability
         # verdict -- is printed after this loop. Without an exit the car sits at the finish line

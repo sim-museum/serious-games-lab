@@ -11636,3 +11636,44 @@ first candidate in twelve sprints that matches on all four of shape, colour, cou
 
 **E102: 12 sprints total, 4 in this pass — AT THE CAP, with the whole car body excluded and a
 candidate that fits.**
+
+### SPA-FPS-1 S8 (Opus 5, 2026-09-14) — ⭐⭐ Spa is **21.6–24.1 ms/frame** now, against S7's 32.5–56.8, and E90's collision fix is large enough to account for all of it
+
+S7 left the item measured but on old ground: its numbers predate **E90 S7/S8**, which made
+`solid_hit()` 30× faster — and `solid_hit` runs for every car on every tick, so it is a frame-time
+term, not just a collision one. S8 re-measures.
+
+⚠️ **First, a harness gap that made this impossible.** `JM_FPSDIAG` never printed in a headless run:
+the smoke loop breaks at **frame 40**, which is JIT warm-up, so the first report never arrived — and
+one that did would have been timing the compiler. **`JM_SMOKE_FRAMES=<n>` now raises that bound**, so
+frame cost can be measured without taking the PO's display. *(Sixth harness gap this session whose
+symptom was silence.)*
+
+**MEASURED, Spa, the PO's own 5-AI replay, chase view, 400 frames:**
+
+    [fps] 32.5 fps (30.8 ms)   <- first report, still warming
+    [fps] 41.4 fps (24.1 ms)
+    [fps] 45.1 fps (22.2 ms)
+    [fps] 44.4 fps (22.5 ms)
+    [fps] 44.4 fps (22.5 ms)
+    [fps] 46.4 fps (21.6 ms)   objs_in_range=571/1446  billboards=2428
+
+⭐ **Settled at ~22 ms — 45 fps — where S7 recorded 32.5–56.8 ms.**
+
+⭐ **And the arithmetic says E90 can pay for the whole difference.** E90 measured the scan at
+**4.19 µs per solid before** and **0.132 µs after**; Spa carries 1,300 solids, so one call went from
+**5.45 ms to 0.17 ms**. At six cars and *one call each per frame* — the lowest rate it can possibly
+run at — that is **31.7 ms of frame time removed**, which is more than the entire gap between S7's
+worst and today's best.
+
+⚠️ **Attribution by magnitude, not by a controlled A/B.** S7's Spa numbers were taken in the mirror
+experiment's configuration and this run is chase view; the typed-global change is a binding
+declaration and cannot be toggled by an env var, so the two arms cannot be run back to back. **What
+is claimed: Spa now runs at 22 ms with 571 objects in range, and the collision fix is large enough to
+explain the improvement.** What is not claimed: that nothing else contributed.
+
+**S9:** the other half of S7's honest close — a consecutive-frame capture in COCKPIT view to show the
+mirrors do not strobe, which `JM_FRAMEDUMP="<n>:6"` and `JM_SMOKE_FRAMES` now make a single headless
+run.
+
+**SPA-FPS-1: 1 sprint this pass. The PO's "Spa has a low frame rate at places" is 45 fps today.**
