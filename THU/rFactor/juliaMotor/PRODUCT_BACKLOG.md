@@ -3725,6 +3725,61 @@ acts on translation only.
 
 ---
 
+#### E99-S2 (2026-09-15) — the "identical at every offset" is the **per-frame impulse CLAMP**, and the sweep turned up a band where the car goes THROUGH the obstacle
+
+E99-S1 left a technical question: a 108 km/h graze kept 5.6% of its energy at offsets 3.0, 4.2, 4.6
+and 4.9 m against a 5 m obstacle — *bit-identical*, when geometry that different should not converge.
+New tool `JuliaMotorMTK/tools/graze_sweep.jl` walks the offset and prints what the CONTACT saw next to
+the outcome (`JM_GRAZE_OFFSETS` overrides the sweep).
+
+| offset | kept % | v_end | first normal (nx, nz) | pen max | frames in contact | **F max** |
+|---|---|---|---|---|---|---|
+| 2.50 | 5.58 | 7.09 | (−0.862, 0.507) | 0.651 | 45 | **296.2 kN** |
+| 3.00 | 5.58 | 7.09 | (−0.783, 0.622) | 0.639 | 33 | **296.2 kN** |
+| 3.75 | 5.58 | 7.09 | (−0.661, 0.750) | 0.311 | 14 | **296.2 kN** |
+| 4.25 | 5.66 | 7.14 | (−0.486, 0.874) | 0.296 | 11 | **296.2 kN** |
+| 4.75 | 7.71 | 8.33 | (−0.287, 0.958) | 0.091 | 4 | **296.2 kN** |
+| 5.00 (miss) | 9.65 | 9.32 | — | 0 | 0 | 0 |
+
+⭐⭐ **The obliqueness DOES reach the contact — the normal swings from (−0.86, 0.51) to (−0.29, 0.96) —
+and the peak force is 296.2 kN in every single case.** That is
+`Fn = min(Fn, m·CONTACT_DVMAX/dt) = 617·8/(1/60) ≈ 296 kN`, the per-frame impulse clamp in
+`contact_force`. **E94b's own comment predicted exactly this** — *"a deep excursion drives it straight
+into the CONTACT_DVMAX ceiling… saturated is saturated"* — it was written about spring stiffness, and
+it turns out to govern GEOMETRY too.
+
+⭐ **So the answer to S1's question is: not a geometry fault. Every graze at this speed saturates the
+clamp, so the force is the same and only the DURATION differs** (45 frames down to 4). `kept` tracks
+duration, not angle — which is why it barely moves until the contact gets short.
+
+⭐ **And this sharpens the PO question E99 left open.** E95 says a high-speed collision should total
+the car; E99 says low impulse should not kill energy. **At 108 km/h the sim cannot tell them apart,
+because the clamp erases the difference** — a 4.75 m barely-clipping graze and a 2.5 m near-square hit
+both deliver 296.2 kN. That is a mechanism, not a preference, and it is what any answer to the PO's
+question has to change.
+
+⚠️ **NEW DEFECT FOUND BY THE SWEEP: a band where the car ends up on the FAR SIDE of the obstacle.**
+
+| offset | kept % | v_end | z_end |
+|---|---|---|---|
+| 2.60 – 2.75 | **0.00** | **0.00** | **≈ −7.0** |
+| 2.80 | 5.58 | 7.09 | +14.9 |
+| 2.90 | 5.58 | 7.09 | +25.9 |
+
+The car starts at z = +2.7 and ends at z = **−7.09** — it crossed the obstacle's centre line and
+stopped dead on the other side, after 49 saturated frames at 0.86 m penetration. Neighbouring offsets
+are flung outward normally. **A narrow offset band that passes THROUGH a solid object is a
+player-visible fault** and it is not what E96/E99 were asserting; the smoke tests sample 3.0/4.2/4.6/4.9
+and step right over it.
+
+**NEXT (E99-S3):** two separable jobs. (a) The pass-through band: instrument the contact across those
+49 frames — if the normal flips sign mid-contact the car is being pushed the wrong way, which is the
+usual cause. (b) The clamp: decide whether `CONTACT_DVMAX` should scale with the contact's NORMAL
+component of closing speed rather than being a flat ceiling — that is the change that would let a
+graze and a square hit differ, and it is the PO's question in code form.
+
+**E99: 2 sprints.**
+
 ## E100 — 🔴 The gearbox is HARDCODED, and it is the wrong car setup for every track but one
 
 **Violates the PO's standing constraint** (2026-08-27, verbatim): *"the car physics should be
