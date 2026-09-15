@@ -12827,6 +12827,49 @@ tyre model is right at the limit; if it pulls 0.8 or 1.8 the gap is quantified f
 
 **SKIDPAD-GOLD-1: 1 sprint. A physics oracle built from a reference that was already in the repo.**
 
+### SKIDPAD-GOLD-1 S2 (2026-09-15) — 🔴 **the SKIDPAD mode was DEAD — it crashed before the first frame, twice over.** Both fixed; the pad now runs, and nobody drives it
+
+S1 built the gold envelope (1.2–1.3 g) and said S2 was "one number against one number" because our
+sim has a skidpad mode. **It does not, or rather it did not: `TRACK=skidpad` could not start.**
+
+⛔ **Two `UndefVarError`s, the same class, one after the other:**
+
+    ERROR: UndefVarError: `RINGSPRITES` not defined in `Main`   (drive_native_mtk.jl:3424)
+    ERROR: UndefVarError: `ROADTESS`    not defined in `Main`   (drive_native_mtk.jl:8939)
+
+Both are globals assigned **inside the GPL-track branch** — `RINGSPRITES` at line 1572 next to the
+Nürburgring `.dat` scenery load, `ROADTESS` at 1733 with the road-tessellation constants. The skidpad
+builds a synthetic pad (*"flat pad + 20 measurement circles, diameters 10–200 m"*) and never reaches
+either, so both references threw. ✅ **Fixed with the `@isdefined` guard the file already uses for
+`SEC_FROM`.** The pad now loads and runs to completion.
+
+🔴 **This is a user-facing break, not just a harness one:** the skidpad is a selectable track, and
+choosing it crashed the sim before the first frame. Nothing in the backlog recorded that, which
+suggests nobody has run it since the Ring billboard work (E76-S8) and the road tessellation
+(ROADTESS S3) added those references.
+
+⛔ **And with it running, the comparison still cannot be made, because nobody drives.** Our own
+telemetry from a 4,000-frame skidpad run:
+
+    Speed                min 0.001  median 0.001  max 0.001   m/s
+    Throttle             0.000 throughout
+    LatAccel / LongAccel 0.000
+    RPM                  1953 (idle)      Gear 1
+
+**`JM_AUTODRIVE=1` does not drive the skidpad** — it is a race AI, and a skidpad has no race. The car
+idles in gear 1 for the whole run.
+
+⭐ **Which is exactly the shape FreeFalcon's FM-GOLD-1 hit three sprints ago**: the oracle was ready,
+the mission was right, the recorder worked, and the last missing piece was **an input**. Two ports,
+same week, same gap.
+
+**S3:** a constant-input hook, the same design as FF's `FF_STICK` —
+`JM_SKIDPAD_DRIVE="<steer>,<throttle>"` held for the run, since a skidpad needs nothing more than a
+fixed lock and enough power to hold the circle. Then `skidpad_gold.jl` runs unmodified on our `.ibt`
+and the answer is one number against the gold's **1.2–1.3 g**.
+
+**SKIDPAD-GOLD-1: 2 sprints. A dead mode revived; the measurement is one input hook away.**
+
 ### SPA-FPS-1 S10 (Opus 5, 2026-09-14) — ⛔ S9's black mirror was the `!REPLAY` term, not the hidden window; and with it lifted **the strobe is measured**
 
 S9 concluded *"a hidden window may not run the RTT"* and left the strobe question open. **The reason

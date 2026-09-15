@@ -3421,7 +3421,13 @@ if SKIDPAD || (NURB && get(ENV, "JM_RING_OBJECTS", "1") == "0")
     # by GPL as camera-facing sprites from a texture.  That is 1865 placements, and it is why the
     # Ring loads "184 groups" while Spa gets 1679 objects + 5132 billboards at a FIFTH the length.
     # Build them here with the same construction the object pipeline uses.  JM_RING_BB=0 reverts.
-    if !isempty(RINGSPRITES) && get(ENV,"JM_RING_BB","1") != "0"
+    # SKIDPAD-GOLD-1 S2 (2026-09-15): GUARD THE DEFINITION, not just the emptiness. RINGSPRITES is
+    # assigned at line 1572, inside the GPL-track branch; the SKIDPAD builds a synthetic pad and
+    # never reaches it, so this line threw `UndefVarError: RINGSPRITES not defined` and the skidpad
+    # could not start AT ALL. The same `@isdefined` idiom is already used a few hundred lines below
+    # for SEC_FROM. Found while trying to measure our lateral grip against the iRacing skidpad
+    # reference -- the mode the measurement needs was simply broken.
+    if (@isdefined RINGSPRITES) && !isempty(RINGSPRITES) && get(ENV,"JM_RING_BB","1") != "0"
         RING_BB_HALFW = parse(Float64, get(ENV,"JM_RING_BB_HALFW","5.0"))
         BB_MARKER_TEX = Set(["collision", "fake", "shadow", "lshad"])   # hull / placeholder markers, never artwork
         RING_BB_WIDE  = parse(Float32, get(ENV,"JM_WIDE_PANEL","30"))   # same constant the object pipeline uses
@@ -8930,7 +8936,10 @@ function main()
             PROF_DEPTH[] += time() - _tp_d; _tp_t = time()
             for (ti, it) in enumerate(trackItems)                        # ambfill lifts shadowed walls/fences out of the "carbonized" black under the flat overcast light
                 # RING-HAIRPIN-1 S3: with the tessellated road on, the .3do's asphalt/groove strips are not drawn
-                if ROADTESS && ti <= length(TRACKMAIN) && (lt_ = lowercase(TRACK[ti].tex); occursin("asp", lt_) || startswith(lt_, "groove"))
+                # SKIDPAD-GOLD-1 S2: same guard as RINGSPRITES above -- ROADTESS is a const defined
+                # inside the GPL-track branch, so on the synthetic SKIDPAD it does not exist and this
+                # line threw UndefVarError from inside main(). Second of the same class in one file.
+                if (@isdefined ROADTESS) && ROADTESS && ti <= length(TRACKMAIN) && (lt_ = lowercase(TRACK[ti].tex); occursin("asp", lt_) || startswith(lt_, "groove"))
                     continue
                 end
                 # E68 S9b: landmass SECTIONS draw single-sided like GPL — culls the dark edge-skirt
