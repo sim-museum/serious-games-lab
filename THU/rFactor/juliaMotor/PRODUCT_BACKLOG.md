@@ -27,7 +27,7 @@ this index was written; that is what it exists to stop.
 | **E102** | rear axles point outward/downward; must be horizontal, hub to chassis | **OPEN — two of my own diagnoses withdrawn** (S1: omitted BODY_OFF; S2: conflated components sharing a texture). Established: the assembly and wheels agree (brake disc within 2.8 mm). S4: 65 of 89 triangles are ONE connected mesh (so there is no separable shaft to level), but an isolated **3-triangle `axlelot` sliver** reaches the wheel plane and drops 0.099 m — the best candidate for the PO's "sticks". Needs a capture; three headless approaches are enough. |
 | **E103** | wheel loss in a collision hyperspaces the car to the start line | **mechanism found + fixed + gated** (E103-S1): the containment seal PLACES the car at its last on-track point, which initialises to spawn. Not yet seen in a real wreck. |
 | **E90** | Monza and Watkins have almost no collidable barrier objects | open; the gate passing IS the symptom. assessed |
-| **E91** | "Tesla brakes" — lift-off decelerates ~1.67× too hard | PO confirmed right by measurement (S4). Fix not landed. assessed |
+| **E91** | "Tesla brakes" — lift-off decelerates **3.44×** too hard | PO confirmed right by measurement (S6, against the real gold store; S4's 1.67× used the sim's own telemetry as "reference"). Fix not landed. assessed |
 | **E80** | 10 fps at Spa in cockpit view | analysis to S4; 725 s of load attributed to the trackside block. No fix landed. assessed |
 | **E81** | floating/misplaced billboards and buildings at the Ring | open; the Ring bypasses the pipeline the other tracks use. assessed |
 | **E76** | restore objects deleted after the Ring start/finish | open, lead only. assessed |
@@ -2743,6 +2743,10 @@ Added the gravity term the S2 fit was missing. On a slope `m·dv/dt = -F_drag - 
 
 ### E91-S4 (2026-08-29) — ⭐ **THE PO IS RIGHT, MEASURED: the sim decelerates ~1.67× harder off-throttle than the iRacing reference.**
 
+> ⚠️ **THE 1.67× IS WITHDRAWN AS A NUMBER (E91-S6): the "reference" it compared against was the
+> sim's own telemetry, not iRacing's.** The direction survives and the corrected figure against the
+> real gold store is **3.44×**. Read E91-S6 before using anything in this table.
+
 New tool `JuliaMotorMTK/tools/coast_compare.jl`. **The point is what it does NOT do.** S1–S3 tried to derive `ENGBRAKE` by subtracting aero and rolling out of a coast-down, and that failed on its own terms (derived engine torque vs rpm: R² = 0.064, and −0.091 for the code's own form). But the PO's complaint was never about a constant — *"lifting completely off the throttle decelerates the car like ABS"* is a claim about **total off-throttle deceleration**, which is directly observable in BOTH the sim and the reference. Compare those two numbers at matched speed and gear and **no decomposition is needed at all**: no aero fit, no rolling term, no slope correction, nothing to get wrong.
 
 Reference: telemetry, clutch OUT, zero throttle, zero brake, straight-line only (`|LatAccel|<2`, `|steering|<0.1`, `|yaw|<0.05`), slope removed. Sim: `DriveRT.step_car!` coasting at the same speed and gear, clutch engaged, throttle and brake zero.
@@ -2765,6 +2769,75 @@ Reference: telemetry, clutch OUT, zero throttle, zero brake, straight-line only 
 ⚠️ **AND IT STILL DOES NOT LICENSE EDITING A CONSTANT.** The PO's standing constraint is that the physics come entirely from the `.ibt` with no modifiable parameters. Tuning `ENGBRAKE` (or `CdA`, or `Crr`) until this table reads 1.0 would be exactly the knob-twiddling that constraint forbids — it would fit one table rather than derive a value. The straight-line coast-down capture requested in E91-S3 (in gear and clutch-in, ~200→60 km/h) remains what is needed, and now has a **quantified target**: it must explain a 1.67× excess.
 
 **REGRESSION USE:** re-run `coast_compare.jl` after any physics change. The ratio column is the gate.
+
+### E91-S6 (2026-09-15) — 🔴 **THE "iRACING REFERENCE" IN E91-S2/S3/S4 WAS THE SIM'S OWN TELEMETRY. Corrected: 3.44×, not 1.67×.**
+
+**Julia Racer writes its own telemetry in iRacing's `.ibt` format, under iRacing's filename
+convention, into `data/juliaracer/`** (`drive_native_mtk.jl:9322-9326`, `JM_IBT_DIR`). The
+reference captures live somewhere else entirely — `IBTDIR`, i.e. `/home/admin/gold standard/julia
+racer` (`drive_native_mtk.jl:513`). Both `coastdown_probe.jl` (E91-S2/S3) and `coast_compare.jl`
+(E91-S4) read **`data/juliaracer`** and their headers called it "the iRacing reference".
+
+**Measured, not assumed.** New tool `JuliaMotorMTK/tools/ibt_provenance.jl` classifies every capture
+by an intrinsic, one-sided marker: the sim fills ~30 channels and leaves the rest of the copied
+template at zero, so `Voltage`/`FuelLevel`/`WaterTemp`/`OilTemp` are non-zero in every real iRacing
+file and exactly zero in every file we wrote.
+
+| directory | .ibt | iRacing-written | sim-written |
+|---|---|---|---|
+| `data/juliaracer` | 318 | **0** | **318** |
+| `gold standard/julia racer` | 9 | 9 | 0 |
+| `gold standard/julia racer/260626telemetry` | 4 | 4 | 0 |
+
+Corroborated independently: 17 of those files have a `replay_*.jmr` twin at the same timestamp, and
+only the sim writes `.jmr`; one is `lotus49_watkins …` — a track key iRacing does not have, created
+by the E90-S7 `TRACK=watkins` mislabelling.
+
+**CORRECTED HEADLINE — the no-decomposition comparison against the real gold store:**
+
+| gear | km/h | n(ref) | ref m/s² | sim m/s² | sim/ref |
+|---|---|---|---|---|---|
+| 2 | 90 | 146 | 0.496 | 2.087 | **4.21** |
+| 2 | 126 | 39 | 0.833 | 3.030 | **3.64** |
+| 3 | 90 | 377 | 0.430 | 1.565 | **3.64** |
+| 3 | 126 | 73 | 0.714 | 2.315 | **3.24** |
+| 5 | 90 | 58 | 0.565 | 1.132 | **2.00** |
+| 5 | 171 | 18 | 1.039 | 2.635 | **2.53** |
+
+**Median 3.44×, every band ≥ 2.0.** The PO's complaint is confirmed *more* strongly than before, and
+the corrected magnitude lands back on **E91-S2's original 3.5×** — which S3 and S4 had walked down to
+1.42× and 1.67×. What actually moved between those sprints was the population, not the physics.
+
+**And the derivation route reopens.** `coastdown_probe.jl`, re-pointed at the gold store, finds coast
+segments in 6 of the 13 captures (67–179 points each) — so E91-S3's *"the gold `.ibt` files contain
+no clean coast-down"* was never tested against the gold files. On that population:
+
+* clutch-IN baseline `a = 2.25e-4·v² + 0.549` over 105 points, residual sd 0.43 m/s² (against 5.6 m/s²
+  on the contaminated set — the fit is an order of magnitude cleaner);
+* one-term `T_eng = 0.001651·rpm`, R² = **0.207** (was 0.064/−0.091 on sim data); two-term R² = 0.373;
+* implied `eb`: median **0.00088**, IQR 0.00019–0.00149 — the code's `ENGBRAKE = 0.012` is **13.6×**
+  the telemetry median, not the 1.4× S3 reported.
+
+⚠️ **STILL NOT A LICENCE TO SET THE CONSTANT.** IQR spread is 7.9× and gear 1 supplies 56 of the 75
+points; a constant fitted to that would be fitted to Nordschleife hairpin exits. The 3.44× table is
+an acceptance criterion, not a target to tune to.
+
+**Both tools are fixed, not just diagnosed:** each now defaults to `JM_REFDIR` (the gold store),
+walks it recursively, and *drops files file-by-file* with a printed warning if their housekeeping
+channels are all zero — so pointing either tool at a mixed directory can no longer silently compare
+the sim with itself.
+
+**METHOD (goes with [[parity-captures-must-record-their-state]]):** the sim writing its output in the
+reference's own format and naming convention makes the two populations indistinguishable by
+filename, directory listing, or eye. Three sprints' headline numbers rested on `readdir` of the
+wrong folder. **A reference population must be identified by something the reference produced, never
+by where a file sits or what it is called.**
+
+**NEXT (E91-S7):** the gold coast segments are short and gear-1-heavy. Either (a) census them for a
+long straight-line run (the Döttinger Höhe is the only Nordschleife stretch that could hold a
+200→60 km/h coast) and, if one exists, fit on that alone; or (b) ask the PO for one straight-line
+coast-down in iRacing — but only after (a), because E91 has now twice declared data missing that was
+never looked for in the right place.
 
 ### E80-S1 (2026-08-29) — the 725 s was unattributed because **2,364 consecutive lines carried no timestamp**
 

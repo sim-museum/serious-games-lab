@@ -42,11 +42,33 @@ function sim_coast(v0, gear)
 end
 
 # ---- reference: telemetry off-throttle decel, straight-line only, slope removed --------------
-dir = joinpath(@__DIR__, "..", "..", "data", "juliaracer")
-files = sort(filter(p -> endswith(p,".ibt"), readdir(dir; join=true)))
+# E91-S6 CORRECTION.  This read `data/juliaracer` and called it "the iRacing reference".
+# `data/juliaracer` is where JULIA RACER WRITES ITS OWN telemetry (drive_native_mtk.jl:9324), in
+# iRacing's format and under iRacing's filename convention; the reference captures live in IBTDIR
+# (`/home/admin/gold standard/julia racer`).  All 318 files in data/juliaracer are sim output --
+# measured, not assumed, by `ibt_provenance.jl`.  The table E91-S4 published therefore compared the
+# sim with the sim.  Nothing in a filename can tell the two apart, so the population is now BOTH
+# taken from the gold store AND checked file-by-file: a capture with `Voltage == 0` and
+# `FuelLevel == 0` everywhere was written by us and is dropped, loudly.
+const REFDIR = get(ENV, "JM_REFDIR", "/home/admin/gold standard/julia racer")
+is_iracing(f) = any(nm -> (v = ch(f,nm)) !== nothing && !isempty(v) && maximum(abs,v) > 0,
+                    ("Voltage","FuelLevel","WaterTemp","OilTemp"))
+dir = REFDIR
+files = String[]
+for (root,_,fs) in walkdir(dir), fn in fs
+    endswith(lowercase(fn), ".ibt") && push!(files, joinpath(root,fn))
+end
+sort!(files)
+nref = nown = 0
 ref = Dict{Int,Vector{Tuple{Float64,Float64}}}()      # gear => [(v, decel)]
 for p in files
     f = try ibt_open(p) catch; continue end
+    if !is_iracing(f)
+        global nown += 1
+        println("  ! SKIPPED (written by the sim, not iRacing): ", basename(p))
+        continue
+    end
+    global nref += 1
     thr, brk, spd = ch(f,"Throttle"), ch(f,"Brake"), ch(f,"Speed")
     gr, cl        = ch(f,"Gear"), ch(f,"Clutch")
     lat, stw, yaw = ch(f,"LatAccel"), ch(f,"SteeringWheelAngle"), ch(f,"YawRate")
@@ -67,6 +89,8 @@ for p in files
     end
 end
 
+println("\nreference population: ", nref, " iRacing captures from ", dir,
+        nown == 0 ? "" : string("  (", nown, " sim-written files skipped)"))
 println("E91-S4: TOTAL off-throttle deceleration, sim vs iRacing reference")
 println("        (clutch out, no brake, straight line; no decomposition anywhere)\n")
 @printf("  %-5s %-9s %-8s %-12s %-12s %-8s\n", "gear","km/h","n(ref)","ref m/s^2","sim m/s^2","sim/ref")

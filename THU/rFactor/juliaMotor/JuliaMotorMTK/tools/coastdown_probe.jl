@@ -120,9 +120,24 @@ function analyse(path)
     (basename(path), inpts, outpts)
 end
 
-dir = length(ARGS) >= 1 ? ARGS[1] : joinpath(@__DIR__, "..", "..", "data", "juliaracer")
-files = sort(filter(p -> endswith(p, ".ibt"), readdir(dir; join=true)))
-@printf("coastdown_probe: %d .ibt files in %s\n\n", length(files), dir)
+# E91-S6 CORRECTION: this defaulted to `data/juliaracer`, which is where JULIA RACER WRITES ITS
+# OWN telemetry (drive_native_mtk.jl:9324) -- not iRacing's.  E91-S2 and E91-S3 therefore derived
+# "the reference" engine braking from the sim's own output.  The gold store is IBTDIR.  Files are
+# also checked one by one: a capture whose housekeeping channels are all zero was written by us.
+dir = length(ARGS) >= 1 ? ARGS[1] : get(ENV, "JM_REFDIR", "/home/admin/gold standard/julia racer")
+files = String[]
+for (root,_,fs) in walkdir(dir), fn in fs
+    endswith(lowercase(fn), ".ibt") && push!(files, joinpath(root,fn))
+end
+sort!(files)
+is_iracing(p) = (f = try ibt_open(p) catch; nothing end) === nothing ? false :
+    any(nm -> (v = ch(f,nm)) !== nothing && !isempty(v) && maximum(abs,v) > 0,
+        ("Voltage","FuelLevel","WaterTemp","OilTemp"))
+let own = filter(!is_iracing, files)
+    isempty(own) || (@printf("  ! %d sim-written file(s) dropped from the reference population\n", length(own)))
+    global files = filter(is_iracing, files)
+end
+@printf("coastdown_probe: %d iRacing .ibt files in %s\n\n", length(files), dir)
 
 allin  = Tuple{Float64,Float64}[]
 allout = Tuple{Float64,Float64,Float64,Int}[]
