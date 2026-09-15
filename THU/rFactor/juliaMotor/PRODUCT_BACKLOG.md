@@ -11753,3 +11753,42 @@ different corner. The bisect harness stays: one run per hypothesis, with the wed
 oracle.
 
 **E102: 13 sprints total, 1 in this pass. The PO's oldest visual defect has a name.**
+
+### E102 S14 (Opus 5, 2026-09-14) — ⭐ `fsusp:1` spans the WHOLE CAR: the "front suspension" part carries geometry at both ends, and `susp_inboard()` is exonerated
+
+S13 named the culprit as item 1 of the front-suspension list. S14 asks how a front part paints at the
+rear, and the item census answers it without a new instrument — the `[item]` line now carries its
+list's tag.
+
+**MEASURED (`JM_ITEMDUMP=1`, bounding boxes in car-local metres):**
+
+| item | tex | tris | bbox x (fore/aft) | bbox z (lateral) |
+|---|---|---|---|---|
+| **`fsusp:1`** | `frontlot` | 94 | **[−1.06, 1.63]** | **[−0.63, 0.63]** |
+| `rsusp2:1` | `lbrdisc` | 46 | **[−1.06, 1.71]** | [−0.65, 0.61] |
+| `rsusp2:2` | `lsusp7` | 16 | [−1.66, −0.77] | [−1.01, 1.01] |
+| `rsuspa:1` | `axlelot` | 31 | [−1.48, −0.77] | [−0.74, −0.42] |
+| `rsuspa:2` | `lbrdisc` | 20 | [−1.04, −0.73] | [−0.61, −0.58] |
+
+⭐⭐ **`fsusp:1` is 2.7 m long and 1.26 m wide — the size of the whole chassis.** A front-suspension
+group belongs near the front axle, around x ≈ +1.0 to +1.6, and the properly-formed suspension items
+below it are exactly that compact (0.3–0.9 m). **So the part tinted in S13 contains vertices at the
+REAR of the car, which is why tinting "the front suspension" painted the wedges by the gearbox.**
+
+⭐ **The same signature appears on `rsusp2:1`** (x[−1.06, 1.71]) and on two `CARP` items S11 swept —
+`carp:16` x[−0.69,1.69] and `carp:8` `helblack` x[0.01,1.63], whose painted pixels S10 showed to be a
+patch on the helmet. **Item 1 of a list being car-sized while its siblings are part-sized is a
+pattern, not a one-off.**
+
+⛔ **`susp_inboard()` is exonerated by reading.** It only moves z **toward the centreline**
+(`v[k+2] = z > 0 ? max(z−SUSP_INBOARD, 0) : min(z+SUSP_INBOARD, 0)`) and never touches x, so it
+cannot put a front part at the rear. The displacement is in the extracted part itself.
+
+**S15, and it is one measurement:** is `fsusp:1` **two clusters or a smear**? Report the fore/aft
+distribution of its 94 triangles — vertices at x < 0 versus x > 0. **Two clusters means distinct
+nodes were merged into one part** (the extractor grouping by texture and losing per-node placement,
+which the `frontlot`/`lbrdisc` texture-sharing across corners would produce); **a continuous spread
+means one node is being transformed wrongly.** Those are different fixes, and the tint harness with
+the wedge samples is already the oracle for whichever it is.
+
+**E102: 14 sprints total, 2 in this pass.**

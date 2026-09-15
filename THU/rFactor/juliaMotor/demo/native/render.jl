@@ -1739,7 +1739,7 @@ function build_gpl(parts, idx::GPLTex; tag::String="")
                 ys = (min(ys[1],y), max(ys[2],y))
                 zs = (min(zs[1],z), max(zs[2],z))
             end
-            println("  [item] ", lpad(length(items),3), "  tex=\"", p.tex, "\"  tris=", n ÷ 3,
+            println("  [item] ", (tag == "" ? "?" : tag), ":", lpad(length(items),3), "  tex=\"", p.tex, "\"  tris=", n ÷ 3,
                     "  bbox x[", round(xs[1],digits=2), ",", round(xs[2],digits=2),
                     "] y[", round(ys[1],digits=2), ",", round(ys[2],digits=2),
                     "] z[", round(zs[1],digits=2), ",", round(zs[2],digits=2), "]")
