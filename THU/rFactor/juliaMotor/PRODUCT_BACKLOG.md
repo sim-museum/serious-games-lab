@@ -3324,6 +3324,34 @@ a load-and-drive execution trace is the only thing that touches a first-call-lat
 
 **E80: 3 sprints this pass.**
 
+### DELIVERY 260915 (2026-09-15) — a new Julia Racer AppImage, and one honest note about how it was verified
+
+The PO's newest Julia Racer image was **260913**. `~/Documents/260915/JuliaRacer-x86_64-260915.AppImage`
+(1.62 GB, packed 03:57) carries the work since: the E80 load-phase stamps, `JM_MTK_TWICE`,
+`coast_census.jl` and the corrected `coast_compare.jl` / `coastdown_probe.jl` reference handling.
+
+**Verified through the AppRun's own code-refresh path**, which is the mechanism a player's install
+actually uses:
+
+* build stamp **`20260915-035135`** written to the install;
+* `drive_native_mtk.jl` in the install contains **`JM_MTK_TWICE`** (added today);
+* `JuliaMotorMTK/tools/coast_census.jl` (written today) is present in the install.
+
+⚠️ **And the honest part: the verification run refreshed the PLAYER's install, not a scratch one.**
+The AppRun reads **`JR_HOME`**; I passed `JM_HOME`, which it ignores, so it used the default
+`~/.local/share/julia-racer`. No harm done — it installed exactly what the PO gets by launching the
+new image, and the refresh is copy-to-temp-then-swap — but it was not what I intended, and a
+verification that quietly writes to the player's tree is one step from a verification that eats it.
+**The variable is `JR_HOME`; every other project here uses a different name, which is why this is
+written down rather than remembered.**
+
+**A second note for whoever verifies the next Julia image:** the AppImage's entry point is the **PyQt
+launcher** (`demo/native/juliaRacer.py`), not the sim, so a headless `TRACK=… JM_SMOKE=1` invocation
+produces no sim output at all — it opens the launcher and waits. Verify by the install's stamp and
+contents (as above), or drive the sim directly inside the extracted AppDir.
+
+**DELIVERY 260915: 1 sprint.**
+
 ### E93 (PO 2026-08-29) — "starting from stationary in 1st, the clutch is reversed"
 
 PO: *"The slider has to be DOWN to start; slider UP prevents the car from moving. As soon as the car moves in first, the slider sense reverses."* Also: *"I can only shift with the slider at the bottom."*
