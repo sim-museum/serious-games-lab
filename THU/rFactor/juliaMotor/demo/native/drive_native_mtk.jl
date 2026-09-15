@@ -6660,6 +6660,16 @@ function main()
     tstamp("physics build (mtkcompile) begins")
     cs = build_carX(x0=cs0.x, z0=cs0.z, θ0=θ0spawn, v0=0.0, y0=y0spawn)   # MTK car — standing start (planar or full-3D)
     tstamp("physics build done — game loop imminent")
+    # E80-S3: is that ~95 s COMPILATION (first-call latency, which a sysimage can remove) or WORK
+    # (per-model, which it cannot)? Build a second car and time it. JM_MTK_TWICE=1; diagnostic only,
+    # the second car is discarded.
+    if get(ENV, "JM_MTK_TWICE", "0") != "0"
+        _t2 = time()
+        build_carX(x0=cs0.x, z0=cs0.z, θ0=θ0spawn, v0=0.0, y0=y0spawn)
+        println("[E80] second build_carX: ", round(time()-_t2, digits=1), " s",
+                "   (first was the phase above; a fast second call means COMPILATION, not work)")
+        flush(stdout)
+    end
     # ---- AI opponents (race field): rail-followers on the centreline ----
     # CLINE = the centreline, built ALWAYS (off-skidpad) so the PLAYER's lap counting can use a
     # robust projection wrap instead of the ribbon lapdist (the ribbon has a seam at S/F that

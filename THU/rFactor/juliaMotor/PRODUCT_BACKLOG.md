@@ -3280,6 +3280,50 @@ under a memory cap (the previous attempt OOM-killed the session at 13 GB).
 
 **E80: 2 sprints this pass.**
 
+### E80-S3 (2026-09-15) — the `JM_SMOKE` caveat is discharged (243.0 s windowed vs 244.2 s hidden), and the 95 s physics build is **~100% compilation**: a second `build_carX` takes **0.1 s**
+
+S2 left two things open: whether a hidden-window run measures what the player waits for, and whether
+the two big phases are compilation or work. Both are now answered.
+
+**1. The caveat is discharged.** The same Spa load, windowed (`JM_NO_SETUP_MENU=1`, no `JM_SMOKE`):
+
+| phase | hidden (S2) | **windowed** |
+|---|---|---|
+| track parse begins | 22.6 | **23.1** |
+| build_gpl done | 61.0 | **61.2** |
+| trackside DONE | 96.0 | **95.2** |
+| physics build begins | 148.3 | **148.1** |
+| **total** | **244.2** | **243.0** |
+
+**Within 0.5% end to end and within ~1 s phase by phase.** S2's numbers stand as measurements of a
+real load. *(The track label was checked against what the LOAD printed — `loading GPL spa67`,
+`centreline length = 14170 m (spa)` — not against the `TRACK` variable, per E90-S7's lesson.)*
+
+**2. ⭐⭐ The physics build is first-call latency, not work.** `JM_MTK_TWICE=1` builds a second car
+immediately after the first and times it:
+
+| | seconds |
+|---|---|
+| first `build_carX` (the 95 s phase) | **94.7** |
+| **second `build_carX`, same arguments** | **0.1** |
+
+**A factor of ~950.** Nothing about the model takes 95 s; compiling the code that builds it does. And
+the same run shows Zandvoort — a completely different track — spending **51 s** entering `main()` and
+**95 s** in the physics build, i.e. **both phases are track-INDEPENDENT**, which is what compilation
+looks like and what data loading does not.
+
+⭐ **So ~146 s of every load, on every track, is Julia compile latency**, and it is the same 146 s
+whether the player picks the 14 km Spa or the 4 km Zandvoort. Against a 243 s Spa load that is 60%;
+against a shorter track it is a larger fraction still.
+
+**NEXT (E80-S4): build the sysimage.** This is now the whole item — a `PackageCompiler` sysimage with
+a load-and-drive execution trace is the only thing that touches a first-call-latency term, and the
+0.1 s second call is the evidence that the term is removable rather than intrinsic. **Build it inside
+`systemd-run --user --scope -p MemoryMax=...`**: the previous attempt OOM-killed the whole session at
+13 GB, and a cgroup cap turns that into a failed build instead of a lost terminal.
+
+**E80: 3 sprints this pass.**
+
 ### E93 (PO 2026-08-29) — "starting from stationary in 1st, the clutch is reversed"
 
 PO: *"The slider has to be DOWN to start; slider UP prevents the car from moving. As soon as the car moves in first, the slider sense reverses."* Also: *"I can only shift with the slider at the bottom."*
