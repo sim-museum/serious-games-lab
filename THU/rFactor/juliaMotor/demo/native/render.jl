@@ -590,7 +590,24 @@ function make_shadow_fbo(size=SHADOW_SIZE)
 end
 """Light view-projection: an orthographic box from the sun direction, centred on
 `center` (the car), so the shadow map tracks the action."""
-function light_vp(center, lightdir; R=70.0, depth=400.0)
+# E104-S5: the shadow depth range decides what the fragment shader's bias means in METRES.
+# shadow() uses bias = max(0.0035*(1-N.L), 0.0018) in NORMALISED depth, and this ortho box maps
+# `depth` metres onto [0,1] -- so at the shipped depth=400 the floor bias is 0.0018*400 = 0.72 m
+# and the sloped bias reaches 1.4 m. A Lotus 49 is about 1 m tall, so a car's own contact shadow
+# on the road beneath it is entirely inside the bias and can never be drawn. Measured: forcing
+# shadow()=1.0 changes 3,083 px of 1,166,400 in a chase frame, all of them ON THE CAR, and the road
+# under the car by +0.3 (noise) -- while the GPL gold darkens the road under the car by 18%.
+# SHIPPED (E104-S5): depth defaults to 120 m, which puts the floor bias at 0.0018*120 = 0.22 m --
+# well under a car's height, so a contact shadow survives it. A/B on the same Monza chase frame:
+#   under the car   110.6 -> 81.1   (-29.5; the road is now 20% darker than beside it, gold is 18%)
+#   behind the car, road left, road right, far road, grass:  ALL unchanged to 0.0 -- no acne, no
+#   global darkening. 17,571 px of 1,166,400 differ, and they are the shadow.
+# JM_SHADOW_DEPTH=400 restores the old range. Measured at Monza in one light; other tracks and sun
+# angles are NOT verified -- if flat-ground acne appears anywhere, that env is the first thing to try.
+# JM_SHADOW_DEPTH/JM_SHADOW_R re-range the box without a rebuild, so the fix can be measured.
+function light_vp(center, lightdir;
+                  R=parse(Float64, get(ENV, "JM_SHADOW_R", "70.0")),
+                  depth=parse(Float64, get(ENV, "JM_SHADOW_DEPTH", "120.0")))
     L=normalize(Float64.(lightdir)); eye=Float64.(center) .+ L.*(depth/2)
     up = abs(L[2])>0.99 ? [0.0,0.0,1.0] : [0.0,1.0,0.0]
     ortho(-R,R,-R,R,1.0,depth) * lookat(eye, Float64.(center), up)

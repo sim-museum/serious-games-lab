@@ -4909,6 +4909,61 @@ same mistake E104-S2 made with a 4x upscale, and it needs a matched camera befor
 
 **E104: 4 sprints (2 this pass).**
 
+### E104-S5 (2026-09-15) — ✅ **FIXED, with the number that explains it: the shadow bias was 0.72 METRES, and a Lotus 49 is one metre tall**
+
+S4 measured that our car casts no contact shadow and named the split: does the road beneath the car
+fail to sample the shadow map, or is the shadow computed and then biased away? `JM_NOSHADOW=1`
+(which forces `shadow()` to 1.0) answers it in one capture pair:
+
+    whole frame: 3,083 px of 1,166,400 differ -- and every cluster is ON THE CAR
+    under the car  +0.3   behind  +0.0   road left  +0.0   road right  +0.0   grass  +0.0   trees  +0.0
+
+**The shadow map affects nothing but the car's own surfaces.** The road is sampling it and getting
+"lit" everywhere.
+
+⭐⭐ **The arithmetic says why.** `Render.light_vp(center, lightdir; R=70.0, depth=400.0)` builds an
+orthographic light box **400 m deep**, and the fragment shader's bias is expressed in NORMALISED
+depth:
+
+    bias = max(0.0035*(1.0 - dot(N, L)), 0.0018)
+
+At depth = 400 m, one unit of normalised depth is 400 m, so **the floor bias is 0.0018 x 400 =
+0.72 m** and the sloped bias reaches **1.4 m**. A Lotus 49 stands about a metre tall. **A car's own
+contact shadow is entirely inside the bias and can never be drawn** — for the player, for every AI
+car, on every track. That is the missing cue S4 measured against the gold.
+
+✅ **Fixed, and the fix is the measured one.** `depth` defaults to **120 m** (`JM_SHADOW_DEPTH=400`
+restores the old range; `JM_SHADOW_R` re-ranges the box's width), which puts the floor bias at
+**0.22 m**. Same Monza chase frame, same camera:
+
+| patch | before (400 m) | after (120 m) | delta |
+|---|---|---|---|
+| **under the car** | 110.6 | **81.1** | **−29.5** |
+| behind the car | 105.1 | 105.1 | 0.0 |
+| road left | 93.6 | 93.6 | 0.0 |
+| road right | 101.1 | 101.1 | 0.0 |
+| far road | 101.2 | 101.2 | 0.0 |
+| grass right | 109.5 | 109.5 | 0.0 |
+
+**The road under the car is now 20% darker than the road beside it. The GPL gold is 18%.** 17,571 px
+of 1,166,400 changed and they are the shadow; **every control patch is unchanged to 0.0**, so there
+is no acne and no global darkening. Verified again with no env set at all (under car 81.1, road
+right 101.1), because a default that is only ever exercised through an override is not a default
+([[fixed-in-dev-is-not-shipped]]).
+
+⚠️ **What is NOT verified:** one track, one sun angle, one camera. The old 400 m box was presumably
+chosen for headroom — at 120 m the light eye sits 60 m above the car along the light direction, which
+covers trees and grandstands but may clip a tall occluder or a very low sun. **If flat-ground acne or
+a missing distant shadow turns up anywhere, `JM_SHADOW_DEPTH` is the first thing to try**, and the
+right permanent shape is a bias expressed in metres and divided by the box depth rather than a raw
+normalised constant.
+
+**E104(a) is now explained end to end:** the geometry was right all along (four independent
+measurements across S2–S4 and E104-S3), and the car looked like it was hovering because the one cue
+that says "this is resting on that" was being erased by a depth bias three quarters of a metre deep.
+
+**E104: 5 sprints (3 this pass). (a) fixed.**
+
 ### E102-S1 (2026-09-01) — ⭐ measured: the WHOLE rear assembly sits ~0.3 m below the wheel centre, and that may be E104(a) too
 
 PO: *"axles should be horizontal between center of wheel and chassis, not sticks pointing outward
