@@ -11520,3 +11520,47 @@ the displaced-assembly signature this item has been looking for since S5.
 
 **E102: 9 sprints total, 1 in this pass. The blocked instrument is unblocked and a candidate is
 eliminated on evidence.**
+
+### E102 S10 (Opus 5, 2026-09-14) — ⚠️ the tint is MUTE on textured items, caught by its own control; fixed, and two more candidates fall
+
+S9 handed S10 two candidates picked by bounding box. Tinting the first, `helblack` (item 8), gave
+**zero magenta** — and S9's own rule says a zero is worth nothing until the instrument has been shown
+to speak, so the second candidate was run as a control first.
+
+⭐ **The control failed, which is why it was run.** Item 14 is `lotd` — **the body livery**, 1,470
+vertices, the largest painted surface on the car and unmistakably on screen:
+
+    [tint-item] carp:14 -> magenta on 1470 vertices (tex="lotd")
+    magenta pixels = 0      purple-ish pixels = 0
+
+**The shader ignores the vertex colour wherever a texture is bound.** So the zero from item 8 said
+nothing about item 8, and S9's working result on item 16 worked only because item 16 is untextured.
+*(Two sprints ago the same item lost two sprints to an instrument that could not speak. This time it
+cost one run.)*
+
+**FIX — a tinted item is now drawn UNTEXTURED**, on the path item 16 proved honours the colour:
+
+    push!(items, Item(vao, n, tinting_this_one ? GLuint(0) : tid, p.col))
+
+| run | magenta pixels |
+|---|---|
+| item 14, texture bound (before) | 0 |
+| item 14, texture dropped (after) | **47,041** |
+
+⭐ **Now the answers mean something, and both candidates are eliminated:**
+
+* **item 14 `lotd` = the body shell.** The whole engine cover and flank go magenta; the wedges stay
+  dark.
+* **item 8 `helblack` = the driver's helmet band** (2,137 px). Its model bounding box spans 1.6 m in
+  x and 0.95 m in z, but what it PAINTS is a patch on the helmet — so the box is wide because the
+  part carries far-flung vertices, not because it draws a blade.
+
+**Three of CARP's sixteen items are now excluded on evidence (8, 14, 16), each with a positive
+control in the same frame.**
+
+**S11:** sweep the rest, but not one run per item — thirteen runs is three hours. Make
+`JM_TINT_ITEM` accept a RANGE (`carp:1-8`) and bisect: one run says which half the wedges are in,
+four runs name the item. If no CARP item lights them, the wedges are not in `CARP` at all and the
+next list to sweep is the one the census showed after it.
+
+**E102: 10 sprints total, 2 in this pass.**

@@ -1702,7 +1702,12 @@ function build_gpl(parts, idx::GPLTex; tag::String="")
                 t
             end
         end
-        push!(items, Item(vao,n,tid,p.col))
+        # E102 S10: a tinted item is also drawn UNTEXTURED. Measured this sprint: tinting the body
+        # livery (item 14, `lotd`, 1470 vertices, unmistakably on screen) produced ZERO magenta and
+        # zero purple pixels, so the shader ignores the vertex colour wherever a texture is bound --
+        # which means a zero from a TEXTURED item says nothing at all. Dropping the texture id puts
+        # the item on the untextured path, the one item 16 proved honours the colour.
+        push!(items, Item(vao, n, (_tintidx > 0 && length(items) + 1 == _tintidx) ? GLuint(0) : tid, p.col))
         # JM_ITEMDUMP=1: index -> texture, so a pixel bisected to item N can be NAMED.
         # There was no way to attribute a drawn pixel to a mesh in this tree (Item carries no
         # name), which is what made the engine-graphics item (E106-S38) take several sprints.
