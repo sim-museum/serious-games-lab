@@ -3780,6 +3780,49 @@ graze and a square hit differ, and it is the PO's question in code form.
 
 **E99: 2 sprints.**
 
+#### E99-S3 (2026-09-15) — ⭐⭐ the pass-through band is the **"bleed the exit" branch pulling the car back in**, for 28 consecutive frames
+
+S2 found a band (offsets 2.60–2.75 m) where the car ends on the FAR side of the obstacle. `JM_GRAZE_TRACE=<offset>`
+now dumps the contact frame by frame, and the mechanism is on the page:
+
+    f18  z= 2.70  pen=0.358  n=(-0.813,+0.582)  vn= -23.05  F=(-240900,+172273)   <- approaching, pushed OUT
+    f20  z= 2.85  pen=0.829  n=(-0.729,+0.684)  vn=  -5.16  F=(-145911,+136969)
+    f21  z= 3.04  pen=0.862  n=(-0.678,+0.735)  vn=  +1.31  F=( +26515, -28737)   <- SEPARATING, pulled IN
+    f30  z= 4.28  pen=0.679  n=(-0.136,+0.991)  vn=  +1.13  F=(  +3745, -32199)
+    f33  z= 4.37  pen=0.622  n=(+0.053,+0.999)  vn=  +1.21  F=(  -3012, -35366)
+    f40  z= 4.05  pen=0.463  n=(+0.451,+0.893)  vn=  +1.33  F=( -19994, -34681)
+    f48  z= 2.94  pen=0.297  n=(+0.781,+0.624)  vn=  +1.17  F=( -28301, -18631)   <- back at its start z, still pulled
+
+⭐ **From f21 the force is antiparallel to the normal** — `F ≈ −39 kN · n`, i.e. pointing INTO the
+obstacle — and it stays that way for 28 frames while the car's separation velocity `vn` sits at
++1.1…+1.4 m/s. The car climbs to z = 4.37, is dragged back down through **z = 0, the obstacle's own
+centre line**, and ends at z ≈ −7 on the far side, stopped.
+
+**The source is `contact_force`'s E96-S3 exit bleed:**
+
+    if vn > 0.0 && δ > 0.0
+        Fn = -m*max(vn - VN_OUT_MAX, 0.0)/max(dt, 1e-3)
+    end
+
+whose own comment says *"it is capped at exactly the impulse that cancels the remaining separation, so
+it can slow the car to rest but **can never drag it back INTO the barrier**"*. **Measured, it does
+exactly that.**
+
+⚠️ **And the impulse does not do what its cap assumes.** At f21 the force is 39.1 kN, which over one
+step is Δv = F·dt/m = 39097/(617·60) ≈ **1.06 m/s** — enough to take vn from +1.31 to ~+0.25 in a
+single frame. `vn` instead reads +1.28 the next frame and stays above +1.1 for the whole 28. **So the
+bleed's one-frame cap is doing arithmetic on a Δv the car never actually receives**, and that is why
+it repeats rather than terminating. Why the impulse does not land is S4's question — it is a
+different question from "should the branch exist".
+
+**NEXT (E99-S4):** measure the Δv the body actually receives from one `extforce3d!` + `step_car3d!`
+at a known force, and compare with `F·dt/m`. If they disagree, every force-level cap in this file —
+the bleed, the `VN_OUT_MAX` outcome cap, the `CONTACT_DVMAX` clamp — is sized against a Δv that does
+not arrive, and that is worth knowing before any of them is retuned. **Do not "fix" the bleed by
+changing its coefficient until that number exists.**
+
+**E99: 3 sprints.**
+
 ## E100 — 🔴 The gearbox is HARDCODED, and it is the wrong car setup for every track but one
 
 **Violates the PO's standing constraint** (2026-08-27, verbatim): *"the car physics should be

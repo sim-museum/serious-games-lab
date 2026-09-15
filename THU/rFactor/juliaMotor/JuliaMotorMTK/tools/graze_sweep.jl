@@ -18,6 +18,11 @@ using Printf
 const dt = 1/60; const M = 617.0; const CARHALF = 2.0
 flat(x, z) = 0.0
 
+# E99-S3: per-frame contact dump for ONE offset (JM_GRAZE_TRACE=<offset>). The sweep found a band
+# (2.60-2.75 m) where the car ends on the FAR side of the obstacle; a flipped normal mid-contact is
+# the usual cause, and it is only visible frame by frame.
+const TRACE_OFF = haskey(ENV, "JM_GRAZE_TRACE") ? parse(Float64, ENV["JM_GRAZE_TRACE"]) : NaN
+
 function graze(v0, lateral; r = 3.0, wallx = 60.0, nsteps = 600)
     c = build_car3d(; x0 = wallx - 12.0, z0 = lateral, θ0 = 0.0, v0 = v0, y0 = 0.0)
     rr = r + CARHALF
@@ -33,6 +38,10 @@ function graze(v0, lateral; r = 3.0, wallx = 60.0, nsteps = 600)
             closing = max(closing, -vn)
             (Fx, Fy, Mz) = DriveRT3D.contact_force(rr - d, nx, nz, vn, c.θ; kind = :wall, dt = dt)
             if nct == 0; nx0 = nx; nz0 = nz; end
+            if !isnan(TRACE_OFF) && abs(lateral - TRACE_OFF) < 1e-9 && nct < 60
+                @printf("   f%-4d x=%7.2f z=%7.2f d=%6.3f pen=%6.3f  n=(%+.3f,%+.3f) vn=%+8.2f  F=(%+9.1f,%+9.1f) Mz=%+9.1f\n",
+                        i, c.x, c.z, d, rr - d, nx, nz, vn, Fx, Fy, Mz)
+            end
             nct += 1
             pen_max = max(pen_max, rr - d)
             f = hypot(Fx, Fy); f_max = max(f_max, f); imp += f*dt
