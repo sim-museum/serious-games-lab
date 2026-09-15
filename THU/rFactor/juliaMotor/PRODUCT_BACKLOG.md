@@ -4742,6 +4742,56 @@ it is pointed would not matter and this whole item would be moot.
 it end to end means wrecking a car on track and watching where it comes to rest, which needs the
 display. Suite **18/18**.
 
+### E104-S2 (2026-09-15) — half (a), the FLOAT, has a named constant and a measured excess: `BODY_OFF` lifts the body **0.30 m** while its own geometry is already hub-referenced
+
+E104-S1 fixed half (b). Half (a) — *"all cars are displayed as floating about 20 cm – 40 cm above the
+road"* — was left needing a capture. It does not need one: the number is in the source and the
+geometry says it is wrong.
+
+**1. The constant.** The car body is drawn through
+
+    bodyModel = tiltModel * Render.translate(BODY_OFF)
+    const BODY_OFF = Float32[-0.55, 0.30, 0.0]     # centre body on X, lift onto the wheels
+
+⭐ **A hardcoded 0.30 m vertical lift** — and 0.30 m is exactly `Rw_f`, the front wheel radius, which
+is the "double-counted wheel radius" E104 named as its first suspect *before* anyone looked.
+
+**2. The body model is NOT ground-referenced, so the lift is not a lift onto anything.** `JM_ITEMDUMP`
+prints each part's model-space bbox; for the Lotus body (`carp`):
+
+| part | model-space y |
+|---|---|
+| `rebroll` | 0.25 … 0.48 |
+| **`axlelot`** | **0.20 … 0.32** |
+| `back4` | −0.19 … 0.25 |
+| `lotinsid` | 0.08 … 0.22 |
+| `lo133` | −0.21 … 0.26 |
+
+**The model's own axle line sits ~0.26 m ABOVE its origin**, and parts extend to −0.21 below it: the
+origin is inside the car, not under it. Adding another **+0.30 m** puts the drawn axle ≈**0.56 m**
+above the road, against a wheel radius of 0.30–0.33 m. **Excess ≈ 0.23–0.26 m — squarely inside the
+PO's "20–40 cm".**
+
+**3. And the wheels do not get the same treatment**, which is what makes it visible as a gap rather
+than as a uniformly raised car. `WHEELS` comes from `Render.mesh_wheel_hubs(LOT3DO)` — the hub
+positions read out of the mesh — and `wheelspec_from_mesh(hubs, …, BODY_OFF[1], BODY_OFF[3])` applies
+**only BODY_OFF's x and z**. The vertical term is applied to the body and to nothing else.
+
+*(This is the same 0.26–0.3 m E102-S1 measured from the other side: "the WHOLE rear assembly sits
+~0.3 m below the wheel centre". One offset, two symptoms.)*
+
+⚠️ **NOT claimed: the correct value.** `mesh_wheel_hubs` treats the 3DO's **z** as vertical (it reads
+the wheel RADIUS off that axis) while `BODY_OFF` is indexed as `[x, y, z]` in renderer space — so the
+axis mapping has to be pinned before any number replaces 0.30, and "reasoning across two coordinate
+conventions" is how E102 lost two sprints.
+
+**S3:** print, for one frame, the drawn hub height and the drawn wheel-contact height in the SAME
+space the renderer uses. The difference is the float, measured where it appears rather than derived
+across conventions — and it also tells whether the fix is `BODY_OFF[2] = 0.04` or a hub-referenced
+expression.
+
+**E104: 2 sprints.**
+
 ### E102-S1 (2026-09-01) — ⭐ measured: the WHOLE rear assembly sits ~0.3 m below the wheel centre, and that may be E104(a) too
 
 PO: *"axles should be horizontal between center of wheel and chassis, not sticks pointing outward
