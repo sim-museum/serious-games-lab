@@ -6031,6 +6031,7 @@ tstamp("  [E80] AI car models done / projection")
 # CARGOLD-1 S8c (2026-09-07): FOV A/B against the gold cockpit still -- 65 (car_gold/lotus_cockpit_fov65.png)
 # gives the gold's dash and wheel size, 72 keeps more of the wheels in frame, 80 (the old default) made the
 # dash small and the scuttle a "visor". Default 70; JM_FOV overrides.
+tstamp("  [E80] .. AI cars done -> input/camera defs begin")
 const PROJ_COCKPIT = Render.perspective_revz(deg2rad(parse(Float32,get(ENV,"JM_FOV","70"))), Float32(W/H), 0.20f0, 3000f0)
 
 # ---- input: edge-detected shift, view + auto-gearbox toggle ----
@@ -6187,6 +6188,7 @@ function read_input()
 end
 
 # ---- terrain pitch: slope under the car from the HAT, sampled fore & aft ----
+tstamp("  [E80] .. read_input defined")
 function terrain_pitch(cs)
     SKIDPAD && return 0.0   # flat pad → no slope
     L = 1.5; fx = cos(cs.θ); fz = sin(cs.θ)               # physics forward (x, z)
@@ -6301,6 +6303,7 @@ end
 # no output was read as a timeout instead of as an unreachable block. E70-S2 had already fixed this
 # exact class for the on-road censuses; these three were missed. Hoisted out so every track reports.
 
+tstamp("  [E80] .. camera/replay-camera defs done")
 if get(ENV,"JM_ROADTEX_CENSUS","")!=""
   let   # E75-S9: own scope — at top level these loops shadowed globals (px/py/b/nrt)
     # First-pass finding (E70/E72/E73): ROAD_TEX recognises Spa's road (9658 tris, uniform
@@ -6574,6 +6577,7 @@ end
 
 
 # ---- main loop (in a function — avoids top-level soft scope, runs faster) ----
+tstamp("  [E80] .. main() defined; physics build next")
 function main()
     # E106-S13b: the physics-facing ground closure. It converts the app's -999 "off the HAT"
     # SENTINEL into NaN, because drive_rt3d guards only `isfinite` and -999 is finite -- a wheel

@@ -3236,6 +3236,50 @@ at this measurement timed out before the loop and produced nothing.
 
 **This is the fifth prediction in this epic to be written down before its run.** The four before it (per-billboard cost, HAT density, `.dat` size, and "the briefing was never reached" over in BoB) were all wrong, and each was cheaper to refute than to defend because the number was committed first.
 
+### E80-S2 (2026-09-15) — the Spa load is **244 s, not 13 minutes**, and **69% of it is COMPILATION**. The prediction S1 left is void: Spa has **491** distinct meshes, not 1,960 or 3,785.
+
+S1 left a written prediction: if the per-unit costs measured at Watkins held, Spa's 891 s trackside
+phase implied ~3,785 distinct meshes (or ~1,960 if the post-mesh work were super-linear). **Neither
+branch survives, because the phase it was predicting no longer exists.**
+
+**MEASURED TODAY** (`TRACK=spa JM_SMOKE=1 JM_TIMING=1 JM_MESH_TIME=1`, warm cache, hidden window):
+
+| phase | seconds | share |
+|---|---|---|
+| Julia startup + package load | 22.6 | 9% |
+| track parse + geometry + textures + GL upload | 38.4 | 16% |
+| trackside objects (incl. the **491**-mesh loop at 16.1 s) | 35.0 | 14% |
+| mirrors, wheels, AI cars, top-level definitions | 3.3 | 1% |
+| **entering `main()`** | **49.0** | **20%** |
+| **`mtkcompile` (physics model build)** | **95.9** | **39%** |
+| **total** | **244.2** | |
+
+⭐ **The 891 s trackside phase is gone** — it is **35 s** now. Whatever fixed it (the frustum culling,
+the mesh cache, E92/E106's work) fixed it without anyone re-measuring this item, so E80 has been
+carrying a stale headline for weeks.
+
+⭐⭐ **And the shape of the problem inverted.** `build_gpl` + object placement is 14% of the load;
+**startup + `main()` entry + `mtkcompile` is 167.5 s, 69%, and all three are Julia COMPILATION, not
+data.** Loading Spa's art is not what the player waits for. *(That also means the remedy is a
+sysimage rather than any further work on the mesh loop — and this repo has one OOM-killed sysimage
+attempt on record, which is now worth retrying with a memory cap.)*
+
+**The 49 s was found the way S1's 725 s should have been.** S1's own lesson was that a phase boundary
+is not a measurement; the same gap had simply moved. Four stamps were added between "AI car models
+done" and "physics build begins": the **definitions** take 0.6 s, so the remaining **49.0 s** is the
+first call into `main()` — its own compilation.
+
+⚠️ **Caveats stated, not buried:** this is a `JM_SMOKE` run (hidden window, auto-exit after 5 frames)
+on a warm file cache. It measures what the player waits for only insofar as the visible run does the
+same work; a windowed run should be measured before any figure here is quoted to the PO. The two runs
+here agree to within 6% phase by phase, so the numbers are at least repeatable.
+
+**NEXT (E80-S3):** repeat once windowed to check the JM_SMOKE caveat, then attack `mtkcompile` +
+`main()` — a `PackageCompiler` sysimage is the only thing that touches 69% of this load. Build it
+under a memory cap (the previous attempt OOM-killed the session at 13 GB).
+
+**E80: 2 sprints this pass.**
+
 ### E93 (PO 2026-08-29) — "starting from stationary in 1st, the clutch is reversed"
 
 PO: *"The slider has to be DOWN to start; slider UP prevents the car from moving. As soon as the car moves in first, the slider sense reverses."* Also: *"I can only shift with the slider at the bottom."*
