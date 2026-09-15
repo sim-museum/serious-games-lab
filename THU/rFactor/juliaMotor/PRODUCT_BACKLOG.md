@@ -2839,6 +2839,43 @@ long straight-line run (the Döttinger Höhe is the only Nordschleife stretch th
 coast-down in iRacing — but only after (a), because E91 has now twice declared data missing that was
 never looked for in the right place.
 
+### E91-S7 (2026-09-15) — the gold's coast segments are ENUMERATED: the straightest is **3.1 s and 4.2 km/h wide**. E91 really is blocked on the PO, and S6's `eb` numbers are withdrawn as a measurement.
+
+S6 re-pointed the probes at the real reference and noted that 6 of the 13 gold captures contain coast
+segments — which looked like the derivation route reopening. **It does not.** New tool
+`JuliaMotorMTK/tools/coast_census.jl` lists every maximal run of `throttle == 0 && brake == 0 &&
+v >= 8 m/s` in the gold store, with no fitting and no model: **52 segments across 13 captures.**
+
+| | |
+|---|---|
+| longest segment | **9.12 s** — skidpad, `|steer|` 0.74 rad: a continuous corner |
+| widest speed span | **191.9 km/h** (220.9 → 29.1 in 4.10 s) — that is **13 m/s², an impact**, not a coast (`|lat|` 444 m/s²) |
+| segments 150 → 100 km/h with `|steer|` < 0.15 | **0** |
+| straight-ish segments at all (`|steer|` < 0.15, `|lat|` < 20) | **6**, and the widest spans **4.2 km/h** (116.9 → 112.7 over 1.58 s) |
+
+One of those six *accelerates* (60.6 → 65.7 km/h): the Nordschleife is never flat for long.
+
+⭐ **So E91-S3's "the gold contains no clean coast-down" is CORRECT — and is now a measurement rather
+than an assertion.** S6 showed it had been reached on the wrong files; S7 re-establishes it on the
+right ones. The distinction matters: the old claim rested on a population that could not have
+supported it, and being accidentally right is not the same as being right.
+
+⚠️ **AND S6'S `eb` NUMBERS GO WITH IT.** S6 reported "implied `eb` median 0.00088, code = 13.6×" from
+75 clutch-out points in the gold. The census says those points come from cornering segments — the
+same contamination S2/S3 died of, just on a different file set. **Treat the 13.6× as a direction, not
+a number.** What survives S6 intact is the population fault it found (all 318 files in
+`data/juliaracer` are the sim's own output) and the **3.44× total-deceleration ratio**, which needs no
+decomposition and is therefore immune to this.
+
+**BLOCKED ON THE PO, with the evidence to ask properly.** The request is one iRacing session, ~2
+minutes: on a straight (Nordschleife's Döttinger Höhe, or any oval/airfield), accelerate to ~200 km/h
+in 4th or 5th, **lift off completely, keep it in gear and straight, and let it coast to ~60 km/h**;
+then a second run doing the same with the clutch held in. Two runs, and the pair separates engine
+braking from aero + rolling by subtraction with nothing to fit.
+
+**E91: 2 sprints this pass. The item is not "needs more analysis" — it needs 2 minutes of driving,
+and this is now demonstrated rather than claimed.**
+
 ### E80-S1 (2026-08-29) — the 725 s was unattributed because **2,364 consecutive lines carried no timestamp**
 
 E80's standing finding is that `build_gpl` accounts for only **82 s** of a ~13-minute Spa load and **725 s is unaccounted**. The reason it stayed unaccounted is now plain: `JM_TIMING` stamps `texture load begins` (:1596), `texture INDEX built` (:1598) and `build_gpl done (GL uploads)` (:1603) — and then **the next stamp is `physics build begins` at :3967**. Everything in between ran untimed.
