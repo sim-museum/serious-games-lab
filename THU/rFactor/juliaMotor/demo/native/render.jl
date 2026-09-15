@@ -1733,16 +1733,30 @@ function build_gpl(parts, idx::GPLTex; tag::String="")
         if get(ENV,"JM_ITEMDUMP","") != ""
             v = p.verts; nv = length(v) ÷ 11
             xs = (typemax(Float32), typemin(Float32)); ys = xs; zs = xs
+            # E102 S15: a part whose bbox spans the whole car is either TWO CLUSTERS (distinct nodes
+            # merged into one draw) or a SMEAR (one node transformed wrongly). Count the fore/aft
+            # split and the gap between the clusters -- that is the discriminator, and it is three
+            # lines inside a loop the census already runs.
+            nrear = 0; nfront = 0; rearmax = typemin(Float32); frontmin = typemax(Float32)
             for i in 0:(nv-1)
                 x = v[11i+1]; y = v[11i+2]; z = v[11i+3]
                 xs = (min(xs[1],x), max(xs[2],x))
                 ys = (min(ys[1],y), max(ys[2],y))
                 zs = (min(zs[1],z), max(zs[2],z))
+                if x < 0f0
+                    nrear += 1; rearmax = max(rearmax, x)
+                else
+                    nfront += 1; frontmin = min(frontmin, x)
+                end
             end
             println("  [item] ", (tag == "" ? "?" : tag), ":", lpad(length(items),3), "  tex=\"", p.tex, "\"  tris=", n ÷ 3,
                     "  bbox x[", round(xs[1],digits=2), ",", round(xs[2],digits=2),
                     "] y[", round(ys[1],digits=2), ",", round(ys[2],digits=2),
-                    "] z[", round(zs[1],digits=2), ",", round(zs[2],digits=2), "]")
+                    "] z[", round(zs[1],digits=2), ",", round(zs[2],digits=2), "]",
+                    "  x<0:", nrear, " x>=0:", nfront,
+                    (nrear > 0 && nfront > 0) ?
+                        string("  gap[", round(rearmax,digits=2), ",", round(frontmin,digits=2), "]=",
+                               round(frontmin - rearmax, digits=2)) : "")
         end
     end
     if get(ENV,"JM_TEXSTAT","0") != "0" && _TEXSTAT.uploads[] > 0 && (_TEXSTAT.uploads[] % 100) == 0

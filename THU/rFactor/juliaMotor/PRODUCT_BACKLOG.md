@@ -11792,3 +11792,45 @@ means one node is being transformed wrongly.** Those are different fixes, and th
 the wedge samples is already the oracle for whichever it is.
 
 **E102: 14 sprints total, 2 in this pass.**
+
+### E102 S15 (Opus 5, 2026-09-14) — ⭐⭐ **TWO CLUSTERS, 2.29 m apart**: `fsusp:1` is a MERGE, and the 102 rear vertices are the wedges
+
+S14 asked the discriminating question — is `fsusp:1` two clusters or a smear? — and the census now
+answers it, three lines added to a loop it already ran.
+
+**MEASURED (`JM_ITEMDUMP=1`, fore/aft split and the gap between the groups):**
+
+| item | x<0 | x≥0 | gap | reading |
+|---|---|---|---|---|
+| **`fsusp:1`** `frontlot` | **102** | **180** | **[−0.94, 1.35] = 2.29 m** | **two clusters** |
+| `rsusp2:1` `lbrdisc` | 132 | 6 | [−0.72, 1.35] = 2.07 m | **two clusters** |
+| `rsusp2:2` `lsusp7` | 48 | 0 | — | one group ✓ |
+| `rsusp2:3` `lshok` | 48 | 0 | — | one group ✓ |
+| `rsuspa:1` `axlelot` | 93 | 0 | — | one group ✓ |
+| `carp:16` (untextured) | 1464 | 591 | 0.07 m | **continuous — a real whole-car part** |
+
+⭐⭐ **`fsusp:1` is not one part.** 180 vertices sit at x ≥ 1.35 (the front axle, where a front
+suspension belongs — the nose reaches 2.48) and **102 sit at x ≤ −0.94, at the rear, with 2.29 m of
+empty space between them.** A single draw call containing two groups two metres apart is a **merge**,
+not a bad transform — and `carp:16`'s 0.07 m gap shows the test discriminates: that one really is a
+part that spans the car.
+
+⭐ **And it explains the wedges' shape, not just their place.** `fsuspItems` is drawn with the FRONT
+suspension's model matrix. The 102 rear vertices therefore get a transform meant for the front
+corners — which is exactly the PO's *"two dark-green flat wedges, tilted outboard and downward"*: rear
+geometry hung on a front-corner placement.
+
+⭐ **The likely mechanism is now nameable:** the extractor groups triangles by **texture**, and
+`frontlot` appears at more than one corner — the wheel-assembly census blocks carry
+`[item] 6 tex="frontlot" tris=17` of their own. Every `frontlot` triangle in the model lands in one
+part, wherever it is.
+
+**S16 — two candidate fixes, and the harness can choose between them in one run each:**
+1. **Split a part at a cluster gap** when building it (a gap of metres is not a part), and let each
+   half be placed by its own list; or
+2. **extract per NODE rather than per texture**, which is the root of it and touches more.
+Take (1) first: it is local, and the wedge samples plus `JM_TINT_ITEM` are already the oracle —
+after the split, `fsusp:1` should light only the front and the wedges should vanish from the frame.
+
+**E102: 15 sprints total, 3 in this pass. From "a screenshot with no way in" to a merge with a
+measured 2.29 m gap.**
