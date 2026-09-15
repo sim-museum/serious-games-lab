@@ -4792,6 +4792,66 @@ expression.
 
 **E104: 2 sprints.**
 
+### E104-S3 (2026-09-15) — ⛔ **S2's mechanism is REFUTED in the renderer's own space: `BODY_OFF[2] = 0.30` is RIGHT to within 10 mm, and the drawn car is geometrically sound**
+
+S2 warned, in its own words, that *"the axis mapping has to be pinned before any number replaces
+0.30, and reasoning across two coordinate conventions is how E102 lost two sprints"*, and named S3:
+print the drawn hub height and the drawn wheel-contact height in the SAME space the renderer uses.
+`JuliaMotorMTK/tools/body_float_probe.jl` does exactly that, with both conventions read out of the
+code rather than assumed:
+
+* a `.3do` vertex is `(x = fore/aft, y = LATERAL, z = UP)` — `Render.mesh_wheel_hubs` takes the side
+  and half-track from `p[2]` and the wheel RADIUS from the `p[3]` extent;
+* `render.jl` uploads `(p[1], p[3], p[2])` (`render.jl:1544`, `:1603`), so render space is
+  `(fore/aft, UP, lateral)` and `BODY_OFF[2] = 0.30` is a vertical lift of the body only;
+* `wheelmat(wx,wz,steer,r) = carModel * translate([wx, r, wz])`, so a drawn hub sits at `up = r`
+  above the car origin, which is the contact plane.
+
+**Measured, one frame of reference, all six cars:**
+
+| car | body mesh's OWN hub (up) | drawn wheel hub | drawn body hub | float | `BODY_OFF[2]` that aligns them |
+|---|---|---|---|---|---|
+| Lotus 49 | 0.019 / 0.030 | 0.310 / 0.340 | 0.319 / 0.330 | **+0.009 / −0.010 m** | 0.291 / 0.310 |
+| Ferrari | 0.001 / 0.020 | 0.310 / 0.340 | 0.301 / 0.320 | −0.009 / −0.020 m | 0.309 / 0.320 |
+| Brabham | −0.009 / 0.000 | 0.310 / 0.340 | 0.291 / 0.300 | −0.019 / −0.040 m | 0.319 / 0.340 |
+| BRM | 0.016 / 0.032 | 0.310 / 0.340 | 0.316 / 0.332 | +0.006 / −0.008 m | 0.294 / 0.308 |
+| Eagle | 0.002 / 0.022 | 0.310 / 0.340 | 0.302 / 0.322 | −0.008 / −0.018 m | 0.308 / 0.318 |
+| Cooper | 0.001 / 0.020 | 0.310 / 0.340 | 0.301 / 0.320 | −0.009 / −0.020 m | 0.309 / 0.320 |
+
+⭐ **The body mesh's own hubs sit at the mesh ORIGIN (0.00–0.03 m), not 0.26 m above it.** Add
+`BODY_OFF[2] = 0.30` and the drawn body hub lands on the drawn wheel hub to within **10 mm** on the
+Lotus and 40 mm on the worst of the six. The value that would align them exactly is **0.301** for the
+Lotus. **0.30 is not a double-counted wheel radius; it IS the wheel radius, and that is the right
+answer** — the body mesh is hub-referenced, so lifting it by one radius puts the hubs on the road-
+referenced wheels.
+
+**And the rest of the drawn car agrees.** The four wheel meshes are centred on their own origins to
+the millimetre (`lotwlf/rf` up −0.311…0.311, `lotwlr/rr` −0.336…0.336) and are placed at `r` = 0.31 /
+0.34, so a drawn tyre's bottom is at **−0.001 m** — on the contact plane. The drawn body underside
+bottoms out at **−0.006 m**. Wheels touch, body clears, hubs line up.
+
+⚠️ **Where S2 went wrong, precisely, because it is a trap worth naming.** S2's part table WAS the
+right axis (`rebroll` 0.25…0.48, `back4` −0.19…0.25, `lo133` −0.21…0.26 all match the mesh exactly).
+Its error was the one row it reasoned from: it recorded `axlelot` as **0.20…0.32** and read 0.32 as
+"the model's own axle line, ~0.26 m above its origin". The mesh says `axlelot` is **−0.08…0.32 in up
+and −1.80…0.93 in fore/aft** — the merged whole-car group E102 spent four sprints splitting. **A
+merged part's bbox maximum is not a feature's position**, and S2 took a number from a group it had
+already been established was a merge.
+
+**So E104(a) is not a body-offset defect and `BODY_OFF[2]` must not be changed.** What is left of the
+PO's *"all cars are displayed as floating about 20 cm – 40 cm above the road"* is the CAR ORIGIN
+against the drawn road — the half E104-S4 (2026-09-01) already found and fixed for AI cars
+(`RaceAI.pose_at` applying the lane offset to x and z but not y), measuring the player at 0.00 m in
+the same run.
+
+**S4: settle whether it still reproduces at all, against the gold.** `~/gold standard/julia racer`
+holds ten GPL lap videos including five **nintendo** (chase) laps, where the tyre-contact line is
+directly visible. One frame of `260802_monza_nintendo.mp4` beside one of ours at the same camera
+gives the tyre-to-road gap in both. If ours matches, E104(a) closes as fixed by S4 rather than on a
+mechanism nobody can now find.
+
+**E104: 3 sprints.**
+
 ### E102-S1 (2026-09-01) — ⭐ measured: the WHOLE rear assembly sits ~0.3 m below the wheel centre, and that may be E104(a) too
 
 PO: *"axles should be horizontal between center of wheel and chassis, not sticks pointing outward
