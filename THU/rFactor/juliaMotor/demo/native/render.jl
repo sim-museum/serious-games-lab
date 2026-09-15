@@ -1638,9 +1638,36 @@ const _TEXSTAT = (uploads=Ref(0), lookups=Ref(0), names=Set{String}(),
 # (E92-S4 looked at an early sample, saw 7%, and called this negligible. It is not -- and the error
 # was generalising from one reading, not the reading itself.)
 const _TEXCACHE = Dict{String,GLuint}()
-function build_gpl(parts, idx::GPLTex)
+function build_gpl(parts, idx::GPLTex; tag::String="")
     cache=_TEXCACHE; items=Item[]
+    # E102 S9: JM_TINT_ITEM="<tag>:<n>" paints item n of this list magenta AT THE DRAW SITE, in the
+    # vertex array that is about to be uploaded. S8 tinted TrackPart.col (baked earlier, cannot
+    # repaint) and then the CARP per-vertex rgb (2055 vertices, still zero magenta pixels), which
+    # proved only that CARP is not what reaches the screen. This is the last writable copy before
+    # the GPU, so if tinting here changes nothing, nothing downstream is reading these vertices.
+    _tint = get(ENV, "JM_TINT_ITEM", "")
+    _tintidx = 0
+    if _tint != "" && tag != ""
+        pr = split(_tint, ":")
+        if length(pr) == 2 && lowercase(strip(pr[1])) == lowercase(tag)
+            _tintidx = something(tryparse(Int, strip(pr[2])), 0)
+        end
+    end
     for p in parts
+        if _tintidx > 0 && length(items) + 1 == _tintidx
+            v = p.verts; nv = length(v) ÷ 11
+            # E102 S9: the COLOUR is attribute loc 2, byte offset 6*4 -- see upload(): the
+            # attributes are (0,0) xyz, (1,3*4), (2,6*4) and (3,9*4) which is the 2-float UV.
+            # So rgb is floats 7,8,9 of each 11 (1-based); S8 wrote 9,10,11, i.e. the last colour
+            # channel and BOTH UVs. That is why S8's "magenta on 2055 vertices" produced zero
+            # magenta pixels: it never touched the colour the shader reads.
+            for i in 0:(nv-1)
+                v[11i+7] = 1.0f0; v[11i+8] = 0.0f0; v[11i+9] = 1.0f0
+            end
+            println("  [tint-item] ", tag, ":", _tintidx, " -> magenta on ", nv,
+                    " vertices (tex=\"", p.tex, "\")")
+            flush(stdout)
+        end
         vao,n = upload(p.verts); tid=GLuint(0)
         if p.tex != ""
             key=lowercase(p.tex)
@@ -1679,8 +1706,27 @@ function build_gpl(parts, idx::GPLTex)
         # JM_ITEMDUMP=1: index -> texture, so a pixel bisected to item N can be NAMED.
         # There was no way to attribute a drawn pixel to a mesh in this tree (Item carries no
         # name), which is what made the engine-graphics item (E106-S38) take several sprints.
-        get(ENV,"JM_ITEMDUMP","") != "" && println("  [item] ", length(items), "  tex=\"",
-            key, "\"  tris=", n ÷ 3)
+        # E102 S9: two fixes to this probe, both of which E102 needed.
+        #  (1) it printed `key`, which is only assigned INSIDE the `if p.tex != ""` branch. Julia
+        #      keeps that binding for the whole function, so an UNTEXTURED part printed the
+        #      PREVIOUS part's texture name (or threw on the first one). E102's suspect is
+        #      CARP#16, tex="" -- exactly the case this got wrong. It prints p.tex now.
+        #  (2) a texture name does not locate anything on screen. The BOUNDING BOX does, and the
+        #      vertex array is right here: 11 floats per vertex, xyz at offsets 1-3.
+        if get(ENV,"JM_ITEMDUMP","") != ""
+            v = p.verts; nv = length(v) ÷ 11
+            xs = (typemax(Float32), typemin(Float32)); ys = xs; zs = xs
+            for i in 0:(nv-1)
+                x = v[11i+1]; y = v[11i+2]; z = v[11i+3]
+                xs = (min(xs[1],x), max(xs[2],x))
+                ys = (min(ys[1],y), max(ys[2],y))
+                zs = (min(zs[1],z), max(zs[2],z))
+            end
+            println("  [item] ", lpad(length(items),3), "  tex=\"", p.tex, "\"  tris=", n ÷ 3,
+                    "  bbox x[", round(xs[1],digits=2), ",", round(xs[2],digits=2),
+                    "] y[", round(ys[1],digits=2), ",", round(ys[2],digits=2),
+                    "] z[", round(zs[1],digits=2), ",", round(zs[2],digits=2), "]")
+        end
     end
     if get(ENV,"JM_TEXSTAT","0") != "0" && _TEXSTAT.uploads[] > 0 && (_TEXSTAT.uploads[] % 100) == 0
         println("[texstat] uploads=", _TEXSTAT.uploads[], "  distinct=", length(_TEXSTAT.names),

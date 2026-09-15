@@ -5501,7 +5501,7 @@ if get(ENV,"JM_TEXDIAG","")!=""
     flush(stdout)
 end
 
-carItems   = Render.build_gpl(CARP, GPLTEX)        # Lotus body, GPL .mip textures
+carItems   = Render.build_gpl(CARP, GPLTEX; tag="carp")   # Lotus body, GPL .mip textures (E102 S9: tag for JM_TINT_ITEM)
 pipeItems  = Render.build_gpl(PIPEP, GPLTEX)       # E106-S4: exhausts, drawn lifted (see PIPEP)
 axleItems  = Render.build_gpl(AXLEP, GPLTEX)       # E106-S9: straight synthesized driveshafts
 carItemsIn = isempty(CARPIN) ? Render.Item[] : Render.build_gpl(CARPIN, GPLTEX)  # E106-S5: cockpit-view body

@@ -11476,3 +11476,47 @@ and confirm it there.
 
 **E90: 4 sprints this pass (S5-S8) — AT THE CAP, and the defect the PO reported is fixed in the
 default build.**
+
+### E102 S9 (Opus 5, 2026-09-14) — ⭐⭐ the tint works now, and it REFUTES `CARP#16`: S8's "zero magenta" was three wrong floats
+
+S8 concluded from two failed tints that *"`CARP` is not the last word on what is drawn"*. S9 went to
+the draw site as S8 asked — and found the instrument, not the pipeline, at fault.
+
+⭐ **The colour attribute is floats 7–9 of each 11; S8 wrote 9–11.** `upload()` binds
+`(0,0) (1,3*4) (2,6*4) (3,9*4)` and attribute 3 is the **2-float UV**. So S8's
+*"magenta on 2055 vertices"* wrote the last colour channel and **both texture coordinates** — it
+never touched the colour the shader reads. Two sprints of "the tint never reaches the screen" were
+one offset.
+
+**With floats 7–9 written instead, the same part, the same frame:**
+
+    [tint-item] carp:16 -> magenta on 2055 vertices (tex="")
+    magenta pixels in frame = 11,098   (was 0)
+
+⭐ **`CARP#16` IS drawn — and it is NOT the wedges.** The magenta lands on the roll-over bar, the
+engine bay and the driver's shoulders. **The two dark wedges hanging outboard and down stay dark in
+the tinted frame**, so S7's candidate is eliminated — this time by an instrument that has been shown
+to speak, with an 11,098-pixel positive control in the same image.
+
+**Two more fixes to the census, both of which this item needed:**
+* `JM_ITEMDUMP` printed `key`, which is assigned only inside `if p.tex != ""`. Julia keeps that
+  binding for the whole function, so an **untextured** part printed the PREVIOUS part's texture name
+  — and E102's suspect is the untextured one. It prints `p.tex` now.
+* each item now reports its **bounding box**, which is what actually locates a part on screen.
+
+⭐ **And the bounding boxes hand S10 its candidates without another run.** CARP is 16 items; two have
+boxes far larger than the part they are named after:
+
+| item | tex | tris | bbox |
+|---|---|---|---|
+| 8 | `helblack` | 26 | x[0.01,**1.63**] y[0.11,0.44] z[**-0.11,0.84**] |
+| 14 | `lotd` | 490 | x[-0.72,**2.48**] y[-0.22,0.35] z[-0.42,0.42] |
+
+**The same `helblack` in the cockpit list is x[0.01,0.21] z[-0.11,0.11]** — small and symmetric. A
+helmet texture on geometry spanning 1.6 m fore-and-aft and 0.95 m across, all of it on ONE side, is
+the displaced-assembly signature this item has been looking for since S5.
+
+**S10:** tint items 8 and 14 in turn, same frame, same control. One of them should light the wedges.
+
+**E102: 9 sprints total, 1 in this pass. The blocked instrument is unblocked and a candidate is
+eliminated on evidence.**
