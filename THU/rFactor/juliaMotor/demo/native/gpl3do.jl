@@ -227,6 +227,18 @@ function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}
             println("   [nodediag] node ", off, " type 0x", string(typ, base=16), " depth ", depth,
                     "  accumulated translation (", round(M[1,4],digits=3), ", ", round(M[2,4],digits=3),
                     ", ", round(M[3,4],digits=3), ")  scale ", round(sc,digits=3))
+            # E75 S4: and the RAW payload. Type 0x16 is read with the same 9-field layout as 0x0D
+            # (d, rot, scale, child) -- if it carries MORE than that, the extra words are where GPL
+            # keeps the runtime pose, and the rear suspension's fold would be in them. Print both
+            # the integer and float views, because a field can be an index or a value and the
+            # parser currently guesses.
+            print("   [nodediag]   raw:")
+            for w in 0:15
+                q = p + 4*w
+                q + 4 > length(b) && break
+                print("  [", w, "]=", i32(b, q), "/", round(f32(b, q), digits=4))
+            end
+            println()
         end
         PRIMTALLY[typ] = get(PRIMTALLY, typ, 0) + 1
         push!(PATH, typ)

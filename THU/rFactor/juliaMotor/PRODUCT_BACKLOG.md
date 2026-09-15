@@ -12745,6 +12745,45 @@ target is known: the strips must close onto the hub the node already sits on.
 **E75: 3 sprints this pass. Three candidate causes eliminated by measurement; one left, and it is
 localised to a node whose offset and correct position are both known.**
 
+### E75 S4 this pass (2026-09-15) — ⛔ **there is no stored fold: the type-`0x16` node has the SAME nine-word payload as `0x0D`.** GPL poses these parts at runtime, and the `.3do` holds only a rest pose
+
+S3 named the next step: dump 27288/39792's raw payload, on the theory that a type-`0x16` node carries
+fields beyond the eight the parser reads and that the fold lives in them. `JM_NODEDIAG` now prints
+the raw words in both integer and float views, and the theory is dead.
+
+**Front node 6600 (type `0x0D`) and rear node 39792 (type `0x16`), word by word:**
+
+    6600  [0]=13   [1]=0 [2]=0 [3]=0.02   [4]=0 [5]=0 [6]=0   [7]=1.0   [8]=6584    [9]=13  [10]=1.526 ...
+    39792 [0]=22   [1]=0 [2]=0 [3]=0.02   [4]=0 [5]=0 [6]=0   [7]=1.0   [8]=39748   [9]=22  [10]=-0.893 ...
+
+* `[0]` type, `[1..3]` d, `[4..6]` rot, `[7]` scale, `[8]` child — **nine words, identical layout**;
+* `[9]` is already the NEXT node's type in both cases, so there is nothing after the child pointer;
+* both carry the **same local offset `d = (0, 0, 0.02)`** — a 2 cm lift, front and rear alike;
+* the hub position that S3 measured (`−0.893, ±0.7725`) sits in the FOLLOWING node's `d`, exactly as
+  the accumulated-translation report said.
+
+⛔ **So `0x16` is just another positioner and stores no pose.** GPL applies the rear suspension's
+articulation **at runtime, from the car's own state**; the `.3do` carries a rest pose and nothing
+else. There is no transform hiding in the file to be recovered.
+
+⭐ **Which turns the remaining question around, and it is a better question.** Every candidate that
+blamed the PLACEMENT is now eliminated — lateral clip (E102 S18, a 14-pixel A/B), parked positioners
+(S2, the Lotus has none), group placement (S3, correct to 7 mm), stored fold (this sprint, no such
+field). What is left is E75-S8's observation itself: *"the raw parts are UNFOLDED flat strips"*. **But
+that was measured through `RSUSPP2`, which applies `maxedge=1.5` and `maxlat=1.3` of its own** — so
+"unfolded strips" may be what those clips leave behind rather than what the model holds.
+
+**S5 — draw them raw.** Extract 27288/39792 with **no clip at all**: `maxlat=Inf`, `maxedge=Inf`, no
+`dedup`, no group exclusion, and nothing else in the frame. If the parts appear as a recognisable
+suspension in their correct place, the rest pose is sound and everything since E64-S4 has been
+fighting our own filters; if they really are flat strips, GPL's runtime fold is required and the item
+becomes "implement the pose", which is a much larger and clearly-stated piece of work. **Either way
+this is the measurement that decides how big E75 actually is**, and it is one headless extract plus
+one capture.
+
+**E75: 4 sprints this pass — AT THE CAP. Four placement candidates eliminated by measurement; the
+item now hinges on one capture that nobody has taken.**
+
 ### SPA-FPS-1 S10 (Opus 5, 2026-09-14) — ⛔ S9's black mirror was the `!REPLAY` term, not the hidden window; and with it lifted **the strobe is measured**
 
 S9 concluded *"a hidden window may not run the RTT"* and left the strobe question open. **The reason
