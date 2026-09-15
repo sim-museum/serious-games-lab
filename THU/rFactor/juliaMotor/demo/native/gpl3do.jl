@@ -215,6 +215,19 @@ function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}
         p = prim_off + off
         p + 4 > length(b) && return
         typ = u32(b, p)
+        # E75 S3 (2026-09-15): JM_NODEDIAG="<off>,<off>,..." reports ANY listed node, whatever its
+        # type, with the transform accumulated from the root. JM_POSDIAG only fires inside the
+        # type-0x0D positioner branch, so 27288/39792 -- the two groups that carry the WHOLE rear
+        # suspension (lshok, lsusp3/4/5/6/7, frontlot) and are excluded by default -- printed
+        # nothing at all and their placement could not be read. The front pair 3560/6600 lands on
+        # the front hubs at (1.526, +-0.762); the rear pair must land on the drawn rear hub at
+        # (-1.436, +-0.770), and the difference is the mis-placement E64-S4 named but never measured.
+        if get(ENV, "JM_NODEDIAG", "") != "" && string(off) in split(ENV["JM_NODEDIAG"], ",")
+            sc = sqrt(M[1,1]^2 + M[2,1]^2 + M[3,1]^2)
+            println("   [nodediag] node ", off, " type 0x", string(typ, base=16), " depth ", depth,
+                    "  accumulated translation (", round(M[1,4],digits=3), ", ", round(M[2,4],digits=3),
+                    ", ", round(M[3,4],digits=3), ")  scale ", round(sc,digits=3))
+        end
         PRIMTALLY[typ] = get(PRIMTALLY, typ, 0) + 1
         push!(PATH, typ)
         if typ == 0x04                              # group: 4, count, child*

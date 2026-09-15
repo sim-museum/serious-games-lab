@@ -12692,6 +12692,59 @@ rather than a search.
 **E75: 2 sprints this pass. One mechanism eliminated for this car, and the comparison the fix needs
 is set up on both sides.**
 
+### E75 S3 this pass (2026-09-15) — ⭐⭐⭐ **the rear suspension groups are placed CORRECTLY — 7 mm from the drawn rear hub.** "Displaced assemblies" is wrong; the only remaining cause is the unfolded geometry
+
+S2 set up the two-number test and named the blocker: `JM_POSDIAG` only reports inside the type-`0x0D`
+positioner branch, so 27288/39792 printed nothing. **`JM_NODEDIAG="<off>,..."`** (new, in `_walk`)
+reports ANY listed node, whatever its type, with the transform accumulated from the root:
+
+    [nodediag] node   6600 type 0xd  depth  8  accumulated translation ( 1.526,  0.762, 0.0)  scale 1.0
+    [nodediag] node   3560 type 0xd  depth  8  accumulated translation ( 1.526, -0.762, 0.0)  scale 1.0
+    [nodediag] node  39792 type 0x16 depth 19  accumulated translation (-0.893,  0.772, 0.01) scale 1.0
+    [nodediag] node  27288 type 0x16 depth 23  accumulated translation (-0.893, -0.772, 0.01) scale 1.0
+
+⭐⭐ **And they land on the rear hubs.** The drawn rear hub is at car-frame fore/aft **−1.436**,
+lateral **±0.770** (E102 S18); `BODY_OFF[1]` is −0.55, so in mesh coordinates that is
+**−0.886, ±0.770**. The two rear groups accumulate to **−0.893, ±0.772**:
+
+| | fore/aft | lateral |
+|---|---|---|
+| drawn rear hub (mesh frame) | −0.886 | ±0.770 |
+| nodes 27288 / 39792 | **−0.893** | **±0.772** |
+| difference | **7 mm** | **2 mm** |
+
+**Seven millimetres and two millimetres.** They mirror the front pair exactly — front groups on the
+front hubs at (1.526, ±0.762), rear groups on the rear hubs at (−0.893, ±0.772), scale 1.0 on all
+four, no absurd translation anywhere.
+
+⛔ **So E64-S4's reading — *"WHOLE DISPLACED ASSEMBLIES … GPL runtime-hidden branches our positioner
+walk mis-places"* — is REFUTED for these two nodes.** Our positioner walk places them correctly. The
+"chrome spider-legs through the rear tyres" that sprint photographed cannot be a placement error,
+because the placement is right to within a centimetre.
+
+⭐ **Which leaves exactly one cause, and it is the one E75-S8 already named:** the geometry under
+those nodes is **unfolded flat strips** — *"drawing them in place lays panels under the car"*. Placed
+correctly, unfolded, they read as plates and spears; excluded, the rear end is bare and the residue
+(18 `axlelot` + 4 `lsusp2` + 6 `lbrdisc` triangles, E75 S1) is what the PO photographed as "sticks".
+
+**The whole chain is now accounted for and nothing else is a candidate:**
+
+| step | verdict |
+|---|---|
+| lateral clip `CARP_MAXLAT` | refuted — opening it moves 14 px of 1,166,400 (E102 S18) |
+| parked positioners | refuted — the Lotus has none (E75 S2) |
+| group placement | **refuted — correct to 7 mm (this sprint)** |
+| **unfolded strip geometry** | **the only survivor** |
+
+**S4:** the fold itself. GPL poses these strips at runtime; the transform is not in the positioner
+chain (it is correct) so it is in the node payload the strips hang from — the type-`0x16` node's own
+fields beyond the eight this parser reads, or a sibling the walk skips. `JM_NODEDIAG` now prints any
+node by offset, so dumping 27288/39792's raw payload word by word is the next concrete step, and the
+target is known: the strips must close onto the hub the node already sits on.
+
+**E75: 3 sprints this pass. Three candidate causes eliminated by measurement; one left, and it is
+localised to a node whose offset and correct position are both known.**
+
 ### SPA-FPS-1 S10 (Opus 5, 2026-09-14) — ⛔ S9's black mirror was the `!REPLAY` term, not the hidden window; and with it lifted **the strobe is measured**
 
 S9 concluded *"a hidden window may not run the RTT"* and left the strobe question open. **The reason
