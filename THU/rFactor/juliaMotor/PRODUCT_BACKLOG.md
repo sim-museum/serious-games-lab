@@ -11389,7 +11389,10 @@ global SOLIDBOX::Vector{SolidBoxT} = SolidBoxT[]
 Nothing at the call sites changed — the `global SOLIDS = …` rebuilds in the track loaders still run,
 they just have to keep their type.
 
-**MEASURED at Watkins, 200,000 calls, one run each:**
+**MEASURED at Watkins, 200,000 calls, one run each:** *(⚠️ corrected in S8: `TRACK=watkins` is not
+a valid track key, so this pair actually ran on **Zandvoort**. Same build, same track, same 152
+solids, one annotation changed and the internal control flat — the ratio below stands; the circuit
+name does not.)*
 
 | `SOLIDS`/`SOLIDBOX` binding | per call (152 solids) | per solid |
 |---|---|---|
