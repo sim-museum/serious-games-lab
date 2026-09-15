@@ -12784,6 +12784,49 @@ one capture.
 **E75: 4 sprints this pass — AT THE CAP. Four placement candidates eliminated by measurement; the
 item now hinges on one capture that nobody has taken.**
 
+### SKIDPAD-GOLD-1 S1 (NEW, 2026-09-15) — ⭐⭐ **the real Lotus 49 pulls 1.2–1.3 g of steady lateral acceleration**, measured from a reference telemetry capture nobody had opened
+
+`~/gold standard/julia racer/260626telemetry/` holds four `.ibt` files. `ibt_provenance.jl` — the
+tool built for exactly this question after a sprint once compared the sim with its own output —
+reports **"4 iRacing-written, 0 JULIA-RACER-written … PURE REFERENCE"**. One of them is a **skidpad**
+run, 425 MB, 396,018 samples, with all 276 iRacing channels including `LatAccel`, `LongAccel`,
+`SteeringWheelAngle` and `YawRate`.
+
+**A skidpad is the cleanest tyre oracle there is**: constant-radius cornering gives lateral
+acceleration against speed with no track, racing line or driver skill in the way. And **our sim
+already has a skidpad mode** (`drive_native_mtk.jl`: `inp.steer * (SKIDPAD ? 0.30 : CAR.max_steer)`),
+so the same statistic is available from both sides.
+
+**The reference envelope** (`JuliaMotorMTK/tools/skidpad_gold.jl`, new; steady state = above 5 m/s,
+steering held to within 0.02 rad between samples, |longitudinal accel| < 2 m/s²):
+
+    steady-state samples: 1638 of 396018
+    speed        5.0 .. 15.9 m/s   (median 9.0)
+    |LatAccel|   p95 11.94 m/s^2 = 1.22 g      max 12.64 = 1.29 g
+
+| speed band | n | median g | p95 g |
+|---|---|---|---|
+| 5–10 m/s | 1013 | 0.04 | 0.73 |
+| **10–15 m/s** | 531 | **1.02** | **1.26** |
+| **15–20 m/s** | 94 | **1.13** | **1.25** |
+
+⭐ **1.2–1.3 g**, and it is flat across the two usable speed bands — which is what a skidpad should
+look like once the car is loaded up, and is the right order for a 1967 Formula One car on period
+tyres. **This is the single most informative physics number this project has had access to**, and it
+was sitting in the gold store unread.
+
+⚠️ **Honest limits.** The filter keeps 0.4% of samples, and the all-sample median (0.21 g) is
+meaningless because the 5–10 m/s band includes near-straight running — **the numbers to compare are
+the per-band medians above 10 m/s and the p95**. The capture's own radius is not recorded, so this is
+an acceleration envelope, not a µ measurement.
+
+**S2:** take the same statistic from our sim. `SKIDPAD` mode plus the existing `.ibt` writer gives a
+file in the same format, so `skidpad_gold.jl` runs unmodified on our output — **that is the whole
+experiment**, and the comparison is one number against one number. If our Lotus pulls 1.2–1.3 g the
+tyre model is right at the limit; if it pulls 0.8 or 1.8 the gap is quantified for the first time.
+
+**SKIDPAD-GOLD-1: 1 sprint. A physics oracle built from a reference that was already in the repo.**
+
 ### SPA-FPS-1 S10 (Opus 5, 2026-09-14) — ⛔ S9's black mirror was the `!REPLAY` term, not the hidden window; and with it lifted **the strobe is measured**
 
 S9 concluded *"a hidden window may not run the RTT"* and left the strobe question open. **The reason
