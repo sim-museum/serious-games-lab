@@ -11418,3 +11418,58 @@ confirm the 92 µs estimate with a measurement rather than a multiplication.
 
 **E90: 3 sprints this pass (S5–S7). The barrier defect is fixed behind a flag and the thing that
 blocked it is now a 30× speed-up for every race.**
+
+### E90 S8 (Opus 5, 2026-09-14) — ✅ **BARRIERS ARE SOLID BY DEFAULT.** Cost measured at Spa, gate clean, contact confirmed with a control — and ⚠️ a track-name bug that mislabelled S7
+
+S7 removed the cost objection and named three things left: measure Spa rather than multiply, get the
+gate to accept the boxes, then judge the default. All three, in order.
+
+**1. Spa, measured.** 576 rail triangles -> 161 boxes (3 rejected for covering tarmac), 1300 -> 1461
+solids:
+
+    JM_SOLIDHIT_BENCH 50000 calls = 192.886 us/call   (1461 solids)   = 0.132 us per solid
+
+⭐ The per-solid cost matches S7's 0.137 µs on a different track with 10× fewer solids, so the scan
+is linear and predictable. *(S7's "~92 µs at Spa" was arithmetic on a wrong assumption — Spa carries
+1,300 solids before any rails, not 152. The boxes add 12% to the scan; they do not dominate it.)*
+
+**2. The gate refused them, and it was right to, for the wrong reason.** With the boxes on, the E87
+solid gate went 176 -> 335 UNDRAWN-BUT-SOLID, `(unnamed) ×160` -> `×319`: **every box flagged.** The
+cause is in the gate, not the fix — it names an offending solid by the nearest **placed instance**
+within 4 m, and a box extracted from the track mesh has no instance to be near, so it came out
+unnamed and missed the `rail*` exemption. The gate now falls back to `SOLIDNAMES[k]`, the builder's
+own record, when the position lookup finds nothing:
+
+| | before the naming fix | after |
+|---|---|---|
+| Spa, rails OFF | 176 UNDRAWN-BUT-SOLID | **16** |
+| Spa, rails ON | 335 | **16** — `railbox ×159` in the track-geometry exempt class |
+
+⭐ **The barrier fix adds ZERO gate violations, and the gate got sharper on the base track too**
+(160 solids were being called invisible purely because no placed object sat within 4 m of them).
+⚠️ The exemption is a hole exactly as wide as the name it grants; what makes it safe here is that
+rail boxes are built FROM the drawn rail triangles, which is a stronger guarantee of visibility than
+the 4 m position test it replaces.
+
+**3. `JM_RAIL_SOLID` defaults to ON** (`JM_RAIL_SOLID=0` reverts). Confirmed through `solid_hit()`
+itself at a box the census names, with a negative control:
+
+    JM_SOLIDNEAR (-236.3,-28.0) r=1  ->  railbox kind=wall r=4.0 dist=0.0 m
+    JM_SOLIDHIT  (-236.3,-22.0) hdg 180 80km/h  ->  CONTACT  dvx=32.22 dr=-0.889 lift=6.0
+    JM_SOLIDHIT  (-300.0,-300.0) hdg 90 80km/h  ->  NO CONTACT
+
+⚠️⚠️ **And a defect in the harness that invalidates a label, found by this sprint's own confusion.**
+`TRACK=watkins` is not a track key — the keys are `zandvoort skidpad nurburgring monza watglen spa`.
+Every selector is an equality test, so an unknown name makes all of them false: the run prints
+**"→ track: Watkins"** and then loads Zandvoort. **S7's A/B benchmark was therefore run on
+Zandvoort, not Watkins.** The measurement itself is untouched — same build, same track, same 152
+solids, one annotation changed, internal control flat at 6.4 µs — so **the 30.6× stands; only the
+track name in that entry is wrong.** `choose_track()` now refuses an unknown name instead of
+silently substituting one.
+
+**S9:** S4's contact probe `(-12, 6.2)` reproduces on neither Spa nor Zandvoort (`JM_SOLIDNEAR` says
+no solid within 3 m at either), so it belongs to `watglen` — re-run that table with a valid track key
+and confirm it there.
+
+**E90: 4 sprints this pass (S5-S8) — AT THE CAP, and the defect the PO reported is fixed in the
+default build.**

@@ -81,7 +81,19 @@ function choose_track()
     s = strip(readline())
     return s == "2" ? "skidpad" : s == "3" ? "nurburgring" : "zandvoort"
 end
-const TRACKSEL = choose_track()
+# E90 S8 (2026-09-14): REJECT AN UNKNOWN TRACK NAME LOUDLY.  Every selector below is an equality
+# test against a known key, so a misspelling ("watkins" for "watglen") silently makes ALL of them
+# false: the run prints the name you asked for, loads the default assets, and every number it
+# reports is labelled with a track it did not drive.  That cost this item a mislabelled benchmark.
+const TRACKKEYS = ("zandvoort", "skidpad", "nurburgring", "monza", "watglen", "spa")
+const TRACKSEL = let t = choose_track()
+    if !(t in TRACKKEYS)
+        println("!! unknown TRACK=\"", t, "\" -- known tracks: ", join(TRACKKEYS, ", "))
+        println("!! refusing to run: an unknown name would silently load Zandvoort under that label.")
+        flush(stdout); exit(2)
+    end
+    t
+end
 const SKIDPAD  = TRACKSEL == "skidpad"
 const NURB     = TRACKSEL == "nurburgring"
 const MONZA    = TRACKSEL == "monza"
@@ -4690,9 +4702,14 @@ let objnames=Set{String}()
     # drives through the barriers. S2 costed the bridge: one box per occupied 8 m cell is 545 boxes
     # at Watkins, taking a LINEAR per-car-per-tick scan from 34 to 579 entries (x17).
     # Built here from the same railfam test the renderer uses, so a barrier is solid exactly where it
-    # is drawn. JM_RAIL_SOLID=1 enables (default OFF until a drive confirms the car stops);
-    # JM_RAIL_CELL sets the cell size.
-    if get(ENV,"JM_RAIL_SOLID","0") != "0"
+    # is drawn.  E90 S8 (2026-09-14): ON BY DEFAULT.  The two objections that kept it off are both
+    # measured away -- cost (S7's typed globals took solid_hit from 636 to 21 us at Watkins; with
+    # these boxes Spa is 193 us/call, 12% over the same track without them and 28x under what the
+    # untyped code cost yesterday) and safety (the E87 solid gate reports the SAME 16
+    # UNDRAWN-BUT-SOLID with the boxes as without them; all 159 land in the track-geometry exempt
+    # class, because they are built FROM the drawn rail triangles).  JM_RAIL_SOLID=0 reverts to
+    # driving through the barriers.  JM_RAIL_CELL sets the cell size.
+    if get(ENV,"JM_RAIL_SOLID","1") != "0"
         let cell = parse(Float64, get(ENV,"JM_RAIL_CELL","8.0")),
             acc = Dict{Tuple{Int,Int},Vector{Float64}}(),      # cell -> [xmin,xmax,zmin,zmax,ymin,ymax]
             railtex2(tx) = (lt = lowercase(String(tx)); startswith(lt,"armco") || startswith(lt,"fenc") ||
@@ -5104,9 +5121,9 @@ let objnames=Set{String}()
         drawn = Set{Tuple{Int,Int}}()
         for o in OBJECTS;    p4 = o[4]; push!(drawn, (q(p4[1]), q(-p4[3]))); end
         for b in BILLBOARDS; pb = b[2]; push!(drawn, (q(pb[1]), q(-pb[3]))); end
-        bad = Tuple{Float64,Float64,Float64,Symbol}[]
-        for sd in SOLIDS
-            (q(sd[1]), q(sd[2])) in drawn || push!(bad, sd)
+        bad = Tuple{Float64,Float64,Float64,Symbol,Int}[]
+        for (k, sd) in enumerate(SOLIDS)
+            (q(sd[1]), q(sd[2])) in drawn || push!(bad, (sd[1], sd[2], sd[3], sd[4], k))
         end
         # name the offenders by nearest instance, for a report that says WHAT is invisible
         nameat(x, z) = begin
@@ -5149,7 +5166,18 @@ let objnames=Set{String}()
                     startswith(n,"haie")
         undrawn = Tuple{String,Float64,Float64}[]; anchor = Dict{String,Int}(); exempted = Dict{String,Int}()
         for b in bad
-            n = lowercase(nameat(b[1], b[2])); n = isempty(n) ? "(unnamed)" : n
+            n = lowercase(nameat(b[1], b[2]))
+            # E90 S8: when no PLACED INSTANCE is within 4 m, fall back to the name the BUILDER
+            # recorded for this solid. Solids extracted from the track mesh (rail boxes) have no
+            # instance to be near, so the position lookup returns "" and they were all landing in
+            # "(unnamed)" -- 159 of them the moment JM_RAIL_SOLID went on. SOLIDNAMES is the
+            # builder's own record and is the better answer where it exists.
+            # ⚠️ This is a hole the same size as the name it grants: a solid that names itself
+            # "railbox" is exempt. What makes it safe HERE is that rail boxes are built FROM the
+            # drawn rail triangles, so each one has rendered geometry by construction -- a stronger
+            # guarantee than the 4 m position test it replaces, not a weaker one.
+            if isempty(n) && b[5] <= length(SOLIDNAMES); n = lowercase(SOLIDNAMES[b[5]]); end
+            n = isempty(n) ? "(unnamed)" : n
             if exempt(n);      exempted[n] = get(exempted,n,0)+1
             elseif n in drawnames; anchor[n] = get(anchor,n,0)+1
             else push!(undrawn, (n, b[1], b[2])); end
