@@ -1,0 +1,14 @@
+Track: Watglen             Wed Sep 16 02:22:52 2026
+
+PRACTICE TIMES
+
+Pos No Driver                           Team     Nat      Time      Diff Laps
+ 1   5 Jim Clark                        KingWing GBR 1m31.257s              7
+ 2   6 Graham Hill                      KingWing GBR 1m32.035s   00.778s    5
+ 3   1 Jack Brabham                     Ultrgrip AUS 1m34.644s   03.387s    5
+ 4   3 Chris Amon                       RaciBull NZL 1m34.654s   03.397s    7
+ 5  11 Jo Bonnier                       Ferrari  SWE 1m37.549s   06.292s    7
+ 6   4 Driver 67x                       KingWing POR   No time   No time    0
+
+All times are official
+Generated with GPL Replay Analyser

@@ -13835,3 +13835,95 @@ behaviour worth knowing before copying it.
 
 **GOLDVID-JR-2: 1 sprint. Race parameters and field captured; one calibration discrepancy raised; the
 video's structure mapped so the next sprint does not misread it.**
+
+## GOLDVID-JR-3 S2 (Opus 5, 2026-09-16) — ⭐⭐ **the replay is DECODED. Per-lap times for all six cars, the finishing order and an overtake-by-overtake narrative — from a command line, in 20 seconds** — and it **corrects JR-2 S1's read of the AI pace by an order of magnitude**
+
+S1 proved the `.rpy` per-car payload is bit-packed, marked byte scanning as a dead end, and proposed
+playing the replay back in GPL under Wine with `GPL_Tel`. That plan was sound but unnecessary:
+**the PO's own Wine prefix already has GPL Replay Analyser**, which parses `.rpy` directly and — per
+its own readme — has a **documented command-line mode**. No GUI, no menu driving, no synthetic input
+(which does not work on this box anyway). [[no-synthetic-keys-under-wayland]]
+
+```
+tools/gpl_rpy_report.sh ~/sgl/THU/afterGameReport/260915_2101_gpl/260915_wg.rpy
+5 reports -> doc/ref/gpl-replay-260915_wg (wine exit 0)
+```
+
+⭐ **The acceptance test S1 set is MET, on the number S1 named.**
+
+| check | gold video overlay | decoded replay |
+|---|---|---|
+| player's lap 1 | `01:30.49` | **`1m30.488s`** ✅ |
+| track | Watkins Glen | `Track: Watglen` ✅ |
+| distance | 2 laps | `RACE RESULTS (After 2 laps)` ✅ |
+| field | six `DRNT` records | six drivers, named ✅ |
+| track record | `1:15.69  D: 67x` | race fastest `1m15.895s` by Driver 67x — 0.2 s off the standing record ✅ |
+
+⛔ **And it overturns JR-2 S1's central number.** S1 read the overlay as *"the AI runs within ~1.3–4 s
+of the player — a tight field"* and offered that as **the pace envelope to match**. The replay says
+otherwise:
+
+```
+Pos  Driver          Race Time     Diff        best lap
+ 1   Driver 67x      2m46.383s                 1m15.895s   <- the PO
+ 2   Jim Clark       3m01.935s     15.552s     1m30.177s
+ 3   Jack Brabham    3m04.951s     18.568s     1m30.860s
+ 4   Chris Amon      3m09.408s     23.025s     1m33.888s
+ 5   Jo Bonnier      3m12.574s     26.191s     1m35.249s
+ 6   Graham Hill     3m13.300s     26.917s     1m36.426s
+```
+
+**The best AI lap is 14.3 s slower than the player's — 19% — and the field is 15–27 s behind after
+two laps.** What S1 read as a gap column was the player's own **lap time** (`01:30.49` is exactly his
+lap 1), which is why "the leader is 1:30 behind the leader" never made sense. A fixed crop of small
+overlay text mislabelled a column; the replay's own decoder settles it. [[instrument-bookkeeping-lies]]
+
+⭐ **The race, as the decoder narrates it.** The player had **no practice time** (`No time`, 0 laps) so
+he started **last**, and:
+
+```
+Lap 1: Driver 67x overtakes Jo Bonnier / Chris Amon / Jack Brabham / Graham Hill / Jim Clark.
+       The new race leader is Driver 67x.
+Lap 2: fastest lap of the race, 1m15.895s.
+```
+
+P6 to P1 in one lap, then +15 s in the next. **So this replay is not a sample of competitive AI — it
+is a sample of AI being lapped-in-spirit by a much faster human.** That is important for the item's
+purpose: the PO's brief is *"defining the behavior of the AI cars in a GPL race, a behavior to be
+matched"*, and the behaviour to match is the AI's own pace and consistency, **not** the race outcome.
+
+⭐⭐ **The AI signature worth copying — and it is in the PRACTICE laps, not the race.**
+
+```
+Jo Bonnier    1:39.532  1:37.600  1:37.589  1:37.577  1:37.568  1:37.564  1:37.549
+Jack Brabham  1:36.872  1:35.426  1:36.349  1:38.458  1:34.644
+Jim Clark     1:34.977  1:32.085  1:31.257  5:20.351  1:34.736  1:32.709  1:31.424
+```
+
+Bonnier after his out-lap is **monotone, by about 0.01 s per lap, with σ ≈ 0.02 s** — a nearly
+deterministic line. The others swing ±2 s and Clark has a 5m20 lap (an incident). **Hypothesis, not a
+finding:** GPL's AI lap-time variance comes from *traffic and incidents*, not from noise in the driver
+model, and Bonnier's stint is what an uninterrupted AI lap looks like. It is testable — the same
+report on any single-car replay would settle it — and it is exactly the kind of thing to get right
+before building an AI, because a driver model tuned to reproduce ±2 s of *apparent* variance would be
+modelling the wrong cause.
+
+⚠️ **Race pace ≠ practice pace, and the direction is consistent:** every AI's race lap 2 beats their
+practice best (Brabham by 3.8 s, Bonnier by 2.3 s, Clark by 1.1 s) except Graham Hill, who gets
+slower. Fuel load, tow, or a difficulty/aggression term that lifts in the race — unresolved, and worth
+one sprint on its own before any of these numbers are used as a target.
+
+⚠️ **JR-2 S1's track-length discrepancy now has a price tag.** Ours is 1.5–1.9% long, which is
+**1.4–1.7 s on a 1:30 lap** — the same order as the differences between these AI drivers. Calibrate
+the centreline before comparing lap times, or the comparison measures our geometry.
+
+**Shipped:** `tools/gpl_rpy_report.sh` (decode any `.rpy` → five text reports, reproducible, with the
+three traps that cost time written into the header: full Windows path for the exe, both paths inside
+`drive_c`, and the lutris-5.7 runner — the system wine is 10.0 and would modify the PO's prefix).
+The decoded reports for this replay are committed under `doc/ref/gpl-replay-260915_wg/`.
+
+**S3:** run the same decode on the Zandvoort/Nürburgring replays if the PO has any, to test the
+traffic-vs-model hypothesis on a second field; and settle whether GPL's AI actually runs a different
+pace in the race than in practice.
+
+**GOLDVID-JR-3: 2 sprints. The oracle S1 called a dead end is now a one-line command.**

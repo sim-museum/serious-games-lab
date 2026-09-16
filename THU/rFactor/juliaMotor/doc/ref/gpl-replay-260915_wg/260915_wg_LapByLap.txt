@@ -1,0 +1,34 @@
+Track: Watglen             Wed Sep 16 02:22:52 2026
+
+LAP BY LAP RACE REPORT
+
+Start of the race:
+Polesitter Jim Clark in a King Wing leads the field as the flag drops.
+
+Lap 1:
+Driver 67x overtakes Jo Bonnier.
+Driver 67x overtakes Chris Amon.
+Driver 67x overtakes Jack Brabham.
+Driver 67x overtakes Graham Hill.
+Driver 67x overtakes Jim Clark.
+Driver 67x is in position 1 at the end of the lap.
+Jim Clark loses the lead.
+The new race leader is Driver 67x.
+
+Lap 2:
+Jo Bonnier overtakes Graham Hill.
+Jo Bonnier is in position 5 at the end of the lap.
+Chris Amon overtakes Graham Hill.
+Chris Amon is in position 4 at the end of the lap.
+What would become the fastest lap of the race is set by Driver 67x.
+The time is an impressive 1m15.895s.
+
+End of the race:
+Driver 67x wins the race 15.552s ahead of Jim Clark.
+Last of the podium finishers was Jack Brabham,
+finishing 18.568s behind the winner.
+
+Finishing order and last lap info is unofficial
+(Replay might have been saved before end of race)
+
+Generated with GPL Replay Analyser

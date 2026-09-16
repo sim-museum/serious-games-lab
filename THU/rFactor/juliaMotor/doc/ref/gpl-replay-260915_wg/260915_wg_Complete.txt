@@ -1,0 +1,228 @@
+Track: Watglen             Wed Sep 16 02:22:52 2026
+
+PRACTICE TIMES
+
+Pos No Driver                           Team     Nat      Time      Diff Laps
+ 1   5 Jim Clark                        KingWing GBR 1m31.257s              7
+ 2   6 Graham Hill                      KingWing GBR 1m32.035s   00.778s    5
+ 3   1 Jack Brabham                     Ultrgrip AUS 1m34.644s   03.387s    5
+ 4   3 Chris Amon                       RaciBull NZL 1m34.654s   03.397s    7
+ 5  11 Jo Bonnier                       Ferrari  SWE 1m37.549s   06.292s    7
+ 6   4 Driver 67x                       KingWing POR   No time   No time    0
+
+All times are official
+Generated with GPL Replay Analyser
+
+
+Track: Watglen             Wed Sep 16 02:22:52 2026
+
+RACE RESULTS (After 2 laps)
+
+Pos No Driver                          Team     Nat Laps   Race Time       Diff
+ 1   4 Driver 67x                      KingWing POR    2   2m46.383s            
+ 2   5 Jim Clark                       KingWing GBR    2   3m01.935s    15.552s 
+ 3   1 Jack Brabham                    Ultrgrip AUS    2   3m04.951s    18.568s 
+ 4   3 Chris Amon                      RaciBull NZL    2   3m09.408s    23.025s 
+ 5  11 Jo Bonnier                      Ferrari  SWE    2   3m12.574s    26.191s 
+ 6   6 Graham Hill                     KingWing GBR    2   3m13.300s    26.917s 
+
+
+Race results are unofficial
+(Replay might have been saved before end of race)
+
+RACE FASTEST LAPS
+
+Pos Driver                                 Time Lap
+ 1  Driver 67x                        1m15.895s   2
+ 2  Jim Clark                         1m30.177s   2
+ 3  Jack Brabham                      1m30.860s   2
+ 4  Chris Amon                        1m33.888s   2
+ 5  Jo Bonnier                        1m35.249s   2
+ 6  Graham Hill                       1m36.426s   1
+
+
+LEADERS
+
+Driver                           Laps
+Driver 67x                       1-2
+
+Number of lead changes: 0
+Number of leaders: 1
+
+
+LAPS LED
+
+Driver                           Laps led
+Driver 67x                       2
+
+
+HIGHEST CLIMBER
+
+Driver                           Start Finish  Change
+Driver 67x                           6      1       5  
+Chris Amon                           4      4       0  
+Jo Bonnier                           5      5       0  
+Jack Brabham                         3      3       0  
+Jim Clark                            1      2      -1  
+Graham Hill                          2      6      -4  
+
+
+ON TRACK LAPS
+
+Driver                           Laps/Total    Percent
+Jack Brabham                          (2/2)     100.00
+Chris Amon                            (2/2)     100.00
+Jo Bonnier                            (2/2)     100.00
+Jim Clark                             (2/2)     100.00
+Graham Hill                           (2/2)     100.00
+Driver 67x                            (2/2)     100.00
+
+
+RACE LAPTIME CONSISTENCY
+(first lap excluded)
+
+Driver                    Avg Deviation  Std Deviation  Avg Laptime   Laps
+Jack Brabham                      0.000          0.000    1m30.860s      2
+Chris Amon                        0.000          0.000    1m33.888s      2
+Jo Bonnier                        0.000          0.000    1m35.249s      2
+Jim Clark                         0.000          0.000    1m30.177s      2
+Graham Hill                       0.000          0.000    1m39.001s      2
+Driver 67x                        0.000          0.000    1m15.895s      2
+
+
+All times are unofficial
+(Replay might have been saved before end of race)
+
+Generated with GPL Replay Analyser
+
+
+Track: Watglen             Wed Sep 16 02:22:52 2026
+
+Driver: Driver 67x - KingWing 
+
+No practice laps
+
+Race laps
+Lap 0: 16.654s
+Lap 1: 1m30.488s
+Lap 2: 1m15.895s
+
+
+Driver: Jack Brabham - Ultrgrip 
+
+Practice laps
+Lap 1: 1m36.872s
+Lap 2: 1m35.426s
+Lap 3: 1m36.349s
+Lap 4: 1m38.458s
+Lap 5: 1m34.644s
+
+Race laps
+Lap 0: 14.941s
+Lap 1: 1m35.804s
+Lap 2: 1m30.860s
+
+
+Driver: Chris Amon - RaciBull 
+
+Practice laps
+Lap 1: 1m48.872s
+Lap 2: 1m36.336s
+Lap 3: 1m35.606s
+Lap 4: 1m41.162s
+Lap 5: 1m34.654s
+Lap 6: 1m36.502s
+Lap 7: 1m34.855s
+
+Race laps
+Lap 0: 14.818s
+Lap 1: 1m37.356s
+Lap 2: 1m33.888s
+
+
+Driver: Jo Bonnier - Ferrari  
+
+Practice laps
+Lap 1: 1m39.532s
+Lap 2: 1m37.600s
+Lap 3: 1m37.589s
+Lap 4: 1m37.577s
+Lap 5: 1m37.568s
+Lap 6: 1m37.564s
+Lap 7: 1m37.549s
+
+Race laps
+Lap 0: 15.327s
+Lap 1: 1m38.652s
+Lap 2: 1m35.249s
+
+
+Driver: Jim Clark - KingWing 
+
+Practice laps
+Lap 1: 1m34.977s
+Lap 2: 1m32.085s
+Lap 3: 1m31.257s
+Lap 4: 5m20.351s
+Lap 5: 1m34.736s
+Lap 6: 1m32.709s
+Lap 7: 1m31.424s
+
+Race laps
+Lap 0: 14.468s
+Lap 1: 1m33.944s
+Lap 2: 1m30.177s
+
+
+Driver: Graham Hill - KingWing 
+
+Practice laps
+Lap 1: 1m35.955s
+Lap 2: 1m32.511s
+Lap 3: 1m33.397s
+Lap 4: 1m32.035s
+Lap 5: 1m34.453s
+
+Race laps
+Lap 0: 14.527s
+Lap 1: 1m36.426s
+Lap 2: 1m39.001s
+
+
+Generated with GPL Replay Analyser
+
+
+Track: Watglen             Wed Sep 16 02:22:52 2026
+
+LAP BY LAP RACE REPORT
+
+Start of the race:
+Polesitter Jim Clark in a King Wing leads the field as the flag drops.
+
+Lap 1:
+Driver 67x overtakes Jo Bonnier.
+Driver 67x overtakes Chris Amon.
+Driver 67x overtakes Jack Brabham.
+Driver 67x overtakes Graham Hill.
+Driver 67x overtakes Jim Clark.
+Driver 67x is in position 1 at the end of the lap.
+Jim Clark loses the lead.
+The new race leader is Driver 67x.
+
+Lap 2:
+Jo Bonnier overtakes Graham Hill.
+Jo Bonnier is in position 5 at the end of the lap.
+Chris Amon overtakes Graham Hill.
+Chris Amon is in position 4 at the end of the lap.
+What would become the fastest lap of the race is set by Driver 67x.
+The time is an impressive 1m15.895s.
+
+End of the race:
+Driver 67x wins the race 15.552s ahead of Jim Clark.
+Last of the podium finishers was Jack Brabham,
+finishing 18.568s behind the winner.
+
+Finishing order and last lap info is unofficial
+(Replay might have been saved before end of race)
+
+Generated with GPL Replay Analyser
