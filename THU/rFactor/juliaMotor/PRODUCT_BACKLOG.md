@@ -13507,3 +13507,56 @@ there catches grass and other cars rather than mirrors. Any automated sampling o
 detect the view first.
 
 **GOLDVID-JR-1: 1 sprint. S15's open question is closed, against the performance win.**
+
+## GOLDVID-JR-1 S2 (Opus 5, 2026-09-15) — ⛔ **GPL renders its mirrors EVERY frame. It does not strobe.** So `JM_MIRROR_ADAPT` is a departure from the original, not a reproduction of it
+
+S15 hoped the original might update its mirror at a reduced rate — *"if GPL's mirror visibly strobes
+or lags, `JM_MIRROR_ADAPT` is faithful rather than a compromise, which would reframe the PO's
+complaint entirely."* **It does not.**
+
+**90 consecutive frames (1.5 s at 60 fps) from the cockpit section at t=192 s, car at 266 km/h:**
+
+| region | median frame-to-frame diff | min | frozen (<0.2) |
+|---|---|---|---|
+| LEFT mirror disc | 8.41 | 3.97 | **0 of 89** |
+| RIGHT mirror disc | 5.59 | 2.21 | **0 of 89** |
+| road ahead (control) | 3.01 | 1.33 | 0 of 89 |
+
+**Neither mirror is ever frozen, in any frame.** The minimum change across 89 transitions is 3.97 and
+2.21 — an order above a stationary region.
+
+⭐ **And the periodicity test rules out skipping properly.** A mirror rendered every *N*th frame gives
+an alternating diff series — big, ~0, big, ~0 — i.e. a strongly **negative** lag-1 autocorrelation,
+or a spike at lag 2/3. Measured:
+
+| | lag 1 | lag 2 | lag 3 |
+|---|---|---|---|
+| LEFT mirror | **+0.81** | +0.47 | +0.18 |
+| RIGHT mirror | **+0.83** | +0.49 | +0.21 |
+| road ahead (control) | **+0.78** | +0.49 | +0.29 |
+
+**The mirrors' autocorrelation is indistinguishable from the road's** — the smooth decay of a
+continuously changing signal, with no periodic structure at all.
+
+⭐ **The instrument checks out too:** the road control is also never frozen, so all 90 recorded frames
+are distinct game frames — GPL was rendering at a full 60 fps during the burst, and the recording is
+not aliasing the measurement.
+
+⛔ **Consequence for SPA-FPS-1, and it closes off the second of two escape routes.**
+
+| lever | verdict | evidence |
+|---|---|---|
+| one shared mirror camera (+41% fps) | **ruled out** — visible fidelity loss | S1: the two discs show different scenes |
+| skipping mirror frames (`JM_MIRROR_ADAPT`) | **not faithful** — the original never skips | this sprint |
+
+**Both cheap options are gone.** The ~30 ms the mirror costs (S15) has to be attacked **per pass,
+with two cameras, every frame**: a lower mirror RT resolution, dropping the track surface or sky from
+the mirror pass, or sharing state between the two passes. That is what S16 should measure.
+
+⚠️ **What this does NOT say.** It does not say `JM_MIRROR_ADAPT` should be removed — on this hardware
+it is the difference between 18 and 29 fps, and a strobing mirror at 29 fps may still be the better
+experience than a correct one at 18. **It says the adaptation is a trade the PO is making, not
+fidelity we are preserving**, and it should be described that way.
+
+**GOLDVID-JR-1: 2 sprints. Items 1 (content per disc) and 4 (update rate) are answered; 2 (disc
+geometry vs our `JM_MIRROR_*`) and 3 (what is in them) remain.**
