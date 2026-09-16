@@ -14327,3 +14327,65 @@ here.
 
 **GOLDVID-JR-3: 4 sprints — at cap, rotating off.** The container (S1), the decode (S2), the race
 configuration (S3), and the negative result that bounds how the parameters can be used (S4).
+
+## TRACKLEN-1 — the "our track is 55 m long" discrepancy, and whether it needs calibrating at all
+
+GOLDVID-JR-2 S1 raised it: GPL's info panel says **3,701 m**, our `CLINE` measures 3,756 m and our
+`TrackSurface` lap 3,770.3 m — *"ours is 55–69 m long, 1.5–1.9%"* — and attached a caveat to every
+lap-time comparison since (*"a 1.9% longer track makes our lap times ~1.9% slower at identical
+pace"*). GOLDVID-JR-3 S2 repeated it with a price tag: **1.4–1.7 s on a 1:30 lap**.
+
+## TRACKLEN-1 S1 (Opus 5, 2026-09-16) — ⛔ **RETRACTED. We were comparing against a rounded figure in MILES.** Against GPL's own measured length our centreline is out by **2.55 m — 0.068%**
+
+⭐ **GPL's track file carries both numbers, twelve lines apart.**
+`tracks/watglen/track67.ini`:
+
+```
+track_length = 2.30m                      ; note track length given in miles
+  …
+  ; track length is <3753.45>
+```
+
+`2.30 miles = 3,701.49 m` — **that is exactly the 3,701 the info panel displays**, so the panel shows
+the *published, rounded-to-two-decimals-of-a-mile* figure. The metres value the same file records is
+**3,753.45**.
+
+⭐ **Against the right number, the discrepancy essentially disappears:**
+
+| ours | vs published 2.30 mi (3,701.5) | vs `track67.ini` measured (3,753.45) |
+|---|---|---|
+| `CLINE` 3,756.0 | +54.5 m, **+1.47%** | **+2.55 m, +0.068%** |
+| `TrackSurface` 3,770.3 | +68.8 m, +1.86% | +16.85 m, +0.449% |
+
+**Our centreline reconstruction is accurate to seven hundredths of a percent.** On a 1:30 lap that is
+**0.06 s**, not the 1.4–1.7 s two sprints have been carrying as a caveat.
+
+⛔ **So the standing caveat is withdrawn.** GOLDVID-JR-2 S1's *"calibrate before lap times are
+compared, or the comparison measures our geometry"* and JR-3 S2's price tag were both computed
+against the rounded mileage. **No calibration is needed for lap-time comparison**; the geometry is
+already inside the noise of a hundredth of a lap.
+
+⭐ **The pattern generalises** — every GPL track ships the same pair, so this is a reusable oracle, not
+a one-off:
+
+```
+watglen    track_length =  2.30m    ; track length is <3753.45>
+zandvort   track_length =  2.605m   ; track length is <4189.39>
+nurburg    track_length = 14.189m   ; track length is <22770.05>
+```
+
+⚠️ **What is NOT retracted: the `TrackSurface` figure.** 3,770.3 m is **16.85 m (0.449%)** longer than
+the centreline value — about seven times the `CLINE` error and in the same direction. That is a
+separate question and it is **not** explained here: a surface-mesh circuit and a centreline are not
+the same measurement (the mesh lap may follow a different path through the corners), so the gap may
+be entirely legitimate. It should not be quoted as a defect, and it should not be quoted as
+calibrated either.
+
+⚠️ **The method failure worth recording.** Two sprints built a caveat on a number read off a *screen*
+when the number's own source file was on disk, twelve lines from the value that was actually wanted —
+and the screen's figure was in **miles**, rounded. This is the same shape as tonight's other
+instrument failures (a rounding `printf` hiding MiG Alley's truncation; an evenly-spaced sample hiding
+BoB's mirror horizon): **the reading was correct and the thing being read was wrong.**
+[[instrument-bookkeeping-lies]]
+
+**TRACKLEN-1: 1 sprint, and the item closes.** The discrepancy was arithmetic, not geometry.
