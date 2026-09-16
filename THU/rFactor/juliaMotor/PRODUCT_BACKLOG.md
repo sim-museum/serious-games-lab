@@ -13676,3 +13676,15 @@ leftovers before and after.
 
 **GOLDVID-JR-3: 1 sprint. The container is solved and the dead end is marked, which is worth more
 than a half-decoded record.**
+
+**GOLDVID-JR-3 S1 addendum** — ⭐ `GPL_Tel`'s **output** format is tractable where `.rpy` is not.
+`gpl utilities/gpltools/GPL_Tel_20221120/GPL_Tel/tmr files/` holds five `.tmr` samples, two of them
+**at Watkins Glen** (`glenBrab_SK.tmr`, `glen_Fer_SK.tmr`). Their header is plain text
+(`cars67watglen`, then fixed-width driver name fields — `Steffen` / `Kriesch`) and the body contains
+**byte-aligned `float32`**: `00 00 80 3F` (exactly `1.0f`) recurs on a fixed stride, alongside values
+like `0.631` and `0.691` that read as normalised controls.
+
+**So S2's route is confirmed end to end:** GPL plays the replay → `GPL_Tel` logs → the `.tmr` is
+parseable with ordinary aligned reads, no bit-unpacking. ⚠️ **These five samples are a FORMAT
+reference only** — they are from 2008–09, a different driver, and log the *recording* car rather than
+the AI field. They tell us how to read `GPL_Tel` output; they are not the AI behaviour data.
