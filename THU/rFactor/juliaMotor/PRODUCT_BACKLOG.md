@@ -14107,3 +14107,84 @@ replays carry one, and the Sep 4 race has the player finishing **5th**, so it co
 passes rather than a single car disappearing up the road.
 
 **GOLDVID-JR-2: 3 sprints. A hypothesis became a controlled result without leaving the disk.**
+
+## GOLDVID-JR-2 S4 (Opus 5, 2026-09-16) — the passing model, read against a race that actually has AI-on-AI passes — ⚠️ **and the finding that bounds every number this item has produced: THIS INSTALL'S AI IS TUNED, and all three passing changes make it overtake more**
+
+S3 pointed at the Sep 4 race because the player finished **5th** there, so unlike the gold race it
+contains AI racing AI rather than one car disappearing up the road.
+
+⭐ **It does, and richly — seven AI-on-AI overtakes in two laps, and a 0.193 s winning margin:**
+
+```
+Lap 1: Amon overtakes Hill.  Bonnier overtakes Amon.  Bonnier overtakes Hill.
+       Brabham overtakes Amon.  Brabham overtakes Hill.
+Lap 2: Amon overtakes Bonnier.  Brabham overtakes Clark (for the lead).
+End:   Brabham wins by 00.193s from Clark.
+```
+
+Against the gold race's **two** AI-on-AI passes. Same track, same six drivers, same two-lap format.
+
+⭐ **The model behind it**, from `gpl_ai.ini`'s `[ behavior ]` (committed as
+`doc/ref/gpl-ai/gpl_ai.ini.thisinstall`):
+
+```
+straightaway_pass_dlong_sep         = 10.0      ; sep to the passee at which a pass is initiated (m)
+straightaway_pass_closing_velocity  = 0.022     ; closing vel at which a pass is initiated
+straightaway_pass_max_accel_pct     = 0.995     ; % of our max accel (below it -> pass initiated)
+attempt_outbrake_dlong_sep          = 12.4104   ; max sep for trying to outbrake at a waypoint
+min_cornering_outside_pass_radius   = 400.0     ; min turn radius permitting an outside pass (m)
+auto_blocker_line_speed_pct         = 0.85      ; below this % of line speed a car counts as a blocker
+no_pass_zone_speed_pct_override     = 0.5       ; below this %, a no-pass-zone waypoint is overridden
+passee_dlong_sep_coeff              = 0.35      ; desired sep while tailing a designated passee
+min_dlat_sep_front / _back          = 2.70 / 2.70  m
+min_dlong_sep_back                  = 5.0252    m
+being_squeezed_speed_coeff          = 0.85      ; speed goal adjustment when being squeezed
+```
+
+**This is a proper overtaking model, not a scripted pass**: a target ("designated passee"), an
+initiation test on separation *and* closing speed *and* an acceleration deficit, a separate
+outbraking path tied to waypoints, a minimum radius for going round the outside, lateral and
+longitudinal separation minima, and a rule for yielding when squeezed.
+
+⚠️⚠️ **And here is the finding that bounds this whole item.** `gpl_ai.ini` keeps each retuned
+parameter's original value in the trailing comment, so the edits can be counted. **Exactly eight
+parameters in this install differ from stock** — and the three in `[ behavior ]` all point the same
+way:
+
+| parameter | stock | this install | effect |
+|---|---|---|---|
+| `auto_blocker_line_speed_pct` | 0.74 | **0.85** | more cars count as blockers → more passes attempted |
+| `no_pass_zone_speed_pct_override` | 0.1 | **0.5** | no-pass zones overridden far more readily |
+| `straightaway_pass_max_accel_pct` | 0.925 | **0.995** | a pass is initiated on a *much* smaller acceleration deficit |
+
+**All three lower the bar for starting an overtake.** So the seven-pass, 0.193 s race is partly a
+property of the PO's tuning, **not of GPL**. ⚠️ **Every AI-behaviour number this item has produced —
+the pace spread, the gaps, the overtake counts — is this install's AI and must be labelled as such.**
+That was not stated in S2 or S3 and it should have been. [[parity-captures-must-record-their-state]]
+
+⚠️ **A correction to S3's ATTRIBUTION** (its observation stands). The other five retuned parameters
+are `in_session_chance_*_mod`, all normalised to **20**: aggression 10→20, alertness 3→20, hype 2→20,
+quickness 50→20, smoothness 35→20. **These are a second noise source**, independent of `variability`
+— random in-session modifications applied to randomly chosen drivers every
+`in_session_driver_mod_interval`. S3 attributed the second-scale spread to the missing `variability`
+key alone; there are **two** candidate mechanisms and S3 named one. `variability` remains the better
+fit — it is a *permanent* per-driver property, whereas in-session mods pick their victims at random
+and would not spare the same driver in two sessions eleven days apart — but that is an argument, not
+a measurement, and S3 read as though it were settled.
+
+⭐ **The specification for julia racer, now complete enough to build from**, in the order it should be
+implemented:
+
+1. **A per-waypoint line-speed target with a learning loop** (`[magic]`, S2) — this is what makes AI
+   laps converge rather than jitter.
+2. **Per-driver scalars in the 0.95–1.05 band** applied to *distinct behaviours* — separation,
+   lookahead, traction circle, gearshift time — never to lap time directly (S2's table).
+3. **An explicit `variability` noise term**, separate from traffic and from the learning loop (S3).
+4. **An overtaking model** of the shape above: designated passee, a three-part initiation test,
+   separate outbraking and outside-pass paths, separation minima, and a squeeze-yield rule.
+5. The player-referenced `hype` term is **optional and asymmetric** — and given it was undetectable
+   at n=1 (S3), it is the lowest-value item on this list.
+
+**GOLDVID-JR-2: 4 sprints — at cap, rotating off.** Race parameters and field (S1), the AI spec and
+the rubber-banding answer (S2), the controlled determinism result (S3), the passing model and the
+tuning caveat that bounds all of it (S4).
