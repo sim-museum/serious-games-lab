@@ -14695,3 +14695,50 @@ attribution; (b) add a per-driver term on top — matches GPL's architecture, mo
 the original brief asked for. **Not mine to pick.**
 
 **AISPREAD-1: 1 sprint. The width is measured, the mechanism is confirmed against it, and the knob exists.**
+
+## AISPREAD-1 S2 (Opus 5, 2026-09-16) — the A/B ran: **the knob does exactly what S1's arithmetic said** (spread 5 → 10 points) — ⛔ **but the lap-time half is NOT measured, because the autodrive wrecked before the classification printed**
+
+S1 shipped `JM_AI_TEMPER` and flagged the numbers as arithmetic from the formula, "not a measurement
+of the changed build". Ran it: `TRACK=watglen JM_AI=5 JM_AI_PCT=71 JM_AI_TEMPER=0.64`.
+
+⭐ **The pace spread, measured, against the default:**
+
+```
+temper 0.35 (default)   Ferrari 99%, Brabham 96%, BRM 97%, Eagle 100%, Cooper 95%     <- 5 points
+temper 0.64             Ferrari 99%, Brabham 93%, BRM 94%, Eagle 100%, Cooper 90%     <- 10 points
+```
+
+**S1 predicted the slowest car would fall to `1 − 0.143 × 0.64 = 0.9085`, i.e. 91%. Measured: 90%.**
+The mechanism is confirmed at the new setting, not just at the old one — the formula is not merely
+descriptive of the default, it predicts a change before the change is made.
+
+⛔ **What is NOT measured: whether that widens the LAP-TIME spread to the gold's 9.8%.** The run ended
+
+```
+[WRECK] lotwrr torn off on the wall at 160.0 km/h
+[WRECK] car came to rest
+```
+
+after two laps of the autodriven player (2:06.447, 2:02.948) and **never reached the per-car
+classification block** that TELEMSTATE-1 S4 used to get the AI cars' lap times. **So the pace
+percentages moved as predicted and the lap times behind them are unknown.** No claim is made that
+the field now matches the gold's width.
+
+⚠️ **And the harness is the problem, not the setting.** **Two of the three autodrive runs tonight ended
+in a wreck** — this one and TELEMSTATE-1 S3's. The autodrive is adequate for reading the pace model
+off the startup banner, and **not** adequate for a multi-lap measurement, which is exactly what the
+spread question needs. That is worth fixing before it is worked around: a measurement harness that
+crashes two runs in three will keep costing 13-minute runs.
+
+**S3 — fix the harness before re-running the measurement.** Either (a) park the player's car and let
+the AI race (the classification is about the AI, so the autodrive is incidental to the question), or
+(b) find why the autodrive leaves the road at Watkins Glen, which is its own finding —
+`RaceAI.build_line` drives GPL's own `race.lp`, so an autodrive that wrecks on it is saying something
+about our line-following, not about GPL's line.
+
+⚠️ **One observation deliberately not turned into a claim:** the autodriven player was quicker this
+run (2:02.948 against 2:10.276 at the default temper). Faster AI changes the traffic the player meets,
+so the two are not independent — and with n=1 each, nothing follows.
+
+**AISPREAD-1: 2 sprints. The knob is verified; the question it was built for still needs a harness
+that finishes.**
