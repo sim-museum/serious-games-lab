@@ -7748,7 +7748,27 @@ function main()
     end
     # ---- live race standings: rank everyone by race progress (laps + lap fraction) ----
     function standings()
-        pp = cs.laps + (FUEL_ON && LAPLEN > 0 ? clamp(cs.lapdist/LAPLEN, 0.0, 1.0) : 0.0)
+        # STANDINGS-1 S1 (2026-09-16) — FIXED: the PLAYER's progress double-counted the lap he had
+        # just completed.  It was `cs.laps + cs.lapdist/LAPLEN`, and those are not a lap count plus
+        # the fraction of the CURRENT lap — they are two views of the SAME distance.  cs.laps is
+        # derived from the `player_prog` accumulator (it ticks when player_prog crosses an integer);
+        # cs.lapdist is a TRKSURF probe that has not wrapped yet at the moment the counter ticks.
+        # Measured at the finish of a 1-lap race:
+        #     YOU  standings pp=2.0 = laps 1 + lapdist 3767.7/3769.5 (=1.0)   accumulator prog=1.0
+        # One lap driven, two laps credited — which put the player P1 ahead of five AI cars that had
+        # each covered 1.45–1.60 laps, and is the "finished 6th when 1st" family of report with the
+        # sign flipped.  It also halved the player's estimated total time in the gap column below,
+        # since est_time divides by this number.
+        # This is EXACTLY the defect the R1 FIX note three lines down describes and fixes for the AI
+        # (`c.lap + c.s/total` double-counting because c.s already accumulates).  The player's half
+        # of the same bug was left in place.
+        # Rank on the accumulator itself: laps and fraction then come from ONE number and cannot
+        # disagree.  JM_OLD_PLAYERPROG=1 restores the old expression for A/B.
+        pp = if CLINE !== nothing && get(ENV,"JM_OLD_PLAYERPROG","") == ""
+            player_prog / CLINE.total
+        else
+            cs.laps + (FUEL_ON && LAPLEN > 0 ? clamp(cs.lapdist/LAPLEN, 0.0, 1.0) : 0.0)
+        end
         entries = Tuple{Int,Float64}[(0, pp)]
         for (i,c) in enumerate(AICARS)
             # R1 FIX: c.s ACCUMULATES (never wrapped) and c.lap already counts the laps, so c.s/total is
@@ -8544,6 +8564,21 @@ function main()
                 # mismatch with what you saw on track is unambiguous.  AI pace + the raw lap+fraction each.
                 println("  ── R1 DIAG  (AI pace ", round(Int,AI_PCT), "% → target ", round(AI_TGT,digits=1),
                         "s/lap;  YOU laps=", cs.laps, " prog=", round(player_prog/(CLINE===nothing ? 1 : CLINE.total), digits=2), ") ──")
+                # STANDINGS-1 S1 (2026-09-16): the DIAG above prints the progress ACCUMULATOR
+                # (player_prog), but standings() ranks on a DIFFERENT quantity:
+                #   pp = cs.laps + cs.lapdist/LAPLEN
+                # cs.laps is derived from player_prog; cs.lapdist is an independent TRKSURF probe.
+                # Print BOTH halves and the pp that was actually ranked, so "you finished Pn" can be
+                # checked against the number the sort saw instead of against the number we print.
+                # Without this, the DIAG and the classification can disagree and neither says so.
+                let _old = cs.laps + (FUEL_ON && LAPLEN > 0 ? clamp(cs.lapdist/LAPLEN, 0.0, 1.0) : 0.0),
+                    _new = CLINE === nothing ? Float64(cs.laps) : player_prog/CLINE.total
+                    println("     YOU     ranked pp=", round(standings()[findfirst(e -> e[1] == 0, standings())][2], digits=3),
+                            "   [old formula ", round(_old, digits=3),
+                            " = laps ", cs.laps, " + lapdist ", round(cs.lapdist, digits=1),
+                            "/", round(LAPLEN, digits=1), "]",
+                            "   [accumulator ", round(_new, digits=3), "]")
+                end
                 for (i,c) in enumerate(AICARS)
                     println("     ", rpad(AISPECS[i][1],8), " lap=", c.lap, " prog=", round(c.lap + mod(c.s, AILINE.total)/AILINE.total, digits=2),
                             " v=", round(Int,c.v*3.6), "km/h pace=", round(Int,c.pace*100), "%")

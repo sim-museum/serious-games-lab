@@ -14793,3 +14793,106 @@ compare best laps rather than stint averages by giving `JM_LAPS` a value big eno
 a clean lap.
 
 **AISPREAD-1: 3 sprints. The width question is answered numerically and left open architecturally.**
+
+## STANDINGS-1 — the finishing position is computed from a number that counts the last lap twice
+
+**Origin:** AISPREAD-1 S3's by-catch — *"the classification ranked **P1 You** on `prog=1.0` against five
+AI cars on 1.45–1.60. The cars that had gone furthest were placed behind the one that had gone least
+far."* The `R1 DIAG` block exists because of the PO's own report of **"finished 6th when 1st"**, and S3
+noted this looked like the same fault with the sign flipped. Opened as its own item; AISPREAD-1 is at
+its 4-sprint cap and this is not its question.
+
+## STANDINGS-1 S1 (Opus 5, 2026-09-16) — ⭐⭐⭐ **FOUND AND FIXED: the player's race progress counted the lap he had just finished TWICE** — `P1 You` on one lap driven becomes `P6 You`, and the order now matches the diagnostic beside it
+
+⭐ **The instrument first, because the DIAG and the classification were reporting different numbers
+and neither said so.** `R1 DIAG` prints `player_prog` (the accumulator). `standings()` ranks on
+something else entirely:
+
+```julia
+pp = cs.laps + (FUEL_ON && LAPLEN > 0 ? clamp(cs.lapdist/LAPLEN, 0.0, 1.0) : 0.0)
+```
+
+Printing **the number the sort actually saw**, at the finish of a 1-lap race, ends the argument in one
+line:
+
+```
+YOU   standings pp=2.0  = laps 1 + lapdist 3767.7/3769.5 (=1.0)   accumulator prog=1.0
+══════ YOU FINISHED — P1 of 6 ══════
+```
+
+⭐⭐ **One lap driven, two laps credited.** `cs.laps` and `cs.lapdist` are **not** "laps completed" plus
+"fraction of the current lap" — they are **two views of the same distance**:
+
+* `cs.laps` ticks when the `player_prog` accumulator crosses an integer (`drive_native_mtk.jl:8371`);
+* `cs.lapdist` is an independent `TRKSURF` probe that **has not wrapped yet** at the instant the
+  counter ticks — 3767.7 m of a 3769.5 m lap, i.e. `≈1.0`.
+
+Add them and the just-completed lap is counted once by each. `pp = 2.0` beat five AI cars on 1.43–1.56,
+so the slowest car on track was classified **P1**.
+
+⭐⭐ **And this is EXACTLY the defect the code fixes three lines lower down — for the AI only.** The
+`R1 FIX` comment immediately below the player's line reads:
+
+> *"`c.s` ACCUMULATES (never wrapped) and `c.lap` already counts the laps, so `c.s/total` is the lap
+> COUNT again — the old `c.lap + c.s/total` double-counted (2× laps) and 'lapped' you."*
+
+The AI's half of the double-count was found and fixed. **The player's half, in the line directly
+above it, was left in place.** ⚠️ *When a bug is fixed for one actor, check the other actor in the
+same function before closing it.*
+
+### ✅ The fix
+
+Rank the player on the accumulator itself, so the lap count and the fraction come from **one** number
+and cannot disagree:
+
+```julia
+pp = if CLINE !== nothing && get(ENV,"JM_OLD_PLAYERPROG","") == ""
+    player_prog / CLINE.total          # the same quantity cs.laps is derived from
+else
+    cs.laps + (FUEL_ON && LAPLEN > 0 ? clamp(cs.lapdist/LAPLEN, 0.0, 1.0) : 0.0)
+end
+```
+
+`JM_OLD_PLAYERPROG=1` restores the old expression for A/B.
+
+⭐ **Verified, same settings, the A/B printed on the line itself:**
+
+```
+YOU  ranked pp=1.0   [old formula 1.999 = laps 1 + lapdist 3765.5/3769.5]   [accumulator 1.0]
+   Ferrari lap=1 prog=1.53   Brabham 1.46   BRM 1.48   Eagle 1.56   Cooper 1.43
+── final classification ──
+ P1 Eagle   P2 Ferrari   P3 BRM   P4 Brabham   P5 Cooper   P6 You (best 2:21.939)
+```
+
+**Before: `P1 You`. After: `P6 You`** — and the finishing order is now the progress column sorted,
+which it was not before. The player's best lap (2:21.9) against an AI target of 94.2 s says P6 is the
+honest answer.
+
+⭐ **A second consequence, not visible on screen:** the results file the GUI's post-race screen reads
+(`last_race_result.txt`) computes every gap from this number —
+`est_time(prog) = cs.t * RACE_LAPS / max(prog, 0.01)`. With the player's `prog` doubled, the player's
+estimated total race time was **halved**, so `win_total` and the whole gap column were wrong whenever
+the corrupted number put the player on top. Fixed by the same change.
+
+⚠️ **Why it had never been caught**, and why it is worth writing down: in TELEMSTATE-1 S4's 3-lap run
+the same defect was present and **invisible** — the AI had reached lap 4 (prog 4.16–4.42) while the
+player finished lap 3, so even a doubled fraction (`pp ≈ 4.0`) still left the player last and the
+classification read `P6 You`, correctly, **for the wrong reason.** The bug only shows when the
+leader's margin is under one lap — which is every close race, and none of the harness runs.
+
+⚠️ **Not claimed:** that this is *the* PO's "finished 6th when 1st". That report is the opposite sign,
+and an inflated `pp` cannot place you too low. It is the same **arithmetic**, and fixing it removes
+one way for the standings to disagree with the track; whether another remains is untested.
+
+⚠️ **One run each arm.** The first attempt at the fixed arm timed out — the autodrive wrecked on the
+boundary and never completed the lap (the same harness flakiness AISPREAD-1 S2 hit). The result above
+is the re-run. The defect itself does not depend on n: it is an identity about two expressions, and
+the pre-fix number is printed beside the post-fix one in the same line of the same run.
+
+**S2 candidates:** (1) check the **live** position readout during a race, which calls the same
+`standings()` — this fix changes it too and nothing here looked at it; (2) the AI use `AILINE` and the
+player now uses `CLINE`, two centrelines whose totals differ slightly — measure the difference and say
+whether it can reorder a close finish; (3) go back to the PO's original "6th when 1st" with the
+instrument now in place.
+
+**STANDINGS-1: 1 sprint. A by-catch became a fixed defect in the number that decides who won.**
