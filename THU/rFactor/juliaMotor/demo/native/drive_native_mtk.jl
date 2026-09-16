@@ -7747,6 +7747,8 @@ function main()
                 "  (", round(burn_lap,digits=2), " L/lap)")
     end
     # ---- live race standings: rank everyone by race progress (laps + lap fraction) ----
+    TRACE_PROG = get(ENV,"JM_TRACE_PROG","") != ""      # STANDINGS-1 S2
+    prog_bad = Ref(false); prog_t0 = Ref(0.0)
     function standings()
         # STANDINGS-1 S1 (2026-09-16) — FIXED: the PLAYER's progress double-counted the lap he had
         # just completed.  It was `cs.laps + cs.lapdist/LAPLEN`, and those are not a lap count plus
@@ -8389,6 +8391,31 @@ function main()
                 race_go[] && (player_prog += ds)
                 player_s_prev = ps
                 while cs.laps < floor(Int, player_prog/CLINE.total); cs.laps += 1; end
+                # STANDINGS-1 S2 (2026-09-16): measure HOW LONG the two progress views disagree.
+                # S1 fixed the ranking, but the old expression is also what the live position readout
+                # in the window title used all race (it calls the same standings()).  cs.laps ticks
+                # when player_prog crosses an integer; cs.lapdist wraps when the TRKSURF probe passes
+                # the start/finish line.  If those two events are not simultaneous there is a window
+                # each lap in which the old expression is a full lap too high -- and the size of that
+                # window is the difference between "one bad frame" and "the readout lies for seconds".
+                # Prints only the window's start and end, with sim time, so it cannot flood.
+                # JM_TRACE_PROG=1.
+                if TRACE_PROG
+                    _oldpp = cs.laps + (LAPLEN > 0 ? clamp(cs.lapdist/LAPLEN, 0.0, 1.0) : 0.0)
+                    _newpp = player_prog/CLINE.total
+                    _bad = abs(_oldpp - _newpp) > 0.5
+                    if _bad && !prog_bad[]
+                        prog_bad[] = true; prog_t0[] = cs.t
+                        println("  [prog] DISAGREE from t=", round(cs.t, digits=2),
+                                "s  laps=", cs.laps, " lapdist=", round(cs.lapdist, digits=1),
+                                "  old=", round(_oldpp, digits=3), " new=", round(_newpp, digits=3))
+                    elseif !_bad && prog_bad[]
+                        prog_bad[] = false
+                        println("  [prog] agree again at t=", round(cs.t, digits=2),
+                                "s  -- the readout was a lap out for ",
+                                round(cs.t - prog_t0[], digits=2), " s")
+                    end
+                end
             end
             # E56: the PLAYER grass penalty is now per-wheel tyre μ applied BEFORE the step (above) —
             # a wheel off the racing surface loses real grip in the brush model and pulls the car, rather

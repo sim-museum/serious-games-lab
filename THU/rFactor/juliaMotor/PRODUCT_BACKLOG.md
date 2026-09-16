@@ -14896,3 +14896,77 @@ whether it can reorder a close finish; (3) go back to the PO's original "6th whe
 instrument now in place.
 
 **STANDINGS-1: 1 sprint. A by-catch became a fixed defect in the number that decides who won.**
+
+## STANDINGS-1 S2 (Opus 5, 2026-09-16) — ⭐⭐ **the window measured: the old formula ranked the player a full lap ahead for 0.65 s AT THE START of every race**, and for ~0.08 s at each line crossing — ⛔ **and S1's "two centrelines" worry is answered by reading: there is only one**
+
+S1 fixed the ranking and left three candidates. Two of them are settled here.
+
+### ⛔ Candidate (2) — `AILINE` vs `CLINE` — is not a hazard, and one line of source says so
+
+S1 worried that the AI measure their lap fraction against `AILINE` and the player now measures against
+`CLINE`, two centrelines whose totals could differ and reorder a close finish. They cannot:
+
+```julia
+AILINE = (CLINE !== nothing && N_AI > 0) ? CLINE : nothing     # drive_native_mtk.jl:7293
+```
+
+**`AILINE` *is* `CLINE`** — the same object, not a copy. No measurement needed and none taken.
+⚠️ Worth noting that S1 proposed measuring it; reading the assignment cost nothing and settled it.
+
+### ⭐ Candidate (1) — the live readout — uses the same function, so it carried the same fault
+
+```julia
+"  Pos P$(findfirst(e->e[1]==0, standings()))/$(length(AICARS)+1)"      # :9453, the window title
+```
+
+So S1's fix reaches the **live position indicator**, not just the final classification. That raised
+the question S1 could not answer: **for how long each lap was that indicator wrong?**
+
+### ⭐⭐ Shipped `JM_TRACE_PROG=1`, and the answer is not what "a rounding edge" would predict
+
+The trace prints only the entry and exit of a disagreement (`|old − new| > 0.5`), so it cannot flood.
+One 3-lap Watkins Glen race, `JM_AI=5 JM_AI_PCT=71 JM_AI_TEMPER=0.64`:
+
+```
+[prog] DISAGREE from t=1.39s   laps=0 lapdist=3769.0  old=1.0 new=0.0
+[prog] agree again at t=2.04s  -- the readout was a lap out for 0.65 s
+[prog] DISAGREE from t=146.02s laps=1 lapdist=3767.7  old=2.0 new=1.0
+[prog] agree again at t=146.10s -- ... for 0.08 s
+[prog] DISAGREE from t=269.01s laps=2 lapdist=3767.7  old=3.0 new=2.0
+[prog] agree again at t=269.09s -- ... for 0.08 s
+[prog] DISAGREE from t=425.66s laps=2 lapdist=1.2     old=2.0 new=3.0
+[prog] agree again at t=425.68s -- ... for 0.02 s
+```
+
+⭐⭐ **The big one is at the START, and it is not a crossing artefact at all.** The grid sits *behind*
+the start/finish line, so `cs.lapdist` reads **3769.0 of a 3769.5 m lap** while the car has covered
+nothing and `player_prog` is still 0 (it only accumulates once `race_go[]`). The old expression
+therefore credited the player **a full lap before the race started** — and the live position indicator
+read from it. *At a standing start, the position indicator is the one thing every driver looks at.*
+**0.65 s of "P1" that was never true.**
+
+⭐ **The line crossings are small but real**: ~0.08 s each, the gap between `cs.laps` ticking (driven by
+the accumulator) and `cs.lapdist` wrapping (driven by the `TRKSURF` probe).
+
+⭐ **And the fourth window has the opposite sign**, which names the residual mechanism: `laps=2`,
+`lapdist=1.2` — the probe's start/finish has already been crossed while the accumulator is still at
+2.9996 laps. **The two lines' `s = 0` points are a few metres apart**, and 0.02 s at racing speed is
+about a metre. That difference is intrinsic to having two measures of the same line; ranking on one of
+them, as S1 now does, removes it from the standings entirely.
+
+### Not done
+
+⚠️ **The live readout was not captured**, only the expression it reads. The indicator lives in the
+GLFW **window title**, which a headless run does not record; confirming it on screen needs a windowed
+run and a look. The arithmetic above is what the title interpolates, so this is a gap in the evidence,
+not a doubt about the direction.
+
+⚠️ **Still one run per arm.** The four windows are all from a single race; the 0.65 s figure will vary
+with how far behind the line the grid sits on a given track.
+
+**S3:** the PO's original *"finished 6th when 1st"*. The instrument to ask it with now exists, and the
+two candidate answers are distinguishable: if the report is about the **finish**, S1's double-count is
+the wrong sign and something else is left; if it is about the **live indicator during the race**,
+0.65 s of phantom P1 at the start is exactly the shape of it.
+
+**STANDINGS-1: 2 sprints. The defect is fixed and now has a duration attached to it.**
