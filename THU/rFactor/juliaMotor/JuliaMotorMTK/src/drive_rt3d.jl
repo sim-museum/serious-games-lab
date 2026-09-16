@@ -462,9 +462,17 @@ function step_car3d!(c::Car3D, throttle, brake, steer, dt;
     thr = clamp(throttle, 0, 1)
     if TC_ON && thr > 0.0                                  # traction aid: keep the rear below its slip limit (HIGH speed only)
         a0 = c.getall(c.integ)
-        gate = TC_STEERGATE ?
-               clamp((abs(steer) - TC_STLO) / max(TC_STHI - TC_STLO, 1e-6), 0.0, 1.0) :  # 0 with the wheel straight → peel-out lives
-               clamp((abs(a0[4]) - TC_VLO) / (TC_VHI - TC_VLO), 0.0, 1.0)                # 0 at low speed → peel-out lives
+        # S4 (2026-09-15): the UNION of the two gates, not a replacement. The launch A/B refuted S3's
+        # recommendation: with the wheel straight the steering gate stays shut ABOVE 25 m/s too, and
+        # that is where the speed gate was quietly earning its keep -- controlling straight-line
+        # wheelspin. Measured: default 0→31.6→58.4→108→146→179 km/h, steering-gate-only
+        # 0→31.6→58.4→107→61→2.4, i.e. the car spins up and bogs the moment it passes 90 km/h.
+        # So take whichever gate is MORE open: fast-and-straight keeps the old protection, and
+        # slow-and-turning gains it. Both reduce to the current behaviour when JM_TC_STEERGATE=0.
+        gspeed = clamp((abs(a0[4]) - TC_VLO) / (TC_VHI - TC_VLO), 0.0, 1.0)   # 0 at low speed → peel-out lives
+        gsteer = TC_STEERGATE ?
+                 clamp((abs(steer) - TC_STLO) / max(TC_STHI - TC_STLO, 1e-6), 0.0, 1.0) : 0.0
+        gate = max(gspeed, gsteer)
         if gate > 0.0
             κr = (a0[23]*RW_R - a0[4]) / max(abs(a0[4]), 3.0)
             κr > TC_SLIP && (thr *= clamp(1.0 - 4.0*gate*(κr - TC_SLIP)/TC_SLIP, 0.05, 1.0))

@@ -13116,6 +13116,54 @@ becomes a one-line default change with evidence on both sides of it.
 **STABILITY-1: 3 sprints. The option exists and works where it matters; the claim that it costs
 nothing elsewhere is still owed a measurement.**
 
+### STABILITY-1 S4 (Opus 5, 2026-09-15) — ⛔ **the launch A/B REFUTED my own recommendation, and the refutation produced the right design: the gates are a UNION, not a choice**
+
+S3 owed a measurement and predicted it would be uneventful ("with the wheel straight the gate
+evaluates to 0, inert exactly as the speed gate is"). **The arithmetic was right and the conclusion
+was wrong**, which is exactly why the run was owed.
+
+⛔ **Straight launch, full throttle, steering gate ALONE against the default:**
+
+| t (s) | default (speed gate) | steering gate only |
+|---|---|---|
+| 2.0 | 31.6 km/h | 31.6 |
+| 4.0 | 58.4 | 58.4 |
+| 6.0 | **108.1** | **106.6** |
+| 8.0 | **145.6** | **60.9** |
+| 10.0 | **179.3** | **2.4** |
+| 12.0 | 205.5 | 61.9 |
+
+**Identical through the launch, then the steering-gate car spins up and bogs to a standstill.** The
+divergence starts at ~107 km/h — and `TC_VLO` is 25 m/s = **90 km/h**. That is not a coincidence:
+past that speed the SPEED gate opens and the aid starts controlling straight-line wheelspin, which is
+work it had been doing silently all along. The steering gate, with the wheel straight, stays shut and
+throws that away.
+
+⭐ **So the answer is not "which gate" — it is BOTH:**
+
+    gspeed = clamp((|v| - TC_VLO) / (TC_VHI - TC_VLO), 0, 1)     # fast and straight: keep the old protection
+    gsteer = clamp((|steer| - TC_STLO) / (TC_STHI - TC_STLO), 0, 1)   # slow and turning: gain it
+    gate   = max(gspeed, gsteer)
+
+✅ **Verified, same launch, `JM_TC_STEERGATE=1` with the union:**
+
+    t=2.0  31.6   t=4.0  58.4   t=6.0 108.1   t=8.0 145.6   t=10.0 179.3   t=12.0 205.5 km/h
+
+**Digit for digit the default launch** — and S3 already showed the same flag delivers the 1.19 g held
+circle. One switch, both behaviours, nothing given up.
+
+⭐ **What this cost and what it bought.** A sprint spent proving my own recommendation wrong is worth
+more than the three that assumed it: the speed gate was never the mistake, it was *incomplete*, and a
+"replace it" change shipped on S3's arithmetic would have broken every standing start above 90 km/h
+— silently, because the launch looks fine for the first four seconds.
+
+**For the PO — the decision from S2 is now a much easier one:** `JM_TC_STEERGATE=1` is measured to
+keep the launch exactly as it is AND fix the corner. The remaining question is only whether to make
+it the default, and that is a feel judgement rather than a trade-off.
+
+**STABILITY-1: 4 sprints — AT THE CAP, parked.** Oversteer diagnosed, mechanism confirmed by
+prediction, fix built, and the fix's own side effect found and removed.
+
 ### SPA-FPS-1 S10 (Opus 5, 2026-09-14) — ⛔ S9's black mirror was the `!REPLAY` term, not the hidden window; and with it lifted **the strobe is measured**
 
 S9 concluded *"a hidden window may not run the RTT"* and left the strobe question open. **The reason
