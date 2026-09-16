@@ -13777,3 +13777,61 @@ away.
 GPL never skips a mirror frame), item 3 answered incidentally (content matches once unoccluded), and
 item 2 reduced from "measure the geometry" to two named candidates with a one-run test to separate
 them.**
+
+## GOLDVID-JR-2 S1 (Opus 5, 2026-09-16) — ⭐⭐ **the race parameters, the AI field and its gaps, read from the overlay** — and **our centreline is 55 m longer than the circuit GPL says it is**
+
+The PO's goal for this material is *"defining the behavior of the AI cars in a GPL race, a behavior
+to be matched"*. The video's timing overlay carries that directly, with no replay parsing.
+
+⭐ **The session, from GPL's own info panel (t≈280 s):**
+
+```
+United States Grand Prix        2 laps, 7.4 km
+Watkins Glen Grand Prix Circuit  8 turns   3,701 m
+Track Record: 1:15.69   D: 67x
+RACE   STATUS: SESSION COMPLETE   ELAPSED TIME 0:03:39   LAP: 2 OF 2
+```
+
+⭐ **This also confirms JR-3's provenance claim outright.** That panel is the **save-replay dialog** —
+the video is showing `260915_wg.rpy` *being written*. Video and replay are not merely the same
+timestamp, they are the same act.
+
+⭐ **The field and its gaps** (t=200 s), matching the `.rpy`'s six `DRNT` records exactly:
+
+| pos | driver | gap to leader | track position |
+|---|---|---|---|
+| 1 | **D 67x** (player) | `01:30.49` | +0 m |
+| 2 | J **Clark** | +00:01.27 | −332 m |
+| 3 | J **Brabham** | +00:03.60 | −421 m |
+| 4 | G **Hill** | +00:0?.81 | −507 m |
+
+**The AI runs within ~1.3–4 s of the player over a 3.7 km lap** — a tight field, not a strung-out one.
+That is the pace envelope to match.
+
+⭐⭐ **A concrete discrepancy worth checking: track length.**
+
+| | length |
+|---|---|
+| GPL's own info panel | **3,701 m** |
+| our `TrackSurface` lap | 3,770.3 m |
+| our `CLINE` centreline | 3,756 m |
+
+**Ours is 55–69 m long — 1.5–1.9%.** That matters directly for this item: **a 1.9% longer track makes
+our lap times ~1.9% slower at identical pace**, so any AI-pace comparison inherits the error before
+it starts. ⚠️ **Not asserted as a defect** — a published circuit length and a reconstructed centreline
+are not the same measurement, and a centreline cutting corners differently will differ legitimately.
+But it should be **calibrated before lap times are compared**, or the comparison measures our geometry
+rather than our AI.
+
+⚠️ **The video is NOT a linear race record, and I nearly read it as one.** Sampling the overlay gave
+`Leader Relative (2L)` at t=120 and `(1L)` at t=200 — laps going *backwards* as time advances. The
+t=280 frame explains it: the race finishes, the save dialog opens, and the later footage is **replay
+playback**, not live racing. **Any timeline analysis must segment the video first** (race → save →
+replay) rather than treating t as race time. [[parity-captures-must-record-their-state]]
+
+**S2:** read gaps at several points *within the race segment only* (t < ~270 s) and see whether they
+evolve naturally or hold constant — **the latter would be rubber-banding**, which is exactly the AI
+behaviour worth knowing before copying it.
+
+**GOLDVID-JR-2: 1 sprint. Race parameters and field captured; one calibration discrepancy raised; the
+video's structure mapped so the next sprint does not misread it.**
