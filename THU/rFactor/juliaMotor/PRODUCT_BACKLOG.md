@@ -13025,6 +13025,58 @@ sensitivity or the differential and the aid is the wrong lever.** Either answer 
 
 **STABILITY-1: 1 sprint. The end that lets go is named, with a number on both axles.**
 
+### STABILITY-1 S2 (Opus 5, 2026-09-15) — ⭐⭐ **the prediction held: with the traction aid live the rear goes from 0.80 to 1.32, the spin disappears, and the car holds a 1.19 g circle for the rest of the run**
+
+S1 predicted, before the run: *"If the rear's ceiling is combined-slip, its utilisation should rise
+well above 0.80 and the oscillation should shrink or disappear; if it does not move, the ceiling is
+load sensitivity or the differential."* The only change was `JM_TC_VLO=2 JM_TC_VHI=4` — the traction
+aid's speed gate, moved from 25 m/s (90 km/h) down to where a skidpad actually runs. Same lock, same
+throttle, same everything else.
+
+⭐⭐ **Control (S1) against the same seconds with the aid live:**
+
+| t (s) | | rear \|Fy\|/Fz | yaw (°/s) | v (km/h) |
+|---|---|---|---|---|
+| 7.1 | aid OFF | 0.80 | 93 | 72 |
+| 7.1 | **aid ON** | **0.91** | **42** | 69 |
+| 8.1 | aid OFF | 0.18 | **232 ← spun** | 56 |
+| 8.1 | **aid ON** | **1.20** | **37** | 67 |
+| 9.1 | aid OFF | 0.10 | −48 | 31 |
+| 9.1 | **aid ON** | **1.32** | **36** | 69 |
+
+**The rear's 0.80 ceiling was not a tyre property — it was traction stealing lateral grip.** Freed of
+it, the rear reaches **1.32**, the same figure as the front, and the two ends are finally balanced.
+
+⭐ **And the car then HOLDS the circle** — ten consecutive seconds, constant input:
+
+    t=10.14  68.0 km/h  front 1.326  rear 1.103  yaw 37.2
+    t=13.18  68.0 km/h  front 1.337  rear 1.237  yaw 32.0
+    t=16.22  67.3 km/h  front 1.327  rear 1.212  yaw 38.2
+    t=18.24  67.0 km/h  front 1.320  rear 1.250  yaw 34.0
+
+Speed steady to ±1 km/h where S1's run cycled 17 → 72 km/h. From the geometry — 18.9 m/s at
+0.62 rad/s — that is a **30.5 m radius pulling 1.19 g**, which lands inside the gold's 15–20 m/s band
+(median 1.13 g, p95 1.25 g). **A constant-input skidpad that agrees with the reference, from a car
+that could not complete one circle a sprint ago.**
+
+⚠️ **I am NOT shipping this as the default, and the reason is in the code.** `TC_VLO`'s comment says
+the 25 m/s gate exists deliberately: *"off below, full above (peel-out lives at low speed)"*. Dropping
+it to 2 m/s would put traction control on every standing start, which is a feel decision the PO owns
+— and this project has a rule about flipped defaults invalidating proofs.
+
+⭐ **A better lever is visible in the same data, and it costs nothing at a standing start.** The aid
+is gated on SPEED because speed was the only proxy available for "not launching". **The car now has a
+steering angle to gate on instead**: at a standing start the wheel is straight, and in every corner
+it is not. A gate of the form *"aid active when |steer| exceeds a few degrees, regardless of speed"*
+keeps the peel-out exactly as it is and fixes the hairpin.
+
+**S3 (PO decision, then one run):** ask the PO whether they want (a) the speed gate lowered, (b) a
+steering-angle gate instead, or (c) the current behaviour kept and this recorded as a known
+characteristic. Option (b) is one line and is the one I would take. **The measurement stands either
+way: the oscillation is combined slip, and it is fixable.**
+
+**STABILITY-1: 2 sprints. Predicted, tested, confirmed — and the fix is a gate, not a physics rewrite.**
+
 ### SPA-FPS-1 S10 (Opus 5, 2026-09-14) — ⛔ S9's black mirror was the `!REPLAY` term, not the hidden window; and with it lifted **the strobe is measured**
 
 S9 concluded *"a hidden window may not run the RTT"* and left the strobe question open. **The reason
