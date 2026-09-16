@@ -13628,3 +13628,51 @@ replay, not GPL's — the name is a false friend.
 
 **GOLDVID-JR-3: 0 sprints. The file is located, the container is mapped, the field is read, and the
 acceptance test for a parser is defined.**
+
+## GOLDVID-JR-3 S1 (Opus 5, 2026-09-15) — the `.rpy` container is **fully verified**, the per-car payload is **bit-packed and will not yield to byte scanning** — and there is a far better route: **let GPL decode its own replay**
+
+**The container is confirmed, not guessed.** Every declared size checks against the file:
+
+| chunk | at | declared | check |
+|---|---|---|---|
+| `RPLY` | 0x0000 | 2,130,576 | = file − 12 ✅ |
+| `RPHD` | 0x000c | 76 | track `watglen`, season `1967-X` |
+| `WKNF` | 0x0064 | 181 | |
+| `DRLS` + 6 × `DRNT` | 0x0128 | | the six drivers, matching the video overlay |
+| `RPTP` | 0x0664 | **2,128,940** | = exactly the remaining bytes ✅ |
+
+⭐ **The `RPTP` payload is a doubly-linked record chain**, `u16 thisSize · u16 prevSize · …`. This is
+**proved, not inferred**: walking it from the first record reaches **EOF exactly**, over **14,450
+records**, with **every record's `prevSize` matching its predecessor's size**. A wrong guess does not
+survive 14,450 consecutive consistency checks.
+
+**What the records look like:** 117 distinct sizes, dominated by **140 (7,591), 164 (2,848), 108
+(1,865)**. The `u16` at offset 4 is a **10-bit wrapping counter (0–1023, non-monotonic, ~14 records
+per value)** — not a frame index.
+
+⛔ **And here the byte-level approach stops.** Scanning the 140-byte record at every 4-byte-aligned
+offset, as both `float32` and `int32`, produces **no column with physically plausible, smoothly
+varying values** — no coordinate, no speed, nothing. A **16-byte periodic sub-structure** is clearly
+visible (offsets 64 / 80 / 96 / 112 / 128 share near-identical ranges and medians), so repeated
+per-entity blocks are certainly there, but **their fields are not byte-aligned**.
+
+**The payload is bit-packed**, which is consistent with GPL's fixed-point design and with the
+variable record sizes. **Byte-aligned scanning is the wrong tool and further use of it will waste
+sprints.**
+
+⭐⭐ **The better route, found by reading the tools instead of the file.** `GPL_Tel` in the gold store
+does **not** decode `.rpy`. It logs telemetry **while GPL plays**, synchronised to a replay — its own
+instructions say *"If you ready with driving, save complete replay, finish GPL… Choose a saved
+replay"*. **So the way to get AI behaviour out of `260915_wg.rpy` is to play it back in GPL under
+Wine and log it, not to decode it here.** That is the sim's own loader doing the parsing, which is
+exactly the principle that has already saved this project once. [[probe-with-the-sims-own-loader]]
+
+**S2:** run GPL under Wine, load `260915_wg.rpy`, and capture per-car state with `GPL_Tel` (or by
+reading the running game). **The acceptance test is unchanged and still applies**: reconstruct the
+player's lap times and the per-driver gaps and match them against the numbers visible in the video
+overlay (`01:26.11`, `01:30.49`, the Player/Leader Relative columns). ⚠️ Note the Wine prefix that ran
+this is `~/sgl/THU` — and a stale `bob.exe` was found in the BoB prefix earlier tonight, so check for
+leftovers before and after.
+
+**GOLDVID-JR-3: 1 sprint. The container is solved and the dead end is marked, which is worth more
+than a half-decoded record.**
