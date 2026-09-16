@@ -14447,3 +14447,56 @@ The header is **not** yet confirmed against a real run, because a live run needs
 2–3 minutes of load; **S2 is that run**, and it produces the gold comparison at the same time.
 
 **TELEMSTATE-1: 1 sprint. The reference we were about to quote turned out to be unattributable.**
+
+## TELEMSTATE-1 S2 (Opus 5, 2026-09-16) — ✅ **header verified on a live run** — ⛔ **and the run exposes the real blocker: the telemetry logs only the PLAYER's car, so it can never answer "how fast is our AI?"**
+
+S1 shipped the run-configuration header and flagged it as **unverified** — "not yet confirmed against
+a real run, because a live run needs the display and 2–3 minutes of load". Ran it:
+`TRACK=watglen JM_AI=3`, on the display under `gl-lock`.
+
+✅ **The header writes, with real values:**
+
+```
+# watglen_racer telemetry — Lotus 49 @ watglen
+# run: ai=3 ai_pct=60.0 ai_rel=Inf ai_amax=8.0 view=? joystick=true
+# t  lap  lapdist  kmh  thr  brk  steer  clu  gear  rpm  x  z  lat  along  ontrack
+```
+
+Every field S1 added is populated from the run's own constants. **A log can now say what produced
+it**, which is the whole point of the item.
+
+⭐ **The run also shows the AI is real and anchored to measured data**, which is worth recording
+because the repo's `CLAUDE.md` still lists *"Limit-handling autonomous driver"* as an open item:
+
+```
+→ AI grip anchor 13.04 m/s² (1.33 g) from lotus49_skidpad …ibt (LatAccel p99 of 11776 samples)
+→ AI vmax anchor 87.8 m/s (316 km/h) from rev limit 9566 rpm in lotus49_nurburgring …ibt
+  loading AI car: Ferrari …   loading AI car: Brabham …
+```
+
+⛔ **And then the blocker, which the header fix does not touch.** The telemetry file from that run is
+**504 data rows of the player's car only** — no AI column, no AI rows, `grep -ci ai` matches nothing
+but the header line I added. Every row reads `kmh 0.0  lapdist 0.0` at a fixed `(-50.4, 761.8)`,
+because nobody was driving the player's car.
+
+**So even a perfectly-labelled log still cannot answer the question this item exists to serve.**
+Comparing our AI against the gold's field (`1:30.177` Clark … `1:39.001` Hill, GOLDVID-JR-2 S1) needs
+**per-AI-car rows**, and the telemetry writer emits one car.
+
+⚠️ **Two separate things were conflated in S1 and are now separated:**
+* *"the log does not say who drove"* — **fixed**, verified above;
+* *"the log has no AI data at all"* — **found here**, untouched, and the actual blocker.
+
+S1's proposed S2 ("one new run with the header in place produces the gold comparison") was therefore
+**wrong about what one run would buy**. It bought the verification; it could not buy the comparison.
+
+**S3:** emit one telemetry row per car per sample with a car-id column (the AI cars are already
+stepped together in `RaceAI.step_field!`, so their state is in hand at the same tick the player's row
+is written). One unattended run then yields our AI's lap times at Watkins Glen, directly comparable
+to the gold's six-driver field — with `ai_pct` and `ai_rel` recorded in the header so the comparison
+states its own settings, exactly as GPL's gold states Novice / 5 AI / AI Speed 1.
+
+⚠️ The 50-second stationary log from this run was deleted rather than committed: it records nothing
+but a parked car and would sit in the repo looking like data.
+
+**TELEMSTATE-1: 2 sprints. The header is real; the thing it was meant to enable needs one more change.**
