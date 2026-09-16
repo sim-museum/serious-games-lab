@@ -15354,3 +15354,66 @@ taken from position rather than from a header. `260915_wg_Complete.txt` has five
 this project has quoted three of them.
 
 **GOLDVID-JR-2: new pass, sprint 2 of 4.**
+
+## GOLDVID-JR-2 S8 (Opus 5, 2026-09-16) — ⚠️ **a gap in S6's own arithmetic, named** — the run to close it **wrecked**, and the wreck is a THIRD failure mode
+
+### ⚠️ What S6 compared, and what it should have
+
+S6 retracted the `JM_AI_TEMPER=0.64` recommendation on this table:
+
+| our setting | field spread | vs the corrected gold (6.93 %) |
+|---|---|---|
+| `JM_AI_TEMPER=0.35` | 6.27 % | 0.90× |
+| `JM_AI_TEMPER=0.64` | 10.56 % | 1.52× |
+
+The **0.64 row is sound** — 10.56 % is AISPREAD-1 S4's figure, measured from **true best laps**
+(`ai_best[]`), against a gold best-lap spread. Like for like.
+
+⛔ **The 0.35 row is not.** Its 6.27 % comes from AISPREAD-1 S3's table, which used the **derived
+average** (`player_elapsed ÷ AI progress`) that S4 later showed *is not a lap time at all*. So S6's
+headline comparison mixes two measures, and I should have said so when I wrote it.
+
+### ⭐ How much that actually matters — bounded, not waved away
+
+There is a direct check in the record. For **the same setting** (`temper 0.64`) the two yardsticks
+give:
+
+| | spread |
+|---|---|
+| derived average (S3) | **10.3 %** |
+| true best laps (S4) | **10.56 %** |
+
+**0.26 percentage points apart.** That is the point: the derived figure is *the player's* elapsed time
+divided by each AI's progress, so its error is **common to every car** — it moves the whole field
+together and largely cancels in a *ratio*. It contaminates the **centre** badly (which is why S4's
+centre correction mattered) and the **spread** barely.
+
+⭐ So S6's `0.35 → 6.27 %` is likely good to about ±0.3 points, and **0.90× stands within roughly
+±0.05**. The retraction's direction and its conclusion — *leave `JM_AI_TEMPER` at 0.35* — are
+unaffected. But it is an estimate carrying a known contamination, not a measurement, and it is now
+labelled as one.
+
+### ⛔ The run that would have settled it wrecked — and it is a THIRD failure mode
+
+`JM_AI_PCT=71 JM_AI_TEMPER=0.35 JM_LAPS=3`:
+
+```
+[damage] contact at 9.9 m/s closing -- corner grip now 78.0%
+[WRECK] hard impact at 81.0 km/h — engine disconnected, race over
+[WRECK]   cause: CLOSING speed 13.4 m/s into a solid
+[WRECK]   at world (337.6, -199.0)
+```
+
+Not the world-edge wreck (BNDWRECK-1 S1) and not the stuck state (S1's second mode): **a genuine
+collision with a solid at 13.4 m/s closing**. Three distinct ways the autodrive loses a race, and the
+measured loss rate is now 4 of 8 usable runs.
+
+⭐ **And it is a small positive for BNDWRECK-1's instrument.** The report correctly says `CLOSING`,
+and the boundary fields S1 added correctly **stayed silent** — so the two branches do discriminate,
+which S2 could only show in the not-firing direction. The `[WRECK] boundary:` line still awaits an
+actual world-edge wreck.
+
+**S9:** measure `temper 0.35` on true best laps. It is one clean run, and at a 50 % loss rate that
+means launching two.
+
+**GOLDVID-JR-2: new pass, sprint 4 of 4 — at cap.**
