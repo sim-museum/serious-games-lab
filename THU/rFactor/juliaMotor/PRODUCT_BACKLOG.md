@@ -13560,3 +13560,71 @@ fidelity we are preserving**, and it should be described that way.
 
 **GOLDVID-JR-1: 2 sprints. Items 1 (content per disc) and 4 (update rate) are answered; 2 (disc
 geometry vs our `JM_MIRROR_*`) and 3 (what is in them) remain.**
+
+---
+
+# GOLDVID-JR-3 (NEW, PO 2026-09-15) — ⭐⭐ **the GPL REPLAY that goes with the Watkins Glen video: per-car state for the whole race, which is the AI-behaviour oracle the video only hints at**
+
+**PO:** *"the replay file that goes with the new gold standard watkins glen race video is
+`260915_wg.rpy` under `~/sgl/THU`. This is important for defining the behavior of the AI cars in a
+GPL race, a behavior to be matched in julia racer."*
+
+**Located:** `~/sgl/THU/afterGameReport/260915_2101_gpl/260915_wg.rpy` — **2,130,588 bytes**. The
+`2101` session stamp matches the video's on-screen clock, so **video and replay are the same race**.
+A second sample exists: `260904_2310_gpl/260904_wg.rpy` (2.65 MB, Sep 4).
+
+⭐ **Why this outranks the video for AI work.** The video gives lap times and gaps as *pixels* in an
+overlay. The replay gives the **actual per-car state**, which is what "behaviour to be matched"
+requires: racing line, speed and closing rates, where each AI brakes and turns in, and how it behaves
+alongside another car. **No amount of OCR on the video substitutes.**
+
+## Format, mapped (so the next sprint does not start from zero)
+
+Chunked, with FourCC tags stored **byte-reversed** in the file (`YLPR` on disk = `RPLY`). Layout is
+`tag(4) · version(4) · size(4) · data`:
+
+| offset | chunk | what |
+|---|---|---|
+| 0x0000 | `RPLY` | magic; declared size 2,130,576 = file − 12 ✅ |
+| 0x000c | `RPHD` | header — track **`watglen`**, season **`1967-X`** |
+| 0x0064 | `WKNF` | 181 bytes |
+| 0x0128 | `DRLS` | driver list |
+| 0x0134 … | **`DRNT` × 6** | one per car |
+| 0x0664 | `RPTP` | then **2,128,952 bytes of bulk data** to EOF |
+
+⭐ **The field, read out of the `DRNT` records — and it matches the video overlay exactly:**
+
+| # | driver | note |
+|---|---|---|
+| 0 | *Driver* | the player, car **`67x`** |
+| 1 | Jack **Brabham** | Hurstville, Australia |
+| 2 | Chris **Amon** | Bulls, New Zealand |
+| 3 | Jo **Bonnier** | Stockholm, Sweden |
+| 4 | Jim **Clark** | |
+| 5 | Graham **Hill** | |
+
+⭐ **The bulk data is the right size to be per-car samples.** 2,128,952 bytes ÷ 6 cars ÷ 521 s =
+**681 bytes per car per second**. At GPL's **36 Hz** that is **18.9 bytes per car per sample** —
+consistent with a position-plus-orientation record, and far too dense to be anything else.
+
+## What to do (S1)
+
+1. **Parse `RPTP`.** Confirm the sample rate by finding the record stride that divides the bulk
+   cleanly for 6 cars, then decode position and orientation.
+2. **Validate the parser before believing any behaviour from it.** The video is the cross-check:
+   reconstruct the player's lap times from the replay and compare against the **lap times shown
+   on screen** (`01:26.11`, `01:30.49` …), and the per-driver gaps against the overlay's Player
+   Relative / Leader Relative columns. **A parser that cannot reproduce the video's own numbers is
+   not ready to define AI behaviour.** [[probe-with-the-sims-own-loader]]
+3. Only then: extract the AI racing line, braking points and speed traces per corner.
+
+⚠️ **Existing tooling is present but unverified for this:** `~/gold standard/julia racer/gpl
+utilities/gpltools/` holds `GPL_Tel_20221120`, `WinMIPv2.16.6`, `GPLLytViewer` and others. They are
+Windows `.exe`s; whether any reads `.rpy` has **not** been checked. Worth ten minutes before writing
+a parser from scratch.
+
+⚠️ **Our repo has no `.rpy` reader.** `JuliaMotorMTK/tools/replay_audit.jl` is about *our own*
+replay, not GPL's — the name is a false friend.
+
+**GOLDVID-JR-3: 0 sprints. The file is located, the container is mapped, the field is read, and the
+acceptance test for a parser is defined.**
