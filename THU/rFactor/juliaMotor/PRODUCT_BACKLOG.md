@@ -15505,6 +15505,33 @@ So the headline stays at **7 of 17, 41 %**, and the re-run carries `JM_AI=5`.
 the one it reports on gives a confident wrong number, and this one was one edit away from being
 quoted.
 
+### The `JM_AI=5` re-run — a proper six-car race, and it WRECKED
+
+```
+[WRECK]   boundary: 0.015 m past the edge (FENCE_GRACE=2.5 m),
+          inward-normal speed -21.26 m/s, off-track distance 2.5 m
+[WRECK] lotwlr torn off on the wall at 76.0 km/h
+  lap 1: 1:22.143  (best)
+```
+
+A **sixth boundary wreck**, and S1's `BND_NL`/`BND_VN`/`BND_OFF` fields do their job: 0.015 m past
+the edge at −21.26 m/s inward, which is a car leaving the world sideways at speed, not a graze.
+Corpus now **8 of 18 lost — 44 %**, and boundary is **6 of the 8**.
+
+⭐ Worth noting for anyone comparing runs: its **lap 1 was 1:22.1** against the solo run's 2:26.5.
+The solo run was not merely a different population, it was a different *pace* — one more reason it
+could not have been read as a corpus member.
+
+⛔ **And the new damage line STILL has not executed** — `dmg=0` in both runs. That is not bad luck:
+the print sits behind `cpk > 1.0e3 && !WRECKED[] && cclose > 0.0`, so it fires only on a
+**survivable** contact. A clean race never reaches it and a wreck sets `WRECKED` on the way in.
+The case it exists for is `bw_run1`'s 16,424 grazes — and that binary no longer exists to re-run.
+So the format stands as written and unexecuted, said plainly rather than quietly dropped; the next
+run that grazes will print it. Two races is where this stops earning its keep.
+[[ff-harness-geography-and-probe-population]] — a census that samples a different population than
+the one it reports on gives a confident wrong number, and this one was one edit away from being
+quoted.
+
 ### Shipped
 
 * `tools/jr_classify_run.py` — one line per log, with the tally and the loss rate. The pre-watchdog
