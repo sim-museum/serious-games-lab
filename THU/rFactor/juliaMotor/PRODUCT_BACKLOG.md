@@ -13327,3 +13327,43 @@ reduced object set in the mirror pass would move every row of that table at once
 
 **SPA-FPS-1: 6 sprints (2 in this pass). The strobe is a latched back-off, the budget is a measured
 dial, and the decision is the PO's with three points on the curve.**
+
+## SPA-FPS-1 S14 (Opus 5, 2026-09-15) — ⛔ **the mirror's cost is NOT the geometry it draws.** Culling it from the default radii down to 60 m — an effectively empty mirror — changes the frame time by nothing, so the strobe cannot be fixed by culling
+
+**The idea under test.** S12/S13 shipped `JM_MIRROR_ADAPT`, which reaches the 30 ms budget by
+**skipping mirror renders** (cockpit, Spa: 19.6 → 29.3 fps, +49%). Skipping is what the PO sees as
+the mirror *strobing*. If the mirror's cost were the trackside objects and billboards it redraws,
+giving the mirror pass its own (tighter) cull radius would make each mirror render cheap and no
+frame would ever need to be skipped — same fps, live mirror, no strobe. That is strictly better, so
+it was worth one sprint. `JM_MIRROR_OBJ_CULL_D` / `JM_MIRROR_BB_CULL_D` ship either way.
+
+**Measured, cockpit view (`JM_VIEW=0`), `JM_MIRROR_ADAPT=0` so the mirror renders EVERY frame:**
+
+| arm | obj cull | billboard cull | fps | ms/frame | mirror skips |
+|---|---|---|---|---|---|
+| **default (control)** | 2200 | 1300 | **19.6** | 51.0 | 0 |
+| S14 wide | 2200 | 2200 | 18.2 | 54.8 | 0 |
+| S14 tight | 700 | 700 | 18.5 | 54.1 | 0 |
+| **S14 extreme** | **60** | **60** | **19.6** | 51.0 | 0 |
+| adaptation on, for scale | 2200 | 1300 | 29.3 | 34.1 | skipping |
+
+⛔ **From the default radii down to 60 m the frame time does not move: 19.6 fps → 19.6 fps.** At 60 m
+the mirror draws essentially nothing but the car's immediate surroundings, and it is no faster. So
+the ~17 ms the mirror costs (51.0 ms with it live vs 34.1 ms when frames are skipped) is **fixed
+per-pass overhead** — FBO bind and clear, the track surface, the car body, shader and state changes
+— and not the distance-culled object and billboard lists at all. **Culling cannot fix the strobe.**
+
+⚠️ **My "2200" arm was not a control, and I nearly reported it as one.** It set BOTH radii to 2200,
+which silently *widened* the billboard radius from its default of 1300 — so that arm made the mirror
+**more** expensive and came in 1.4 fps below the default. Read as a control it would have turned the
+60 m arm into a "+1.4 fps win". The real control was the `cockpit_noadapt` run already on disk from
+S12, at the true defaults. **An arm that changes two variables when you meant to change one is not a
+baseline** [[measure-before-a-global-guard]], and a same-config repeat is the only thing that tells
+you the noise floor.
+
+**Where this leaves the strobe.** Adaptation stays the only lever that reaches the budget, and it
+strobes by construction. The remaining candidates attack the fixed cost instead: a **lower mirror RT
+resolution**, skipping the **track surface** in the mirror pass, or reusing state across the two
+passes. Those are measurable the same way — this sprint's harness and control are reusable.
+
+**SPA-FPS-1: 14 sprints. The cull hypothesis is dead, measured against a proper control.**

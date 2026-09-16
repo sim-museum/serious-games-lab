@@ -2994,6 +2994,14 @@ const BB_LIT    = get(ENV,"JM_BILLBOARD_LIT","0") != "0"
 const BB_BRIGHT = parse(Float32, get(ENV,"JM_BB_BRIGHT","1.55"))
 const BB_AMB    = parse(Float32, get(ENV,"JM_BB_AMB","0.85"))
 const BB_CULL2  = 1300f0^2      # billboards (tree/shrub/crowd sprites) — far ones add little
+# SPA-FPS-1 S14 (2026-09-15): the same two radii, for the MIRROR pass only. S12/S13 measured the
+# mirror costing ~20 ms a frame at Spa -- more than the rest of the scene -- because the pass runs
+# `drawworld` TWICE (once per mirror side) with the full object set, into a 384x192 target. A
+# grandstand 2 km behind the car occupies a couple of pixels there. Cull the mirror's world harder
+# and the cost falls without touching what the driver sees ahead. Defaults keep today's behaviour
+# exactly (same radii as the main view) so nothing changes until the knobs are set.
+const MIR_OBJ_CULL2 = parse(Float32, get(ENV, "JM_MIRROR_OBJ_CULL_D", "2200"))^2
+const MIR_BB_CULL2  = parse(Float32, get(ENV, "JM_MIRROR_BB_CULL_D",  "1300"))^2
 const SMOKE = haskey(ENV, "JM_SMOKE")     # headless self-test: hidden window, auto-exit
 const SMOKE_FRAMES = parse(Int, get(ENV, "JM_SMOKE_FRAMES", "40"))   # SPA-FPS-1 S8: 40 is JIT warm-up
 # E59 multi-shot smoke: JM_SHOTS="s:view:name;s:view:name;…" photographs MANY points of the lap in ONE
@@ -9032,7 +9040,7 @@ function main()
             # A clip-space test skips what this pass's camera cannot see (each mirror pass brings its own vp_,
             # so it culls for its own view). JM_FRUSTUM_CULL=0 reverts.
             for (items,mat,grz,opos,onm) in OBJECTS                   # trackside objects (trees graze-fade; uBackFlip stays 1 when un-culled)
-                (eye_[1]-opos[1])^2+(eye_[2]-opos[2])^2+(eye_[3]-opos[3])^2 > OBJ_CULL2 && continue   # distance cull
+                (eye_[1]-opos[1])^2+(eye_[2]-opos[2])^2+(eye_[3]-opos[3])^2 > (flip ? MIR_OBJ_CULL2 : OBJ_CULL2) && continue   # distance cull (mirror gets its own radius, S14)
                 FRUSTUM_CULL && !infrustum(vp_, opos, 80f0) && continue
                 ob, oa = 1.05, 0.55                                    # default object grade (grandstands/buildings)
                 if MONZA                                               # E57: tone the combined-circuit paved/banking object surfaces
@@ -9051,7 +9059,7 @@ function main()
             OBJ_CULLFACE && glDisable(GL_CULL_FACE)
             glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 0)
             for (it,pos,w,h) in BILLBOARDS                            # trees/sprites
-                (eye_[1]-pos[1])^2+(eye_[2]-pos[2])^2+(eye_[3]-pos[3])^2 > BB_CULL2 && continue       # distance cull
+                (eye_[1]-pos[1])^2+(eye_[2]-pos[2])^2+(eye_[3]-pos[3])^2 > (flip ? MIR_BB_CULL2 : BB_CULL2) && continue       # distance cull (mirror radius, S14)
                 FRUSTUM_CULL && !infrustum(vp_, pos, max(w, h) + 5f0) && continue
                 Render.draw(prog, it, vp_, Render.billboard_model(pos,w,h,eye_); bright=BB_BRIGHT, ambfill=BB_AMB, unlit=!BB_LIT)  # E83-S3: unlit by default (GPL pre-lit art); E70-S7 tunables only matter with JM_BILLBOARD_LIT=1
             end
