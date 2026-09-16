@@ -14630,3 +14630,68 @@ call, not mine — the measurement is here and the one-line change is `drive_nat
 
 **TELEMSTATE-1: 4 sprints — at cap.** From "no log says who drove" to an AI field calibrated against
 the gold.
+
+## AISPREAD-1 — our AI field is about **half as spread out** as the gold's, and the cause is not the one GPL uses
+
+TELEMSTATE-1 S4 got our AI field's *centre* onto the gold's (92.5–98.3 s against 90.2–99.0) by setting
+`JM_AI_PCT=71` from the gold. It also measured what that did **not** fix: the width.
+
+## AISPREAD-1 S1 (Opus 5, 2026-09-16) — the spread measured, the mechanism found, the number that would match it computed — ⚠️ **and a reason not to just apply that number**
+
+⭐ **The measurement**, from TELEMSTATE-1 S4's calibrated run against the decoded gold:
+
+| | range | spread | as % of fastest | sd |
+|---|---|---|---|---|
+| **ours** (`JM_AI_PCT=71`) | 92.5 – 98.3 s | **5.8 s** | **6.3%** | 2.09 |
+| **gold** (GPL, Novice) | 90.2 – 99.0 s | **8.8 s** | **9.8%** | 3.19 |
+
+⭐ **The mechanism** (`drive_native_mtk.jl:7349`) — one line, and it is purely about the **cars**:
+
+```julia
+c.pace = 1.0 - 0.35*(1.0 - pw[i]/pwmax)     # pw = power/weight, normalised to the best car
+```
+
+A **0.35 temper** on each car's power-to-weight deficit. The slowest car (Cooper) comes out at
+`pace = 0.95`, which implies a raw p/w deficit of `0.05/0.35 = 0.143`.
+
+⭐ **The model checks out against the measurement, which is worth more than the number itself.**
+Predicting lap spread from the formula alone:
+
+```
+temper 0.35 -> slowest pace 0.950  => predicted lap spread  5.3%      (measured 6.3%)
+temper 0.50 -> slowest pace 0.929  =>                       7.7%
+temper 0.64 -> slowest pace ~0.908 =>                      ~10.1%     <- the gold's 9.8%
+temper 1.00 -> slowest pace 0.857  =>                      16.7%
+```
+
+**Predicted 5.3% against a measured 6.3%** — the car model explains most of the observed spread, and
+the extra point is traffic and incidents, which is exactly where the gold's own spread gets its
+untidiness too (GOLDVID-JR-2 S3). The mechanism is confirmed, not assumed.
+
+⚠️⚠️ **And here is why "set temper to 0.64" is NOT the recommendation.** It would match the width **by
+the wrong cause**:
+
+* **ours** spreads by **chassis** — power/weight. A Cooper is always slow and an Eagle always quick,
+  whoever is in it.
+* **GPL's** spreads by **driver** — its six ran comparable 1967 cars, and the field order comes from
+  the per-driver parameters GOLDVID-JR-2 S4 tabulated (aggression, quickness, experience…). GPL makes
+  *Hill* slow whatever he drives.
+
+Widening the car term would reproduce the number on a chart and still model something different from
+what the PO asked to match. **This is the same conclusion GOLDVID-JR-3 S4 reached from the other
+direction** — personality feeds behaviours, and lap time emerges — and it is the second independent
+route to it.
+
+✅ **Shipped, so the question is testable instead of theoretical:** `JM_AI_TEMPER=<0..1>` overrides
+the 0.35. **Unset keeps 0.35 exactly**, so nothing changes by default. Verified to parse with
+`Base.JuliaSyntax.parseall` (the runtime's own parser, not `Meta.parseall`).
+
+⚠️ **Not run.** No A/B has been flown at a different temper — the prediction above is arithmetic from
+the formula, not a measurement of the changed build. **S2 is that run**: `JM_AI_TEMPER=0.64
+JM_AI_PCT=71`, and check whether the field lands on 9.8%.
+
+**The PO's choice, stated plainly:** (a) widen the car term — one constant, matches the width, wrong
+attribution; (b) add a per-driver term on top — matches GPL's architecture, more work, and the thing
+the original brief asked for. **Not mine to pick.**
+
+**AISPREAD-1: 1 sprint. The width is measured, the mechanism is confirmed against it, and the knob exists.**

@@ -7346,7 +7346,15 @@ function main()
     if !isempty(AICARS)
         pw = [AICAR_PHYS[i][1]/AICAR_PHYS[i][2] for i in 1:length(AICARS)]
         pwmax = maximum(pw)
-        for (i, c) in enumerate(AICARS); c.pace = 1.0 - 0.35*(1.0 - pw[i]/pwmax); end
+        # AISPREAD-1 (2026-09-16): the 0.35 temper is what sets how far the field STRINGS OUT, and
+        # the gold says ours is about half as spread as GPL's -- our five cars span 6.3% of lap time
+        # where the gold's five drivers span 9.8%. Interpolating this formula, a temper near 0.64
+        # would match the gold's width. That is NOT proposed as a default here, because it matches
+        # the width by the wrong cause: ours spreads by CHASSIS power/weight, GPL's spreads by
+        # DRIVER (its six ran comparable 1967 cars). JM_AI_TEMPER makes the question testable
+        # without a rebuild; unset keeps 0.35 exactly.
+        _temper = clamp(something(tryparse(Float64, get(ENV, "JM_AI_TEMPER", "0.35")), 0.35), 0.0, 1.0)
+        for (i, c) in enumerate(AICARS); c.pace = 1.0 - _temper*(1.0 - pw[i]/pwmax); end
         # GRID by pace (fastest at the front — what qualifying would do) so the field spreads in the
         # RIGHT order: the quick cars lead and stretch the gap, instead of a fast car stuck mid-pack
         # behind a slower one on a tight track.  Keeps each car's identity; only the start slot moves.
