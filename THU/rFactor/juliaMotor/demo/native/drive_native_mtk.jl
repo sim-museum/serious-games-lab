@@ -5586,6 +5586,9 @@ const MIRW, MIRH = 384, 192
 # So the optimisation was costing a visible defect and buying nothing measurable here.
 # JM_MIRROR_EVERY=3 restores the old behaviour.
 const MIRROR_EVERY = parse(Int, get(ENV,"JM_MIRROR_EVERY","1"))   # per-frame mirror (was 3)
+# SPA-FPS-1 S15: 2 = both discs (default/normal), 1 = left disc only, 0 = bind+clear, draw nothing.
+# A measurement knob for attributing the mirror's ~17 ms; it is not a rendering option.
+const MIRROR_HALVES = parse(Int, get(ENV,"JM_MIRROR_HALVES","2"))
 # SPA-FPS-1 S6 (2026-09-13): ADAPTIVE mirror refresh, because the two measurements in this file
 # disagree and BOTH are right on their own track:
 #   E80  (Spa, cockpit):     mirrors ON 6.7-7.0 fps (144-149 ms) vs OFF 14.9-16.4 fps (61-67 ms)
@@ -9116,10 +9119,15 @@ function main()
             glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE); glDepthFunc(GL_GEQUAL); glClearDepth(0.0)   # same reversed-Z as the main pass
             glBindFramebuffer(GL_FRAMEBUFFER, mirfbo); glViewport(0,0,MIRW,MIRH)
             glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
+            # SPA-FPS-1 S15: JM_MIRROR_HALVES decomposes the mirror's cost. 2 = normal (one camera
+            # per disc), 1 = only the left disc, 0 = bind + clear and NOTHING drawn. S14 proved the
+            # cost is not the distance-culled object/billboard lists; this says whether it is the
+            # two scene DRAWS or the FBO/state hop itself, which decides what S16 can attack.
+            if MIRROR_HALVES > 0
             # E64 S10: one camera PER DISC at the mirror's own cowl position (left half of the FBO =
             # left/z+ mirror), so each glass sees backward-outward like the gold — tail at the inner
             # edge only, road dominating.  The glass quads' per-half UV split is unchanged.
-            for (x0, side) in ((0, 1), (MIRW÷2, -1))
+            for (x0, side) in (MIRROR_HALVES == 1 ? ((0, 1),) : ((0, 1), (MIRW÷2, -1)))
                 glViewport(x0, 0, MIRW÷2, MIRH)
                 mvp, meye = mirror_camera(cs, cam_pitch, cam_roll, side)
                 Render.draw_sky(skyprog, skyvao, inv(mvp), meye, LIGHTDIR;
@@ -9137,6 +9145,7 @@ function main()
                     Render.draw(prog, it, mvp, loosemat(lx,ly,lz,sp); bright=1.0, ambfill=0.75)
                 end
             end
+            end   # MIRROR_HALVES > 0 (S15)
             glBindFramebuffer(GL_FRAMEBUFFER, 0)
         end
         # ---- main pass (reversed-Z: [0,1] clip, near→1/far→0, GEQUAL, clear 0) ----

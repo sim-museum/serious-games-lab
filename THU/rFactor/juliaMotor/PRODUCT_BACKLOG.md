@@ -13367,3 +13367,47 @@ resolution**, skipping the **track surface** in the mirror pass, or reusing stat
 passes. Those are measurable the same way — this sprint's harness and control are reusable.
 
 **SPA-FPS-1: 14 sprints. The cull hypothesis is dead, measured against a proper control.**
+
+## SPA-FPS-1 S15 (Opus 5, 2026-09-15) — ⭐⭐ **the mirror is 55% of the frame, and it is ALL the two scene draws**: 30.1 ms of a 54.4 ms frame, ~15 ms per disc, with the FBO hop costing nothing. Dropping to one camera is worth **+41% fps with no strobe**
+
+S14 proved the mirror's cost is not the distance-culled object/billboard lists. It did not say what it
+IS. Reading the pass explains why culling could not help: the mirror renders **two full `drawworld`
+passes per frame**, one camera per disc (E64 S10), into a 384×192 FBO. `JM_MIRROR_HALVES` (2 = both,
+1 = left only, 0 = bind + clear and draw nothing) attributes that cost. It is a **measurement knob,
+not a rendering option**; the default is unchanged.
+
+**Cockpit view, `JM_MIRROR_ADAPT=0` so the mirror renders every frame. Only the samples at the same
+track position (`s=0`, `objs_in_range=519/1446`) are compared, so the scene is identical:**
+
+| arm | ms/frame | fps | Δ vs previous |
+|---|---|---|---|
+| `HALVES=2` — both discs (normal) | 55.2 / 54.3 / **53.8** | 18.4 | — |
+| `HALVES=1` — one disc | 38.3 / 38.7 / **38.4** | 26.0 | **−15.9 ms** (second pass) |
+| `HALVES=0` — bind + clear, nothing drawn | 24.7 / 24.1 / **24.0** | 41.2 | **−14.2 ms** (first pass) |
+
+⭐ **The mirror costs 30.1 ms of a 54.4 ms frame — 55% of the entire frame — and every millisecond of
+it is the two scene draws.** The FBO bind, clear, viewport and state changes cost essentially
+nothing: with the draws removed the frame is 24.0 ms, which is the main pass on its own.
+
+⚠️ **This corrects S14's number, which I stated too small.** S14 said the mirror costs "~17 ms",
+derived from adapt-on (34 ms) versus adapt-off (51 ms). But adaptation **skips only some frames**, so
+that difference understates the full cost. Measured directly by removing the draws, it is **30 ms**.
+The *conclusion* S14 drew is unaffected — culling still buys nothing — but the figure was wrong and
+anything sized against it needs resizing. [[measure-before-a-global-guard]]
+
+⭐ **The actionable result.** Removing the second camera is worth **18.4 → 26.0 fps, +41%**, which is
+close to adaptation's +49% — **and the mirror still renders every frame, so there is no strobe.**
+That is the first option found that attacks the PO's actual complaint instead of trading it away.
+
+⚠️ **+41% is an upper BOUND, not a shipped win.** `HALVES=1` leaves the right half of the FBO
+undrawn, so it is not a usable picture. A real single-camera mirror renders **one wider view** and
+samples it for both discs, which costs a little more than `HALVES=1` and loses the per-disc
+backward-outward framing E64 S10 added deliberately. **The honest claim is: a single-camera mirror
+can recover at most 15.9 ms, and the fidelity question is whether both discs showing the same view
+is acceptable.** That needs eyes, not a counter.
+
+**S16:** implement the single wide camera, measure it against this table, and photograph both discs
+next to the current build so the trade is a picture rather than an argument.
+
+**SPA-FPS-1: 15 sprints. The mirror's cost is now attributed to the millisecond, and there is a
+strobe-free option worth up to 15.9 ms.**
