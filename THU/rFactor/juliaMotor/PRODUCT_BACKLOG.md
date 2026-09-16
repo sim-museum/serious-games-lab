@@ -15209,3 +15209,70 @@ one. Every AI sprint from here runs races anyway; the first one that ends `[STUC
 `[WRECK] boundary:` line closes both S1's and S2's open halves at no extra cost.
 
 **BNDWRECK-1: 2 sprints.**
+
+## GOLDVID-JR-2 S5 (Opus 5, 2026-09-16) — ⭐⭐ **the first RACE-GAP comparison against the gold, and it corroborates AISPREAD-1 S4's calibration by a completely independent route**
+
+Everything this project has compared against the gold's AI so far has been a **lap time** — a
+derived average (retracted in AISPREAD-1 S4) or a best lap. The gold's decoded replay
+(GOLDVID-JR-3 S2) also carries **cumulative race times**, and STANDINGS-1's fix means our own
+`last_race_result.txt` finally produces a trustworthy one. Same track, same distance, same field
+size, both expressed as a gap to the winner.
+
+### ⭐ First, a sanity check the fix earns
+
+```
+best_any  1:33.114  Eagle          win_total  3:05.922        laps 2
+```
+
+Eagle's best lap × 2 = **3:06.2** against a recorded total of **3:05.922**. The winner's total is now
+consistent with its own best lap — which it could not have been before STANDINGS-1 S1, when a doubled
+player progress fed `est_time(prog) = cs.t * RACE_LAPS / prog` and halved one row of the table.
+
+### ⭐⭐ The AI field over two laps, gap to the fastest AI
+
+*(The human/autodrive row is excluded from both sides: the gold's player was a person running
+1m15.9 laps, 14 s clear of every AI, and ours is an autodrive far slower than its own field. The
+player rows are not comparable; the AI fields are.)*
+
+| | fastest AI | gaps behind it | spread | per-lap |
+|---|---|---|---|---|
+| **gold** (GPL, Novice) | 3:01.935 | 0 · 3.016 · 7.473 · 10.639 · **11.365** | **11.37 s** | **90.97 s** |
+| **ours** (`JM_AI_PCT=71 JM_AI_TEMPER=0.64`) | 3:05.922 | 0 · 1.862 · 6.089 · 9.634 · **14.051** | **14.05 s** | **92.96 s** |
+
+* **centre: ours is 1.99 s/lap slower — +2.2 %**
+* **spread: ours is 1.24× the gold's**
+
+### ⭐⭐⭐ Why this matters more than the numbers themselves
+
+AISPREAD-1 S4 concluded, from **best laps**, that the centre is *"about 3 % slow"* and the spread is
+*"right — 10.6 % against 9.8 %"*. This measurement uses **cumulative race time**, has no lap-timing
+code in common with it, and comes from the gold's **replay decoder** rather than its video overlay:
+
+| | best-lap route (S4) | race-gap route (here) |
+|---|---|---|
+| centre | ours ~3 % slow | ours **2.2 %** slow |
+| spread | ours 10.6 % vs gold 9.8 % (1.08×) | ours **1.24×** |
+
+**The centre agrees closely and independently.** The spread agrees in *direction* and disagrees in
+*magnitude* — 1.08× against 1.24× — which is itself informative: a best-lap spread measures each car's
+peak, a race-gap spread accumulates traffic and mistakes as well. **Ours accumulates more of them than
+the gold's does**, and that is a different property from raw pace.
+
+⚠️ **n = 1 on our side**, and the [[bndwreck-1 harness]] loss rate is why that is expensive. The gold
+side is a single recorded race by construction.
+
+⚠️ **Not claimed:** that our AI should be tuned to close the 1.24×. AISPREAD-1 S1's attribution caveat
+still stands — ours spreads by chassis, GPL's by driver — and a race-gap spread is downstream of that
+difference, not independent of it.
+
+### For the PO, the same decision a third time
+
+`JM_AI_PCT=71 → ~73` now has **two independent measurements** behind it (best laps and race gaps),
+agreeing to within a percentage point. It remains a default nobody has changed.
+
+**S6:** the spread discrepancy is now the interesting half. The gold's gaps are 3.0 / 7.5 / 10.6 /
+11.4 — **bunched at the back** (the last two are 0.7 s apart); ours are 1.9 / 6.1 / 9.6 / 14.1 —
+**evenly fanned**. That shape difference is a better question than the width, and GOLDVID-JR-2 S2's
+per-driver `variability` finding is the obvious place to look for it.
+
+**GOLDVID-JR-2: new pass, sprint 1 of 4.**
