@@ -15448,7 +15448,7 @@ jr-auto.log    no-race   never reached the grid
 | stuck | **1** |
 | never reached the grid (harness timeout) | 2 — *excluded* |
 
-**41 %**, n=17 — consistent with S8's "4 of 8" and with the "43–50 %" quoted earlier, but now on the
+**41 %**, n=17 (**44 %, n=18** once this sprint's own `JM_AI=5` race is added — see below) — consistent with S8's "4 of 8" and with the "43–50 %" quoted earlier, but now on the
 whole corpus instead of whichever runs happened to be in front of me. ⚠️ These runs do **not** share
 a configuration (`JM_AI_PCT`, `JM_AI_TEMPER` and lap counts all vary); it is a pooled rate across
 heterogeneous settings, not a measurement of one setting, and should not be quoted as one.
@@ -15528,9 +15528,6 @@ the print sits behind `cpk > 1.0e3 && !WRECKED[] && cclose > 0.0`, so it fires o
 The case it exists for is `bw_run1`'s 16,424 grazes — and that binary no longer exists to re-run.
 So the format stands as written and unexecuted, said plainly rather than quietly dropped; the next
 run that grazes will print it. Two races is where this stops earning its keep.
-[[ff-harness-geography-and-probe-population]] — a census that samples a different population than
-the one it reports on gives a confident wrong number, and this one was one edit away from being
-quoted.
 
 ### Shipped
 
