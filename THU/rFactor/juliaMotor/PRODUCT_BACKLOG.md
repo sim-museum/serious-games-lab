@@ -14500,3 +14500,68 @@ states its own settings, exactly as GPL's gold states Novice / 5 AI / AI Speed 1
 but a parked car and would sit in the repo looking like data.
 
 **TELEMSTATE-1: 2 sprints. The header is real; the thing it was meant to enable needs one more change.**
+
+## TELEMSTATE-1 S3 (Opus 5, 2026-09-16) — ⭐⭐⭐ **the comparison the item existed for, at last: our AI's pace setting is 60% of GPL reference, and the gold's Novice field runs at 68–74%.** `JM_AI_PCT` is set too slow by about ten points
+
+S2 proposed adding per-car telemetry rows to get AI lap times. **Checked first — and the capability
+was already there**, the same way BoB's OCX hosts turned out to be (OCXHOST-1 S2). `JM_AUTODRIVE=1`
+is a headless autodrive mode, and the run prints the AI's pace model on startup.
+
+⭐ **What one run (`TRACK=watglen JM_AI=5 JM_AUTODRIVE=1`) printed:**
+
+```
+AI speed profile: GPL race.lp (1252 records, adj 0.8704, cap 81.4 m/s)
+      <- …/Sierra/GPL/tracks/watglen/race.lp
+→ AI pace spread (power/weight, gridded fastest-first):
+      Ferrari 99%, Brabham 96%, BRM 97%, Eagle 100%, Cooper 95%
+→ AI pace: 60% of GPL (ref 66.9s → target 111.5s; rail 83.8s, scale 0.75)
+  lap 1: 2:17.775  (best)
+  lap 2: 2:10.276  (best)
+```
+
+⭐ **Our AI already drives GPL's own racing line.** `race.lp` is the GPL track directory's own
+speed-profile file — the same `race.lp` that sits beside `maxrace.lp`, `minrace.lp`, `pass1.lp`,
+`pass2.lp` and `pit.lp` in `tracks/watglen/`. This is not an approximation of GPL's line; it **is**
+GPL's line, 1,252 records of it. Worth knowing before anyone proposes building one.
+
+⭐⭐ **And here is the calibration, from the gold.** Our sim's own GPL reference lap is **66.9 s**.
+Against the decoded gold field (GOLDVID-JR-2 S1, and now known from JR-3 S3 to be **Novice** with
+**AI Speed 1**):
+
+| driver | gold lap | % of the 66.9 s reference |
+|---|---|---|
+| Clark | 90.177 s | **74.2%** |
+| Brabham | 90.860 s | 73.6% |
+| Amon | 93.888 s | 71.3% |
+| Bonnier | 95.249 s | 70.2% |
+| Hill | 99.001 s | **67.6%** |
+
+**GPL's own Novice AI runs at 68–74% of GPL reference pace. Our `JM_AI_PCT` defaults to 60**, which
+targets **111.5 s (1:51.5)** — about **12–19 seconds a lap slower than the slowest car in the gold
+field**. To match what the PO's own gold recording shows, `JM_AI_PCT` wants to be **≈68–74**, not 60.
+
+⭐ **A second, independent calibration number: the SPREAD.** Our per-car pace spread is
+`Ferrari 99% … Cooper 95%` — **5 points**. The gold field spans 90.177 s to 99.001 s — **9.8%**. **Our
+field is about half as spread out as GPL's.** Both numbers are now measured rather than guessed.
+
+⚠️ **What this run is NOT.** The **2:10.276** is the *autodriven player car*, not one of the five AI
+cars, and the run ended `[WRECK] car came to rest` — so it is not a clean flying lap and is quoted
+only as evidence the autodrive works. The AI cars' own lap times still did not print (they complete
+laps later than the 780 s budget allowed). **The pace comparison above rests on the printed pace
+model and the gold, not on that 2:10.**
+
+⭐ **The `(not banking a best lap: this run has no human driver)` line is the TESTLAP-1 gate doing its
+job** — an AI lap was correctly kept out of the player's `human_best.txt`. Two sessions' worth of
+discipline visible in one line.
+
+⚠️ **And a small correction to S1.** S1 said *"nothing records whether a human or the AI was driving"*.
+True of the log **file**, and fixed — but the information was not lost: `drive_native_mtk.jl`'s own
+TESTLAP-1 comment names `2:49.443` as *"my own off-road autodrive lap"*, which identifies one of the
+three existing watglen logs as AI-driven. **The header fix is still right; the claim that the fact was
+unrecoverable was too strong.**
+
+**S4:** set `JM_AI_PCT=71` (the gold field's midpoint) and run long enough for the AI cars' own laps to
+print, then compare car-for-car against the gold's five.
+
+**TELEMSTATE-1: 3 sprints. The item set out to make a log attributable and ended with the calibration
+number the whole julia-racer AI thread has been missing.**
