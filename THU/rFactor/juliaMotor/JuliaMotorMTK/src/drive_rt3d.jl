@@ -285,6 +285,17 @@ end
 const TC_ON   = !haskey(ENV, "JM_NOTC")            # traction aid (see drive_rt.jl) — keeps the rear below its slip limit
 const TC_SLIP = parse(Float64, get(ENV, "JM_TC_SLIP", "0.06"))
 const TC_VLO  = parse(Float64, get(ENV, "JM_TC_VLO", "25.0"))   # speed gate: off below, full above (peel-out lives at low speed)
+# STABILITY-1 S3 (2026-09-15): an ALTERNATIVE gate, opt-in, for the PO to compare against the speed
+# gate rather than have a default flipped under them. S2 measured the speed gate disabling the aid in
+# every slow corner (it is off below 25 m/s = 90 km/h), which is where the rear lets go -- and S1/S2
+# showed that with the aid live the rear rises from 0.80 to 1.32 and the car holds a 1.19 g circle.
+# The speed gate exists to protect the standing-start peel-out ("peel-out lives at low speed"), and
+# speed was the only proxy available for "not launching". STEERING is a better one: at a standing
+# start the wheel is straight; in every corner it is not. JM_TC_STEERGATE=1 gates on |steer| instead,
+# ramping in between JM_TC_STLO and JM_TC_STHI (fractions of full lock), at ANY speed.
+const TC_STEERGATE = get(ENV, "JM_TC_STEERGATE", "0") != "0"
+const TC_STLO = parse(Float64, get(ENV, "JM_TC_STLO", "0.10"))   # |steer| where the aid starts to come in
+const TC_STHI = parse(Float64, get(ENV, "JM_TC_STHI", "0.25"))   # |steer| where it is fully in
 const TC_VHI  = parse(Float64, get(ENV, "JM_TC_VHI", "38.0"))
 
 # wheel body offsets (xi long +fwd, yi lat +left), from DrivenVehicle3D geometry
@@ -451,7 +462,9 @@ function step_car3d!(c::Car3D, throttle, brake, steer, dt;
     thr = clamp(throttle, 0, 1)
     if TC_ON && thr > 0.0                                  # traction aid: keep the rear below its slip limit (HIGH speed only)
         a0 = c.getall(c.integ)
-        gate = clamp((abs(a0[4]) - TC_VLO) / (TC_VHI - TC_VLO), 0.0, 1.0)   # 0 at low speed → peel-out lives
+        gate = TC_STEERGATE ?
+               clamp((abs(steer) - TC_STLO) / max(TC_STHI - TC_STLO, 1e-6), 0.0, 1.0) :  # 0 with the wheel straight → peel-out lives
+               clamp((abs(a0[4]) - TC_VLO) / (TC_VHI - TC_VLO), 0.0, 1.0)                # 0 at low speed → peel-out lives
         if gate > 0.0
             κr = (a0[23]*RW_R - a0[4]) / max(abs(a0[4]), 3.0)
             κr > TC_SLIP && (thr *= clamp(1.0 - 4.0*gate*(κr - TC_SLIP)/TC_SLIP, 0.05, 1.0))

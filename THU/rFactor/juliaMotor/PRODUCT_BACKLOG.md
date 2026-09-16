@@ -13077,6 +13077,45 @@ way: the oscillation is combined slip, and it is fixable.**
 
 **STABILITY-1: 2 sprints. Predicted, tested, confirmed — and the fix is a gate, not a physics rewrite.**
 
+### STABILITY-1 S3 (Opus 5, 2026-09-15) — ⭐ **the steering gate is built, opt-in, and reproduces the fix exactly** — and I have NOT yet shown it leaves the standing start alone
+
+S2 ended on a PO decision between three options. Rather than ask and wait, S3 builds the option I
+recommended so the choice can be made against a running thing instead of a proposal.
+
+⭐ **`JM_TC_STEERGATE=1` (new, `drive_rt3d.jl`).** The traction aid's gate becomes
+
+    gate = clamp((|steer| - JM_TC_STLO) / (JM_TC_STHI - JM_TC_STLO), 0, 1)     # default 0.10 .. 0.25 of lock
+
+instead of the speed ramp. **Opt-in, default unchanged** — the PO's peel-out behaviour is exactly
+what it was unless the variable is set, which is the rule this project adopted after a flipped
+default voided a proof (`flag-flip-invalidates-proofs`).
+
+⭐ **Measured: identical to S2's speed-gate result**, same lock, same throttle, same seconds:
+
+| t (s) | rear \|Fy\|/Fz | yaw (°/s) | v (km/h) |
+|---|---|---|---|
+| 7.10 | 0.906 | 42.4 | 69.0 |
+| 8.12 | 1.199 | 37.3 | 67.3 |
+| 9.13 | 1.323 | 35.8 | 68.6 |
+| 10.14 | 1.103 | 37.2 | 68.0 |
+
+**Digit for digit what `JM_TC_VLO=2` produced** — as it should be, since at 0.45 of lock both gates
+are fully open. The steering gate delivers the 1.19 g held circle.
+
+⚠️ **The half I did NOT measure, stated plainly.** The whole argument for this option is that it
+leaves the standing start untouched, and **that is currently arithmetic, not evidence**: with the
+wheel straight, `clamp((0 − 0.10)/0.15, 0, 1) = 0`, so the aid is inert exactly as the speed gate is
+below 25 m/s. I set up the A/B — straight launch, full throttle, default gate against steering gate —
+and **the run stalled in texture loading before producing a single sample**, so there is nothing to
+report. I would rather say that than let an unrun comparison sit in a table.
+
+**S4:** run that launch A/B and put the two speed traces side by side. If they match, the steering
+gate is strictly better than the speed gate — same peel-out, working corners — and the PO's decision
+becomes a one-line default change with evidence on both sides of it.
+
+**STABILITY-1: 3 sprints. The option exists and works where it matters; the claim that it costs
+nothing elsewhere is still owed a measurement.**
+
 ### SPA-FPS-1 S10 (Opus 5, 2026-09-14) — ⛔ S9's black mirror was the `!REPLAY` term, not the hidden window; and with it lifted **the strobe is measured**
 
 S9 concluded *"a hidden window may not run the RTT"* and left the strobe question open. **The reason
