@@ -14565,3 +14565,68 @@ print, then compare car-for-car against the gold's five.
 
 **TELEMSTATE-1: 3 sprints. The item set out to make a log attributable and ended with the calibration
 number the whole julia-racer AI thread has been missing.**
+
+## TELEMSTATE-1 S4 (Opus 5, 2026-09-16) — ⭐⭐⭐ **the calibration works: at `JM_AI_PCT=71` our AI field runs 92.5–98.3 s/lap against the gold's 90.2–99.0** — and the run prints a per-car classification nobody knew it produced
+
+S3 derived **68–74%** from the gold (GPL's Novice field against our own 66.9 s GPL reference) and
+proposed setting `JM_AI_PCT` there. Ran it: `TRACK=watglen JM_AI=5 JM_AI_PCT=71 JM_AUTODRIVE=1`.
+
+⭐ **The pace model moved exactly as predicted:**
+
+```
+→ AI pace: 71% of GPL (ref 66.9s → target 94.2s; rail 83.8s, scale 0.89)
+```
+
+**94.2 s sits inside the gold field's 90.177–99.001 s band**, where the old default's 111.5 s sat
+12–19 s outside it.
+
+⭐⭐ **And the run prints a per-car race diagnostic** — the AI lap data this item has been chasing
+since S1, produced without any of the telemetry surgery S2 proposed:
+
+```
+── R1 DIAG  (AI pace 71% → target 94.2s/lap;  YOU laps=3 prog=3.0) ──
+   Ferrari  lap=4 prog=4.37 v=175km/h pace=99%
+   Brabham  lap=4 prog=4.23 v=176km/h pace=96%
+   BRM      lap=4 prog=4.29 v=202km/h pace=97%
+   Eagle    lap=4 prog=4.42 v=119km/h pace=100%
+   Cooper   lap=4 prog=4.16 v=155km/h pace=95%
+── final classification ──
+ P1 Eagle   P2 Ferrari   P3 BRM   P4 Brabham   P5 Cooper   P6 You (best 2:13.216)
+```
+
+**Ours against the gold, field for field:**
+
+| | our AI (s/lap) | gold (s/lap) |
+|---|---|---|
+| fastest | Eagle **92.5** | Clark **90.2** |
+| | Ferrari 93.5 | Brabham 90.9 |
+| | BRM 95.3 | Amon 93.9 |
+| | Brabham 96.6 | Bonnier 95.2 |
+| slowest | Cooper **98.3** | Hill **99.0** |
+| **range** | **92.5 – 98.3** | **90.2 – 99.0** |
+| spread | 5.8 s | 8.8 s |
+
+**Our field now sits inside the gold's band.** A number read off the PO's gold recording, fed into one
+setting, put an entire AI field where the real game's is.
+
+⚠️ **Three things this is NOT, stated so the table is not over-read:**
+1. **Ours are AVERAGES, the gold's are BESTS.** Our figures are elapsed ÷ laps-completed over a
+   4-lap stint including the standing start; the gold's are each driver's fastest race lap. A
+   like-for-like comparison would move ours *down* a little, so the agreement is if anything
+   understated — but it is not exact and should not be quoted as if it were.
+2. The elapsed time is the **player's** total (408.8 s); using it for the AI assumes they ran the same
+   window, which they did, but their `prog` includes a partial lap.
+3. **The spread is still narrower than the gold's** — 5.8 s against 8.8 s — exactly as S3 measured
+   from the per-car pace percentages (5 points against 9.8%). `JM_AI_PCT` sets the field's *centre*;
+   nothing yet sets its *width*.
+
+⭐ **A by-product worth keeping:** the autodriven player finished **P6 of 6**, 2:13.216 best, while the
+AI ran 4 laps to its 3. The autodrive is not competitive with our own AI, which is worth knowing
+before anyone uses an autodrive lap as a pace reference — and is why S3 refused to quote its 2:10.
+
+**S5 (for the PO to weigh):** change the `JM_AI_PCT` default from 60 to ~71, which is what the gold
+says GPL's Novice field does. That is a **behaviour change to the shipped game**, so it is the PO's
+call, not mine — the measurement is here and the one-line change is `drive_native_mtk.jl:224`.
+
+**TELEMSTATE-1: 4 sprints — at cap.** From "no log says who drove" to an AI field calibrated against
+the gold.
