@@ -7786,8 +7786,18 @@ function main()
     # Telemetry that misnames its own track is worse than none: it is wrong in a file that outlives
     # the session and looks authoritative.
     telem = SMOKE ? nothing : open("$(TRACKSEL)_racer_$(round(Int,time())).txt", "w")
+    # TELEMSTATE-1 (2026-09-16): record the RUN'S OWN CONFIGURATION in the header, for the same
+    # reason the PO's 2026-08-27 note above gives about the track name. Ten watglen logs exist and
+    # not one of them says whether a human or the AI was driving, how many AI were on track, or at
+    # what pace setting -- so none can be used as an AI-pace reference, which is exactly what the
+    # GPL gold comparison needs. GPL's own gold recording shows its whole configuration on screen
+    # (GEM+ launcher: difficulty, number of AI, AI speed, patches); ours should not be worse.
+    _tview = get(ENV, "JM_VIEW", "?")
+    _tjoy  = isfile(joinpath(@__DIR__, "joystick.conf"))
     telem !== nothing && write(telem,
-        "# $(TRACKSEL)_racer telemetry — Lotus 49 @ $(TRACKSEL)\n# t\tlap\tlapdist\tkmh\tthr\tbrk\tsteer\tclu\tgear\trpm\tx\tz\tlat\talong\tontrack\n")
+        "# $(TRACKSEL)_racer telemetry — Lotus 49 @ $(TRACKSEL)\n" *
+        "# run: ai=$(N_AI_REQ) ai_pct=$(AI_PCT) ai_rel=$(AI_REL) ai_amax=$(AI_AMAX) view=$(_tview) joystick=$(_tjoy)\n" *
+        "# t\tlap\tlapdist\tkmh\tthr\tbrk\tsteer\tclu\tgear\trpm\tx\tz\tlat\talong\tontrack\n")
     println("\n  Drive:  W/S gas·brake   A/D steer   E/Q shift   C clutch   R respawn   ⇧R recover-to-track   ^R restart session   V view   G auto⇄manual   M mute   Esc quit"); flush(stdout)
     println("  AUTO gearbox by default — just press the throttle and go (no clutch needed).  Press G for")
     println("  MANUAL: hold the clutch (C / stick button) to shift E/Q (release it too low and it bogs).")

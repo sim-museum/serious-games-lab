@@ -14389,3 +14389,61 @@ BoB's mirror horizon): **the reading was correct and the thing being read was wr
 [[instrument-bookkeeping-lies]]
 
 **TRACKLEN-1: 1 sprint, and the item closes.** The discrepancy was arithmetic, not geometry.
+
+## TELEMSTATE-1 S1 (Opus 5, 2026-09-16) — ⛔ **none of our ten Watkins Glen telemetry logs says who was driving**, so not one of them can be used as an AI-pace reference — fixed in the header
+
+GOLDVID-JR-3 S3 found that the GPL gold recording shows its **entire configuration on screen** (GEM+
+launcher: carset, track, car, difficulty, number of AI, AI speed, patches). This sprint went to do
+the obvious next thing — put our AI's Watkins Glen lap beside the gold's AI field, now that
+TRACKLEN-1 has removed the geometry caveat — and could not.
+
+⛔ **What the repo's ten `watglen_racer_*.txt` logs actually contain.** Three have a completed lap:
+
+```
+watglen_racer_1788657822.txt   # LAP 1  2:49.443
+watglen_racer_1788658601.txt   # LAP 1  2:49.446
+watglen_racer_1788666345.txt   # LAP 1  2:21.969
+```
+
+and the header of every one of them is exactly two lines:
+
+```
+# watglen_racer telemetry — Lotus 49 @ watglen
+# t  lap  lapdist  kmh  thr  brk  steer  clu  gear  rpm  x  z  lat  along  ontrack
+```
+
+**Nothing records whether a human or the AI was driving**, how many AI were on track, or at what pace
+setting — and the sim has `JM_AI` (0–5), **`JM_AI_PCT` (default 60)**, **`JM_AI_REL`** (an explicit
+rubber-band: *"never more than JM_AI_REL × the player's current speed"*) and `JM_AI_AMAX`, every one
+of which changes what a lap time means. **So none of these logs is usable as evidence about our AI**,
+and the comparison this sprint set out to make cannot be made from them.
+
+⚠️ **And an observation I am NOT turning into a claim.** Two of the runs, six minutes apart, produced
+lap times **3 ms** apart — the signature of a deterministic driver, which is what GPL's Bonnier showed
+in GOLDVID-JR-2 S3. But their telemetry differs substantially (7,419 differing lines; 415 KB against
+120 KB), so the runs are **not** identical and determinism is **not** established. Without a header
+saying who drove, the 3 ms could equally be two AI runs, or coincidence.
+
+✅ **Fixed** (`drive_native_mtk.jl:7789`): the telemetry header now carries the run's own configuration.
+
+```
+# watglen_racer telemetry — Lotus 49 @ watglen
+# run: ai=0 ai_pct=60.0 ai_rel=Inf ai_amax=8.0 view=? joystick=true
+# t  lap  lapdist  kmh  …
+```
+
+This is the same fix the PO made on 2026-08-27 for the track name, and the header comment there says
+why better than I can: *"Telemetry that misnames its own track is worse than none: it is wrong in a
+file that outlives the session and looks authoritative."* A log that cannot say whether the AI drove
+it is the same failure one field over. [[parity-captures-must-record-their-state]]
+
+⚠️ **This does not retro-label the existing ten logs** — they are unmarked and stay unmarked. The
+comparison against the gold's AI field needs **one new run** with the header in place, and that is the
+sprint after this one.
+
+⚠️ **Verified only to the extent it can be here:** the file parses (`Base.JuliaSyntax.parseall`, the
+runtime's own parser — `Meta.parseall` has accepted things the runtime later rejected in this repo).
+The header is **not** yet confirmed against a real run, because a live run needs the display and
+2–3 minutes of load; **S2 is that run**, and it produces the gold comparison at the same time.
+
+**TELEMSTATE-1: 1 sprint. The reference we were about to quote turned out to be unattributable.**
