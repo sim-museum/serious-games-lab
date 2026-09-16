@@ -12969,6 +12969,62 @@ right instrument for a stability question.
 **SKIDPAD-GOLD-1: 4 sprints — AT THE CAP, parked.** The oracle exists, our side of it exists, the
 tyre is exonerated, and the real defect is now named and one sprint from being attributed.
 
+### STABILITY-1 S1 (NEW, Opus 5, 2026-09-15) — ⭐⭐ **the REAR lets go, and it lets go at 0.80 g while the front is still pulling 1.35.** The car is oversteer-limited, and the traction aid is switched off at every speed a skidpad uses
+
+Split out of SKIDPAD-GOLD-1, which hit its four-sprint cap having exonerated the tyre's grip (1.32 g
+measured) and named the real defect: at a FIXED lock and FIXED throttle the car will not hold a
+steady circle. This item is that defect.
+
+⭐ **The instrument, and it needed no new physics.** The 3-D model's state vector already carries
+per-corner lateral force (`a[11..14]`) and per-corner vertical load (`a[19..22]`), so the per-axle
+**utilisation |Fy| / Fz** — the lateral g each end is actually delivering — is a subtraction away.
+`JM_SLIPDIAG=<seconds>` (new, `drive_rt3d.jl`) prints it with the yaw rate.
+
+⭐⭐ **One oscillation cycle, 0.45 lock and 0.75 throttle held constant throughout:**
+
+| t (s) | v (km/h) | **front \|Fy\|/Fz** | **rear \|Fy\|/Fz** | yaw (°/s) |
+|---|---|---|---|---|
+| 4.07 | 38.6 | 0.59 | 0.06 | 15 |
+| 5.08 | 46.0 | 0.82 | 0.27 | 22 |
+| 6.09 | 59.8 | 1.18 | 0.74 | 36 |
+| 7.10 | 72.1 | **1.35** | **0.80** | **93** |
+| 8.12 | 56.3 | 0.54 | 0.18 | **232** ← spun |
+| 9.13 | 31.0 | 1.30 | 0.10 | −48 |
+| 11.16 | 8.5 | 0.42 | 0.06 | −53 |
+| 13.18 | 55.2 | 1.30 | 0.41 | −119 |
+| 14.19 | 36.8 | 1.23 | 0.06 | −143 |
+
+**The rear axle never exceeds 0.80 in the entire run; the front reaches 1.35.** The car does not run
+out of grip — it runs out of REAR grip, at 60% of what the front delivers, and then yaws at 232 °/s.
+Everything after that is the spin-and-recover cycle S4 measured from the outside.
+
+⭐ **And the load split says where to look.** At rest the axles carry 2,759 / 3,285 N — **45.6% front,
+matching the setup's stated 45.9%**. Under power it sits at **2,030 / 4,010 N — 34% front**, and it
+stays there even when the spin has scrubbed the car down to 3.8 km/h. The rear is carrying two thirds
+of the car AND delivering the traction, and `brush_mu`'s load sensitivity (`kμ = 0.08`) takes μ down
+as load goes up, so the heavier end is also the one with less friction per newton.
+
+🔴 **The traction aid cannot help, by construction.** `drive_rt3d.jl:287`:
+
+    const TC_VLO = parse(Float64, get(ENV, "JM_TC_VLO", "25.0"))   # speed gate: off below, full above
+
+**25 m/s is 90 km/h.** The gate is zero below that, so on a skidpad — 8 to 20 m/s, and in fact in any
+slow corner — the aid that "keeps the rear below its grip limit so it retains lateral grip" is
+completely disabled. It was tuned for a standing start on a straight ("peel-out lives at low speed")
+and the same switch turns it off in every hairpin.
+
+⚠️ **Honest limits.** One run, one lock, one throttle. The 34/66 split under power is measured but
+not attributed — longitudinal transfer should do some of it, and whether it should do THAT much is a
+separate question with its own arithmetic (a 617 kg car at 0.3 g over a 2.41 m wheelbase with a
+~0.3 m CG moves roughly 230 N, not 700).
+
+**S2, with the prediction stated first:** run the identical condition with `JM_TC_VLO=2` so the
+traction aid is live. **If the rear's ceiling is combined-slip, its utilisation should rise well
+above 0.80 and the oscillation should shrink or disappear; if it does not move, the ceiling is load
+sensitivity or the differential and the aid is the wrong lever.** Either answer is worth the run.
+
+**STABILITY-1: 1 sprint. The end that lets go is named, with a number on both axles.**
+
 ### SPA-FPS-1 S10 (Opus 5, 2026-09-14) — ⛔ S9's black mirror was the `!REPLAY` term, not the hidden window; and with it lifted **the strobe is measured**
 
 S9 concluded *"a hidden window may not run the RTT"* and left the strobe question open. **The reason

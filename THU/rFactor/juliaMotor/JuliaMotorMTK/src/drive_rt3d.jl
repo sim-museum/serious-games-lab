@@ -296,6 +296,7 @@ const JM_RH_DIAG = Ref(get(ENV, "JM_RH_DIAG", "") != "")   # default OFF
 # offset bug): the PO capture had mean -0.163 m where static ride height is +0.083/+0.105 m.
 # JM_RH_DIAG_T=0 prints every sample.
 const JM_RH_DIAG_T = Ref(parse(Float64, get(ENV, "JM_RH_DIAG_T", "0.5")))
+const SLIPDIAG_T = Ref(-1.0e9)   # STABILITY-1: last JM_SLIPDIAG print (session seconds)
 const _rhn = Ref(0)
 
 mutable struct Car3D
@@ -518,6 +519,31 @@ function step_car3d!(c::Car3D, throttle, brake, steer, dt;
     # attitude is a legit TUMBLE/cartwheel — let it rotate; only catch true divergence (non-finite or
     # absurd).  On landing the on-ground branch snaps it back upright so the suspension model copes.
     fztot = a[19] + a[20] + a[21] + a[22]                       # total wheel load (N)
+    # STABILITY-1 S1 (2026-09-15): WHICH END LETS GO. SKIDPAD-GOLD-1 S4 measured the car failing to
+    # hold a steady circle at a fixed lock and fixed throttle -- speed cycling 62 -> 30 -> 50 -> 23
+    # -> 17 -> 53 km/h on a ~10 s period -- and exonerated the tyre's grip (it reaches 1.32 g). A
+    # spin cycle is an AXLE BALANCE question, and the state vector already carries everything it
+    # needs: per-corner lateral force (a[11..14]) and per-corner vertical load (a[19..22]). The
+    # per-axle UTILISATION |Fy| / Fz is the lateral g each end is actually delivering, so the end
+    # that saturates first is the one whose utilisation stops rising while the other's keeps going.
+    # JM_SLIPDIAG=<seconds between prints> (0 = every step).
+    if haskey(ENV, "JM_SLIPDIAG")
+        _sd_every = parse(Float64, get(ENV, "JM_SLIPDIAG", "0.25"))
+        if c.t - SLIPDIAG_T[] >= _sd_every
+            SLIPDIAG_T[] = c.t
+            fzf = a[19] + a[20]; fzr = a[21] + a[22]
+            fyf = a[11] + a[12]; fyr = a[13] + a[14]
+            uf  = fzf > 1.0 ? abs(fyf)/fzf : 0.0        # front axle lateral utilisation (g)
+            ur  = fzr > 1.0 ? abs(fyr)/fzr : 0.0        # rear  axle lateral utilisation (g)
+            println("  [slip] t=", round(c.t, digits=2),
+                    " v=", round(c.v*3.6, digits=1), " km/h",
+                    "  front |Fy|/Fz=", round(uf, digits=3),
+                    "  rear=", round(ur, digits=3),
+                    "  load f/r=", round(fzf, digits=0), "/", round(fzr, digits=0), " N",
+                    "  yaw=", round(rad2deg(yawrate3d(c)), digits=1), " deg/s")
+            flush(stdout)
+        end
+    end
     airborne = fztot < 600.0
     if !(isfinite(c.pitch) && isfinite(c.roll) && isfinite(c.heave)) || abs(c.heave) > 12.0 ||
        (!airborne && (abs(c.pitch) > 0.7 || abs(c.roll) > 0.7)) ||
