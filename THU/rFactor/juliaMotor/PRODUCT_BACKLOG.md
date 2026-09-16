@@ -14742,3 +14742,54 @@ so the two are not independent — and with n=1 each, nothing follows.
 
 **AISPREAD-1: 2 sprints. The knob is verified; the question it was built for still needs a harness
 that finishes.**
+
+## AISPREAD-1 S3 (Opus 5, 2026-09-16) — ⭐⭐⭐ **the harness fixed with an env that already existed, and the widened field lands on the gold: 90.4–99.7 s against 90.2–99.0**
+
+S2 could not measure the lap-time half because the autodrive wrecked before the classification block
+printed, and proposed rewriting the harness. **No rewrite was needed.** The classification is gated on
+`cs.laps >= RACE_LAPS` (`drive_native_mtk.jl:8536`), and `RACE_LAPS` is **`JM_LAPS`** — already an env,
+default 3. Setting **`JM_LAPS=1`** makes the player finish one lap and the block prints, wreck or no
+wreck.
+
+⭐ **The measurement, at `JM_AI_PCT=71 JM_AI_TEMPER=0.64 JM_LAPS=1`:**
+
+```
+── R1 DIAG (AI pace 71% → target 94.2s/lap; YOU laps=1) ──
+   Eagle    prog=1.60   Ferrari prog=1.57   BRM prog=1.50   Brabham prog=1.46   Cooper prog=1.45
+```
+
+Over the player's 144.635 s lap:
+
+| | range | spread |
+|---|---|---|
+| ours, temper **0.35** (TELEMSTATE-1 S4) | 92.5 – 98.3 s | 5.8 s — **6.3%** |
+| ours, temper **0.64** (here) | **90.4 – 99.7 s** | **9.4 s — 10.3%** |
+| **gold** (GPL, Novice) | **90.2 – 99.0 s** | **8.8 s — 9.8%** |
+
+**S1 predicted 10.1% from the formula alone. Measured 10.3%.** And with TELEMSTATE-1 S4's centre
+calibration, **`JM_AI_PCT=71` + `JM_AI_TEMPER=0.64` reproduces the gold field's whole lap-time range**
+— both ends, not just the middle.
+
+⚠️ **The same three caveats as S4, unchanged:** ours are **averages** over a stint including the
+standing start while the gold's are **best laps** (so ours read slightly slow); the elapsed time is the
+player's; and **n=1**.
+
+⚠️⚠️ **And S1's attribution caveat matters MORE now, not less.** The numbers now agree, and that is
+exactly when it becomes tempting to stop. **They agree by the wrong mechanism**: ours spreads by
+chassis power/weight, GPL's by driver. A model that reproduces the range while attributing it to the
+car will keep the range and lose everything that depends on *who* is driving — which is what the PO's
+brief asked to match. **Two numbers now say "set these defaults"; the architecture still says "add a
+driver term".** That tension is the PO's to resolve, and it should not be resolved by the numbers
+alone.
+
+⭐ **By-catch, flagged for whoever owns the standings:** the classification ranked **`P1 You`** on
+`prog=1.0` against five AI cars on **1.45–1.60**. The cars that had gone furthest were placed behind
+the one that had gone least far. The `R1 DIAG` block exists precisely because of a PO report of
+*"finished 6th when 1st"* — **this run looks like the same fault, still present, with the sign
+flipped.** Not this item's, and not investigated here.
+
+**S4 (if the PO chooses the defaults route):** re-run each setting twice to retire the n=1 caveat, and
+compare best laps rather than stint averages by giving `JM_LAPS` a value big enough for the AI to post
+a clean lap.
+
+**AISPREAD-1: 3 sprints. The width question is answered numerically and left open architecturally.**
