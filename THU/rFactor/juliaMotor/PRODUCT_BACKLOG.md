@@ -14188,3 +14188,76 @@ implemented:
 **GOLDVID-JR-2: 4 sprints — at cap, rotating off.** Race parameters and field (S1), the AI spec and
 the rubber-banding answer (S2), the controlled determinism result (S3), the passing model and the
 tuning caveat that bounds all of it (S4).
+
+## GOLDVID-JR-3 S3 (Opus 5, 2026-09-16) — ⭐⭐⭐ **the gold video's first ten seconds document the entire race configuration, and it changes how every AI number in this project must be read: the race was run at NOVICE, with 5 AI, AI Speed 1, and an AI-speed PATCH applied**
+
+Tonight's MiG Alley and BoB items were both reopened because their gold videos had been read by
+spot-checking. The Watkins Glen video was read the same way — JR-2 S1 sampled the overlay at t=120,
+200 and 280 — so it got the same treatment: 104 frames at 5 s, 16×16 luma signatures, grouped.
+**32 distinct scenes in 521 s.** Contact sheet at `doc/ref/gpl-replay-260915_wg/260915_gold_scenes.png`.
+
+⭐⭐⭐ **And scene one is the GEM+ launcher, with the whole configuration on screen.** Read at full
+resolution (`260915_gold_launcher_config.png`, `260915_gold_launcher_ai.png`):
+
+```
+GEM+ 2.5.32
+  Installs      C:\Sierra\GPL\GPL.exe            Configure
+  Carsets       1967x (GPL67X)                   Watkins Glen
+  Race          1967-X        Seasons 67SEASON   Standard Chassis
+  Driver        Driver 67x    Car  Lotus 49
+  Race Options  ► NOVICE ◄
+                Default (Race)    Default (Qual)
+                Number of AI      5
+                AI Speed          1
+                Race Length %age  0
+  Patches       [x] 78av2 Pressure Bug Fix
+                [x] 78I AI Speed Control V2
+                [x] Patch Carset For Carsound
+```
+
+⚠️⚠️ **"Novice" is not cosmetic — it rewrites the AI's parameters.** `gpl_ai.ini`'s `[driver_modeling]`:
+
+```
+novice_behavior_scaling       = 1.750   ; scaling coeff for < 1.0 driver params for NOVICE difficulty
+intermediate_behavior_scaling = 1.250
+pro_behavior_scaling          = 1.000
+```
+
+**At Novice every driver parameter below 1.0 is scaled by 1.75** — the AI's weaknesses are amplified
+by three quarters again. Look at JR-2 S4's table and the sub-1.0 entries are exactly the ones that
+make a driver slow: Hill's `quickness` 0.9685, Bonnier's 0.9723, Amon's `experience` 0.9952,
+Brabham's `aggression` 0.9988. **The gold race's AI is deliberately weakened**, which is the missing
+explanation for why its best AI lap is **1:30.177** at a circuit where GPL's quick laps are near
+1:06.
+
+⚠️ **And there is a second modifier nobody accounted for:** `AI Speed = 1`, with the patch
+**`78I AI Speed Control V2`** ticked. Whatever its exact semantics, an AI-speed control was active and
+non-default.
+
+⛔ **What this does to the item's earlier conclusions.** JR-2 S2, S3 and S4 all characterised "GPL AI
+behaviour" without knowing the difficulty level. Their **observations stand** — the deterministic
+7-lap repeat, the missing `variability` key, the passing model, the asymmetric hype term are all
+properties of the files or of measured data. What must be relabelled is every **pace** number:
+
+> The AI pace figures in GOLDVID-JR-2 (best AI lap 1:30.177, the 14.3 s/lap gap to the player,
+> the 15–27 s finishing spread) are **Novice AI, with AI Speed 1 and an AI-speed patch, in an install
+> whose `gpl_ai.ini` has eight parameters retuned from stock.** They are not "how GPL's AI drives".
+
+S4 already flagged the install's tuning; this adds the two bigger modifiers it did not know about.
+
+⭐ **One inference upgraded, one still open.** JR-2 S2 deduced the driver file from field ordering
+alone (`drvy67.ini`'s first five drivers are the race's five AI, in order). The launcher independently
+names the **carset** — `1967x (GPL67X)` — which is consistent with a 67-series driver file and makes
+the inference much safer. ⚠️ The exact carset→filename mapping is **still not proven**, and I am not
+asserting it.
+
+⚠️ **Third time tonight.** MiG Alley's inventory missed the weather panel; BoB's missed six dialogs
+and a briefing screen; this one missed the configuration of the race it was recording. **Census a
+gold capture mechanically before any sprint reads it.** Two minutes each.
+[[parity-captures-must-record-their-state]]
+
+**S4:** re-read the race with the difficulty known — specifically, whether a Novice-scaled parameter
+set predicts the observed pace ORDER (Clark > Hill > Brabham ≈ Amon > Bonnier), which JR-2 S4 could
+not explain with unscaled values.
+
+**GOLDVID-JR-3: 3 sprints.**
