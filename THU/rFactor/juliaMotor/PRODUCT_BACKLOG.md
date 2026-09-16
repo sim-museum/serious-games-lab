@@ -13282,3 +13282,48 @@ mirror rate is pinned", and only the second is fixable without giving up 10 fps.
 
 **SPA-FPS-1: 5 sprints (1 in this pass). The hoped-for free win is refuted, and the real lever is the
 budget, not the switch.**
+
+### SPA-FPS-1 S13 (Opus 5, 2026-09-15) — ⭐⭐ **the rate IS pinned, and the budget is a real dial: 30 ms skips 1,199 renders, 40 ms skips 427 — 64% fewer strobes for 3.8 fps**
+
+S12 argued from one number that the back-off never relaxes. S13 measures it, using `MIRROR_SKIPPED`
+— a counter the code has reported at exit since S6, so no new instrument was needed.
+
+⭐⭐ **Spa, cockpit, 2,000 frames, only the budget differing:**
+
+| budget (high/low marks) | frame EMA | mode | **renders skipped** | frame time | fps |
+|---|---|---|---|---|---|
+| **30 / 24 ms** (current default) | **30.6 ms** | every 3 frames | **1,199** | 33.2 ms | 30.1 |
+| **40 / 34 ms** | **37.8 ms** | every 3 frames | **427** | 38.0 ms | 26.3 |
+
+⭐ **S12's inference is confirmed exactly.** At the shipped budget the smoothed frame time settles at
+**30.6 ms — above the 30 ms back-off mark and 6.6 ms above the 24 ms resume mark it would have to
+reach to recover.** The adaptation is not adapting; it is latched, and 1,199 skipped renders in a
+2,000-frame run is the strobe the PO reported.
+
+⭐⭐ **And raising the budget works, at a price that is now known instead of guessed:** skips fall
+**1,199 → 427 (−64%)**, frame time rises **33.2 → 38.0 ms (+4.8)**, fps falls **30.1 → 26.3 (−3.8)**.
+Far better than the S12 alternative of switching the adaptation off, which cost **12 fps** (30 → 18).
+
+⚠️ **It does not fully relax even at 40 ms** — the mode still reads "every 3 frames" and the EMA
+(37.8) still sits close under the 40 mark, so the aircraft spends much of the lap starved there too.
+**There is no budget that makes this free**, because the two modes straddle the range: starved costs
+~33 ms, every-frame costs ~55 ms (S12), and any mark between them is either latched (below ~34) or
+flip-flopping (above).
+
+⭐ **So the PO has a dial, not a switch, and three measured points on it:**
+
+| setting | strobe | cost |
+|---|---|---|
+| `JM_MIRROR_ADAPT_MS=30` (today) | 1,199 skips | 30.1 fps |
+| `JM_MIRROR_ADAPT_MS=40` | 427 skips | 26.3 fps |
+| `JM_MIRROR_ADAPT=0` | none | 18.0 fps |
+
+**I am not changing the default.** Which point on that curve is right is a feel judgement about the
+PO's own report, and the numbers are now precise enough to make it without another run.
+
+**S14 (if taken):** the real prize is making the mirror pass cheaper rather than rarer — it costs
+~20 ms a frame at Spa (S12), which is more than the rest of the scene. A smaller mirror RT or a
+reduced object set in the mirror pass would move every row of that table at once.
+
+**SPA-FPS-1: 6 sprints (2 in this pass). The strobe is a latched back-off, the budget is a measured
+dial, and the decision is the PO's with three points on the curve.**
