@@ -14261,3 +14261,69 @@ set predicts the observed pace ORDER (Clark > Hill > Brabham ≈ Amon > Bonnier)
 not explain with unscaled values.
 
 **GOLDVID-JR-3: 3 sprints.**
+
+## GOLDVID-JR-3 S4 (Opus 5, 2026-09-16) — ⛔ **S3's proposed test was ill-posed, and saying so is the result**: Novice scaling is MONOTONE, so it cannot change any rank order — and neither a single parameter nor the file's own weighted composite predicts the observed pace
+
+S3 found the gold race ran at **Novice** and proposed S4 test whether *"a Novice-scaled parameter set
+predicts the observed pace ORDER (Clark > Hill > Brabham ≈ Amon > Bonnier), which JR-2 S4 could not
+explain with unscaled values."* Ran it. It cannot work, for a reason that should have been visible
+before running it.
+
+⛔ **Novice scaling cannot change a rank order, ever.** `novice_behavior_scaling = 1.75` maps
+`p → 1 − 1.75(1−p)` for `p < 1` and leaves `p ≥ 1` alone. That is **monotone increasing and
+continuous at p = 1**, and a monotone transformation preserves order by definition. Measured, to
+confirm the arithmetic rather than trust the argument:
+
+```
+parameter     raw rank (high->low)              Novice-scaled rank               match to pace?
+aggression    Clark Hill Bonnier Brabham Amon   Clark Hill Bonnier Brabham Amon   no
+alertness     Clark Amon Bonnier Hill Brabham   Clark Amon Bonnier Hill Brabham   no
+experience    Brabham Bonnier Hill Clark Amon   Brabham Bonnier Hill Clark Amon   no
+hype          Clark Brabham Amon Bonnier Hill   Clark Brabham Amon Bonnier Hill   no
+qualifying    Hill Clark Brabham Bonnier Amon   Hill Clark Brabham Bonnier Amon   no
+quickness     Amon Brabham Clark Bonnier Hill   Amon Brabham Clark Bonnier Hill   no
+```
+
+**Every rank is identical before and after, and none matches the pace order.** S3's test was
+ill-posed; I am recording that rather than quietly dropping it, because the next person would
+otherwise run it again.
+
+⭐ **What Novice actually changes is the SPREAD, and by very different amounts per parameter:**
+
+| parameter | raw spread | Novice spread | ratio |
+|---|---|---|---|
+| quickness | 0.0377 | 0.0613 | **×1.63** |
+| qualifying | 0.0481 | 0.0640 | ×1.33 |
+| alertness | 0.0173 | 0.0215 | ×1.24 |
+| hype | 0.0395 | 0.0484 | ×1.23 |
+| aggression | 0.0560 | 0.0630 | ×1.13 |
+| experience | 0.0466 | 0.0502 | ×1.08 |
+
+The widest Novice-scaled spread (quickness, 6.3%) is the same order as the observed lap-time spread
+(**6.292 s over 91.3 s = 6.9%**) — consistent with a roughly linear parameter→pace mapping, but the
+ordering says that mapping is not through any one of them.
+
+⛔ **A composite built from the file's OWN weights does not predict it either.** Using
+`[driver_modeling]`'s parameter-specific scalings, restricted to the terms that produce speed —
+`experience_nom_traction 0.5`, `hype_nom_traction 1.1` + `hype_dlong_accel 1.0`,
+`quickness_adj_traction 1.0` + `quickness_dlong_accel 1.0` + `quickness_gearshift 2.0` — gives
+`Amon > Clark > Brabham > Bonnier > Hill` both raw and Novice-scaled, against an observed
+`Clark > Hill > Brabham > Amon > Bonnier`. **Hill is the counter-example in every test**: second
+fastest on track, lowest `quickness` of the five, below-1.0 `hype`. ⚠️ **No weights were fitted** —
+they are the file's, unmodified — and I am not going to fit any, because with five drivers a fitted
+model would be meaningless.
+
+⭐ **The conclusion, and it is directly actionable for julia racer:** **GPL's personality parameters do
+not map to lap time by a weighted sum, and an implementation that tries to will not reproduce this
+field.** They feed *distinct behaviours* — traction circle, longitudinal acceleration, gearshift time,
+lookahead, desired separation — and the lap time is what falls out once the **per-waypoint learning
+loop** (`[magic]`, S2) has converged each car's own line speed. That is the architecture to copy:
+**personality → behaviours → learning loop → emergent lap time**, never personality → lap time.
+
+⚠️ **What could still explain the residual, untested:** `starting_grid_seed` and `bump_order` (both
+per-driver and both in the file), the in-session random mods (S4's second noise source), and where
+each car sits in traffic during its practice stint. Each is a separate sprint and none is claimed
+here.
+
+**GOLDVID-JR-3: 4 sprints — at cap, rotating off.** The container (S1), the decode (S2), the race
+configuration (S3), and the negative result that bounds how the parameters can be used (S4).
