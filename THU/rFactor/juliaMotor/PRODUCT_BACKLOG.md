@@ -13240,3 +13240,45 @@ should be given the choice rather than the current silent compromise.
 
 **SPA-FPS-1: 4 sprints this pass — AT THE CAP, with the PO's symptom reproduced, attributed, and one
 measurement from a decision.**
+
+### SPA-FPS-1 S12 (Opus 5, 2026-09-15) — ⛔ **the adaptation EARNS ITS KEEP: turning it off costs 20 ms a frame — 35.6 → 55.4 ms, 28 fps → 18 fps.** The strobe is a real trade, not a mistake
+
+S11 attributed the PO's *"mirrors strobe"* to the back-off this item added in S6, and hoped E90's
+30 ms saving had made it unnecessary: *"the headroom the adaptation was compensating for may simply
+exist now"*. **It has not.**
+
+⭐⭐ **Spa, COCKPIT view, autodrive, same 2,000-frame run, only `JM_MIRROR_ADAPT` differing:**
+
+| | frame time | fps |
+|---|---|---|
+| **adaptation ON** (current default) | **35.6, 36.1 ms** | **28.1, 27.7** |
+| **adaptation OFF** | **55.4, 51.7 ms** | **18.0, 19.3** |
+
+**The mirror pass costs ~20 ms a frame at Spa**, and without the back-off the cockpit runs at
+**18 fps**. The adaptation is not a leftover — it is the only reason the cockpit is playable there.
+
+⚠️ **And the harness nearly measured nothing, which is worth recording.** The first pair was run
+without `JM_VIEW`, so it used the default CHASE view — and `drive_native_mtk.jl:9104` gates the whole
+mirror pass on `CTL.view == 0`. **In chase the mirror never renders**, and the two arms came out
+identical (23.0 vs 23.5 ms), which would have read as "the adaptation costs nothing, turn it off".
+The control is in the record: chase 23 ms both ways, cockpit 36 vs 55.
+
+⭐ **So the PO's choice is now a real trade with numbers on it**, which is what S11 asked for:
+
+* **keep the adaptation** — 28 fps in the cockpit at Spa, and the mirror updates in bursts (the strobe);
+* **turn it off** — a smooth mirror, and **18 fps**, which is worse than the 21.6–24.1 ms S8 measured
+  for the whole frame before the mirror is drawn at all.
+
+⭐ **A third option the numbers suggest, and I would take it:** the back-off's budget is
+`JM_MIRROR_ADAPT_MS = 30.0`, and the cockpit sits at **35.6 ms with it active** — i.e. the aircraft is
+permanently over budget, so the logic is permanently in its starved state, refreshing the mirror at
+`JM_MIRROR_ADAPT_N = 3`. **A back-off that never relaxes is not adaptive, it is a fixed 1-in-3 refresh
+with extra steps**, and that is exactly what a strobe looks like. Raising the budget to ~40 ms would
+let it relax on cheaper parts of the lap and only bite where it must.
+
+**S13:** measure the mirror refresh interval directly (not the frame time) with the budget at 30 and at
+40 ms, and see whether the strobe's period changes. **That separates "the mirror is slow" from "the
+mirror rate is pinned", and only the second is fixable without giving up 10 fps.**
+
+**SPA-FPS-1: 5 sprints (1 in this pass). The hoped-for free win is refuted, and the real lever is the
+budget, not the switch.**
