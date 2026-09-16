@@ -13688,3 +13688,47 @@ like `0.631` and `0.691` that read as normalised controls.
 parseable with ordinary aligned reads, no bit-unpacking. ⚠️ **These five samples are a FORMAT
 reference only** — they are from 2008–09, a different driver, and log the *recording* car rather than
 the AI field. They tell us how to read `GPL_Tel` output; they are not the AI behaviour data.
+
+## GOLDVID-JR-1 S3 (Opus 5, 2026-09-16) — our Watkins Glen cockpit captured beside the gold: **the mirror chain works, and a BODY PANEL crosses our left disc** — ⛔ **and the aspect measurement I tried is not trustworthy, so it is discarded rather than reported**
+
+Item #2 was the disc geometry — position, size and separation against `JM_MIRROR_X/Y/SCALE/SPREAD/
+TILT`, **which were tuned by eye across E48 and E64 with no reference**. The gold video finally
+provides one, and this sprint puts the two side by side at the same circuit.
+
+**Captured ours with `JM_SHOTS="900:0:ourpit"`**, redirected with `JM_SHOTS_DIR` — its default is
+`/tmp`, and a rendered frame is game data that must not go into the 7.6 GB tmpfs.
+[[heavy-jobs-oom-kill-the-session]]
+
+⭐ **The chain works at this track.** Our Lotus 49 cockpit at Watkins Glen renders with **both cowl
+mirrors present and filled** — sky over a ground band, framed by a light rim.
+
+⛔ **But a bright GREEN BODY PANEL crosses our left disc diagonally**, sharp and opaque, with the
+mirror content visible behind it. **The gold's disc is unobstructed** — its only intrusion is the
+car's own tyre at the extreme bottom edge, which is scenery *inside* the reflection, not geometry
+drawn *over* the glass. Ours looks like car bodywork being drawn in front of the mirror quad.
+**This is geometry, so it is independent of where on the lap the car happens to be**, which makes it
+the one difference here worth chasing.
+
+⚠️ **A content difference that is NOT evidence of anything.** Ours shows mostly sky and a blurred
+band; the gold shows individual pines, a white fence and the car's own rear wheel. **Our capture is a
+teleport to s=900 m on an empty track; the gold is mid-race with five cars about.** Different places
+show different things. **No conclusion is drawn from that**, and it should not be quoted as one.
+
+⛔ **The measurement I discarded.** I tried to quantify disc shape by detecting the bright low-
+saturation rim in a tight crop and taking its bounding-box aspect. It returned gold 1.22 / 1.21 and
+ours 1.22 / 1.77 — which looks like a finding and is not one: **the bounding boxes nearly fill the
+crops** (145×119 in a 160×160 window), so the detector is bounded by my crop rather than by the rim,
+and the "bright, unsaturated" mask cannot tell a cream rim from chrome bodywork. **A number that is
+an artefact of its own crop is worse than no number.** [[instrument-bookkeeping-lies]]
+
+**S4 — how to measure this properly, since the eyeball comparison has now gone as far as it can:**
+1. Crop **generously** (2–3× the disc) so the rim, not the window, bounds the result.
+2. Segment the disc by its **content** (the mirror texture differs from bodywork in hue and detail),
+   or better, add a debug outline draw of the mirror quad under an env flag — **instrument the real
+   geometry instead of inferring it from pixels**. [[probe-with-the-sims-own-loader]]
+3. Only then compare centre, radius and separation as fractions of window width, remembering ours is
+   **16:9 (1440×810, hardcoded at line 2959)** and the gold is a **4:3** window — a raw fraction is
+   not comparable across those without correcting for it.
+
+**GOLDVID-JR-1: 3 sprints. One real difference found (the occluding panel); the geometry comparison
+needs an instrument, not a sharper eye.**
