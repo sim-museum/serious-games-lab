@@ -13927,3 +13927,113 @@ traffic-vs-model hypothesis on a second field; and settle whether GPL's AI actua
 pace in the race than in practice.
 
 **GOLDVID-JR-3: 2 sprints. The oracle S1 called a dead end is now a one-line command.**
+
+## GOLDVID-JR-2 S2 (Opus 5, 2026-09-16) — ⭐⭐ **the rubber-banding question is answered from GPL's own AI SPECIFICATION, not from the overlay: there IS a player-referenced term, and it is asymmetric** — ⛔ **and JR-3 S2's "variance comes from traffic" hypothesis is corrected: there is a per-driver `variability` parameter, and the one driver missing it is the one with no scatter**
+
+S1 asked for gap readings "within the race segment only" to test for rubber-banding. JR-3 S2 made that
+unnecessary by decoding the replay; this sprint goes one level further and reads **the AI's
+configuration**, which the PO's own GPL install carries in plain text.
+
+⭐ **`gpl.exe` names its own inputs.** `strings gpl.exe` lists exactly two: **`gpl_ai.ini`** (the AI
+model, 25 KB, every parameter commented) and **`driver.ini`** (per-driver personality). No decoding,
+no guessing — GPL's AI is a documented, editable specification.
+
+⭐ **The gold race's AI field is identified.** `drvy67.ini`'s first five drivers are
+**Brabham #1, Amon #3, Bonnier #11, Clark #5, Hill #6** — *exactly* the five AI cars in the decoded
+replay, in order. `drvc67.ini` (which the PO's `randomizeDrivers.sh` rewrote at 21:01, five minutes
+before the race) starts Ligier/Stewart/Bonnier/Scarfiotti/Surtees and does **not** match. So the
+parameters that produced the gold race's AI are readable. ⚠️ *Inference, stated as one:* GPL loads
+`driver.ini`, whose current content matches neither list, so a launcher step must map the carset file
+into place. The five-of-five ordered match is the evidence; the plumbing is not proven.
+
+⭐⭐ **Rubber-banding: YES, and the file says so in its own words.**
+
+```
+[ driver_modeling ]
+fast_global_hype_scaling = 0.900   ; scaling coefficient to transform normalized PLAYER TIME
+                                   ;   (when below 1.0) into global hype
+slow_global_hype_scaling = 1.000   ; ...(when above 1.0) into global hype
+...
+hype_nom_traction_scaling = 1.100  ; SCALE_COEFF(hype,value) modifies nom_traction_circle
+hype_dlong_accel_scaling  = 1.000  ; SCALE_COEFF(hype,value) modifies dlong_accel
+```
+
+**The AI's `hype` — which scales the traction circle it is willing to use and its longitudinal
+acceleration — is derived from the player's normalised lap time.** That is a player-referenced
+coupling by design. It is **asymmetric**: a *fast* player scales global hype by **0.900**, a slow one
+by **1.000**. So GPL does not chase a quick player; if anything it backs off. That is consistent with
+what the replay shows — the player pulled out 15 s in two laps and nothing closed up. Each driver's
+`global_hype_scaling` weights the term, and for all five of this race's AI it is **1.0** (full
+weight), where `driver.ini`'s Hulme carries 0.0617 — so the coupling's strength is itself per-driver
+and per-carset.
+
+⛔ **Correcting my own previous sprint.** JR-3 S2 noted Bonnier's practice laps were monotone with
+σ ≈ 0.02 s while the others swung ±2 s, and filed the hypothesis *"GPL's AI lap-time variance comes
+from traffic and incidents, not from noise in the driver model."* **The driver model has an explicit
+noise parameter** — `variability`, ≈ 0.020–0.025 for everyone — and:
+
+```
+drvy67.ini   with variability: 18   WITHOUT: ['3:Bonnier']
+driver.ini   with variability: 19   WITHOUT: []
+drvc67.ini   with variability: 19   WITHOUT: []
+```
+
+**Bonnier is the only one of nineteen drivers in that file missing the key, and Bonnier is the only
+driver in the race with no lap-time scatter.** One in nineteen. ⚠️ **Not yet proven**: that GPL treats
+a missing key as zero rather than inheriting a default or the previous block's value. **The test is
+cheap and named**: delete `variability` from one more driver, run a practice session, and see whether
+that driver's scatter collapses too. Until then the traffic explanation is demoted, not eliminated.
+
+⭐ **The other half of the behaviour to match: the AI LEARNS the line.** `gpl_ai.ini`'s `[ magic ]`
+section is a per-waypoint line-speed adaptation loop —
+
+```
+improve_down_threshold    = 0.450  ; dlat error (m) after which speed is decreased
+improve_down_amt          = 0.0025 ; % by which to decrease speed when decrease implemented
+improve_max_waypoint_hype = 1.150  ; max waypoint hype the learning algorithm will apply
+improve_initial_lookahead = 3.000  ; seconds of lookahead for assessing dlat errors
+improve_n_index_to_adjust = 10     ; indices adjusted when a flagrant error propagates
+```
+
+**So a GPL AI car is not driving a fixed line at a fixed speed: it holds a per-waypoint speed target
+and nudges it by 0.25% per lap against its own lateral error, capped at +15%.** That is the shape of
+the Bonnier stint — a converging sequence, not a noisy one — and it is the single most copyable idea
+here for julia racer's own AI.
+
+⚠️ **A trap I walked into and am recording rather than burying.** Ranking the five drivers by each
+parameter against their measured practice pace, `smoothness` and `global_hype_scaling` both "ranked"
+in exactly the pace order — because **every driver's value is 1.0** and my sort was falling back on
+insertion order. A tie is not a correlation. The real result is narrower: `aggression` ranks
+Clark > Hill (the two fastest) correctly and then fails on Bonnier, who is 3rd in aggression and last
+in pace. **Pace is not one parameter**, which is the honest finding.
+
+**Measured pace against the parameters that actually vary** (practice best, player absent):
+
+| driver | practice best | aggression | alertness | experience | hype | qualifying | quickness | variability |
+|---|---|---|---|---|---|---|---|---|
+| Clark | **1:31.257** | 1.0466 | 1.0117 | 1.0266 | 1.0275 | 0.9935 | 0.9967 | 0.0207 |
+| Hill | 1:32.035 | 1.0194 | 1.0000 | 1.0316 | 0.9880 | 1.0269 | 0.9685 | 0.0254 |
+| Brabham | 1:34.644 | 0.9988 | 0.9944 | 1.0418 | 1.0211 | 0.9865 | 0.9970 | 0.0208 |
+| Amon | 1:34.654 | 0.9906 | 1.0107 | 0.9952 | 1.0170 | 0.9788 | 1.0062 | 0.0205 |
+| Bonnier | 1:37.549 | 1.0137 | 1.0021 | 1.0319 | 0.9986 | 0.9835 | 0.9723 | **absent** |
+
+**±5% of parameter spread produces a 6.8% spread in lap time** — the right order of magnitude for a
+direct scaling, but no single column orders the field.
+
+⚠️ **The install's `gpl_ai.ini` has been TUNED, and the original values are still in the comments:**
+`in_session_chance_aggression_mod = 20 ; 10.000000`, `..._quickness_mod = 20; 50.000000`,
+`..._smoothness_mod = 20; 35.000000`. Someone normalised every in-session random-mod rate to 20.
+**Any number quoted from this file is this install's, not stock GPL's** — worth knowing before it is
+treated as "how GPL behaves".
+
+**What julia racer should take from this**, in priority order: (1) the per-waypoint learning loop —
+it is what makes an AI lap look like a converging sequence rather than a noisy one; (2) a small set of
+per-driver scalars in the 0.95–1.05 band, applied to distinct behaviours (separation, lookahead,
+traction circle, gearshift time) rather than to lap time directly; (3) an explicit `variability` noise
+term, separate from traffic; (4) the player-referenced hype term is **optional and asymmetric** — copy
+it only if a deliberate decision, and never as catch-up.
+
+**S3:** the `variability` test named above, and read `[ behavior ]`'s passing/blocking parameters,
+which are the part the decoded replay's "Driver 67x overtakes ..." narrative can be checked against.
+
+**GOLDVID-JR-2: 2 sprints. The question was answered by reading the AI instead of watching it.**
