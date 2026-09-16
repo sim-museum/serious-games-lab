@@ -13463,3 +13463,47 @@ so locate the window before any pixel work. Measured on tonight's FreeFalcon cap
 digits survive this scale and small ones do not — expect the same of the GPL telemetry bar.
 
 **Status: 2 items filed, 0 sprints. GOLDVID-JR-1 settles a question S15 could not.**
+
+## GOLDVID-JR-1 S1 (Opus 5, 2026-09-15) — ⛔ **the answer to S15's costed trade is NO: GPL's two mirrors show genuinely DIFFERENT views, so the single-camera +41% is not free**
+
+S15 measured that dropping the second mirror camera is worth **18.4 → 26.0 fps (+41%) with no
+strobe**, and closed by saying the fidelity half *"needs eyes, not a counter"*. The new Watkins Glen
+video has the eyes. Four cockpit frames (t = 190, 196, 206, 212 s) show both cowl mirrors filled.
+
+⛔ **They do not show the same thing.** Zoomed at 4×, in the same frame:
+
+| | LEFT disc | RIGHT disc |
+|---|---|---|
+| trees | **dark green pines** | **yellow/autumn birches** |
+| barrier | **steel guardrail**, low | **white post-and-rail fence** |
+| track | straight, running away left | **curving away right** |
+| own car | black tyre at the lower edge | **the car's own right-REAR wheel** |
+
+Two cameras pointed backward-**outward** from opposite sides of a car necessarily see different
+scenery, and GPL plainly renders it that way. **The per-disc framing E64 S10 added deliberately is
+faithful to the original, and collapsing to one shared camera would be a visible loss** — the right
+mirror would stop showing the right rear wheel, and both discs would show one side's scenery.
+
+**So S15's option is re-costed: +41% fps at the price of a visibly wrong mirror.** That is a real
+trade for the PO to make, not the free win it looked like. It does **not** invalidate S15's
+measurement — the mirror still costs 30.1 ms of a 54.4 ms frame, all in the two scene draws — it
+removes the cheapest way of spending it. S16 should attack the *per-pass* cost instead (lower mirror
+RT resolution, skipping the track surface in the mirror pass), keeping two cameras.
+
+⚠️ **A pixel metric I ran and am NOT using.** Mean-abs-diff between the left and right discs in the
+same frame came out 47–70 — but the **same disc six seconds apart** scores 51–53, so the metric does
+not separate them. The crops include bodywork and tyres, which dominate. **The finding rests on the
+zoomed visual comparison, which is unambiguous, not on that number.** Recorded so nobody re-derives
+it and believes it. [[gate-frame-must-match-the-eye]]
+
+⭐ **Second result, for free: GPL's mirror content is FULLY DETAILED** — individual trees, fence
+posts, track edges, the car's own wheel. That is a different class from BoB's mirror, which today's
+GOLDVID-BOB-1 S1 found to be flat horizontal bands. **Our mirror should be judged against GPL's
+standard, not BoB's**, and the ~15 ms per disc S15 measured is buying something the original also
+pays for.
+
+⚠️ **The video is not all cockpit.** t = 260 and 320 are external/replay cameras, and a fixed crop
+there catches grass and other cars rather than mirrors. Any automated sampling of this video must
+detect the view first.
+
+**GOLDVID-JR-1: 1 sprint. S15's open question is closed, against the performance win.**
