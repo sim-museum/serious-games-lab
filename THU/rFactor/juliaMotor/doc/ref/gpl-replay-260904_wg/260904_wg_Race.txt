@@ -1,0 +1,82 @@
+Track: Watglen             Wed Sep 16 03:48:28 2026
+
+RACE RESULTS (After 2 laps)
+
+Pos No Driver                          Team     Nat Laps   Race Time       Diff
+ 1   1 Jack Brabham                    Ultrgrip AUS    2   3m07.515s            
+ 2   5 Jim Clark                       KingWing GBR    2   3m07.708s    00.193s 
+ 3   3 Chris Amon                      RaciBull NZL    2   3m12.186s    04.671s 
+ 4  11 Jo Bonnier                      Ferrari  SWE    2   3m13.510s    05.995s 
+ 5   4 Driver 67x                      KingWing POR    2   3m14.887s    07.372s 
+ 6   6 Graham Hill                     KingWing GBR    2   3m19.783s    12.268s 
+
+
+Race results are unofficial
+(Replay might have been saved before end of race)
+
+RACE FASTEST LAPS
+
+Pos Driver                                 Time Lap
+ 1  Driver 67x                        1m29.181s   2
+ 2  Chris Amon                        1m32.535s   2
+ 3  Jack Brabham                      1m32.885s   2
+ 4  Jim Clark                         1m33.685s   2
+ 5  Jo Bonnier                        1m35.168s   2
+ 6  Graham Hill                       1m38.578s   2
+
+
+LEADERS
+
+Driver                           Laps
+Jim Clark                        1
+Jack Brabham                     2
+
+Number of lead changes: 1
+Number of leaders: 2
+
+
+LAPS LED
+
+Driver                           Laps led
+Jack Brabham                     1
+Jim Clark                        1
+
+
+HIGHEST CLIMBER
+
+Driver                           Start Finish  Change
+Jack Brabham                         4      1       3  
+Jo Bonnier                           5      4       1  
+Driver 67x                           6      5       1  
+Chris Amon                           3      3       0  
+Jim Clark                            1      2      -1  
+Graham Hill                          2      6      -4  
+
+
+ON TRACK LAPS
+
+Driver                           Laps/Total    Percent
+Jack Brabham                          (2/2)     100.00
+Chris Amon                            (2/2)     100.00
+Jo Bonnier                            (2/2)     100.00
+Jim Clark                             (2/2)     100.00
+Graham Hill                           (2/2)     100.00
+Driver 67x                            (0/2)       0.00
+
+
+RACE LAPTIME CONSISTENCY
+(first lap excluded)
+
+Driver                    Avg Deviation  Std Deviation  Avg Laptime   Laps
+Jack Brabham                      0.000          0.000    1m32.885s      2
+Chris Amon                        0.000          0.000    1m32.535s      2
+Jo Bonnier                        0.000          0.000    1m35.168s      2
+Jim Clark                         0.000          0.000    1m33.685s      2
+Graham Hill                       0.000          0.000    1m38.578s      2
+Driver 67x                        0.000          0.000    1m29.181s      2
+
+
+All times are unofficial
+(Replay might have been saved before end of race)
+
+Generated with GPL Replay Analyser

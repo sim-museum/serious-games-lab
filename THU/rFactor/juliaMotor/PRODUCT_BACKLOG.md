@@ -14037,3 +14037,73 @@ it only if a deliberate decision, and never as catch-up.
 which are the part the decoded replay's "Driver 67x overtakes ..." narrative can be checked against.
 
 **GOLDVID-JR-2: 2 sprints. The question was answered by reading the AI instead of watching it.**
+
+## GOLDVID-JR-2 S3 (Opus 5, 2026-09-16) — ⭐⭐⭐ **a controlled test, from a second replay the PO already had: one AI driver repeats seven practice laps to within 2 ms across ELEVEN DAYS, while every other driver varies by a second or more** — and he is the only one missing `variability`
+
+S2 found that Bonnier was the only one of nineteen drivers in `drvy67.ini` without a `variability`
+key and the only driver in the gold race with no lap-time scatter, and filed it as a correlation
+needing a test. **The test was already on disk**: `~/sgl/THU/afterGameReport/260904_2310_gpl/
+260904_wg.rpy` — a second Watkins Glen race by the same PO, eleven days earlier. Decoded it with
+`tools/gpl_rpy_report.sh` (committed under `doc/ref/gpl-replay-260904_wg/`).
+
+⭐⭐⭐ **Practice laps, 2026-09-04 against 2026-09-15, matched lap for lap:**
+
+| driver | matched laps | max \|difference\| | mean \|difference\| |
+|---|---|---|---|
+| **Jo Bonnier** | 7 | **0.002 s** | **0.001 s** |
+| Jack Brabham | 5 | 1.455 s | 1.007 s |
+| Jim Clark | 7 | 2.986 s | 1.720 s |
+| Chris Amon | 7 | 4.771 s | 1.591 s |
+| Graham Hill | 4 | 387.7 s | 98.7 s (an 8-minute lap in one session only) |
+
+```
+Bonnier   lap 1  99.530 vs  99.532   2 ms
+          lap 2  97.599 vs  97.600   1 ms
+          lap 3  97.590 vs  97.589   1 ms
+          lap 4  97.577 vs  97.577   0 ms
+          lap 5  97.567 vs  97.568   1 ms
+          lap 6  97.563 vs  97.564   1 ms
+          lap 7  97.550 vs  97.549   1 ms
+```
+
+**Three orders of magnitude between him and the next-steadiest driver.** Two independent sessions,
+eleven days apart, different opponents' behaviour around him, and his stint is reproduced to the
+millisecond.
+
+⭐ **And the sessions are near-deterministic for EVERYONE, which is the part that kills the traffic
+explanation.** Clark's practice lap 4 is an anomalous ~5-minute lap in **both** sessions — 5:17.365
+and 5:20.351. A session whose incidents recur on the same lap number eleven days apart is running a
+largely scripted sequence; the second-scale spread on the other drivers is therefore **per-driver
+noise**, not the luck of who they met. JR-3 S2's hypothesis — *"variance comes from traffic and
+incidents, not from noise in the driver model"* — is now **wrong in both halves**, and S2's
+correction of it is confirmed rather than merely plausible. (Hill's 387 s is the genuine exception:
+an incident that happened once and not the other time. Incidents do differ; lap times do not.)
+
+⚠️ **Still not proven, and I will not claim it:** that GPL treats a *missing* `variability` key as
+zero rather than inheriting a default. What is now established is stronger than S2's correlation but
+weaker than causation — **the one driver configured differently is the one behaving differently, under
+a controlled repeat.** The clean test remains: delete the key from a second driver and re-run
+practice. That needs someone to drive GPL's menus, which this box cannot do headlessly.
+[[no-synthetic-keys-under-wayland]]
+
+⭐ **A second, free result: the player-referenced `hype` term has no measurable effect here.** The
+PO's own pace differed enormously between the two sessions — best race lap **1:29.181** on Sep 4
+against **1:15.895** on Sep 15 — and the AI's practice pace did not move at all. That is expected
+(`global_hype` is fed by *normalised player time*, and the player set **no practice time** in either
+session), and it is worth having measured rather than assumed. In the races themselves the
+comparison is mixed — Brabham and Clark were faster on the day the player was faster, Amon slower,
+Bonnier and Hill unchanged — so with one race per side **no player coupling is detectable**. Not
+"absent": undetectable at n=1. The asymmetric-hype finding from S2 stands on the file's own
+documentation, not on this.
+
+⭐ **What julia racer should take from this, sharpened:** GPL's AI is **deterministic by default**
+with a small explicit noise term bolted on per driver. An AI built to look alive by randomising its
+inputs is not copying GPL; GPL drives the same lap the same way every time and adds ~1 s of
+per-driver variation on top. Build the deterministic learning loop first (`[magic]`, S2), then add a
+`variability`-shaped term, and expect a correct implementation to reproduce its own stints exactly.
+
+**S4:** the `[ behavior ]` passing/blocking parameters against the decoded overtake narrative — both
+replays carry one, and the Sep 4 race has the player finishing **5th**, so it contains AI-on-AI
+passes rather than a single car disappearing up the road.
+
+**GOLDVID-JR-2: 3 sprints. A hypothesis became a controlled result without leaving the disk.**

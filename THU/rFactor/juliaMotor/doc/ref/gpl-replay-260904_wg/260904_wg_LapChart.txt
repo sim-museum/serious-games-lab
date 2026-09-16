@@ -1,0 +1,93 @@
+Track: Watglen             Wed Sep 16 03:48:28 2026
+
+Driver: Driver 67x - KingWing 
+
+No practice laps
+
+Race laps
+Lap 0: 19.730s
+Lap 1: 1m43.489s [Off the track]
+Lap 2: 1m29.181s [Off the track]
+
+
+Driver: Jack Brabham - Ultrgrip 
+
+Practice laps
+Lap 1: 1m38.230s
+Lap 2: 1m34.772s
+Lap 3: 1m34.894s
+Lap 4: 1m37.590s
+Lap 5: 1m35.345s
+
+Race laps
+Lap 0: 17.513s
+Lap 1: 1m34.630s
+Lap 2: 1m32.885s
+
+
+Driver: Chris Amon - RaciBull 
+
+Practice laps
+Lap 1: 1m50.045s
+Lap 2: 1m36.423s
+Lap 3: 1m34.972s
+Lap 4: 1m36.391s
+Lap 5: 1m34.437s
+Lap 6: 1m37.643s
+Lap 7: 1m37.966s
+
+Race laps
+Lap 0: 17.562s
+Lap 1: 1m39.602s
+Lap 2: 1m32.535s
+
+
+Driver: Jo Bonnier - Ferrari  
+
+Practice laps
+Lap 1: 1m39.530s
+Lap 2: 1m37.599s
+Lap 3: 1m37.590s
+Lap 4: 1m37.577s
+Lap 5: 1m37.567s
+Lap 6: 1m37.563s
+Lap 7: 1m37.550s
+
+Race laps
+Lap 0: 17.948s
+Lap 1: 1m37.907s
+Lap 2: 1m35.168s
+
+
+Driver: Jim Clark - KingWing 
+
+Practice laps
+Lap 1: 1m34.193s
+Lap 2: 1m31.907s
+Lap 3: 1m29.870s
+Lap 4: 5m17.365s
+Lap 5: 1m32.477s
+Lap 6: 1m34.510s
+Lap 7: 1m34.070s
+
+Race laps
+Lap 0: 17.154s
+Lap 1: 1m34.382s
+Lap 2: 1m33.685s
+
+
+Driver: Graham Hill - KingWing 
+
+Practice laps
+Lap 1: 1m34.836s
+Lap 2: 8m00.231s
+Lap 3: 1m37.133s
+Lap 4: 1m34.242s
+
+Race laps
+Lap 0: 17.181s
+Lap 1: 1m41.537s
+Lap 2: 1m38.578s
+
+
+Generated with GPL Replay Analyser
