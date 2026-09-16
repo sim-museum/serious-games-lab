@@ -15060,3 +15060,94 @@ autodrive is bad) or centimetres at walking pace (the trigger is wrong).
 
 **AISPREAD-1: 4 sprints — at cap.** The width answer stands and is now measured honestly; the centre
 answer moved by 3 % when the yardstick was replaced.
+
+## BNDWRECK-1 — the autodrive loses roughly two races in five, and the report says nothing about why
+
+**Origin:** three of this session's measurements were lost to it (AISPREAD-1 S2, STANDINGS-1 S1 arm 1,
+AISPREAD-1 S4 run 1), which is what makes "just repeat the run" expensive on this project.
+
+## BNDWRECK-1 S1 (Opus 5, 2026-09-16) — ⛔ **a correction to AISPREAD-1 S4's by-catch: the saturated peak is KNOWN and the fence rule is deliberate** — ⭐ **a second failure mode found: the car does not always wreck, sometimes it gets STUCK** — and the instrument shipped has not fired yet
+
+### ⛔ First, the correction, because it was mine and it was wrong
+
+AISPREAD-1 S4 recorded that `BND_PK` saturates at `contact_force`'s per-frame impulse clamp
+(617·8/dt ≈ 296 kN) and concluded *"the boundary wreck trigger cannot distinguish a gentle excursion
+from a 200 km/h impact."* The saturation is real. **The conclusion implied a defect where the code
+has a documented choice.** E99's comment, ten lines above the trigger:
+
+> *"The old test was `chard > 1.0e3 && |v| > WRECK_MS`, and chard saturates at ~296 kN for ANY
+> non-hedge contact — so it never discriminated … Trigger on the CLOSING SPEED ALONG THE CONTACT
+> NORMAL instead. **The fence keeps its own peak test — driving off the edge of the world is never a
+> graze.**"*
+
+So the saturation was found and fixed for **solids**, and the **fence** was deliberately left as a
+binary "did you leave the world". That is defensible. What remains true is narrower and is the reason
+for this item: **the fence branch's report carries a number that cannot vary**, so a wreck says
+nothing about what happened.
+
+### ✅ Shipped: the two numbers the fence branch never carried
+
+`BND_NL` (metres past the world edge, net of `FENCE_GRACE`), `BND_VN` (speed along the inward normal)
+and `BND_OFF` (`OFFDIST` at contact), printed on the wreck line. They distinguish the two stories that
+matter: *the autodrive left the world at speed* (the trigger is right and the driving is bad) versus
+*it drifted a few centimetres past a HAT seam at walking pace* (the trigger is wrong).
+
+⛔ **It has not fired.** Four runs since: one **stuck**, one **wrecked but killed by my own bug**, two
+**clean finishes**.
+
+### ⛔⛔ My own bug, and it destroyed the one reading
+
+The wreck line referenced `OFFDIST`, which is a **loop-local `Ref`**, from `wreck!`, a **top-level**
+function. Julia resolves that at call time, so nothing complained until the exact moment a wreck
+happened:
+
+```
+ERROR: LoadError: UndefVarError: `OFFDIST` not defined in `Main`
+Stacktrace: [1] wreck!(...) [2] main()
+```
+
+**The instrument crashed the only run that could have exercised it.** Cause: a string replacement I
+did not assert — the same class as the `open(p,'wb')` truncation earlier today. Fixed by recording
+`OFFDIST` into a global `Ref` at the contact site. ⚠️ *An instrument that runs only on the rare path
+must be exercised on that path before it is trusted; a silent no-op edit and a working edit look
+identical until the rare path arrives.*
+
+### ⭐ A second failure mode, previously unnamed: STUCK, not wrecked
+
+Run 1 did not wreck. It ended with the last twenty-odd minutes of its 25-minute timeout filled with:
+
+```
+[damage] contact at 0.1 m/s closing -- corner grip now 77.0%
+[damage] contact at 0.0 m/s closing -- corner grip now 77.0%
+[damage] contact at 0.0 m/s closing -- corner grip now 77.0%
+```
+
+The car is pinned against something at zero speed, re-contacted every frame, forever. **E96's
+no-rebound invariant makes this possible by design** — *"a contact may REMOVE approach velocity, but
+it may never ADD separation velocity beyond a slow ooze"* (`VN_OUT_MAX` = 0.25 m/s) — and an AI that
+keeps steering into the barrier will sit there. That is the right rule for a player, who can reverse;
+the **autodrive cannot**.
+
+⚠️ **From outside, stuck and wrecked are indistinguishable**: both end as `exit=124` on a timeout, and
+that is why the loss rate has read as "it wrecks a lot" when at least one case is something else.
+
+### ⭐ The rate, counted rather than estimated
+
+Across this session's usable runs at these settings (excluding the one my bug killed):
+
+| outcome | runs |
+|---|---|
+| finished | 4 |
+| wrecked (boundary) | 2 |
+| stuck | 1 |
+
+**3 of 7 lost — 43 %.** That is the number that makes `n=1` caveats stick to this project's AI work.
+
+**S2:** keep the instrument and wait for a wreck — but stop paying 25 minutes for each one. A shorter
+`JM_LAPS` with the AI field still present would exercise the same driving in a third of the time, and
+the **stuck** mode deserves its own detector: a watchdog that ends the run when `|v| < 0.5 m/s` and a
+contact repeats for more than a few seconds, so the harness reports *"stuck at (x,z)"* instead of a
+timeout.
+
+**BNDWRECK-1: 1 sprint. A correction, a new failure mode, a counted rate, and an instrument still
+waiting for its event.**

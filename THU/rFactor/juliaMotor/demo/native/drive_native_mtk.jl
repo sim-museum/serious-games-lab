@@ -3052,6 +3052,17 @@ const PROF_DEPTH = Ref(0.0); const PROF_TRACK = Ref(0.0); const PROF_OBJ = Ref(0
 # wrecks a car is the impulse it takes, and a slow scrape into a hedge must never trigger it.
 const BND_PK = Ref(0.0)   # E95b: last frame's world-edge contact peak (N)
 const BND_NX = Ref(0.0); const BND_NZ = Ref(0.0)   # E95f: world-frame wall normal, pointing INTO the world
+# BNDWRECK-1 S1 (2026-09-16): the two numbers the world-edge wreck report has never carried.
+# BND_PK is a FORCE and it saturates at contact_force's per-frame impulse clamp (617*8/dt ~ 296 kN)
+# for any excursion past SPRING_DMAX -- E99 already recorded that for the SOLIDS branch and moved it
+# onto closing speed, while deliberately leaving the fence on the saturated peak ("driving off the
+# edge of the world is never a graze"). That is a defensible rule, but it makes the report say
+# nothing about WHAT HAPPENED: two wrecks at different places on different laps both printed
+# 297,745 and 297,762 N. Record the penetration and the inward-normal speed instead, so the next
+# wreck says how far past the world edge the car was and how fast it was going there.
+const BND_NL = Ref(0.0)   # m past the last in-world spot at the moment of contact
+const BND_VN = Ref(0.0)   # m/s along the INWARD normal (<0 = leaving the world)
+const BND_OFF = Ref(0.0)  # OFFDIST at the moment of contact (OFFDIST itself is a loop-local Ref)
 const WHEEL_REST   = parse(Float64, get(ENV, "JM_WHEEL_REST", "0.35"))   # E95f: wheel/wall restitution (<1 = inelastic)
 const WRECK_KMH    = parse(Float64, get(ENV, "JM_WRECK_KMH", "50.0"))    # E95c: any HARD contact above this totals the car
 const WRECK_MS     = WRECK_KMH/3.6
@@ -3108,6 +3119,12 @@ function wreck!(v; closing = NaN, bnd_peak = NaN, x = NaN, z = NaN)
             closes && bnds  ? "BOTH: closing $(round(closing, digits=1)) m/s and boundary peak $(round(bnd_peak, digits=0))" :
                               "neither threshold exceeded (closing=$closing bnd_peak=$bnd_peak) -- unexpected")
     isnan(x) || println("  [WRECK]   at world (", round(x, digits=1), ", ", round(z, digits=1), ")")
+    # BNDWRECK-1 S1: the boundary branch's real state. bnd_peak is a saturated force and says
+    # nothing; these two say how far past the world edge the car was and how fast it was leaving.
+    bnds && println("  [WRECK]   boundary: ", round(BND_NL[], digits=3), " m past the edge",
+                    " (FENCE_GRACE=", FENCE_GRACE, " m), inward-normal speed ",
+                    round(BND_VN[], digits=2), " m/s, off-track distance ",
+                    round(BND_OFF[], digits=1), " m")
     flush(stdout)
 end
 
@@ -8457,6 +8474,7 @@ function main()
                     (bfx, bfy, bmz) = DriveRT3D.contact_force(nl - FENCE_GRACE, nwx, nwz, vn, cs.θ; kind = :wall, dt = gdt)
                     BND_FX[] = bfx; BND_FY[] = bfy; BND_MZ[] = bmz
                     BND_PK[] = hypot(bfx, bfy)   # E95b: the wreck trigger must SEE the world-edge wall
+                    BND_NL[] = nl - FENCE_GRACE; BND_VN[] = vn; BND_OFF[] = OFFDIST[]   # BNDWRECK-1 S1
                     # E95f: keep the WORLD-frame wall normal (points INTO the world). contact_force
                     # returns BODY-frame forces, and the first cut dotted those against WORLD wheel
                     # displacements to pick the leading corner -- mixing frames, which is why the
