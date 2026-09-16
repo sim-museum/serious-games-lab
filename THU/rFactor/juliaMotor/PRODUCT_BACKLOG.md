@@ -15276,3 +15276,81 @@ agreeing to within a percentage point. It remains a default nobody has changed.
 per-driver `variability` finding is the obvious place to look for it.
 
 **GOLDVID-JR-2: new pass, sprint 1 of 4.**
+
+## GOLDVID-JR-2 S6 (Opus 5, 2026-09-16) — ⛔⛔ **RETRACTION, and it reaches back through three sprints: the gold's field spread is 6.93 %, not 9.8 % — so `JM_AI_TEMPER=0.35`, the SHIPPED DEFAULT, was right and the proposed 0.64 overshoots by 1.5×**
+
+S5 ended by calling the *shape* of the AI gaps the interesting question. Before measuring a shape from
+one race on each side, I went back to check the number every spread claim rests on. It is wrong.
+
+### ⛔ One column, read from the wrong table
+
+`doc/ref/gpl-replay-260915_wg/260915_wg_Complete.txt` contains **two** per-driver time tables:
+
+```
+FASTEST LAPS                       |  (the other table)
+ 3  Jack Brabham   1m30.860s  2    |  Jack Brabham  0.000 0.000 1m30.860s  2
+ 4  Chris Amon     1m33.888s  2    |  Chris Amon    0.000 0.000 1m33.888s  2
+ 5  Jo Bonnier     1m35.249s  2    |  Jo Bonnier    0.000 0.000 1m35.249s  2
+ 6  Graham Hill    1m36.426s  1    |  Graham Hill   0.000 0.000 1m39.001s  2
+```
+
+The second is the **last lap**, not the best. For four drivers the two coincide — they all set their
+best on lap 2. **Hill set his best on lap 1** (his own per-lap list: `Lap 1: 1m36.426s`,
+`Lap 2: 1m39.001s`), so for him alone they differ by 2.575 s.
+
+**TELEMSTATE-1 S3's calibration table read the second table**, labelled the column *"gold lap"*, and
+so recorded **Hill 99.001** where his best lap is **96.426**. ⚠️ *Four rows agreeing by coincidence is
+exactly how a wrong column survives a spot-check.* [[instrument-bookkeeping-lies]]
+
+### ⛔⛔ What that one row was holding up
+
+| | gold field best laps | spread |
+|---|---|---|
+| as recorded (last-lap column) | 90.177 … **99.001** | 8.824 s — **9.79 %** |
+| **corrected (fastest-lap column)** | 90.177 … **96.426** | 6.249 s — **6.93 %** |
+
+Every spread comparison this project has made used the 9.79 %:
+
+| sprint | claim | with the corrected 6.93 % |
+|---|---|---|
+| AISPREAD-1 S1 | *"our field is about half as spread as GPL's"* (5 points vs 9.8 %) | ours was **0.72×**, not half |
+| AISPREAD-1 S3 | *"ours 10.3 % lands on the gold's 9.8 % — both ends"* | ours is **1.49×** the gold |
+| AISPREAD-1 S4 | *"the SPREAD is right — 10.6 % against 9.8 %"* | ours is **1.52×** the gold |
+
+### ⭐⭐⭐ And it reverses the recommendation
+
+| our setting | field spread | against the corrected gold (6.93 %) |
+|---|---|---|
+| **`JM_AI_TEMPER=0.35` — the shipped default** | 6.27 % | **0.90×** |
+| `JM_AI_TEMPER=0.64` — proposed by S1, "confirmed" by S3 and S4 | 10.56 % | **1.52×** |
+
+**The default nobody changed is within 0.66 percentage points of the gold. The value three sprints
+argued for is half as wide again as the gold.** ⛔ **The recommendation to raise `JM_AI_TEMPER` is
+withdrawn.** S1 derived 0.64 from a formula targeting 10.1 % — a target that was never the gold's.
+
+⭐ **And it reconciles the disagreement S5 could not explain.** S5 measured the race-gap spread at
+**1.24×** and noted it clashed with S4's best-lap **1.08×**. With the correction S4's ratio becomes
+**1.52×**, and both routes now say the same thing: **ours is materially wider than the gold.** The
+number that looked like a contradiction was the wrong one all along.
+
+### ⭐ What survives
+
+`JM_AI_PCT`. The centre calibration never depended on Hill: the gold's fastest AI is 90.177 s either
+way, ours at `JM_AI_PCT=71` is 93.127 s, and S5's independent race-gap route put the centre 2.2 % slow.
+**`JM_AI_PCT ≈ 73` stands, on two routes.**
+
+### For the PO, corrected
+
+| default | previous advice | **now** |
+|---|---|---|
+| `JM_AI_PCT` 60 | raise to ~71–73 | **raise to ~73** — unchanged, two independent measurements |
+| `JM_AI_TEMPER` 0.35 | raise to 0.64 | ⛔ **leave it** — 0.35 is 0.90× the gold's spread; 0.64 is 1.52× |
+
+⚠️ Still n=1 per side, and AISPREAD-1 S1's attribution caveat is untouched: ours spreads by chassis,
+GPL's by driver. **A spread that now matches by width still matches by the wrong mechanism.**
+
+**S7:** re-read the other gold-derived tables in this backlog for the same fault — a column label
+taken from position rather than from a header. `260915_wg_Complete.txt` has five reports in it and
+this project has quoted three of them.
+
+**GOLDVID-JR-2: new pass, sprint 2 of 4.**
