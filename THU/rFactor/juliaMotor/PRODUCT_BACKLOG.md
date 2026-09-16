@@ -13411,3 +13411,55 @@ next to the current build so the trade is a picture rather than an argument.
 
 **SPA-FPS-1: 15 sprints. The mirror's cost is now attributed to the millisecond, and there is a
 strobe-free option worth up to 15.9 ms.**
+
+---
+
+# NEW GOLD STANDARD VIDEO (PO, 2026-09-15) — GPL at Watkins Glen, COCKPIT VIEW, BOTH MIRRORS IN SHOT
+
+`~/gold standard/julia racer/260915_gpl_wg_race_gold.mp4` — **8m 41s, 863 MB, 1920×1080 ~60 fps**,
+desktop recording with GPL in a window (titled "Default - Wine desktop").
+
+⭐⭐ **This is the reference SPA-FPS-1 has been arguing without.** A frame at t=200 s shows the Lotus
+49 cockpit with **both round cowl mirrors visible and filled**, plus a timing overlay (lap times,
+Player/Leader Relative, Track Position with Clark, Graham Hill, Brabham, Amon, Bonnier) and a
+telemetry bar (`Oil P:545kPa  T:55°C  138Km/H  6130rpm  Fuel:35.1l`).
+
+## GOLDVID-JR-1 — ⭐⭐ the real mirrors, against which our mirror decisions can finally be judged
+
+**Fifteen sprints of SPA-FPS-1 have tuned a mirror nobody had a reference for.** S15 ended by costing
+a trade — a single shared mirror camera is worth **+41% fps with no strobe**, but loses the per-disc
+backward-outward framing E64 S10 added deliberately — and said *"that trade needs eyes, not a
+counter"*. **These are the eyes.**
+
+**Grade, in this order:**
+1. **Content per disc.** Do the real mirrors show *different* views (each angled backward-outward), or
+   effectively the same view? **This decides S15's open question outright.** If GPL's own mirrors show
+   near-identical content, the single-camera change costs nothing real and the +41% is free.
+2. **Geometry.** Disc position, size and separation on the cowl, against our `JM_MIRROR_X/Y/SCALE/
+   SPREAD/TILT`. These were tuned by eye over several sprints (E48, E64) with no reference.
+3. **What is actually IN them** — sky, trees, track, following cars? That sets how much scene the
+   mirror pass genuinely needs, which is the S14/S15 cost question from the other end.
+4. **Update rate.** Does GPL's mirror visibly strobe or lag? If the original updates at a reduced
+   rate, `JM_MIRROR_ADAPT` is *faithful* rather than a compromise — which would reframe the PO's
+   complaint entirely.
+
+## GOLDVID-JR-2 — lap times and the AI field, with names and gaps on screen
+
+The overlay puts **lap times and per-driver gaps in the frame**, and the telemetry bar gives speed,
+rpm, fuel and oil. That is a gold for the lap-time and AI-pace work that currently leans on
+`.ibt` telemetry alone — and unlike telemetry, it is the *original sim's* AI, not iRacing's.
+
+Pairs with `watkinsGlenn/260823_gpl_watkin_glen_race_gold.mp4` (Aug 23) as a **repeat sample of the
+same circuit three weeks apart** — so between-run spread can be measured before any of our numbers
+are graded against a single capture.
+
+⚠️ **Filing note, not a defect.** This video sits at the **top level** of `julia racer/`, while the
+other Watkins Glen material (including the Aug race gold and the 2026-06-26 screenshots) is in
+`julia racer/watkinsGlenn/`. **I have not moved it** — it is the PO's directory. Worth deciding
+where it should live before links are written against the current path.
+
+⚠️ **Capture caveat.** Windowed desktop recording: the game is a sub-rectangle and the art is scaled,
+so locate the window before any pixel work. Measured on tonight's FreeFalcon captures, large HUD
+digits survive this scale and small ones do not — expect the same of the GPL telemetry bar.
+
+**Status: 2 items filed, 0 sprints. GOLDVID-JR-1 settles a question S15 could not.**
