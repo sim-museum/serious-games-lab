@@ -14970,3 +14970,93 @@ the wrong sign and something else is left; if it is about the **live indicator d
 0.65 s of phantom P1 at the start is exactly the shape of it.
 
 **STANDINGS-1: 2 sprints. The defect is fixed and now has a duration attached to it.**
+
+## AISPREAD-1 S4 (Opus 5, 2026-09-16) — ⛔⛔ **the yardstick this item has used for four sprints is not a lap time, and its own arithmetic proves it: the "average" comes out FASTER than the same car's best lap in the same run** — ⭐ the real best laps, at last: ours **93.1–103.0 s** against the gold's **90.2–99.0**
+
+S3 named this sprint: *"re-run each setting twice to retire the n=1 caveat, and compare best laps
+rather than stint averages."* The second half turned out to matter far more than the first.
+
+### ⭐ `ai_best[]` was already there, and nothing printed it
+
+Every AI lap-time figure this item and TELEMSTATE-1 have compared against the gold was **derived**:
+`player_elapsed × RACE_LAPS ÷ car_progress`. `ai_best[i]` — the car's fastest lap, measured from its
+own start/finish crossings and explicitly skipping the grid-launch lap — has been tracked since the
+AI field was built and **no line of code printed it**. Added to the `R1 DIAG` block.
+
+### ⛔⛔ And the derived figure is not an average
+
+One run, five cars, both numbers side by side (player total 7:35.632, 3 laps):
+
+| car | derived "average" | **true best lap** | difference |
+|---|---|---|---|
+| Eagle | 92.42 s | **93.13 s** | **−0.71** |
+| Ferrari | 93.18 s | **94.36 s** | **−1.18** |
+| BRM | 96.94 s | **98.25 s** | **−1.31** |
+| Brabham | 99.70 s | **100.24 s** | **−0.54** |
+| Cooper | 102.16 s | **102.96 s** | **−0.80** |
+
+⭐⭐⭐ **Every derived figure is FASTER than that car's own best lap.** A stint average that includes a
+standing start cannot be quicker than the best lap inside it. **So the derived number is not a lap
+time at all** — it is *the player's* elapsed time divided by the AI's progress, so it moves when the
+**autodrive's** pace moves, not when the AI's does. S3 recorded the caveat as "ours read slightly
+slow"; the sign is the other way and the cause is not the standing start.
+
+⚠️ **This is why S3's numbers looked better than they were.** S3 reported ours at **90.4–99.7 s**
+against the gold's 90.2–99.0 and called the calibration a match at both ends. Those were derived
+figures from a run in which the autodrive happened to be slower, inflating every AI's apparent pace.
+**Same settings, measured properly, the field is 3–4 s off.**
+
+### ⭐ The comparison, on like for like
+
+| | fastest | slowest | range |
+|---|---|---|---|
+| **ours** (`JM_AI_PCT=71 JM_AI_TEMPER=0.64`), best laps | **93.13 s** | **102.96 s** | 9.83 s — **10.6 %** |
+| **gold** (GPL, Novice), best laps | 90.18 s | 99.00 s | 8.82 s — **9.8 %** |
+
+⭐ **The SPREAD is right** — 10.6 % against 9.8 %, so `JM_AI_TEMPER=0.64` survives the better
+measurement, which is the question this item exists for.
+⛔ **The CENTRE is about 3 % slow** — every car 3–4 s off. Scaling the fastest car
+(93.13 / 90.18 = 1.033) puts the centre calibration at roughly **`JM_AI_PCT` ≈ 73**, not 71.
+⚠️ **An estimate from one run, offered as a direction, not a default.**
+
+### ⚠️ n=1 survives, and the reason is the harness
+
+Two runs were launched. **Run 1 wrecked on lap 2 and never reached the classification** — the same
+world-edge wreck that cost AISPREAD-1 S2 its measurement and STANDINGS-1 S1 its first arm. That is
+**three measurements lost to this in four sprints**, and it is why "just repeat it" is expensive here.
+
+### ⭐ By-catch, and it names the harness problem: the wreck report's number is a CLAMP
+
+The two wrecks reported:
+
+```
+[WRECK] cause: BOUNDARY penetration peak 297745.0   (STANDINGS-1 S1, at world -15.2,-193.3)
+[WRECK] cause: BOUNDARY penetration peak 297762.0   (here, at world 96.8,697.3)
+```
+
+Two different places, two different laps, agreeing to **0.006 %**. That is not a measurement. It is
+`contact_force`'s per-frame impulse clamp, and **the code says so in its own comment**:
+
+```julia
+# ... a deep excursion drives it straight into the CONTACT_DVMAX ceiling -- 617·8/dt ≈ 296 kN
+Fn = min(Fn, m*CONTACT_DVMAX/max(dt, 1e-3))      # 617 * 8 / (1/60) = 296,160 N
+```
+
+`BND_PK[] = hypot(bfx, bfy)` is that clamped **force**, not a "penetration peak" — and the wreck test
+is `bnd_peak > 1.0e3`, comparing a value that **saturates at ~297 kN** against a threshold **300×
+smaller**. ⛔ **So the boundary wreck trigger cannot distinguish a gentle excursion from a 200 km/h
+impact**: once the car is past `FENCE_GRACE` and the spring is past `SPRING_DMAX`, every world-edge
+contact reads as maximal. That is consistent with an autodrive that runs slightly wide being declared
+wrecked.
+
+⚠️ **Not fixed here, and deliberately not.** The remedy is not to move a threshold on this reasoning —
+it is to make the report say something that varies (the penetration `nl` and the closing speed `vn`,
+both available at the call site) and then **measure what these excursions actually are** before
+touching the trigger. [[measure-before-a-global-guard]]
+
+**Next (its own item, BNDWRECK-1):** print `nl` and `vn` in the wreck report, run the autodrive until
+it wrecks, and see whether the excursions are metres-deep at speed (the trigger is right and the
+autodrive is bad) or centimetres at walking pace (the trigger is wrong).
+
+**AISPREAD-1: 4 sprints — at cap.** The width answer stands and is now measured honestly; the centre
+answer moved by 3 % when the yardstick was replaced.

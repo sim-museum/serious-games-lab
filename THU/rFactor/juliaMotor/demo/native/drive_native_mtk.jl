@@ -8607,8 +8607,16 @@ function main()
                             "   [accumulator ", round(_new, digits=3), "]")
                 end
                 for (i,c) in enumerate(AICARS)
+                    # AISPREAD-1 S4 (2026-09-16): print each AI's BEST LAP here, not just its
+                    # progress.  Every number this item has compared against the gold so far has
+                    # been a stint AVERAGE derived from the player's elapsed time divided by the
+                    # car's progress -- which includes the standing start and so reads slow, a
+                    # caveat S3 and TELEMSTATE-1 S4 both had to carry.  ai_best[] has been tracked
+                    # all along (it skips the grid-launch lap by construction) and nothing printed
+                    # it, so the gold's BEST laps had no like-for-like counterpart on our side.
                     println("     ", rpad(AISPECS[i][1],8), " lap=", c.lap, " prog=", round(c.lap + mod(c.s, AILINE.total)/AILINE.total, digits=2),
-                            " v=", round(Int,c.v*3.6), "km/h pace=", round(Int,c.pace*100), "%")
+                            " v=", round(Int,c.v*3.6), "km/h pace=", round(Int,c.pace*100), "%",
+                            "  best=", isfinite(ai_best[i]) ? fmt_lap(ai_best[i]) : "-")
                 end
                 println("  ── final classification ──")
                 for (p, (id, _)) in enumerate(order)
