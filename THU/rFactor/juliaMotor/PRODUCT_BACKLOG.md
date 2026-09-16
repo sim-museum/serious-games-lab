@@ -15417,3 +15417,102 @@ actual world-edge wreck.
 means launching two.
 
 **GOLDVID-JR-2: new pass, sprint 4 of 4 — at cap.**
+
+## BNDWRECK-1 S3 (Opus 5, 2026-09-16) — ⭐⭐ **the loss rate measured over the whole corpus, not a sample: 7 of 17 races that reached the grid, 41 %** — ⛔ **and the STUCK watchdog's trigger has not been seen because the only stuck run in the corpus PREDATES it by 45 minutes**, which is a much duller reason than a wrong threshold
+
+**Story:** BNDWRECK-1 (the autodrive loses races and the report does not say why). **Sprint 3.**
+
+S2 shipped the STUCK watchdog, proved it inert on a clean race, and said plainly that its trigger
+had still not been seen. This sprint asks the cheap question first: **what do the runs we already
+have say?** Nineteen logs were sitting on disk. None of them had ever been counted.
+
+### The corpus — `tools/jr_classify_run.py`
+
+```
+bw_run1.log    stuck?    16424 contacts after the last lap, no lap since
+bw_run2.log    boundary  BOUNDARY penetration peak 297403.0
+bw_run3.log    finished
+...
+t035.log       solid     CLOSING speed 13.4 m/s into a solid
+jr-auto.log    no-race   never reached the grid
+-----------------------------------------------------
+  boundary=5  finished=10  no-race=2  solid=1  stuck?=1
+  races that reached the grid: 17   lost: 7 (41%)
+```
+
+| outcome | n |
+|---|---|
+| finished | **10** |
+| boundary wreck (the invisible fence/wall test) | **5** |
+| solid-object wreck (`CLOSING speed 13.4 m/s`) | **1** |
+| stuck | **1** |
+| never reached the grid (harness timeout) | 2 — *excluded* |
+
+**41 %**, n=17 — consistent with S8's "4 of 8" and with the "43–50 %" quoted earlier, but now on the
+whole corpus instead of whichever runs happened to be in front of me. ⚠️ These runs do **not** share
+a configuration (`JM_AI_PCT`, `JM_AI_TEMPER` and lap counts all vary); it is a pooled rate across
+heterogeneous settings, not a measurement of one setting, and should not be quoted as one.
+
+The two `no-race` logs are new: both are 60-line start-up timeouts that never reached the grid. They
+had been silently pooled with the losses. A loss rate that counts them is wrong by two.
+
+### ⛔ Why the watchdog has never fired
+
+There is **exactly one** stuck run in the entire corpus — `bw_run1`, 12:43. The watchdog shipped at
+**14:00**. *No run since the watchdog existed has got stuck.* S2 was right that the trigger had not
+been seen and right not to claim otherwise; the explanation is simply that the event has not
+recurred, not that the threshold is wrong.
+
+⭐ And the run really is stuck, which is worth stating because I nearly talked myself out of it:
+its laps 1 and 2 print at log lines 65 and 66, and **all 16,424 contact events come after both** —
+the car completed two laps, was then pinned, and re-contacted every frame to the end of the run.
+
+### ⛔ But the corpus cannot check the watchdog's own predicate
+
+The watchdog fires on `abs(cs.v) < 0.5` — the **car's** speed. The damage line prints `cclose` — the
+**closing speed**, i.e. the approach rate between car and obstacle, which is ≈0 for a car sliding
+along a wall at any speed whatsoever. `bw_run1`'s tail is 10,578 contacts at 0.1 m/s and 4,396 at
+0.0 m/s **closing** — and not one line in it says how fast the car was going.
+
+So the mode the watchdog exists to catch **is not observable in the log of the one run that exhibits
+it**, and S2's own comment ("PINNED against something at zero speed") reads a car speed off a figure
+that is not one. Fixed: the damage line now carries `cs.v` beside `cclose`, and collapses a repeat
+to one line per `JM_DMG_EVERY` seconds (default 1.0) with a count —
+
+```
+  [damage] contact at 0.1 m/s closing, car 0.3 m/s  (x58 since the last line) -- corner grip now 77%
+```
+
+— which also stops a pinned tail turning a log into 16,000 lines. `JM_DMG_EVERY=0` restores a line
+per frame.
+
+⚠️ **That line is the FORMAT, not a capture.** The verification run finished clean with **zero
+contacts**, so the new print has not yet executed. See the next section for why that run could not
+have produced one anyway.
+
+### ⛔ My own verification run sampled the wrong population, and I nearly counted it
+
+The run launched to exercise the new damage line came back `finished`, and folding it into the
+corpus moved the headline to 18 races / 7 lost / 39 %. **It does not belong there.** Its log has no
+`loading AI car:` lines and no `AI grid:` line, and the source says why: `JM_AI` defaults to **0**
+(`drive_native_mtk.jl:215`) and I passed `JM_AI_PCT` without it. It was a **solo car on an empty
+track** — `P1 of 1` in its own classification — while every other run in the corpus is a six-car
+race. A solo run has far fewer contact opportunities, which is also why it produced no damage line
+to check.
+
+So the headline stays at **7 of 17, 41 %**, and the re-run carries `JM_AI=5`.
+[[ff-harness-geography-and-probe-population]] — a census that samples a different population than
+the one it reports on gives a confident wrong number, and this one was one edit away from being
+quoted.
+
+### Shipped
+
+* `tools/jr_classify_run.py` — one line per log, with the tally and the loss rate. The pre-watchdog
+  stuck signature (no finish, no wreck, ≥200 contacts after the last lap) is reported as **`stuck?`**,
+  never as a watchdog hit, because it is an inference about logs written before the watchdog existed.
+* the damage line carries car speed and collapses repeats.
+
+**S4:** the boundary wreck is 5 of the 7 losses — five sixths of everything except the one solid
+hit. That, not the watchdog, is where the loss rate lives.
+
+**BNDWRECK-1: 3 sprints.**

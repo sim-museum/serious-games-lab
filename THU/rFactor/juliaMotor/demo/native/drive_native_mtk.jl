@@ -3074,6 +3074,18 @@ const BND_OFF = Ref(0.0)  # OFFDIST at the moment of contact (OFFDIST itself is 
 # which, and say where, and stop.
 # JM_STUCK_SECS=<seconds> (default 20; 0 disables).
 const STUCK_SECS = parse(Float64, get(ENV, "JM_STUCK_SECS", "20"))
+
+# BNDWRECK-1 S3 (2026-09-16): the damage line prints CLOSING speed and nothing else, and the one
+# pinned run in the whole corpus emitted 16,424 of them ("contact at 0.1 m/s closing", 16,424
+# times, all after its lap 2). Closing speed is the APPROACH RATE between car and obstacle -- it is
+# ~0 for a car sliding along a wall at any speed -- so no log we hold can say whether that run was
+# ever under the watchdog's own 0.5 m/s car-speed threshold. The mode the watchdog exists to catch
+# is not observable in the logs of the runs that exhibit it. Carry cs.v, and collapse the repeat to
+# one line per JM_DMG_EVERY seconds with a count, so a pinned tail stays legible instead of
+# becoming 16k lines. JM_DMG_EVERY=0 restores a line per frame.
+const DMG_EVERY  = parse(Float64, get(ENV, "JM_DMG_EVERY", "1.0"))
+const DMG_LAST_T = Ref(-1.0e9)
+const DMG_RUN_N  = Ref(0)
 const STUCK_T0   = Ref(-1.0)   # sim time the current stuck spell began, -1 = not stuck
 const WHEEL_REST   = parse(Float64, get(ENV, "JM_WHEEL_REST", "0.35"))   # E95f: wheel/wall restitution (<1 = inelastic)
 const WRECK_KMH    = parse(Float64, get(ENV, "JM_WRECK_KMH", "50.0"))    # E95c: any HARD contact above this totals the car
@@ -8324,10 +8336,19 @@ function main()
                     if cpk > 1.0e3 && !WRECKED[] && cclose > 0.0
                         DriveRT3D.damage_impact!(cfx, cfy, cclose)
                         if DriveRT3D.damaged()
-                            println("  [damage] contact at ", round(cclose, digits=1),
-                                    " m/s closing -- corner grip now ",
-                                    round(100*DriveRT3D.damage_mu(1)), "%")
-                            flush(stdout)
+                            # BNDWRECK-1 S3: car speed alongside closing speed, and one line per
+                            # DMG_EVERY seconds carrying how many contacts it stands for.
+                            DMG_RUN_N[] += 1
+                            if DMG_EVERY <= 0.0 || cs.t - DMG_LAST_T[] >= DMG_EVERY
+                                println("  [damage] contact at ", round(cclose, digits=1),
+                                        " m/s closing, car ", round(abs(cs.v), digits=1), " m/s",
+                                        DMG_RUN_N[] > 1 ? string("  (x", DMG_RUN_N[], " since the last line)") : "",
+                                        " -- corner grip now ",
+                                        round(100*DriveRT3D.damage_mu(1)), "%")
+                                flush(stdout)
+                                DMG_LAST_T[] = cs.t
+                                DMG_RUN_N[]  = 0
+                            end
                         end
                     end
                     cpk > 1.0e3 && (ffb_jolt = clamp(sign(cmz != 0 ? cmz : 1.0) * min(cpk/4.0e4, 1.0), -1.0, 1.0))  # feel the hit (stronger — PO: object kick was too small)
