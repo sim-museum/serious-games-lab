@@ -3063,6 +3063,18 @@ const BND_NX = Ref(0.0); const BND_NZ = Ref(0.0)   # E95f: world-frame wall norm
 const BND_NL = Ref(0.0)   # m past the last in-world spot at the moment of contact
 const BND_VN = Ref(0.0)   # m/s along the INWARD normal (<0 = leaving the world)
 const BND_OFF = Ref(0.0)  # OFFDIST at the moment of contact (OFFDIST itself is a loop-local Ref)
+# BNDWRECK-1 S2 (2026-09-16): the STUCK watchdog.
+# S1 found a failure mode nothing had named: the car is not wrecked, it is PINNED against something
+# at zero speed, re-contacted every frame, for the rest of the run. E96's no-rebound invariant makes
+# that possible by design -- "a contact may REMOVE approach velocity, but it may never ADD separation
+# velocity beyond a slow ooze" (VN_OUT_MAX = 0.25 m/s) -- which is right for a player, who can
+# reverse, and fatal for the autodrive, which cannot. One such run burned twenty minutes of a
+# twenty-five minute timeout printing "[damage] contact at 0.0 m/s closing".
+# From outside, stuck and wrecked are indistinguishable: both end as exit=124 on a timeout. Say
+# which, and say where, and stop.
+# JM_STUCK_SECS=<seconds> (default 20; 0 disables).
+const STUCK_SECS = parse(Float64, get(ENV, "JM_STUCK_SECS", "20"))
+const STUCK_T0   = Ref(-1.0)   # sim time the current stuck spell began, -1 = not stuck
 const WHEEL_REST   = parse(Float64, get(ENV, "JM_WHEEL_REST", "0.35"))   # E95f: wheel/wall restitution (<1 = inelastic)
 const WRECK_KMH    = parse(Float64, get(ENV, "JM_WRECK_KMH", "50.0"))    # E95c: any HARD contact above this totals the car
 const WRECK_MS     = WRECK_KMH/3.6
@@ -8319,6 +8331,33 @@ function main()
                         end
                     end
                     cpk > 1.0e3 && (ffb_jolt = clamp(sign(cmz != 0 ? cmz : 1.0) * min(cpk/4.0e4, 1.0), -1.0, 1.0))  # feel the hit (stronger — PO: object kick was too small)
+                    # BNDWRECK-1 S2: STUCK watchdog. A contact this frame AND the car going nowhere.
+                    # Armed only once the race is running and not already wrecked (a wreck is a
+                    # deliberate stop and must not be reported as a stall).
+                    if STUCK_SECS > 0 && cpk > 1.0e3 && race_go[] && !WRECKED[] && abs(cs.v) < 0.5
+                        if STUCK_T0[] < 0.0
+                            STUCK_T0[] = cs.t
+                            # Prove the predicate runs even on races that never trip the threshold:
+                            # without this, a clean run and a broken watchdog look identical.
+                            haskey(ENV,"JM_TRACE_STUCK") && println("  [stuck?] armed at t=",
+                                round(cs.t, digits=2), "s  |v|=", round(abs(cs.v), digits=2),
+                                " m/s at (", round(cs.x, digits=1), ", ", round(cs.z, digits=1), ")")
+                        elseif cs.t - STUCK_T0[] >= STUCK_SECS
+                            println("\n  ═══════ STUCK — not wrecked, pinned against something ═══════")
+                            println("  [STUCK] ", round(cs.t - STUCK_T0[], digits=1),
+                                    " s at |v| < 0.5 m/s with a contact every frame")
+                            println("  [STUCK]   at world (", round(cs.x, digits=1), ", ",
+                                    round(cs.z, digits=1), ")  lap ", cs.laps,
+                                    "  lapdist ", round(cs.lapdist, digits=1))
+                            println("  [STUCK]   JM_STUCK_SECS=0 disables this watchdog")
+                            flush(stdout)
+                            GLFW.SetWindowShouldClose(win, true)
+                        end
+                    elseif STUCK_T0[] >= 0.0 && abs(cs.v) >= 0.5
+                        haskey(ENV,"JM_TRACE_STUCK") && println("  [stuck?] cleared after ",
+                            round(cs.t - STUCK_T0[], digits=2), " s -- moving again")
+                        STUCK_T0[] = -1.0      # moving again: the spell is over
+                    end
                 end
                 # add last frame's world-edge physical-wall force (E56.6) to the trackside contact force
                 # E95: once wrecked the car's motion BLEEDS OUT. Fed through the same force port the

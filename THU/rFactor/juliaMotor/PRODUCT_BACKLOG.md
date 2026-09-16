@@ -15151,3 +15151,61 @@ timeout.
 
 **BNDWRECK-1: 1 sprint. A correction, a new failure mode, a counted rate, and an instrument still
 waiting for its event.**
+
+## BNDWRECK-1 S2 (Opus 5, 2026-09-16) — ✅ **the STUCK watchdog is shipped and proven NOT to fire on a clean race — even at a 0.05 s threshold** — ⚠️ **and its trigger has still not been seen, which the write-up says rather than implies**
+
+S1 found a failure mode nothing had named: the car pinned against something at zero speed, re-contacted
+every frame, burning twenty minutes of a twenty-five minute timeout. From outside it is
+indistinguishable from a wreck — both end as `exit=124`.
+
+### ✅ `JM_STUCK_SECS` (default 20; 0 disables)
+
+Armed only while the race is running and the car is **not** wrecked — a wreck is a deliberate stop and
+must not be reported as a stall. On trip it names the state and stops:
+
+```
+═══════ STUCK — not wrecked, pinned against something ═══════
+[STUCK] <n> s at |v| < 0.5 m/s with a contact every frame
+[STUCK]   at world (x, z)  lap N  lapdist D
+```
+
+### ⭐ The half that IS proven: it does not fire on a good run
+
+Two clean 2-lap races, `JM_AI=5 JM_AI_PCT=71 JM_AI_TEMPER=0.64`:
+
+| threshold | result |
+|---|---|
+| `JM_STUCK_SECS=1` | race finished, **no `[STUCK]`** |
+| `JM_STUCK_SECS=0.05` + `JM_TRACE_STUCK=1` | race finished, **not even `[stuck?] armed`** |
+
+⭐ **At 0.05 s the watchdog would trip on a single slow touch, and it never armed at all** — so in a
+clean race the car has **no contact whatsoever while below 0.5 m/s**. That is a stronger
+false-positive result than a threshold sweep, and it says something about the failure itself: the
+stuck mode is **not** "the autodrive scrapes a lot and one scrape goes long". It is a distinct, rare,
+**absorbing** state — the car either never touches anything slowly, or it touches and never leaves.
+
+### ⚠️ The half that is NOT proven
+
+**The trigger has not been observed.** The stuck state appeared once in seven runs (S1), and neither
+run here reproduced it. So the arming predicate, the timer and the clear path are all exercised as
+*not firing*; the `>=` and the report itself are not.
+
+⚠️ *This is the "prove the instrument can speak" rule half-satisfied, and saying so is the point.* A
+watchdog that has only ever been observed staying silent is indistinguishable from one that is
+broken — which is exactly the trap this project booked when a silent trace was read as a finding
+(GOLDVID-BOB-2 S6, where the same doubt was resolved by running the instrument on a path known to
+work). **`JM_TRACE_STUCK` is what will settle it**: the next run that gets stuck will print the arm
+line first, and that line is the proof the predicate reaches the timer.
+
+### ⚠️ Not done, and deliberately
+
+S1 also asked for a cheaper way to provoke a wreck. Nothing here provokes one, and I declined to add
+a force-the-state env purely to exercise the report: **a hook that exists only to make a watchdog
+print has not tested the watchdog's actual condition**, only its `println`. The honest cost is waiting
+for the ~1-in-7.
+
+**S3:** leave both instruments in place and read the next lost run instead of running races to provoke
+one. Every AI sprint from here runs races anyway; the first one that ends `[STUCK]` or prints a
+`[WRECK] boundary:` line closes both S1's and S2's open halves at no extra cost.
+
+**BNDWRECK-1: 2 sprints.**
