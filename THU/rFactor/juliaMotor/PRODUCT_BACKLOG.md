@@ -13732,3 +13732,48 @@ an artefact of its own crop is worse than no number.** [[instrument-bookkeeping-
 
 **GOLDVID-JR-1: 3 sprints. One real difference found (the occluding panel); the geometry comparison
 needs an instrument, not a sharper eye.**
+
+## GOLDVID-JR-1 S4 (Opus 5, 2026-09-16) — ⭐⭐ **the thing crossing our mirror IS car body geometry, proved by bisection** — and with it removed the disc shows exactly what the gold's does
+
+S3 saw a green panel crossing our left mirror and could not say whether it was bodywork drawn over
+the glass, the mirror's own mount, or an artefact of where the car happened to be. Settled with the
+tree's own bisection instrument, **`JM_CAR_RANGE`**, which draws only a chosen span of car body
+items — no new code. [[probe-with-the-sims-own-loader]]
+
+| arm | result |
+|---|---|
+| normal | a bright green panel crosses the disc diagonally, hiding ~⅓ of it |
+| **`JM_CAR_RANGE="1:1"`** (body suppressed) | **the panel is GONE; the disc is whole** |
+
+⭐ **So the occluder is car body geometry.** Not the mount, not the track, not a texture.
+
+⭐ **And with it out of the way, our mirror shows the same class of content as the gold**: sky across
+the top, a ground band, and **the car's own rear wheel** — which is precisely what the gold's right
+disc shows. **The mirror render itself is fine.** What is wrong is that a third of it is behind the
+car.
+
+⚠️ **What the test does NOT distinguish.** The glass is drawn **after** the body and **with
+`depthbias=true`** (biased toward the eye, E106-S8). For the body to win anyway, either
+
+* the body is **genuinely nearer** — the disc is placed inside/behind the cowl, a **placement**
+  problem in `JM_MIRROR_X/Y/SPREAD`; or
+* the body is further but the **bias is too small** to lift the glass over it — a **depth-bias**
+  problem.
+
+**This bisection cannot tell those apart**, and they have different fixes. The cheap next test is one
+run with `JM_MIRROR_Y` raised: if the occlusion clears, it is placement; if it persists, it is bias.
+
+⚠️ **Related and still open from S3:** our disc reads as a **flatter ellipse** than the gold's, which
+is now plainly visible with the panel removed. `MIRROR_TILT` was set by eye (E48: *"stand the discs
+UPRIGHT facing the eye"*), and the gold is the first reference it has ever had. A disc that faces the
+eye projects circular; ours does not.
+
+**Worth stating about the whole item: none of its four sprints needed new instrumentation.** The
+answers came from the gold frames, the existing `JM_SHOTS` capture, and `JM_CAR_RANGE`. The one
+measurement I *did* invent — the rim-aspect detector in S3 — was the only thing that had to be thrown
+away.
+
+**GOLDVID-JR-1: 4 sprints — at cap, rotating off. Items 1 and 4 answered (different content per disc;
+GPL never skips a mirror frame), item 3 answered incidentally (content matches once unoccluded), and
+item 2 reduced from "measure the geometry" to two named candidates with a one-run test to separate
+them.**
