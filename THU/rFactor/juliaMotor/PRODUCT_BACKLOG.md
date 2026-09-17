@@ -15844,3 +15844,53 @@ player's lap times at this sample size.**
 BNDWRECK-1's whole corpus needs re-taking or merely annotating.
 
 **RACEMODE-1: 1 sprint.**
+
+## RACEMODE-1 S2 (Opus 5, 2026-09-16) — the census tool now **prints the mode and the AI spread**, so a pooled rate cannot hide a mixture again — and it immediately shows one: **36 % pooled is 40 % practice (n=20) and 0 % race (n=2)**
+
+**Story:** RACEMODE-1. **Sprint 2.**
+
+S1 ended: *"run enough race-mode races to put a loss rate on them."* That is a long errand — each
+race is ~12 minutes — so this sprint does the part that makes every future race count properly, and
+adds one race to the pile.
+
+### ⭐ The fix is a column
+
+`jr_classify_run.py` reported an outcome per run and a pooled rate. It said **nothing** about which
+mode the run was in, which is exactly how 24 runs in the wrong mode went unnoticed until
+STANDINGS-1 S3 read a log by hand. It also said nothing about which of the **two AI field spreads**
+a run used, the confound that sprint turned up. Both are one regex away:
+
+```
+s3_race.log      Race      finished  95%
+s4_oldprog.log   Race      finished  95%
+t035.log         Practice  solid     95%   CLOSING speed 13.4 m/s into a solid
+jr-temper.log    Practice  boundary  90%   BOUNDARY penetration peak 292710.0
+--------------------------------------------------------
+  boundary=6  finished=14  no-race=6  solid=1  stuck?=1
+  races that reached the grid: 22   lost: 8 (36%)
+    mode Practice  n=20  lost 8 (40%)
+    mode Race      n=2   lost 0 (0%)
+```
+
+The pooled **36 %** is now visibly a **mixture of 40 % and 0 %**, with the sample sizes beside it.
+A reader can no longer quote the pooled number without seeing what it is made of — which is the
+whole failure mode this item exists to prevent. [[instrument-bookkeeping-lies]]
+
+### ⚠️ The race-mode rate is still n=2 and still means nothing
+
+**0 % of 2** is not a loss rate. It is two races. Reported *with its n* precisely so it is not read
+as one; a third is running as this is written.
+
+Note also the pooled figure moved **44 % → 36 %** since BNDWRECK-1 S3 quoted it, purely because the
+corpus grew (18 → 22 runs). That is another reason the tool prints n everywhere: a bare percentage
+from this corpus has a shelf life.
+
+### Shipped
+
+* `tools/jr_classify_run.py` gains a **mode** column, an **AI-spread** column, and a per-mode
+  breakdown under the pooled line.
+
+**S3:** keep racing. The only number this item needs is a race-mode loss rate with a usable n, and
+every race from here is classified with its mode attached.
+
+**RACEMODE-1: 2 sprints.**

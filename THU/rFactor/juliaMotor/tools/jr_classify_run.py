@@ -25,6 +25,27 @@ import re, sys, os
 FINISH = "final classification"
 DMG    = "[damage]"
 LAP    = re.compile(r"^\s*lap \d+:")
+MODE   = re.compile(r"mode:\s*(\w+)")
+SPREAD = re.compile(r"AI pace spread.*Cooper (\d+)%")
+
+
+def run_config(lines):
+    """RACEMODE-1 S2: the two things that silently split a corpus.
+
+    STANDINGS-1 S3 found every one of the first 24 runs was JM_MODE=practice while the
+    gold is a race -- and nothing in this tool said so, so a census could pool two modes
+    and report one rate. The same sprint found the corpus also mixes two AI field
+    spreads. Both are one regex away from being visible, so make them visible."""
+    mode = "?"
+    spread = "-"
+    for l in lines[:400]:
+        m = MODE.search(l)
+        if m and mode == "?":
+            mode = m.group(1)
+        m = SPREAD.search(l)
+        if m and spread == "-":
+            spread = m.group(1) + "%"
+    return mode, spread
 
 def classify(path):
     try:
@@ -56,13 +77,29 @@ def classify(path):
 def main(argv):
     if not argv:
         print(__doc__); return 2
-    rows = [(os.path.basename(p),) + classify(p) for p in argv]
+    rows = []
+    for p in argv:
+        try:
+            lines = open(p, "rb").read().decode("utf-8", "replace").splitlines()
+        except OSError:
+            lines = []
+        rows.append((os.path.basename(p),) + classify(p) + run_config(lines))
     w = max(len(r[0]) for r in rows)
-    for name, mode, note in rows:
-        print("%-*s  %-9s %s" % (w, name, mode, note))
+    for name, outcome, note, mode, spread in rows:
+        print("%-*s  %-9s %-9s %-5s %s" % (w, name, mode, outcome, spread, note))
     counts = {}
-    for _, mode, _ in rows:
-        counts[mode] = counts.get(mode, 0) + 1
+    for _, outcome, _, _, _ in rows:
+        counts[outcome] = counts.get(outcome, 0) + 1
+    # RACEMODE-1 S2: a rate per mode, because one pooled rate over two modes is the
+    # mistake this column exists to prevent.
+    bymode = {}
+    for _, outcome, _, mode, _ in rows:
+        if outcome in ("no-race", "error"):
+            continue
+        d = bymode.setdefault(mode, [0, 0])
+        d[0] += 1
+        if outcome != "finished":
+            d[1] += 1
     raced = sum(n for m, n in counts.items() if m not in ("no-race", "error"))
     lost  = sum(n for m, n in counts.items()
                 if m in ("boundary", "solid", "wreck", "stuck", "stuck?", "no-finish"))
@@ -70,6 +107,9 @@ def main(argv):
     print("  " + "  ".join("%s=%d" % kv for kv in sorted(counts.items())))
     if raced:
         print("  races that reached the grid: %d   lost: %d (%.0f%%)" % (raced, lost, 100.0 * lost / raced))
+    for mode in sorted(bymode):
+        n, l = bymode[mode]
+        print("    mode %-9s n=%-3d lost %d (%.0f%%)" % (mode, n, l, 100.0 * l / n if n else 0))
     return 0
 
 if __name__ == "__main__":
