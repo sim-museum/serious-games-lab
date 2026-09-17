@@ -16836,3 +16836,67 @@ Anything about the cockpit. S1's `53.4` vs `0.58` stands as measured; **why** re
 sprint added nothing to it.
 
 **PARITYGATE-JR-1: S2 produced no data. The blocker is named: STARTUP-1's sysimage.**
+
+## PARITYGATE-JR-1 S3 (Opus 5, 2026-09-17) — ⛔⛔ **S1's headline is CONFOUNDED and I am withdrawing it: the two cockpit captures were taken at DIFFERENT POSITIONS IN THE SHOT SEQUENCE (6th vs 3rd), so `53.4` measures view and sequence together** — ⭐ found by reading my own commands, and prompted by a prior sprint's contradictory number
+
+**Story:** PARITYGATE-JR-1. julia rotation: sprint 3 of 4. **No sim run** — this is a static
+re-examination of evidence already collected, after S2 established that running is expensive here.
+
+### ⭐ The tell: an existing measurement that disagrees by two orders of magnitude
+
+`drive_native_mtk.jl:2016` carries a prior sprint's result, in the **same view**:
+
+> *"cockpit view, nose region scored: A/B mean 0.029 / 0.08 % of pixels against **a same-config noise
+> floor of 0.357 / 1.50 %**"*
+
+**0.357 against my 53.4.** Two measurements of "cockpit repeat variance" differing 150×. One of them
+is wrong, and a number already in the tree is the better prior.
+
+### ⛔ Then the region split killed my explanation
+
+If the camera were rigidly attached to a still-settling car, the **world** would smear while the car's
+**own bodywork** stayed put — which is what the 0.357 nose figure implies. Measured:
+
+```
+   upper half (out the window)   50.39
+   lower half (own bodywork)     56.40
+```
+
+**Equally unstable.** The own-car half is *worse*. The pose-jitter story is refuted by the same data
+that suggested it.
+
+### ⛔⛔ And then the actual fault, in my own commands
+
+```
+S4e run   JM_SHOTS="8300:1;8400:1;8500:1;8600:1;8700:1;8500:0"   <- cockpit is the 6th shot
+S1  run   JM_SHOTS="8300:1;8500:1;8500:0"                        <- cockpit is the 3rd shot
+```
+
+**I compared a 6th capture against a 3rd one.** Every `JM_SHOTS` entry teleports and settles from
+wherever the previous shot left the car, so the two cockpit frames sat behind **five** and **two**
+prior teleports respectively. **`53.4` is view and sequence-position confounded, and cannot be
+attributed to the cockpit view.**
+
+⚠️ **The chase pair does not fully rescue it either** — `w8500` was 3rd in one run and 2nd in the
+other and still repeated at `0.585`. So sequence position is **not obviously** worth 53 units, and I
+am not claiming it is the cause. **What is established is only that S1's comparison was not
+controlled.**
+
+### ⚖️ What this changes
+
+* **S1's "chase 0.58 / cockpit 53.4" is withdrawn as a view comparison.** The chase figures stand as
+  repeat measurements; the cockpit figure measures something I did not intend.
+* **S2's design was right for the wrong reason.** Capturing the same point twice *in one run* removes
+  exactly this confound — I proposed it to eliminate JIT and session state, and its real value is
+  eliminating sequence position. It still needs the sysimage to be affordable.
+* **A parity gate must fix shot order.** Whatever tolerance is eventually chosen, the reference and
+  the candidate must be captured at the same ordinal in the same sweep, or the comparison measures
+  the sweep.
+
+### ⚠️ Not claimed
+
+That the cockpit view is stable. **It is unmeasured.** Three sprints in, the honest state is: chase
+repeats well, the cockpit is unknown, and the one number that looked like an answer was an artefact of
+my own experiment design. [[gate-frame-must-match-the-eye]]
+
+**PARITYGATE-JR-1: S1's cockpit number withdrawn. Sprint 3 of 4.**
