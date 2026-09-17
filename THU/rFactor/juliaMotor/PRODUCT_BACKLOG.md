@@ -15732,3 +15732,58 @@ and other settings. Recorded as a split to control for, not as an effect.
 project has compared against the gold was measured in the wrong mode.
 
 **STANDINGS-1: 3 sprints.**
+
+## STANDINGS-1 S4 (Opus 5, 2026-09-16) — ⭐⭐ **the A/B runs, and the defect IS on the live readout: first sample `P4` with the old formula against `P6` with the fix** — ⛔ **but S2's "a full lap ahead", i.e. a phantom P1, is NOT what the readout shows, and one race per arm cannot separate the formula from race-to-race variation**
+
+**Story:** STANDINGS-1. **Sprint 4 — at cap.**
+
+S3 captured the readout for the first time and said plainly that it was one arm: *"until [the control
+arm] runs, 'no phantom' is also consistent with the phantom never being visible at this sampling
+rate."* This runs it.
+
+### The A/B, same recipe, `JM_MODE=race`, only `JM_OLD_PLAYERPROG` differing
+
+| | first sample | then |
+|---|---|---|
+| **fixed** (default) | `t=5.20s` **P6/6** | P5 → P4 → P3 → P4 → P5 → P6 |
+| **old formula** | `t=5.17s` **P4/6** | P3 → P4 → P5 → P6 |
+
+⭐ **At the first sample after the start the old formula ranks the player two places higher**, at
+essentially the same instant (5.17 s vs 5.20 s). The direction is S1's: the old `player_prog`
+over-counts, and it over-counts hardest at the start, which is what S2's arithmetic predicted and
+what the readout now shows.
+
+### ⛔ But S2's magnitude is wrong
+
+S2's claim was that the old formula *"ranked the player a full lap ahead for 0.65 s at the start of
+every race"*. A full lap ahead of a field five seconds into a race — when every car has covered a few
+hundred metres — is **P1**, unambiguously. The readout says **P4**: ahead of two AI, behind three.
+
+So the old formula inflates the player by about two places here, not to the front of the field. S2's
+number came from reading the expression; this comes from reading what it renders, and they disagree.
+[[instrument-bookkeeping-lies]]
+
+### ⚠️ What this A/B cannot carry
+
+**One race per arm.** At t≈5.2 s two different races have genuinely different fields, so a two-place
+gap is suggestive and in the predicted direction but is **not** separated from race-to-race
+variation. Nor can the trajectories be compared past the first sample: both arms wander (the fixed
+arm climbs to P3 and falls back; the control arm falls steadily), and that is the player's driving,
+not the formula.
+
+The clean comparison is the **first sample and only the first sample**, because that is the instant
+S1's double-count is largest and the field is most bunched.
+
+### Where STANDINGS-1 stands at its cap
+
+* S1 found and fixed the double-count. ✅
+* S2 measured its duration **from the expression**, and its headline figure does not survive contact
+  with the rendered readout. ⛔
+* S3 captured the readout, and found that **24 of 24 corpus runs were in the wrong mode** to show it
+  at all. ⭐⭐
+* S4 shows the defect is real on the readout, in S1's direction, at a magnitude S2 overstated. ⭐⭐
+
+**S5 (next pass):** repeat the first-sample comparison over several races per arm — it is the only
+figure this item now needs, it is cheap, and n=1 is what stopped this sprint short of a number.
+
+**STANDINGS-1: 4 sprints — AT CAP.**
