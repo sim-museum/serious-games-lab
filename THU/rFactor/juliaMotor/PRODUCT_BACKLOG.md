@@ -17669,3 +17669,94 @@ reused its answer for "is this run correct?" — two different questions, one nu
   no backward hop would do it.
 
 **PARITYGATE-JR-1: the fix is validated, a withdrawn number is vindicated, and the gate's own threshold is corrected. Sprint 2 of 4.**
+
+## RACESTART-1 S8 (Opus 5, 2026-09-17) — ⛔ **my "the AI releases the rail the instant it passes" diagnosis is REFUTED by its own probe: the release NEVER fires.** ⭐ The rub is not timing, it is MARGIN — the AI clears a parked car by about **10 cm**
+
+**Story:** RACESTART-1 (PO: *"watkins glen: every time I start a race, AI sideswipes me and knocks
+off both my wheels before I can even move"*). julia rotation: sprint 3 of 4. S5 left the rub open —
+283 contact frames where the control has 3 — and S6's note named the fix as *"a rail commitment for
+a stopped obstacle."* I built one. It does nothing, and finding out why is the sprint.
+
+### ⛔ The hypothesis, and why it was attractive
+
+`blocker()` reports only objects **ahead**, at `mod(c.s - s_i, total)`. So the moment an AI's
+reference point passes a stopped car, the gap jumps from ~0 to nearly a full lap:
+
+```
+   player  +0.5 m ahead  ->  blocker gap      0.5 m
+   player  -0.5 m behind ->  blocker gap   5551.5 m
+```
+
+and the release `gap > car.v*1.7 + 30.0` would fire immediately — the AI steering back onto the
+racing line **while still alongside**. That is a clean story for a 283-frame scrape. I implemented
+the hold (`JM_AI_HOLD_RAIL`) and measured it:
+
+```
+   JM_AI_HOLD_RAIL=0   behind=2  passframes=671  hits=283
+   JM_AI_HOLD_RAIL=1   behind=2  passframes=671  hits=283
+```
+
+**Identical. Zero effect.**
+
+### ⛔⛔ Instrumented rather than assumed — and the story dies
+
+Printing the branch's own terms, 1,224 samples:
+
+```
+   [rail] tlane=-2.4  gap=8.6  relfires=false
+   [rail] tlane= 2.4  gap=9.4  relfires=false
+   ...
+   relfires=false on EVERY sample
+```
+
+**The release never fires at all.** The gap stays small because the AI never gets past — so blocking
+a release that was not happening changes nothing. The AI also already **holds a rail** (`tlane =
+±2.4`, i.e. `RAIL`), so "commit to a rail" was already true. **S6's prescription was already
+satisfied**, which is why implementing it again was a no-op.
+
+*(The change is **reverted**, not left in as a disabled flag: a code path with a measured effect of
+exactly zero is not a finding, it is clutter.)*
+
+### ⭐ What the numbers actually say
+
+The contact test (`ai.jl:771`) is `abs(Δs) < CAR_LEN && abs(c.lane - player[2]) < CAR_WID`, with
+`CAR_WID = 1.7`. Measured lateral separation between the AI and the parked player, same 1,224
+samples:
+
+```
+   min 0.04   median 1.80   p90 3.80   max 3.80   (m)
+   samples inside the car width (< 1.70 m):  67  (5 %)
+```
+
+**The median pass clears by 10 centimetres.** The AI does reach the full `LANE_MAX = 3.8` sometimes
+(p90 and max are both 3.80), but the typical pass is right on the contact threshold. **So the rub is
+geometric, not temporal**: the AI commits to a rail, holds it, and the rail is simply not wide
+enough to get around a car parked on the racing line.
+
+This also fits `AI-AVOID-1`'s own table, which is in the file a few lines above:
+`race-line offset 3.0 m → deviation 0.80 m — under HALF a car width`. **The rail is nominal 2.4 m;
+what survives the `±LANE_MAX` clamp at this point of the track is about 1.8 m of separation.**
+
+### ⚖️ Where this leaves the item
+
+The three candidate fixes are now: eyes (**S6: tried, deadlocked the field at 0 frames past**),
+timing (**S8: tried, zero effect**), and **margin — untried**. Margin is the one the measurement
+points at, and it is the one with an obvious hazard: more lateral room for a stopped obstacle risks
+pushing cars off the road or into each other, which is exactly what `LANE_MAX` exists to prevent.
+
+**That makes it a real design change rather than a tweak, and it should be sized before it is
+attempted.**
+
+### ⚠️ Not claimed
+
+* **That widening the margin will work.** It is the only surviving direction, not a demonstrated fix.
+* ⚠️ **A discrepancy I could not close:** 5 % of car-frames are inside the car width, but the gate
+  counts **283 of 720** frames as contact. The contact test also requires `abs(Δs) < CAR_LEN`, and my
+  sample is taken in step 1 while contact is detected in step 3 — but that does not obviously
+  reconcile 5 % with 39 %. **Someone should reconcile those two numbers before trusting either**, and
+  I am recording it rather than quietly picking the one that suits the story.
+* That the PO's symptom is this scrape. S5 already flagged that *"dead at start line"* might be wheel
+  loss, an immobile car, or E103's hyperspace-to-spawn — **still unexamined, and still needs a replay,
+  not a sentence.**
+
+**RACESTART-1: a hypothesis refuted by its own instrument, and the defect re-aimed at margin. Sprint 3 of 4.**
