@@ -16022,3 +16022,70 @@ racing line.
 lapdist 1800's nearest-centreline is on the car's own leg.
 
 **BNDWRECK-1: new pass, sprint 2 of 4.**
+
+## BNDWRECK-1 S7 (Opus 5, 2026-09-16) — ⛔ **the caution I recorded in S6 was right and its headline was wrong: 58 m is an ARTEFACT — the telemetry says the car reads ~58 m off the line there on EVERY pass, clean laps included** — ⭐⭐⭐ and that is the finding, because **the anomaly's location is the wreck site**
+
+**Story:** BNDWRECK-1. **New pass, sprint 3 of 4.**
+
+S6 headlined *"the car is already 58 m off the racing line four seconds before the wreck"* and
+attached a caution: `lateral` is measured to the **nearest** centreline point, so if the track
+doubles back the number could be an artefact. **It is.** And checking it cost nothing, because the
+runs already write per-sample telemetry with `lat` and `lapdist` columns.
+
+### ⛔ The artefact
+
+One finishing run, 6 603 samples:
+
+| | median `|lat|` | p90 | max |
+|---|---|---|---|
+| whole lap | **0.0 m** | 6.5 m | 69.9 m |
+| **lapdist 1780–1840** | **57.9 m** | — | 69.9 m |
+
+At the wreck's stretch the car reads ~58 m off the line **on every pass, on clean laps**. So S6's
+"the car left the racing line before the window opens" is **not supported** — the car is where it
+always is; the *number* is wrong there.
+
+### ⭐⭐⭐ But the anomaly is not everywhere — and where it is, is the wreck site
+
+Binning the whole lap in 50 m steps and taking each bin's median `|lat|`:
+
+```
+lapdist bins whose MEDIAN |lat| exceeds 15 m:
+   1750..1799   median |lat| =  47.3 m   (n=208)
+   1800..1849   median |lat| =  58.5 m   (n= 66)
+   2350..2399   median |lat| =  15.3 m   (n=120)
+
+bins with median <= 15 m:  73 of 76
+```
+
+**73 of 76 bins are fine.** The lateral attribution collapses in exactly **one ~100 m stretch,
+1750–1849** — and the four wrecks all occur at **lapdist 1818**, inside it.
+
+That is no longer "the autodrive is bad at this corner". It is: **the one place on the lap where the
+track's own centreline attribution breaks down is the one place the car repeatedly drives out of the
+world.** A coincidence of 100 m in 3 770 is not impossible, but it is the first thing to test, and
+it is testable.
+
+### Why it plausibly *causes* the wreck
+
+If any part of the driving or containment logic consumes `lateral` — a racing-line target, a
+corridor test, a recovery nudge — then a 58 m error over that stretch feeds it a position it is not
+at. S6 already measured the consequence's shape: `lapdist` advancing 20 m while the car covers 44 m
+of ground, i.e. the car reckoned to be travelling at 63° to a centreline it is presumably parallel
+to.
+
+⚠️ **Stated as the hypothesis, not the finding.** This sprint establishes the artefact, its extent,
+and that it coincides with the wreck site. It does **not** show that the driving code reads
+`lateral`, and that is the next thing to check — not to assume.
+
+### Corrections carried
+
+* S6's headline is retracted here; its *method* stands, and the caution it recorded is what made the
+  retraction a five-minute check rather than a sprint.
+* The third anomalous bin (2350–2399, 15.3 m) is mild and has no wreck. Recorded so it is not
+  forgotten if a wreck ever lands there.
+
+**S8:** grep the driving and containment paths for consumers of `lateral`/`hr.lateral`. If the AI
+line-follower reads it, the fix is upstream of the fence and upstream of the autodrive.
+
+**BNDWRECK-1: new pass, sprint 3 of 4.**
