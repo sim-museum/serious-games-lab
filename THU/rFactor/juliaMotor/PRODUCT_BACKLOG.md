@@ -16436,3 +16436,75 @@ BNDWRECK-1 S10. [[instrument-bookkeeping-lies]]
   own caveat) — untouched by this.
 
 **MP-5: verified 4/4 after 11 days unrun. A working gate is now in-tree.**
+
+## GOLDPROV-JR-1 (Opus 5, 2026-09-17) — ⭐⭐⭐ **julia's gold corpus is the one that is properly documented — and the method that makes it so was WRITTEN HERE, shared to the other three ports, and is sitting in all of their trees unadopted** — MiG Alley lost three sprints today and BoB one to exactly the failure its rule 3 prevents
+
+**Story:** cross-port, rooted in today's MA S10–S12 and BoB GOLDPROV-BOB-1. julia rotation: sprint 1 of 4.
+
+Having found MiG Alley's and BoB's golds to be of unrecoverable provenance, the same question was put
+to julia — the port with the most sprints against golds (GOLDVID-JR-1/2/3, 17 between them).
+
+### ⭐ julia's corpus answers the question. The others' could not.
+
+| | MiG Alley | BoB | **julia** |
+|---|---|---|---|
+| resolution recorded? | ✗ (S10: unrecoverable from the file) | ✗ (S1: derivation unknown) | ✅ **`PRODUCT_BACKLOG.md:965` — "all 1920x1080"** |
+| per-gold repro recipe? | ✗ | ✗ | ✅ frames named by source time — `gold_watglen_t20/t45/t95.png` |
+| written method? | — | — | ✅ **`QA_METHOD_GOLD_PARITY.md`** |
+| index? | ✗ | ✗ | ✅ `parity/gold_index` (50+ entries, per-epic `.md` + composites) |
+
+### ⭐⭐⭐ And the method was written for the others
+
+`QA_METHOD_GOLD_PARITY.md` opens: *"Engine-agnostic; **shared for the other port projects' QA**."*
+Its **rule 3** is precisely what MiG Alley and BoB lacked today:
+
+> *"Landmark-map the lap by sweep, then pin gold↔native pairs… each gold shot then gets a **repro
+> recipe** rather than a vague 'somewhere in the dunes'. **Commit the map** — reruns become regression
+> checks."*
+
+And **rule 5** is MiG Alley's exact S12 finding, written in July:
+
+> *"Beware oracle drift between gold sets… When gold sources conflict, the newest PO-designated set +
+> recorded PO decisions win."*
+
+⛔ **All three other ports already hold a copy:**
+
+```
+ma/port/QA_METHOD_GOLD_PARITY_from-julia-racer.md
+bob/doc/QA_METHOD_GOLD_PARITY_from-julia-racer.md
+freefalcon-central/docs/QA_METHOD_GOLD_PARITY_from-julia-racer.md
+```
+
+**This is not a distribution failure. It is an adoption failure.** The cure was written down, copied
+into every tree, and two ports then spent sprints today rediscovering the disease — MiG Alley three
+(S10, S11, S12), BoB one — for want of applying rule 3 when each gold was filed.
+
+### The corpus, characterised for completeness
+
+```
+260915_gpl_wg_race_gold.mp4   1920x1080 @ 60 fps, 31,257 frames (~521 s), 863 MB
+variance over 11 frames: 46.6 % dynamic, bbox x[128..1915] y[11..1079]
+```
+
+⚠️ **And an honest limit on my own tool.** The variance test that cleanly isolated MA's and BoB's
+window geometry (97.8 % / 99.9 % dynamic) is **much weaker here at 46.6 %** — a racing *cockpit* view
+is legitimately static across most of the frame, so "static" no longer means "not the game". The
+technique suits menu-driven recordings, not cockpit ones. It should not be quoted as a general method.
+
+⭐ Note also that julia's gold is **GPL itself**, the reference sim — a *fidelity* target, not a
+port-parity one like MA's and BoB's Wine captures of their own game. Different kind of oracle,
+different meaning for a mismatch.
+
+### ⚖️ Recommendation — small, and not a sprint
+
+MiG Alley and BoB should adopt **rule 3** for golds they already hold: one line per artefact giving
+source, capture method and resolution. BoB's `doc/reference/GOLD_PROVENANCE.md` (written today) is
+that file for BoB; MiG Alley has no equivalent yet. **Neither needs new methodology — only the one
+already in their tree.**
+
+### ⚠️ Not claimed
+
+That julia's gold work is beyond criticism — only that its **provenance** is recorded where the
+others' is not. Nothing here checks whether its parity *verdicts* are sound.
+
+**GOLDPROV-JR-1: 1 sprint. The cure was already in every tree.**
