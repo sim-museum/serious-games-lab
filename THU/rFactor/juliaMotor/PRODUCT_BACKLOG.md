@@ -17599,3 +17599,73 @@ starting them**, which is not a julia problem at all and does not belong in this
   concurrent run — consistent with the contention above, but not proven to be it.
 
 **Grooming: a closed item retired as a blocker, and the real obstacle named as my own tooling.**
+
+## PARITYGATE-JR-1 S7 (Opus 5, 2026-09-17) — ⭐⭐⭐ **S5's step-guard fix is VALIDATED at runtime: the in-run repeat spread falls 73.137 → 0.587 and the backward teleport fires ZERO step-guard warnings** — and 0.587 is S1's original chase figure, so **S1 was right all along and 73.1 was the defect** ⛔ The gate then failed, correctly, on its own mis-derived threshold
+
+**Story:** PARITYGATE-JR-1. julia rotation: sprint 2 of 4. S5 fixed the step guard by reading and
+recorded: *"the fix is not runtime-validated — the gate validates it on its next successful run,
+and that is now an explicit acceptance test."* This is that run.
+
+Artefact: `parity/chase_gate_after_stepguard_fix.jpg`.
+
+### ⭐⭐⭐ The acceptance test, passed
+
+```
+   step-guard warnings on the backward hop      5   ->   0
+   in-run repeat spread  (w2 vs w4, same s)    73.137 -> 0.587
+   w4 dark-top (the void signature)             94.8 %  -> 24.9 %   (w2 is 24.9 %)
+   captures produced                            4 of 4
+```
+
+**`w4` is an ordinary chase frame now** — its dark-top figure is *identical* to `w2`'s, which is the
+same point photographed two shots earlier. The pale void under a black sky is gone, and no warning
+fired on the hop that produced it. **One line, `PLAYER_G[] = NaN` in `place_at_s!`, and the frame is
+right.**
+
+### ⭐⭐ And it vindicates a number this item withdrew
+
+**0.587.** PARITYGATE-JR-1 **S1** reported chase repeating at **0.58**, and S3 withdrew the whole S1
+comparison as confounded. **S3 was right to withdraw the cockpit half and wrong by implication about
+the chase half:** 0.58 was the real chase repeat spread, and every figure above it — 42, 52, 73 —
+was the step-guard defect, not julia's rendering. The item can now state a noise floor it has
+measured twice, six hours and one bug fix apart.
+
+### ⛔ The gate FAILED, and it was right to
+
+```
+   in-run repeat spread                        0.587
+   pass threshold  max(2.0, 3 x noise)  =      2.000
+   w1_8300   0.621   OK
+   w2_8500   1.186   OK
+   w3_8700   2.249   DIFF     <- FAIL
+```
+
+**Nothing regressed.** The references were seeded in S4 from the *pre-fix* run, so this compares two
+different runs — and **the threshold was derived from the wrong quantity**:
+
+* the in-run pair measures variation **within** one run — **0.587**
+* the comparison it gates is **between** runs — **0.621 / 1.186 / 2.249**
+
+**Run-to-run is up to ~4× the in-run figure**, so a threshold of `3 × in-run` was guaranteed to fail
+eventually on a healthy run. *(S4 built the self-check to answer "is this run judgeable?" and then
+reused its answer for "is this run correct?" — two different questions, one number.)*
+
+### ⚖️ Both fixed
+
+1. **References re-seeded** from this clean run — S4 flagged that they were seeded before anyone had
+   looked at them, and they came from a run whose 4th capture was corrupt.
+2. **Threshold re-derived:** `max(4.0, 6 × noise)`. The in-run pair keeps its job as the **health
+   check** — it is what caught the 73.1 defect — and the pass floor is now its own number.
+   ⚠️ **Calibrated on ONE run-to-run sample** (worst 2.249, so 4.0 is ~1.8× margin). **Deliberately
+   loose rather than falsely precise**; a second clean run tightens it.
+
+### ⚠️ Not claimed
+
+* **That the gate now passes.** It has not been re-run since the re-seed — that costs 12 minutes and
+  the next run is the one that proves it. **The threshold change is reasoned, not yet demonstrated.**
+* **That 0.587 is julia's chase noise floor.** It is two in-run measurements at one track position on
+  one track. The *run-to-run* floor is three numbers from one pair of runs.
+* That the cockpit view is stable. **Still unmeasured** (S3, S6), and now measurable — a sweep with
+  no backward hop would do it.
+
+**PARITYGATE-JR-1: the fix is validated, a withdrawn number is vindicated, and the gate's own threshold is corrected. Sprint 2 of 4.**

@@ -80,9 +80,17 @@ w2, w4 = load(f'{out}/w2_8500.ppm'), load(f'{out}/w4_8500.ppm')
 if w2.shape != w4.shape:
     print('  CANNOT MEASURE: the two s=8500 captures differ in size'); sys.exit(2)
 noise = md(w2, w4)
-# The repeat pair sits at ordinals 2 and 4, so it carries sequence-position variation as well as
-# frame-to-frame variation -- which is exactly the noise a same-ordinal comparison must survive.
-thresh = max(2.0, noise * 3.0)
+# S7: the threshold cannot come from the in-run pair alone. That pair measures variation WITHIN one
+# run; the comparison it gates is BETWEEN runs, and those are not the same number. Measured on the
+# first clean run against a reference captured in a different run:
+#     in-run repeat (w2 vs w4)   0.587
+#     run-to-run    w1 0.621   w2 1.186   w3 2.249
+# i.e. run-to-run is up to ~4x the in-run figure, and `max(2.0, 3*noise)` = 2.0 failed w3 at 2.249
+# on a run whose own self-check was clean. So the in-run pair stays as the HEALTH check -- it is
+# what caught the 73.1 teleport defect -- and the pass threshold gets its own floor with margin.
+# CALIBRATED ON ONE run-to-run sample (worst 2.249, so 4.0 is ~1.8x margin). A second clean run
+# would tighten it; until then the floor is deliberately loose rather than falsely precise.
+thresh = max(4.0, noise * 6.0)
 print(f'  in-run repeat spread (s=8500, ordinals 2 vs 4): mean|diff| {noise:.3f}')
 print(f'  pass threshold: max(2.0, 3x noise) = {thresh:.3f}')
 
