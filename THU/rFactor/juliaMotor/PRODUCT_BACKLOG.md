@@ -16900,3 +16900,80 @@ repeats well, the cockpit is unknown, and the one number that looked like an ans
 my own experiment design. [[gate-frame-must-match-the-eye]]
 
 **PARITYGATE-JR-1: S1's cockpit number withdrawn. Sprint 3 of 4.**
+
+## E75/E82 S5 (Opus 5, 2026-09-17) — ⛔⛔ **E75-S4's hypothesis is REFUTED by arithmetic: a type-`0x16` node is EXACTLY 9 fields — there are no extra words, so GPL's runtime pose for the rear suspension is NOT in the node payload** — established with no sim run
+
+**Story:** the "sticks / spears / no axles in the external view" defect — **16 sprints in E75, still
+reported by the PO.** julia rotation: sprint 1 of 4. **No sim run** — julia's per-experiment cost is
+5–18 minutes with no guarantee (PARITYGATE-JR-1 S2), so this drives the parser standalone instead.
+
+### The question, exactly as E75-S4 posed it
+
+`gpl3do.jl:230` carries the hypothesis verbatim:
+
+> *"Type 0x16 is read with the same 9-field layout as 0x0D (d, rot, scale, child) — **if it carries
+> MORE than that, the extra words are where GPL keeps the runtime pose, and the rear suspension's fold
+> would be in them.**"*
+
+The backlog's elimination table had reduced the whole defect to one survivor — *unfolded strip
+geometry* — and this was the named next step.
+
+### ⭐ The two nodes, found and dumped
+
+`JM_POSDIAG=all` on the Lotus finds **7** type-`0x16` positioners, and two of them are precisely the
+assemblies this item has been chasing — **27288 and 39792**, the pair named in `JM_CAR_EXCL_GROUPS`
+and by E64-S4, sitting at parent translations **(−0.893, ±0.7725)**: the rear corners.
+
+`JM_NODEDIAG` on those nodes prints 16 raw words each:
+
+```
+node 39792: [0]=22  [1..3]=0,0,0.02  [4..6]=0,0,0  [7]=1.0  [8]=39748(child)
+            [9]=22  [10..12]=-0.893,0.7725,0.02  [13..15]=0,0,0.0349
+node 27288: [0]=22  [1..3]=0,0,0.02  [4..6]=0,0,0  [7]=1.0  [8]=27244(child)
+            [9]=22  [10..12]=-0.893,-0.7725,0.02 [13..15]=0,0,-0.0349
+```
+
+### ⛔⛔ Word [9] is not extra payload — it is the NEXT NODE, and the offsets prove it
+
+**Words [9..15] of node 39792 are the header of node 39828** — same type `22`, and its `d` is exactly
+the `(-0.893, 0.7725, 0.02)` that `JM_POSDIAG` independently reports for 39828. The arithmetic is
+decisive:
+
+```
+39828 - 39792 = 36 bytes = 9 words
+27324 - 27288 = 36 bytes = 9 words
+```
+
+**A type-`0x16` node occupies exactly nine 4-byte fields.** There are no extra words. **GPL does not
+keep a runtime pose in this node**, and the parser's 9-field reading — which E75-S4 suspected of being
+a guess — is correct.
+
+### ⚖️ What this does to the item
+
+The elimination table gains a row, and the survivor changes:
+
+| candidate | verdict |
+|---|---|
+| lateral clip `CARP_MAXLAT` | refuted (E102 S18) |
+| parked positioners | refuted (E75 S2) |
+| group placement | refuted to 7 mm (E82) |
+| **runtime pose in the `0x16` payload** | **refuted — the node is 9 fields (this sprint)** |
+| unfolded strip geometry | still the survivor, **but its cause is now unaccounted for** |
+
+⭐ **That is the useful part.** "The strips are unfolded" was the surviving *description*; E75-S4's
+payload theory was the only proposed *mechanism*, and it is now gone. **The item has a symptom and no
+mechanism**, which is a more honest position than a mechanism that was never checked.
+
+### ⚠️ Not claimed
+
+* That the strips are unfoldable at all. GPL may pose them from a table outside the node tree, or may
+  simply not draw them in the view the PO photographs.
+* That the 7 mm placement result is affected. It is not — this refutes a *different* candidate.
+* Anything from a picture. **No frame was captured**; this is a file-format fact, and the PO's visual
+  report remains the only evidence of how it looks.
+
+**S6:** with the payload theory dead, the next cheap question is whether GPL's own renderer draws
+these nodes at all — the `0x16` type appears 7 times and 4 of those are the rear corners, so what the
+other 3 do is a one-parse comparison.
+
+**E75/E82: a 16-sprint defect loses its only proposed mechanism, for the cost of two standalone parses.**
