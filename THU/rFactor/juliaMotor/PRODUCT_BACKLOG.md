@@ -17177,3 +17177,102 @@ verdict**, not on more investigation.
   one view is the error `parity/e82_gold/README.md` warns about in its own last paragraph.
 
 **E75/E82: a 16-sprint defect reduced to one committed A/B and a PO decision. julia rotation complete → FF.**
+
+## GROOMING (Opus 5, 2026-09-17) — ⛔ **BNDWRECK-1 S10's lesson, applied to the live backlog — and it does not work as written: the open-items list names a cause for TRACKGOLD-1 that the item's own measurement already REFUTES.** TRACKGOLD-1 recommended PARKED on diminishing returns
+
+**Story:** the PO's standing mandate — *"including backlog grooming to avoid going down a rabbit hole
+on something unimportant, or proceeding past a point of diminishing returns"*. julia rotation:
+sprint 1 of 4, spent on grooming rather than on a defect, because the previous rotation ended by
+discovering it had spent eleven sprints inside a documented limitation.
+
+### ⭐ Applying S10's lesson
+
+BNDWRECK-1 S10 closed with: *"read the project's own open-items list before opening an investigation,
+not after."* `demo/native/CLAUDE.md` **Open items**:
+
+```
+- Cockpit "shining rug" ... still too bright ... Mirrors render black (no RTT).
+- Floating hillside signs / horizontal people = GPL placement Euler pitch/roll the
+  yaw-only `placemat` convention mis-applies (see `gpl_scenery` in drive_native_mtk.jl).
+- Path B tyre/engine calibration vs iRacing 49 telemetry.
+- Limit-handling autonomous driver (human driving is fine without it).
+```
+
+Line 2 looks like a direct hit on **TRACKGOLD-1's hillside veils** — five sub-sprints (S4, S4b, S4c,
+S4d, S4e) on vertical geometry on the Ring's hillsides, none of them settling it. **So I went to
+confirm it, and it does not hold.**
+
+### ⛔ `placemat` is not yaw-only, and has not been since before that line was written
+
+`drive_native_mtk.jl:1067` applies **all three** Euler angles —
+
+```julia
+Ryaw=[ca -sa 0; sa ca 0; 0 0 1.0]; Rpit=[cb 0 sb; 0 1.0 0; -sb 0 cb]; Rrol=[1.0 0 0; 0 cc -sc; 0 sc cc]
+R=(Rrol*Rpit*Ryaw).*s
+```
+
+— with a comment recording the convention fix (*"the 1st is YAW about UP … 2nd = pitch … 3rd = roll"*).
+Dates:
+
+```
+   placemat's Euler fix        e8b6e32  2026-06-16
+   open-items block refreshed  856892b  2026-06-17   <- one day LATER
+```
+
+**The list was refreshed the day after the fix and kept a description the fix had already
+invalidated.** So this is not a simple staleness bug — the wording survived a deliberate refresh.
+
+### ⛔⛔ And the item's own data already refutes it
+
+TRACKGOLD-1 **S4c** measured `wehr-l2`'s placement and found it is **IDENTITY — no rotation at all**.
+A mis-applied pitch/roll cannot explain an object with no rotation to mis-apply. **The measurement
+predates this grooming pass and contradicts the list.**
+
+### ⚖️ So S10's lesson needs a qualifier, and it is this project's own rule 4
+
+*Consult the open-items list before opening an investigation* — yes, that would have saved
+BNDWRECK-1 eleven sprints. **But do not accept its explanations.** Use it to decide **whether** to
+open an item, never to decide **why** something happens; the "why" must be re-derived, which is
+exactly what `QA_METHOD_GOLD_PARITY.md` rule 4 already says — *check the original before "fixing" it*.
+Taken at face value here, the list would have handed TRACKGOLD-1 a refuted cause and a false close.
+
+### ⚖️ TRACKGOLD-1 — recommend PARKED, on diminishing returns
+
+Five sub-sprints, and **S4e says so itself**: *"the shape is a CORRIDOR, which is equally what an
+authentic tree-lined section looks like — so the picture does not settle it either."*
+
+* S4c killed both of S4b's candidates (placement identity; mesh is local-space).
+* S4d killed S4c's own reading (the veils are terrain-shaped, 17,295 m² horizontal vs 2,915 m² vertical).
+* S4e took the photograph and it is ambiguous by construction.
+
+**Nothing left that analysis can settle.** The unblocker is the same as E75/E82's: **a human eye, or a
+gold frame of that stretch of the Ring.** Parking it is the mandate's instruction, not a failure.
+
+⭐ **Also note the two items may not even share a symptom.** The open item says *floating signs /
+horizontal people*; TRACKGOLD-1 is about *hillside veils*. Nobody has established they are the same
+defect, and a shared explanation was being borrowed across them.
+
+### ⚖️ What the remaining julia rotation should do instead
+
+| item | state | verdict |
+|---|---|---|
+| **E75/E82** | A/B committed, 16 sprints | **parked on the PO's eye** — correct, leave it |
+| **BNDWRECK-1** | closed S10 | closed |
+| **TRACKGOLD-1** | 5 sub-sprints, ambiguous | **park** (this sprint) |
+| **PARITYGATE-JR-1** | S3 withdrew the cockpit figure; **chase repeats to 0.58** | ⭐ **buildable today** — the one item with a clear, achievable next step |
+| STANDINGS-1 | S4 needs more races per arm | blocked on julia's run cost |
+
+**S2 of this rotation: build the chase-view parity gate.** PARITYGATE-JR-1 S1 established chase
+repeats to `mean|diff| 0.58` and S3 removed the confound that made the cockpit look impossible; the
+gate that MiG Alley and BoB both have and julia does not is now a bounded piece of work.
+
+### ⚠️ Not claimed
+
+* **That the open-items line is wrong about the SYMPTOM.** Floating signs and horizontal people may
+  well exist; what is refuted is its stated *cause*, and only for the objects TRACKGOLD-1 measured.
+* **That `placemat` is correct.** It applies three angles in one particular order; nobody has checked
+  that order against GPL's. Refuting "yaw-only" is not proving "right".
+* That TRACKGOLD-1 has no answer — only that **five sprints of analysis have not produced one** and
+  the sixth has no new instrument to bring.
+
+**Grooming: one lesson qualified, one item parked, and the next sprint pointed at the gate julia lacks.**
