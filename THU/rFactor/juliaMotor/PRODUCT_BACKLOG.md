@@ -17958,3 +17958,73 @@ rear view as the PO's frame, and put it beside the gold. That is the like-for-li
 sprint could not make, and it is one run.
 
 **E75/E82: unblocked from the PO by a gold that was already in the corpus. Sprint 2 of 4.**
+
+## E75/E82 S10 (Opus 5, 2026-09-17) — ⛔ **correcting my own S9: restoring the geometry does NOT reproduce the gold. The arms come back extending PAST the wheels — the "chrome spider-legs" `E64 S4` excluded them for.** The geometry is right and the PLACEMENT is wrong, and that is a different item
+
+**Story:** julia rotation: sprint 3 of 4. S9 concluded *"the discarded geometry is the suspension,
+restoring it is correct."* The first half stands. **The second half is wrong, and S8's own committed
+composite shows it** — I had not compared it against the gold when I wrote S9.
+
+Artefact: `parity/e75_gold_shipped_restored.jpg` — gold, shipped, restored, side by side.
+
+### ⛔ What the three pictures actually say
+
+```
+   GPL GOLD    the wishbone runs from the body to the wheel and STOPS at the upright
+   SHIPPED     no connecting members at all — the PO's "sticks / no axles"
+   RESTORED    thin chrome members appear — and run straight THROUGH the wheels and
+               out into empty space on both sides
+```
+
+**Restoring the groups does not produce the gold's suspension. It produces spears.**
+
+### ⭐ And the code said so before I started
+
+`drive_native_mtk.jl:1999`, the exclusion's own comment (`E64 S4`):
+
+> *"groups 27288/39792 are **WHOLE DISPLACED ASSEMBLIES** (suspension+exhaust+driver textures at
+> y 0.42…1.16 / −1.12…−0.42, mirror copies) — GPL runtime-hidden branches **our positioner walk
+> mis-places**; they were the chase view's **'chrome spider-legs' through the rear tyres**."*
+
+**The exclusion was never "we discard the suspension".** It was *"we discard geometry we cannot place,
+because mis-placed it looks worse than absent."* S9 read the exclusion as the defect; it is a
+**workaround for the defect**, and the defect is the positioner.
+
+### ⚖️ So the item's real question, stated correctly at last
+
+Not *"should we draw the 431 triangles?"* — the gold settles that, they belong (S9). It is:
+
+> **Why does our positioner walk place `27288`/`39792` outside the wheels when GPL places them at the
+> upright?**
+
+`E75 S5–S8` eliminated payload pose, unfolded strips, placement-by-parking, lateral clip and
+node-payload extras — **four sprints of elimination with no surviving mechanism**. That is where the
+item actually stands.
+
+### ⚖️ Grooming — park, and say what the PO can be shown
+
+**Ten sprints.** The honest position is now sharp enough to hand over without more measurement:
+
+| | |
+|---|---|
+| **shipped** | wheels with no arms — what the PO photographed and called "knocked off" |
+| **restored** | arms that stab through the wheels — worse, and why it was excluded |
+| **gold** | arms that stop at the upright |
+| **blocker** | the positioner, with five mechanisms eliminated and none surviving |
+
+**Neither arm is shippable, so there is no PO decision to make** — that is a change from S8, which
+offered the A/B as a choice. **The choice is between two wrong pictures.** Park until someone takes
+the positioner on as its own item, with the gold frame as its acceptance test: *the arm must end at
+the upright.*
+
+### ⚠️ Not claimed
+
+* **That the restored arms are the same assemblies the gold draws.** They appear in the right region
+  and extend wrongly; **nobody has matched triangle groups to the gold's members.**
+* **That the positioner is the only cause.** `E64 S4` says mis-placement; five sprints failed to find
+  the mechanism, which is consistent with mis-placement **and** with something else.
+* That S9 was worthless — **the gold comparison is what makes this sprint possible**, and "the
+  geometry belongs" is still established. **What S9 got wrong was inferring that restoring it would
+  therefore look right, without checking the A/B it was sitting next to.**
+
+**E75/E82: PARKED at 10 sprints. The geometry is confirmed, the workaround is explained, and the blocker is named as the positioner. Sprint 3 of 4.**
