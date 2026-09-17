@@ -21,6 +21,11 @@
 # A gate that cannot say "I could not measure this" is the failure this project has booked
 # repeatedly (QA_METHOD_GOLD_PARITY.md rule 9: an unrunnable gate is worse than none).
 #
+# S5: the 4th shot is a BACKWARD teleport (8700 -> 8500) ON PURPOSE. That hop is what exposed the
+# step guard keeping the previous point's ground across a teleport, so leaving it in the sweep makes
+# this gate a regression test for that fix as well as a parity check. If w4 ever comes back as a
+# pale void under a black sky again, place_at_s!'s `PLAYER_G[] = NaN` has been lost.
+#
 #   bash chase_parity_gate.sh          compare against parity/chase_ref/
 #   SEED=1 bash chase_parity_gate.sh   seed the reference from this run (review the images first)
 set -u

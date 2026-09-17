@@ -6927,6 +6927,18 @@ function main()
     place_at_s! = function (s0raw::Float64)
         (CLINE === nothing || !CAR3D) && return nothing
         s0 = clamp(s0raw, 0.0, CLINE.total)
+        # PARITYGATE-JR-1 S5: a teleport IS a respawn, and the step guard must be disarmed for it.
+        # groundz_phys holds the player's previous ground in PLAYER_G and rejects an upward step
+        # over WALL_CLIMB; step_guard accepts unconditionally when `last` is NaN, which is why both
+        # respawn sites do `PLAYER_G[] = NaN`. place_at_s! did not -- it only assigned PLAYER_G
+        # inside the ROADHAT branch below, which fires only when the road and full HAT disagree by
+        # >0.3 m. So on the common path a teleport kept the PREVIOUS point's ground.
+        # Measured: a JM_SHOTS sweep 8300->8500->8700->8500 fired five "ground jumped ~18 m --
+        # holding 403.39 m" warnings on the LAST hop only. 403.39 m is s=8700's ground; s=8500 sits
+        # ~18 m higher. Forward hops descend, and step_guard passes any downward step, so only the
+        # BACKWARD hop tripped it -- and that frame rendered the car ~18 m under the embankment:
+        # a pale void under a black sky (parity/chase_gate_first_sweep.jpg, 4th panel).
+        PLAYER_G[] = NaN
         p  = RaceAI.pose_at(CLINE, s0, 0.0)                 # (x, y, z, θ) on the racing line
         DriveRT3D.place3d!(cs, p[1], p[3], p[4]; v = 0.0)
         cs.s_vreset(cs.integ, zeros(14))                    # zero the vertical subsystem (no spawn bounce)

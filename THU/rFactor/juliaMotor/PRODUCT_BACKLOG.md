@@ -17381,3 +17381,85 @@ which is the better fix and is one line next to `place_at_s!`.
 sweep is safe, and TRACKGOLD-1's evidence has to be re-examined.
 
 **PARITYGATE-JR-1: the gate exists, and its first run found a defect instead of a baseline. Sprint 2 of 4.**
+
+## PARITYGATE-JR-1 S5 (Opus 5, 2026-09-17) — ⭐⭐⭐ **S4's diagnosis is CONFIRMED and FIXED, and it took no sim run at all: `place_at_s!` never disarms the step guard, so a teleport keeps the PREVIOUS point's ground.** One line, and the reason it only bit BACKWARD hops falls out of the guard's own arithmetic
+
+**Story:** PARITYGATE-JR-1. julia rotation: sprint 3 of 4. S4 named the `JM_STEP_GUARD=0` A/B as the
+decisive test. **That A/B never produced data** (below), so I settled it by reading instead — and
+reading settled it harder than the A/B would have.
+
+### ⭐⭐⭐ The guard, in four lines
+
+`demo/native/step_guard.jl`:
+
+```julia
+function step_guard(g::Float64, last::Float64, thresh::Float64)
+    (isnan(last) || g <= last + thresh) && return (true, g)
+    (false, last)
+end
+```
+
+Two properties decide everything:
+
+1. **`isnan(last)` accepts unconditionally** — so `PLAYER_G[] = NaN` is how the guard is disarmed.
+   Both respawn sites do exactly that (`:8026`, `:8355`).
+2. **`g <= last + thresh` accepts every DOWNWARD step, of any size.** The guard is upward-only.
+
+### ⛔⛔ And `place_at_s!` does not disarm it
+
+`PLAYER_G[]` is assigned in only three places. Two are respawns setting `NaN`. The third is inside
+`place_at_s!`'s **`ROADHAT` conditional branch** — which fires only when the road surface and the
+full HAT disagree by more than 0.3 m. **On the common path a teleport leaves `PLAYER_G` holding the
+previous point's ground.** The guard's own comment promises the opposite: *"This closure is the
+PLAYER's alone… **Reset on respawn.**"* A `JM_SHOTS` teleport *is* a respawn; it was never wired.
+
+### ⭐⭐ Why only the BACKWARD hop broke — the run's own numbers, checked
+
+```
+   step_guard(421.4,  NaN,    3.0) = (true, 421.4)     teleport reset: ACCEPTS
+   step_guard(421.4,  403.39, 3.0) = (false, 403.39)   the bug: holds s=8700's ground
+   step_guard(403.39, 421.4,  3.0) = (true, 403.39)    forward hop DESCENDS: ACCEPTS
+```
+
+`403.39 m` is the height the run's warnings held — s=8700's ground. s=8500 sits **~18 m higher**.
+So `8300→8500→8700` descends and passes silently, and `8700→8500` rises 18 m and is rejected.
+**The frame then renders the car 18 m under the embankment: a pale void under a black sky.** Every
+observation in S4 is now accounted for, including the ones I did not set out to explain.
+
+### ⭐ The fix
+
+`PLAYER_G[] = NaN` at the top of `place_at_s!`, placed before the `ROADHAT` branch so that branch can
+still supply the road height when it fires. **One line, matching the idiom the two respawn sites
+already use.**
+
+And the gate keeps its backward hop **deliberately**: shot 4 is now a regression test for this fix.
+If `w4` ever returns as a void again, the reset has been lost.
+
+### ⚠️ The A/B did not run — recorded as a negative, not omitted
+
+Four attempts at `JM_STEP_GUARD=0`. None produced a capture:
+
+* the harness restarted the backgrounded run repeatedly, each restart truncating the log and
+  restarting julia from precompile — the run never reached its shots;
+* running it detached instead, julia **crashed during startup**, in
+  `build_car3d → ODEProblem → process_SciMLProblem` (ModelingToolkit problem construction) — the
+  known-heavy stage, and nowhere near the shots.
+
+**This is the third time this item has been defeated by julia's iteration cost** (S2: *"THREE RUNS,
+NO DATA"*). It is the same underlying blocker as `STARTUP-1`: with no sysimage, every attempt pays
+full MTK compilation. **The static route cost minutes and produced a stronger result** — the A/B
+would have shown *that* the frame changed; the code shows *why*, and predicts the direction
+asymmetry the A/B would not have tested.
+
+### ⚠️ Not claimed
+
+* **The fix is not runtime-validated.** It is a one-line change matching the file's own stated intent
+  and the idiom of two neighbouring call sites, and the arithmetic above is checked against the
+  run's logged numbers — but no sim run has executed it. **The gate validates it on its next
+  successful run**, and that is now an explicit acceptance test rather than a hope.
+* **That this is TRACKGOLD-1 S4e's artefact.** Still suggestive, still not shown: same position,
+  same backward-teleport ordinal, same signature, and `place_at_s!`'s comment names Ring s=8500 —
+  but S4e's frame has not been re-examined. **It should be, before that item is judged.**
+* That the seeded `w1–w3` references are good. Unchanged from S4: re-seed after a clean run.
+
+**PARITYGATE-JR-1: diagnosis closed and fixed by reading, after the experiment failed four times. Sprint 3 of 4.**
