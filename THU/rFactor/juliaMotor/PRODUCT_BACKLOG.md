@@ -16369,3 +16369,70 @@ project's own README-equivalent.
 
 **Close confirmed. Lesson for the next item: read the project's own open-items list before opening an
 investigation, not after.**
+
+## MP-5 S1 (Opus 5, 2026-09-17) — ✅ **the deferred host-authoritative-AI gate RUNS AND PASSES, 4/4** — ⭐⭐ and getting it to run is the other half of the sprint: **the gate as committed cannot execute on this box**, for a reason that is fixable in the gate rather than in the machine
+
+**Story:** MP-5 (multiplayer, a standing PO priority: *"also multiplayer is a priority, for all games"*,
+2026-09-06). julia rotation: sprint 3 of 4.
+
+`netai_smoke.jl` was written on 2026-09-06 and **never run** — its own note says *"5 sim launches, to be
+run once the STARTUP-1 sysimage build has released the machine's memory."* That build was OOM-killed
+and abandoned eleven days ago, so the gate has simply sat unverified since. The memory is free now, so
+it should just run.
+
+### ⛔ It does not. Three kills before a pass
+
+| attempt | form | outcome |
+|---|---|---|
+| 1 | committed `netai_smoke.jl` (parent julia spawns each sim as a child) | **killed, low memory** |
+| 2 | my bash runner, one process, `MemoryMax=9G` | **killed** — my cap was tighter than the 12G my race runs used |
+| 3 | same, `MemoryMax=12G` | **killed**, while `free` reported **11 GB available and nothing above 0.7 GB resident** |
+| 4 | **cheap form** (below) | ✅ **PASS 4/4** |
+
+⛔ **Correcting my own first reading:** I attributed attempt 1 to the gate holding a *parent* julia
+while a child JITs. Attempts 2 and 3 had no parent julia and died anyway, so that was not the cause —
+it is an extra cost, not the mechanism. **The common factor in all three is running the sim far enough
+to load track and car assets**, which spikes hard enough to be killed even with 11 GB free.
+
+### ⭐⭐ The fix: the gate never needed the sim to run at all
+
+The guard lives in `const N_AI = let … end` — a **top-level const**, so it evaluates at **module load,
+before a single track or car asset is touched**. Measured: the client's guard line lands at **log line
+3**. The committed gate was paying ~5 minutes and an asset-loading memory spike per arm to reach a
+line that prints in the first three.
+
+`JuliaMotorMTK/tools/netai_gate_fast.sh` (new, committed) runs each arm under `timeout` with
+**`stdbuf -oL`** — required, because a redirected julia stdout is block-buffered and an early kill
+would otherwise discard the very line under test.
+
+### ✅ The result — 4/4, the semantics MP-5 specifies
+
+```
+offline    AI-disabled=no   host-authoritative-announced=no    guard correctly SILENT
+client     AI-disabled=yes  host-authoritative-announced=no    "AI field disabled (1 → 0)"
+host       AI-disabled=no   host-authoritative-announced=yes   "host-authoritative AI"
+override   AI-disabled=no   host-authoritative-announced=no    JM_NET_AI honoured
+```
+
+**Host-authoritative AI behaves as designed**: the host keeps its field and announces authority, the
+client drops its own and draws the host's, offline is untouched, and the documented override still
+steps a local field.
+
+⭐ **And the negative control matters here**: `offline`'s and `override`'s **zero** guard-hits are only
+meaningful because `client` and `host` prove the detector fires. A silent detector and a correct
+negative are indistinguishable — the trap that cost the `AI_PHYSICS` probe two sprints ago in
+BNDWRECK-1 S10. [[instrument-bookkeeping-lies]]
+
+### ⚠️ Deviations and limits, stated
+
+* **`JM_AI=1`, not the committed gate's `JM_AI=3`.** The guard branches on `n > 0`, so the paths are
+  identical and the message's own `(1 → 0)` confirms it; 1 loads a third of the AI-car assets.
+  Recorded in the script.
+* **Each arm is killed by `timeout` mid-asset-load.** That is intended — the assertion is already
+  satisfied — but it means these arms do **not** exercise anything after startup.
+* **Still loopback only.** Every arm is one process on 127.0.0.1. **The two-machine test remains the
+  PO's to run**, exactly as MP-5 said; this verifies the guard's semantics, not two real PCs agreeing.
+* Client-side player-vs-AI collision and slipstream still use `ai_poses`, empty on the client (MP-5's
+  own caveat) — untouched by this.
+
+**MP-5: verified 4/4 after 11 days unrun. A working gate is now in-tree.**
