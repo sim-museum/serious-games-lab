@@ -16977,3 +16977,74 @@ these nodes at all — the `0x16` type appears 7 times and 4 of those are the re
 other 3 do is a one-parse comparison.
 
 **E75/E82: a 16-sprint defect loses its only proposed mechanism, for the cost of two standalone parses.**
+
+## E75/E82 S6 (Opus 5, 2026-09-17) — ⭐⭐⭐ **the defect quantified at last: we DISCARD 10.8 % of the Lotus — 431 of 3,998 triangles — and 311 of those are the two rear-corner assemblies. The rear suspension is ~339 tris and we draw 28 of them: 8 %**
+
+**Story:** E75/E82, the PO's "sticks / no axles in the external view". julia rotation: sprint 2 of 4.
+**No sim run.**
+
+S5 killed the payload hypothesis. S6's question was what the seven `0x16` nodes actually carry — and
+the parser answers it directly, because `Mesh3DO.groups` is parallel to `tris` and records each
+triangle's placing positioner.
+
+### ⭐ Triangles by placing positioner
+
+```
+lotus.3do total = 3,998 tris
+
+   group      0     1,796 tris          <- main body
+   group 116576     1,355 tris          <- main body
+   group  39792       159 tris   <-- excluded by default
+   group  27288       152 tris   <-- excluded by default
+   group 124808        95 tris
+   group   6600        60 tris   <-- excluded by default
+   group   3560        60 tris   <-- excluded by default
+
+excluded by default: 431 tris of 3,998 = 10.8 %
+```
+
+`JM_CAR_EXCL_GROUPS` ships as `"6600,3560,27288,39792"`. **Those four groups are 10.8 % of the car**,
+and the two rear-corner `0x16` assemblies S5 identified — 27288 and 39792 — are **311 triangles** of
+it.
+
+### ⭐⭐⭐ Which puts a number on the PO's report
+
+The backlog already recorded the residue: *"excluded, the rear end is bare and the residue (18
+`axlelot` + 4 `lsusp2` + 6 `lbrdisc` triangles, E75 S1) is what the PO photographed as **sticks**."*
+
+```
+rear-corner geometry present in the model   311 + 28  =  339 tris
+rear-corner geometry we actually draw                =   28 tris   (8 %)
+```
+
+**We draw 8 % of the rear suspension and hide the other 92 %.** *"No axles"* is not an approximation
+of the symptom — it is very nearly literal, and the 28 surviving triangles are exactly the "sticks".
+
+⭐ **This reframes the whole item.** Sixteen sprints hunted a *rendering* fault — a bad transform, a
+misplacement, a hidden pose. **There is no rendering fault to find: the geometry is deliberately
+excluded by a default env value**, because (E75-S8) drawing it in place *"lays panels under the car"*.
+The exclusion is a **workaround whose cost nobody had measured**, and it costs 92 % of the rear end.
+
+### ⚖️ What that changes about the work
+
+* The question is no longer *"why does the rear render wrong?"* but **"why does this geometry unfold
+  when drawn, and is hiding 311 triangles the right trade?"** Those have different answers and
+  different owners.
+* **The trade is now priceable.** Un-excluding restores 311 tris and, per E75-S8, reintroduces panels
+  under the car. Whether the PO prefers "sticks" to "panels" is a judgement they can now make with
+  numbers instead of adjectives.
+
+### ⚠️ Not claimed
+
+* **That un-excluding is the fix.** E75-S8 observed the panels directly; I have not re-photographed
+  them, and this sprint captured no frame.
+* That 6600/3560 (120 tris) are rear geometry. They are excluded by the same default but were not
+  identified here — S5 found only 27288/39792 at the rear corners.
+* That 339 is the complete rear assembly. It is what hangs off those two positioners plus the named
+  residue; other rear parts may sit under groups I have not attributed.
+
+**S7:** put the trade in front of the PO as a picture, not a number — one capture with
+`JM_CAR_EXCL_GROUPS=""` beside the shipped default. That is the decision they should be making, and
+it has never been shown to them side by side.
+
+**E75/E82: a 16-sprint "rendering defect" is a measured 92 % exclusion. Sprint 2 of 4.**
