@@ -16343,3 +16343,29 @@ The centreline vertex-density dump (S9's other candidate) was added **after** th
 did not execute — **not evidence either way**, and it costs one startup line whenever this is next run.
 
 **BNDWRECK-1: 11 sprints. Recommended CLOSED as diagnosed.**
+
+### BNDWRECK-1 S10 addendum — the item was chasing wrecks inside a feature that is *documented as incomplete*
+
+Checked after writing S10, and it should have been checked before the item ran eleven sprints.
+`demo/native/CLAUDE.md`'s own **Open items** list carries:
+
+> *"Limit-handling autonomous driver (human driving is fine without it)."*
+
+**The autodrive is a known-unfinished feature, and the PO has already recorded that it does not block
+human driving.** S10 measured that the wreck is exactly a limit-handling failure — slip angle
+1° → 25°, the car sliding wide at 157 km/h and running out of road. That is *the named gap*, not a
+defect discovered by this item.
+
+So BNDWRECK-1 spent eleven sprints characterising a documented limitation, twice inventing a deeper
+mechanism (`RaceAI.project` mis-reporting, then steering) and twice withdrawing it. **That is the
+rabbit-hole shape the PO's grooming mandate names**, and the tell was available on day one in the
+project's own README-equivalent.
+
+⭐ **Worth keeping from it anyway** — the sprints were not worthless:
+* `RaceAI.project` is genuinely unconstrained, and the legitimate step is now **measured** at one
+  vertex (2.325 m) per frame, so a continuity guard can be sized whenever one is wanted.
+* The wreck trail (`JM_WRECK_TRAIL`) and the `lat`/`slip` columns were built here and are reusable.
+* `JM_TRACE_DS` is in-tree, default-off, and answers "did the projection jump?" in one run.
+
+**Close confirmed. Lesson for the next item: read the project's own open-items list before opening an
+investigation, not after.**
