@@ -15960,3 +15960,65 @@ also shows a composed approach and a last-second slip, the two sites share a cau
 line, not a fence.
 
 **BNDWRECK-1: new pass, sprint 1 of 4.**
+
+## BNDWRECK-1 S6 (Opus 5, 2026-09-16) — ⭐⭐⭐ **the `lat m` column falsifies S5 in one glance: the car is not running wide, it is already 58 METRES off the racing line four seconds before the wreck and barely moves relative to it** — and this run wrecks at **the same printed coordinates** as the last
+
+**Story:** BNDWRECK-1. **New pass, sprint 2 of 4.**
+
+S5 read the trail as *"the car drifts wide through a corner… it loses the line at the fence, in the
+last second."* S6 added two track-relative columns to test exactly that, and they say otherwise.
+
+### ⭐⭐⭐ The new columns
+
+```
+ t-Δ      x       z     v km/h  slip°  off m   lat m   lapdist
+ -4.0   227.0  -837.4    25      -      0.0    57.6     1798
+ -3.0   219.7  -838.3    31     0.0     0.0    58.0     1800
+ -0.1   184.9  -834.7    60    19.0     0.0    59.8     1817
+  0.0   183.0  -834.1    61    18.0     0.8    59.8     1818
+```
+
+* **`lat m` runs 57.6 → 59.8.** The car is **~58 m from the racing line for the entire approach** and
+  moves **2.2 m** relative to it in four seconds. It is not departing the line — **it left it before
+  the window opens.**
+* **`lapdist` advances only 20 m** (1798 → 1818) while the car covers **44 m** of ground. So it is
+  travelling at roughly 63° to the centreline — mostly *across* the track, not along it.
+* `off m` is **0.0 throughout** — still inside the world the whole time, so this is not an excursion
+  that runs out of terrain.
+
+⛔ **So S5's reading is wrong, and it was mine.** The slip opening 0° → 19° in the last second is
+real, but it is not the car losing the line: the line was lost long before, and the slip is what a
+car does when it finally turns at 60 km/h from 58 m out. **S5 had position, speed and slip and
+inferred a history from them; one column of ground truth replaced the inference.**
+
+### ⭐ And the autodrive is deterministic here
+
+| run | first trail sample | wreck |
+|---|---|---|
+| `rm_race3` | t−3.8 at **(225.6, −837.5)**, 25 km/h, slip 2° | **(181.7, −833.6)** |
+| `s6_trail2` | t−3.8 at **(226.2, −837.5)**, 25 km/h, slip 2° | **(181.7, −833.6)** |
+
+Two independent races, same approach to within **0.6 m**, and **identical wreck coordinates to the
+printed precision**. With the two older wrecks at (181.5, −833.5) and (181.4, −833.5), that is
+**four** at one point. This is not a stochastic failure — the autodrive drives the same line into
+the same place.
+
+Corpus: **10 of 24 lost (42 %)**; race mode **2 of 4**.
+
+### What to ask next, and why the trail must grow
+
+The car is 58 m off the line at the window's edge, so **the trail is too short to contain the
+cause**. `JM_WRECK_TRAIL` defaults to 4 s; at these speeds that is ~50 m of track and the departure
+happened before it. The next run wants **15–20 s**, which is cheap — the buffer is 10 Hz of eight
+doubles.
+
+⚠️ **One caution on `lat m`.** 58 m is a large number for a road course, and `lateral` is measured to
+the *nearest* centreline point. If the track doubles back near lapdist 1800, the nearest point could
+belong to a different leg and the 58 m would be an artefact of that, not a real offset. **Not
+resolved here** — and it is the first thing to check before treating 58 m as a distance from the
+racing line.
+
+**S7:** raise `JM_WRECK_TRAIL` to 20 s and take another wreck at this site, and settle whether
+lapdist 1800's nearest-centreline is on the car's own leg.
+
+**BNDWRECK-1: new pass, sprint 2 of 4.**

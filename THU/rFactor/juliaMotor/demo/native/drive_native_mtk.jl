@@ -3097,7 +3097,7 @@ const TRACE_POS = haskey(ENV, "JM_TRACE_POS")   # STANDINGS-1 S3: print the live
 const POS_LAST  = Ref(-1)
 const TRAIL_SECS = parse(Float64, get(ENV, "JM_WRECK_TRAIL", "4.0"))
 const TRAIL_HZ   = 10.0
-const TRAIL_BUF  = Vector{NTuple{6,Float64}}()   # (t, x, z, v, theta, offdist)
+const TRAIL_BUF  = Vector{NTuple{8,Float64}}()   # (t, x, z, v, theta, offdist, lateral, lapdist)
 const TRAIL_LAST = Ref(-1.0e9)
 const DMG_EVERY  = parse(Float64, get(ENV, "JM_DMG_EVERY", "1.0"))
 const DMG_LAST_T = Ref(-1.0e9)
@@ -3172,10 +3172,10 @@ function wreck!(v; closing = NaN, bnd_peak = NaN, x = NaN, z = NaN)
     if TRAIL_SECS > 0.0 && !isempty(TRAIL_BUF)
         t0 = TRAIL_BUF[end][1]
         println("  [WRECK]   approach (last ", round(t0 - TRAIL_BUF[1][1], digits=1),
-                " s, 10 Hz):  t-Δ    x       z      v km/h   slip°   off m")
+                " s, 10 Hz):  t-Δ    x       z      v km/h   slip°   off m   lat m   lapdist")
         prev = nothing
         for e in TRAIL_BUF
-            (t, x, z, vv, th, off) = e
+            (t, x, z, vv, th, off, lat, lap) = e
             slip = NaN
             if prev !== nothing
                 dx = x - prev[2]; dz = z - prev[3]
@@ -3191,7 +3191,9 @@ function wreck!(v; closing = NaN, bnd_peak = NaN, x = NaN, z = NaN)
                     lpad(round(x, digits=1), 7), " ", lpad(round(z, digits=1), 7), "  ",
                     lpad(round(vv*3.6, digits=0), 6), "  ",
                     lpad(isnan(slip) ? "  -" : string(round(slip, digits=0)), 6), "  ",
-                    lpad(round(off, digits=1), 6))
+                    lpad(round(off, digits=1), 6), "  ",
+                    lpad(isnan(lat) ? "   -" : string(round(lat, digits=1)), 6), "  ",
+                    lpad(isnan(lap) ? "    -" : string(round(Int, lap)), 7))
             prev = e
         end
     end
@@ -8555,7 +8557,15 @@ function main()
             # are inside a contact test and would only ever record the crash itself.
             if TRAIL_SECS > 0.0 && !WRECKED[] && cs.t - TRAIL_LAST[] >= 1.0/TRAIL_HZ
                 TRAIL_LAST[] = cs.t
-                push!(TRAIL_BUF, (cs.t, cs.x, cs.z, cs.v, cs.θ, OFFDIST[]))
+                # BNDWRECK-1 S6: carry the two track-relative numbers as well. S5's trail had
+                # position, speed, slip and off-HAT distance -- and off-HAT was 0.0 on every
+                # sample but the last, so it could not show the car running wide, which is what
+                # the slip opening implies. `lateral` is the signed offset from the racing line
+                # and `lapdist` says WHERE on the lap, so two wrecks at different sites become
+                # directly comparable without a map. NaN when the HAT probe missed.
+                _lat = hr.found ? hr.lateral : NaN
+                _lap = hr.found ? hr.lapdist : NaN
+                push!(TRAIL_BUF, (cs.t, cs.x, cs.z, cs.v, cs.θ, OFFDIST[], _lat, _lap))
                 while length(TRAIL_BUF) > 1 && TRAIL_BUF[end][1] - TRAIL_BUF[1][1] > TRAIL_SECS
                     popfirst!(TRAIL_BUF)
                 end
