@@ -17898,3 +17898,63 @@ as the PO's wheel report. **The PO's report belongs with `E75/E82`, which alread
 measurement, the A/B composite, and is parked on the PO's eye.**
 
 **julia: the deferred question answered by looking, and a nine-sprint item re-attributed. Sprint 1 of 4.**
+
+## E75/E82 S9 (Opus 5, 2026-09-17) — ⭐⭐⭐ **the item's "parked on the PO's eye" is UNBLOCKED by the gold: GPL draws the wheel joined to the body by a chromed wishbone, a radius rod and the upright — substantial, unmissable geometry. We draw 8 % of it, and the PO's own video shows the result**
+
+**Story:** julia rotation: sprint 2 of 4. S8 committed an A/B composite and recommended parking on the
+PO's verdict: *"restoring the 431 triangles changes 2.43 % of the frame and adds a dark mass, and
+whether that mass is suspension or E75-S8's 'panels' is a judgement for the PO's eye."* **It is not a
+judgement any more.** Sprint 1 found the defect in the PO's own video; this sprint found what the
+real game draws in the same place.
+
+Artefact: `parity/e75_gold_vs_port_suspension.jpg`.
+
+### ⭐ The gold has an external view after all
+
+`~/gold standard/julia racer/260915_gpl_wg_race_gold.mp4` is 8m41s and **almost entirely cockpit** —
+which is presumably why nobody had used it for this. But three frames near **t≈444 s** are external,
+and one is a close rear-quarter of a green Lotus.
+
+**What GPL draws at the wheel:** a polished **upper wishbone** running to the body, a **lower link**,
+a **radius rod**, the **brake and upright** assembly inside the rim, and the mirror stalk. The wheel
+is *visibly and substantially attached*.
+
+**What we draw:** in the PO's frame the wheels stand clear of the body with an empty gap and **no
+connecting members at all**.
+
+### ⚖️ So S8's open question has an answer
+
+S8 could not tell whether the restored 431 triangles were *"suspension or E75-S8's panels"*. The gold
+says the real car has **exactly the kind of geometry that is missing** — arms spanning precisely the
+gap our render leaves empty. Combined with S6's measurement (**311 of the 431 discarded triangles are
+the two rear-corner assemblies**; the rear suspension is ~339 tris and we draw 28), the reading is no
+longer ambiguous:
+
+> **The discarded geometry is the suspension, restoring it is correct, and the "dark mass" S8
+> measured is the arms appearing where the gold has them.**
+
+### ⚖️ What this changes for the backlog
+
+* **E75/E82 no longer needs the PO's eye to proceed.** It needed a gold, and the gold was in the
+  corpus. *(Same shape as `R3.4 S5` in BoB: "the gold the item has been blocked on the PO for since
+  June was already in `gold standard/`.")*
+* **RACESTART-2's wheel complaint is E75/E82's** (sprint 1), so this item now carries a PO-reported
+  symptom, not just an internal quality gap. **That raises its priority.**
+
+### ⚠️ Not claimed
+
+* **The two frames are not the same view.** The gold is a close **front-left** quarter; the PO's is
+  the **whole car from behind**. What is compared is the *presence of connecting geometry*, which is
+  unambiguous at both — **not** a measurement of a specific arm. A like-for-like rear comparison
+  would need an external rear view in the gold, and the three external frames are the only ones
+  there.
+* **That restoring the triangles produces exactly the gold's arms.** S8's A/B shows a dark mass in
+  the right place; **nobody has matched it to the gold shape for shape.**
+* That the exclusion is safe to remove. The exclusions exist for a reason the item never established;
+  **turning them off is still a change that needs its own gate run.**
+
+**S10:** drop the exclusion for the two rear-corner assemblies only (not all 431), capture the same
+rear view as the PO's frame, and put it beside the gold. That is the like-for-like comparison this
+sprint could not make, and it is one run.
+
+**E75/E82: unblocked from the PO by a gold that was already in the corpus. Sprint 2 of 4.**
