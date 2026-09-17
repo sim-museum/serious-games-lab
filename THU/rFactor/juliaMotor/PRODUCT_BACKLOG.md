@@ -18249,3 +18249,65 @@ RACESTART nudge, ROAD-1's flag flip). ⚖️ Its stated next question — *"whet
 is adding to it… a physics question"* — is exactly the kind of open-ended dig the rotation mandate
 warns against opening blind. **Re-measuring first is cheap and tells us whether that question is
 still live.**
+
+## PARITYGATE-JR-1 S9 (Opus 5, 2026-09-17) — ✅ **the gate PASSES on the re-seeded references: 3/3 within threshold. The item's open question, carried across two rotations, is closed** — ⛔ but the run exposes that the threshold **loosens when the run gets noisier**, which is backwards
+
+**Story:** julia rotation: sprint 3 of 4. S7 ended with *"That the gate now passes. It has **not** been
+re-run since the re-seed — that costs 12 minutes and the next run is the one that proves it. The
+threshold change is **reasoned, not yet demonstrated**."* This is that run.
+
+### ✅ Demonstrated
+
+```
+  in-run repeat spread (s=8500, ordinals 2 vs 4): mean|diff| 1.263
+  pass threshold: max(4.0, 6x noise) = 7.579
+  w1_8300    mean|diff|   0.621  OK
+  w2_8500    mean|diff|   1.082  OK
+  w3_8700    mean|diff|   0.531  OK
+PASS: 3 chase screen(s) within 7.579
+```
+
+**S7's corrected threshold holds and the re-seeded references are sound.** ⭐ Note the threshold line
+itself: it reads `max(4.0, 6x noise)` — **S8's fix, visible in the output**; before this sprint it
+would have printed the withdrawn `max(2.0, 3x noise)` beside a number computed from the new rule.
+
+### ⛔ But a noisier run gets an EASIER gate
+
+The in-run spread came out **1.263**, against S7's **0.587** — the "noise floor" **moved by 2.15×
+between two clean runs**. Because the rule is `max(4.0, 6 × noise)`, that pushed the pass threshold
+from the 4.0 floor up to **7.579**. So:
+
+> **the worse a run's self-consistency, the more deviation from the reference it is allowed.**
+
+That is the wrong direction. A genuine regression occurring on a noisy run is *more* likely to pass,
+not less. ⚖️ **Recommendation, recorded and deliberately NOT acted on this sprint** (the rotation has
+one sprint left and an open PO defect ahead of it): high in-run noise should make the run
+**unjudgeable — `CANNOT MEASURE`, exit 2** — rather than permissive. The gate already draws that
+distinction elsewhere (`$n -ne 4`, and `exit 124` as *"a budget, not a regression"*), so this is
+applying its own existing discipline to one more case.
+
+### ⚖️ And S7's "a second clean run tightens it" does not survive contact
+
+| | in-run noise | w1 | w2 | w3 | worst |
+|---|---|---|---|---|---|
+| S7 | 0.587 | 0.621 | 1.186 | 2.249 | **2.249** |
+| S9 (this run) | 1.263 | 0.621 | 1.082 | 0.531 | **1.082** |
+
+Two samples, worst-ever **2.249**, so the 4.0 floor keeps ~1.8× margin — **unchanged**. ⛔ But the
+floor is no longer what binds: at noise 1.263 the **6×noise term** decides. **Tightening the floor
+would not have tightened this run's gate at all.**
+
+⚠️ **Unexplained, and flagged rather than smoothed over:** `w1_8300` is **0.621 in both runs, to
+three decimals**, across *different reference sets* (S7 compared against the S4 references; this run
+against the re-seed). That may be a stable rendering difference dominating that capture, or it may
+mean less than it looks. **It is not explained here and no conclusion rests on it.**
+
+### ⚠️ Not claimed
+
+* **That 0.587 or 1.263 is julia's noise floor.** Two runs, one track, one position. **The quantity
+  the threshold is built on has now been seen to vary by 2×.**
+* That the references are *correct*. They are a **regression** oracle — re-seeded from S7's clean
+  run, never compared to the gold. *(The same point BoB's parity header makes about itself.)*
+* That the cockpit view is stable. **Still unmeasured** — S3, S6 and S7 all said so, and so does this.
+
+**PARITYGATE-JR-1: open question CLOSED, one new design finding recorded. julia sprint 3 of 4.**
