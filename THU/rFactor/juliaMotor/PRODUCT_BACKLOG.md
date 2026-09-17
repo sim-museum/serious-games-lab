@@ -18028,3 +18028,70 @@ the upright.*
   therefore look right, without checking the A/B it was sitting next to.**
 
 **E75/E82: PARKED at 10 sprints. The geometry is confirmed, the workaround is explained, and the blocker is named as the positioner. Sprint 3 of 4.**
+
+## RACESTART-1 S11 (Opus 5, 2026-09-17) — ⭐⭐⭐ **the rub is FIXED: 283 contact frames → 15, and the field gets past MORE than before (676 vs 671).** The nudge now pushes to a clearance instead of to the edge of the overlap
+
+**Story:** julia rotation: sprint 4 of 4 — rotation complete. S9 reduced the rub to one geometric
+fact — *"the nudge leaves the AI at 1.78 m median, 1.80 m maximum against a 1.70 m contact threshold;
+it clears by 8 cm, then is pulled straight back in, 283 times"* — and said margin was the only
+surviving direction but should be sized first. The measurements sized it: separation reaches
+`LANE_MAX` 3.80 m elsewhere in the same run, so there is room.
+
+### ⭐ The change
+
+The nudge fired only while `|lane − plane| < CAR_WID`, so it stopped the instant the overlap broke.
+It now runs while `< CAR_WID + CLEAR_MARGIN` (`JM_AI_CLEAR_MARGIN`, default **0.6 m**), pushing until
+there is real room. `JM_AI_CLEAR_MARGIN=0` is the control and reproduces the old behaviour exactly.
+
+⭐ **This is NOT S6's widening, and the distinction is the whole reason it works.** S6 widened the
+**blocker** window, which governs SPEED — the AI slowed to a stopped car's zero and the field never
+got past (`694 → 0` frames past). **This window only moves the car sideways and touches no speed
+term.**
+
+### ⛔ And I broke the metric first — the control arm caught it
+
+The first cut moved `player_hit` to a post-nudge test. Both arms then reported **12**:
+
+```
+   JM_AI_CLEAR_MARGIN=0    hits=12     <- the control does NOT reproduce its own 283 baseline
+   JM_AI_CLEAR_MARGIN=0.6  hits=12
+```
+
+**A control that cannot reproduce the baseline is measuring something else**, and that is what it was
+doing: counting contact *after* the correction. **The same step-1-vs-step-3 sampling error S9 had to
+reconcile, reintroduced by me one sprint later.** Fixed by capturing the overlap **before** the nudge,
+so the gate's metric still counts the same event and the arms stay comparable.
+
+### ⭐⭐⭐ Measured
+
+```
+   JM_AI_CLEAR_MARGIN=0.0   (control)   passframes=671   hits=283
+   JM_AI_CLEAR_MARGIN=0.6   (shipped)   passframes=676   hits= 15
+```
+
+**283 → 15 contact frames, a 95 % reduction — and the field gets past MORE, not less.** The deadlock
+that killed S6's attempt does not occur.
+
+```
+   RACESTART GATE: PASS      5/5 assertions, jolt frames still 0
+   AI FIELD GATE:  PASS      cycles 0.09/car-lap, queue-snaps 0, switches 0.46/car-lap
+```
+
+### ⚖️ What this does and does not close
+
+* **The rub is fixed** — the defect S5 opened and S6/S8 failed to close.
+* ⚠️ **It is not the PO's wheel complaint.** Sprint 1 of this rotation showed that is E75/E82's
+  rendering, visible at 0 km/h before any contact. **This is a real AI defect fixed on its own
+  merits**, which is exactly how S9 said it should be judged.
+* **15 frames is not 2.** The control (teleport) arm shows 2 contact frames because it jumps clear
+  instantly. 15 is a car passing close, which is racing; 283 was a scrape.
+
+### ⚠️ Not claimed
+
+* **That 0.6 m is the right margin.** It is the first value tried, it is well inside `LANE_MAX` 3.80,
+  and it works. **No sweep was run** — 0.3 and 1.0 are untested.
+* **That this holds on other tracks.** One gate, one grid, Watkins Glen. The margin is absolute
+  metres and the corridor width is not.
+* That the remaining 15 frames are harmless — **nobody has watched them.**
+
+**RACESTART-1: the rub closed at last, by the one direction S9 left standing. julia rotation complete (4 sprints) → FF.**

@@ -284,6 +284,7 @@ const RAIL     = 2.4    # pass-deviation offset to either side of the racing lin
 const LANE_MAX = 3.8    # E16 (PO): never get within ~a car-width of either edge — road half-width 5.5 − car 1.7 = 3.8
 # AI-AVOID-1: choose the pass/avoid side by the room left after the LANE_MAX clamp, not by the
 # blocker alone. Default ON; JM_AI_AVOID_ROOM=0 is the control arm.
+const CLEAR_MARGIN = parse(Float64, get(ENV, "JM_AI_CLEAR_MARGIN", "0.6"))   # RACESTART-1 S11
 const AVOID_ROOM = get(ENV, "JM_AI_AVOID_ROOM", "1") != "0"
 # AI-AVOID-1: in a corner, keep lateral separation when contact is imminent instead of tucking the
 # offset to zero. Default ON; JM_AI_AVOID_CORNER=0 is the control arm. AVOIDSTAT counts the firings,
@@ -732,7 +733,26 @@ function step_field!(cars::Vector{AICar}, line::AILine, dt;
     if player !== nothing
         for c in cars
             Δs = mod(c.s - player[1] + total/2, total) - total/2
-            if abs(Δs) < CAR_LEN && abs(c.lane - player[2]) < CAR_WID
+            # RACESTART-1 S11: nudge to a CLEARANCE, not to the edge of the overlap.
+            # S9 measured the whole rub: the nudge fires only while |lane-plane| < CAR_WID (1.70),
+            # so it stops the instant the overlap breaks -- post-nudge separation is 1.78 m median
+            # and 1.80 m maximum over 283 events, i.e. it clears by 8 cm and the AI's own lateral
+            # target pulls it straight back in. Widening the NUDGE window to CAR_WID+margin keeps
+            # pushing until there is real room.
+            # This is NOT S6's widening, which was measured and reverted: that widened the BLOCKER
+            # window that governs SPEED, so the AI slowed to a stopped car's zero and the field
+            # never got past (694 -> 0 frames past). This window only moves the car sideways and
+            # touches no speed term.
+            # The CONTACT COUNTER below stays on the ORIGINAL CAR_WID test, so the gate's "contact
+            # frames" still measure the same event and the arms stay comparable -- widening the
+            # trigger and the metric together would have flattered the change.
+            # JM_AI_CLEAR_MARGIN=0 is the control arm and reproduces the pre-S11 behaviour exactly.
+            if abs(Δs) < CAR_LEN && abs(c.lane - player[2]) < CAR_WID + CLEAR_MARGIN
+                # Capture the contact test BEFORE the nudge moves the car. Evaluating it afterwards
+                # counts the CORRECTED state and reports 12 frames where the baseline has 283 -- the
+                # same step-1-vs-step-3 sampling error S9 had to reconcile, reintroduced here by me
+                # and caught by the control arm failing to reproduce its own baseline.
+                wasOverlap = abs(c.lane - player[2]) < CAR_WID
                 d = (c.lane - player[2]) >= 0 ? 1.0 : -1.0
                 # RACESTART-1 (PO 2026-09-05): "AI cars behind me clip off both my front wheels."
                 # The yield used to be `c.lane += d*1.3` -- 1.3 m in ONE FRAME, a lateral teleport of
@@ -769,7 +789,7 @@ function step_field!(cars::Vector{AICar}, line::AILine, dt;
                 # player and re-triggers this branch every frame while the car works its way
                 # sideways, and it is exactly the backwards "queue-snap" teleport E89 fought.
                 # An AI going AROUND a parked car is legitimate racing; the defect was the jolt.
-                player_hit = true
+                wasOverlap && (player_hit = true)   # S11: the ORIGINAL pre-nudge contact test
             end
         end
     end
