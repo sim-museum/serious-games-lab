@@ -17535,3 +17535,67 @@ were on disk the whole time and settled it in one command.**
   hop to measure it honestly.
 
 **PARITYGATE-JR-1: one withdrawn number explained, one item's evidence cleared, both from disk. julia rotation complete (4 sprints) → FF.**
+
+## GROOMING (Opus 5, 2026-09-17) — ⛔ **I have been calling `STARTUP-1` "the real constraint on julia parity work" for two sprints. It is CLOSED, and the PO closed it.** The thing that actually defeats julia runs here is my own orchestration
+
+**Story:** julia rotation: sprint 1 of 4, grooming, under the PO's mandate to avoid rabbit holes.
+PARITYGATE-JR-1 S5 and S6 both recorded *"julia's iteration cost defeated 4 of this rotation's run
+attempts; `STARTUP-1` is the real constraint on julia parity work."* Checked it. **Both halves are
+wrong.**
+
+### ⛔ `STARTUP-1` is closed, by the PO, on their own evidence
+
+`PRODUCT_BACKLOG.md:7895`, PO test round 2 (2026-09-06):
+
+> *"with julia it just loads the track now, there's no 25 minute delay while it compiles everything
+> anymore"* — **STARTUP-1 closed** by the shipped image (the depot's compiled cache travels in the
+> AppImage); the sysimage build stays postponed.
+
+And the sysimage is postponed **by an explicit PO decision** (`:9183`, 2026-09-06 12:30):
+*"if the sysimage build is a big load on the system, postpone that for later, it's just an
+optimization anyway."*
+
+**So citing it as a blocker was citing a closed item against its owner's stated decision.** Worse, it
+is the shape this project keeps booking: a sprint quoting a backlog line without re-reading it.
+[[blocked-on-po-may-be-in-the-repo]]
+
+### ⛔ And package compilation is not what costs the time
+
+```
+   julia --project=demo/native -e 'println("loaded")'     0.15 s
+   ~/.julia/compiled                                      1.5 GB, warm
+```
+
+**Startup is 150 milliseconds.** Nothing recompiles per run. The ~12 minutes goes into the *script* —
+MTK's `ODEProblem` construction (`build_car3d`) and track/scenery asset loading — which a sysimage
+would help with only partly, and which the PO has already decided is not worth the build.
+
+### ⭐ What actually defeated the four runs
+
+Re-reading the failures rather than summarising them:
+
+* **Three were my orchestration.** Each backgrounded wait was restarted by the harness, and the
+  restart **re-executed the launch**, starting a second run that contended with the first. The logs
+  looked like crashes because each new run truncates `run.log`.
+* **One was a real crash** — `build_car3d → ODEProblem → process_SciMLProblem`, at startup.
+* **And one run SUCCEEDED** (the S4 seed), producing all four captures in ~12 minutes.
+
+**So julia runs complete reliably at ~12 min. The instrument that was failing was the way I was
+starting them**, which is not a julia problem at all and does not belong in this backlog as one.
+
+### ⚖️ Corrections entered
+
+* **PARITYGATE-JR-1 S5 and S6**: strike *"`STARTUP-1` is the real constraint on julia parity work."*
+  `STARTUP-1` is closed; the sysimage is postponed by the PO; startup is 0.15 s.
+* The remaining true statement is narrower and duller: **a julia gate run costs ~12 minutes**, which
+  is a budget to plan around, not a blocker to cite.
+
+### ⚠️ Not claimed
+
+* **That the 12 minutes cannot be reduced.** Nobody has profiled where it goes inside the script.
+  ⚠️ **But that is an optimisation the PO has already deprioritised once**, in the same words, so it
+  should not be picked up without asking.
+* That the MTK startup crash will not recur. It happened once, under memory pressure from a
+  concurrent run — consistent with the contention above, but not proven to be it.
+
+**Grooming: a closed item retired as a blocker, and the real obstacle named as my own tooling.**
