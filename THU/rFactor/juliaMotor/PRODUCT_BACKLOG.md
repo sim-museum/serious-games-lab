@@ -16508,3 +16508,74 @@ That julia's gold work is beyond criticism — only that its **provenance** is r
 others' is not. Nothing here checks whether its parity *verdicts* are sound.
 
 **GOLDPROV-JR-1: 1 sprint. The cure was already in every tree.**
+
+## TRACKGOLD-1 S4c (Opus 5, 2026-09-17) — ⛔⛔ **both of S4b's candidate explanations for the hillside veils are DEAD: `wehr-l2`'s placement is IDENTITY (no rotation at all) and its mesh is LOCAL-space, not in-place** — ⭐ so its verticality is the ASSET's, and rule 4 of this project's own QA method says check the original before "fixing" it
+
+**Story:** TRACKGOLD-1 (⭐ PO priority, 2026-09-06). julia rotation: sprint 2 of 4. *Thursday —
+julia's day under the weekly note, so the slot went to the port rather than to more method work.*
+
+S4b closed with the open remainder: *"the hillside veils (`wehr-l2` at 8.5 km standing vertical at the
+road edge; the thin spires on the final-straight horizon) — **an orientation matter for in-place
+hillside meshes**, S4c."* That names two mechanisms. **Neither survives.**
+
+Both were checked **without starting the sim** — the track's own loader reads the placement table and
+the `.dat` archive directly, so this cost seconds rather than a 3-minute JIT and a window.
+
+### ⛔ 1. It is not an Euler mis-application — the record has no rotation
+
+```
+wehr-l2   pos=(-1844.7, 2023.7, 413.7)   yaw=0.0°  pitch=0.0°  roll=0.0°  scale=1.0
+wehr-l3   pos=(-1831.9, 2054.7, 410.6)   yaw=0.0°  pitch=0.0°  roll=0.0°  scale=1.0
+wehr-l1/l4/l6/rg2/r1b, wehr-pat          all yaw=pitch=roll=0
+```
+
+**Every `wehr-*` placement on the Ring is an identity rotation.** `placemat` cannot mis-apply angles
+that are all zero. Whatever tilts or fails to tilt these objects, it is not the Euler convention.
+
+⭐ And the convention is not idle elsewhere — the same dump shows **723 of 3109** placements carry
+pitch > 1.1°, **522** carry pitch or roll > 11.5°, and **only 18** carry any roll. That matches
+`placemat`'s own comment ("*3rd = roll; rare in scenery*") — so the code's reading of the format is
+consistent with the data, measured rather than assumed.
+
+### ⛔ 2. It is not an in-place mesh either
+
+```
+wehr-l2.3do   87 verts   x[-83.4..0.0]  y[-64.2..6.4]  z[-0.9..23.9]
+wehr-l3.3do  105 verts   x[-20.2..21.7] y[-31.0..64.6] z[-5.9..17.2]
+```
+
+**Local-space, centred near its own origin** — tens of metres, not the `(-1844, 2023, 413)` world
+coordinates an in-place mesh would carry. It is an ordinary translate-and-draw object.
+
+### ⭐ What the numbers actually say
+
+`wehr-l2` is **83 m wide, 70 m deep and 24 m tall in its own authoring**, placed with translation
+only. **A mesh authored 24 m tall and drawn with no rotation stands up because that is how it was
+built** — not because the port did something to it.
+
+⚠️ **Which makes this a candidate for rule 4 of this project's own QA method**, the class it calls
+*authentic-asset surprises*: *"our 'cyan slab' was GPL's own teal pond texture — decode the source
+texture and check its average colour BEFORE 'fixing' scenery."* The same discipline applies here:
+**before anyone rotates these veils, check what GPL itself draws at that spot.**
+
+⭐ And the instrument for that now exists — GOLDPROV-JR-1 (this rotation, sprint 1) characterised
+`260915_gpl_wg_race_gold.mp4`. That is Watkins Glen, not the Ring, so it does not answer this
+directly; the Ring gold in `gold standard/julia racer/nurburgring/` does.
+
+### Observed in passing, not chased
+
+`strauch6.3do` parses to **zero triangles** from the archive. That is either an empty mesh or a parser
+limit, and it is the same family as E76-S5's "1865 of 2231 failed Ring placements". **Noted, not
+investigated** — it is not this item's question.
+
+### ⚠️ Not claimed
+
+* **That the veils render correctly.** Two explanations are eliminated; the PO's observation stands
+  unexplained. What is established is that the next sprint should start from the **gold**, not from
+  the placement maths.
+* That 24 m tall is wrong or right — only that it is the asset's own height, applied faithfully.
+
+**S4d:** crop the Ring gold at the `wehr-*` location and compare. If GPL shows the same vertical
+veils, this closes as authentic and TRACKGOLD-1 loses a defect it never had.
+
+**TRACKGOLD-1: S4c closed — two mechanisms eliminated, the question handed to the gold.**
