@@ -16579,3 +16579,60 @@ investigated** — it is not this item's question.
 veils, this closes as authentic and TRACKGOLD-1 loses a defect it never had.
 
 **TRACKGOLD-1: S4c closed — two mechanisms eliminated, the question handed to the gold.**
+
+## TRACKGOLD-1 S4d (Opus 5, 2026-09-17) — ⭐⭐ **the veil meshes are TERRAIN-shaped, not curtain-shaped — `wehr-l1` carries 17,295 m² of horizontal surface against 2,915 m² vertical** — ⛔ **so S4c's "authentic vertical asset" reading is NOT confirmed** — ⚠️ and `wehr-l2` itself is 50/50, so geometry alone still cannot settle it
+
+**Story:** TRACKGOLD-1 (⭐ PO priority). julia rotation: sprint 3 of 4.
+
+S4c eliminated both placement explanations and suggested the verticality might be the asset's own —
+rule 4, *authentic-asset surprise*. **That suggestion needed testing, not adopting.** The mesh's own
+face normals say what it was authored as: `|nz|≈1` is a ground surface, `|nz|≈0` is a wall.
+
+### ⭐ The metric, with a control that proves it can speak
+
+```
+                tris   vertical  horizontal  oblique |  area vert   area horiz
+outmg32.3do      32       32          0          0   |   1,710 m²        0 m²   <- CONTROL
+wehr-l1.3do      97       41         45         11   |   2,915 m²   17,295 m²
+wehr-l2.3do      29       10          8         11   |     999 m²    1,039 m²
+wehr-l3.3do      35       10         13         12   |     967 m²      951 m²
+```
+
+**`outmg32` — the first placement in the table — is 32 vertical faces and ZERO horizontal.** A real
+billboard reads as 100 % vertical, so the measure distinguishes the two cases rather than returning
+a shrug. [[instrument-bookkeeping-lies]]
+
+### ⛔ What that does to S4c's reading
+
+**`wehr-l1` is a ground surface by a 6:1 area ratio.** It is terrain — an embankment top, not a
+curtain. If *that* object renders standing on its edge, it is a genuine defect and "authentic asset"
+is the wrong verdict for it.
+
+⚠️ **But `wehr-l2`, the object the PO actually named, is 999 m² vertical against 1,039 m² horizontal
+— half and half**, which is exactly what an embankment *face plus its top* looks like. **Geometry
+alone cannot say whether its rendered attitude is right.** I am not going to call that either way.
+
+### ⚖️ Where this leaves the item
+
+Three explanations have now been eliminated or narrowed without a single sim launch or a frame of
+video — Euler mis-application (dead, S4c), in-place mesh (dead, S4c), authentic-vertical-asset
+(**not confirmed**, here). The remaining question is narrow and empirical:
+
+> **Does `wehr-l1` — the unambiguous terrain piece — lie flat in our render?** It is the object whose
+> correct attitude is not in doubt, so it is the one worth photographing. `wehr-l2` is the wrong test
+> case precisely because its geometry is ambiguous.
+
+That is a better-posed question than the one S4b handed on, and it needs one `JM_SHOTS` capture at
+the `wehr-l1` placement `(-2056.3, 1896.2, 439.4)` — rule 2 of the QA method, batched, not a
+one-shot launch.
+
+### ⚠️ Not claimed
+
+* That anything renders wrongly. **No frame has been captured in this item yet** — three sprints of
+  elimination on static data, which is cheap and correct, but it is not a picture.
+  [[screenshot-beats-printf-for-view-defects]]
+* That area ratio settles authoring intent in general. It separated a billboard from an embankment
+  here; it would not separate a steep hillside from a wall.
+
+**TRACKGOLD-1: S4d — the test case is corrected from `wehr-l2` to `wehr-l1`, and the question is now
+photographable.**
