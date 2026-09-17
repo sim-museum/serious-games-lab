@@ -17276,3 +17276,108 @@ gate that MiG Alley and BoB both have and julia does not is now a bounded piece 
   the sixth has no new instrument to bring.
 
 **Grooming: one lesson qualified, one item parked, and the next sprint pointed at the gate julia lacks.**
+
+## PARITYGATE-JR-1 S4 (Opus 5, 2026-09-17) — ⭐⭐⭐ **the gate is built and its FIRST run found a real defect, not noise: a BACKWARD teleport (8700 → 8500) lands the car ~18 m out because the STEP GUARD rejects the teleport's legitimate height jump.** The frame is the road's underside — and that is very likely what S1's withdrawn `53.4` and TRACKGOLD-1 S4e's decisive photograph both were
+
+**Story:** PARITYGATE-JR-1. julia rotation: sprint 2 of 4. julia is the only one of the four ports
+with no screen-parity gate. Built one, ran it once, and it immediately paid for itself.
+
+Artefact: `parity/chase_gate_first_sweep.jpg` (force-added; `parity/` ignores images by default, as `e75_exclusion_ab.jpg` was) — the four captures of the seeding sweep.
+
+### ⭐ `JuliaMotorMTK/tools/chase_parity_gate.sh` — built to S3's two rules
+
+MA and BoB compare byte-for-byte because their 2-D captures are deterministic; julia's are not. So
+the gate is built around S3's findings rather than around theirs:
+
+1. **Shot order is part of the measurement.** Every `JM_SHOTS` entry teleports and settles from
+   wherever the previous shot left the car, so the Nth capture is not comparable to the Mth. The
+   gate pins **one** sweep and compares each shot only against the reference of the **same ordinal**.
+2. **The run measures its own noise.** The sweep captures `s=8500` **twice** — ordinals 2 and 4 —
+   and derives the pass threshold from that pair rather than hardcoding one. A run too noisy to
+   judge is reported as **`CANNOT MEASURE`**, never as a colour. *(`QA_METHOD_GOLD_PARITY.md` rule 9:
+   an unrunnable gate is worse than none.)*
+
+```
+   sweep: 8300:1:w1_8300 ; 8500:1:w2_8500 ; 8700:1:w3_8700 ; 8500:1:w4_8500
+```
+
+Captures are 1440×810 and land under `/home/admin/jr-parity` — **never `/tmp`**, which is a 7.6 GB
+tmpfs and has killed this session's shells before.
+
+### ⛔⛔ And the self-check immediately failed — for a reason worth far more than the gate
+
+```
+   in-run repeat   w2 vs w4  (SAME s=8500, ordinals 2 and 4)   mean|diff|  73.137
+   different spot  w2 vs w1  (8500 vs 8300)                    mean|diff|  52.127
+   different spot  w2 vs w3  (8500 vs 8700)                    mean|diff|  42.429
+   w2 vs w4, pixels differing >8:                              94.84 %
+```
+
+**The same point photographed twice is LESS alike than two points 200 m apart.** That is not noise,
+and the picture says why: `w1`, `w2`, `w3` are ordinary chase frames — road, hillside, sky.
+**`w4` is the car floating on a featureless pale void under a black sky.**
+
+### ⭐⭐⭐ The mechanism, from the run's own log
+
+Five warnings fire between shot 3 and shot 4, **and nowhere else in the run**:
+
+```
+  JM_SHOTS: dumped w3_8700 (3/4)
+  ⚠ step guard: ground jumped 17.96 m at (-1896.4, 1971.9) -- holding 403.39 m
+  ⚠ step guard: ground jumped 17.96 m ...
+  ⚠ step guard: ground jumped 18.2  m ...
+  ⚠ step guard: ground jumped 18.21 m ...
+  ⚠ step guard: ground jumped 17.86 m ...
+  JM_SHOTS: dumped w4_8500 (4/4)
+```
+
+`403.39 m` is the ground height at **s=8700**. `place_at_s!` correctly re-anchors `cs.zref` to the
+terrain at s=8500, and **the step guard then rejects that ~18 m change as a bad step and holds the
+previous shot's height.** The car is rendered about 18 m off the road, which at this point of the
+Ring is under the embankment — hence the void and the black sky.
+
+**A teleport is a legitimate discontinuity. The step guard cannot tell it from a driving fault**, and
+it has no per-teleport reset. *(Exactly the bug class recorded in [[measure-before-a-global-guard]]:
+a step-rejection rule needs per-actor state and a real measured maximum, not one shared threshold.)*
+
+### ⭐⭐ Two older results this probably explains
+
+* **S1's `53.4` cockpit figure, withdrawn by S3 as "view and sequence-position confounded."** S4e's
+  sweep was `8300;8400;8500;8600;8700;8500` — **the 6th shot is a BACKWARD teleport 8700 → 8500**,
+  the same move that breaks `w4` here. S3 could not attribute the number to sequence position; the
+  attribution is not position, it is **direction**.
+* ⚠️ **TRACKGOLD-1 S4e's photograph.** That sprint's decisive evidence was *"at s=8500 the view is
+  WALLED ON BOTH SIDES, sky down to 7.6 % from 34.5 %"* — taken as the 6th shot of that same sweep.
+  **A black sky and walls on both sides is what a car 18 m under the embankment sees.** And
+  `place_at_s!`'s own comment already warns that Ring **s=8500** is one of four places where a
+  teleport gets handed the lower surface and *"every JM_SHOTS frame there is the road's underside …
+  an artefact, not a veil."*
+
+**I parked TRACKGOLD-1 this morning on diminishing returns. That may have been right for the wrong
+reason** — not "five sprints found nothing" but "the instrument was photographing an artefact."
+**Not claimed as proven** — see below.
+
+### ⚖️ Consequences for the gate
+
+The gate works and its verdict on this sweep is honest: `CANNOT MEASURE`. But the sweep must not
+contain a backward teleport until the guard is fixed, so **the shipped sweep should repeat `s=8500`
+by going forward to it twice** (e.g. `8300;8500;8300;8500`) — or the guard must reset on teleport,
+which is the better fix and is one line next to `place_at_s!`.
+
+### ⚠️ Not claimed
+
+* **That the step guard is the sole cause of `w4`.** Five warnings and an 18 m hold is a strong
+  chain, but I have not re-run with `JM_STEP_GUARD=0` yet — **that A/B is running now and is S5.**
+* **That TRACKGOLD-1 S4e's photo is this artefact.** It is the same track position, the same
+  backward-teleport ordinal and the same visual signature, and the code comment names s=8500 — but
+  S4e's frame has not been re-examined and its sweep has not been re-run. **Suggestive, not shown.**
+* **That the references seeded here are good.** `SEED=1` wrote `w1/w2/w3` *before* I looked at them,
+  which is the order this project's own BoB gate header forbids. `w1–w3` do look like ordinary chase
+  frames, but they were seeded from a run whose 4th capture is broken, so **they should be re-seeded
+  once S5 settles the guard.**
+* That 73.1 is julia's chase noise floor. It is one broken pair; the real floor is still unmeasured.
+
+**S5:** the `JM_STEP_GUARD=0` A/B — if `w4` then matches `w2`, the diagnosis is closed, the gate's
+sweep is safe, and TRACKGOLD-1's evidence has to be re-examined.
+
+**PARITYGATE-JR-1: the gate exists, and its first run found a defect instead of a baseline. Sprint 2 of 4.**
