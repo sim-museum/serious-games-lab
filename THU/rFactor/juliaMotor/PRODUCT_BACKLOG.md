@@ -17048,3 +17048,73 @@ The exclusion is a **workaround whose cost nobody had measured**, and it costs 9
 it has never been shown to them side by side.
 
 **E75/E82: a 16-sprint "rendering defect" is a measured 92 % exclusion. Sprint 2 of 4.**
+
+## E75/E82 S7 (Opus 5, 2026-09-17) — ⛔⛔ **the LAST surviving hypothesis fails too: the excluded geometry is NOT "unfolded flat strips". It has genuine 3-D extent and no more planarity than the drawn car body** — the item now has a measured symptom and no surviving mechanism
+
+**Story:** E75/E82, the PO's "sticks / no axles". julia rotation: sprint 3 of 4. **No sim run** —
+S7's picture needs two launches and julia's run record today is 2-for-5, so this tests the hypothesis
+statically instead, which is cheaper *and* stronger.
+
+### The claim under test
+
+E75-S8, quoted in the elimination table as **the only survivor**:
+
+> *"the geometry under those nodes is **unfolded flat strips** — drawing them in place **lays panels
+> under the car**."*
+
+**Unfolded flat strips have a signature**: one bounding-box dimension near zero, and most face
+normals parallel. Both are measurable from the model.
+
+### ⭐ Measured — excluded groups against drawn ones
+
+```
+   group          tris   bounding box (m)         normals aligned to dominant
+   27288 EXCL     152    1.771 x 0.695 x 0.403     45/152   (30 %)
+   39792 EXCL     159    1.783 x 0.736 x 0.403     51/159   (32 %)
+   124808 drawn    95    1.520 x 0.790 x 0.281     27/94    (29 %)
+   0      drawn  1796    3.074 x 1.902 x 0.830    510/1796  (28 %)
+```
+
+* **No dimension is flat.** 0.40 m of vertical extent is a three-dimensional assembly, not a panel.
+* **Planarity is indistinguishable from the drawn car.** 30–32 % of normals share a dominant
+  direction — against **28 %** for the main body, which is unambiguously 3-D. **An unfolded strip set
+  would be far higher**, approaching 100 %.
+
+**"Unfolded flat strips" is not supported.** The control matters here: without group 0's 28 % I could
+have read 30 % as "mostly flat"; with it, 30 % is simply what this model's geometry looks like.
+
+### ⚖️ Where that leaves a 16-sprint item
+
+| candidate | verdict |
+|---|---|
+| lateral clip `CARP_MAXLAT` | refuted (E102 S18) |
+| parked positioners | refuted (E75 S2) |
+| group placement | refuted to 7 mm (E82) |
+| runtime pose in the `0x16` payload | refuted — node is 9 fields (S5) |
+| **unfolded strip geometry** | **not supported — 3-D, no excess planarity (this sprint)** |
+
+**Every proposed mechanism is now eliminated.** What remains is measured and solid: **311 triangles
+of genuine 3-D rear-corner geometry, correctly placed to 7 mm, are excluded by a default env value**,
+and the reason recorded for excluding them does not match what the geometry is.
+
+⭐ The bbox also explains why these groups looked strange: **1.77 m long on a car whose whole body
+bbox is 3.07 m.** That is over half the car — consistent with `CLAUDE.md`'s description of them as
+*"WHOLE DISPLACED ASSEMBLIES (suspension+exhaust+driver textures…)"*. **They are multi-part
+assemblies, not a suspension corner** — which is a different object from the one sixteen sprints
+assumed they were reasoning about.
+
+### ⚠️ Not claimed
+
+* **That no sub-part is unfolded.** This measures the groups in aggregate. A handful of flat strips
+  inside 152 triangles would not move a 30 % statistic, and E75-S8 may have been describing exactly
+  such a subset.
+* That un-excluding is safe. E75-S8 *saw* panels; I have refuted the stated description of the
+  geometry, **not the observation**. Those can both be true if the panels come from a sub-part.
+* Anything from a picture. Still no frame captured in this item by me.
+
+**S8 — and it should be the last diagnostic sprint:** the two claims now in tension are *"they are 3-D
+assemblies"* (measured) and *"drawing them lays panels under the car"* (observed). **One capture with
+`JM_CAR_EXCL_GROUPS=""` settles which, and it is the same capture S7 wanted for the PO.** If julia's
+run cost blocks it, the item should be parked on that, not on analysis.
+
+**E75/E82: all five mechanisms eliminated; the item is a measured exclusion with no explanation. Sprint 3 of 4.**
