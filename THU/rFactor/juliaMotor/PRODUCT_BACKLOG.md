@@ -15787,3 +15787,60 @@ S1's double-count is largest and the field is most bunched.
 figure this item now needs, it is cheap, and n=1 is what stopped this sprint short of a number.
 
 **STANDINGS-1: 4 sprints — AT CAP.**
+
+## RACEMODE-1 S1 (Opus 5, 2026-09-16) — ⭐⭐ **the damage is contained: the AI pace numbers are mode-INDEPENDENT (four of five cars agree within 0.07 s), so TELEMSTATE-1's and AISPREAD-1's calibrations survive** — and the player's lap times sit inside the practice corpus's own spread
+
+**Story:** RACEMODE-1 (what STANDINGS-1 S3's discovery costs the existing measurements). **Sprint 1.**
+
+STANDINGS-1 S3 found that **24 of 24 runs in the corpus are `JM_MODE=practice`**, while the gold is a
+race and `IS_RACE` gates the standing start, qualifying, fuel load, replay recording and the live
+position readout. That reads like it invalidates a lot. **This sprint asks how much, and the answer
+is: much less than it looks.**
+
+### ⭐ AI best laps, same settings, both modes
+
+`JM_AI=5 JM_AI_PCT=71 JM_AI_TEMPER=0.35`, three runs:
+
+| car | race (`s3_race`) | race (`s4_oldprog`) | practice (`s3_pos`) |
+|---|---|---|---|
+| Ferrari | 1:33.789 | 1:33.781 | 1:33.799 |
+| Brabham | 1:36.881 | 1:36.882 | 1:36.879 |
+| Eagle | 1:33.180 | 1:33.116 | 1:33.113 |
+| Cooper | 1:38.250 | 1:38.247 | 1:38.249 |
+| BRM | 1:36.183 | 1:36.787 | 1:35.853 |
+
+**Four of five agree across modes to within 0.07 s.** BRM spreads ~0.9 s — but it spreads that much
+*between the two race runs too* (1:36.183 vs 1:36.787), so that is run-to-run noise, not a mode
+effect.
+
+⭐ So **TELEMSTATE-1's `JM_AI_PCT` calibration and AISPREAD-1's field-spread measurements — all taken
+in Practice — hold in Race.** The AI drive the same laps in both. That is the reassuring half, and
+it is worth stating explicitly, because "the whole corpus is in the wrong mode" invites throwing out
+work that is in fact unaffected.
+
+### The player's own laps are inside the practice spread
+
+| | lap 1 | lap 2 | lap 3 |
+|---|---|---|---|
+| race `s3_race` | 2:05.8 | 2:06.2 | 2:19.4 |
+| race `s4_oldprog` | 2:00.9 | 2:22.1 | 2:21.9 |
+| practice `s3_pos` | 2:25.1 | 2:06.5 | 2:19.0 |
+
+A single practice lap 1 of 2:25 against race's 2:05/2:00 looks like a standing-start effect. It is
+not safe to read that way: the practice corpus's own lap 1 ranges **2:00.5 to 2:24.4**
+(`bw_run4` … `s4_run1`), and both race values fall inside it. **No detectable mode effect on the
+player's lap times at this sample size.**
+
+### ⚠️ What remains mode-sensitive, and is NOT cleared here
+
+* **The live position readout** — absent in Practice entirely (STANDINGS-1 S3).
+* **The standing start.** `HOLD_START` only arms in Race. Two of BNDWRECK-1's six boundary wrecks
+  are on **lap 1**, and lap 1 is the lap the start procedure changes. Untested either way.
+* **The loss rate.** Both race-mode runs so far **finished** — 2 for 2, against Practice's 8-of-18
+  loss rate. ⚠️ **n=2. That is not a result**, it is a reason to keep counting.
+* **Fuel and replay recording** — different in Race, unexamined.
+
+**S2:** run enough race-mode races to put a loss rate on them. That one number decides whether
+BNDWRECK-1's whole corpus needs re-taking or merely annotating.
+
+**RACEMODE-1: 1 sprint.**
