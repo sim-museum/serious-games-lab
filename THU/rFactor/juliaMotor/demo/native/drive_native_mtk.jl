@@ -3093,6 +3093,8 @@ const STUCK_SECS = parse(Float64, get(ENV, "JM_STUCK_SECS", "20"))
 # Keep the last JM_WRECK_TRAIL seconds of state at ~10 Hz and print it when a wreck latches, so the
 # APPROACH is visible: where the car was, how fast, which way it was pointing, and how far off the
 # world it had drifted. JM_WRECK_TRAIL=0 disables.
+const TRACE_POS = haskey(ENV, "JM_TRACE_POS")   # STANDINGS-1 S3: print the live position readout
+const POS_LAST  = Ref(-1)
 const TRAIL_SECS = parse(Float64, get(ENV, "JM_WRECK_TRAIL", "4.0"))
 const TRAIL_HZ   = 10.0
 const TRAIL_BUF  = Vector{NTuple{6,Float64}}()   # (t, x, z, v, theta, offdist)
@@ -9609,6 +9611,29 @@ function main()
                 "  —  $(round(rep_rt[],digits=1))/$(round(rep_dur,digits=1))s  $(rep_play[] ? "▶" : "⏸")×$(rep_speed[])   ·  V angle · C car · SPACE play · ←/→ seek · ↑/↓ speed")
             titleT = now
         elseif now - titleT > 0.25
+            # STANDINGS-1 S3 (2026-09-16): CAPTURE THE LIVE READOUT. S2 measured the arithmetic the
+            # position indicator interpolates but said plainly that the indicator itself "was not
+            # captured", because it lives in the GLFW window title and a headless run does not
+            # record it. Scraping it from outside does not work either: this desktop is WAYLAND and
+            # `xdotool search --name "Julia Racer"` finds nothing (only XWayland/GNOME windows
+            # enumerate), which is the same wall [[no-synthetic-keys-under-wayland]] recorded from
+            # the other direction. So the program prints it, which is what that note actually
+            # prescribes -- an env hook, with the title as the trace.
+            #
+            # Sampled HERE, at the title site, deliberately: this branch is rate-limited to 0.25 s,
+            # so what is printed is what a player can actually SEE, quantised exactly as the title
+            # is. A per-frame sample would measure the expression rather than the readout.
+            # JM_TRACE_POS=1.
+            if TRACE_POS && IS_RACE && race_go[] && !isempty(AICARS)
+                _p = findfirst(e -> e[1] == 0, standings())
+                if _p !== nothing && _p != POS_LAST[]
+                    println("  [pos] t=", round(cs.t, digits=2), "s  lap=", cs.laps + 1,
+                            "  title shows P", _p, "/", length(AICARS) + 1,
+                            POS_LAST[] < 0 ? "   (first sample)" : "   (was P$(POS_LAST[]))")
+                    flush(stdout)
+                    POS_LAST[] = _p
+                end
+            end
             GLFW.SetWindowTitle(win, "Julia Racer — $(uppercasefirst(TRACKSEL)) — $(round(Int,cs.v*3.6)) km/h — gear $(cs.gear == 0 ? "N" : string(cs.gear)) ($(CTL.auto ? "AUTO" : "MANUAL")) — $(round(Int,cs.rpm)) rpm" *
                 (phase[] == :qual ? "  ⏱ QUALIFYING — drive a lap, then press ENTER to start the race" :
                  (!race_go[]) ? ((START_ARM && !cd_armed[] && COUNTDOWN > 0) ?

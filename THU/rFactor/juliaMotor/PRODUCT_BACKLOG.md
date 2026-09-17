@@ -15641,3 +15641,94 @@ the previous four races on the same binary and settings all initialised audio fi
 
 **BNDWRECK-1: 4 sprints — AT CAP.** Next pass starts from the trail's output at the two repeat
 sites, not from the fence.
+
+## STANDINGS-1 S3 (Opus 5, 2026-09-16) — ⭐⭐ **the live readout captured at last, and it is clean: the first sample is `P6/6`, with no phantom P1** — ⛔⛔ **and seeing it at all required a mode nobody in this project has ever run: 24 of 24 logs in the corpus are PRACTICE**
+
+**Story:** STANDINGS-1 (the finishing position is computed from a number that counts the last lap
+twice). **Sprint 3.**
+
+S2 closed with an evidence gap named against itself:
+
+> ⚠️ **The live readout was not captured**, only the expression it reads. The indicator lives in the
+> GLFW **window title**, which a headless run does not record.
+
+### ⛔ First: scraping it does not work, and the memory note said so from the other side
+
+`title_poll.sh` polled `xdotool search --name "Julia Racer"` at 20 Hz and captured **nothing**. This
+desktop is **Wayland**; only XWayland/GNOME windows enumerate. [[no-synthetic-keys-under-wayland]]
+records the same wall for key injection — and, re-read, that note prescribes the fix in its own
+title: *use an env test hook, and read the window title as the trace*. **Have the program print it.**
+
+`JM_TRACE_POS=1` prints the position on change, **sampled at the title site**, deliberately: that
+branch is rate-limited to 0.25 s, so what is logged is what a player can actually SEE, quantised
+exactly as the title is. A per-frame sample would measure the expression rather than the readout.
+
+### ⛔⛔ Then the run printed nothing either — and the reason is the whole finding
+
+```
+  → mode: Practice
+```
+
+`MODE = lowercase(get(ENV, "JM_MODE", "practice"))`, `IS_RACE = MODE == "race"`. Across the entire
+corpus:
+
+```
+--- distinct modes ---
+     24   → mode: Practice
+```
+
+**Twenty-four of twenty-four. Not one race.** Every loss-rate data point, every AI-pace calibration
+and every standings check this project has made was recorded in **Practice**, while the gold it is
+all compared against is a GPL **race**.
+
+`IS_RACE` gates more than the readout:
+
+| gated | in Practice |
+|---|---|
+| `HOLD_START` — the grid hold / standing start | **no standing start**; the field simply goes |
+| `DO_QUAL` | off |
+| `fuel_laps` | a 40-lap tank, not `RACE_LAPS + margin` |
+| `REPLAY_REC` | no replay recorded |
+| the title's position + FINISHED line | shows `[Practice]` — **no position indicator at all** |
+
+So S2's *"0.65 s of phantom P1 at the start of every race"* describes a readout that **has never been
+on screen in any run this project has made**. S1's fix still matters — `player_prog` feeds
+`standings()`, which the final classification uses — but the live-indicator half of S2's analysis was
+about something the harness does not display.
+
+### ⭐⭐ With `JM_MODE=race`, the readout at last
+
+```
+  → mode: Race  (3 laps, 5 AI cars)
+  [pos] t=5.2s   lap=1  title shows P6/6   (first sample)
+  [pos] t=6.22s  lap=1  title shows P5/6   (was P6)
+  [pos] t=16.45s lap=1  title shows P4/6   (was P5)
+  [pos] t=17.51s lap=1  title shows P3/6   (was P4)
+  [pos] t=22.32s lap=1  title shows P4/6   (was P3)
+  [pos] t=23.61s lap=1  title shows P5/6   (was P4)
+  [pos] t=24.85s lap=1  title shows P6/6   (was P5)
+```
+
+⭐ **The first sample is `P6/6`.** No P1, at the start or anywhere in lap 1 — the player climbs to
+P3 on merit and falls back. With S1's fix in, the readout is clean.
+
+⚠️ **This is one arm.** `JM_OLD_PLAYERPROG=1` still exists, and the honest A/B is to show the
+phantom appearing with the old formula. Until that runs, "no phantom" is consistent with the fix
+working **and** with the phantom never having been visible at this sampling rate.
+
+### By-catch: the corpus mixes two AI field configurations
+
+```
+14 runs   Ferrari 99%, Brabham 93%, BRM 94%, Eagle 100%, Cooper 90%    (10-point spread)
+ 8 runs   Ferrari 99%, Brabham 96%, BRM 97%, Eagle 100%, Cooper 95%    ( 5-point spread)
+```
+
+That is AISPREAD-1's knob, and it names what BNDWRECK-1 S3 could only call "pooled across
+heterogeneous settings". Cross-tabulated, the wide-spread group lost **5 of 14** and the narrow
+group **3 of 5** — ⚠️ **which is not a result**: n=5, and the two groups also differ by date, build
+and other settings. Recorded as a split to control for, not as an effect.
+
+**S4:** the `JM_OLD_PLAYERPROG=1` control arm, and a decision about the corpus — every number this
+project has compared against the gold was measured in the wrong mode.
+
+**STANDINGS-1: 3 sprints.**
