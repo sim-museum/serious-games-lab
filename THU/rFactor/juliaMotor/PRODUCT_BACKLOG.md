@@ -18149,3 +18149,79 @@ slowest has the most careful gate, which is not a coincidence.
 * That julia has no gate-hygiene gaps. **One gate was audited for one class.**
 
 **julia sprint 1 of 4.**
+
+## RACESTART-1 S12 (Opus 5, 2026-09-17) — ⛔ **S11's headline number was never asserted: the gate checked jolts and passes, and never looked at `hits` on the treatment arm.** ✅ Asserted now, both arms proven — ⭐ and the check I first wrote was fake-self-calibrating, which its own run exposed
+
+**Story:** julia rotation: sprint 2 of 4. S11 fixed the start-line rub and reported **283 → 15
+contact frames**. This sprint asked the question BoB's rotation had just been asking: *is the fix's
+headline quantity actually gated?*
+
+### ⛔ It was not
+
+`racestart_smoke.jl` has unusually good premise checks — the control must contact, must jolt, and
+the treatment must still get past (a deadlock guard). But its treatment assertions were only:
+
+```julia
+check("treatment: no sideways jolt at all",  t.hardyield == 0, …)
+check("treatment: the field still gets past", t.passed > 0,    …)
+```
+
+**Nothing looked at `t.hits`.** `hardyield == 0` rules out the **>0.2 m sideways jolt** only, so a
+partial revert of the S11 nudge that restored the scraping *without* the jolt would have passed this
+gate unchanged — and scraping is the thing the PO reported.
+
+### ⛔⭐ My first cut was wrong, and the run said so
+
+I wrote `t.hits <= max(40, div(c.hits, 8))` and called it self-calibrating. **It is not.** This
+gate's control is the **teleport** arm (`JM_AI_YIELD_RATE=1000`), which jumps clear instantly and
+contacts ~2 frames, so `div(2,8) = 0` and the relative half **never binds** — a bare `<= 40` in
+disguise.
+
+⚠️ **And I mis-read that 2 as a regression**, briefly recording that "the control arm collapsed"
+against S11's 283. **Retracted: the 283 came from a different control** — `JM_AI_CLEAR_MARGIN=0.0`,
+the pre-fix nudge, which this gate does not run — and S11 says so explicitly: *"the control
+(teleport) arm shows **2 contact frames** because it jumps clear instantly."* The gate was right and
+my reading was wrong. **A control that cannot scale the quantity must not be dressed up as if it
+could**, so the cap is now honestly absolute and justified from S11's own measurements: **60 = 4×
+the shipped 15, and 4.7× below the 283 defect.**
+
+### ✅ Both arms, and determinism
+
+| arm | result |
+|---|---|
+| shipped | **PASS** — `15 contact frames (cap 60; S11 measured 15 shipped, 283 pre-fix)` |
+| **negative control**, identical but cap 10 | **FAIL**, exit 1 |
+| two consecutive full runs | **identical**: control `2/695/2/4`, treatment `2/676/15/0` |
+
+⭐ Those treatment figures — **676 passframes, 15 hits** — reproduce S11's published numbers exactly,
+three weeks of sprints later. **The gate is deterministic on this box.**
+
+### ⭐⭐ And the negative control exposed a suite gap — by silently not running
+
+The control copy was dropped in `tools/` and invoked through `gates.sh`. It **never ran**: the suite
+iterates a hardcoded `SMOKES` list, so an unlisted file is ignored — and the suite still printed
+**`ALL GATES PASS (1)`**, which reads exactly like the control having passed. ⚠️ *That is the
+failure BoB booked three separate times* ("a gate outside the suite protects nothing"), and it
+caught me inside the very sprint that was auditing for it.
+
+`gates.sh` already reports a **listed** smoke whose file is missing; the reverse was silent. It now
+warns:
+
+```
+NOTE: in tools/ but not in SMOKES, so NOT run by this suite: offroad_track_smoke racestart_negctl_smoke
+```
+
+⭐⭐ **`offroad_track_smoke` is not mine.** It is a real smoke sitting in `tools/` that this suite
+has never run — found the moment the check existed.
+
+### ⚠️ Not claimed
+
+* **That 60 is a principled threshold.** It is 4× one measured value, chosen loose rather than
+  falsely precise, on **one track and one grid** — the same caveat S11 attached to the 0.6 m margin.
+* **That `offroad_track_smoke` should be in the list.** It has **not been run or read** — adding an
+  unexercised gate is how BoB got one that was unpassable from the day it was written. **Sprint 3
+  runs it first.**
+* That the 15 remaining contact frames are harmless. **Still nobody has watched them** (S11's own
+  caveat, unchanged).
+
+**julia sprint 2 of 4.**

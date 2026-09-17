@@ -18,8 +18,24 @@ PROJ="$(cd "$HERE/.." && pwd)"
 FILTER="${1:-}"
 SMOKES="parse_smoke wreck_smoke contact_smoke stacked_contact_smoke solid_box_smoke ai_parked_susp_smoke boundary3d_smoke extforce3d_smoke wheelmu_smoke drive3d_smoke stall_smoke transmission_smoke controls_smoke people_smoke damage_smoke mipcolor_smoke ai_field_smoke susp_pose_smoke netplay_smoke setup_tab_smoke offroad_smoke wreck_seal_smoke reground_smoke netplay_dr_smoke netplay_dr2_smoke hat_hole_smoke clutchgate_smoke contact_geom_smoke lapprog_smoke restart_smoke softband_smoke vtbrake_smoke netai_smoke netai_host_smoke racestart_smoke step_guard_smoke road_clear_smoke telemetry_rpm_smoke wheel_hubs_smoke"
 
+# RACESTART-1 S12: WARN ABOUT SMOKES ON DISK THAT THIS LIST DOES NOT NAME.
+# gates.sh already reports a LISTED smoke whose file is missing. The reverse was silent, and
+# "built, then never listed" is the failure BoB booked three separate times -- its gates_all.sh
+# names three such gates, one of which reported a FIX as a failure for the whole time nobody ran
+# it. It caught me today: a negative-control copy dropped into tools/ was never executed and the
+# suite still printed "ALL GATES PASS (1)", which reads exactly like the control having passed.
+# A warning, not a failure: an investigation instrument may legitimately sit here unlisted (see
+# the SMOKES-only note above). Saying so out loud is the point.
+unlisted=""
+for f in "$HERE"/*_smoke.jl; do
+  [ -e "$f" ] || continue
+  b="$(basename "$f" .jl)"
+  case " $SMOKES " in *" $b "*) ;; *) unlisted="$unlisted $b" ;; esac
+done
+
 pass=0; fail=0; failed=""
 echo "JuliaMotorMTK gates  (project: $PROJ)"
+[ -n "$unlisted" ] && echo "  NOTE: in tools/ but not in SMOKES, so NOT run by this suite:$unlisted"
 for g in $SMOKES; do
   [ -n "$FILTER" ] && case "$g" in *"$FILTER"*) ;; *) continue ;; esac
   [ -f "$HERE/$g.jl" ] || { echo "  MISSING  $g.jl"; fail=$((fail+1)); failed="$failed $g(missing)"; continue; }

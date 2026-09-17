@@ -44,6 +44,24 @@ check("premise: the control JOLTS sideways",         c.hardyield > 0, string(c.h
 # THE FIX: an AI behind a stationary player is made to queue instead of advancing through them, and
 # the scraping is reduced. Going AROUND a parked car is legitimate racing and is NOT asserted away.
 check("treatment: no sideways jolt at all",          t.hardyield == 0, string(t.hardyield, " frames >0.2 m"))
+# RACESTART-1 S12: ASSERT THE HEADLINE QUANTITY. S11's result was "283 contact frames -> 15", and
+# nothing in this gate looked at hits on the TREATMENT arm. `hardyield == 0` only rules out the
+# >0.2 m sideways JOLT; a regression that restored the scraping without the jolt -- exactly the
+# partial revert the S11 nudge change could suffer -- passed this gate unchanged.
+#
+# ⚠️ THE CAP IS ABSOLUTE ON PURPOSE, and the first cut of this check got that wrong. It read
+# `t.hits <= max(40, div(c.hits, 8))`, which LOOKS self-calibrating and is not: this gate's control
+# is the TELEPORT arm (JM_AI_YIELD_RATE=1000), which jumps clear instantly and so contacts about 2
+# frames -- S11 says so in as many words ("the control (teleport) arm shows 2 contact frames
+# because it jumps clear instantly"). div(2,8) is 0, so the relative half never binds and the rule
+# was a bare `<= 40` in disguise. A control that cannot scale the quantity must not be dressed up
+# as if it could.
+#
+# The 283 S11 reduced came from a DIFFERENT control -- JM_AI_CLEAR_MARGIN=0.0, the pre-fix nudge --
+# which this gate does not run. So the cap is justified from S11's measurements directly:
+# shipped 15, pre-fix 283. 60 is 4x the shipped figure and still 4.7x below the defect.
+check("treatment: contact stays near the shipped 15",  t.hits <= 60,
+      string(t.hits, " contact frames (cap 60; S11 measured 15 shipped, 283 pre-fix)"))
 # Going AROUND a parked car is racing, not a defect, so the AI must still get past. A "fix" that
 # deadlocked the field behind a stalled player would pass a contact test and ruin the race.
 check("treatment: the field still gets past",       t.passed > 0,   string(t.passed, " frames"))
