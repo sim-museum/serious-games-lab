@@ -17835,3 +17835,66 @@ the other does nothing.
   *sounds* obvious — but nobody has watched it.
 
 **RACESTART-1: the discrepancy closed, and the defect reduced to a one-line geometric fact. julia rotation complete (4 sprints) → FF.**
+
+## RACESTART-2 / E75-E82 (Opus 5, 2026-09-17) — ⭐⭐⭐ **I watched the PO's video, which four sprints kept saying someone should: the "knocked-off wheels" are visible at 0 km/h on the grid, BEFORE the car moves and before any AI can touch it. This is E75/E82's missing suspension, not an AI sideswipe**
+
+**Story:** julia rotation: sprint 1 of 4. `RACESTART-1` S5, S8 and S9 each closed with the same
+deferral — *"whether the PO's 'dead at start line' is wheel loss, an immobile car, or E103's
+hyperspace-to-spawn… must be read from a replay, not from the sentence."* **Nine sprints of headless
+AI-contact measurement never did it.** The video is at `/home/admin/Videos/old/260906_wg_race.mp4`.
+
+Artefact: `parity/po_race_start_wheels.jpg`.
+
+### ⭐ The frame, and the game's own title bar at that instant
+
+```
+   Julia Racer — Watglen — 0 km/h — gear 1 (MANUAL) — 1953 rpm — lap 1/3  Pos P6/6 — fuel 27L
+```
+
+**`0 km/h`. `lap 1/3`. `P6/6`.** The car is stationary on the grid. Seconds later the same window
+reads `PRESS SPACEBAR TO START COUNTDOWN`. **The race has not begun.**
+
+And in that frame the Lotus's **rear wheels float clear of the body with a visible gap and nothing
+connecting them** — no wishbones, no driveshafts, no uprights. The front-left sits apart in the same
+way. It reads exactly as *"both my wheels knocked off"*.
+
+### ⭐⭐⭐ Which is the defect `E75/E82` already measured
+
+E75/E82 S6 quantified it: **431 of 3,998 triangles discarded — 10.8 % of the car — of which 311 are
+the two rear-corner assemblies**, and *"the rear suspension is ~339 tris and we draw 28 of them:
+8 %."* The PO's own words for it in that item are **"sticks / no axles"**.
+
+**A car whose suspension is 8 % drawn, seen from behind, is a car with its wheels off.** The
+appearance needs no collision at all — and in this frame there has not been one.
+
+### ⚖️ What this re-attributes
+
+| | |
+|---|---|
+| **RACESTART-2** — *"AI sideswipes me and knocks off both my wheels before I can even move"* | the **visible** half is E75/E82's rendering defect, present at 0 km/h |
+| **RACESTART-1**'s 283-frame scrape | **still real** in the gate, and still unfixed — but it is a *contact* measurement, not this |
+| nine sprints of AI-yield work | aimed at a mechanism that cannot produce what the video shows **before the start** |
+
+⭐ **This is why the item would not close.** It was being measured headlessly against a symptom
+nobody had looked at, and the PO's phrase *"before I can even move"* — which the item quoted in full,
+every time — was the clue: **it says the wheels are already off while stationary.**
+
+### ⚠️ Not claimed
+
+* **That no AI contact happens.** The PO describes a sideswipe and the gate measures 283 contact
+  frames; **both can be true.** What is established is that the *wheels-off appearance* does not
+  require it.
+* **That E75/E82 is the whole complaint.** If the car is also immobilised or wrecked in physics, that
+  is separate and still unexamined — the video was read for the wheels, not for the outcome.
+* **That the PO is describing the rendering.** They reported what they saw; **nobody has asked them
+  whether the car looked like that on the grid before the lights.** That question would settle it in
+  one sentence and is worth asking.
+
+### ⚖️ Grooming
+
+**`RACESTART-1` should stop taking sprints for this complaint.** Its remaining finding — the nudge
+clears a parked car by 8 cm (S9) — is a genuine AI defect and should be judged on its own merits, not
+as the PO's wheel report. **The PO's report belongs with `E75/E82`, which already has the
+measurement, the A/B composite, and is parked on the PO's eye.**
+
+**julia: the deferred question answered by looking, and a nine-sprint item re-attributed. Sprint 1 of 4.**
