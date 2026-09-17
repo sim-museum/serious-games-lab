@@ -16249,3 +16249,97 @@ may well be reconcilable — **but that is the PO's call, not mine, and it stays
 it.** Flagged rather than actioned.
 
 **BNDWRECK-1: new pass, sprint 1. julia rotation: sprint 1 of 4.**
+
+## BNDWRECK-1 S10 (Opus 5, 2026-09-17) — ⭐⭐⭐ **the legitimate step measured at last: `|ds|` p99 = 2.325 m = EXACTLY one vertex spacing** — ⛔⛔ **but the wreck's own approach shows NO projection jump: lapdist advances smoothly 303→388 while slip angle climbs 1°→25° and lateral goes −0.5→+37 m. This wreck is the autodrive LOSING THE CAR, not the projection teleporting it**
+
+**Story:** BNDWRECK-1. **New pass, sprint 2.** julia rotation: sprint 2 of 4.
+
+S9 named the job and the standing rule named the order: **measure before sizing a guard.**
+
+### ⛔ First, the instrument was in a dead branch — and the zero was meaningless
+
+The probe went in at the AI call site, where S9 showed per-actor previous-`s` already exists. A 499 s
+race wrecked three wheels off the wall and the probe printed **nothing**. Two faults:
+
+* **`AI_PHYSICS` is opt-in** (`const AI_PHYSICS = haskey(ENV,"JM_AI_PHYSICS")`) and I had not set it,
+  so the `elseif AI_PHYSICS` branch never ran. Same shape as the `JM_AI=0` error that voided an
+  earlier corpus run.
+* **Wrong actor.** The car that wrecks is the **autodrive**, whose `project` call is a different site
+  — and S9's own finding was that *that* site keeps no previous `s` at all, so the measurement had to
+  bring its own (`DS_PREV`). [[instrument-bookkeeping-lies]]
+
+### ⭐⭐⭐ The number S9 asked for
+
+19,000 samples, autodrive, 2-lap race, `JM_AI=5`:
+
+```
+|ds| median 0.0     p99 2.325 m     max 390.492 m
+```
+
+The track is **4184.3 m over 1800 segments = 2.3246 m per vertex**. So **p99 = exactly one vertex
+step** — in normal driving the nearest-vertex search advances at most one index per frame, 99 % of
+the time. That is the legitimate maximum, measured rather than guessed, and the natural unit for any
+window is **vertices, not metres**.
+
+⚠️ **The ratio `ds/(v·dt)` is NOT usable** and is withdrawn as a metric: with the car stopped after a
+wreck, `v → 0` drives it to `3.9e8`. Median 0.0 likewise just reflects that most frames do not change
+vertex. **`|ds|` in metres against the vertex spacing is the usable quantity.**
+
+### ⛔⛔ And the leading theory does not survive this run
+
+Exactly **one** anomalous step occurred in 19,000 samples — 390.492 m, i.e. **168 vertices** — and it
+landed in the same 500-sample window as the wreck. That looked like confirmation. **The wreck's own
+4-second trail says otherwise:**
+
+```
+ t-Δ      v km/h   slip°   lat m   lapdist
+-4.0      157.0      -      -0.5     303
+-3.2      157.0     3.0     -2.3     339
+-3.0      153.0     5.0     -1.3     348
+-2.6      145.0    14.0      4.1     364
+-2.0      134.0    10.0     15.1     378
+-1.5      125.0    19.0     30.4     386
+-1.3      123.0    25.0     37.0     388
+```
+
+**Lapdist advances monotonically and smoothly — 303, 308, 313 … 386, 387, 388 — with no jump
+anywhere in the approach.** What actually happens is a **slip angle climbing 1° → 25°** and the
+lateral offset growing **−0.5 → +37 m** while speed decays 157 → 123 km/h. The car is **sliding
+wide**, and the lapdist increments shrink (5 m → 1 m per tick) precisely *because* it is moving
+sideways rather than along the line.
+
+⭐ So the 390 m jump is **not in the approach**. It occurs at or after the impact — when the car is
+flung off the track — which makes it a **consequence**, not a cause. S8's *"the bad projection does
+not merely mis-report, it STEERS"* is not supported by this run.
+
+### ⚠️ And this is a DIFFERENT wreck site
+
+```
+[WRECK] at world (650.4, 360.2)   boundary 0.197 m past the edge   off-track 2.7 m
+```
+
+The approach runs to **lapdist ~390**. The four wrecks this item was built on were all at **lapdist
+1818**. So this run does not reproduce the original site at all — the wreck location **varies between
+runs**, which itself weakens "four wrecks at one point" as a stable phenomenon.
+
+### ⚖️ Grooming — 11 sprints, and the theory it was chasing is now unsupported
+
+BNDWRECK-1 has converged on a mechanism twice and had it withdrawn twice. This sprint delivers the
+measurement S9 asked for **and** removes the motivation for the guard that measurement was meant to
+size. Continuing to build a continuity constraint now would be building for a failure mode this run
+says is not happening.
+
+**Recommendation: close BNDWRECK-1 with the diagnosis it has actually earned** — *the autodrive
+loses the car to a rising slip angle and slides into the boundary; `RaceAI.project`'s lack of a
+continuity constraint is real, is worth one vertex per frame in normal driving, and is not what
+wrecks the car.* Reopen only if a run reproduces the lapdist-1818 cluster.
+
+### ⚠️ Not claimed
+
+That `project` is fine. It **is** unconstrained, and a 168-vertex jump did occur — after the impact.
+A guard would still be correct hygiene; it is simply not a wreck fix, and should not be sold as one.
+
+The centreline vertex-density dump (S9's other candidate) was added **after** this run started and
+did not execute — **not evidence either way**, and it costs one startup line whenever this is next run.
+
+**BNDWRECK-1: 11 sprints. Recommended CLOSED as diagnosed.**

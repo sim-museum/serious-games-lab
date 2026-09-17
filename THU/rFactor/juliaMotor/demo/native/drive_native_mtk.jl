@@ -3097,6 +3097,37 @@ const TRACE_POS = haskey(ENV, "JM_TRACE_POS")   # STANDINGS-1 S3: print the live
 const POS_LAST  = Ref(-1)
 const TRAIL_SECS = parse(Float64, get(ENV, "JM_WRECK_TRAIL", "4.0"))
 const TRAIL_HZ   = 10.0
+# BNDWRECK-1 S10 (2026-09-17): measure the LEGITIMATE per-frame arc-length step before any
+# continuity guard is sized. S9 showed RaceAI.project is a brute-force nearest-vertex search with
+# no continuity constraint, and that each caller already holds its own previous s (AICARS[i].s).
+# The standing rule is measure-before-a-global-guard: a rejection threshold needs the real
+# per-track maximum, per actor, not a guess. A car moving at v covers v*dt of arc per frame, so
+# the diagnostic quantity is the RATIO ds/(v*dt): ~1 is the car driving, >>1 is the projection
+# jumping. Printed as a distribution every 2000 samples so a killed run still reports.
+# JM_TRACE_DS=1; default off, costs nothing when off.
+const TRACE_DS  = haskey(ENV, "JM_TRACE_DS")
+const DS_RATIO  = Vector{Float64}()
+const DS_RAW    = Vector{Float64}()
+const DS_PREV   = Ref(-1.0)   # the AUTODRIVE's own previous s (it keeps none of its own -- S9)
+function ds_note!(ds, v, dt, total)
+    ds > total/2  && (ds -= total)       # lap wrap, both directions
+    ds < -total/2 && (ds += total)
+    push!(DS_RAW, ds)
+    exp_step = max(v*dt, 1e-6)
+    push!(DS_RATIO, abs(ds)/exp_step)
+    if length(DS_RATIO) % 500 == 0
+        r = sort(DS_RATIO); n = length(r)
+        q(p) = r[max(1, min(n, round(Int, p*n)))]
+        a = sort(abs.(DS_RAW))
+        aq(p) = a[max(1, min(n, round(Int, p*n)))]
+        println("[ds] n=$n  |ds| med=$(round(aq(0.5), digits=3)) p99=$(round(aq(0.99), digits=3)) " *
+                "max=$(round(a[end], digits=3)) m  |  ratio med=$(round(q(0.5), digits=2)) " *
+                "p99=$(round(q(0.99), digits=2)) p999=$(round(q(0.999), digits=2)) " *
+                "max=$(round(q(1.0), digits=2))")
+        flush(stdout)
+    end
+    return nothing
+end
 const TRAIL_BUF  = Vector{NTuple{8,Float64}}()   # (t, x, z, v, theta, offdist, lateral, lapdist)
 const TRAIL_LAST = Ref(-1.0e9)
 const DMG_EVERY  = parse(Float64, get(ENV, "JM_DMG_EVERY", "1.0"))
@@ -6813,6 +6844,26 @@ function main()
     # broke the wrap → laps never counted → no finish).  AILINE = CLINE when there's a field.
     CLINE  = !SKIDPAD ? RaceAI.build_line(ALIGNED, groundz) : nothing
     CLINE !== nothing && println("  CLINE: centreline length = ", round(Int, CLINE.total), " m  (", TRACKSEL, ")")
+    # BNDWRECK-1 S10: vertex DENSITY per 50 m. S9's other candidate for the bad projection is that
+    # the line is sparse around lapdist 1750-1849 -- the band where |lat| reads 47-58 m and where
+    # all four wrecks land (lapdist 1818). A brute-force nearest-VERTEX search has exactly the
+    # resolution of its vertex spacing, so a sparse stretch produces both a large apparent lateral
+    # and a jumpy s. One dump answers it, and it costs a startup line. JM_TRACE_DS=1.
+    if TRACE_DS && CLINE !== nothing
+        nb = max(1, ceil(Int, CLINE.total/50))
+        bins = zeros(Int, nb)
+        for sv in CLINE.s
+            bins[clamp(floor(Int, sv/50)+1, 1, nb)] += 1
+        end
+        println("[vtx] centreline vertices per 50 m over ", round(Int, CLINE.total), " m, ",
+                length(CLINE.s), " vertices total")
+        for b in 1:nb
+            lo = (b-1)*50
+            mark = (1700 <= lo <= 1900) ? "   <-- wreck band" : ""
+            println("[vtx]   s ", lpad(lo,5), "..", lpad(lo+49,5), "  n=", lpad(bins[b],4), mark)
+        end
+        flush(stdout)
+    end
     # E106-S14 (PO: "ensure nurburgring and spa can be driven without obstacles"): census the
     # terrain HOLES along the whole lap instead of discovering them by crashing into one. Walks the
     # centreline and samples the physics ground across the corridor the car can actually reach; a
@@ -8019,6 +8070,12 @@ function main()
         # this adds no second driving model to keep true.
         if AUTODRIVE && CLINE !== nothing
             let (s0, lat0) = RaceAI.project(CLINE, cs.x, cs.z)
+                # BNDWRECK-1 S10: THIS is the actor that wrecks, and S9 showed it consults no
+                # previous s at all -- so the measurement has to bring its own.
+                if TRACE_DS
+                    DS_PREV[] >= 0.0 && ds_note!(s0 - DS_PREV[], cs.v, dt, CLINE.total)
+                    DS_PREV[] = s0
+                end
                 # ⚠️ The 10th argument is the YAW RATE, not a gain. I first passed a placeholder
                 # 1.0 and the car never moved: the controller's anti-spin logic reads ~1 rad/s as a
                 # car already sliding and cuts the throttle, so telemetry showed `thr 0.0 kmh 0.0`
@@ -8925,6 +8982,7 @@ function main()
                 s, lat = RaceAI.project(AILINE, pc.x, pc.z); prevs = AICARS[i].s
                 AICARS[i].s = s; AICARS[i].lane = lat; AICARS[i].v = pc.v
                 (prevs > AILINE.total*0.7 && s < AILINE.total*0.3) && (AICARS[i].lap += 1)
+                TRACE_DS && ds_note!(s - prevs, pc.v, ddt, AILINE.total)
                 # recovery: a stalled AI, or one that's run WAY off the racing line (off track at a
                 # corner), is snapped back onto the line — so an AI can never drive off and vanish.
                 # recover BEFORE it can climb a dune/leave the world: at the road-edge (not 14 m out),
