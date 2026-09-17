@@ -31,7 +31,19 @@ for g in $SMOKES; do
   # road_clear_smoke sweeps Spa and the Ring end to end (four census runs): ~15 min alone on this box,
   # so it gets its own cap; everything else stays at 900 s.
   tmo=900; case "$g" in road_clear_smoke) tmo=1800 ;; esac
-  timeout $tmo julia --project="$gproj" "$HERE/$g.jl" > "$log" 2>&1
+  # MP-5 S1 (2026-09-17): netai_smoke.jl CANNOT RUN ON THIS BOX. It holds a parent julia while
+  # spawning each sim as a child, and every attempt was killed for memory (three times, including
+  # once at MemoryMax=12G with 11 GB free) -- the spike is the child's track/car asset load. Its own
+  # note deferred it on 2026-09-06 "once the STARTUP-1 sysimage build has released the machine's
+  # memory"; that build was abandoned and the gate then sat unrun for eleven days while the suite
+  # listed it as if it were covered. netai_gate_fast.sh asserts the SAME four arms (offline keeps /
+  # client disables / host announces / JM_NET_AI overrides) by reading the startup guard line, which
+  # prints at module load before any asset is touched -- 4/4 PASS, ~1 min per arm, no spike.
+  if [ "$g" = netai_smoke ] && [ -x "$HERE/netai_gate_fast.sh" ]; then
+      timeout $tmo bash "$HERE/netai_gate_fast.sh" > "$log" 2>&1
+  else
+      timeout $tmo julia --project="$gproj" "$HERE/$g.jl" > "$log" 2>&1
+  fi
   rc=$?
   # Exit status FIRST -- it is the only signal a crashed run gives. The text is a second
   # opinion for the smokes that report "✓ OK" rather than an exit code they set themselves.

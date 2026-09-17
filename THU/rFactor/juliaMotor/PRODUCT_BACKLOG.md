@@ -16699,3 +16699,76 @@ photograph, and the defect the PO reported is still neither confirmed nor refute
 honest state, not a result.
 
 **TRACKGOLD-1: 4 sprints. julia rotation complete → FF.**
+
+## PARITYGATE-JR-1 (Opus 5, 2026-09-17) — ⛔ **julia has NO screen-parity gate, and unlike MiG Alley and BoB its captures are not byte-reproducible** — ⭐⭐⭐ **but the variance is VIEW-DEPENDENT: chase repeats to `mean|diff| 0.58`, the cockpit to 53.4** — so a chase-view gate is buildable today and a cockpit one is not
+
+**Story:** cross-port, from MiG Alley S16 and BoB S4/S6. julia rotation: sprint 1 of 4.
+
+Both sister ports established this rotation that their 2-D captures are **byte-identical on repeat**,
+which is what makes a 1-pixel regression detectable and small parity work possible at all. julia
+renders 3-D with live physics, so the same question has much worse odds — and it had never been asked.
+
+### ⛔ First, the coverage gap
+
+```
+MiG Alley : port/parity_2d.sh     -> compares captures against committed references, PASS/FAIL
+BoB       : tools/bob_parity.sh   -> same, 14 screens (extended this rotation)
+julia     : 41 physics/logic smokes + parity/ composites for HUMAN review
+```
+
+**julia has no automated screen-parity gate.** Its `parity/` directory holds side-by-side JPEGs a
+person looks at. That is the state BoB was in before its gate existed, and the consequence is the same:
+**a rendering regression is invisible by construction.**
+
+### ⭐⭐⭐ Why one cannot simply be copied — and where it still can
+
+Re-ran S4e's exact `JM_SHOTS` capture and compared byte-wise against the first run:
+
+```
+  w8300      (chase)    mean|diff| = 0.579   21.2 % px differ   1.40 % differ >16   max 204
+  w8500      (chase)    mean|diff| = 0.585   37.9 % px differ   0.44 % differ >16   max 216
+  w8500cock  (cockpit)  mean|diff| = 53.396  95.8 % px differ  70.79 % differ >16   max 244
+```
+
+* **Nothing is byte-identical** — julia cannot have MA's and BoB's `cmp`-style gate.
+* **But the two chase views repeat to `mean|diff| ≈ 0.58`** — sub-one-unit on a 0–255 scale, with
+  under 1.5 % of pixels moving by more than 16. **That is a usable noise floor**: a regression larger
+  than a couple of units would stand out clearly.
+* **The cockpit view is a different animal — 53.4, with 71 % of pixels differing by more than 16.**
+  Nearly the whole frame is unstable between runs of *the same teleport with the same 38-frame
+  settle*.
+
+⭐ **That split is the finding.** "julia is non-deterministic" would have been the wrong summary and
+would have closed the door on a gate. The door is open for chase views today.
+
+### ⚠️ What the cockpit number does NOT mean
+
+It is **not** established that the cockpit *render* is at fault. The view shows gauges, suspension
+pose and steering driven by live physics, and `JM_SHOT_SETTLE`'s 38 frames were chosen for the
+single-shot smoke — a teleport may simply not have converged by then. **Whether 38 frames is too few,
+or something is genuinely unstable, is unknown and is the interesting question.**
+
+### Also fixed this sprint — a gate that had been mis-reporting for eleven days
+
+`JuliaMotorMTK/tools/gates.sh` listed **`netai_smoke`**, which MP-5 S1 proved **cannot run on this
+box** (three memory kills, one at `MemoryMax=12G` with 11 GB free; the spike is the child sim's asset
+load). Its own note deferred it on 2026-09-06 pending the STARTUP-1 sysimage build, which was
+abandoned — so **the suite has listed it as covered ever since while it never ran.** The runner now
+uses `netai_gate_fast.sh` for that entry: same four arms, asserted from the startup guard line that
+prints before any asset loads, 4/4 PASS. `bash -n` clean.
+
+**A gate that cannot execute is worse than a missing one — it reports coverage that does not exist.**
+
+### ⚖️ Next, and deliberately not started here
+
+**S2:** a chase-only parity gate with a `mean|diff|` tolerance (≈2 on a 0.58 floor), seeded from a
+handful of `JM_SHOTS` sweep points. **Not** the cockpit, until the 53.4 is understood — gating on a
+signal that noisy would fail randomly and be switched off within a week.
+
+### ⚠️ Not claimed
+
+That 0.58 is stable across tracks or machines — it is two runs, one track, three shots. A tolerance
+should be set from a wider sample than that before anyone trusts it.
+
+**PARITYGATE-JR-1: 1 sprint. The gate is buildable for chase views; the cockpit's 53.4 is a question
+of its own.**
