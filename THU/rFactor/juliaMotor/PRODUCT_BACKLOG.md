@@ -16772,3 +16772,67 @@ should be set from a wider sample than that before anyone trusts it.
 
 **PARITYGATE-JR-1: 1 sprint. The gate is buildable for chase views; the cockpit's 53.4 is a question
 of its own.**
+
+## PARITYGATE-JR-1 S2 (Opus 5, 2026-09-17) — ⛔ **THREE RUNS, NO DATA: the cockpit-variance question is not answered, and the reason is julia's iteration cost on this box, not the question's difficulty** — ⚠️ a negative sprint, recorded as one
+
+**Story:** PARITYGATE-JR-1. julia rotation: sprint 2 of 4.
+
+S1 found the cockpit view repeats at `mean|diff| 53.4` where chase repeats at `0.58`, and named the
+open question: **is that an unsettled teleport or genuine instability?** S2 set out to answer it and
+did not.
+
+### The experiment, which I still think is the right one
+
+Capture the **same track position twice in one session**, per view:
+
+```
+JM_SHOTS="1000:0:cock1;1000:0:cock2;1000:1:chase1;1000:1:chase2"
+```
+
+Two cockpit and two chase captures, same `s`, same run. That measures **within-run** repeat variance,
+which is stronger than S1's cross-run figure: it removes JIT, session state and load order as
+explanations, leaving only what happens between one teleport-and-settle and the next.
+
+### ⛔ What actually happened — three attempts, zero captures
+
+| # | config | outcome |
+|---|---|---|
+| 1 | Ring, `JM_SHOT_SETTLE=300`, 900 s | **killed, memory** — `free` showed 11 GB available seconds later |
+| 2 | Zandvoort, 4 shots, **700 s** | **exit 124 = timeout** — my budget was too tight |
+| 3 | Zandvoort, 4 shots, **1100 s** | **exit 124 = timeout again**, still 0 shots |
+
+⚠️ **The harness summarised all three as "low on memory". Two were timeouts** — the exit code said 124
+and the memory was free. Reading the summary instead of the exit code would have sent me hunting a
+memory problem that did not exist in two of three cases.
+
+### ⭐ What the failures do establish
+
+* **The Nordschleife is unreliable on this box**: three Ring runs killed for memory today against two
+  that succeeded at the same cap. Intermittent, load-spike driven, and a reason to prefer Zandvoort
+  for anything that does not specifically need the Ring.
+* **But Zandvoort is not cheap either** — a 4-shot session did **not** complete in **1100 s**, having
+  reached track parts, body parts and wheels. julia's per-experiment cost is **~5–18 minutes with no
+  guarantee of completion**, because there is no sysimage: STARTUP-1 recorded the build OOM-killed
+  twice, needing ~18 GB on a 15 GB machine.
+* **That tax is the real obstacle to PARITYGATE-JR-1.** A parity gate implies running captures
+  routinely. On MiG Alley a 14-screen sweep is seconds; here four shots may not finish in twenty
+  minutes.
+
+### ⚖️ Grooming — stopping, and why
+
+I pre-committed to stopping after the third attempt and am doing so. **Two of the three failures were
+my own parameters** (a Ring track that did not need to be the Ring; a 700 s budget when ~500 s is just
+the load). The question is not hard — the environment makes each attempt expensive and each of my
+mistakes costs ten minutes to discover.
+
+**S3 should NOT retry this as-is.** The honest prerequisite is the sysimage: with `jlracer.so` the
+per-run cost collapses to the track parse and this experiment becomes a minute, not a gamble.
+**STARTUP-1 is the blocking item for julia's parity work**, and that is a more useful conclusion than
+another timed-out run would have been.
+
+### ⚠️ Not claimed
+
+Anything about the cockpit. S1's `53.4` vs `0.58` stands as measured; **why** remains open and this
+sprint added nothing to it.
+
+**PARITYGATE-JR-1: S2 produced no data. The blocker is named: STARTUP-1's sysimage.**
