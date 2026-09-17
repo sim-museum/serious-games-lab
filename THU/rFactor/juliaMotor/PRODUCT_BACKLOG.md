@@ -17463,3 +17463,75 @@ asymmetry the A/B would not have tested.
 * That the seeded `w1–w3` references are good. Unchanged from S4: re-seed after a clean run.
 
 **PARITYGATE-JR-1: diagnosis closed and fixed by reading, after the experiment failed four times. Sprint 3 of 4.**
+
+## PARITYGATE-JR-1 S6 (Opus 5, 2026-09-17) — ⭐⭐⭐ **S1's withdrawn `53.4` is EXPLAINED, and TRACKGOLD-1's evidence is CLEARED — both from frames already on disk, with no run.** The broken frame is `w8500cock` at **97.2 % dark-top**; the frame TRACKGOLD-1 actually argued from is ordinary
+
+**Story:** PARITYGATE-JR-1. julia rotation: sprint 4 of 4 — rotation complete. S4 and S5 both left the
+same hedge: *"that TRACKGOLD-1 S4e's photograph is this artefact is suggestive, not shown."* S4e's six
+captures are still in `/home/admin/jr-shots/`. Showing it took one measurement.
+
+Artefact: `parity/s4e_sweep_teleport_artefact.jpg`.
+
+### ⭐ The broken-teleport signature, applied to S4e's sweep
+
+S5 established the signature: a car held ~18 m below the road sees the embankment's underside as a
+near-black slab across the top of the frame. Percentage of the top 200 rows below luminance 40:
+
+```
+   frame        teleport into it     dark-top %
+   w8300        (first)                   0.0
+   w8400        8300 -> 8400 forward     24.9
+   w8500        8400 -> 8500 forward     24.9
+   w8600        8500 -> 8600 forward      5.4
+   w8700        8600 -> 8700 forward      2.5
+   w8500cock    8700 -> 8500 BACKWARD    97.2     <-
+```
+
+**Five forward hops, five ordinary frames. The single backward hop is 97.2 % black across the top** —
+and the picture confirms it: `w8500cock` is the cockpit under a dark slab with a thin strip of
+distant landscape at the horizon. Exactly the new gate's `w4`, in a different view, six hours apart.
+
+### ⭐⭐⭐ S1's `53.4` is no longer a confound — it is a measured defect
+
+S1 reported chase 0.58 against cockpit 53.4 and concluded the cockpit view was unstable. S3 withdrew
+it as *"view and sequence-position confounded"* and could attribute it no further. It is now fully
+attributed: **S1 compared S4e's `w8500cock` — a broken frame — against its own ordinary cockpit
+capture.** `53.4` measured the step-guard defect. Not sequence position, not the cockpit view:
+**a bug, now fixed (S5).**
+
+This also means **the cockpit view has still never been measured for stability** — S3 said so and it
+remains true. But the number that made it look unmeasurable was never about the cockpit.
+
+### ⭐⭐ And TRACKGOLD-1's evidence is CLEAN — I was wrong to suspect it
+
+S4 and S5 both suggested TRACKGOLD-1 S4e's decisive photograph might be this artefact. **It is not.**
+S4e argued from **`w8500`**, the **3rd** capture, reached by a **forward** hop — 24.9 % dark-top,
+identical to its neighbour `w8400`, an ordinary frame. The contaminated capture in that sweep is
+`w8500cock`, which S4e used only for the cockpit sky figure (28.4 %), not for its corridor argument.
+
+**So TRACKGOLD-1's "walled on both sides, sky 7.6 %" stands**, and this morning's decision to park it
+on diminishing returns stands on its original reasoning — *not*, as S4 speculated, because the
+instrument was photographing an artefact. **My suspicion was reasonable and it was wrong; the frames
+were on disk the whole time and settled it in one command.**
+
+### ⚖️ What the rotation leaves behind
+
+| | |
+|---|---|
+| gate | `chase_parity_gate.sh` exists; self-checking; its shot 4 is a regression test for the S5 fix |
+| defect | teleport never disarmed the step guard — **fixed**, one line, not yet runtime-validated |
+| S1's `53.4` | explained and retired |
+| TRACKGOLD-1 | evidence cleared; stays parked on its own merits |
+| ⛔ blocker | julia's iteration cost defeated 4 of this rotation's run attempts. `STARTUP-1` is the item that would change that, and it is the real constraint on julia parity work |
+
+### ⚠️ Not claimed
+
+* **That `w8500cock`'s 97.2 % proves the step guard specifically.** It proves the *frame* is the
+  underside-of-road artefact. The step-guard chain is established separately (S5), and the two agree,
+  but this sprint measures the symptom, not the cause.
+* **That the other captures are unaffected.** A forward hop can still be wrong for other reasons; all
+  that is shown is that none carries this signature.
+* That the cockpit view is stable. **Still unmeasured** — and now it needs a sweep with no backward
+  hop to measure it honestly.
+
+**PARITYGATE-JR-1: one withdrawn number explained, one item's evidence cleared, both from disk. julia rotation complete (4 sprints) → FF.**
