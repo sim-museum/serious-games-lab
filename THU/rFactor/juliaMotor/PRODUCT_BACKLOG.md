@@ -16165,3 +16165,87 @@ defect — upstream of the fence, upstream of the autodrive, and one that would 
 AI field drives that stretch without trouble while the autodrive does not.
 
 **BNDWRECK-1: new pass, sprint 4 of 4 — AT CAP.**
+
+## BNDWRECK-1 S9 (Opus 5, 2026-09-16) — ⭐⭐⭐ **the continuity state the fix needs ALREADY EXISTS and is already per-actor — it is computed at both call sites, used for LAP COUNTING, and never fed back into the search** — ⛔ and the autodrive, the path that wrecks, does not use it at all
+
+**Story:** BNDWRECK-1. **New pass, sprint 1.** (The "cap" is a rotation cap, not retirement — PO,
+2026-09-16.)
+
+S8 established that `RaceAI.project` is a brute-force nearest-vertex search whose output **steers**
+the autodrive. The obvious fix is a continuity constraint. The standing rule says a guard like that
+needs **per-actor state, not a shared global** — so before writing one, the question is whether such
+state exists. It does, at every call site, already.
+
+### The function, and what it lacks
+
+```julia
+function project(line::AILine, x, z)          # ai.jl:439
+    bi = 1; bd = Inf
+    @inbounds for i in 1:length(line.x)       # every vertex, every call
+        d = (line.x[i]-x)^2 + (line.z[i]-z)^2
+        d < bd && (bd = d; bi = i)
+    end
+    ...
+    (line.s[bi], lat)
+end
+```
+
+No previous index, no window — **and no caller identity**, so it *cannot* constrain itself. Any
+continuity has to come from the caller.
+
+### ⭐⭐⭐ And the callers already have it
+
+| call site | per-actor previous-`s` in scope | used to constrain the search? |
+|---|---|---|
+| AI field, `:8925` | **`prevs = AICARS[i].s`** — read on the very next expression | **No** — only for lap counting |
+| autodrive, `:8021` | `player_s_prev` (set at `:7711`, `:7988`) | **No — not referenced at all** |
+
+The AI path is the striking one. It reads the previous value immediately after projecting:
+
+```julia
+s, lat = RaceAI.project(AILINE, pc.x, pc.z); prevs = AICARS[i].s
+AICARS[i].s = s; AICARS[i].lane = lat; AICARS[i].v = pc.v
+(prevs > AILINE.total*0.7 && s < AILINE.total*0.3) && (AICARS[i].lap += 1)
+```
+
+**`prevs` and `s` sit side by side and are compared — but only to detect a lap wrap, never to reject
+an implausible jump.** The information needed to catch the bad projection is in hand, one line after
+it is made, and is thrown away.
+
+⛔ **The autodrive is worse**: `:8021` projects and feeds `s0, lat0` straight into
+`RaceAI.controller`, with no reference to `player_s_prev` at all — and that is the path whose wrecks
+this item is about.
+
+### ⭐ So the standing "per-actor state, not a shared `LASTZ`" rule is already satisfiable
+
+That rule exists because a previous attempt at a guard of this shape used one shared variable across
+actors. Here **no new state is needed**: `AICARS[i].s` is per-car by construction and
+`player_s_prev` is the human's own. The fix threads state that exists; it does not invent it.
+
+### ⭐ A second consequence, unasked for
+
+The lap counter at `:8927` **consumes the same unconstrained `s`**. A projection that jumps from a
+low `s` to a high one, or back, satisfies or breaks the `>0.7 / <0.3` wrap test spuriously — so a bad
+projection can **mis-count a lap**, not merely mis-steer. Any race result read off lap counts in the
+BNDWRECK corpus inherits that risk.
+
+### ⚠️ Deliberately NOT done: the window
+
+No guard is written this sprint, **on purpose**. The standing rule is *measure before a global
+guard* — a rejection threshold needs the real per-frame `Δs` maximum **measured per track**, not
+guessed. Picking a window now would be the exact mistake that rule was written down for.
+
+**S10:** instrument `project`'s chosen index per call, per actor, over a clean lap and a wrecking lap
+on the same track, and read the legitimate `Δs` distribution off it. Then, and only then, size a
+window.
+
+### ⚖️ Grooming note, unrelated to this item
+
+`JM_AI_PCT`'s default is **not** flipped to 73, though the backlog recommends it on two independent
+measurements. `drive_native_mtk.jl:224` carries **`PO 2026-09-05: "by default 60% AI speed, not
+200%!"`** — an explicit PO instruction. The 73 recommendation post-dates it and measures a different
+thing (matching the gold's AI pace, where the PO's note was rejecting a saturated 200%), so the two
+may well be reconcilable — **but that is the PO's call, not mine, and it stays at 60 until they make
+it.** Flagged rather than actioned.
+
+**BNDWRECK-1: new pass, sprint 1. julia rotation: sprint 1 of 4.**
