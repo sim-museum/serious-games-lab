@@ -18225,3 +18225,27 @@ has never run — found the moment the check existed.
   caveat, unchanged).
 
 **julia sprint 2 of 4.**
+
+### ↩ RACESTART-1 S12 correction (same day) — `offroad_track_smoke` was **deliberately** unlisted, and saying otherwise was unfair to the sprint that wrote it
+
+S12 reported it as *"a real smoke sitting in `tools/` that this suite has never run"*. **True, and
+misleading.** OFFROAD-1 S2–S5 (2026-09-05) says in as many words:
+
+> *"Deliberately **NOT registered in `gates.sh`** yet: it currently fails because the defect is real,
+> and parking a permanently-red gate in the suite would drown the signal the suite exists to give."*
+
+⭐ **That is the correct call, and it is the opposite of the BoB failure I compared it to** — BoB's
+three gates were *forgotten*; this one was *parked, with the reason written down*. The new `NOTE:`
+line is still worth having (it surfaced the file in one run), but what it surfaces is **"not run by
+this suite"**, which covers both the forgotten and the deliberately-parked — **it is a prompt to go
+and read, not a finding.**
+
+⛔ **What the reading actually turned up is bigger than the listing question:** `OFFROAD-1` is an
+**open, PO-reported, reproduced defect** — *"still ran into a levitate and bounce when car went off
+road at Watkin's Glen"* — measured at **15.79 m/s climb and 6.12 m above terrain** against thresholds
+of 6.0 and 0.75, with both ground policies identical to the frame, so the cause is **on** the mesh.
+**Those numbers are twelve days old** and the physics has moved since (the step-guard fix, the
+RACESTART nudge, ROAD-1's flag flip). ⚖️ Its stated next question — *"whether the suspension rebound
+is adding to it… a physics question"* — is exactly the kind of open-ended dig the rotation mandate
+warns against opening blind. **Re-measuring first is cheap and tells us whether that question is
+still live.**
