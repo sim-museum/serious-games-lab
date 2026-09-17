@@ -3083,6 +3083,20 @@ const STUCK_SECS = parse(Float64, get(ENV, "JM_STUCK_SECS", "20"))
 # is not observable in the logs of the runs that exhibit it. Carry cs.v, and collapse the repeat to
 # one line per JM_DMG_EVERY seconds with a count, so a pinned tail stays legible instead of
 # becoming 16k lines. JM_DMG_EVERY=0 restores a line per frame.
+# BNDWRECK-1 S4 (2026-09-16): a boundary wreck reports only its END STATE, and the census of six
+# of them says that is not where the fault is. They land on THREE places on this track -- two of
+# them hit twice, 0.1 m and 0.63 m apart on independent runs -- and where the S1 fields were
+# recorded the inward-normal speed equals the whole impact speed, i.e. the car is pointed straight
+# out of the world rather than grazing a wall. So the car has already lost the line before the
+# fence is reached, and the fence report cannot show that.
+#
+# Keep the last JM_WRECK_TRAIL seconds of state at ~10 Hz and print it when a wreck latches, so the
+# APPROACH is visible: where the car was, how fast, which way it was pointing, and how far off the
+# world it had drifted. JM_WRECK_TRAIL=0 disables.
+const TRAIL_SECS = parse(Float64, get(ENV, "JM_WRECK_TRAIL", "4.0"))
+const TRAIL_HZ   = 10.0
+const TRAIL_BUF  = Vector{NTuple{6,Float64}}()   # (t, x, z, v, theta, offdist)
+const TRAIL_LAST = Ref(-1.0e9)
 const DMG_EVERY  = parse(Float64, get(ENV, "JM_DMG_EVERY", "1.0"))
 const DMG_LAST_T = Ref(-1.0e9)
 const DMG_RUN_N  = Ref(0)
@@ -3149,6 +3163,36 @@ function wreck!(v; closing = NaN, bnd_peak = NaN, x = NaN, z = NaN)
                     " (FENCE_GRACE=", FENCE_GRACE, " m), inward-normal speed ",
                     round(BND_VN[], digits=2), " m/s, off-track distance ",
                     round(BND_OFF[], digits=1), " m")
+    # BNDWRECK-1 S4: the approach. A boundary wreck's own fields describe the moment of leaving;
+    # these lines describe getting there. Heading is printed as the angle between where the car
+    # POINTS and where it is MOVING -- a spin shows up as that angle opening, which neither the
+    # position nor the speed alone reveals.
+    if TRAIL_SECS > 0.0 && !isempty(TRAIL_BUF)
+        t0 = TRAIL_BUF[end][1]
+        println("  [WRECK]   approach (last ", round(t0 - TRAIL_BUF[1][1], digits=1),
+                " s, 10 Hz):  t-Δ    x       z      v km/h   slip°   off m")
+        prev = nothing
+        for e in TRAIL_BUF
+            (t, x, z, vv, th, off) = e
+            slip = NaN
+            if prev !== nothing
+                dx = x - prev[2]; dz = z - prev[3]
+                if dx*dx + dz*dz > 1.0e-6
+                    course = atan(dz, dx)
+                    d = course - th
+                    while d >  pi; d -= 2pi; end
+                    while d < -pi; d += 2pi; end
+                    slip = abs(d) * 180/pi
+                end
+            end
+            println("  [WRECK]     ", lpad(round(t - t0, digits=1), 5), "  ",
+                    lpad(round(x, digits=1), 7), " ", lpad(round(z, digits=1), 7), "  ",
+                    lpad(round(vv*3.6, digits=0), 6), "  ",
+                    lpad(isnan(slip) ? "  -" : string(round(slip, digits=0)), 6), "  ",
+                    lpad(round(off, digits=1), 6))
+            prev = e
+        end
+    end
     flush(stdout)
 end
 
@@ -8504,6 +8548,16 @@ function main()
             # A short off-HAT distance GRACE (JM_FENCE_GRACE m) lets the car cross narrow mesh seams
             # / bridge gaps in the HAT (e.g. 4 on the Nürburgring racing line) without a false
             # containment; a genuine excursion exceeds it within a few metres and is held at the edge.
+            # BNDWRECK-1 S4: sample the approach trail (see TRAIL_SECS). Sited HERE because this
+            # branch runs every frame whether or not anything is touching; the STUCK/damage blocks
+            # are inside a contact test and would only ever record the crash itself.
+            if TRAIL_SECS > 0.0 && !WRECKED[] && cs.t - TRAIL_LAST[] >= 1.0/TRAIL_HZ
+                TRAIL_LAST[] = cs.t
+                push!(TRAIL_BUF, (cs.t, cs.x, cs.z, cs.v, cs.θ, OFFDIST[]))
+                while length(TRAIL_BUF) > 1 && TRAIL_BUF[end][1] - TRAIL_BUF[1][1] > TRAIL_SECS
+                    popfirst!(TRAIL_BUF)
+                end
+            end
             if ONTRACK[]; LASTGX[] = cs.x; LASTGZ[] = cs.z; OFFDIST[] = 0.0   # inside the world
                 BND_FX[] = 0.0; BND_FY[] = 0.0; BND_MZ[] = 0.0               # E56: release the world-edge wall
             elseif hr.found && abs(hr.lateral) < ROAD_HALFW

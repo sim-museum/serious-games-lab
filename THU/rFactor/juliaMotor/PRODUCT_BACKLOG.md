@@ -15540,3 +15540,104 @@ run that grazes will print it. Two races is where this stops earning its keep.
 hit. That, not the watchdog, is where the loss rate lives.
 
 **BNDWRECK-1: 3 sprints.**
+
+## BNDWRECK-1 S4 (Opus 5, 2026-09-16) — ⭐⭐⭐ **the boundary wreck is not diffuse: six of them land on THREE places on this track, and two of the pairs are 0.10 m and 0.63 m apart on independent runs** — and where the S1 fields exist, the car is pointed **straight out of the world**, so the fault is upstream of the fence
+
+**Story:** BNDWRECK-1 (the autodrive loses races and the report does not say why). **Sprint 4 of 4 — at cap.**
+
+S3 ended: *"the boundary wreck is 5 of the 7 losses … That, not the watchdog, is where the loss rate
+lives."* With this rotation's field race it is **6 of 8**. So: census them, before instrumenting
+anything.
+
+### ⭐ The wrecks have a MAP
+
+| run | world (x, z) | impact | lap |
+|---|---|---|---|
+| `jr-auto2` | (181.5, −833.5) | 61 km/h | 3 |
+| `jr-temper` | (181.4, −833.5) | 61 km/h | 3 |
+| `bw_run2` | (249.0, −844.7) | 58 km/h | 3 |
+| `s1_fixed` | (−15.2, −193.3) | 73 km/h | 1 |
+| `s3_dmg2` | (−15.4, −192.7) | 76 km/h | 1 |
+| `s4_run1` | (96.8, 697.3) | 55 km/h | 2 |
+
+Pairwise:
+
+```
+jr-auto2  <-> jr-temper     0.10 m
+s1_fixed  <-> s3_dmg2       0.63 m
+jr-auto2  <-> bw_run2      68.42 m
+```
+
+**Two sites are hit twice, a tenth of a metre and two thirds of a metre apart, on runs with
+different settings on different days.** A third wreck is 68 m from the first pair — near enough to
+be the same corner, far enough not to be assumed so. That is not a diffuse "the autodrive is
+fragile" failure; it is **two or three specific places** where the car leaves the world.
+
+Impact speeds are **15.3–21.1 m/s** — corner speeds, not straight-line speeds. And the wrecks fall
+on laps **1, 2 and 3**, so this is not a cold-start artefact either.
+
+### ⭐ The car is not grazing the fence — it is aimed at it
+
+The one wreck carrying S1's fields:
+
+```
+[WRECK] hard impact at 76.0 km/h
+[WRECK]   boundary: 0.015 m past the edge (FENCE_GRACE=2.5 m),
+          inward-normal speed -21.26 m/s, off-track distance 2.5 m
+```
+
+76 km/h is 21.1 m/s and the **inward-normal** component is 21.26 m/s: within rounding, the car's
+*entire* velocity is directed out of the world. A car sliding along a wall has a small normal
+component; this one is pointed at it. Combined with 0.015 m of penetration, the picture is a car
+that arrives at the boundary already travelling sideways — i.e. **it lost the line before it
+reached the fence**, and every field the wreck report prints describes the moment *after* that.
+
+⚠️ The normal component nominally exceeds the total speed by 0.7 %. That is either rounding (76.0
+km/h covers 21.0–21.2 m/s) or the two being sampled a frame apart. Do not build on the exact
+values; the conclusion rests on the ratio being ~1, not on it being exactly 1.
+
+### Shipped — the approach, not the arrival
+
+`JM_WRECK_TRAIL=<secs>` (default **4.0**, 0 disables) keeps the last few seconds of state at 10 Hz
+and prints it when a wreck latches:
+
+```
+[WRECK]   approach (last 4.0 s, 10 Hz):  t-Δ    x       z      v km/h   slip°   off m
+```
+
+carrying position, speed, **slip angle** — the angle between where the car points and where it is
+actually moving, so a spin shows as that angle opening — and the off-world distance.
+
+It is sampled in the per-frame `ONTRACK[]` branch **deliberately**: the STUCK and damage blocks
+both sit inside a contact test, so an instrument placed beside them would only ever record the
+crash it is supposed to explain the approach to. That is the same mistake as S3's damage line,
+which fires only on a survivable contact and has still never executed.
+
+### Verification
+
+A race was launched to exercise it. ⛔ **It did not exercise it, and the reason is neither of the
+two I allowed for.** The run **segfaulted in ALSA** before it ever reached the grid:
+
+```
+[74382] signal 11 (1): Segmentation fault
+snd_pcm_ioplug_poll_revents  <- alsa-lib pcm_ioplug.c:815
+PaAlsaStream_WaitForFrames   <- portaudio pa_linux_alsa.c:3895
+Pa_WriteStream
+```
+
+No laps, no wreck, no trail — `jr_classify_run.py` calls it **`no-race`**, which is the right
+answer and is the tool working on a case it was not designed for (it was written to separate
+start-up timeouts from losses; an audio segfault lands in the same bucket for the same reason).
+
+⚠️ **So the approach trail is shipped and UNEXERCISED.** Said plainly, because that is the second
+instrument in this item with that status — S3's damage line is the first — and two is a pattern
+worth naming rather than a coincidence worth burying. The difference is that this one's *placement*
+was reasoned about (the per-frame branch, not the contact branch); what is unverified is that it
+prints, not that it can.
+
+⚠️ The crash is in PortAudio/ALSA, not in the racer's own code, and the audio device on this box is
+`pulse`. Not chased here: it is an environment failure during a scrum slot, not a backlog item, and
+the previous four races on the same binary and settings all initialised audio fine.
+
+**BNDWRECK-1: 4 sprints — AT CAP.** Next pass starts from the trail's output at the two repeat
+sites, not from the fence.
