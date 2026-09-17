@@ -17760,3 +17760,78 @@ attempted.**
   not a sentence.**
 
 **RACESTART-1: a hypothesis refuted by its own instrument, and the defect re-aimed at margin. Sprint 3 of 4.**
+
+## RACESTART-1 S9 (Opus 5, 2026-09-17) — ⭐⭐⭐ **the 5 % / 39 % discrepancy S8 refused to paper over is reconciled, and it hands over the whole mechanism: the nudge pushes the AI to 1.78–1.80 m against a 1.70 m contact threshold — it clears by EIGHT CENTIMETRES, then is pulled straight back in. 283 times.**
+
+**Story:** RACESTART-1. julia rotation: sprint 4 of 4 — rotation complete. S8 measured 5 % of
+car-frames inside the car width while the gate counted 283 of 720 frames as contact, and recorded:
+*"Someone should reconcile those two numbers before trusting either, and I am recording it rather
+than quietly picking the one that suits the story."* This is that reconciliation.
+
+### ⭐ The two samples were on opposite sides of a correction
+
+`ai.jl:745`, inside the contact branch, **modifies the car**:
+
+```julia
+c.lane = clamp(c.lane + d*step, -LANE_MAX, LANE_MAX)   # step 3 nudges the AI OUT on contact
+```
+
+S8 sampled in **step 1** — which runs *after* the previous frame's step 3 had already pushed the car
+out. **It was measuring the corrected state and calling it the state.** Instrumenting at the contact
+site itself reproduces the gate exactly:
+
+```
+   contact events                        283      <- the gate's own number
+   post-nudge lateral separation         min 0.62   median 1.78   max 1.80   (m)
+   |Δs| at contact                       2.28 .. 4.07                       (CAR_LEN gate)
+```
+
+**283 events, matching the gate to the frame** — so this is the right site, and the two numbers were
+never in conflict: one counts frames where the correction *failed*, the other counts frames where it
+had to *happen*.
+
+### ⭐⭐⭐ And the mechanism falls out of it
+
+`CAR_WID` is **1.70 m**. The nudge leaves the AI at **1.78 m median, 1.80 m maximum**.
+
+```
+   contact fires below          1.70 m
+   the nudge pushes out to      1.78 - 1.80 m      <- 8 to 10 cm of clearance
+   next frame the AI steers back toward its target, re-enters, and it fires again
+```
+
+**The nudge stops the instant the overlap breaks, so it only ever reaches the EDGE of the contact
+window** — and the maximum over 283 events is 1.80 m, meaning it never once gets properly clear. The
+AI's target (`racelane + bias + tlane`, clamped to `±LANE_MAX`) sits inside the contact window at
+this point of the track, so every frame pulls it back.
+
+**That is the 283-frame rub, start to finish, in measured numbers**: a correction that is *just*
+sufficient to stop touching and not remotely sufficient to pass.
+
+### ⚖️ What the item now knows, and what it should do
+
+Three fixes have been tried and measured across S5–S9:
+
+| | | |
+|---|---|---|
+| **eyes** — widen the blocker window for a stopped car | S6 | ⛔ deadlocks: 694 → **0** frames past |
+| **timing** — hold the rail past the obstacle | S8 | ⛔ zero effect: the release never fires |
+| **margin** — clear by more than 8 cm | — | **untried, and the measurement points here** |
+
+The concrete shape is now obvious and narrow: **the nudge should target a clearance
+(`CAR_WID + margin`), not merely the end of the overlap** — and the AI's lateral *target* has to move
+with it, or the next frame undoes it. ⚠️ Both halves are needed; S8 proved that moving one without
+the other does nothing.
+
+### ⚠️ Not claimed
+
+* **That widening the nudge is safe.** `LANE_MAX` exists to keep cars on the road, and the max
+  observed separation (1.80 m) is far below it here — so there *is* room at this point of the track,
+  but that is one track position in one scenario.
+* **That this is the PO's symptom.** Unchanged from S5 and S8: *"dead at start line"* could be wheel
+  loss, an immobile car, or E103's hyperspace-to-spawn. **It still needs a replay, not a sentence**,
+  and four sprints of headless measurement have not touched that question.
+* That 283 contact frames is visible to a player. It is 4.7 s of a 12 s getaway at 60 Hz, which
+  *sounds* obvious — but nobody has watched it.
+
+**RACESTART-1: the discrepancy closed, and the defect reduced to a one-line geometric fact. julia rotation complete (4 sprints) → FF.**
