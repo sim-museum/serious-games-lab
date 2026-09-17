@@ -16636,3 +16636,66 @@ one-shot launch.
 
 **TRACKGOLD-1: S4d — the test case is corrected from `wehr-l2` to `wehr-l1`, and the question is now
 photographable.**
+
+## TRACKGOLD-1 S4e (Opus 5, 2026-09-17) — ⭐ **the photograph at last: at s=8500 the view is WALLED ON BOTH SIDES, sky down to 7.6 % from 34.5 % 200 m earlier** — ⚠️ **and the shape is a CORRIDOR, which is equally what an authentic tree-lined section looks like — so the picture does not settle it either** — ⛔ plus a fourth "instrument in a dead branch" today, mine
+
+**Story:** TRACKGOLD-1 (⭐ PO priority). julia rotation: sprint 4 of 4 — rotation complete.
+
+S4d ended by saying three sprints of static elimination is not a picture. This takes it.
+
+### ⛔ First, the instrument did not speak — and I had written the fix for this two hours earlier
+
+The first run captured **nothing** in 566 s. `JM_SHOTS` is consumed at `drive_native_mtk.jl:7981`
+under **`if SMOKE && !isempty(SHOTS)`** — it only fires in smoke mode, which the feature's own comment
+says in its first line (*"multi-shot **smoke**"*). I passed `TRACK=nurburgring` without `JM_SMOKE=1`.
+
+**That is the fourth instrument-in-a-dead-branch today** — FF's capture at a reverted view, julia's
+`[ds]` probe inside opt-in `AI_PHYSICS`, BoB's MP gate asserting on a click scheduled at its own
+timeout, and this. I wrote *"a gate should assert its own preconditions"* into BoB's GATEHYGIENE-1
+this same session and then did not apply it to my own capture. **The one-line defence is to check the
+output directory is non-empty before reading anything into silence.** With `JM_SMOKE=1` the
+instrument announces itself properly — `JM_SHOTS: 6 shots → …`, `dumped w8300 (1/6)` … `(6/6)`.
+
+### ⭐ The captures — 6 shots, one session, 1440×810
+
+```
+w8300   sky 34.5 %      w8500   sky  7.6 %      w8600   sky 18.5 %
+w8400   sky  8.3 %      w8500cock sky 28.4 %    w8700   sky 24.7 %
+```
+
+At **s=8300 the view is wide open** — sky fills the top third, clean horizon. **200 m later at s=8500
+it is walled**: coarse-mapping the frame shows dark mass down both edges from the very top, with the
+sky reduced to a **narrow wedge that narrows with distance.**
+
+### ⚠️ And that is exactly why it still does not settle
+
+**A wedge of sky between converging dark walls is the shape of a corridor** — which is equally:
+
+* mis-oriented veils standing on edge either side of the road (the defect), **or**
+* an authentic tree-lined cutting, which the Nordschleife genuinely has in this stretch.
+
+**Our own render cannot distinguish them**, and I am not going to resolve it by asserting circuit
+geography from memory. The measurement is real; the interpretation needs the gold.
+
+### ⚖️ Where the item now stands, after four sprints
+
+| | |
+|---|---|
+| Euler mis-application | **dead** (S4c — all `wehr-*` placements are identity) |
+| in-place world-space mesh | **dead** (S4c — local-space, ±tens of m) |
+| authentic vertical asset | **not confirmed** (S4d — `wehr-l1` is 6:1 horizontal) |
+| the render | **photographed** (S4e — walled corridor at s=8500) |
+
+**Remaining work is one comparison, not an investigation:** find s≈8500 in
+`gold standard/julia racer/nurburgring/260802_nurburgring_cockpit.mp4` and look. The Ring golds are
+**15-minute laps (909 s, 1920×1080)**, so locating one point in them is the actual cost — and
+GOLDPROV-JR-1's method note (rule 3) is exactly the tool: landmark-map the lap once, commit the map,
+and every future gold↔native pair is a lookup instead of a hunt.
+
+### ⚠️ Not claimed
+
+That anything is wrong. **Four sprints have eliminated three explanations and produced one
+photograph, and the defect the PO reported is still neither confirmed nor refuted.** That is an
+honest state, not a result.
+
+**TRACKGOLD-1: 4 sprints. julia rotation complete → FF.**
