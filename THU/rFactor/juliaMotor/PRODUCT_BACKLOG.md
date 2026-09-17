@@ -17118,3 +17118,62 @@ assemblies"* (measured) and *"drawing them lays panels under the car"* (observed
 run cost blocks it, the item should be parked on that, not on analysis.
 
 **E75/E82: all five mechanisms eliminated; the item is a measured exclusion with no explanation. Sprint 3 of 4.**
+
+## E75/E82 S8 (Opus 5, 2026-09-17) — ⭐⭐ **the A/B nobody made in sixteen sprints: `parity/e75_exclusion_ab.jpg`, shipped default beside all-geometry-drawn, same track position, same shot ordinal** — restoring the 431 triangles changes **2.43 %** of the frame and adds a **dark mass**, and whether that mass is suspension or E75-S8's "panels" is a judgement for the PO's eye
+
+**Story:** E75/E82. julia rotation: sprint 4 of 4 — rotation complete.
+
+S7 left two claims in tension — *"they are 3-D assemblies"* (measured) versus *"drawing them lays
+panels under the car"* (observed, never re-checked) — and said one capture settles it.
+
+### ⭐ One run, not two — and the control matters
+
+S4e's chase capture at `s=8500` already existed with the shipped exclusions, so it is the control.
+The new run replicates **that exact six-shot sweep** with only `JM_CAR_EXCL_GROUPS=""` changed, so
+`w8500` is the **3rd shot in both**. That is deliberate: PARITYGATE-JR-1 S3 had to withdraw a headline
+because it compared the 6th shot of one sweep against the 3rd of another, and repeating that here
+would have made the result meaningless in the same way.
+
+### The measurement
+
+```
+pixels differing >8 :  2.43 %        mean|diff| 0.726
+changes concentrated:  centroid x=314 y=435, a compact mass left of centre
+                       plus a smaller cluster right of centre
+what appears        :  a DARK region, luminance <26, roughly x176-304 y354-434
+```
+
+**Restoring 431 triangles — 10.8 % of the car — changes 2.43 % of the frame.** The two clusters are
+consistent with the two rear-corner assemblies appearing; their asymmetry in screen area is
+consistent with the camera being off the car's axis at this point.
+
+### ⚖️ What I am NOT going to do is call it
+
+A dark mass appearing is **equally consistent with** the rear suspension rendering correctly and with
+E75-S8's panels. I can measure that it is dark, compact and in two clusters; **I cannot tell you it
+looks right**, and this item has sixteen sprints of exactly that kind of confident inference behind it.
+
+**`parity/e75_exclusion_ab.jpg`** (1448×405, 111 KB, left = shipped, right = restored) is committed
+per rule 6 of this project's own QA note — *"commit small side-by-side composites… verdicts without the
+composite rot fast."* **This is the decision:**
+
+* **shipped**: 8 % of the rear end drawn, the PO's "sticks / no axles";
+* **restored**: all of it drawn, at whatever the dark mass turns out to be.
+
+### ⚖️ Grooming — the item should stop here
+
+Across S5–S8 every proposed mechanism was eliminated (payload pose, unfolded strips, placement,
+parked positioners, lateral clip) and the defect was reduced to **a measured trade with a picture
+attached**. There is nothing left that analysis can settle: the remaining question is *which of two
+renderings the PO prefers*, and no further sprint can answer that. **Recommend parking on the PO's
+verdict**, not on more investigation.
+
+### ⚠️ Not claimed
+
+* That 2.43 % is visually large or small. It is 28,328 pixels; the PO's eye decides.
+* That the dark mass is the restored assemblies. It appears where they should and nothing else
+  changed, but I have not identified it triangle by triangle.
+* That the Ring at `s=8500` is a fair place to judge. One camera, one track position — a fix judged on
+  one view is the error `parity/e82_gold/README.md` warns about in its own last paragraph.
+
+**E75/E82: a 16-sprint defect reduced to one committed A/B and a PO decision. julia rotation complete → FF.**
