@@ -18095,3 +18095,57 @@ that killed S6's attempt does not occur.
 * That the remaining 15 frames are harmless — **nobody has watched them.**
 
 **RACESTART-1: the rub closed at last, by the one direction S9 left standing. julia rotation complete (4 sprints) → FF.**
+
+## PARITYGATE-JR-1 S8 (Opus 5, 2026-09-17) — ⛔ **the gate has been printing the WITHDRAWN threshold formula: it computes `max(4.0, 6×noise)` and reports `max(2.0, 3x noise)`. S7 changed the rule and not its own report** — ⭐ and the stale-artefact audit that cost BoB four sprints finds julia already clean, and better guarded than any of the four ports
+
+**Story:** julia rotation: sprint 1 of 4. The BoB rotation just spent four sprints on gates that
+assert outcomes without asserting their own steps, so this sprint brought the audit across — and
+read julia's parity gate on the way, which is where the real find was.
+
+### ⛔ The gate misstates its own pass floor
+
+```python
+thresh = max(4.0, noise * 6.0)                              # line 93 — the rule
+print(f'  pass threshold: max(2.0, 3x noise) = {thresh:.3f}')   # line 95 — the report
+```
+
+The **number** printed was right; the **formula** printed was the one S7 withdrew. ⭐ *This item has
+already spent a whole sprint on threshold confusion* — S7's own finding was that `max(2.0, 3×noise)`
+gated a between-runs comparison with a within-run number. **Anyone auditing the pass floor from the
+log would have read the discredited rule and concluded the fix never landed.** Fixed to print
+`max(4.0, 6x noise)`, with the reason recorded at the line. (Also: `"this run own noise floor"` →
+`"this run's own"`.)
+
+⚠️ Verified the way this class has to be — `bash -n` does **not** look inside a quoted heredoc, so
+the embedded Python was extracted and `py_compile`d separately. **Compiles clean.**
+
+### ⭐⭐ And the cross-port audit comes back empty — julia was already ahead
+
+Per-artefact, the audit that found three real holes in BoB:
+
+| check | julia `chase_parity_gate.sh` |
+|---|---|
+| clears captures before the run | ✅ `rm -f "$OUT"/w*.ppm` (line 41) |
+| asserts the run produced them | ✅ `[ "$n" -ne 4 ] → CANNOT MEASURE` |
+| separates *cannot measure* from *fail* | ✅ exit 2 vs exit 1 |
+| separates a **budget** from a **regression** | ✅ *"exit 124 = the run outran TMO; that is a budget, not a regression"* |
+| pins the subject so the reference can't be compared against a different one | ✅ `TRACK` pinned |
+| tmpfs | ✅ one log path; **no captures in `/tmp`** |
+
+`gates.sh` and `netai_gate_fast.sh` write no image artefacts at all.
+
+⭐ **julia's gate already does everything BoB's four sprints had to add, plus two things BoB's still
+does not** — the capture count, and the budget/regression distinction. The port that iterates
+slowest has the most careful gate, which is not a coincidence.
+
+### ⚠️ Not claimed
+
+* **That the gate passes.** It still has **not been re-run since S7's re-seed** — that is this
+  item's stated open question and it costs ~12 minutes of GL, which was held by a BoB gate for the
+  whole of this sprint. **Sprint 2 runs it.** The threshold change remains *reasoned, not
+  demonstrated*, exactly as S7 said.
+* That the printed-formula bug ever changed a verdict. **It could not have** — `thresh` was computed
+  correctly; only the label was wrong. **The harm was to a reader, not to a run.**
+* That julia has no gate-hygiene gaps. **One gate was audited for one class.**
+
+**julia sprint 1 of 4.**

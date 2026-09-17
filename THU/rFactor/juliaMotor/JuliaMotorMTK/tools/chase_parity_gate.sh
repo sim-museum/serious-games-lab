@@ -92,7 +92,11 @@ noise = md(w2, w4)
 # would tighten it; until then the floor is deliberately loose rather than falsely precise.
 thresh = max(4.0, noise * 6.0)
 print(f'  in-run repeat spread (s=8500, ordinals 2 vs 4): mean|diff| {noise:.3f}')
-print(f'  pass threshold: max(2.0, 3x noise) = {thresh:.3f}')
+# PARITYGATE-JR-1 S8: this line printed `max(2.0, 3x noise)` while the code above computed
+# max(4.0, noise*6.0) -- S7 changed the rule and not its own report. A gate that misstates its
+# threshold in the log is the exact instrument-lies class this item already spent a sprint on:
+# anyone auditing the pass floor from the output would have read the withdrawn formula.
+print(f'  pass threshold: max(4.0, 6x noise) = {thresh:.3f}')
 
 fail = 0; measured = 0
 for name in ('w1_8300', 'w2_8500', 'w3_8700'):
@@ -109,7 +113,7 @@ for name in ('w1_8300', 'w2_8500', 'w3_8700'):
 if measured == 0:
     print('  CANNOT MEASURE: no references present'); sys.exit(2)
 print('-' * 40)
-print('FAIL: a chase capture moved beyond this run own noise floor' if fail
+print('FAIL: a chase capture moved beyond this run\'s own noise floor' if fail
       else f'PASS: {measured} chase screen(s) within {thresh:.3f}')
 sys.exit(1 if fail else 0)
 PY
