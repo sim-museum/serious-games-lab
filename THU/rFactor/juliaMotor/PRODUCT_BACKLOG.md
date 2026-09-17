@@ -15894,3 +15894,69 @@ from this corpus has a shelf life.
 every race from here is classified with its mode attached.
 
 **RACEMODE-1: 2 sprints.**
+
+## BNDWRECK-1 S5 (Opus 5, 2026-09-16) — ⭐⭐⭐ **the approach trail fires for the first time, and it corrects my own S4 reading: the car is NOT spinning on approach — it is straight and accelerating for three seconds, and loses the line only in the last one** — ⭐ and the wreck lands **0.3 m from two earlier ones, in a different MODE**
+
+**Story:** BNDWRECK-1 (the autodrive loses races and the report does not say why). **New pass, sprint 1 of 4.**
+
+S4 shipped `JM_WRECK_TRAIL` and two runs later it had still never printed — recorded honestly as
+*"shipped and UNEXERCISED"*. A race-mode run has now wrecked, and it printed.
+
+### ⭐ The site, for the third time — and across modes
+
+```
+[WRECK] at world (181.7, -833.6)
+```
+
+Against `jr-auto2` at **(181.5, −833.5)** and `jr-temper` at **(181.4, −833.5)**. Three wrecks
+within **0.3 m** of each other — and this one is the first in **`JM_MODE=race`**, so the site is not
+an artefact of the practice-mode start. Corpus: **9 of 23 lost (39 %)**, race mode **1 of 3**.
+
+### ⭐⭐⭐ The approach — what the trail actually shows
+
+```
+ t-Δ      x       z     v km/h  slip°  off m
+ -3.9   226.3  -837.4    25      -      0.0
+ -2.9   218.9  -838.3    32      0.0    0.0
+ -1.8   208.1  -838.8    41      0.0    0.0
+ -1.2   200.4  -838.1    48      1.0    0.0
+ -0.8   194.4  -837.1    53      7.0    0.0
+ -0.3   187.6  -835.5    58     17.0    0.0
+  0.0   182.5  -833.9    61     18.0    1.5
+```
+
+* **Three full seconds of straight, accelerating, composed driving** — 25 → 45 km/h with slip at
+  **0–1°** and off-track distance **0.0 m**.
+* The slip opens only in the **final second**: 1° → 7° → 17° → 18°, *while still accelerating*.
+* Off-track distance is **0.0 m on every sample but the last**, where it jumps to 1.5 m.
+
+### ⛔ That corrects S4, which was mine
+
+S4 wrote: *"the car arrives at the boundary already travelling sideways — i.e. **it lost the line
+before it reached the fence**."* The trail says the opposite. The line is lost **at** the fence, in
+the last second, and the car is under control until then. S4's inference came from a single
+end-state number (inward-normal speed ≈ total speed) and read a history into it.
+
+⚠️ The end-state number is still *true* — this wreck reports inward-normal **−16.93 m/s** against a
+total of 61 km/h = **16.94 m/s**. But it is a statement about the car's velocity versus **the
+fence's normal**, not about the car's attitude: slip is **18°**, not 90°. A boundary running across
+the car's path gives exactly that. Two facts, one of which I had been using to mean the other.
+
+### What the trail now makes askable
+
+The car is **accelerating through a corner** and running wide at the exit, into a boundary that sits
+**right at the track edge** here — there is no excursion, no drift across grass, no 2.5 m of
+off-track before contact. So the question is no longer "why does the autodrive leave the world" but
+**"why does it accelerate into this particular corner"**, which is a driving-line question about one
+identified place.
+
+### ⚠️ Not claimed
+
+That the boundary is *wrongly* placed. `off m` reaching 1.5 in one 0.1 s step at 16.9 m/s is
+consistent with the car simply arriving there — nothing here measures where the fence *should* be.
+
+**S6:** the same trail from the other repeat site, `(−15.2, −193.3)` / `(−15.4, −192.7)`. If that one
+also shows a composed approach and a last-second slip, the two sites share a cause and the fix is a
+line, not a fence.
+
+**BNDWRECK-1: new pass, sprint 1 of 4.**
