@@ -16089,3 +16089,79 @@ and that it coincides with the wreck site. It does **not** show that the driving
 line-follower reads it, the fix is upstream of the fence and upstream of the autodrive.
 
 **BNDWRECK-1: new pass, sprint 3 of 4.**
+
+## BNDWRECK-1 S8 (Opus 5, 2026-09-16) — ⭐⭐⭐ **the bad projection does not merely mis-REPORT, it STEERS: `RaceAI.project` is a brute-force nearest-vertex search with no continuity constraint, and its output is the autodrive's control input** — ⛔ **and my "the track doubles back" explanation is disproved**
+
+**Story:** BNDWRECK-1. **New pass, sprint 4 of 4 — at cap.**
+
+S7 established that the ~58 m lateral over lapdist 1750–1849 is an artefact and that the four wrecks
+all sit inside it, and asked whether any driving code consumes `lateral`. It does — as its input.
+
+### ⭐⭐⭐ The autodrive steers from the projection
+
+```julia
+if AUTODRIVE && CLINE !== nothing
+    let (s0, lat0) = RaceAI.project(CLINE, cs.x, cs.z)
+        thr, brk, st = RaceAI.controller(CLINE, s0, lat0, AUTODRIVE_LAT, AUTODRIVE_V, ...)
+```
+
+`s0` (where on the lap) and `lat0` (how far off line) are **both** products of the projection, and
+both are handed straight to the controller as the car's current state. So over a stretch where the
+projection is wrong, the autodrive is being told it is somewhere it is not, **and steers to correct
+an error that does not exist**. That is a mechanism, from the source, not an inference from the
+symptom.
+
+### ⭐ And the projection has no continuity constraint
+
+```julia
+function project(line::AILine, x, z)
+    bi = 1; bd = Inf
+    for i in 1:length(line.x)                      # every vertex, every frame
+        d = (line.x[i]-x)^2 + (line.z[i]-z)^2
+        d < bd && (bd = d; bi = i)
+    end
+    lat = (x-line.x[bi])*(-sin(line.θ[bi])) + (z-line.z[bi])*cos(line.θ[bi])
+    (line.s[bi], lat)
+end
+```
+
+**Globally nearest vertex, with no reference to where the car was last frame.** Nothing stops it
+jumping to a distant part of the line.
+
+### ⛔ But my explanation for WHY it jumps is wrong
+
+S6 and S7 both offered *"the track doubles back, so the nearest centreline point belongs to another
+leg."* Tested against the telemetry — which lapdists pass within 80 m of the wreck point
+(181.7, −833.6)?
+
+```
+lapdist values whose track position passes within 80 m of the wreck point: [1750, 1800, 1850]
+```
+
+**One leg. The track does not double back there.** So a rival leg cannot be stealing the projection,
+and the explanation I carried through two sprints is dead.
+
+### What the evidence now points at instead
+
+If only one leg is nearby and the nearest vertex is still ~58 m away, the likely cause is that the
+**centreline is sparse or absent over that stretch** — which also explains S6's other oddity:
+`lapdist` advancing **20 m while the car covered 44 m**, exactly what a projection snapping between
+widely spaced vertices looks like.
+
+⚠️ **Not measured.** `CLINE`'s vertex density is not observable outside the sim, and this is the
+third explanation this item has offered for the 58 m. It gets tested before it gets believed.
+
+### Where BNDWRECK-1 stands at its cap
+
+* S5 — the trail fires; the car is composed until the last second. *(Reading later corrected.)*
+* S6 — `lat`/`lapdist` added; "58 m off the line" — *wrong, an artefact*.
+* S7 — the artefact is real and local, 73 of 76 bins clean, and **the wreck site is inside the one
+  bad stretch**.
+* S8 — the projection **steers**, and it is a global nearest-vertex search; the doubling-back
+  explanation is **disproved**.
+
+**S9 (next pass):** dump `CLINE` vertex count per 50 m of lap. If 1750–1849 is sparse, that is the
+defect — upstream of the fence, upstream of the autodrive, and one that would also explain why the
+AI field drives that stretch without trouble while the autodrive does not.
+
+**BNDWRECK-1: new pass, sprint 4 of 4 — AT CAP.**
