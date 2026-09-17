@@ -18311,3 +18311,78 @@ mean less than it looks. **It is not explained here and no conclusion rests on i
 * That the cockpit view is stable. **Still unmeasured** — S3, S6 and S7 all said so, and so does this.
 
 **PARITYGATE-JR-1: open question CLOSED, one new design finding recorded. julia sprint 3 of 4.**
+
+## OFFROAD-1 S6 (Opus 5, 2026-09-17) — ⛔ **the PO's levitate-and-bounce reproduces UNCHANGED twelve days on: 15.79 m/s and 6.12 m, identical to S2–S5 to two decimals, on both ground policies** — ⭐ and that exactness is itself the finding: the harness is deterministic enough to bisect against
+
+**Story:** julia rotation: sprint 4 of 4. S12's grooming turned up `offroad_track_smoke` and, behind
+it, an **open PO defect** — *"still ran into a levitate and bounce when car went off road at
+Watkin's Glen"* — last measured **2026-09-05**. The physics has moved since (S5/S7's step guard,
+S11's RACESTART nudge, ROAD-1's flag flip). **Stale numbers decide nothing**, so this sprint
+re-measured rather than reasoning from them.
+
+### ⛔ Re-measured, and nothing has changed
+
+```
+OFFROAD-1 gate (Watkins Glen, real HAT, car driven off the mesh edge)
+  HOLD (shipped): max climb 15.79 m/s   max height above terrain 6.12 m
+  NaN  (E104(b)): max climb 15.79 m/s   max height above terrain 6.12 m
+  FAIL  NaN policy does not launch the car          15.79 m/s   (threshold 6.0)
+  FAIL  NaN policy does not levitate                6.12 m      (threshold 0.75)
+  FAIL  shipped policy does not launch the car      15.79 m/s
+  FAIL  shipped policy does not levitate            6.12 m
+OFFROAD TRACK GATE: FAIL (4)
+```
+
+| | 2026-09-05 (S2–S5) | 2026-09-17 (this run) |
+|---|---|---|
+| max climb | 15.79 m/s | **15.79 m/s** |
+| max height above terrain | 6.12 m | **6.12 m** |
+| HOLD vs NaN | identical | **identical** |
+
+⭐ **Three separate conclusions survive the twelve days, now on fresh evidence:**
+
+1. **The defect is live.** Not incidentally fixed by the step-guard work, the nudge, or ROAD-1.
+2. **The cause is still ON the mesh** — the two ground policies agree to the frame, so no change to
+   off-mesh sentinel handling can touch it. S2–S5 said this; it is re-confirmed, not assumed.
+3. ⭐⭐ **The harness is deterministic to 2 dp across twelve days and an unrelated pile of physics
+   changes.** That is the useful new fact: **it is a stable baseline, so the suspension question can
+   be A/B'd against it** instead of argued.
+
+### ⚖️ Grooming — the item's next question is live, and is NOT this sprint's
+
+S2–S5 left it as *"whether the suspension rebound is adding to it… a physics question."* ⚠️ **That
+question is now confirmed live, and it is exactly the open-ended dig the rotation mandate warns
+about.** This is sprint 4 of 4, so it is **recorded and handed on, not opened.** What the next sprint
+inherits that this one did not have: **a re-verified, deterministic, one-command baseline** and a
+gate that already A/Bs two policies, so a third arm costs almost nothing.
+
+⛔ **And the gate stays out of `SMOKES`** — it is red because the defect is real, and OFFROAD-1's own
+reasoning holds: *"parking a permanently-red gate in the suite would drown the signal the suite
+exists to give."*
+
+### ⚠️ A trap removed on the way, at the cost of one run
+
+My first invocation used `--project=.` and died before measuring anything:
+
+```
+ERROR: LoadError: ArgumentError: Package JuliaMotor not found in current path.
+  … demo/native/gpltrack.jl:9
+```
+
+The gate goes through `demo/native`, which needs the `JuliaMotor` package; `gates.sh` carries a
+per-gate `gproj` override list for exactly this and `offroad_track_smoke` was not in it — because it
+is not in `SMOKES`. **So listing it would have produced a gate that cannot load**, which looks
+identical to a gate that fails. It is now **pre-wired into the `gproj` list** with the reason at the
+line, so whoever finally lists it does not rediscover this.
+
+### ⚠️ Not claimed
+
+* **That the 6.12 m is wrong.** S2–S5 measured a real **23° earth bank at 90 km/h** there and said
+  some of that flight is honest physics. **This sprint re-measured; it did not judge.**
+* **That suspension rebound is the cause.** It is the standing hypothesis and **nothing here tests it.**
+* That the defect is unchanged at other tracks or speeds. **One track, one ray, one speed** — the
+  same scope S2–S5 declared.
+
+**julia rotation complete — 4 sprints (threshold report, the unasserted RACESTART metric, the parity
+re-run that closed a two-rotation-old question, and a stale PO defect re-verified live). ⏭ Rotating
+to FF.**
