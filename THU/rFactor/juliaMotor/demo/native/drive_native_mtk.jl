@@ -2678,8 +2678,10 @@ const _PIPES_RAW = get(ENV, "JM_PIPES", "1") != "0" ?
 # E102-S9: the "axles pointing outward/downward" the PO sees from the chase camera are these
 # megaphones -- they reach the rear wheels' inner faces, where the gold's end ~100 px inboard at
 # the same scale (E102-S7/S8). JM_PIPE_LAT scales their lateral (z) extent about the centreline;
-# a test knob until the value is measured against the gold, default 1 (no change).
-const PIPE_LAT = parse(Float32, get(ENV, "JM_PIPE_LAT", "1"))
+# E102-S9 measured the tips against the gold (~0.5 wheel-widths inboard of the rear wheels): 0.7
+# overshoots, 1 touches the wheel, the mean lands at 0.8 -- shipped as the default (E102-S10).
+# JM_PIPE_LAT=1 restores the raw extraction.
+const PIPE_LAT = parse(Float32, get(ENV, "JM_PIPE_LAT", "0.8"))
 function _scale_pipes_lat(parts, sc::Float32)
     sc == 1f0 && return parts
     out = Render.TrackPart[]
