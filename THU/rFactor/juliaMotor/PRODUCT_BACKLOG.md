@@ -18847,3 +18847,17 @@ world does not help (S14), that `JM_MIRROR_ADAPT` earns 20 ms (S12), and that on
 (S15). A cull A/B I started this sprint repeated S14 and was stopped. **E80's render half is
 SPA-FPS-1; its index row now says so.** The PO's 10 fps against today's 33 (no AI) is the AI field
 plus the mirror; both have their items. **julia cycle 5: 1 sprint — rotating to FF.**
+
+### E102-S9 (Fable 5.1, 2026-09-18) — ⭐⭐ **the PO's "axles pointing outward and downward" are the exhaust megaphones, and a lateral scale on them moves the picture toward the gold: at `JM_PIPE_LAT=0.7` the tips end inboard of the rear wheels as the gold's do.** The knob is landed (default 1, no change shipped yet); the measured value to ship is ≈0.8
+
+**Story:** julia rotation, cycle 6, sprint 1. S8 established that the synthetic halfshafts sit at hub height and are hidden by the extracted rear assembly, and that what the eye reads as "axles" from the chase camera is the pair of exhaust megaphones reaching the rear wheels. This sprint tested the one-sprint item S8 asked for on the pipes.
+
+### ⭐ The knob and the A/B (`parity/e102/260918_s9_pipes_ctl_vs_lat70_rear_2x.png`)
+* `JM_PIPE_LAT=<s>` scales the pipe parts' lateral (z) coordinate about the centreline after the E106 mirror (`_scale_pipes_lat`, `drive_native_mtk.jl`). Default `1` — nothing shipped changes.
+* Two captures, same recipe (`TRACK=watglen JM_SMOKE=1 JM_SHOTS="8300:1:…" JM_SHOT_SETTLE=240`), control vs `0.7`: **3,162 changed pixels, all inside (643,483)–(835,587) — only the megaphones move.** Left: control, the right megaphone's mouth touches the right wheel's inner face and the left one ends ~37 px inboard. Right: at 0.7 the mouths end ~72 px (left) and ~30 px (right) inboard; the level chrome bar, the diff and the wheels are untouched.
+* Against the gold (`260918_gold_replay_r014.png`, tips ~70–80 px inboard of the wheels' inner faces at a 150 px wheel width, i.e. **≈0.5 wheel-widths**): ours read 0.45/0.0 (control) and 0.88/0.37 (0.7) wheel-widths left/right — the left/right split is the car's yaw to the camera, not the art. **The mean lands on the gold at ≈0.8.** Consistent with E106's finding that the extracted rear parts come out ~25 % too wide through the positioner chain.
+
+### ⚠️ What the knob does not do
+The gold's megaphones run nearly LEVEL and rearward; ours still angle DOWN as well as out. A lateral scale cannot fix pitch. That is the same positioner-chain mis-read (E102-S6/E106-S26), and it is the second half of the PO's sentence ("outward/downward"). Sizing: a pitch correction about the pipe's root is another ~1-sprint knob; the real fix (decoding the positioner chain) stays parked.
+
+**Sprint 2: ship `JM_PIPE_LAT=0.8` as the default, re-run `chase_parity_gate.sh` (the rear is in every shot, so a DIFF is EXPECTED and must be reviewed, then re-seeded), and photograph the result beside the gold. julia cycle 6: sprint 1 of 4.**

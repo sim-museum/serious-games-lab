@@ -2675,7 +2675,22 @@ end
 const _PIPES_RAW = get(ENV, "JM_PIPES", "1") != "0" ?
     Render.extract_gpl_car(LOT3DO; only=("pipe3",), maxlat=0.9f0,
                            min_component=6, min_component_tex=("pipe3",)) : Render.TrackPart[]
-const PIPEP  = get(ENV, "JM_PIPE_MIRROR", "1") != "0" ? _mirror_pipes(_PIPES_RAW) : _PIPES_RAW
+# E102-S9: the "axles pointing outward/downward" the PO sees from the chase camera are these
+# megaphones -- they reach the rear wheels' inner faces, where the gold's end ~100 px inboard at
+# the same scale (E102-S7/S8). JM_PIPE_LAT scales their lateral (z) extent about the centreline;
+# a test knob until the value is measured against the gold, default 1 (no change).
+const PIPE_LAT = parse(Float32, get(ENV, "JM_PIPE_LAT", "1"))
+function _scale_pipes_lat(parts, sc::Float32)
+    sc == 1f0 && return parts
+    out = Render.TrackPart[]
+    for p in parts
+        v = copy(p.verts)
+        for i in 3:11:length(v); v[i] *= sc; end
+        push!(out, Render.TrackPart(v, p.tex, p.col))
+    end
+    out
+end
+const PIPEP  = _scale_pipes_lat(get(ENV, "JM_PIPE_MIRROR", "1") != "0" ? _mirror_pipes(_PIPES_RAW) : _PIPES_RAW, PIPE_LAT)
 const ARMP   = Render.extract_gpl_car(LOT3DO; only=("lotarms",), maxlat=0.95f0)  # forearms/upper arms — static (their wheel-side ends are what the eye sees)
 # The dash panel's normal faces DOWN, so from the driver's eye (above) we see its back → the dials read
 # upside-down.  Mirror the gauge in height about its own centre so the dial face turns up toward the eye.
