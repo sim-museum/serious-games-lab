@@ -23,7 +23,7 @@ this index was written; that is what it exists to stop.
 |---|---|---|
 | **E85** | EPIC: multiplayer, the way GPL did it | **sprint 1 DONE** (E85-S1): poses cross two processes exactly, both ways, gated. Sprints 2–4 open. |
 | **E105** | a setup tab exposing modest chassis-setup changes | **values + reset DONE and gated** (E105-S1); the UI shell is the PO's call. NEW 2026-08-31. Relaxes the "no modifiable parameters" constraint, scoped to setup. assessed |
-| **E104** | every car floats 20–40 cm above the road; off-road contact is elastic (levitate/bounce) | **half (b) FIXED** (E104-S1): a −999 "off the mesh" sentinel was passing an `isfinite` guard and reaching the physics — 20.9 m of vertical travel, now 0.00. Half (a), the floating, is still open and needs a capture. |
+| **E104** | every car floats 20–40 cm above the road; off-road contact is elastic (levitate/bounce) | ✅ **BOTH halves FIXED and gated** — (b) E104-S1 (the −999 off-mesh sentinel), (a) E104-S4 (found, fixed, gated; S2's mechanism was right). *Index row corrected 2026-09-18 — it had read "half (a) still open, needs a capture" for 17 days after S4 closed it.* |
 | **E102** | rear axles point outward/downward; must be horizontal, hub to chassis | **OPEN — two of my own diagnoses withdrawn** (S1: omitted BODY_OFF; S2: conflated components sharing a texture). Established: the assembly and wheels agree (brake disc within 2.8 mm). S4: 65 of 89 triangles are ONE connected mesh (so there is no separable shaft to level), but an isolated **3-triangle `axlelot` sliver** reaches the wheel plane and drops 0.099 m — the best candidate for the PO's "sticks". Needs a capture; three headless approaches are enough. |
 | **E103** | wheel loss in a collision hyperspaces the car to the start line | **mechanism found + fixed + gated** (E103-S1): the containment seal PLACES the car at its last on-track point, which initialises to spawn. Not yet seen in a real wreck. |
 | **E90** | Monza and Watkins have almost no collidable barrier objects | open; the gate passing IS the symptom. assessed |
@@ -18755,3 +18755,34 @@ show it is unread — left on.
   third front.**
 
 **GOLDMATCH-JR-1: cockpit overlay row — lap rows and position table on screen, gated; Relative tables parked as TEXTHUD-2. julia cycle 3: 2 sprints.**
+
+### E102-S7 (Fable 5.1, 2026-09-18) — ⭐⭐ **the PO's rear axles, photographed beside the gold for the first time: ours leave the gearbox OUTWARD AND DOWNWARD to below hub height; the gold's halfshafts run level, gearbox to hub.** The capture six sprints asked for, and the index row for E104 corrected on the way
+
+**Story:** julia rotation, cycle 4, sprint 1. E102 sat at "needs a capture; three headless
+approaches are enough" (S6). E91 is blocked on the PO (S7); E104 turned out to be closed by S4 with a
+stale index row (corrected in this commit). So: the capture.
+
+### ⭐ `parity/e102/260918_rear_axle_gold_r014_vs_ours_chase_8300.png`
+Left: the gold's replay chase cam directly behind the Lotus 49 (`260915_gpl_wg_race_gold.mp4`, ~328 s,
+`260918_gold_replay_r014.png`). Right: `JM_SHOTS="8300:1:…"` at Watkins Glen (`260918_ours_chase_8300.png`).
+* **Gold:** two halfshafts run **horizontally** from the gearbox to each rear hub at hub height,
+  radius rods above them, exhausts below angling down and out.
+* **Ours:** the rear wheels stand where the gold's do (outer-to-outer track ≈ 5 wheel-widths in
+  both), but **the chrome shafts leave the gearbox outward and DOWNWARD, ending near the bottom of
+  the tyre**, well below hub height — the PO's words *"point outward/downward; must be horizontal,
+  hub to chassis"*, verbatim, on screen. The gearbox/body cluster also sits visibly higher than the
+  hubs relative to the gold.
+* By eye the right shaft's image angle is ~28° below horizontal in ours against ~10° in the gold at
+  a similar camera pitch — not claimed as a number (perspective differs); the *class* is not in doubt.
+
+### ⚠️ Mechanism, not yet read — and what S2/S4/S6 already rule out
+`render.jl:1157`: the driveshafts are real mesh triangles clipped to reach the hub at |y| 0.772 (E82-S2's
+stub problem was fixed by `_clip_lat`). S6 showed the 3-triangle `axlelot` sliver is not the stick.
+**Two readings fit the picture and can be told apart headlessly:** (a) the mesh's shaft outer ends sit
+lower than the hub centroids (`mesh_wheel_hubs`) — a data property GPL would also show, so unlikely;
+(b) the shafts are drawn in the mesh frame while the WHEELS are placed with an offset (ride height /
+suspension travel / E104's fix) that the shaft geometry does not follow — the shafts then end where
+the wheels *used* to be. **Sprint 2: measure (a) from the 3DO, then (b) from the placement code.**
+
+Housekeeping: the `E104` index row read "half (a) still open, needs a capture" seventeen days after
+E104-S4 closed it — corrected.
