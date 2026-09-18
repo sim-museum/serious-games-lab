@@ -18450,3 +18450,58 @@ real regression on a normal run still fails**, so the fix costs nothing it shoul
   wrong and the gate will say so by refusing runs, which is the failure mode I want.
 
 **julia sprint 1 of 4.**
+
+## PARITYGATE-JR-1 S11 (Opus 5, 2026-09-17) — ✅ **S10 verified END TO END: the gate passes, and the noise ceiling never fired on a healthy run** — ⭐ and a third noise sample makes S9's 1.263 the outlier, not the trend
+
+**Story:** julia rotation: sprint 2 of 4. S10 fixed the threshold that rewarded noisy runs and was
+explicit about its limit: *"the decision function is verified; the full gate is not."* The display
+freed when MiG Alley's suite finished, so this is the missing run.
+
+### ✅ End to end, unchanged behaviour on a healthy run
+
+```
+  in-run repeat spread (s=8500, ordinals 2 vs 4): mean|diff| 0.606
+  pass threshold: max(4.0, 6x noise) = 4.000
+  w1_8300  0.550  OK     w2_8500  0.454  OK     w3_8700  0.034  OK
+PASS: 3 chase screen(s) within 4.000                              exit 0
+```
+
+⭐ **The `CANNOT MEASURE` ceiling did not fire**, which is the whole design intent: S10's change must
+be invisible on a good run and only bite on a bad one. ⭐ **And the threshold fell back to the 4.0
+floor** — `6 × 0.606 = 3.64` does not bind — so the noise-scaling term that caused the fault is not
+even active here.
+
+### ⭐⭐ The third noise sample changes the picture
+
+| run | in-run noise | threshold it produced |
+|---|---|---|
+| S7 | 0.587 | 4.000 (floor) |
+| S9 | **1.263** | **7.579** (noise-scaled — the fault) |
+| **S11 (this)** | **0.606** | 4.000 (floor) |
+
+**Two of three samples sit at ~0.6 and produce the floor.** ⚖️ So **S9's 1.263 is an outlier rather
+than the trend** — which makes S10's ceiling better-founded than when it was set: **2.5 is ~2× the
+worst of three**, and the fault it guards against (`6 × noise` overtaking the floor) needs noise
+above ~0.67, which one run in three has done.
+
+⚠️ **This does not retire the fix.** One run in three *did* exceed it, and on that run a 12 px
+regression would have passed. **An outlier that doubles the pass threshold is exactly what a
+regression needs to hide behind.**
+
+### ⭐ Incidental: the reference match is tighter this run
+
+`w3_8700` came back at **0.034** against S9's 0.531, and w1/w2 are lower too. ⚠️ **Not investigated
+and not claimed as meaningful** — same binary, same references, so it is most likely ordinary
+run-to-run variation in the very quantity this item keeps measuring. **Recorded because a reference
+match that tightens without explanation is worth a line, not a theory.**
+
+### ⚠️ Not claimed
+
+* **That the ceiling is exercised.** ⛔ **No run has yet tripped it** — S10's `CANNOT MEASURE` path
+  is verified by the synthetic table only, never by a real noisy run. *(That is the honest status;
+  a path that has never executed is the class this cycle has caught five times.)*
+* That 0.034 means anything. **See above** — it is a number, not a finding.
+* That three samples characterise the noise. **Three runs, one track, one position.**
+
+**PARITYGATE-JR-1: S10 verified on real captures, ceiling unfired, calibration improved. julia
+sprint 2 of 4.**
