@@ -18505,3 +18505,95 @@ match that tightens without explanation is worth a line, not a theory.**
 
 **PARITYGATE-JR-1: S10 verified on real captures, ceiling unfired, calibration improved. julia
 sprint 2 of 4.**
+
+## OFFROAD-1 S7 (Fable 5.1, 2026-09-17) — ⛔⛔⛔ **BOTH of this item's headline numbers are a SPAWN ARTEFACT. The 15.79 m/s "max climb" is the second frame of the run, at x = 0.83 m, with the car 39 cm UNDERGROUND being fired out of the terrain. The 6.12 m "apex" is the top of that ejection arc, at x = 31.9 m, with the car already falling — short of the ramp.** The gate has been measuring its own initial condition since S2
+
+**Story:** julia rotation: sprint 3 of 4. S6 re-measured the defect twelve days on — identical to
+two decimals — and handed on its stated next question, *"whether the suspension rebound is adding
+to it… a physics question."* ⚖️ That is an open-ended dig, so this sprint did the cheap thing first:
+**arithmetic, then a per-frame trace.** The arithmetic said the peak could not be what the item
+thought it was; the trace said where it actually was.
+
+### ⭐ The arithmetic that pointed at the wrong event, in the right way
+
+The filing's own terrain numbers (a rise of 1.9 m over 4.5 m) give a **22.9°** ramp. The harness's own
+initial speed is **`v0 = 25.0` m/s** (90 km/h). Ballistics for that:
+
+| | value |
+|---|---|
+| vertical velocity the ramp can impart at 90 km/h | **9.72 m/s** |
+| speed at the lip needed for the ramp ALONE to impart 15.79 m/s | **40.6 m/s = 146 km/h** |
+| apex a *sustained* 15.79 m/s would reach | **12.71 m** — but 6.12 m is measured |
+
+**Those only reconcile if the 15.79 is a one-frame spike, not a launch.** That was correct. ⚠️ **But
+I assumed the spike was at the ramp. It was not.**
+
+### ⭐⭐⭐ The trace — `JM_OFFROAD_TRACE=1`, every frame, both arms
+
+```
+[trace] hold t=0.033 x=0.83 y=0.471 h=0.864 air=-0.393 vz=15.785   <- frame 2, UNDERGROUND
+[trace] hold t=0.050 x=1.25 y=0.642 h=0.895 air=-0.253 vz=10.266
+[trace] hold t=0.067 x=1.67 y=0.812 h=0.925 air=-0.114 vz=10.175
+        … vz decays 10 → 9 → 8 m/s over the next 0.2 s: a spring ejection, not a ramp …
+MAX VZ   15.79 m/s at t=0.033s x=0.83m   air=-0.39
+MAX AIR   6.12 m   at t=1.30s  x=31.9m   vz=-1.92     <- FALLING, before the ramp
+```
+
+| distance along the ray | max vz | max air | what it is |
+|---|---|---|---|
+| **x 0–1 m** | **15.79** | −0.39 | **spawn: car below terrain, contact ejects it** |
+| x 1–5 m | 10.27 | 0.89 | still being ejected |
+| x 5–20 m | 8.70 | 4.92 | rising on the ejection arc |
+| x 20–38 m | 2.82 | **6.12** | **apex and descent** — lands just short of the ramp |
+| **x 38–43 m (the ramp)** | **9.51** | **0.74** | **the actual ramp — within ballistics** |
+| x 43–60 m | 11.00 | −0.34 | one frame, then off-mesh |
+
+⭐⭐⭐ **At the ramp the car reaches 0.74 m of air and 9.5 m/s of climb** — which is what a 23° ramp at
+~24 m/s produces and nothing more. **Everything the gate has reported as "the PO's levitate" happened
+in the first 1.3 seconds, thirty metres before the terrain feature S2–S5 attributed it to.**
+
+### ⛔ The cause is one keyword
+
+```julia
+function build_car3d(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0, y0 = 0.0, …)   # drive_rt3d.jl:365
+c = DriveRT3D.build_car3d(; v0 = v0)          # the harness: y0 left at 0.0
+lastz = Ref(hat(rx, rz)[2])                   # …and the very next line HAS the terrain height
+```
+
+The car is built at **y = 0** on terrain that is **0.86 m** high there, settles six steps against the
+constructor's default ground, and the first real step's contact resolves the 39 cm of penetration by
+**throwing it upward.** The harness computes the correct height one line later and never passes it.
+
+✅ **Fixed:** `y0 = hat(rx, rz)[2]`, with **`JM_OFFROAD_Y0_LEGACY=1`** restoring the old spawn as the
+negative control — *with it, 15.79/6.12 must come back exactly.* **Both arms are running as this is
+written; S8 records them.**
+
+### ⚖️ What this does to OFFROAD-1 — and what it does NOT
+
+* ⛔ **S2–S5's narrative is wrong** — *"the car leaves the road, runs 38 m over smooth ground, and
+  meets an earth bank at 90 km/h"* describes a car that, in the harness, was **airborne from the
+  second frame** and *landing* on that ground at 38 m.
+* ⛔ **S6's "reproduces unchanged twelve days on" was true and meant less than it seemed** — the
+  spawn is deterministic, so of course the artefact was.
+* ⛔ **S7's own ballistic arithmetic was aimed at the wrong event.** Its conclusion (spike, not
+  launch) survives; its location did not.
+* ⚠️ **The PO's report is NOT disproved.** *"Still ran into a levitate and bounce when car went off
+  road at Watkin's Glen"* is a real person's observation of the real sim. **What is disproved is that
+  this gate ever measured it.** Whether a car spawned correctly still levitates at that bank is
+  **exactly what the fixed harness now asks for the first time.**
+
+### ⚠️ Not claimed
+
+* **That the ramp behaviour is right.** 9.5 m/s / 0.74 m in the ramp band is *plausible ballistics*,
+  and **still exceeds the gate's 6.0 m/s threshold** — and that band's numbers are themselves
+  contaminated by the car *landing* from the spawn arc onto it. **Only the fixed run can say.**
+* That the suspension question is dead. **It is un-asked**, not answered — every measurement so far
+  was of the spawn.
+* That the fix is verified. **The negative control is the verification, and it had not finished.**
+
+**S8:** read both arms. The legacy arm must reproduce 15.79 / 6.12; the fixed arm gives OFFROAD-1 its
+**first real measurement**. Then, and only then, decide whether the PO's defect is in the ramp
+band.
+
+**OFFROAD-1: the headline numbers re-attributed to the harness's own spawn, the cause found in one
+keyword, and the fix in flight with its control. julia sprint 3 of 4.**

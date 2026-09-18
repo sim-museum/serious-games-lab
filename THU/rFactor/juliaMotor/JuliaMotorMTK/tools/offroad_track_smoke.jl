@@ -100,7 +100,18 @@ end
 """Drive straight at `v0` along the exit ray under ground policy `policy`
 (:hold or :nan). Returns (max upward m/s, max height above TRUE terrain, final y)."""
 function run_ray(policy; v0 = 25.0, secs = 8.0)
-    c = DriveRT3D.build_car3d(; v0 = v0); c.gear = 3
+    # OFFROAD-1 S7: SPAWN AT TERRAIN HEIGHT. This used to call build_car3d(; v0 = v0) and let y0
+    # default to 0.0 while the terrain at the spawn point is ~0.86 m -- so the car began 39 cm
+    # UNDERGROUND and the ground contact fired it out at 15.79 m/s on the SECOND FRAME (t=0.033,
+    # x=0.83). The per-frame trace (JM_OFFROAD_TRACE=1) shows both headline numbers this gate has
+    # reported since S2-S5 are that spawn event: max climb 15.79 m/s at x=0.83 m, and the 6.12 m
+    # apex at x=31.9 m with the car already FALLING -- the top of the arc from being ejected, landing
+    # just short of the ramp. At the ramp itself (x 38-43) air peaks at 0.74 m and vz at 9.5 m/s,
+    # which is what ballistics predicts for ~24 m/s at 23 deg. The gate was measuring its own initial
+    # condition, not the PO's off-road levitate. JM_OFFROAD_Y0_LEGACY=1 restores the old spawn as
+    # the negative control: with it the 15.79/6.12 must come back.
+    y0 = get(ENV, "JM_OFFROAD_Y0_LEGACY", "") == "1" ? 0.0 : hat(rx, rz)[2]
+    c = DriveRT3D.build_car3d(; v0 = v0, y0 = y0); c.gear = 3
     lastz = Ref(hat(rx, rz)[2])
     # The car's own x is distance along the ray; map it to the world point it corresponds to.
     function gz(x, z)
@@ -111,14 +122,25 @@ function run_ray(policy; v0 = 25.0, secs = 8.0)
     # `c.y` and `c.x` are the car's own accessors -- the same ones offroad_smoke reads. Reaching
     # into `c.integ[c.sys...]` threw "System car: variable body does not exist".
     dt = 1/60; vzmax = -Inf; airmax = -Inf; prevy = NaN
+    # OFFROAD-1 S7: JM_OFFROAD_TRACE=1 prints every frame -- t, x along the ray, y, terrain h,
+    # air = y-h, vz = dy/dt -- so the 15.79 m/s "max climb" can be read as a SHAPE. The peak alone
+    # cannot say whether it is a sustained launch or a one-frame spike, and the two arithmetic
+    # facts below only reconcile if it is a spike: the ramp alone would need 146 km/h at the lip to
+    # impart 15.79 m/s vertical (the harness starts at 90 with 0.30 throttle over 38 m of grass),
+    # and a sustained 15.79 m/s would reach a 12.7 m apex where 6.12 m is measured.
+    trace = get(ENV, "JM_OFFROAD_TRACE", "") == "1"
+    t = 0.0
     for _ in 1:round(Int, secs/dt)
         DriveRT3D.step_car3d!(c, 0.30, 0.0, 0.0, dt; manual = true, groundz = gz)
-        y = Float64(c.y)
+        y = Float64(c.y); t += dt
         isfinite(y) || return (Inf, Inf)          # diverged: worse than any threshold
-        isfinite(prevy) && (vzmax = max(vzmax, (y - prevy)/dt))
+        vz = isfinite(prevy) ? (y - prevy)/dt : 0.0
+        isfinite(prevy) && (vzmax = max(vzmax, vz))
         prevy = y
         (ok, h) = hat(rx + px*Float64(c.x), rz + pz*Float64(c.x))
         ok && (airmax = max(airmax, y - h))
+        trace && @printf(stderr, "[trace] %s t=%.3f x=%.2f y=%.3f h=%s air=%s vz=%.3f\n",
+                         policy, t, Float64(c.x), y, ok ? @sprintf("%.3f", h) : "off", ok ? @sprintf("%.3f", y-h) : "off", vz)
     end
     (vzmax, airmax)
 end
