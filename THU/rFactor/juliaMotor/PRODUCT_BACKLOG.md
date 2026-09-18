@@ -18597,3 +18597,80 @@ band.
 
 **OFFROAD-1: the headline numbers re-attributed to the harness's own spawn, the cause found in one
 keyword, and the fix in flight with its control. julia sprint 3 of 4.**
+
+## OFFROAD-1 S8 (Fable 5.1, 2026-09-17) — ✅ **the negative control is EXACT and the fixed spawn gives OFFROAD-1 its first real measurement: 6.77 m/s and 1.31 m, against 15.79 / 6.12.** ⚖️ And the gate's thresholds were calibrated against the artefact
+
+**Story:** julia rotation: sprint 4 of 4. S7 found both headline numbers were the car being fired out
+of the ground at spawn and shipped the fix with a control. This records both arms.
+
+| arm | max climb | max height above terrain |
+|---|---|---|
+| **legacy spawn** (`JM_OFFROAD_Y0_LEGACY=1`, the control) | **15.79 m/s** | **6.12 m** |
+| **fixed spawn** (`y0 = hat(rx, rz)[2]`) | **6.77 m/s** | **1.31 m** |
+
+⭐ **The control reproduces S2–S5's numbers to the decimal**, so the fix changed exactly one thing and
+that thing was the whole difference. The fixed spawn frame reads `air=0.009, vz=2.49` — on the ground,
+settling — where the legacy one read `air=-0.393, vz=15.79`.
+
+### What the fixed run actually shows, by band
+
+| x along the ray | max vz | max air | |
+|---|---|---|---|
+| 0–5 m | 2.57 | 0.04 | settling |
+| 5–38 m (the "smooth" section) | 3.55 | **1.31** | ⚠️ see below |
+| **38–43 m (the ramp)** | **6.78** | 1.20 | **below pure ballistics (9.7 m/s)** |
+| 43+ m | 2.06 | 0.23 | off-mesh next frame |
+
+⭐⭐ **At the ramp the car climbs at 6.78 m/s and clears 1.2 m** — a 23° bank taken at ~24 m/s would
+*ballistically* impart 9.7 m/s and 4.8 m. **The suspension is damping the launch, not adding to it.**
+S6's standing hypothesis — *"suspension rebound adding to it"* — is answered the other way, on the
+first run that could answer it.
+
+⚠️ **The 1.31 m maximum is in the SMOOTH section, not at the ramp**, with only 3.55 m/s of climb. Two
+readings: a real bump the "|step| ≤ 0.04 m" survey under-described, or a harness limitation — `air` is
+`y − h` with `h` sampled at the car's *x along the ray*, so a car that drifts laterally is compared
+against the wrong terrain sample. **Not resolved here.**
+
+### ⚖️ Grooming — the gate still fails, and that no longer means what it did
+
+All four assertions still fail (6.77 > 6.0 m/s; 1.31 > 0.75 m). **But those thresholds were set by
+S2–S5 looking at 15.79 / 6.12** — numbers this sprint shows were the spawn. Against the real event,
+6.0 m/s is *below* what honest ballistics would produce at that bank, and 0.75 m is a foot and a half
+over a bank taken at 90 km/h. ⛔ **Do not re-tune the thresholds to make the gate green.** The PO's
+report is *"levitate and bounce"*; whether 1.3 m over that bank is a levitate is **the PO's eye**, now
+askable for the first time with a run that measures the right thing. **The gate stays out of `SMOKES`,
+red, until that is decided.**
+
+### ⚠️ Not claimed
+
+* **That the PO's defect is gone.** The harness now measures the ramp; **it has never measured the
+  PO's route** — the PO drove off the road somewhere at Watkins Glen, and this ray is one bank.
+* **That 1.31 m in the smooth section is a defect.** Unexplained; two candidate readings above.
+* That any other physics changed. **One keyword in one harness.** The sim is untouched.
+
+**OFFROAD-1: measured correctly for the first time, hypothesis inverted, thresholds recognised as
+artefact-derived. julia rotation complete (4 sprints) → FF.**
+
+## GOLDMATCH-JR-1 — match `260915_gpl_wg_race_gold.mp4` as closely as possible (PO ask, 2026-09-17)
+
+**Oracle:** `~/gold standard/julia racer/260915_gpl_wg_race_gold.mp4` — 521 s, 1920×1080 @ 60, a
+desktop recording with GPL windowed. Censused at 48 frames: `/home/admin/gold-census/260915_gpl_wg_race_gold.png`.
+**Ask:** the PO asked (2026-09-17) for backlog items matching every gold video from the last week as
+closely as possible. This is julia's one such video. ⚠️ **Existing items already cover parts of it;
+this item's job is to name what they cover, what they do not, and hold the whole video as one
+acceptance test rather than re-open any of them.**
+
+| scene | ~t | what is on screen | existing item | status | gap |
+|---|---|---|---|---|---|
+| GPL launcher / splash / loading | 0–40 | iGOR/GEM config window, "Grand Prix Legends" splash, track map | — | **out of scope** — GPL's own launcher, not the sim | none by design |
+| **cockpit, ~20 frames** | 40–250 | Lotus 49, **both cowl mirrors filled**, timing overlay (lap times, Player/Leader Relative, Track Position with Clark, Hill, Brabham, Amon, Bonnier), telemetry bar (`Oil P · T · km/h · rpm · Fuel`) | **GOLDVID-JR-1** (mirrors), **SPA-FPS-1** (mirror cost) | open — S15 trade needs eyes | **the timing overlay and telemetry bar have no item at all** |
+| race / field behaviour | 40–250 | AI field spread and race gap | **GOLDVID-JR-2**, **AISPREAD-1** | S6 retraction, S8 wreck | continue there |
+| **replay / external cameras, ~15 frames** | 250–460 | trackside TV cams, chase cam behind the Lotus, **wheel-cam**, **the grid with crowds**, the **Kendall bridge**, **Ford / Firestone billboards** | E75/E82 (wheel arms, **parked at 10**), ROAD-1 (trackside solids), TRACKGOLD-1 (**Ring**, not WG) | — | ⛔ **no item covers replay cameras, crowds or billboard placement at Watkins Glen** |
+| results — "GRAND PRIX NEWS / Wins U.S.A. GP" | 470–500 | post-race results screen | — | — | ⛔ **no item** |
+
+**Acceptance:** each scene row either has a passing parity oracle or an explicit PO decision. **Done
+when the gap column is empty.**
+**Priority inside this item:** the cockpit overlay (the PO looks at it every lap) → replay cameras
+and Watkins Glen scenery → the results screen.
+⚠️ **Not a re-opening of E75/E82** — that item's own conclusion is *"neither arm is shippable"*; it is
+listed so the wheel-cam frames are not mistaken for a fresh defect.
