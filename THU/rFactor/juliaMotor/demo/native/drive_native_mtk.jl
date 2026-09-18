@@ -3393,6 +3393,15 @@ prog = Render.program(); glUseProgram(prog)
 glUniform3f(glGetUniformLocation(prog,"uLightDir"), 0.4f0, 1.0f0, 0.25f0)
 skyprog = Render.skyprogram(); skyvao = Render.empty_vao()
 hudprog = Render.hud_program(); (hudvao, hudvbo) = Render.hud_buffers()
+# TEXTHUD-1 (GOLDMATCH-JR-1 S1): the text overlay pass. JM_NO_TEXT_HUD=1 disables it; a missing
+# atlas (demo/native/assets/font18.*) disables it silently and says so once.
+const TEXT_HUD = !haskey(ENV, "JM_NO_TEXT_HUD")
+textprog = Render.text_program(); (textvao, textvbo) = Render.hud_buffers()
+FONT = TEXT_HUD ? Render.load_font(joinpath(@__DIR__, "assets"), 18) : nothing
+TEXT_HUD && FONT === nothing && println("  [texthud] no font atlas under demo/native/assets -- text overlay off (run JuliaMotorMTK/tools/make_font_atlas.py)")
+lapfmt(t) = t <= 0 ? "--:--.--" : begin
+    m = floor(Int, t/60); sr = t - 60m; sec = floor(Int, sr); cc = clamp(floor(Int, (sr - sec)*100), 0, 99)
+    string(lpad(m, 2, '0'), ":", lpad(sec, 2, '0'), ".", lpad(cc, 2, '0')) end
 depthprog = Render.depthprogram(); (shadowfbo, shadowtex) = Render.make_shadow_fbo()
 const LIGHTDIR = Float32[0.4, 1.0, 0.25]
 # ---- per-track colour grade -------------------------------------------------
@@ -9571,7 +9580,8 @@ function main()
         _t_hud = time()
         Render.hud_draw(hudprog, hudvao, hudvbo,
             Render.compose_hud(W, H, cs.v*3.6, cs.gear, cs.rpm, 9500.0, inp.throttle, inp.brake, inp.clutch, tc_hud;
-                               lastlap=(SMOKE ? 94.3 : last_lap), bestlap=(SMOKE ? 92.1 : best_lap), manual=!CTL.auto,
+                               lastlap=(FONT === nothing ? (SMOKE ? 94.3 : last_lap) : 0.0),   # TEXTHUD-1: the text rows carry these; no double readout
+                               bestlap=(FONT === nothing ? (SMOKE ? 92.1 : best_lap) : 0.0), manual=!CTL.auto,
                                countdown=cd_left[],
                                # STARTSEQ-1: the spacebar keycap, pulsing at 1 Hz, while unarmed.
                                startprompt=(START_ARM && !cd_armed[] && HOLD_START && !race_go[] &&
@@ -9581,6 +9591,36 @@ function main()
                                # announced only in the window title and on stdout; show it in the
                                # game. player_finpos is set when race_done latches.
                                finished=(race_done ? player_finpos[] : 0)), W, H)
+        # TEXTHUD-1 (GOLDMATCH-JR-1 S1, 2026-09-17): the gold's timing overlay, in its layout -- lap
+        # rows top-left (I = this lap, B = best, L = last), Track Position top-right with names and
+        # metres to each car, the player's row amber. Only what the sim can honestly report is
+        # shown: no sectors, no Relative tables yet (those need per-car lap clocks -- S2).
+        if FONT !== nothing
+            # The gold's rows sit on an opaque black band across the top of the frame (its overlay is
+            # not blended over the scene). Same here: one flat quad through the HUD program, then text.
+            bv = Float32[]; Render.hquad!(bv, 0.0, 0.0, Float64(W), 3FONT.lineh + 12.0, (0.0, 0.0, 0.0))
+            Render.hud_draw(hudprog, hudvao, hudvbo, bv, W, H)
+            tv = Float32[]; fy = 6.0; fx = 8.0
+            cur = (race_go[] && !race_done) ? cs.t - lap_t0 : (SMOKE ? 23.27 : 0.0)
+            Render.text!(tv, FONT, fx, fy,            "I  " * lapfmt(cur),                              (1.0, 0.45, 1.0))
+            Render.text!(tv, FONT, fx, fy + FONT.lineh, "B  " * lapfmt(SMOKE ? 92.1 : best_lap),           (0.75, 0.75, 0.75))
+            Render.text!(tv, FONT, fx, fy + 2FONT.lineh, "L  " * lapfmt(SMOKE ? 94.3 : last_lap),          (0.45, 0.95, 0.45))
+            if IS_RACE && !isempty(AICARS)
+                st = standings(); ppy = 0.0
+                for e in st; e[1] == 0 && (ppy = e[2]); end
+                lapsN = length(st) > 0 ? cs.laps + 1 : 1
+                tx = W - 8.0 - 300.0
+                Render.text!(tv, FONT, tx, fy, "Track Position ($(lapsN)L)", (0.95, 0.95, 0.95))
+                for (i, e) in enumerate(st)
+                    i > 7 && break
+                    gapm = round(Int, (e[2] - ppy) * LAPLEN)
+                    col = e[1] == 0 ? (1.0, 0.82, 0.35) : (0.95, 0.95, 0.95)
+                    Render.text!(tv, FONT, tx, fy + i*FONT.lineh, string(i, " ", ent_name(e[1])), col)
+                    Render.text!(tv, FONT, tx + 190.0, fy + i*FONT.lineh, (gapm >= 0 ? "+" : "") * string(gapm) * "m", col)
+                end
+            end
+            Render.text_draw(textprog, textvao, textvbo, FONT, tv, W, H)
+        end
         CLUTCH_GATE[] > 0 && (CLUTCH_GATE[] -= dt)
         # E80 (PO 2026-08-27): "frame rate was low (10 frames/sec or so) in cockpit view, better in
         # nintendo view ... no excuse for 10 frames/sec on a PC with a 6 GB nvidia graphics card".

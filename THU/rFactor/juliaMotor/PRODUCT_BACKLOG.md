@@ -18674,3 +18674,51 @@ when the gap column is empty.**
 and Watkins Glen scenery → the results screen.
 ⚠️ **Not a re-opening of E75/E82** — that item's own conclusion is *"neither arm is shippable"*; it is
 listed so the wheel-cam frames are not mistaken for a fresh defect.
+
+## GOLDMATCH-JR-1 S1 / TEXTHUD-1 (Fable 5.1, 2026-09-17) — ⭐⭐ **julia can draw TEXT: the gold's timing overlay rows (I / B / L on a black band, top-left) are on screen, gated, treatment vs control.** ⛔ The Relative tables need per-car lap clocks the AI does not keep
+
+**Story:** julia rotation, cycle 3, sprint 1 of 4. GOLDMATCH-JR-1's priority row is the cockpit
+overlay — every one of the gold's ~20 cockpit frames carries a proportional-text timing overlay
+(lap rows, Player/Leader Relative, Track Position with names) — and our HUD had *"no font, only
+7-seg digits and quads"* (compose_hud's own comment). No text path existed anywhere in the
+renderer (`textest.jl` is a texture test).
+
+### ⭐ What was built
+* **`JuliaMotorMTK/tools/make_font_atlas.py`** — PIL bakes DejaVu Sans Bold 18 px into
+  `demo/native/assets/font18.a8` (raw coverage, 28 KB) + `font18.txt` (metrics). julia has no
+  rasteriser; the sim reads these with plain `read`. Regular weight was tried first and was
+  visibly thinner than the gold's; bold matches.
+* **`render.jl`**: `text_program` (pos/uv/colour, premultiplied alpha), `load_font` (returns
+  `nothing` if the atlas is absent — the sim runs without text and says so once), `text!`,
+  `text_width`, `text_draw`.
+* **`drive_native_mtk.jl`**: after the HUD pass — a black band across the top (the gold's overlay
+  is opaque, not blended), then `I mm:ss.cc` (this lap, magenta), `B` (best, grey), `L` (last,
+  green), and — in a race — a `Track Position (nL)` table top-right from `standings()`, names via
+  `ent_name`, metres to each car, the player's row amber. The 7-seg last/best digits are
+  suppressed while the text HUD is on (they were a double readout under the rows).
+  `JM_NO_TEXT_HUD=1` disables the whole pass.
+* **`JuliaMotorMTK/tools/texthud_smoke.sh`** — two Watkins Glen cockpit shots at s=8300,
+  treatment vs control; PASS when the top-left strip differs by ≥4.0 mean|diff| (the chase gate's
+  measured noise floor) and ≥1 % of pixels. **Run: `mean|diff| 159.63, 89.17 % changed — PASS.**
+
+### ⛔ Two of my own wrong turns, kept for the record
+* The first smoke run was a `CANNOT MEASURE`: I named the track `watkins_glen`; the sim's list says
+  `watglen`, and **it refused rather than loading Zandvoort under that label** — exactly the guard
+  the run needed.
+* The first metric ("pixels +90 above the strip's median") read **0.00 % on a frame that visibly
+  carried the text** — the sky's median is ~200. Replaced by the treatment−control difference,
+  which is what the overlay *is*.
+
+### ⚠️ Not claimed, and the grooming call
+* **The Track Position table is written but unexercised** — the smoke flies without AI. S2 runs a
+  race capture.
+* **Player Relative / Leader Relative (time gaps) are not drawn**: `AICar` has no lap-crossing
+  clock (`s, v, lap, lane, …`), so a time gap would be a fabrication. A per-car lap timestamp is
+  a small addition — but it is a second sprint, and the metres table is what the data supports.
+* Sector columns: none — no sector timing exists.
+* Not a pixel match: the gold's font is a different face at a different window scale; the
+  layout, colours-by-row and band are the match.
+
+`parity/texthud/260917_*`: gold top strip 2×, our first (faint, colliding) attempt beside it, and the shipped result.
+
+**GOLDMATCH-JR-1: the overlay row moves from "no item, no text path" to "rows on screen, gated". julia sprint 1 of 4.**

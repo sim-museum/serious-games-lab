@@ -2336,4 +2336,75 @@ function item(interleaved)
     vao,n = upload(interleaved); Item(vao,n,GLuint(0),(1f0,1f0,1f0))
 end
 
+# ---- TEXTHUD-1 (GOLDMATCH-JR-1 S1, 2026-09-17): proportional text for the HUD ----
+# The gold's every cockpit frame carries a text timing overlay (lap times, Player/Leader Relative,
+# Track Position with driver names). This HUD had no font -- 7-seg digits and quads only -- so
+# text is added as a SECOND screen-space pass: an atlas baked offline by
+# JuliaMotorMTK/tools/make_font_atlas.py (PIL; julia has no rasteriser) and sampled here.
+const TEXT_VS = """
+#version 330 core
+layout(location=0) in vec2 p; layout(location=1) in vec2 t; layout(location=2) in vec3 c;
+uniform vec2 uRes; out vec2 uv; out vec3 col;
+void main(){ uv=t; col=c; gl_Position=vec4(p.x/uRes.x*2.0-1.0, 1.0-p.y/uRes.y*2.0, 0.0, 1.0); }"""
+const TEXT_FS = """
+#version 330 core
+in vec2 uv; in vec3 col; uniform sampler2D uAtlas; out vec4 o;
+void main(){ float a=texture(uAtlas,uv).r; o=vec4(col*a, a); }"""   # premultiplied: blend ONE, ONE_MINUS_SRC_ALPHA
+function text_program()
+    p=glCreateProgram(); glAttachShader(p,compile(TEXT_VS,GL_VERTEX_SHADER)); glAttachShader(p,compile(TEXT_FS,GL_FRAGMENT_SHADER)); glLinkProgram(p); p
+end
+struct Font
+    tex::GLuint; W::Int; H::Int; lineh::Int; ascent::Int
+    glyphs::Dict{Char,NTuple{7,Float32}}     # x y w h xoff yoff adv (atlas px)
+end
+"""Load `<dir>/font<px>.txt` + `.a8` (see make_font_atlas.py). Returns `nothing` if absent, so the
+sim runs without text rather than dying on a missing asset."""
+function load_font(dir, px=18)
+    meta=joinpath(dir,"font$(px).txt"); raw=joinpath(dir,"font$(px).a8")
+    (isfile(meta) && isfile(raw)) || return nothing
+    lines=readlines(meta); W,H,lineh,asc = parse.(Int, split(lines[1]))
+    a8=read(raw); length(a8)==W*H || return nothing
+    g=Dict{Char,NTuple{7,Float32}}()
+    for l in lines[2:end]
+        f=split(l); code=parse(Int,f[1])
+        g[Char(code)]=ntuple(i->Float32(parse(Float64,f[i+1])),7)
+    end
+    tex=Ref{GLuint}(); glGenTextures(1,tex); glBindTexture(GL_TEXTURE_2D,tex[])
+    glPixelStorei(GL_UNPACK_ALIGNMENT,1)
+    glTexImage2D(GL_TEXTURE_2D,0,GL_R8,W,H,0,GL_RED,GL_UNSIGNED_BYTE,a8)
+    glPixelStorei(GL_UNPACK_ALIGNMENT,4)
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR); glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR)
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE); glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE)
+    Font(tex[],W,H,lineh,asc,g)
+end
+"""Append the quads for `str` at pen position (x,y) = top-left of the line box; returns the pen x after it."""
+function text!(v::Vector{Float32}, font::Font, x, y, str::AbstractString, col; scale=1.0)
+    px=Float32(x); base=Float32(y)
+    for ch in str
+        g=get(font.glyphs, ch, nothing); g===nothing && (g=get(font.glyphs,'?',nothing)); g===nothing && continue
+        gx,gy,gw,gh,xo,yo,adv=g
+        x0=px+xo*scale; y0=base+yo*scale; x1=x0+gw*scale; y1=y0+gh*scale
+        u0=gx/font.W; v0=gy/font.H; u1=(gx+gw)/font.W; v1=(gy+gh)/font.H
+        for (qx,qy,qu,qv) in ((x0,y0,u0,v0),(x1,y0,u1,v0),(x1,y1,u1,v1),(x0,y0,u0,v0),(x1,y1,u1,v1),(x0,y1,u0,v1))
+            append!(v, Float32[qx,qy,qu,qv,col[1],col[2],col[3]])
+        end
+        px+=adv*scale
+    end
+    px
+end
+text_width(font::Font, str; scale=1.0) = sum((get(font.glyphs,ch,get(font.glyphs,'?',ntuple(_->0f0,7)))[7] for ch in str); init=0f0)*scale
+function text_draw(prog,vao,vbo,font::Font,v,W,H)
+    isempty(v) && return
+    glDisable(GL_DEPTH_TEST); glEnable(GL_BLEND); glBlendFunc(GL_ONE,GL_ONE_MINUS_SRC_ALPHA)
+    glUseProgram(prog); glUniform2f(glGetUniformLocation(prog,"uRes"),Float32(W),Float32(H))
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D,font.tex); glUniform1i(glGetUniformLocation(prog,"uAtlas"),0)
+    glBindVertexArray(vao); glBindBuffer(GL_ARRAY_BUFFER,vbo)
+    glBufferData(GL_ARRAY_BUFFER,sizeof(v),v,GL_DYNAMIC_DRAW)
+    glVertexAttribPointer(0,2,GL_FLOAT,false,7*4,Ptr{Cvoid}(0));   glEnableVertexAttribArray(0)
+    glVertexAttribPointer(1,2,GL_FLOAT,false,7*4,Ptr{Cvoid}(2*4)); glEnableVertexAttribArray(1)
+    glVertexAttribPointer(2,3,GL_FLOAT,false,7*4,Ptr{Cvoid}(4*4)); glEnableVertexAttribArray(2)
+    glDrawArrays(GL_TRIANGLES,0,length(v)÷7)
+    glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA); glEnable(GL_DEPTH_TEST)
+end
+
 end # module

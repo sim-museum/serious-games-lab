@@ -25,6 +25,11 @@ SMOKES="parse_smoke wreck_smoke contact_smoke stacked_contact_smoke solid_box_sm
 # demo/native/gpltrack.jl, which needs the JuliaMotor package, and run under the MTK project it dies
 # with "Package JuliaMotor not found in current path" before it measures anything. That trap cost a
 # run today.
+# TEXTHUD-1 (GOLDMATCH-JR-1 S1, 2026-09-17): DISPLAY GATES ARE NOT RUN HERE. This suite runs the
+# headless .jl smokes only. Two gates need a GL window and are run by hand, one at a time, with the
+# display unlocked: chase_parity_gate.sh (screen parity, measures its own noise) and
+# texthud_smoke.sh (the text timing overlay, treatment vs JM_NO_TEXT_HUD control). Listed so that
+# "not in gates.sh" is not read as "does not exist".
 # RACESTART-1 S12: WARN ABOUT SMOKES ON DISK THAT THIS LIST DOES NOT NAME.
 # gates.sh already reports a LISTED smoke whose file is missing. The reverse was silent, and
 # "built, then never listed" is the failure BoB booked three separate times -- its gates_all.sh
