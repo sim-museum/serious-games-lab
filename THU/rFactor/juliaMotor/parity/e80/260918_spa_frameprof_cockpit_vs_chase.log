@@ -1,0 +1,87 @@
+  clutch: axis 4 (ridable slider)  <- joystick.conf
+  → track: Spa
+  → mode: Practice
+  → AI grip anchor 13.04 m/s² (1.33 g) from lotus49_skidpad 2026-06-24 15-46-39.ibt (LatAccel p99 of 11776 samples)
+  → AI vmax anchor 87.8 m/s (316 km/h) from rev limit 9566 rpm in lotus49_nurburgring nordschleife 2026-06-24 15-55-58.ibt  [RW_R=0.33 m is NOT from the ibt]
+  gearbox: [2.23, 1.72, 1.32, 1.04, 0.846]  final 4.11   <- lotus49_nurburgring nordschleife 2026-06-24 15-53-11.ibt
+  mass:    616.9 kg  front 45.5%
+  springs: 18249 / 18249 / 29198 / 29198 N/m (FL/FR/RL/RR)   <- lotus49_nurburgring nordschleife 2026-06-24 15-53-11.ibt
+  ride ht: 82.9 / 82.9 / 105.2 / 105.2 mm (FL/FR/RL/RR)   <- lotus49_nurburgring nordschleife 2026-06-24 15-53-11.ibt
+  setup:   session default (unmodified)
+loading GPL spa67…   road-only HAT: 17372 road tris (align/recentre oracle)
+centreline re-centred on the visible road (pass 1/4): max shift 4.0 m, mean 2.64 m, at-start 4.0 m
+centreline re-centred on the visible road (pass 2/4): max shift 4.0 m, mean 0.63 m, at-start 1.32 m
+centreline re-centred on the visible road (pass 3/4): max shift 3.0 m, mean 0.22 m, at-start 0.25 m
+centreline re-centred on the visible road (pass 4/4): max shift 2.8 m, mean 0.18 m, at-start -0.25 m
+TriangleHAT(92548 triangles, grid 202×251)  TrackSurface(4720 segments, lap 14210.5 m, grid 153×190)
+extracting geometry…   E68 S10: rail/fence dedup dropped 4 coplanar-duplicate tris
+  [noseuv] GRILLE-FIX re-mapped 32 facet(s) across 2 part(s) from their non-grille front neighbours (JM_NOSE_GRILLEFIX=0 reverts)
+  [noseuv] CARPIN grille-fix: 36 facet(s) across 4 part(s)
+  [dashvflip] dash7: 7.0 tris, v[0.023,1.0] -> mirrored about 0.511
+  [dashvflip] ldashr: 7.0 tris, v[0.023,1.0] -> mirrored about 0.511
+  [dashvflip] flipped v on 42 dash vertices
+  [swuv] sterlot: rotated UVs 180 deg on 6 vertices
+  [swuv] parts fixed: 6 vertices
+382 track parts + 16 Lotus body parts
+  [wheels] Lotus: hubs from lotus.3do  front x=1.53 rear x=-0.88 half-track 0.76/0.77 (+BODY_OFF -0.55)  now (0.98,0.76) (0.98,-0.76) (-1.43,0.77) (-1.43,-0.77)
+  [axle] x0=-0.885 hub z=0.772  bbox x[-0.909,-0.861] z[-0.772,0.772]  (rear hub raw x=-0.885)
+  PHYSICS: full-3D vehicle (default) — heave/pitch/roll + suspension travel + jumps
+loading textures…   [aniso] requested 16.0 → texture reports 16.0   (driver maximum 16.0)
+  E68: building house46 centred ON the road (lat=-2.7 m, s=5205) — dropped
+  ROAD-1: 30 disc(s) shrunk to clear the road: arm_sf0@-212,914 3.1→0.7 wwambu@59,537 1.1→0.0 shrub4@1874,-906 1.5→0.5 shrub4@1925,-922 1.5→0.1 bushrow5@1346,-2228 1.5→0.0 shrub5@1339,-2232 1.5→0.0 bushrow5@1329,-2240 1.5→0.0 simcao@1350,-2229 0.7→0.0 opelrk@1344,-2232 0.9→0.0 prinzv@1337,-2236 0.7→0.0 r4@1332,-2238 0.7→0.0 bush2@934,-2453 1.5→0.9 …
+  ROAD-1: 57 solid box(es) rejected for covering tarmac (disc fallback): arm_sf0@-215,905 matiho@-55,703 matiho@-53,707 house9@1567,-860 house12@1760,-898 house12@1755,-893 shrub4@1873,-906 shrub2@1892,-914 shrub4@1924,-922 shrub4@2099,-1432 shrub2@2089,-1448 shrub2@2043,-1513 …
+== JM_RAIL_SOLID: 576 rail tris -> 161 collision boxes of <=8.0 m (3 rejected for covering tarmac); solids 1300 -> 1461
+  E68: building house46 centred ON the road (lat=-2.7 m, s=5205) — dropped
+1446 trackside objects + 2428 billboards + 0 forest panels + 1461 solid (collidable)
+381/382 track + 15/16 Lotus parts textured
+  TYRE (3-D): physics-based brush model (default)
+  CLINE: centreline length = 14170 m  (spa)
+  force feedback: off (no wheel found)
+  → fuel: 312.6 L = 40 laps  (7.82 L/lap)
+  recording iRacing .ibt telemetry (JM_IBT) — template: lotus49_nurburgring nordschleife 2026-06-24 15-53-11.ibt
+
+  Drive:  W/S gas·brake   A/D steer   E/Q shift   C clutch   R respawn   ⇧R recover-to-track   ^R restart session   V view   G auto⇄manual   M mute   Esc quit
+  AUTO gearbox by default — just press the throttle and go (no clutch needed).  Press G for
+  MANUAL: hold the clutch (C / stick button) to shift E/Q (release it too low and it bogs).
+  Lap times top-left: white = last, green = best.  Telemetry → ./spa_racer_*.txt
+  (Logitech joystick works natively — push=throttle, pull=brake, roll=steer)
+
+  JM_SHOTS: 2 shots → /home/admin/jr-parity/e80
+  [joy] 4 axes raw = 0.02, 0.0, 0.07, -0.21
+        buttons = 16   shift-up btn 1, shift-down btn 2   clutch axis 4
+  [frameprof] 60 frames:  world 14.33 ms   hud 8.81 ms   [depth 79.28 track 3.96 objects 11.23 billboards 17.42 cars 0.0]   of 29.43 ms total
+  [mirror] adapt=1  frame EMA 29.8 ms   marks 24.0/30.0 ms   -> every 3 frame(s);  mirror renders skipped 39
+  [fps] view=cockpit  32.3 fps  (30.9 ms/frame)  s=3006  objs_in_range=729/1446  billboards=2428  trees=0
+  [frameprof] 60 frames:  world 15.34 ms   hud 0.1 ms   [depth 17.1 track 1.51 objects 9.67 billboards 14.81 cars 0.0]   of 30.36 ms total
+  [mirror] adapt=1  frame EMA 26.3 ms   marks 24.0/30.0 ms   -> every 3 frame(s);  mirror renders skipped 79
+  [fps] view=cockpit  33.4 fps  (29.9 ms/frame)  s=3006  objs_in_range=729/1446  billboards=2428  trees=0
+  [frameprof] 60 frames:  world 14.52 ms   hud 0.1 ms   [depth 19.29 track 1.52 objects 9.73 billboards 15.05 cars 0.0]   of 28.79 ms total
+  [mirror] adapt=1  frame EMA 27.2 ms   marks 24.0/30.0 ms   -> every 3 frame(s);  mirror renders skipped 119
+  [fps] view=cockpit  34.6 fps  (28.9 ms/frame)  s=3006  objs_in_range=729/1446  billboards=2428  trees=0
+  [frameprof] 60 frames:  world 15.22 ms   hud 0.1 ms   [depth 18.14 track 1.52 objects 9.7 billboards 15.58 cars 0.0]   of 29.37 ms total
+  [mirror] adapt=1  frame EMA 29.6 ms   marks 24.0/30.0 ms   -> every 3 frame(s);  mirror renders skipped 159
+  [fps] view=cockpit  34.2 fps  (29.2 ms/frame)  s=3006  objs_in_range=729/1446  billboards=2428  trees=0
+  [frameprof] 60 frames:  world 14.31 ms   hud 0.1 ms   [depth 18.52 track 2.25 objects 9.61 billboards 13.8 cars 0.0]   of 28.17 ms total
+  [mirror] adapt=1  frame EMA 26.8 ms   marks 24.0/30.0 ms   -> every 3 frame(s);  mirror renders skipped 199
+  [fps] view=cockpit  35.5 fps  (28.2 ms/frame)  s=3006  objs_in_range=729/1446  billboards=2428  trees=0
+  JM_SHOTS: dumped spa_cockpit (1/2)
+  [frameprof] 60 frames:  world 15.05 ms   hud 0.09 ms   [depth 1.33 track 0.94 objects 6.33 billboards 8.27 cars 0.0]   of 22.37 ms total
+  [mirror] adapt=1  frame EMA 17.3 ms   marks 24.0/30.0 ms   -> every 1 frame(s);  mirror renders skipped 199
+  [fps] view=chase    45.7 fps  (21.9 ms/frame)  s=3006  objs_in_range=729/1446  billboards=2428  trees=0
+  [frameprof] 60 frames:  world 15.34 ms   hud 0.09 ms   [depth 0.55 track 0.92 objects 5.2 billboards 9.18 cars 0.0]   of 18.01 ms total
+  [mirror] adapt=1  frame EMA 18.2 ms   marks 24.0/30.0 ms   -> every 1 frame(s);  mirror renders skipped 199
+  [fps] view=chase    55.5 fps  (18.0 ms/frame)  s=3006  objs_in_range=729/1446  billboards=2428  trees=0
+  [frameprof] 60 frames:  world 14.26 ms   hud 0.09 ms   [depth 0.55 track 0.94 objects 5.19 billboards 8.1 cars 0.0]   of 17.26 ms total
+  [mirror] adapt=1  frame EMA 17.4 ms   marks 24.0/30.0 ms   -> every 1 frame(s);  mirror renders skipped 199
+  [fps] view=chase    57.9 fps  (17.3 ms/frame)  s=3006  objs_in_range=729/1446  billboards=2428  trees=0
+  [frameprof] 60 frames:  world 14.68 ms   hud 0.09 ms   [depth 0.53 track 0.91 objects 5.11 billboards 8.62 cars 0.0]   of 17.76 ms total
+  [mirror] adapt=1  frame EMA 17.4 ms   marks 24.0/30.0 ms   -> every 1 frame(s);  mirror renders skipped 199
+  [fps] view=chase    56.3 fps  (17.8 ms/frame)  s=3006  objs_in_range=729/1446  billboards=2428  trees=0
+  [frameprof] 60 frames:  world 15.16 ms   hud 0.1 ms   [depth 0.56 track 0.93 objects 5.23 billboards 8.97 cars 0.0]   of 17.72 ms total
+  [mirror] adapt=1  frame EMA 17.3 ms   marks 24.0/30.0 ms   -> every 1 frame(s);  mirror renders skipped 199
+  [fps] view=chase    56.4 fps  (17.7 ms/frame)  s=3006  objs_in_range=729/1446  billboards=2428  trees=0
+  JM_SHOTS: dumped spa_chase (2/2)
+  wrote iRacing telemetry: /home/admin/sgl-julia-racer/THU/rFactor/juliaMotor/data/juliaracer/lotus49_spa 2026-09-18 04-56-23.ibt  (602 ticks, 690 KB)
+bye
+┌ Warning: sound needs ≥2 threads — relaunch with: julia -t 2 …
+└ @ Main.EngineAudio ~/sgl-julia-racer/THU/rFactor/juliaMotor/demo/native/audio.jl:162

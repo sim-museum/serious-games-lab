@@ -28,7 +28,7 @@ this index was written; that is what it exists to stop.
 | **E103** | wheel loss in a collision hyperspaces the car to the start line | **mechanism found + fixed + gated** (E103-S1): the containment seal PLACES the car at its last on-track point, which initialises to spawn. Not yet seen in a real wreck. |
 | **E90** | Monza and Watkins have almost no collidable barrier objects | open; the gate passing IS the symptom. assessed |
 | **E91** | "Tesla brakes" — lift-off decelerates **3.44×** too hard | PO confirmed right by measurement (S6, against the real gold store; S4's 1.67× used the sim's own telemetry as "reference"). Fix not landed. assessed |
-| **E80** | 10 fps at Spa in cockpit view | analysis to S4; 725 s of load attributed to the trackside block. No fix landed. assessed |
+| **E80** | 10 fps at Spa in cockpit view | **LOAD half:** analysis to S4 (244 s, 69 % compilation; sysimage cannot be built here). **RENDER half = `SPA-FPS-1`** (S12–S15: the mirror's two `drawworld` passes are 55 % of the cockpit frame; adaptation on by default). E80-S5 (2026-09-18) measured cockpit 33 fps / chase 56 fps with no AI. assessed |
 | **E81** | floating/misplaced billboards and buildings at the Ring | open; the Ring bypasses the pipeline the other tracks use. assessed |
 | **E76** | restore objects deleted after the Ring start/finish | open, lead only. assessed |
 | **E78** | improve all 5 tracks against the gold videos | epic, open. assessed |
@@ -18819,3 +18819,31 @@ most visible rear element because the assembly is open; in ours they are the lea
   separately measure the exhaust tips' position against the gold's (ours reach the wheels' inner
   faces; the gold's end ~100 px inboard at the same scale).
 * Nine sprints on E102 across two cycles; two here. **julia cycle 4: 2 sprints — rotating to FF.**
+
+### E80-S5 (Fable 5.1, 2026-09-18) — ⭐ **the first direct render measurement under E80: Spa, s=3006, no AI, mirror adaptation on — cockpit 29–31 ms/frame (33 fps), chase 17–18 ms (56 fps).** ⛔ And it is SPA-FPS-1's ground, not new: the cockpit's extra ~12 ms is the mirror's two `drawworld` passes (S15: 30 ms of 54 with adaptation off). Groomed: E80's index row now points there
+
+**Story:** julia rotation, cycle 5, sprint 1. E80 (PO: *"10 fps at Spa in cockpit view"*) had four sprints
+on the LOAD (244 s, 69 % compilation; the sysimage cannot be built on this box). None measured the
+render frame the PO named — or so the E80 log read. `JM_FPSDIAG=60 JM_FRAMEPROF=60`, 300-frame settle:
+
+| view | ms/frame | fps | `[frameprof]` world / hud / [depth track objects billboards] |
+|---|---|---|---|
+| cockpit | 28.2–30.9 | 32–36 | 14.3–15.3 / 0.1 / [17–19, 1.5, 9.7, 13.8–15.6] |
+| chase | 17.3–21.9 | 46–58 | 14.3–15.3 / 0.1 / [0.55, 0.9, 5.2, 8.1–9.2] |
+
+`world` (the simulation step) is ~15 ms in both — half the chase frame on its own. Objects and
+billboards cost roughly **twice** in the cockpit: the mirror pass draws them again.
+
+### ⛔ Two things this measurement says about the instrument, not the game
+* **`depth` is not 17 ms.** `PROF_DEPTH[] += time() − _tp_d` sits inside the shared world-draw
+  closure that the mirror pass re-enters; `_tp_d` is set once before the shadow pass, so the
+  second entry adds the whole main pass to "depth". Chase (no mirror, one entry) shows the real
+  shadow pass: 0.55 ms. Left as is this sprint, noted so nobody chases a 17 ms shadow.
+* The bracketed phases are not partitions of the total (they exceed it) for the same reason.
+
+### ⚠️ Grooming
+`SPA-FPS-1` S12–S15 already established the mirror as 55 % of the cockpit frame, that culling its
+world does not help (S14), that `JM_MIRROR_ADAPT` earns 20 ms (S12), and that one disc saves 16 ms
+(S15). A cull A/B I started this sprint repeated S14 and was stopped. **E80's render half is
+SPA-FPS-1; its index row now says so.** The PO's 10 fps against today's 33 (no AI) is the AI field
+plus the mirror; both have their items. **julia cycle 5: 1 sprint — rotating to FF.**
