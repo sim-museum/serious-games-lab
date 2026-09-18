@@ -18786,3 +18786,36 @@ the wheels *used* to be. **Sprint 2: measure (a) from the 3DO, then (b) from the
 
 Housekeeping: the `E104` index row read "half (a) still open, needs a capture" seventeen days after
 E104-S4 closed it — corrected.
+
+### E102-S8 (Fable 5.1, 2026-09-18) — ⭐⭐ **the synthetic halfshafts ARE at hub height — and almost entirely HIDDEN behind the extracted rear assembly. The "axles pointing outward and downward" on screen are the EXHAUSTS and a mesh bar above the hubs, not the axles.** Static, not dynamic (settle 240 = settle 38)
+
+**Story:** julia rotation, cycle 4, sprint 2. S7's picture showed shafts leaving the gearbox down and
+out; the code says the shafts are built horizontal at hub height. One of them had to be wrong.
+
+### ⭐ Arithmetic first (all headless, from the 3DO and the constants)
+`mesh_wheel_hubs(lotus.3do)`: rear hub radius **0.334**, rear hub height in the mesh frame **z = 0.030**.
+GPL extraction maps mesh z → render y (`render.jl:1561`), the body is lifted `BODY_OFF.y = 0.30`, the
+wheels are placed at `y = r` with the hand table's rear `r = 0.34`. So hub centre = 0.34 above the
+road; body-frame hub = 0.33; **the synthetic shaft at `AXLE_Y = 0.02` → 0.32: within 2 cm of the hub.**
+Nothing static can put it 0.25 m above the hubs.
+
+### ⭐ Then the two captures that settle it
+* **`JM_SHOT_SETTLE=240`** (`…_settle240_rear_2p5x.png`): identical to the 38-frame frame — **the
+  picture is static**, not a post-teleport pitch.
+* **`JM_AXLES=0` control**, same settle, pixel diff against the treatment
+  (`…_axles_on_minus_off_mask_2p5x.png`): **1,936 changed pixels, as slivers at each rear wheel's
+  inner face at hub height** and small patches around the gearbox — the shafts are there, at the
+  hubs, and **occluded by the extracted rear assembly everywhere else.**
+
+### ⛔ So what is the PO looking at?
+The chrome rods that run from the gearbox down and out to the tyres are the **exhaust megaphones**
+(the gold's also angle down and out, but end inboard and lower), and the horizontal chrome bar above
+the hubs is a mesh part (anti-roll bar / radius rod), not the axle. In the gold, the halfshafts are the
+most visible rear element because the assembly is open; in ours they are the least visible.
+
+### ⚠️ Grooming — hand forward, rotate
+* **Next test (one sprint):** draw the synthetic shafts thicker (`JM_AXLE_R`) and/or after the
+  assembly with a depth bias, capture, and see whether the PO's "axles" appear where the gold's do;
+  separately measure the exhaust tips' position against the gold's (ours reach the wheels' inner
+  faces; the gold's end ~100 px inboard at the same scale).
+* Nine sprints on E102 across two cycles; two here. **julia cycle 4: 2 sprints — rotating to FF.**
