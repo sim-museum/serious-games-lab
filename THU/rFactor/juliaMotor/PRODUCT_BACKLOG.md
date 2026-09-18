@@ -18872,3 +18872,23 @@ The gold's megaphones run nearly LEVEL and rearward; ours still angle DOWN as we
 **E102 after S10: the lateral half of "outward/downward" is shipped and measured; the pitch half is a ~1-sprint knob about the pipe root (S9). julia cycle 6: sprint 2 of 4.**
 
 ### PARITYGATE-JR-1 S12 (Fable 5.1, 2026-09-18) — ⚠️ **the reference drifted under unchanged code: `6a7fc3e` (the commit that seeded and last passed it) no longer reproduces its own w3 within 4.0 — 4.947, the left bank at s=8700 shaded where it was lit.** Not code (bisect worktree), not the HUD (off), not the pipes (1.0), not track data (nothing under `THU/WP` newer than the reference), not apt (gstreamer/bubblewrap only this morning), not the Julia manifest or depot (untouched since July / 09-15). Deterministic today (A vs A2 0.427). **Unexplained; recorded, not chased.** The gate's own run-to-run figures elsewhere (w1 1.7, w2 2.8) are also above 09-17's 0.6/1.2 — the same drift, smaller. If it recurs, the candidates left are the GPU driver's state, the shadow-map placement at that heading, and whatever else the box does between sessions. Rule kept: a DIFF is a question — and this one was answered as far as one rotation sprint allows before re-seeding.
+
+### E102-S11 (Fable 5.1, 2026-09-18) — ⭐⭐ **the "DOWNWARD" half is the CHASE CAMERA, not the pipes: in the art the megaphones RISE 0.11 m from header to tip over 1.32 m; a 1.35 m-high camera 4.6 m back projects a level pipe coming toward it as a droop. At `JM_CHASE_H=0.7` (the gold's replay-chase height) they read level and inboard, like the gold's**
+
+**Story:** julia rotation, cycle 6, sprint 3. S9 asked for a pitch knob; measuring first said the knob was not needed.
+
+### ⭐ Measured from the 3DO the sim loads (`lotus.3do`, `pipe3`, both sides)
+| side | x root → tip | y root → tip | z root → tip | dy/dx |
+|---|---|---|---|---|
+| left | −0.274 → −1.596 | −0.084 → **+0.032** | 0.28 → 0.34 | −0.088 (rising rearward) |
+| right | −0.274 → −1.596 | −0.065 → **+0.030** | −0.26 → −0.34 | −0.072 |
+So the tips sit **above** the headers; nothing in the geometry points down. Projection from the default chase camera (eye 1.35 m up, 4.6 m back, look-at 0.8 m): tip at 3.0 m / 0.21 m high is 20.8° below the eye line, header at 4.3 m / 0.10 m is 16.2° — **the tip lands lower on screen than the root although it is physically higher.** That is the PO's "downward".
+
+### ⭐ Captures (`parity/e102/260918_s11_gold_vs_chase_h070_h045_rear.png`)
+Left: the gold's replay chase (GPL's own, low camera). Middle: ours with `JM_CHASE_H=0.7 JM_CHASE_LY=0.5` — megaphones level, ending inboard of the wheels (S10's 0.8 lateral), the level bar at hub height visible. Right: `JM_CHASE_H=0.45` — now they read as rising. The whole "outward/downward" impression moves with camera height alone.
+
+### Landed / not landed
+* `JM_PIPE_TIPLIFT=<k>` (a shear about the pipe root) is in the file, **default 0** — measured unnecessary; kept as a documented test knob.
+* The chase camera default is unchanged this sprint: it is every chase capture's frame (gate references, E64's parity epic). **Sprint 4: ship `JM_CHASE_H=0.7 / JM_CHASE_LY=0.5` as the default, re-run the chase gate and re-seed on review.**
+
+**E102 after S11: lateral half shipped (S10), vertical half is a camera height with the value measured. julia cycle 6: sprint 3 of 4.**

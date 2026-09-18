@@ -2692,7 +2692,23 @@ function _scale_pipes_lat(parts, sc::Float32)
     end
     out
 end
-const PIPEP  = _scale_pipes_lat(get(ENV, "JM_PIPE_MIRROR", "1") != "0" ? _mirror_pipes(_PIPES_RAW) : _PIPES_RAW, PIPE_LAT)
+# E102-S11: the pitch half of "outward/DOWNWARD". The megaphones leave the headers angled down
+# toward their tips where the gold's run level. JM_PIPE_TIPLIFT=<k> shears each pipe about its
+# forward root: y += k * (x_root - x), so the root stays put and the tip lifts by k per metre of
+# pipe length. k = the measured downward slope levels them. Default 0 until measured (S11).
+const PIPE_TIPLIFT = parse(Float32, get(ENV, "JM_PIPE_TIPLIFT", "0"))
+function _shear_pipes(parts, k::Float32)
+    k == 0f0 && return parts
+    xr = maximum(maximum(p.verts[1:11:end]) for p in parts)     # forward-most vertex = the root
+    out = Render.TrackPart[]
+    for p in parts
+        v = copy(p.verts)
+        for i in 1:11:length(v); v[i+1] += k * (xr - v[i]); end
+        push!(out, Render.TrackPart(v, p.tex, p.col))
+    end
+    out
+end
+const PIPEP  = _shear_pipes(_scale_pipes_lat(get(ENV, "JM_PIPE_MIRROR", "1") != "0" ? _mirror_pipes(_PIPES_RAW) : _PIPES_RAW, PIPE_LAT), PIPE_TIPLIFT)
 const ARMP   = Render.extract_gpl_car(LOT3DO; only=("lotarms",), maxlat=0.95f0)  # forearms/upper arms — static (their wheel-side ends are what the eye sees)
 # The dash panel's normal faces DOWN, so from the driver's eye (above) we see its back → the dials read
 # upside-down.  Mirror the gauge in height about its own centre so the dial face turns up toward the eye.
