@@ -18892,3 +18892,14 @@ Left: the gold's replay chase (GPL's own, low camera). Middle: ours with `JM_CHA
 * The chase camera default is unchanged this sprint: it is every chase capture's frame (gate references, E64's parity epic). **Sprint 4: ship `JM_CHASE_H=0.7 / JM_CHASE_LY=0.5` as the default, re-run the chase gate and re-seed on review.**
 
 **E102 after S11: lateral half shipped (S10), vertical half is a camera height with the value measured. julia cycle 6: sprint 3 of 4.**
+
+### E102-S12 (Fable 5.1, 2026-09-18) — ⭐⭐ **chase camera shipped at the gold's height (`JM_CHASE_H=0.7`, `JM_CHASE_LY=0.5`), with a HAT clamp the gate demanded: the first run put the eye UNDER the Ring's road behind the car and half the frame was the void**
+
+**Story:** julia rotation, cycle 6, sprint 4. S11 measured the value; this sprint ships it through the gate.
+
+* First run (`parity/e102/260918_s12_lowcam_unclamped_void_w1.png`): w1 41.2 — a 0.7 m eye 4.6 m behind a car on a crest sits below the road; the lower half rendered as the below-mesh void. The chase gate did its job.
+* Fix: the eye is clamped to the HAT at its own footprint + `JM_CHASE_MIN` (0.45 m) — `JuliaMotor.hat3d(TERRAIN, …)` directly in `camera()` (`groundz` is let-local to the object block; the first cut threw `UndefVarError`, caught by the gate as CANNOT MEASURE). Off-mesh the clamp does nothing.
+* Second run (`260918_s12_lowcam_clamped_sweep.png`): three valid frames — car low in the frame, horizon mid-frame, the megaphones level and inboard (E60's own description of GPL's chase cam). DIFF 16.6 / 17.7 / 20.2 against the old-camera reference is the camera move itself; **reviewed and re-seeded**. In-run noise 0.27.
+* Old eye: `JM_CHASE_H=1.35 JM_CHASE_LY=0.8`.
+
+**E102 after S12: both halves of "outward/downward" answered — lateral 0.8 on the pipes (S10), the gold's camera height (S12); the real halfshafts are still hidden behind the extracted assembly (S8) and the positioner chain stays parked. julia cycle 6: 4 sprints, rotation complete.**

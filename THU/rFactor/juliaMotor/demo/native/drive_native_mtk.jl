@@ -6424,14 +6424,24 @@ end
 
 # ---- camera (pitch/roll = total body orientation, applied to the cockpit view only) ----
 const CHASE_D  = parse(Float32, get(ENV,"JM_CHASE_D","4.6"))    # metres behind the car
-const CHASE_H  = parse(Float32, get(ENV,"JM_CHASE_H","1.35"))   # metres above the car origin
-const CHASE_LY = parse(Float32, get(ENV,"JM_CHASE_LY","0.80"))  # look-at height 2 m ahead
+# E102-S12: 1.35/0.80 -> 0.7/0.5, the gold's replay-chase height (E102-S11: from 1.35 m the level
+# megaphones project as a droop -- the PO's "axles pointing downward"; at 0.7 they read as the
+# gold's). JM_CHASE_H=1.35 JM_CHASE_LY=0.8 restores the old eye.
+const CHASE_H  = parse(Float32, get(ENV,"JM_CHASE_H","0.7"))    # metres above the car origin
+const CHASE_LY = parse(Float32, get(ENV,"JM_CHASE_LY","0.5"))   # look-at height 2 m ahead
+const CHASE_MIN = parse(Float64, get(ENV,"JM_CHASE_MIN","0.45"))  # E102-S12: eye never below road + this
 function camera(cs, pitch=0.0, roll=0.0)
     wx,wy,wz = cs.x, cs.y, -cs.z; fx,fz = cos(cs.θ), -sin(cs.θ)   # render world un-mirrors physics z
     if CTL.view == 1                                  # chase — level horizon, so you SEE the body pitch/roll
         # E60 (260801 nintendo gold video): GPL's chase cam sits LOW and CLOSE — the car fills the lower
         # frame, horizon mid-frame.  The old 9 m/3.2 m read as a high TV crane shot.  JM_CHASE_* A/Bs.
         eye=[wx-fx*CHASE_D, wy+CHASE_H, wz-fz*CHASE_D]; ctr=[wx+fx*2, wy+CHASE_LY, wz+fz*2]
+        # E102-S12: a 0.7 m eye 4.6 m behind the car goes UNDER a road that rises or banks behind
+        # it (the chase gate's w1 at the Ring: half the frame was the void below the mesh). Clamp
+        # the eye to the HAT at its own footprint + CHASE_MIN. Same frame convention as the physics
+        # query (render z = -physics z). Off the mesh (-999) the clamp does nothing.
+        h = JuliaMotor.hat3d(TERRAIN, Float64(eye[1]), Float64(-eye[3]); ref=Inf)   # groundz is let-local
+        h[3] && (eye[2] = max(eye[2], Float64(h[1]) + CHASE_MIN))
         return PROJ * Render.lookat(Float32.(eye), Float32.(ctr), Float32[0,1,0]), Float32.(eye)
     end
     # COCKPIT: the camera takes yaw from the chassis and pitch/roll from the LOW-PASS head tilt (E53,
