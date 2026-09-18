@@ -90,6 +90,25 @@ noise = md(w2, w4)
 # what caught the 73.1 teleport defect -- and the pass threshold gets its own floor with margin.
 # CALIBRATED ON ONE run-to-run sample (worst 2.249, so 4.0 is ~1.8x margin). A second clean run
 # would tighten it; until then the floor is deliberately loose rather than falsely precise.
+# PARITYGATE-JR-1 S10: A NOISIER RUN MUST NOT GET AN EASIER GATE.
+# S9 measured the in-run spread at 1.263 against S7's 0.587 -- the "noise floor" moved 2.15x
+# between two clean runs -- and because the rule is max(4.0, 6*noise) that pushed the pass
+# threshold to 7.579. So the worse a run's self-consistency, the more deviation from the reference
+# it was allowed, which is backwards: a genuine regression occurring on a noisy run is MORE likely
+# to pass. S9 recorded the fix and deliberately did not apply it (one sprint left, an open PO
+# defect ahead of it); this is that fix.
+# High noise now makes the run UNJUDGEABLE rather than permissive -- CANNOT MEASURE, exit 2 --
+# which is the distinction this gate already draws twice elsewhere ("$n -ne 4" for a short capture
+# set, and "exit 124 = the run outran TMO; that is a budget, not a regression").
+# NOISE_MAX is set from the two clean runs on record (0.587, 1.263): 2.5 is ~2x the worse of them,
+# so a normal run is never rejected, and the arithmetic below can then never loosen past
+# max(4.0, 6*2.5) = 15.0 without the run being refused first.
+NOISE_MAX = float(os.environ.get('JM_CHASE_NOISE_MAX', '2.5'))
+if noise > NOISE_MAX:
+    print(f'  in-run repeat spread (s=8500, ordinals 2 vs 4): mean|diff| {noise:.3f}')
+    print(f'  CANNOT MEASURE: in-run noise {noise:.3f} exceeds {NOISE_MAX:.3f} -- this run cannot')
+    print(f'                  judge the references. Not a regression; re-run. (JM_CHASE_NOISE_MAX overrides.)')
+    sys.exit(2)
 thresh = max(4.0, noise * 6.0)
 print(f'  in-run repeat spread (s=8500, ordinals 2 vs 4): mean|diff| {noise:.3f}')
 # PARITYGATE-JR-1 S8: this line printed `max(2.0, 3x noise)` while the code above computed

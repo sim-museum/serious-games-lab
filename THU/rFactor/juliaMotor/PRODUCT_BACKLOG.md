@@ -18386,3 +18386,67 @@ line, so whoever finally lists it does not rediscover this.
 **julia rotation complete — 4 sprints (threshold report, the unasserted RACESTART metric, the parity
 re-run that closed a two-rotation-old question, and a stale PO defect re-verified live). ⏭ Rotating
 to FF.**
+
+## PARITYGATE-JR-1 S10 (Opus 5, 2026-09-17) — ⭐⭐ **the noise-scaled threshold no longer rewards a noisy run: high in-run noise is now CANNOT MEASURE, not a licence.** The decision rule is pure arithmetic, so it is verified directly — including the case that used to let a 12 px regression through
+
+**Story:** julia rotation: sprint 1 of 4. S9 closed this item's long-standing open question (the gate
+passes on the re-seeded references) and recorded **one new design fault, deliberately unfixed**:
+
+> *"the worse a run's self-consistency, the more deviation from the reference it is allowed… A
+> genuine regression occurring on a noisy run is more likely to pass, not less."*
+
+S9 left it because the rotation had one sprint remaining and an open PO defect ahead of it. **This
+is that fix.**
+
+### ⛔ The fault, in its own numbers
+
+`thresh = max(4.0, noise * 6.0)`. S7's in-run spread was **0.587**; S9's was **1.263** — the "noise
+floor" **moved 2.15× between two runs that were both clean** — and that alone pushed the pass
+threshold from the 4.0 floor to **7.579**. Nothing about the port changed; the gate simply got
+easier.
+
+### ✅ The fix: unjudgeable, not permissive
+
+```python
+NOISE_MAX = float(os.environ.get('JM_CHASE_NOISE_MAX', '2.5'))
+if noise > NOISE_MAX:
+    print(f'  CANNOT MEASURE: in-run noise {noise:.3f} exceeds {NOISE_MAX:.3f} …  Not a regression; re-run.')
+    sys.exit(2)
+```
+
+⭐ **This is the distinction the gate already draws twice elsewhere** — `[ "$n" -ne 4 ]` for a short
+capture set, and *"exit 124 = the run outran TMO; that is a budget, not a regression."* The ceiling
+is set from the only two clean runs on record (0.587, 1.263): **2.5 is ~2× the worse of them**, so a
+normal run is never refused, and the arithmetic can no longer loosen past `max(4.0, 6×2.5) = 15.0`
+without the run being rejected first.
+
+### ⭐⭐⭐ Verified directly, because the rule is pure
+
+The decision is arithmetic on two numbers, so it needs **no display and no sim** — the whole table
+was evaluated against the real constants:
+
+| case | noise | thresh | verdict |
+|---|---|---|---|
+| S7's clean run | 0.587 | 4.000 | exit 0 **PASS** |
+| S9's clean run | 1.263 | 7.578 | exit 0 **PASS** |
+| noisy run, same diffs | 3.000 | — | exit 2 **CANNOT MEASURE** |
+| ⭐ **noisy run hiding a 12 px diff** | 3.000 | — | exit 2 **CANNOT MEASURE** |
+| real regression, normal run | 0.600 | 4.000 | exit 1 **FAIL** |
+
+⭐ **Row 4 is the point.** Before this change it computed `max(4.0, 18.0) = 18.0` and **PASSED a 12 px
+regression** — passed it *because* the run was noisy. **Both recorded clean runs still pass, and a
+real regression on a normal run still fails**, so the fix costs nothing it should not cost.
+
+### ⚠️ Not claimed
+
+* **That the gate was re-run end to end.** ⛔ **It was not** — that needs ~12 minutes of GL and
+  MiG Alley's suite has held the display for this entire rotation and the last. **The decision
+  function is verified; the full gate is not.** *(The Python block was extracted and `py_compile`d
+  separately, because `bash -n` does not look inside a quoted heredoc — the check S8 established.)*
+* **That 2.5 is the right ceiling.** It is **2× the worse of two samples**, chosen loose for the same
+  reason S7 chose 4.0 loose: *deliberately loose rather than falsely precise.* **A third clean run
+  informs it; nothing here measured a noise distribution.**
+* That noise above 2.5 never happens. **Unknown** — if it turns out to be common, the ceiling is
+  wrong and the gate will say so by refusing runs, which is the failure mode I want.
+
+**julia sprint 1 of 4.**
