@@ -3399,6 +3399,11 @@ const TEXT_HUD = !haskey(ENV, "JM_NO_TEXT_HUD")
 textprog = Render.text_program(); (textvao, textvbo) = Render.hud_buffers()
 FONT = TEXT_HUD ? Render.load_font(joinpath(@__DIR__, "assets"), 18) : nothing
 TEXT_HUD && FONT === nothing && println("  [texthud] no font atlas under demo/native/assets -- text overlay off (run JuliaMotorMTK/tools/make_font_atlas.py)")
+# S2: the gold's table shows GPL's 1967 DRIVERS (Clark, Hill, Brabham, Amon, Bonnier), not chassis
+# makes. Our AI is identified by make (AICHASSIS[id].name), so map make -> the works driver of that
+# make in GPL's roster for DISPLAY only. JM_TEXTHUD_CHASSIS=1 shows the makes instead.
+const TEXTHUD_DRIVER = Dict("Ferrari" => "C Amon", "Brabham" => "J Brabham", "BRM" => "J Stewart",
+                            "Eagle" => "D Gurney", "Cooper" => "J Rindt", "Lotus" => "J Clark", "Honda" => "J Surtees")
 lapfmt(t) = t <= 0 ? "--:--.--" : begin
     m = floor(Int, t/60); sr = t - 60m; sec = floor(Int, sr); cc = clamp(floor(Int, (sr - sec)*100), 0, 99)
     string(lpad(m, 2, '0'), ":", lpad(sec, 2, '0'), ".", lpad(cc, 2, '0')) end
@@ -7943,6 +7948,8 @@ function main()
         entries
     end
     ent_name(id) = id == 0 ? "You" : AICHASSIS[id].name
+    texthud_name(id) = id == 0 ? "You" : (haskey(ENV, "JM_TEXTHUD_CHASSIS") ? AICHASSIS[id].name :
+                                          get(TEXTHUD_DRIVER, AICHASSIS[id].name, AICHASSIS[id].name))
     ibt_samples = IBTREC ? Dict{String,Float64}[] : nothing      # iRacing-format telemetry rows
     # E18: record ALL car poses (player + AI) for replay — a flat Float32 buffer, ~15 Hz, written .jmr at exit
     REPLAY_REC = IS_RACE && N_AI > 0 && isempty(REPLAY_FILE) && !haskey(ENV,"JM_NOREPLAY") && (!SMOKE || haskey(ENV,"JM_REPLAY_REC"))
@@ -9598,7 +9605,10 @@ function main()
         if FONT !== nothing
             # The gold's rows sit on an opaque black band across the top of the frame (its overlay is
             # not blended over the scene). Same here: one flat quad through the HUD program, then text.
-            bv = Float32[]; Render.hquad!(bv, 0.0, 0.0, Float64(W), 3FONT.lineh + 12.0, (0.0, 0.0, 0.0))
+            # S2: the band must also cover the Track Position table (three lap rows alone left the
+            # table's lower rows blended over the grandstand).
+            nrows = (IS_RACE && !isempty(AICARS)) ? max(3, min(7, 1 + length(AICARS)) + 1) : 3
+            bv = Float32[]; Render.hquad!(bv, 0.0, 0.0, Float64(W), nrows*FONT.lineh + 12.0, (0.0, 0.0, 0.0))
             Render.hud_draw(hudprog, hudvao, hudvbo, bv, W, H)
             tv = Float32[]; fy = 6.0; fx = 8.0
             cur = (race_go[] && !race_done) ? cs.t - lap_t0 : (SMOKE ? 23.27 : 0.0)
@@ -9615,7 +9625,7 @@ function main()
                     i > 7 && break
                     gapm = round(Int, (e[2] - ppy) * LAPLEN)
                     col = e[1] == 0 ? (1.0, 0.82, 0.35) : (0.95, 0.95, 0.95)
-                    Render.text!(tv, FONT, tx, fy + i*FONT.lineh, string(i, " ", ent_name(e[1])), col)
+                    Render.text!(tv, FONT, tx, fy + i*FONT.lineh, string(i, " ", texthud_name(e[1])), col)
                     Render.text!(tv, FONT, tx + 190.0, fy + i*FONT.lineh, (gapm >= 0 ? "+" : "") * string(gapm) * "m", col)
                 end
             end

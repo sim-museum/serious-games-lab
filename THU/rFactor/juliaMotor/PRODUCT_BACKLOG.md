@@ -18722,3 +18722,36 @@ renderer (`textest.jl` is a texture test).
 `parity/texthud/260917_*`: gold top strip 2×, our first (faint, colliding) attempt beside it, and the shipped result.
 
 **GOLDMATCH-JR-1: the overlay row moves from "no item, no text path" to "rows on screen, gated". julia sprint 1 of 4.**
+
+## GOLDMATCH-JR-1 S2 / TEXTHUD-1 S2 (Fable 5.1, 2026-09-17) — ⭐⭐ **the Track Position table exercised in a 5-AI race: six rows on the band, 1967 driver names, the player amber, metres to each car.** Groomed: the Relative time tables are a second feature (per-car lap clocks) — parked, not started
+
+**Story:** julia rotation, cycle 3, sprint 2 of 4. S1 left the table written but unexercised.
+
+### ⭐ Run: `TRACK=watglen JM_MODE=race JM_AI=5 JM_SMOKE=1 JM_SHOTS="8300:0:…;8500:1:…"`
+`parity/texthud/260917_ours_wg_race_overlay_top.png`:
+```
+I  00:00.66                                   Track Position (1L)
+B  01:32.09                                   1 D Gurney      +68m
+L  01:34.29                                   2 C Amon        +59m
+                                              3 J Stewart     +49m
+                                              4 J Brabham     +40m
+                                              5 J Rindt       +31m
+                                              6 You            +0m
+```
+The first race capture showed two things the smoke (no AI) could not: **the band only covered three
+rows**, so the table's lower rows blended over the grandstand — the band now grows with the table —
+and **the names were chassis makes** where the gold shows drivers. `TEXTHUD_DRIVER` maps make → the
+works driver of GPL's 1967 roster for display (`JM_TEXTHUD_CHASSIS=1` shows makes). The gold's own
+rows (Clark, Hill, Brabham, Amon, Bonnier) are a different grid; ours is what our five AI are.
+Chase view carries the overlay too (`…_race_chase_texthud.png`); whether the gold's replay cameras
+show it is unread — left on.
+
+### ⚠️ Grooming — why julia stops here this cycle
+* **Player Relative / Leader Relative** need a per-car lap-crossing clock (`AICar` has none) and a
+  same-point time-delta model: a feature, not a finishing touch. Parked as `TEXTHUD-2`, sized ~1–2
+  sprints; the metres table is honest today.
+* The remaining GOLDMATCH-JR-1 rows (results screen, replay cameras/E75-E82 parked at 10) are each
+  larger than a rotation sprint. **Two sprints, both landed; rotating to FF rather than opening a
+  third front.**
+
+**GOLDMATCH-JR-1: cockpit overlay row — lap rows and position table on screen, gated; Relative tables parked as TEXTHUD-2. julia cycle 3: 2 sprints.**
