@@ -18922,3 +18922,12 @@ script exits (the flock-and-daemon trap); the check script now traps EXIT to kil
 mount pattern matched the invoking shell (exit 144) — again.
 
 **DELIVERY 260919: 1 sprint.**
+
+### E85 — two-PC confirmation (PO, 2026-09-19)
+
+*"julia multiplayer works, cars can see each other but drive through each other as reported in the
+multiplayer instructions."* First run on two machines (`JM_NET=host` / `JM_NET=join JM_NET_HOST=<ip>`,
+UDP 47700, from the 260919 AppImage): transport, discovery-by-address and remote-car drawing hold on a
+real LAN. The missing contact between remote cars is the documented limitation (E85-S5 / MP-5: remote
+poses are drawn, not collided) — now the next MP item, **MP-COLLIDE-1**: give remote human and host-AI
+cars a collision body on the client (the same contact model the local AI field uses), sized ~1 sprint.
