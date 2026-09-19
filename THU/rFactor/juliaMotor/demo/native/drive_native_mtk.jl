@@ -6440,8 +6440,12 @@ function camera(cs, pitch=0.0, roll=0.0)
         # it (the chase gate's w1 at the Ring: half the frame was the void below the mesh). Clamp
         # the eye to the HAT at its own footprint + CHASE_MIN. Same frame convention as the physics
         # query (render z = -physics z). Off the mesh (-999) the clamp does nothing.
-        h = JuliaMotor.hat3d(TERRAIN, Float64(eye[1]), Float64(-eye[3]); ref=Inf)   # groundz is let-local
-        h[3] && (eye[2] = max(eye[2], Float64(h[1]) + CHASE_MIN))
+        # SKIDPAD has no HAT terrain (E102-S12 regression, PO 2026-09-19: "Julia appImage does not load the
+        # skidpad" -- UndefVarError TERRAIN in camera()). Clamp only where a terrain exists.
+        if @isdefined(TERRAIN)
+            h = JuliaMotor.hat3d(TERRAIN, Float64(eye[1]), Float64(-eye[3]); ref=Inf)   # groundz is let-local
+            h[3] && (eye[2] = max(eye[2], Float64(h[1]) + CHASE_MIN))
+        end
         return PROJ * Render.lookat(Float32.(eye), Float32.(ctr), Float32[0,1,0]), Float32.(eye)
     end
     # COCKPIT: the camera takes yaw from the chassis and pitch/roll from the LOW-PASS head tilt (E53,

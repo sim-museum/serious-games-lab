@@ -18931,3 +18931,5 @@ UDP 47700, from the 260919 AppImage): transport, discovery-by-address and remote
 real LAN. The missing contact between remote cars is the documented limitation (E85-S5 / MP-5: remote
 poses are drawn, not collided) — now the next MP item, **MP-COLLIDE-1**: give remote human and host-AI
 cars a collision body on the client (the same contact model the local AI field uses), sized ~1 sprint.
+
+### E102-S13 (Fable 5.1, 2026-09-19) — 🔴→✅ **regression from S12: "Julia appImage does not load the skidpad" (PO) — `UndefVarError: TERRAIN` in `camera()`.** The chase-eye HAT clamp assumed every track has a terrain; the skidpad builds none. Guarded with `@isdefined(TERRAIN)`; skidpad + Watkins smoke queued; repacked as the 260919b AppImage
