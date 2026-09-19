@@ -2842,7 +2842,41 @@ if get(ENV,"JM_HATPROBE","") != ""
     # a single "x,z" prints a grid; a ";"-separated LIST prints the height along a path (the
     # instrument for "where did the ground go" -- a gap is a hole the car can drop through).
     spec = get(ENV,"JM_HATPROBE","")
-    if occursin(";", spec)
+    if startswith(spec, "cl:")
+        # TRACKSMOOTH-2: walk the sim's OWN aligned centreline (TRKSURF.pos, the ribbon nodes) at a fine
+        # step and print the physics ground height, so creases in the road mesh -- the player's "jounce
+        # at each boundary" -- are measured in the sim's frame. JM_HATPROBE="cl:<s0>:<s1>:<step>".
+        # JM_HATPROBE_EXIT=1 exits afterwards (a headless hook must exit: it must not open a window).
+        _f = split(spec, ":"); _s0 = parse(Float64, _f[2]); _s1 = parse(Float64, _f[3]); _st = parse(Float64, _f[4])
+        println("== JM_HATPROBE centreline s=$_s0..$_s1 step $_st -- physics ground height along the ribbon ==")
+        _n = length(TRKSURF.pos); _ld = TRKSURF.lapdist
+        _prevh = Ref(NaN); _prevsl = Ref(NaN)   # Refs: a top-level for loop would make plain names loop-local
+        for _s in _s0:_st:_s1
+            _i = clamp(searchsortedlast(_ld, _s), 1, _n - 1); _fr = (_s - _ld[_i]) / max(_ld[_i+1] - _ld[_i], 1e-6)
+            _p = TRKSURF.pos[_i]; _q = TRKSURF.pos[_i+1]
+            _x = _p[1] + (_q[1]-_p[1])*_fr; _z = _p[3] + (_q[3]-_p[3])*_fr
+            _h = JuliaMotor.hat3d(TERRAIN, _x, _z; ref=Inf)
+            _hh = _h[3] ? Float64(_h[1]) : NaN
+            if _h[3] && haskey(ENV, "JM_HATPROBE_SMOOTH")   # TRACKSMOOTH-2: report the filtered ground instead
+                _hdg = atan(_q[3]-_p[3], _q[1]-_p[1]); _sp = parse(Float64, get(ENV, "JM_GROUND_SMOOTH", "1.0"))
+                _acc = _hh; _na = 1
+                for _d in (-2.0, -1.0, 1.0, 2.0)
+                    _h2 = JuliaMotor.hat3d(TERRAIN, _x + cos(_hdg)*_d*_sp, _z + sin(_hdg)*_d*_sp; ref=Inf)
+                    _h2[3] && (_acc += Float64(_h2[1]); _na += 1)
+                end
+                _hh = _acc/_na
+            end
+            _sl = isnan(_prevh[]) ? NaN : (_hh - _prevh[])/_st
+            _dsl = (isnan(_sl) || isnan(_prevsl[])) ? NaN : (_sl - _prevsl[])
+            println("   s=", lpad(round(_s, digits=1), 8), "  x=", lpad(round(_x, digits=2), 9), " z=", lpad(round(_z, digits=2), 9),
+                    "  h=", isnan(_hh) ? "  NO SURFACE" : lpad(round(_hh, digits=3), 8),
+                    "  slope=", isnan(_sl) ? "   -" : lpad(round(_sl, digits=4), 8),
+                    "  dslope=", isnan(_dsl) ? "   -" : lpad(round(_dsl, digits=4), 8))
+            _prevh[] = _hh; _prevsl[] = _sl
+        end
+        flush(stdout)
+        haskey(ENV, "JM_HATPROBE_EXIT") && exit(0)
+    elseif occursin(";", spec)
         println("== JM_HATPROBE path -- physics ground height along the car's track ==")
         for tok in split(spec, ";")
             isempty(strip(tok)) && continue
@@ -3048,6 +3082,16 @@ const SHOTS = [let f = split(String(spec), ":")
                              length(f) >= 3 ? String(f[3]) : "shot$(i)")
                end for (i, spec) in enumerate(filter(!isempty, split(get(ENV, "JM_SHOTS", ""), ";")))]
 const SHOTS_DIR   = get(ENV, "JM_SHOTS_DIR", "/tmp")
+# RACEEND-1 / AISLEEVE-1 verification hook: JM_SHOT_AT="when:view:name;..." photographs at a TIME
+# instead of a place, so a race in progress or a REPLAY can be captured without teleporting the car.
+# when = seconds of sim time (replay time in a replay) or "finish+<s>" = seconds after the race ends;
+# view = 0 cockpit / 1 chase / -1 keep the current view. Frames land in JM_SHOTS_DIR as <name>.ppm.
+struct TimedShot; when::String; view::Int; name::String; end
+const SHOTS_AT = [let f = split(String(spec), ":")
+                      TimedShot(String(f[1]), length(f) >= 2 ? parse(Int, f[2]) : -1,
+                                length(f) >= 3 ? String(f[3]) : "tshot$(i)")
+                  end for (i, spec) in enumerate(filter(!isempty, split(get(ENV, "JM_SHOT_AT", ""), ";")))]
+const SHOTS_AT_ARMED = fill(-1, length(SHOTS_AT))   # frame index at which each shot was armed (-2 = done)
 const FRAMEDUMP = (v = get(ENV, "JM_FRAMEDUMP", "");
                    isempty(v) ? Int[] : [parse(Int, t) for t in split(v, ":")])
 const FRAMEDUMP_DIR = get(ENV, "JM_FRAMEDUMP_DIR", "/home/admin/appimage-build/frames")
@@ -3371,6 +3415,8 @@ const AIyaw   = DriveRT3D.yawrate3d
 const AIbump! = DriveRT3D.bump3d!
 const AIplace! = DriveRT3D.place3d!
 const FENCE = parse(Float64, get(ENV, "JM_FENCE", "13.0"))   # E7: track boundary (m from centreline) — you can't leave the world
+const RACEEND_SECS = parse(Float64, get(ENV, "JM_RACEEND_SECS", "12"))   # RACEEND-1: chequered banner duration after the flag (0 = off)
+const RACEEND_T0 = Ref(-1.0)
 const FENCE_GRACE = parse(Float64, get(ENV, "JM_FENCE_GRACE", "2.5"))   # off-HAT distance before the trackside collision fires (tolerates sub-car mesh cracks; small so the fence feels like a wall)
 const FENCE_FAR  = parse(Float64, get(ENV, "JM_FENCE_FAR", "16.0"))     # E56: the physical wall contains within a few m; if the car is STILL this far past the edge the wall failed → a last-resort (non-routine) hard containment so it can never escape into the void
 # GRASS PENALTY (feel): SOFTENED — at 0.9 the drag scrubbed ~90 %/s of speed, and the 5.5 m threshold
@@ -3399,6 +3445,10 @@ const GSTAND_YAW = deg2rad(parse(Float64, get(ENV, "JM_GSTAND_YAW", TRACKSEL == 
 # TRACKGOLD-1 S4 probe: JM_OBJ_YAW_ADD=<deg> adds a heading to EVERY placed object (last01, an in-place
 # terrain bank with 8 m of descent along its 320 m, floats at its far end as if it ran the wrong way).
 const OBJ_YAW_ADD = deg2rad(parse(Float64, get(ENV, "JM_OBJ_YAW_ADD", "0")))
+# OBJPLACE-1 (PO 2026-09-19, WG: "grandstand to the left of start/finish is pointing away from the track" --
+# `grandl`, placement yaw -92.5 deg, drawn with th = -yaw). JM_OBJ_YAW_SIGN=-1 applies the placement yaw with the
+# opposite sign on every placed object, for an A/B capture; objects at yaw ~0 are unaffected either way.
+const OBJ_YAW_SIGN = parse(Float64, get(ENV, "JM_OBJ_YAW_SIGN", "1"))
 const SEC_TWOSIDED = get(ENV, "JM_SEC_TWOSIDED", "0") != "0"
 const OBJ_USE_RECZ = get(ENV, "JM_OBJ_RECZ", "1") != "0"
 const OBJ_RECZ_TOL = parse(Float64, get(ENV, "JM_OBJ_RECZ_TOL", "0.5"))
@@ -4307,7 +4357,7 @@ let objnames=Set{String}()
         if vs === nothing || isempty(vs)
             false
         else
-            th = -Float64(i.yaw) + Float64(objyawfix(i.name)); c, sn = cos(th), sin(th)
+            th = OBJ_YAW_SIGN * -Float64(i.yaw) + Float64(objyawfix(i.name)); c, sn = cos(th), sin(th)
             near = Inf; ontar = false
             # SPA-MASTA-1 (PO 2026-09-07: "a house is protruding into the road a little bit at the masta kink"):
             # house37/38/39 at s=10812-10928 sit 7-8 m off the centreline where the kink's tarmac is wider than
@@ -4349,7 +4399,7 @@ let objnames=Set{String}()
         base = ploz(i)
         vs = get(lverts, i.name, nothing)
         (!FPGROUND || vs === nothing || isempty(vs)) && return base
-        th = -Float64(i.yaw) + Float64(objyawfix(i.name)); c, sn = cos(th), sin(th)
+        th = OBJ_YAW_SIGN * -Float64(i.yaw) + Float64(objyawfix(i.name)); c, sn = cos(th), sin(th)
         zs = Float32[]
         for (lx, lz) in vs
             rx =  lx*c + lz*sn; rz = -lx*sn + lz*c
@@ -4395,7 +4445,7 @@ let objnames=Set{String}()
                 pat == "1" || println("   [overhang] ", rpad(i.name,10), " NO FOOTPRINT (billboard/panel path)")
                 continue
             end
-            th = -Float64(i.yaw) + Float64(objyawfix(i.name)); c, sn = cos(th), sin(th)
+            th = OBJ_YAW_SIGN * -Float64(i.yaw) + Float64(objyawfix(i.name)); c, sn = cos(th), sin(th)
             base = Float64(plozfp(i))
             nover = 0; ntot = 0; minlat = Inf; hi = -Inf
             for (lx, lz) in vs
@@ -4581,7 +4631,7 @@ let objnames=Set{String}()
     end
     tstamp("  [E80] .. object mesh placement done; OBJECTS build begins")
     graze_mesh = get(ENV,"JM_GRAZE_MESH","0") != "0"
-    global OBJECTS = [(objmesh[i.name], Render.translate(Float32[i.x, plozfp(i), -i.y]) * Render.roty(Float32(-i.yaw + objyawfix(i.name))), istree(i.name) && (graze_mesh || !(MONZA || WATGLEN)), (Float32(i.x), plozfp(i), Float32(-i.y)), lowercase(i.name))
+    global OBJECTS = [(objmesh[i.name], Render.translate(Float32[i.x, plozfp(i), -i.y]) * Render.roty(Float32(OBJ_YAW_SIGN * -i.yaw + objyawfix(i.name))), istree(i.name) && (graze_mesh || !(MONZA || WATGLEN)), (Float32(i.x), plozfp(i), Float32(-i.y)), lowercase(i.name))
                       for i in insts if get(objmesh,i.name,nothing) !== nothing &&
                           !drop(i.name) && !onroad_crowd(i) && !perp_crowd(i) && !onroad_bldg(i) && !onroad_fp(i) && (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && onground(i)]
     # E97 (2026-08-30): watglen loads 66 trackside objects today; four E80/E88/E92-era logs record
@@ -4844,7 +4894,7 @@ let objnames=Set{String}()
         # disc 0.2-1.1 m onto the road -- a disc around a 4 x 1.6 m car or an 8 x 0.3 m barrier is
         # the wrong shape, and the mesh AABB is the right one. Threshold JM_SOLID_BOX_R (default 1.2).
         if r >= parse(Float64, get(ENV, "JM_SOLID_BOX_R", "1.2")) && haskey(lxmn, i.name) && get(ENV, "JM_SOLID_BOX", "1") != "0"
-            ψ = Float64(-i.yaw + objyawfix(i.name)); c = cos(ψ); sn = sin(ψ)
+            ψ = Float64(OBJ_YAW_SIGN * -i.yaw + objyawfix(i.name)); c = cos(ψ); sn = sin(ψ)
             wx = Float64(lxmx[i.name] - lxmn[i.name]); wz = Float64(lzmx[i.name] - lzmn[i.name])
             pv = get(objverts, i.name, nothing)
             if max(wx, wz) > 2*GEOM_RMAX && pv !== nothing && length(pv) >= 2 && get(ENV, "JM_SOLID_PARTS", "1") != "0"
@@ -5076,7 +5126,7 @@ let objnames=Set{String}()
                     lowercase(inst.name) == SOLIDNAMES[i] || continue
                     hypot(Float64(inst.x) - ox, Float64(inst.y) - oz) <= 20.0 || continue
                     pv = get(objverts, inst.name, nothing); pv === nothing && continue
-                    M = Render.translate(Float32[inst.x, plozfp(inst), -inst.y]) * Render.roty(Float32(-inst.yaw + objyawfix(inst.name)))
+                    M = Render.translate(Float32[inst.x, plozfp(inst), -inst.y]) * Render.roty(Float32(OBJ_YAW_SIGN * -inst.yaw + objyawfix(inst.name)))
                     xlo = Inf; xhi = -Inf; zlo = Inf; zhi = -Inf
                     for pp in pv, k in 1:11:length(pp.verts)
                         q = M * Float32[pp.verts[k], pp.verts[k+1], pp.verts[k+2], 1f0]
@@ -5456,7 +5506,7 @@ let objnames=Set{String}()
     global OBJ_VERTS = objverts       # full render-frame parts per object name (S4 vertex probe)
     # the placement RECORD's own height per instance (we place on our HAT instead; the census compares the two)
     global OBJ_RECZ = Dict{Tuple{Float64,Float64},Float64}((round(Float64(i.x), digits=2), round(Float64(i.y), digits=2)) => Float64(i.z) for i in insts)
-    global OBJ_YAW = Dict{Tuple{Float64,Float64},Float64}((round(Float64(i.x), digits=2), round(Float64(i.y), digits=2)) => -Float64(i.yaw) + Float64(objyawfix(i.name)) for i in insts)
+    global OBJ_YAW = Dict{Tuple{Float64,Float64},Float64}((round(Float64(i.x), digits=2), round(Float64(i.y), digits=2)) => OBJ_YAW_SIGN * -Float64(i.yaw) + Float64(objyawfix(i.name)) for i in insts)
     if get(ENV,"JM_FOOTPRINT","")!=""
         # E71-S8: rank objects by how far their FOOTPRINT penetrates the asphalt, not by how far
         # their ORIGIN sits from the centreline. E71-S4 showed the origin ordering is not the
@@ -5469,7 +5519,7 @@ let objnames=Set{String}()
             haskey(lverts, i.name) || continue
             drop(i.name) && continue
             isempty(lverts[i.name]) && continue
-            th = -Float64(i.yaw) + Float64(objyawfix(i.name))
+            th = OBJ_YAW_SIGN * -Float64(i.yaw) + Float64(objyawfix(i.name))
             c, sn = cos(th), sin(th)
             lats = Float64[]
             for (lx, lz) in lverts[i.name]
@@ -6202,6 +6252,10 @@ const AICAR_PHYS = [
     (395.0, 555.0),   # Eagle T1G          Weslake V12
     (360.0, 600.0),   # Cooper T81         Maserati V12 (heavy)
 ]
+const AI_SLEEVE_EXC = get(ENV,"JM_AI_SLEEVES","0") != "0" ? () :
+    ("arml","armr","arms","ferarms","fersho","fehand","braarms","brasho","brhand",
+     "frarm","frarm2","frarm3","drvarms","bmhand","sho128","eagarm","eagarms","eahand",
+     "coparms","copsho","cohand","lotarms","lotsho","lohand")   # AISLEEVE-1: see the AI loader below
 AICARMODELS = Render.GPLCarModel[]
 tstamp("  [E80] AI car models begin")
 # E85-S5: netplay needs a chassis to draw the remote car with, even when there is no AI field.
@@ -6229,8 +6283,15 @@ if !SKIDPAD && _ncars > 0
         # AI-CARGFX S5 (interim): drop the parked rear-suspension groups that render as flat blades.
         _rg = get(AI_PARKED_SUSP_GROUPS, lowercase(nm), Set{Int}())
         Render.GPL3DO.HIDE_GROUPS[] = AI_REAR_MODE === :hide ? _rg : Set{Int}()
+        # AISLEEVE-1 (PO 2026-09-19, WG race replay: "all AI cars have misplaced driver's sleeves that
+        # render as 'rabbit ears' at the front of each cockpit. Remove all these sleeve objects from
+        # the AI cars"). The player Lotus already drops its driver arms/sleeves/hands (DRIVER_TEX +
+        # lohand); the AI chassis kept theirs. Every '67 3DO names them per chassis (ferarms/fersho/
+        # fehand, braarms/brasho/brhand/frarm*, drvarms/bmhand/sho128, eagarm(s)/eahand, coparms/
+        # copsho/cohand, lotarms/lotsho/lohand) plus the shared arml/armr/arms. Helmet, neck, knees
+        # and the body stay. JM_AI_SLEEVES=1 restores them for an A/B.
         push!(AICARMODELS, Render.load_gpl_car(nm, joinpath(AIBASE,dir), body, aiwheels(w...);
-                              exclude=("ltraymap","lshad"),
+                              exclude=("ltraymap","lshad",AI_SLEEVE_EXC...),
                               maxlat=parse(Float32, get(ENV,"JM_AI_MAXLAT", string(CARP_MAXLAT))),
                               body_floor=BODY_FLOOR,
                               rear_groups=(AI_REAR_MODE === :pose ? collect(_rg) : Int[]),
@@ -6828,11 +6889,39 @@ function main()
     # PLAYER's alone, so "previous answer" means the player's own last ground. Reset on respawn.
     # JM_STEP_GUARD=0 disables; JM_WALL_CLIMB sets the threshold (shared with Monza's island guard).
     PLAYER_G = Ref(NaN)
+    # TRACKSMOOTH-2 (PO 2026-09-19, Watkins Glen: "the player car jounces as it goes across each
+    # boundary between piecewise straight portions ... smooth these curves per the gold standard").
+    # MEASURED with JM_HATPROBE="cl:3470:3640:0.5" (the sim's own HAT along its own ribbon through
+    # the R=38 m hairpin): the physics ground is planar strips with CREASES between them -- slope
+    # steps of 0.046 (2.6 deg) at s=3569.5, 0.040 at 3549, 0.015 at 3528.5, and a 4 cm lip at
+    # s=3614.5 (+0.080 then -0.079 over one metre); p99 of |dslope| per 0.5 m = 0.040, p50 = 0.
+    # A crease is a step in vertical velocity (2.6 deg at 20 m/s = 0.9 m/s in one frame): the
+    # jounce. GPL's physics never saw the drawn mesh -- it drove the .trk's smooth traces -- so the
+    # gold surface has no creases. Until the .trk surface is rebuilt, the PLAYER's ground height is
+    # a box filter of the mesh along the direction of travel: 5 samples over +-2 m, which turns a
+    # crease into a 4 m ramp (the same 2.6 deg spread over 0.2 s at 20 m/s). Only the player uses
+    # it (AI cars are reground()'d for drawing, not driven on this). Samples that miss the HAT
+    # (world edge, holes) fall back to the centre sample so the edge/hole logic is unchanged.
+    # JM_GROUND_SMOOTH=<spacing m> (default 1.0 -> +-2 m); 0 disables.
+    GROUND_SMOOTH = parse(Float64, get(ENV, "JM_GROUND_SMOOTH", "1.0"))
+    PLAYER_HDG = Ref(NaN)          # the player's heading this frame (rad, atan(dz,dx)); set before each physics step
+    function ground_smoothed(x, z, g0)
+        (GROUND_SMOOTH <= 0.0 || !isfinite(PLAYER_HDG[]) || !(g0 > -900f0) || SKIDPAD) && return g0
+        hx = cos(PLAYER_HDG[]); hz = sin(PLAYER_HDG[])
+        acc = Float64(g0); nacc = 1
+        for d in (-2.0, -1.0, 1.0, 2.0)
+            h = JuliaMotor.hat3d(TERRAIN, x + hx*d*GROUND_SMOOTH, z + hz*d*GROUND_SMOOTH; ref=Inf)
+            h[3] || return g0                  # a sample off the HAT: keep the raw centre value
+            acc += Float64(h[1]); nacc += 1
+        end
+        Float32(acc / nacc)
+    end
     STEP_GUARD_ON = get(ENV, "JM_STEP_GUARD", "1") != "0"
     STEP_GUARD_HITS = Ref(0)
     function groundz_phys(x, y)
         g = groundz(x, y)
         g > -900f0 || return NaN32
+        g = ground_smoothed(x, y, g)           # TRACKSMOOTH-2: crease filter along the direction of travel
         gf = Float64(g)
         ok, held = STEP_GUARD_ON ? StepGuard.step_guard(gf, PLAYER_G[], WALL_CLIMB) : (true, gf)
         if !ok
@@ -8621,6 +8710,7 @@ function main()
             # comes from the data, and this is the driver's input being throttled, not the
             # engine being re-specified. With a dead engine the revs fall and E98's stall rule
             # drops MANUAL to AUTO on its own, which is what a driver would want.
+            PLAYER_HDG[] = cs.θ   # TRACKSMOOTH-2: the crease filter samples along this heading
             step_carX!(cs, inp.throttle * DriveRT3D.engine_power(), inp.brake, inp.steer, dt > 1e-4 ? dt : 1/60;
                         clutch=inp.clutch, up=inp.shift_up, dn=inp.shift_down, manual=!inp.autoshift,
                         groundz=groundz_phys)
@@ -9677,6 +9767,34 @@ function main()
                 end
             end
             Render.text_draw(textprog, textvao, textvbo, FONT, tv, W, H)
+            # RACEEND-1 (PO 2026-09-19, WG race: "there should be a graphical signal when the race is
+            # over"). Until now the finish was a small line in the standings box and the window title.
+            # Now: a chequered strip across the frame under the HUD band and a large centred banner,
+            # for RACEEND_SECS seconds after the flag (then just the strip stays, so a late look still
+            # says the race is over). JM_RACEEND_SECS overrides; 0 disables the banner.
+            if IS_RACE && race_done && RACEEND_SECS > 0
+                RACEEND_T0[] < 0 && (RACEEND_T0[] = cs.t)
+                sq = 28.0; y0 = nrows*FONT.lineh + 12.0
+                cv = Float32[]
+                for (r, yy) in enumerate((y0, y0 + sq))
+                    for (c, xx) in enumerate(0.0:sq:Float64(W))
+                        Render.hquad!(cv, xx, yy, sq, sq, iseven(r + c) ? (0.05, 0.05, 0.05) : (0.97, 0.97, 0.97))
+                    end
+                end
+                Render.hud_draw(hudprog, hudvao, hudvbo, cv, W, H)
+                if cs.t - RACEEND_T0[] < RACEEND_SECS
+                    msg = "RACE FINISHED" * (isempty(AICARS) ? "" : " - P$(player_finpos[]) of $(length(AICARS)+1)")
+                    sub = "best lap $(fmt_lap(best_lap))   -   Esc to leave"
+                    sc = 3.0; tw = Render.text_width(FONT, msg; scale=sc); sw = Render.text_width(FONT, sub; scale=1.4)
+                    bx = (W - tw)/2 - 24; by = H*0.30
+                    bg = Float32[]; Render.hquad!(bg, bx, by - 10, tw + 48, sc*FONT.lineh + 1.4*FONT.lineh + 28, (0.0, 0.0, 0.0))
+                    Render.hud_draw(hudprog, hudvao, hudvbo, bg, W, H)
+                    fv = Float32[]
+                    Render.text!(fv, FONT, (W - tw)/2, by, msg, (1.0, 0.85, 0.2); scale=sc)
+                    Render.text!(fv, FONT, (W - sw)/2, by + sc*FONT.lineh + 8, sub, (0.95, 0.95, 0.95); scale=1.4)
+                    Render.text_draw(textprog, textvao, textvbo, FONT, fv, W, H)
+                end
+            end
         end
         CLUTCH_GATE[] > 0 && (CLUTCH_GATE[] -= dt)
         # E80 (PO 2026-08-27): "frame rate was low (10 frames/sec or so) in cockpit view, better in
@@ -9745,6 +9863,29 @@ function main()
             buf=Vector{UInt8}(undef,W*H*3); glReadPixels(0,0,W,H,GL_RGB,GL_UNSIGNED_BYTE,buf)
             open(get(ENV,"JM_DUMP","/tmp/zand_hud.ppm"),"w") do io; write(io,"P6\n$W $H\n255\n")
                 for y in H:-1:1, x in 1:W; o=((y-1)*W+(x-1))*3; write(io,buf[o+1],buf[o+2],buf[o+3]); end; end
+        end
+        # JM_SHOT_AT: time-triggered captures (see SHOTS_AT). Arm on the trigger, dump SHOT_SETTLE
+        # frames later so a view switch has settled; in a replay the clock is the replay clock.
+        if !isempty(SHOTS_AT)
+            _tnow = REPLAY ? rep_rt[] : cs.t
+            for (k, ts) in enumerate(SHOTS_AT)
+                SHOTS_AT_ARMED[k] == -2 && continue
+                if SHOTS_AT_ARMED[k] < 0
+                    fire = startswith(ts.when, "finish+") ? (race_done && RACEEND_T0[] >= 0 && cs.t - RACEEND_T0[] >= parse(Float64, ts.when[8:end])) :
+                                                          (_tnow >= parse(Float64, ts.when))
+                    if fire
+                        SHOTS_AT_ARMED[k] = frames; ts.view >= 0 && (CTL.view = ts.view)
+                        println("  JM_SHOT_AT: armed ", ts.name, " at t=", round(_tnow, digits=2)); flush(stdout)
+                    end
+                elseif frames - SHOTS_AT_ARMED[k] >= SHOT_SETTLE
+                    buf=Vector{UInt8}(undef,W*H*3); glReadPixels(0,0,W,H,GL_RGB,GL_UNSIGNED_BYTE,buf)
+                    open(joinpath(SHOTS_DIR, ts.name * ".ppm"),"w") do io; write(io,"P6\n$W $H\n255\n")
+                        for y in H:-1:1, x in 1:W; o=((y-1)*W+(x-1))*3; write(io,buf[o+1],buf[o+2],buf[o+3]); end; end
+                    println("  JM_SHOT_AT: dumped ", ts.name); flush(stdout)
+                    SHOTS_AT_ARMED[k] = -2
+                    all(==(-2), SHOTS_AT_ARMED) && haskey(ENV, "JM_SHOT_AT_EXIT") && break
+                end
+            end
         end
         # E59 multi-shot: dump the settled frame for the current shot, then teleport to the next.
         if SMOKE && !isempty(SHOTS) && !shots_done[] && frames - shot_t0[] == SHOT_SETTLE

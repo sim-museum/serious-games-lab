@@ -18932,4 +18932,103 @@ real LAN. The missing contact between remote cars is the documented limitation (
 poses are drawn, not collided) — now the next MP item, **MP-COLLIDE-1**: give remote human and host-AI
 cars a collision body on the client (the same contact model the local AI field uses), sized ~1 sprint.
 
+
+### PO test drive 2026-09-19 — Watkins Glen race, `~/Videos/260919_julia_mg_race.mp4` (24 min, 60 fps)
+*"Overall, a big improvement over previous versions! Congrats!"* — and seven things to fix, logged here as
+PO-raised items (they beat every gold row in the julia rotation):
+
+| item | PO's words | first read of the video / code |
+|---|---|---|
+| **TRACKSMOOTH-2** 🔴 | "the track is piecewise linear at the curves in the carousel after the main straight. This causes the player car to jounce as it goes across each boundary between piecewise straight portions, and, worse, it causes AI cars to skip around laterally when they cross these boundaries — smooth these curves per the gold standard" | TRACKSMOOTH-1 densified the centreline to 20 chords per arc, but `build_line` resamples at 3 m, so a 50 m-radius arc still turns 3.4° per node; anything that uses a per-segment frame (AI lateral offset, ribbon normal) steps at every node. Fix = a continuous frame (interpolated heading/normal), not more chords. |
+| **OBJPLACE-1** 🟠 | "grandstand to the left of start/finish is pointing away from the track" | trackside objects are placed from the .3do positioner records with `yaw`; a sign or a mirrored-frame yaw for that object class. Check against the gold. |
+| **OBJDUP-1** 🟠 | "banner over start/finish is placed twice, there are two identical copies a couple of meters apart" | two positioner records, or a record drawn by both the landmass parts and the object placer. |
+| **RACEEND-1** 🟠 | "there should be a graphical signal when the race is over" | today only the standings box says `✦ FINISHED Pn` (small text, video t=840 s). Add a chequered-flag banner. |
+| **OFFTRACK-2** 🔴 | "after several laps I went off the track and my car teleported and started bouncing vertically — see mp4" | video t=857–860 s: right-side grass, then the car is on a hillside above the circuit at 0 km/h, engine idling. OFFROAD-1's step guard / respawn is the suspect. |
+| **AISLEEVE-1** 🟠 | "all AI cars have misplaced driver's sleeves that render as 'rabbit ears' at the front of each cockpit. Remove all these sleeve objects from the AI cars" | AI chassis are loaded with `exclude=("ltraymap","lshad")` only; the player car excludes `DRIVER_TEX` (driver5/lotbody/lotsho/knees/neck/lid/arms) and the hands. Apply the same exclusions to the AI 3DOs. |
+| **REPLAYLOAD-1** 🔴 | "the replay takes a very long time to load — can this be sped up? At minimum, a progress bar is needed … it can seem hung" | video: launcher "replaying … (loading)" at t=885 s, first replay frame at t=1215 s = 5.5 min; GNOME's "not responding / Force Quit" dialog appeared over the sim window at t=1215 s. The race itself loaded 4 min (t=15→255 s). The launcher looks for a `jlracer.so` sysimage next to the sim and the installed tree has none, so every launch is a cold JIT. |
+
+### E102-S13 verified in the shipped image (Fable 5.1, 2026-09-19)
+`JuliaRacer-x86_64-260919b.AppImage` run from its own mounted runtime and code
+(`/home/admin/appimage-build/verify_jr_260919b/`): skidpad `exit=0 errors=0` with a chase capture of the
+cone pad, and Watkins Glen the same -- the `UndefVarError: TERRAIN` regression is gone from what the PO
+runs. SHA256SUMS refreshed in `~/Documents/260919/`.
+
+### PO test drive 2026-09-19 -- sprint 1 (Fable 5.1): five of the seven items have code, two of them measured
+
+**AISLEEVE-1 -- done in code.** The AI chassis were loaded with `exclude=("ltraymap","lshad")` only, so
+every '67 3DO kept its driver arms/sleeves/hands (`ferarms/fersho/fehand`, `braarms/brasho/brhand/frarm*`,
+`drvarms/bmhand/sho128`, `eagarm(s)/eahand`, `coparms/copsho/cohand`, `lotarms/lotsho/lohand`, plus the
+shared `arml/armr/arms`) -- the player Lotus drops the same set. `AI_SLEEVE_EXC` now excludes them on
+every AI car; helmet, neck, knees and body stay. `JM_AI_SLEEVES=1` restores them for an A/B. Capture of
+the PO's own replay (`replay_watglen 5ai 2026-09-19 14-49-16.jmr`, focus car 1, chase) queued.
+
+**Verified by capture (same day):** `parity/po_260919/wg_ai_sleeves_before.jpg` vs `_after.jpg` -- the PO's
+replay, Ferrari from the chase camera: two pale spikes stand up at the cockpit front with the sleeves
+(`JM_AI_SLEEVES=1`), none without. `parity/po_260919/raceend_chase.jpg` / `raceend_cockpit.jpg` -- autodrive
+1-lap race with two AI cars, 2 s and 4 s after the flag: chequered strip under the HUD band and the
+"RACE FINISHED - P3 of 3 / best lap 2:06.217 - Esc to leave" banner in both views.
+`parity/po_260919/wg_sf_banner_twice.jpg` and `wg_sf_grandstand_faces_away.jpg` reproduce the PO's two
+placement reports at the start line (the Dunlop board is the `startbox` object with a ghost copy drawn just
+below it; the `grandl` grandstand, placement yaw -92.5 deg, shows its seating turned away from the track);
+a four-arm capture (yaw sign, unmirrored meshes, orientation dedup) is queued.
+
+**RACEEND-1 -- done in code.** A chequered strip across the frame under the HUD band once the race is
+done, plus a large centred "RACE FINISHED - Pn of N / best lap / Esc to leave" banner for
+`JM_RACEEND_SECS` (12) seconds; the strip stays. New capture hook `JM_SHOT_AT="when:view:name;..."`
+(seconds of sim/replay time, or `finish+<s>`) photographs a race or a replay without teleporting the car;
+the verification (autodrive 1-lap race, `finish+2`) is queued.
+
+**REPLAYLOAD-1 -- progress bar done; the speed-up is a separate heavy job.** Measured from the video:
+the replay took 5.5 min to its first frame (t=885 -> 1215 s) and GNOME's "not responding" dialog
+appeared over the black sim window; the race itself took 4 min (t=15 -> 255 s). The launcher looked for a
+`jlracer.so` sysimage next to the sim and the installed tree has none, so every launch is a cold JIT.
+The Replay tab now has the Drive tab's milestone progress bar (track / geometry / textures / scenery /
+cars / physics / "replay window opening", with minutes elapsed) and the "(loading)" line says what to
+expect. The real cure is the sysimage (`appimage-build/build_sysimage_portable.jl`, prepared 2026-09-0x,
+"awaiting PO go-ahead"): the PO's question is that go-ahead; it is a 13 GB / multi-hour build that must
+run alone under `systemd-run --user --scope -p MemoryMax=`, so it is its own sprint.
+
+**TRACKSMOOTH-2 -- measured, and two fixes shipped with before/after numbers.**
+1. AI cars (the PO's "skip around laterally"). `tools`-style scratch probe `ai_kick.jl` drives a car
+   along the shipped AI rail at 20 m/s, 60 fps, lane = the racing line, and measures the change of its
+   lateral velocity from one frame to the next. Watkins Glen, hairpin window s=3480..3620 (the R=38 m,
+   89-degree section 38 at s=3524):
+
+   | | max kick (m/s per frame) | hairpin mean | p99 whole lap | p90 |
+   |---|---|---|---|---|
+   | shipped (chord lerp, `JM_POSE_LERP=1`) | 1.201 | 0.1155 | 0.33 | 0.058 |
+   | position spline (Catmull-Rom through 4 nodes) | 0.472 | 0.0162 | 0.125 | 0.037 |
+   | + lateral-offset spline (`racelane`) | **0.145** | **0.0133** | **0.055** | **0.012** |
+
+   The heading was already continuous (max yaw-rate change 0.07 deg/frame -- TRACKSMOOTH-1's chord
+   tangent); the kick was the POSITION: a chord lerp between 3 m nodes on a 38 m arc turns the velocity
+   4.5 deg at every node while the body does not (v sin 4.5 = 1.5 m/s). `pose_at` and `racelane` now
+   interpolate with a Catmull-Rom spline (nodes sampled from an arc give the arc back). Residual max
+   0.999 is the s=0 measurement artefact; 0.145 at s=3584 is the apex-shift kink in `rl`.
+2. Player (the PO's "jounce at each boundary"). `JM_HATPROBE="cl:3470:3640:0.5"` (new mode: walk the
+   sim's own aligned ribbon, print the physics ground) shows the road as planar strips with CREASES:
+   slope steps of 0.046 (2.6 deg) at s=3569.5, 0.040 at 3549, 0.015 at 3528.5, a 4 cm lip at 3614.5;
+   |dslope| per 0.5 m: p50 0, p99 0.0395, max 0.0803. GPL's physics drove the .trk's smooth traces, not
+   the drawn mesh, so the gold has no creases. Until the .trk surface is rebuilt, the PLAYER's physics
+   ground is a 5-sample box filter of the mesh along the direction of travel (+-2 m, `JM_GROUND_SMOOTH`,
+   0 disables): p99 0.0395 -> 0.0161, max 0.0803 -> 0.0169 (`JM_HATPROBE_SMOOTH=1` reports the filtered
+   ground in the same run). AI cars are unaffected (they are reground for drawing only). The proper
+   fix -- the analytic .trk surface -- is TRACKSMOOTH-3, sized 2-3 sprints.
+
+**OFFTRACK-2 -- read from the PO's own log (`last_sim_run.log`), not yet fixed.** Not a step-guard event:
+the car ran wide at lapdist 2290-2386 with the lateral offset opening -4 -> +36 m at 120-190 km/h and 35
+degrees of slip, left the HAT, and the WORLD-EDGE wall wrecked it: `[WRECK] cause: BOUNDARY penetration
+peak 296580`, all four wheels torn off, one of them "at 346 km/h" -- a velocity spike that is the
+"teleport" the PO saw, followed by the wreck coming to rest on the hillside above the circuit (video
+t=859-873 s). The contact kernel already caps its OUTCOME at VN_OUT_MAX, so the spike is downstream:
+the BND force is fed into the chassis ODE as an external force for the NEXT frame (`extforce3d!`), and
+a 296 kN force over a 60 Hz frame on a 600 kg car is 8 m/s per frame of impulse if the solver's own
+step differs from the frame the cap assumed. Next: print the per-frame |dv| that `extforce3d!` produces
+from BND_* and cap the IMPULSE there, not the force.
+
+**OBJPLACE-1 / OBJDUP-1 -- scanned, need a capture.** The Watkins Glen track file carries 49 object
+placements from 27 object 3DOs; no grandstand object and no near-duplicate pair (< 6 m) among them, so
+the grandstand and the banner are part of the main track mesh / landmass sections, not placed objects.
+Start/finish captures (s=3700..3890 and s=40, chase and cockpit) are queued.
+
 ### E102-S13 (Fable 5.1, 2026-09-19) — 🔴→✅ **regression from S12: "Julia appImage does not load the skidpad" (PO) — `UndefVarError: TERRAIN` in `camera()`.** The chase-eye HAT clamp assumed every track has a terrain; the skidpad builds none. Guarded with `@isdefined(TERRAIN)`; skidpad + Watkins smoke queued; repacked as the 260919b AppImage

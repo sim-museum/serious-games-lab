@@ -68,6 +68,7 @@ const VT_BRAKE = Ref(get(ENV, "JM_VT_BRAKE", "1") != "0")
 # derived from amax); keep the two consistent and tunable together.
 const BRAKE_A  = Ref(something(tryparse(Float64, get(ENV, "JM_BRAKE_A", "30.0")), 30.0))
 const SOFT_BAND = Ref(get(ENV, "JM_SOFT_BAND", "1") != "0")
+const POSE_LERP = Ref(get(ENV, "JM_POSE_LERP", "0") != "0")   # TRACKSMOOTH-2: chord-lerp positions (the old path) for an A/B
 # fraction of the band that stays perfectly linear (no contraction); only beyond it does the
 # saturation bend. Tunable so the smoothness/apex trade-off can be swept rather than guessed.
 const SOFT_KNEE = Ref(something(tryparse(Float64, get(ENV, "JM_SOFT_KNEE", "0.7")), 0.7))
@@ -271,7 +272,17 @@ end
 "Racing-line lateral offset (m, left +) at arc-length `s`."
 function racelane(line::AILine, s)
     i, f = _locate(line, s); j = i % length(line.rl) + 1
-    line.rl[i]*(1-f) + line.rl[j]*f
+    # TRACKSMOOTH-2: the lateral offset gets the same Catmull-Rom treatment as the position (a
+    # lerp of `rl` between nodes has a kink at every node -- max 0.157 m/node^2 on watglen -- which
+    # at 20 m/s is a 1 m/s sideways step; that was the worst residual kick after the position fix).
+    if POSE_LERP[]
+        line.rl[i]*(1-f) + line.rl[j]*f
+    else
+        nn = length(line.rl); h = mod(i-2, nn) + 1; k = j % nn + 1
+        t = f; t2 = t*t; t3 = t2*t
+        p0 = line.rl[h]; p1 = line.rl[i]; p2 = line.rl[j]; p3 = line.rl[k]
+        0.5*((2p1) + (-p0 + p2)*t + (2p0 - 5p1 + 4p2 - p3)*t2 + (-p0 + 3p1 - 3p2 + p3)*t3)
+    end
 end
 
 mutable struct AICar; s::Float64; v::Float64; lap::Int; lane::Float64; tlane::Float64; spin::Float64; follow::Float64
@@ -356,9 +367,30 @@ end
 "World pose (x, y, z, heading) at arc-length `s` with lateral `lane` (left +)."
 function pose_at(line::AILine, s, lane)
     i, f = _locate(line, s); j = i % length(line.x) + 1
-    x = line.x[i]*(1-f) + line.x[j]*f
-    z = line.z[i]*(1-f) + line.z[j]*f
-    y = line.y[i]*(1-f) + line.y[j]*f
+    # TRACKSMOOTH-2 (PO 2026-09-19, Watkins Glen: "AI cars skip around laterally when they cross
+    # these boundaries"). MEASURED on the shipped rail (tools: scratch ai_kick.jl, 20 m/s, 60 fps):
+    # the lateral velocity of a rail-following car changed by up to 1.20 m/s IN ONE FRAME at every
+    # node of the R=38 m hairpin (s=3551-3578), p99 0.33, p90 0.058. The heading was already
+    # continuous (max yaw-rate change 0.07 deg/frame), so the kick is the POSITION: a chord lerp
+    # between 3 m nodes on a 38 m arc turns the velocity 4.5 deg at each node while the body does
+    # not, i.e. v*sin(4.5) = 1.5 m/s of sideways step. Interpolate the position with a Catmull-Rom
+    # spline through the four surrounding nodes instead: nodes sampled from an arc give back the arc
+    # (overshoot is negligible for a curve sampled every 4.5 deg), and the velocity direction is
+    # continuous. This is the POSITION only; the heading keeps its approximating chord below (the
+    # earlier Catmull-Rom TANGENT experiment failed on 21 deg kinks that no longer exist since
+    # TRACKSMOOTH-1). JM_POSE_LERP=1 restores the chord lerp for an A/B.
+    if POSE_LERP[]
+        x = line.x[i]*(1-f) + line.x[j]*f
+        z = line.z[i]*(1-f) + line.z[j]*f
+        y = line.y[i]*(1-f) + line.y[j]*f
+    else
+        nn = length(line.x); h = mod(i-2, nn) + 1; k = j % nn + 1
+        t = f; t2 = t*t; t3 = t2*t
+        cr(p0, p1, p2, p3) = 0.5*((2p1) + (-p0 + p2)*t + (2p0 - 5p1 + 4p2 - p3)*t2 + (-p0 + 3p1 - 3p2 + p3)*t3)
+        x = cr(line.x[h], line.x[i], line.x[j], line.x[k])
+        z = cr(line.z[h], line.z[i], line.z[j], line.z[k])
+        y = cr(line.y[h], line.y[i], line.y[j], line.y[k])
+    end
     # ⭐ TRACKSMOOTH-1 (PO 2026-09-05): the heading must come from a SMOOTH CURVE, not from segment
     # tangents. Measured on the shipped centreline: every segment is a uniform 3.0 m and the
     # per-node heading STEP reaches 21.4 deg at Watkins Glen (13.5 % of nodes step by more than

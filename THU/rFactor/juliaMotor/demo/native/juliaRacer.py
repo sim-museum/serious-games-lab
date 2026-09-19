@@ -1010,6 +1010,14 @@ class ReplayTab(QWidget):
         row.addWidget(self.stop_b)
         v.addLayout(row)
         v.addWidget(QLabel("In the replay:  SPACE play/pause · ←/→ scrub · ↑/↓ speed · Esc quit"))
+        # REPLAYLOAD-1 (PO 2026-09-19): "the replay takes a very long time to load ... at minimum a
+        # progress bar is needed ... it can seem hung". The Drive tab has had load milestones since
+        # 2026-09-03; the replay had only "(loading)". Same bar, same milestones, plus the replay's own.
+        self.progress = QProgressBar()
+        self.progress.setVisible(False)
+        self.progress.setTextVisible(True)
+        self.progress.setMinimumHeight(22)
+        v.addWidget(self.progress)
         v.addWidget(QLabel("Cinematics:  V = switch ANGLE (cockpit · chase · TV/distant · F10 rear · nose · RR-suspension)   ·   C = switch CAR (cycle the field)"))
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
@@ -1049,10 +1057,14 @@ class ReplayTab(QWidget):
         self.proc.setProcessEnvironment(qenv)
         self.proc.setWorkingDirectory(HERE)
         self.proc.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
-        self.proc.readyReadStandardOutput.connect(
-            lambda: self.log.appendPlainText(
-                bytes(self.proc.readAllStandardOutput()).decode(errors="replace").rstrip()))
+        self.proc.readyReadStandardOutput.connect(self._log)
         self.proc.finished.connect(self._done)
+        self._stage = 0
+        self._t0 = time.monotonic()
+        self.progress.setRange(0, 100)
+        self.progress.setValue(0)
+        self.progress.setFormat("starting Julia…  (a replay loads the whole track, like a race: 3–4 min)")
+        self.progress.setVisible(True)
         jlargs = ["-t", "2", "--project=."]
         sysimg = os.path.join(HERE, "jlracer.so")
         if os.path.exists(sysimg):
@@ -1070,8 +1082,31 @@ class ReplayTab(QWidget):
             if not self.proc.waitForFinished(2000):
                 self.proc.kill()
 
+    # REPLAYLOAD-1: the same load milestones as the Drive tab, so the bar moves on real events.
+    LOAD_STAGES = [
+        ("loading GPL", 15, "loading track…"),
+        ("extracting geometry", 35, "extracting geometry…"),
+        ("loading textures", 50, "decoding textures…"),
+        ("placed", 70, "placing scenery…"),
+        ("AI car models begin", 80, "loading the cars…"),
+        ("physics build", 90, "building physics…"),
+        ("REPLAY:", 100, "ready — replay window opening"),
+    ]
+
+    def _log(self):
+        text = bytes(self.proc.readAllStandardOutput()).decode(errors="replace")
+        self.log.appendPlainText(text.rstrip())
+        for marker, pct, label in self.LOAD_STAGES:
+            if marker in text and pct > self._stage:
+                self._stage = pct
+                mm = int((time.monotonic() - self._t0) // 60)
+                self.progress.setValue(pct)
+                self.progress.setFormat(f"{label}  %p%   ({mm} min elapsed)")
+
     def _done(self):
         self.log.appendPlainText("\n— replay ended —")
+        self.progress.setVisible(False)
+        self.progress.setValue(0)
         self.watch_b.setEnabled(True)
         self.stop_b.setEnabled(False)
 
