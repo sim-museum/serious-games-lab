@@ -18903,3 +18903,22 @@ Left: the gold's replay chase (GPL's own, low camera). Middle: ours with `JM_CHA
 * Old eye: `JM_CHASE_H=1.35 JM_CHASE_LY=0.8`.
 
 **E102 after S12: both halves of "outward/downward" answered — lateral 0.8 on the pipes (S10), the gold's camera height (S12); the real halfshafts are still hidden behind the extracted assembly (S8) and the positioner chain stays parked. julia cycle 6: 4 sprints, rotation complete.**
+
+### DELIVERY 260919 (Fable 5.1, 2026-09-19) — a new julia racer AppImage, verified from its own bundled runtime
+
+PO: *"create appImages for the other three projects too."* `~/Documents/260919/JuliaRacer-x86_64-260919.AppImage`
+(1.65 GB, packed 11:19, sha256 `a4f5ad43202ff553…`) — `appimage-build/build_julia.sh` from HEAD `c0f1b03` (E102-S12), build
+stamp `20260919-111411`, Julia 1.12.6 runtime + depot, the five tracks, cars67, sound.
+
+**Verified two ways.** (1) Launching the image refreshed the existing install's code
+(`~/.local/share/julia-racer/.build-stamp` → 20260919-111411) and opened the launcher — the PO's path. (2) Mounted
+the image and ran `drive_native_mtk.jl` from its bundled runtime, depot and materialised code into a fresh
+`JR_HOME` (`TRACK=watglen JM_SMOKE=1 JM_SHOTS="8300:1:…"`): the code carries E102-S9–S12's knobs, the sim ran to
+`bye` (exit 0) and captured the chase frame — `parity/260919_appimage_chase_half.png`: the new 0.7 m chase eye,
+megaphones level and inboard.
+
+⚠️ Harness note: a `--appimage-mount` process started inside `gl-lock` inherits the lock and holds it after the
+script exits (the flock-and-daemon trap); the check script now traps EXIT to kill it. And `pgrep -f` on the
+mount pattern matched the invoking shell (exit 144) — again.
+
+**DELIVERY 260919: 1 sprint.**
