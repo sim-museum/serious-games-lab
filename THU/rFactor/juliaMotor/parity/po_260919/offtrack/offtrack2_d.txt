@@ -1,0 +1,53 @@
+gl-lock: display acquired by 'juliaMotor' — timeout -k 5 900 env DISPLAY=:0 TRACK=watglen JM_SMOKE=1 JM_OFFTRACK_PROBE=2386:30:190:40:35 JM_OFFTRACK_FRAMES=420 JM_OFFTRACK_EXIT=1 JM_NO_AUTOEXIT=1 JM_WRECK_DAMP_OLD=1 julia --project=/home/admin/sgl-julia-racer/THU/rFactor/juliaMotor/demo/native /home/admin/sgl-julia-racer/THU/rFactor/juliaMotor/demo/native/drive_native_mtk.jl
+  JM_OFFTRACK_PROBE: car placed at s=2386 lat=30.0 m, heading 40.0 deg off the line, 190.0 km/h (x=2.0 z=-255.7 ground=23.97)
+  [offtrack] t=0.1 v=190.0 x=1.96 z=-255.66 y=23.974 heave=0.0 ontrack=true wrecked=false bndpk=0.0 bndF=(0.0,0.0) wfx=0.0 cF=(0.0,0.0) off=0.0 nl=0.0
+  [offtrack] t=0.05 v=188.7 x=-0.66 z=-255.47 y=23.887 heave=0.001 ontrack=true wrecked=false bndpk=0.0 bndF=(0.0,0.0) wfx=0.0 cF=(0.0,0.0) off=0.0 nl=0.0
+  [offtrack] t=0.1 v=187.6 x=-3.27 z=-255.28 y=23.846 heave=-0.002 ontrack=true wrecked=false bndpk=0.0 bndF=(0.0,0.0) wfx=0.0 cF=(0.0,0.0) off=0.0 nl=0.0
+  [offtrack] t=0.134 v=187.3 x=-5.05 z=-255.15 y=23.838 heave=-0.009 ontrack=false wrecked=false bndpk=0.0 bndF=(0.0,0.0) wfx=0.0 cF=(0.0,0.0) off=1.8 nl=0.0
+  [offtrack] t=0.138 v=187.3 x=-5.24 z=-255.14 y=23.833 heave=-0.01 ontrack=false wrecked=false bndpk=0.0 bndF=(0.0,0.0) wfx=0.0 cF=(0.0,0.0) off=2.0 nl=0.0
+  [offtrack] t=0.145 v=187.1 x=-5.62 z=-255.11 y=23.825 heave=-0.013 ontrack=false wrecked=false bndpk=0.0 bndF=(0.0,0.0) wfx=0.0 cF=(0.0,0.0) off=2.4 nl=0.0
+  [WRECK] hard impact at 187.0 km/h — engine disconnected, race over
+  [WRECK]   cause: BOUNDARY penetration peak 403789.0 -- this is the fence/wall test, which is INVISIBLE geometry, not a drawn object
+  [WRECK]   at world (-6.3, -255.1)
+  [WRECK]   boundary: 0.497 m past the edge (FENCE_GRACE=2.5 m), inward-normal speed -51.98 m/s, off-track distance 3.0 m
+  [WRECK]   approach (last 0.1 s, 10 Hz):  t-Δ    x       z      v km/h   slip°   off m   lat m   lapdist
+  [WRECK]      -0.1     -0.7  -255.5   189.0       -     0.0    32.5     2392
+  [WRECK]       0.0     -6.3  -255.1   187.0    35.0     2.4    38.0     2393
+  [WRECK] lotwlf torn off on the wall at 187.0 km/h
+  [WRECK] lotwrf torn off on the wall at 187.0 km/h
+  [offtrack] t=0.158 v=186.6 x=-6.26 z=-255.06 y=23.813 heave=-0.019 ontrack=false wrecked=true bndpk=403789.0 bndF=(0.0,0.0) wfx=-191865.0 cF=(0.0,0.0) off=3.0 nl=0.5
+  [offtrack] t=0.175 v=170.1 x=-7.1 z=-255.03 y=23.797 heave=-0.026 ontrack=false wrecked=true bndpk=288891.0 bndF=(0.0,0.0) wfx=-174875.0 cF=(0.0,0.0) off=3.8 nl=1.34
+  [offtrack] t=0.225 v=129.8 x=-9.16 z=-255.23 y=23.769 heave=-0.035 ontrack=false wrecked=true bndpk=98720.0 bndF=(0.0,0.0) wfx=-133487.0 cF=(0.0,0.0) off=5.6 nl=3.39
+  [offtrack] t=0.231 v=126.3 x=-9.39 z=-255.29 y=23.767 heave=-0.035 ontrack=false wrecked=true bndpk=751419.0 bndF=(0.0,0.0) wfx=-129920.0 cF=(0.0,0.0) off=5.8 nl=3.62
+  [offtrack] t=0.244 v=120.1 x=-9.81 z=-255.42 y=23.765 heave=-0.033 ontrack=false wrecked=true bndpk=377140.0 bndF=(0.0,0.0) wfx=-123480.0 cF=(0.0,0.0) off=6.3 nl=4.05
+  [offtrack] t=0.262 v=113.2 x=-10.34 z=-255.62 y=23.765 heave=-0.03 ontrack=false wrecked=true bndpk=286093.0 bndF=(0.0,0.0) wfx=-116372.0 cF=(0.0,0.0) off=6.8 nl=4.57
+  [offtrack] t=0.278 v=107.9 x=-10.79 z=-255.84 y=23.765 heave=-0.027 ontrack=false wrecked=true bndpk=300119.0 bndF=(0.0,0.0) wfx=-111000.0 cF=(0.0,0.0) off=7.3 nl=5.04
+  [offtrack] t=0.295 v=103.8 x=-11.22 z=-256.11 y=23.767 heave=-0.023 ontrack=false wrecked=true bndpk=285781.0 bndF=(0.0,0.0) wfx=-106712.0 cF=(0.0,0.0) off=7.8 nl=5.5
+  [offtrack] t=0.312 v=101.3 x=-11.6 z=-256.39 y=23.767 heave=-0.019 ontrack=false wrecked=true bndpk=296865.0 bndF=(0.0,0.0) wfx=-104122.0 cF=(0.0,0.0) off=8.3 nl=5.9
+  [offtrack] t=0.329 v=99.6 x=-11.95 z=-256.71 y=23.767 heave=-0.017 ontrack=false wrecked=true bndpk=291158.0 bndF=(0.0,0.0) wfx=-102412.0 cF=(0.0,0.0) off=8.7 nl=6.3
+  [offtrack] t=0.346 v=99.0 x=-12.27 z=-257.07 y=23.771 heave=-0.013 ontrack=false wrecked=true bndpk=283612.0 bndF=(0.0,0.0) wfx=-101843.0 cF=(0.0,0.0) off=9.2 nl=6.68
+  [offtrack] t=0.363 v=99.3 x=-12.55 z=-257.43 y=23.778 heave=-0.008 ontrack=false wrecked=true bndpk=294337.0 bndF=(0.0,0.0) wfx=-102160.0 cF=(0.0,0.0) off=9.7 nl=7.03
+  [offtrack] t=0.38 v=100.4 x=-12.8 z=-257.84 y=23.787 heave=-0.001 ontrack=false wrecked=true bndpk=285579.0 bndF=(0.0,0.0) wfx=-103255.0 cF=(0.0,0.0) off=10.2 nl=7.37
+  [offtrack] t=0.397 v=102.3 x=-13.02 z=-258.26 y=23.798 heave=0.007 ontrack=false wrecked=true bndpk=292177.0 bndF=(0.0,0.0) wfx=-105215.0 cF=(0.0,0.0) off=10.6 nl=7.7
+  [offtrack] t=0.415 v=105.3 x=-13.2 z=-258.73 y=23.809 heave=0.015 ontrack=false wrecked=true bndpk=282590.0 bndF=(0.0,0.0) wfx=-108294.0 cF=(0.0,0.0) off=11.2 nl=8.02
+  [offtrack] t=0.432 v=109.4 x=-13.35 z=-259.23 y=23.821 heave=0.022 ontrack=false wrecked=true bndpk=281189.0 bndF=(0.0,0.0) wfx=-112539.0 cF=(0.0,0.0) off=11.7 nl=8.33
+  [offtrack] t=0.45 v=114.7 x=-13.45 z=-259.76 y=23.832 heave=0.028 ontrack=false wrecked=true bndpk=282543.0 bndF=(0.0,0.0) wfx=-117938.0 cF=(0.0,0.0) off=12.2 nl=8.63
+  [offtrack] t=0.467 v=121.1 x=-13.52 z=-260.33 y=23.842 heave=0.033 ontrack=false wrecked=true bndpk=282231.0 bndF=(0.0,0.0) wfx=-124538.0 cF=(0.0,0.0) off=12.8 nl=8.93
+  [offtrack] t=0.485 v=128.7 x=-13.53 z=-260.94 y=23.85 heave=0.037 ontrack=false wrecked=true bndpk=281832.0 bndF=(0.0,0.0) wfx=-132346.0 cF=(0.0,0.0) off=13.5 nl=9.22
+  [offtrack] t=0.502 v=137.6 x=-13.51 z=-261.59 y=23.857 heave=0.039 ontrack=false wrecked=true bndpk=279503.0 bndF=(0.0,0.0) wfx=-141494.0 cF=(0.0,0.0) off=14.1 nl=9.53
+  [WRECK] lotwlr torn off on the wall at 147.0 km/h
+  [offtrack] t=0.519 v=147.1 x=-13.43 z=-262.24 y=23.862 heave=0.04 ontrack=false wrecked=true bndpk=299441.0 bndF=(0.0,0.0) wfx=-151304.0 cF=(0.0,0.0) off=14.8 nl=9.82
+  [offtrack] t=0.537 v=158.8 x=-13.3 z=-262.99 y=23.865 heave=0.04 ontrack=false wrecked=true bndpk=275585.0 bndF=(0.0,0.0) wfx=-163349.0 cF=(0.0,0.0) off=15.6 nl=10.15
+  [offtrack] t=0.554 v=171.7 x=-13.11 z=-263.77 y=23.867 heave=0.038 ontrack=false wrecked=true bndpk=283204.0 bndF=(0.0,0.0) wfx=-176581.0 cF=(0.0,0.0) off=16.4 nl=10.5
+  [offtrack] t=0.572 v=186.1 x=-12.86 z=-264.59 y=23.868 heave=0.036 ontrack=false wrecked=true bndpk=284594.0 bndF=(0.0,0.0) wfx=-191331.0 cF=(0.0,0.0) off=17.3 nl=10.87
+  [offtrack] t=0.588 v=201.1 x=-12.57 z=-265.42 y=23.869 heave=0.033 ontrack=false wrecked=true bndpk=302770.0 bndF=(0.0,0.0) wfx=-206796.0 cF=(0.0,0.0) off=18.2 nl=11.26
+  [offtrack] t=0.606 v=219.3 x=-12.17 z=-266.38 y=23.868 heave=0.03 ontrack=false wrecked=true bndpk=276835.0 bndF=(0.0,0.0) wfx=-225532.0 cF=(0.0,0.0) off=19.3 nl=11.73
+  [offtrack] t=0.623 v=239.0 x=-11.71 z=-267.38 y=23.867 heave=0.027 ontrack=false wrecked=true bndpk=285037.0 bndF=(0.0,0.0) wfx=-245814.0 cF=(0.0,0.0) off=20.5 nl=12.26
+  [offtrack] t=0.64 v=260.9 x=-11.17 z=-268.45 y=23.866 heave=0.024 ontrack=false wrecked=true bndpk=285139.0 bndF=(0.0,0.0) wfx=-268315.0 cF=(0.0,0.0) off=21.7 nl=12.86
+  [offtrack] t=0.658 v=285.2 x=-10.53 z=-269.6 y=23.865 heave=0.02 ontrack=false wrecked=true bndpk=285284.0 bndF=(0.0,0.0) wfx=-293241.0 cF=(0.0,0.0) off=23.1 nl=13.56
+  [offtrack] t=0.674 v=310.4 x=-9.84 z=-270.76 y=23.864 heave=0.018 ontrack=false wrecked=true bndpk=302898.0 bndF=(0.0,0.0) wfx=-319226.0 cF=(0.0,0.0) off=24.5 nl=14.32
+  [offtrack] t=0.692 v=340.8 x=-8.98 z=-272.12 y=23.863 heave=0.015 ontrack=false wrecked=true bndpk=277083.0 bndF=(0.0,0.0) wfx=-350477.0 cF=(0.0,0.0) off=26.2 nl=15.28
+  [offtrack] t=0.709 v=0.0 x=-8.01 z=-273.55 y=23.858 heave=0.0 ontrack=false wrecked=true bndpk=0.0 bndF=(0.0,0.0) wfx=-0.0 cF=(0.0,0.0) off=0.0 nl=16.37
+  [WRECK] car came to rest
+  [offtrack] t=0.759 v=0.0 x=-7.99 z=-273.56 y=23.859 heave=0.0 ontrack=false wrecked=true bndpk=0.0 bndF=(0.0,0.0) wfx=-0.0 cF=(0.0,0.0) off=0.0 nl=16.38
+  [offtrack] t=0.765 v=0.0 x=-8.01 z=-273.55 y=23.859 heave=0.0 ontrack=false wrecked=true bndpk=0.0 bndF=(0.0,0.0) wfx=-0.0 cF=(0.0,0.0) off=0.0 nl=16.37

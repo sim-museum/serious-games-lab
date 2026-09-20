@@ -7272,6 +7272,32 @@ function main()
             flush(stdout)
         end
     end
+    # OFFTRACK-2 (PO 2026-09-19, Watkins Glen): "after several laps I went off the track and my car
+    # teleported and started bouncing vertically". The PO's log had the car leave the HAT at lapdist
+    # 2290-2386 with the lateral offset opening to +36 m at 120-190 km/h, then a BOUNDARY wreck with a
+    # wheel "torn off at 346 km/h" -- a speed the car never had. Reproduce it on demand:
+    # JM_OFFTRACK_PROBE="s:lat:kmh:deg" places the car at lapdist s, lat m to the LEFT of the racing
+    # line (negative = right), heading deg off the line's heading, at kmh, and then prints one
+    # [offtrack] line per frame (speed, position, height, on-track, wreck, fence force) for
+    # JM_OFFTRACK_FRAMES frames (default 300) so the spike can be seen where it happens.
+    OFFTRACK_PROBE = Ref(0)          # frames still to trace
+    if CLINE !== nothing && CAR3D && haskey(ENV, "JM_OFFTRACK_PROBE")
+        pf = [parse(Float64, x) for x in split(ENV["JM_OFFTRACK_PROBE"], ":")]
+        ps, plat, pkmh, pdeg = pf[1], pf[2], pf[3], pf[4]
+        pslip = length(pf) >= 5 ? pf[5] : 0.0                   # deg of slip: lateral body velocity
+        p0 = place_at_s!(clamp(ps, 0.0, CLINE.total))
+        θ0 = p0[4]; nLx = -sin(θ0); nLz = cos(θ0)
+        px = p0[1] + nLx*plat; pz = p0[3] + nLz*plat
+        DriveRT3D.place3d!(cs, px, pz, θ0 + deg2rad(pdeg); v = pkmh/3.6)
+        pslip != 0.0 && cs.s_vel(cs.integ, [pkmh/3.6*cos(deg2rad(pslip)), pkmh/3.6*sin(deg2rad(pslip))])
+        cs.s_vreset(cs.integ, zeros(14))
+        hP = groundz(px, pz; acquire=true); isfinite(hP) && (cs.zref = Float64(hP)); cs.y = cs.zref
+        PLAYER_G[] = NaN
+        OFFTRACK_PROBE[] = parse(Int, get(ENV, "JM_OFFTRACK_FRAMES", "300"))
+        println("  JM_OFFTRACK_PROBE: car placed at s=", round(Int, ps), " lat=", plat, " m, heading ",
+                pdeg, " deg off the line, ", pkmh, " km/h (x=", round(px, digits=1), " z=", round(pz, digits=1),
+                " ground=", isfinite(hP) ? round(Float64(hP), digits=2) : NaN, ")")
+    end
     # ---- E54 sweep harness: walk the whole centreline and report anything that would block or bog a
     # car ON the racing line — on-road mesh/billboard obstructions, HAT walls/cliffs/holes, and
     # "false-grass" spots (the centreline projecting off the .trk racing surface ⇒ a grass-penalty
@@ -8766,9 +8792,37 @@ function main()
                     cfx = 0.0; cfy = 0.0; cmz = 0.0
                     BND_FX[] = 0.0; BND_FY[] = 0.0; BND_MZ[] = 0.0
                 end
-                wfx = WRECKED[] ? -617.0 * WRECK_DAMP * cs.v : 0.0
-                DriveRT3D.extforce3d!(cs; Fx = cfx + BND_FX[] + wfx, Fy = cfy + BND_FY[], Mz = cmz + BND_MZ[],
+                # OFFTRACK-2 (PO 2026-09-19): the wreck damper was `-617*WRECK_DAMP*cs.v` on the BODY X
+                # axis, with cs.v an UNSIGNED speed. That opposes motion only while the car travels nose-
+                # first: a wreck sliding sideways or backwards (the PO's was at 35 deg of slip when the
+                # world-edge wall took it) gets a 24 g push along -x that is NOT against its velocity,
+                # so each frame ADDS speed instead of removing it -- the "torn off at 346 km/h" wheel
+                # from a 190 km/h car, and the teleport-and-bounce that followed. Damp the actual
+                # body-frame velocity on both axes instead. JM_WRECK_DAMP_OLD=1 restores the old term.
+                wfx = 0.0; wfy = 0.0
+                if WRECKED[]
+                    if haskey(ENV, "JM_WRECK_DAMP_OLD")
+                        wfx = -617.0 * WRECK_DAMP * cs.v
+                    else
+                        cθw, sθw = cos(cs.θ), sin(cs.θ)
+                        vbx =  WVX[]*cθw + WVZ[]*sθw          # body forward speed (signed)
+                        vby = -WVX[]*sθw + WVZ[]*cθw          # body lateral speed (signed)
+                        wfx = -617.0 * WRECK_DAMP * vbx
+                        wfy = -617.0 * WRECK_DAMP * vby
+                    end
+                end
+                DriveRT3D.extforce3d!(cs; Fx = cfx + BND_FX[] + wfx, Fy = cfy + BND_FY[] + wfy, Mz = cmz + BND_MZ[],
                                       CdA_scale = PLAYER_CDA[])
+                if OFFTRACK_PROBE[] > 0
+                    OFFTRACK_PROBE[] -= 1
+                    println("  [offtrack] t=", round(cs.t, digits=3), " v=", round(cs.v*3.6, digits=1), " x=", round(cs.x, digits=2),
+                            " z=", round(cs.z, digits=2), " y=", round(cs.y, digits=3), " heave=", round(cs.heave, digits=3),
+                            " ontrack=", ONTRACK[], " wrecked=", WRECKED[], " bndpk=", round(BND_PK[], digits=0),
+                            " bndF=(", round(BND_FX[], digits=0), ",", round(BND_FY[], digits=0), ") wfx=", round(wfx, digits=0),
+                            " cF=(", round(cfx, digits=0), ",", round(cfy, digits=0), ") off=", round(OFFDIST[], digits=1),
+                            " nl=", round(BND_NL[], digits=2))
+                    OFFTRACK_PROBE[] == 0 && haskey(ENV, "JM_OFFTRACK_EXIT") && (flush(stdout); exit(0))
+                end
                 # E95g: a totalled car comes to REST and STAYS there. Once it is down to walking
                 # pace, pin it: the alternative is a dead car creeping, drifting off the HAT and
                 # re-entering the containment/levitation cycle the PO saw. Pinning is honest here in

@@ -19106,6 +19106,23 @@ a 296 kN force over a 60 Hz frame on a 600 kg car is 8 m/s per frame of impulse 
 step differs from the frame the cap assumed. Next: print the per-frame |dv| that `extforce3d!` produces
 from BND_* and cap the IMPULSE there, not the force.
 
+**OFFTRACK-2 S1 (Fable 5.1, 2026-09-19) -- REPRODUCED with a control, root cause fixed: the wreck damper pushed a sideways-sliding car instead of braking it.**
+`JM_OFFTRACK_PROBE="s:lat:kmh:deg[:slip]"` places the car off the racing line at speed and prints one
+`[offtrack]` line per frame (`parity/po_260919/offtrack/`, `JM_OFFTRACK_FRAMES`, `JM_OFFTRACK_EXIT`). At the
+PO's spot (lapdist 2386, +30 m, 190 km/h, 40 deg out, 35 deg of slip -- the slip the PO's log recorded):
+* **old damper (`JM_WRECK_DAMP_OLD=1`, offtrack2_d):** boundary wreck at 187 km/h, speed falls to 99 km/h, then
+  RISES every frame -- 102, 121, 158, 219, 260, **310 km/h** -- until the FENCE_FAR seal fires at 16.4 m past the
+  edge and PLACES the car (`x -9.84 -> -8.01, z -270.8 -> -273.6`, v=0): the PO's "torn off at 346 km/h", the
+  teleport, and the bounce that follows a car dropped where the mesh has no ground.
+* **fixed damper (offtrack2_c, offtrack3_e over 420 frames):** same wreck at 187 km/h, speed falls monotonically
+  112 -> 87 -> 62 -> 44 -> 31 -> 23 -> 17 -> 13 -> 8 -> rest at 0.72 s, 7.7 m past the edge, and it STAYS there
+  (y 23.86 m, heave 0.00 for the next 6 s).
+Mechanism: `wfx = -617*WRECK_DAMP*cs.v` was a force along the car's BODY X axis with `cs.v` an unsigned speed.
+Nose-first that opposes motion; a wreck sliding sideways or backwards gets a 24 g push that is not against its
+velocity, so each frame adds speed. The damper now opposes the signed body-frame velocity on both axes
+(`vbx`, `vby` from the world velocity). Arm A (no slip, offtrack_a) never spiked with either damper, which is why
+the earlier "cap the impulse in extforce3d!" plan would have missed it. 1 sprint.
+
 **OBJPLACE-1 / OBJDUP-1 -- scanned, need a capture.** The Watkins Glen track file carries 49 object
 placements from 27 object 3DOs; no grandstand object and no near-duplicate pair (< 6 m) among them, so
 the grandstand and the banner are part of the main track mesh / landmass sections, not placed objects.
