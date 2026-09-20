@@ -207,6 +207,52 @@ function trackside_objects(path3do; objnames::Set{String})
     out
 end
 
+# TRACKSMOOTH-3 (PO 2026-09-19): THE SURFACE GPL DROVE. Each .trk section carries, per lateral trace
+# (16 traces at fixed offsets), a 32-byte record = 8 int32 in TRK units: words 0..3 are the cubic
+# coefficients a3 a2 a1 a0 of the altitude in the section's normalised length u in [0,1] (words 4,5
+# are 3a3 and 2a2). S1 measured the joins C1 across all 47 Watkins Glen sections (max height jump
+# 0.01 cm, max slope jump 1e-4) and the profile against the sim's mesh HAT along the ribbon:
+# r = 0.9999, no shift, no sign flip, offset -0.11 m, residual p50 0.10 m -- the mesh is a strip-wise
+# approximation of THIS spline, and its creases are what the player felt as the jounce.
+struct TrkAlt
+    S0::Vector{Float64}          # section start distance [m], length nsec+1 (last = lap)
+    L::Vector{Float64}           # section length [m]
+    lat::Vector{Float64}         # trace lateral offsets [m], ascending
+    coef::Array{Float64,3}       # (section, trace, 1:4) = a0 a1 a2 a3 in metres, u in [0,1]
+    total::Float64
+end
+function trk_altitude(path)
+    b = read(path)
+    u32(o) = UInt32(b[o+1]) | UInt32(b[o+2])<<8 | UInt32(b[o+3])<<16 | UInt32(b[o+4])<<24
+    i32(o) = reinterpret(Int32, u32(o)); TRK = 19685.03937
+    traces = Int(u32(12)); sections = Int(u32(16)); wallsize = Int(u32(20))
+    toff = [i32(28+t*4)/TRK for t in 0:traces-1]
+    altbase = 28 + 64 + sections*4; secbase = altbase + 32*traces*sections + wallsize
+    L = [i32(secbase + s*52 + 8)/TRK for s in 0:sections-1]
+    S0 = zeros(sections+1); for s in 1:sections; S0[s+1] = S0[s] + L[s]; end
+    ord = sortperm(toff)
+    coef = zeros(sections, traces, 4)
+    for s in 0:sections-1, (k, t) in enumerate(ord .- 1)
+        o = altbase + (s*traces + t)*32
+        coef[s+1, k, 1] = i32(o+12)/TRK; coef[s+1, k, 2] = i32(o+8)/TRK
+        coef[s+1, k, 3] = i32(o+4)/TRK;  coef[s+1, k, 4] = i32(o)/TRK
+    end
+    TrkAlt(S0, L, toff[ord], coef, S0[end])
+end
+"""Altitude of the .trk surface at lap distance `s` [m] and lateral offset `lat` [m] (trace frame,
+positive toward the higher trace offsets); linear between traces, cubic along the section."""
+function trk_height(ta::TrkAlt, s::Real, lat::Real)
+    sm = mod(s, ta.total)
+    sec = clamp(searchsortedlast(ta.S0, sm), 1, length(ta.L))
+    u = clamp((sm - ta.S0[sec]) / max(ta.L[sec], 1e-6), 0.0, 1.0)
+    nt = length(ta.lat)
+    l = clamp(lat, ta.lat[1], ta.lat[end])
+    k = clamp(searchsortedlast(ta.lat, l), 1, nt-1)
+    f = (l - ta.lat[k]) / max(ta.lat[k+1] - ta.lat[k], 1e-6)
+    h(t) = ((ta.coef[sec,t,4]*u + ta.coef[sec,t,3])*u + ta.coef[sec,t,2])*u + ta.coef[sec,t,1]
+    h(k)*(1-f) + h(k+1)*f
+end
+
 """Build the racing-ribbon TrackSurface from the centreline, lifted to ground height."""
 function build_surface(centreline, hat; halfwidth=9.0)
     pos = NTuple{3,Float64}[]

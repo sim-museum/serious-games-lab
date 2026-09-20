@@ -1614,6 +1614,42 @@ else
     const TERRAIN  = isempty(SECTRI) ? TERRAIN0 : GPLTrack.build_hat(TRACKMESH; exclude=HAT_EXCLUDE, exclude_pred=HAT_EXCLUDE_PRED, drop_overpass=MONZA, road_pred=ROAD_PRED)
     const TRKSURF  = GPLTrack.build_surface(ALIGNED, TERRAIN)
     const LAPLEN = maximum(TRKSURF.lapdist)              # lap length [m], for start/finish wrap detection
+    # TRACKSMOOTH-3 S2: the .trk altitude spline as the PLAYER's road height (see GPLTrack.TrkAlt).
+    # Calibrated HERE against the mesh so the choice is measured on every track, not assumed:
+    # (a) the lateral SIGN between the ribbon's `lateral` (+ along perp) and the .trk trace frame,
+    # picked by the smaller residual at +-4 m; (b) the vertical offset, the median (mesh - trk) on the
+    # centreline. JM_TRK_SURFACE=0 disables (mesh + crease filter as before).
+    const TRKALT = (get(ENV, "JM_TRK_SURFACE", "1") != "0") ? GPLTrack.trk_altitude(track_file(GPLNAME, ".trk")) : nothing
+    const TRK_CAL = let ta = TRKALT
+        if ta === nothing || abs(ta.total - LAPLEN) > 0.02 * LAPLEN
+            ta === nothing || println("  [trksurf] OFF: .trk lap ", round(ta.total, digits=1), " m vs ribbon ", round(LAPLEN, digits=1), " m")
+            (on = false, sign = 1.0, off = 0.0)
+        else
+            n = length(TRKSURF.pos)
+            res = Dict(1.0 => Float64[], -1.0 => Float64[]); off0 = Float64[]
+            for i in 1:6:n
+                p = TRKSURF.pos[i]; q = TRKSURF.perp[i]; s = TRKSURF.lapdist[i]
+                h0 = JuliaMotor.hat3d(TERRAIN, p[1], p[3]; ref=Inf)
+                h0[3] && push!(off0, Float64(h0[1]) - GPLTrack.trk_height(ta, s, 0.0))
+                for lat in (-4.0, 4.0)
+                    hm = JuliaMotor.hat3d(TERRAIN, p[1] + lat*q[1], p[3] + lat*q[3]; ref=Inf)
+                    hm[3] || continue
+                    for sg in (1.0, -1.0)
+                        push!(res[sg], abs(Float64(hm[1]) - GPLTrack.trk_height(ta, s, sg*lat) - (isempty(off0) ? 0.0 : off0[end])))
+                    end
+                end
+            end
+            med(v) = isempty(v) ? 0.0 : (sort!(v); v[div(length(v)+1, 2)])
+            off = med(copy(off0)); sg = med(copy(res[1.0])) <= med(copy(res[-1.0])) ? 1.0 : -1.0
+            r = sort!(abs.(off0 .- off))
+            println("  [trksurf] ON: lateral sign ", sg, " (residual +", round(med(copy(res[1.0])), digits=3), " / -", round(med(copy(res[-1.0])), digits=3),
+                    " m), vertical offset ", round(off, digits=3), " m, centreline |mesh-trk| p50 ", round(r[div(length(r)+1, 2)], digits=3),
+                    " p90 ", round(r[max(1, round(Int, 0.9*length(r)))], digits=3), " m over ", length(off0), " samples")
+            (on = true, sign = sg, off = off)
+        end
+    end
+    const TRK_ROAD_LAT = parse(Float64, get(ENV, "JM_TRK_ROAD_LAT", "5.4"))   # |lateral| inside which the spline is the road; blends to the mesh over TRK_BLEND
+    const TRK_BLEND = 1.0
     const CAR = DriveCar(MODEL, TRKSURF; terrain=TERRAIN)    # racing ribbon from the .trk centreline
     println(TERRAIN, "  ", TRKSURF)
     # E70-S2: these mesh censuses live HERE, not in the GPL objects block below, because that block
@@ -2857,6 +2893,9 @@ if get(ENV,"JM_HATPROBE","") != ""
             _x = _p[1] + (_q[1]-_p[1])*_fr; _z = _p[3] + (_q[3]-_p[3])*_fr
             _h = JuliaMotor.hat3d(TERRAIN, _x, _z; ref=Inf)
             _hh = _h[3] ? Float64(_h[1]) : NaN
+            if _h[3] && haskey(ENV, "JM_HATPROBE_TRK") && TRK_CAL.on   # TRACKSMOOTH-3: the .trk spline instead
+                _hh = GPLTrack.trk_height(TRKALT, _s, 0.0) + TRK_CAL.off
+            end
             if _h[3] && haskey(ENV, "JM_HATPROBE_SMOOTH")   # TRACKSMOOTH-2: report the filtered ground instead
                 _hdg = atan(_q[3]-_p[3], _q[1]-_p[1]); _sp = parse(Float64, get(ENV, "JM_GROUND_SMOOTH", "1.0"))
                 _acc = _hh; _na = 1
@@ -6922,6 +6961,19 @@ function main()
         g = groundz(x, y)
         g > -900f0 || return NaN32
         g = ground_smoothed(x, y, g)           # TRACKSMOOTH-2: crease filter along the direction of travel
+        # TRACKSMOOTH-3: on the tarmac the ground is the .trk spline (C1 along the lap, linear across the
+        # traces), blended into the mesh over the last TRK_BLEND metre of the road so the edge is a ramp.
+        if TRK_CAL.on && !SKIDPAD
+            hr = JuliaMotor.hat(TRKSURF, x, y)
+            if hr.found
+                al = abs(hr.lateral)
+                if al < TRK_ROAD_LAT + TRK_BLEND
+                    ht = GPLTrack.trk_height(TRKALT, hr.lapdist, TRK_CAL.sign * hr.lateral) + TRK_CAL.off
+                    w = clamp((TRK_ROAD_LAT + TRK_BLEND - al) / TRK_BLEND, 0.0, 1.0)
+                    g = Float32(w*ht + (1-w)*Float64(g))
+                end
+            end
+        end
         gf = Float64(g)
         ok, held = STEP_GUARD_ON ? StepGuard.step_guard(gf, PLAYER_G[], WALL_CLIMB) : (true, gf)
         if !ok

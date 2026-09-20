@@ -18959,6 +18959,38 @@ smooth in s) and serve the player's ground from it wherever the car is on tarmac
 S3 gate it (the probe walk must show |dslope| p99 under 0.005 with no lip) and move the AI rail's
 `y` onto it.
 
+**S1 (Fable 5.1, 2026-09-19) -- the .trk surface DECODED and confirmed against the sim's own mesh.** Each of
+the 47 sections carries, per lateral trace (16 traces at fixed offsets -96.6 .. +96.6 m; the two inner
+ones at +-5.49 m), a 32-byte record = 8 int32 in TRK units (19685.04/m): words 0..3 are the cubic
+coefficients `a3 a2 a1 a0` of the altitude in the section's normalised length u in [0,1] (words 4,5 are
+3a3 and 2a2 -- the derivative -- which is how the layout was recognised), and at section 0 words 6,7 are
+the start x,y. Continuity across all 47 joins: max height jump 0.01 cm, max slope jump 1e-4 -- the
+surface GPL drove is C1. Correlated with the sim's ribbon heights (`JM_HATPROBE="cl:0:3755:3"`, the
+mesh HAT every 3 m round the lap): r = 0.9999, same direction, ZERO shift, sign +, vertical offset
+-0.11 m; residual |trk - mesh| p50 0.10 m, p90 0.24 m, max 0.58 m -- the drawn mesh is a strip-wise
+approximation of this spline, and those residuals are the creases. Scratch: `trk_corr.py`,
+`trk_alt_profile.json` in `~/jr-parity/po_260919/`.
+
+**S2 (Fable 5.1, 2026-09-19) -- the spline IS the player's road, calibrated per track at load.**
+`GPLTrack.trk_altitude(path) -> TrkAlt` reads the per-section, per-trace cubics; `trk_height(ta, s, lat)`
+is cubic along the section and linear between the 16 traces. At load the sim calibrates it against its
+own mesh (`[trksurf]` line): the lateral SIGN between the ribbon's `lateral` and the trace frame is
+chosen by the smaller residual at +-4 m (Watkins Glen: +0.01 m vs 0.41 m -- decisive), and the
+vertical offset is the median mesh-minus-spline on the centreline (+0.089 m). `groundz_phys` (the
+player only) then serves the spline inside |lateral| < 5.4 m and blends into the mesh over the next
+metre, so the road edge is a ramp, not a step; off the tarmac nothing changes. `JM_TRK_SURFACE=0`
+reverts; `JM_TRK_ROAD_LAT` sets the road half-width.
+
+| hairpin walk s=3470..3640 (0.5 m) | \|dslope\| p90 | p99 | max |
+|---|---|---|---|
+| mesh (before today) | 0.0039 | 0.0395 | 0.0803 |
+| mesh + crease filter (TRACKSMOOTH-2) | 0.0040 | 0.0161 | 0.0169 |
+| **.trk spline (this)** | **0.0001** | **0.0001** | **0.0001** |
+
+The creases are gone at the instrument; `JM_HATPROBE_TRK=1` reports the spline in the same walk. Drive
+check (smoke on both tracks + an autodrive lap) queued on the display; S3 moves the AI rail's `y` onto
+the same surface.
+
 ### E102-S13 verified in the shipped image (Fable 5.1, 2026-09-19)
 `JuliaRacer-x86_64-260919b.AppImage` run from its own mounted runtime and code
 (`/home/admin/appimage-build/verify_jr_260919b/`): skidpad `exit=0 errors=0` with a chase capture of the
