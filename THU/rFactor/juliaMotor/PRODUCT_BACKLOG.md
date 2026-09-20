@@ -19012,6 +19012,12 @@ objects draw two-sided (`JM_OBJ_CULL=0`), so the far face shows through as the g
 keeps the wrong face for this model (mirrored text), so the gantry is culled by name with the opposite
 face (`JM_STARTBOX_CULL=0` reverts); capture queued.
 
+### DELIVERY 260919c verified (Fable 5.1, 2026-09-19)
+`JuliaRacer-x86_64-260919c.AppImage` (the race-report fixes: sleeves, race-finish banner, replay progress bar,
+AI rail splines, crease filter) runs skidpad and Watkins Glen from its own mounted runtime with captures and no
+errors (`/home/admin/appimage-build/verify_jr_260919c/`). The .trk surface, the ribbon wrap fix and the
+grandstand/gantry fixes are NOT in 'c'; they go into 'd' once the gantry capture lands.
+
 ### E102-S13 verified in the shipped image (Fable 5.1, 2026-09-19)
 `JuliaRacer-x86_64-260919b.AppImage` run from its own mounted runtime and code
 (`/home/admin/appimage-build/verify_jr_260919b/`): skidpad `exit=0 errors=0` with a chase capture of the
