@@ -19012,6 +19012,9 @@ objects draw two-sided (`JM_OBJ_CULL=0`), so the far face shows through as the g
 keeps the wrong face for this model (mirrored text), so the gantry is culled by name with the opposite
 face (`JM_STARTBOX_CULL=0` reverts); capture queued.
 
+**Verified (`parity/po_260919/wg_sf_fixed.jpg`, s=3890 chase and s=3700 chase):** one DUNLOP board, no ghost; the
+`grandl` stand's seating toward the track. Both ship in `JuliaRacer-x86_64-260919d.AppImage` with the .trk surface.
+
 ### DELIVERY 260919c verified (Fable 5.1, 2026-09-19)
 `JuliaRacer-x86_64-260919c.AppImage` (the race-report fixes: sleeves, race-finish banner, replay progress bar,
 AI rail splines, crease filter) runs skidpad and Watkins Glen from its own mounted runtime with captures and no
