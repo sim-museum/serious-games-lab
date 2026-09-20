@@ -19015,6 +19015,12 @@ face (`JM_STARTBOX_CULL=0` reverts); capture queued.
 **Verified (`parity/po_260919/wg_sf_fixed.jpg`, s=3890 chase and s=3700 chase):** one DUNLOP board, no ghost; the
 `grandl` stand's seating toward the track. Both ship in `JuliaRacer-x86_64-260919d.AppImage` with the .trk surface.
 
+### DELIVERY 260919d verified (Fable 5.1, 2026-09-19, evening)
+`JuliaRacer-x86_64-260919d.AppImage` = 'c' + TRACKSMOOTH-3 (the .trk physics surface, the ribbon wrap fix, the AI
+rail on the surface) + OBJPLACE-1 + OBJDUP-1. Runs skidpad and Watkins Glen from its own mounted runtime
+(`/home/admin/appimage-build/verify_jr_260919d/`) with the `[trksurf] ON` calibration line (lateral sign +,
+offset 0.089 m). SHA256SUMS refreshed; MULTIPLAYER.md points at 'd'.
+
 ### DELIVERY 260919c verified (Fable 5.1, 2026-09-19)
 `JuliaRacer-x86_64-260919c.AppImage` (the race-report fixes: sleeves, race-finish banner, replay progress bar,
 AI rail splines, crease filter) runs skidpad and Watkins Glen from its own mounted runtime with captures and no
