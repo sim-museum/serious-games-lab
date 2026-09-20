@@ -1537,6 +1537,12 @@ if SKIDPAD
     print("building skidpad... "); flush(stdout)
     const TRACK = skidpad_parts()
     println("flat pad + 20 measurement circles, diameters 10-200 m")
+    # TRACKSMOOTH-3: the skidpad has no .trk; the surface hooks below must still resolve (flat pad).
+    const TRKALT = nothing
+    const TRK_CAL = (on = false, sign = 1.0, off = 0.0, sscale = 1.0)
+    const TRK_ROAD_LAT = 5.4
+    const TRK_BLEND = 1.0
+    ground_road(x, z) = (0.0, true)
 else
     tstamp("track parse begins"); print("loading GPL ", GPLNAME, "… "); flush(stdout)
     const TRACKMESH0 = Render.GPL3DO.parse_3do(ZTRK)
@@ -1623,7 +1629,7 @@ else
     const TRK_CAL = let ta = TRKALT
         if ta === nothing || abs(ta.total - LAPLEN) > 0.02 * LAPLEN
             ta === nothing || println("  [trksurf] OFF: .trk lap ", round(ta.total, digits=1), " m vs ribbon ", round(LAPLEN, digits=1), " m")
-            (on = false, sign = 1.0, off = 0.0)
+            (on = false, sign = 1.0, off = 0.0, sscale = 1.0)
         else
             n = length(TRKSURF.pos)
             res = Dict(1.0 => Float64[], -1.0 => Float64[]); off0 = Float64[]
@@ -1645,11 +1651,30 @@ else
             println("  [trksurf] ON: lateral sign ", sg, " (residual +", round(med(copy(res[1.0])), digits=3), " / -", round(med(copy(res[-1.0])), digits=3),
                     " m), vertical offset ", round(off, digits=3), " m, centreline |mesh-trk| p50 ", round(r[div(length(r)+1, 2)], digits=3),
                     " p90 ", round(r[max(1, round(Int, 0.9*length(r)))], digits=3), " m over ", length(off0), " samples")
-            (on = true, sign = sg, off = off)
+            (on = true, sign = sg, off = off, sscale = 1.0)   # ribbon lapdist == .trk s: the lap correlation put the shift at 0 over the whole lap; scaling by the 0.4 % length ratio MEASURED WORSE (p50 0.08 -> 0.11 m), the extra ribbon length is local wiggle, not drift
         end
     end
     const TRK_ROAD_LAT = parse(Float64, get(ENV, "JM_TRK_ROAD_LAT", "5.4"))   # |lateral| inside which the spline is the road; blends to the mesh over TRK_BLEND
     const TRK_BLEND = 1.0
+    # TRACKSMOOTH-3 S3: the same road height for the AI -- a pure query (no LASTZ/ONTRACK side effects, no
+    # step guard): the spline on the tarmac, blended into the mesh at the edge, the mesh elsewhere.
+    # Returns (height, found). Used for the AI rail's node heights and for re-grounding drawn AI poses.
+    function ground_road(x, z)
+        h = JuliaMotor.hat3d(TERRAIN, x, z; ref=Inf)
+        hm = Float64(h[1]); ok = h[3]
+        if TRK_CAL.on && !SKIDPAD
+            hr = JuliaMotor.hat(TRKSURF, x, z)
+            if hr.found
+                al = abs(hr.lateral)
+                if al < TRK_ROAD_LAT + TRK_BLEND
+                    ht = GPLTrack.trk_height(TRKALT, hr.lapdist * TRK_CAL.sscale, TRK_CAL.sign * hr.lateral) + TRK_CAL.off
+                    w = clamp((TRK_ROAD_LAT + TRK_BLEND - al) / TRK_BLEND, 0.0, 1.0)
+                    return (ok ? w*ht + (1-w)*hm : ht, true)
+                end
+            end
+        end
+        (hm, ok)
+    end
     const CAR = DriveCar(MODEL, TRKSURF; terrain=TERRAIN)    # racing ribbon from the .trk centreline
     println(TERRAIN, "  ", TRKSURF)
     # E70-S2: these mesh censuses live HERE, not in the GPL objects block below, because that block
@@ -2878,7 +2903,23 @@ if get(ENV,"JM_HATPROBE","") != ""
     # a single "x,z" prints a grid; a ";"-separated LIST prints the height along a path (the
     # instrument for "where did the ground go" -- a gap is a hole the car can drop through).
     spec = get(ENV,"JM_HATPROBE","")
-    if startswith(spec, "cl:")
+    if startswith(spec, "pt:")
+        # TRACKSMOOTH-3: one world point -> mesh height, ribbon projection (lapdist, lateral), spline height.
+        _f = split(spec, ":"); _px = parse(Float64, _f[2]); _pz = parse(Float64, _f[3])
+        _h = JuliaMotor.hat3d(TERRAIN, _px, _pz; ref=Inf); _hr = JuliaMotor.hat(TRKSURF, _px, _pz)
+        println("== JM_HATPROBE pt (", _px, ",", _pz, "): mesh h=", _h[3] ? round(Float64(_h[1]), digits=3) : NaN,
+                "  ribbon found=", _hr.found, " lapdist=", round(_hr.lapdist, digits=2), " lateral=", round(_hr.lateral, digits=2), " ribbon h=", round(_hr.height, digits=3),
+                "  spline h=", TRK_CAL.on ? round(GPLTrack.trk_height(TRKALT, _hr.lapdist * TRK_CAL.sscale, TRK_CAL.sign * _hr.lateral) + TRK_CAL.off, digits=3) : NaN,
+                "  spline(lat 0)=", TRK_CAL.on ? round(GPLTrack.trk_height(TRKALT, _hr.lapdist, 0.0) + TRK_CAL.off, digits=3) : NaN)
+        let _n = length(TRKSURF.pos), _d = [ (TRKSURF.pos[i][1]-_px)^2 + (TRKSURF.pos[i][3]-_pz)^2 for i in 1:_n ], _o = sortperm(_d)
+            println("   nearest ribbon nodes: ", join(["#$(i) ld=$(round(TRKSURF.lapdist[i],digits=1)) d=$(round(sqrt(_d[i]),digits=2)) pos=($(round(TRKSURF.pos[i][1],digits=1)),$(round(TRKSURF.pos[i][3],digits=1)))" for i in _o[1:4]], "  "))
+            println("   ribbon: n=", _n, " lapdist[1]=", round(TRKSURF.lapdist[1],digits=2), " lapdist[end]=", round(TRKSURF.lapdist[end],digits=2), " lap_length=", round(TRKSURF.lap_length,digits=2), " pos[1]=(", round(TRKSURF.pos[1][1],digits=1), ",", round(TRKSURF.pos[1][3],digits=1), ") seg[1..3]=", TRKSURF.seg[1:3])
+        end
+        for _s in (0.0, 3.0, 3740.0, 3750.0, 3752.0, 3755.0)
+            TRK_CAL.on && println("   spline s=", _s, " lat 0 -> ", round(GPLTrack.trk_height(TRKALT, _s, 0.0) + TRK_CAL.off, digits=3), "  lat +3 -> ", round(GPLTrack.trk_height(TRKALT, _s, 3.0) + TRK_CAL.off, digits=3), "  lat -3 -> ", round(GPLTrack.trk_height(TRKALT, _s, -3.0) + TRK_CAL.off, digits=3))
+        end
+        flush(stdout); haskey(ENV, "JM_HATPROBE_EXIT") && exit(0)
+    elseif startswith(spec, "cl:")
         # TRACKSMOOTH-2: walk the sim's OWN aligned centreline (TRKSURF.pos, the ribbon nodes) at a fine
         # step and print the physics ground height, so creases in the road mesh -- the player's "jounce
         # at each boundary" -- are measured in the sim's frame. JM_HATPROBE="cl:<s0>:<s1>:<step>".
@@ -2894,7 +2935,7 @@ if get(ENV,"JM_HATPROBE","") != ""
             _h = JuliaMotor.hat3d(TERRAIN, _x, _z; ref=Inf)
             _hh = _h[3] ? Float64(_h[1]) : NaN
             if _h[3] && haskey(ENV, "JM_HATPROBE_TRK") && TRK_CAL.on   # TRACKSMOOTH-3: the .trk spline instead
-                _hh = GPLTrack.trk_height(TRKALT, _s, 0.0) + TRK_CAL.off
+                _hh = GPLTrack.trk_height(TRKALT, _s * TRK_CAL.sscale, 0.0) + TRK_CAL.off
             end
             if _h[3] && haskey(ENV, "JM_HATPROBE_SMOOTH")   # TRACKSMOOTH-2: report the filtered ground instead
                 _hdg = atan(_q[3]-_p[3], _q[1]-_p[1]); _sp = parse(Float64, get(ENV, "JM_GROUND_SMOOTH", "1.0"))
@@ -3071,6 +3112,7 @@ const W, H = 1440, 810
 # keeping both decals of double-sided signs.  JM_OBJ_CULL=0 restores the two-sided+flip path;
 # JM_OBJ_FF flips the winding convention if the culled world renders inside-out (mirror remap parity).
 const OBJ_CULLFACE = get(ENV,"JM_OBJ_CULL","0") != "0"
+const STARTBOX_CULL = get(ENV,"JM_STARTBOX_CULL","1") != "0"   # OBJDUP-1: cull the start gantry (see the OBJECTS draw loop)
 const OBJ_FF_CW    = get(ENV,"JM_OBJ_FF","cw") == "cw"
 # SPA-FPS-1 (2026-09-07): Spa's replay lap runs 30-41 fps (world draw 26 of 29 ms) with 600-1000 trackside
 # meshes inside this radius, the Ring 58 fps with ~190. JM_OBJ_CULL_D=<m> A/Bs the radius (2200 = the old value).
@@ -3491,7 +3533,14 @@ const OBJ_YAW_SIGN = parse(Float64, get(ENV, "JM_OBJ_YAW_SIGN", "1"))
 const SEC_TWOSIDED = get(ENV, "JM_SEC_TWOSIDED", "0") != "0"
 const OBJ_USE_RECZ = get(ENV, "JM_OBJ_RECZ", "1") != "0"
 const OBJ_RECZ_TOL = parse(Float64, get(ENV, "JM_OBJ_RECZ_TOL", "0.5"))
-objyawfix(nm) = (startswith(lowercase(nm), "gstand") ? GSTAND_YAW : 0.0) + OBJ_YAW_ADD
+# OBJPLACE-1 (PO 2026-09-19, WG: "grandstand to the left of start/finish is pointing away from the track").
+# A/B captured at s=3700 (parity/po_260919/wg_grandl_ab.jpg): with the placement yaw applied with the
+# opposite sign the `grandl` stand shows its seating to the track; the checked billboards did not move.
+# A GLOBAL sign flip is not the fix -- the Ring places 2,188 yawed objects (signs, bushes) the PO has
+# tuned by eye -- so, as Spa's `gstands` needed +90, Watkins' `grandl` gets +180 by name.
+# JM_GRANDL_YAW=<deg> overrides (0 = the old facing).
+const GRANDL_YAW = deg2rad(parse(Float64, get(ENV, "JM_GRANDL_YAW", "180")))
+objyawfix(nm) = (startswith(lowercase(nm), "gstand") ? GSTAND_YAW : lowercase(nm) == "grandl" ? GRANDL_YAW : 0.0) + OBJ_YAW_ADD
 # TRACKGOLD-1 S4 probe (2026-09-06): the Ring's in-place veils (wehr-l2/l3, last01, hohe-lg3: placement yaw 0,
 # geometry authored around, not at, the origin) land across the road. If the object meshes' Z mirror does
 # not match the placement frame, off-origin geometry flips to the other side of its origin while
@@ -6968,7 +7017,7 @@ function main()
             if hr.found
                 al = abs(hr.lateral)
                 if al < TRK_ROAD_LAT + TRK_BLEND
-                    ht = GPLTrack.trk_height(TRKALT, hr.lapdist, TRK_CAL.sign * hr.lateral) + TRK_CAL.off
+                    ht = GPLTrack.trk_height(TRKALT, hr.lapdist * TRK_CAL.sscale, TRK_CAL.sign * hr.lateral) + TRK_CAL.off
                     w = clamp((TRK_ROAD_LAT + TRK_BLEND - al) / TRK_BLEND, 0.0, 1.0)
                     g = Float32(w*ht + (1-w)*Float64(g))
                 end
@@ -7044,7 +7093,8 @@ function main()
     # CLINE = the centreline, built ALWAYS (off-skidpad) so the PLAYER's lap counting can use a
     # robust projection wrap instead of the ribbon lapdist (the ribbon has a seam at S/F that
     # broke the wrap → laps never counted → no finish).  AILINE = CLINE when there's a field.
-    CLINE  = !SKIDPAD ? RaceAI.build_line(ALIGNED, groundz) : nothing
+    # TRACKSMOOTH-3 S3: the rail's node heights come from the road surface (spline on tarmac), not the mesh strips
+    CLINE  = !SKIDPAD ? RaceAI.build_line(ALIGNED, (x, z) -> (r = ground_road(x, z); r[2] ? r[1] : NaN)) : nothing
     CLINE !== nothing && println("  CLINE: centreline length = ", round(Int, CLINE.total), " m  (", TRACKSEL, ")")
     # BNDWRECK-1 S10: vertex DENSITY per 50 m. S9's other candidate for the bad projection is that
     # the line is sparse around lapdist 1750-1849 -- the band where |lat| reads 47-58 m and where
@@ -9182,7 +9232,7 @@ function main()
         # physics step reads. Off the terrain (h[3] false) the pose is left exactly as it was.
         # The mechanism itself is RaceAI.reground (ai.jl) so it can be gated; this supplies the
         # terrain query it needs, in the (y, ok) form it expects.
-        ai_height(x, z) = (h = JuliaMotor.hat3d(TERRAIN, x, z; ref=Inf); (Float64(h[1]), h[3]))
+        ai_height(x, z) = ground_road(x, z)   # TRACKSMOOTH-3 S3: spline on the tarmac, mesh elsewhere (was hat3d only)
         ai_ground(p) = RaceAI.reground(p, ai_height)
         ai_poses = if REPLAY                                       # E18: AI poses straight from the recording
             NTuple{6,Float64}[(a[1],a[2],a[3],a[4],0.0,0.0) for a in rep_ai_raw]
@@ -9558,7 +9608,16 @@ function main()
                     g === :road && ((ob, oa) = (MZ_ROAD_B, MZ_ROAD_A)); g === :bank && ((ob, oa) = (MZ_BANK_B, MZ_BANK_A))
                 end
                 otint = is_crowd_obj(onm) ? CROWD_TINT : (1f0,1f0,1f0)   # E46: warm/de-blue the over-blue grandstand crowd MIP
+                # OBJDUP-1 (PO 2026-09-19, WG: "banner over start/finish is placed twice, a couple of metres
+                # apart"). The `startbox` gantry's DUNLOP board is a 1 m-thick box with a textured face on
+                # each side; drawn two-sided (objects are, JM_OBJ_CULL=0) the far face shows through as a
+                # ghost copy. The A/B with E60's cull rule (parity/po_260919/wg_banner_cull_ab.jpg) kept
+                # the WRONG face (mirrored text): this model winds the other way. Cull it by name with the
+                # opposite face; nothing else changes. JM_STARTBOX_CULL=0 reverts.
+                _sbcull = STARTBOX_CULL && !OBJ_CULLFACE && onm == "startbox"
+                if _sbcull; glEnable(GL_CULL_FACE); glCullFace(xor(OBJ_FF_CW, flip) ? GL_BACK : GL_FRONT); glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 0); end
                 for it in items; Render.draw(prog, it, vp_, mat; bright=ob, ambfill=oa, graze=grz, tint=otint); end   # grandstands/buildings: ambfill kills the "post-Hiroshima carbonized" shadow faces → vibrant GPL look
+                if _sbcull; glDisable(GL_CULL_FACE); glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 1); end
             end
             PROF_OBJ[] += time() - _tp_o; _tp_b = time()
             for (it,pos,w,h,yaw) in STATICTREES                      # wide forest-edge panels (authored yaw, graze-fade)

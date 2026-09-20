@@ -208,6 +208,12 @@ function _hat_impl(ts::TrackSurface, x::Real, z::Real)
     hwl = ts.halfwidth[s][1] + t * (ts.halfwidth[s2][1] - ts.halfwidth[s][1])
     hwr = ts.halfwidth[s][2] + t * (ts.halfwidth[s2][2] - ts.halfwidth[s][2])
     ontrack = -hwr <= lat <= hwl
-    ld = ts.lapdist[s] + t * (ts.lapdist[s2] - ts.lapdist[s])
+    # TRACKSMOOTH-3 (2026-09-19): on the WRAP segment (last node -> node 1) lapdist[s2] is 0, so the
+    # lerp ran 3769 -> 0 and a point 0.6 m from the line read as lapdist 2287 -- and any consumer of
+    # lapdist near the start/finish (the .trk surface, lap fractions) got a mid-lap answer. The far end
+    # of the wrap segment is the lap length, not 0.
+    ld2 = s2 == 1 ? ts.lap_length : ts.lapdist[s2]
+    ld = ts.lapdist[s] + t * (ld2 - ts.lapdist[s])
+    ld >= ts.lap_length && (ld -= ts.lap_length)
     HATResult(height, nn, ontrack, lat, ld, true, (pp[1], pp[3]))
 end

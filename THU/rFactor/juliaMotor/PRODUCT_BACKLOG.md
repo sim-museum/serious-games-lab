@@ -18991,6 +18991,27 @@ The creases are gone at the instrument; `JM_HATPROBE_TRK=1` reports the spline i
 check (smoke on both tracks + an autodrive lap) queued on the display; S3 moves the AI rail's `y` onto
 the same surface.
 
+**S2 drive check + a ribbon defect found on the way (same day).** The first autodrive lap on the spline hit
+`step guard: ground jumped 23.84 m` at the spawn: the ribbon query (`JuliaMotor.hat`, hat.jl) reported
+lapdist 2288 for a point 0.6 m from the start line, because on the WRAP segment (last node -> node 1) it
+lerped lapdist between 3769 and 0. Fixed in the query (the far end of the wrap is the lap length) --
+this was latent for every consumer of `lapdist` near the line. Re-run: skidpad and Watkins Glen smoke
+clean, autodrive lap 2:03.9 on the spline, 0 step-guard events, `RACE FINISHED`. Scaling ribbon lapdist
+by the 0.4 % lap-length ratio was tried and MEASURED WORSE (centreline p50 0.08 -> 0.11 m), so the
+ribbon's lapdist is used as .trk s directly, as the S1 correlation (shift 0) said.
+
+**S3 (same day):** the AI rail's node heights and the drawn AI poses take the same road surface
+(`ground_road`: spline on the tarmac, mesh elsewhere, no LASTZ side effects).
+
+**OBJPLACE-1 fixed by name, OBJDUP-1 mechanism found (same day, `parity/po_260919/wg_grandl_ab.jpg`,
+`wg_grandl_fixed.jpg`, `wg_banner_cull_ab.jpg`).** Applying every placement yaw with the opposite sign turned
+the `grandl` stand to face the track and moved nothing else in the frame -- but the Ring places 2,188
+yawed objects the PO has tuned by eye, so the fix is per name (`grandl` +180, like Spa's `gstands`
++90; `JM_GRANDL_YAW`). The banner: `startbox` carries a 1 m-thick DUNLOP box with a face on each side;
+objects draw two-sided (`JM_OBJ_CULL=0`), so the far face shows through as the ghost. E60's cull rule
+keeps the wrong face for this model (mirrored text), so the gantry is culled by name with the opposite
+face (`JM_STARTBOX_CULL=0` reverts); capture queued.
+
 ### E102-S13 verified in the shipped image (Fable 5.1, 2026-09-19)
 `JuliaRacer-x86_64-260919b.AppImage` run from its own mounted runtime and code
 (`/home/admin/appimage-build/verify_jr_260919b/`): skidpad `exit=0 errors=0` with a chase capture of the
