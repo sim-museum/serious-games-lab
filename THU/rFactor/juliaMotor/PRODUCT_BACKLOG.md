@@ -18947,6 +18947,18 @@ PO-raised items (they beat every gold row in the julia rotation):
 | **AISLEEVE-1** 🟠 | "all AI cars have misplaced driver's sleeves that render as 'rabbit ears' at the front of each cockpit. Remove all these sleeve objects from the AI cars" | AI chassis are loaded with `exclude=("ltraymap","lshad")` only; the player car excludes `DRIVER_TEX` (driver5/lotbody/lotsho/knees/neck/lid/arms) and the hands. Apply the same exclusions to the AI 3DOs. |
 | **REPLAYLOAD-1** 🔴 | "the replay takes a very long time to load — can this be sped up? At minimum, a progress bar is needed … it can seem hung" | video: launcher "replaying … (loading)" at t=885 s, first replay frame at t=1215 s = 5.5 min; GNOME's "not responding / Force Quit" dialog appeared over the sim window at t=1215 s. The race itself loaded 4 min (t=15→255 s). The launcher looks for a `jlracer.so` sysimage next to the sim and the installed tree has none, so every launch is a cold JIT. |
 
+### PO priority 2026-09-19 (evening): TRACKSMOOTH-3 -- the physics surface from the .trk, as GPL drove it
+*"priority backlog items - julia: the proper fix, a smooth surface from the .trk like GPL's"* -- sized 2-3
+sprints. Today the player's ground is the drawn mesh (planar strips, creases at every strip edge) with a
+box filter along the direction of travel (TRACKSMOOTH-2); the AI rail is a 3 m polyline. GPL's own
+physics never touched the mesh: the .trk carries, per section and per lateral trace, the surface
+itself, so the car rode a continuous surface. Plan: S1 decode the per-section trace records against
+the mesh heights already probed (the hairpin walk s=3470..3640 is the oracle: 5.3 -> 12.5 m, creases
+at 3549 / 3569.5 / 3614.5); S2 build `TrkSurface(s, lateral) -> height, normal` (arc-parametrised,
+smooth in s) and serve the player's ground from it wherever the car is on tarmac, mesh elsewhere;
+S3 gate it (the probe walk must show |dslope| p99 under 0.005 with no lip) and move the AI rail's
+`y` onto it.
+
 ### E102-S13 verified in the shipped image (Fable 5.1, 2026-09-19)
 `JuliaRacer-x86_64-260919b.AppImage` run from its own mounted runtime and code
 (`/home/admin/appimage-build/verify_jr_260919b/`): skidpad `exit=0 errors=0` with a chase capture of the
