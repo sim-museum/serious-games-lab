@@ -27,7 +27,9 @@ create_sysimage(
     PKGS;
     project = NATIVE,
     sysimage_path = joinpath(NATIVE, "jlracer.so"),
-    precompile_execution_file = joinpath(NATIVE, "sysimage_trace.jl"),
+    # REPLAYLOAD-1 S2: the trace workload (mtkcompile of both car models) is itself the memory peak;
+    # JM_SYSIMG_NOTRACE=1 skips it and bakes only the --trace-compile statements from real runs.
+    precompile_execution_file = get(ENV, "JM_SYSIMG_NOTRACE", "0") == "1" ? String[] : [joinpath(NATIVE, "sysimage_trace.jl")],
     # PERF-1: cpu_target must NOT be "native" for a sysimage that ships inside an AppImage.
     # "native" bakes THIS machine's instruction set (an i7-3770, Ivy Bridge) into jlracer.so; the
     # PO runs these images on a second PC whose CPU is unknown here. If that machine is older or
@@ -44,5 +46,14 @@ create_sysimage(
     # the terminal (and the Claude session) with it. A heap hint makes the GC collect early; run
     # the build alone, inside `systemd-run --user --scope -p MemoryMax=12G` (see RUNNING.md).
     sysimage_build_args = `--heap-size-hint=$(get(ENV, "JM_SYSIMG_HEAP", "7G"))`,
+    # REPLAYLOAD-1 (PO 2026-09-19, "create a julia appImage with the code pre-compiled so replay
+    # doesn't take a long time to load"): sysimage_trace.jl only reaches the package-level paths.
+    # The 5.5-minute replay load is the JIT of drive_native_mtk.jl itself -- the render loop, the
+    # replay reader, the track/AI setup -- which no package trace touches. JM_SYSIMG_STMTS points
+    # at a `julia --trace-compile=...` capture taken from REAL runs (a replay and a drive, in
+    # JM_SMOKE mode on the display); every method instance listed there is baked too.
+    precompile_statements_file = let f = get(ENV, "JM_SYSIMG_STMTS", "")
+        isempty(f) ? String[] : [String(x) for x in split(f, ":") if isfile(x)]
+    end,
 )
 println("\nDONE → ", joinpath(NATIVE, "jlracer.so"))

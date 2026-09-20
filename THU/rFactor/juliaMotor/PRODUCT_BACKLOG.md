@@ -19015,6 +19015,32 @@ face (`JM_STARTBOX_CULL=0` reverts); capture queued.
 **Verified (`parity/po_260919/wg_sf_fixed.jpg`, s=3890 chase and s=3700 chase):** one DUNLOP board, no ghost; the
 `grandl` stand's seating toward the track. Both ship in `JuliaRacer-x86_64-260919d.AppImage` with the .trk surface.
 
+### DELIVERY 260919g verified (Fable 5.1, 2026-09-20, 01:20) -- **the first-launch precompile is gone; the sysimage itself is only half built**
+`JuliaRacer-x86_64-260919g.AppImage` (1.9 GB): OFFTRACK-2 fix, a 325 MB `jlracer.so` (GLFW/ModernGL/JuliaMotor/
+RFactor* + the trace-compile statements of a real replay and a real drive), and the runtime moved to its
+depot-relative path. Verified from the image with a FRESH depot: `using Base64, ModelingToolkit` rejects 0 caches,
+precompiles 0; replay x2 and skidpad boot, render and exit clean (`parity/po_260919/sysimage/`).
+
+**REPLAYLOAD-1 S2 (PO 2026-09-19 night: "create a julia appImage with the code pre-compiled so replay doesn't take a
+long time to load").** Two findings, one of them bigger than the ask.
+1. **Every previous AppImage recompiled 166 packages on its first launch (the 25-minute precompile).** The
+   bundled caches were compiled with the runtime INSIDE the depot (`@depot/juliaup/julia-1.12.6.../stdlib/...`)
+   but the packer copied it to `usr/share/julia/runtime`, so each stdlib cache was rejected as "wrong source"
+   (`f_cache_rejection.txt`) and everything depending on a stdlib cascaded. Measured on 'f' from a fresh depot:
+   first replay **1484 s**, the next launch 184 s. The packer now keeps the runtime at the depot-relative path
+   (`tools/appimage/build_julia.sh`); on 'g' the same check is 0 rejections and the first replay is **263 s**.
+2. **The sysimage that would cut the replay load itself does not fit this box.** The load is the JIT of
+   ModelingToolkit/OrdinaryDiffEq paths plus the sim script; a sysimage with those two packages was tried three
+   ways -- full (13 GB scope, killed at the hard cap), no transitive deps (8.4 GB resident + 6.1 GB swap,
+   killed by systemd-oomd on memory pressure) -- the object-emission stage needs ~14-15 GB on a 15 GB / 8 GB-swap
+   machine. The reduced image (no MTK/ODE) bakes what it can and measures **no replay gain**: local 223 s without
+   vs 'g' 263 s / 204 s with (60-frame replay, start to exit, both JIT-dominated). It ships because it is harmless
+   and carries the cache fix. The full image needs ~24 GB of swap and systemd-oomd stopped for the build
+   (`sudo fallocate -l 24G /swap2.img ...; sudo systemctl stop systemd-oomd`) -- asked of the PO.
+Tools: `tools/jr_sysimage_pipeline.sh` (trace-compile two real runs, build, pack, time), `build_sysimage.jl`
+gained `JM_SYSIMG_STMTS` (real-run statements) and `JM_SYSIMG_NOTRACE`. Heavy stages run as detached
+`systemd-run --user --unit` services: the session's own memory watchdog killed two in-shell attempts mid-run.
+
 ### DELIVERY 260919d verified (Fable 5.1, 2026-09-19, evening)
 `JuliaRacer-x86_64-260919d.AppImage` = 'c' + TRACKSMOOTH-3 (the .trk physics surface, the ribbon wrap fix, the AI
 rail on the surface) + OBJPLACE-1 + OBJDUP-1. Runs skidpad and Watkins Glen from its own mounted runtime

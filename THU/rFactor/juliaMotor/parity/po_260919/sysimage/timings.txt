@@ -1,0 +1,6 @@
+/home/admin/jr-parity/sysimage/pack_g.log:rejections: 0  precompiled: 0  new .ji in fresh depot: 0
+/home/admin/jr-parity/sysimage/pack_g.log:appimage replay1 start-to-exit 263 s exit=0 errors=0 precompiled=0
+/home/admin/jr-parity/sysimage/pack_g.log:appimage replay2 start-to-exit 204 s exit=0 errors=0 precompiled=0
+/home/admin/jr-parity/sysimage/after.log:nosys: replay start-to-exit 223 s  exit=0 errors=0
+/home/admin/jr-parity/sysimage/after.log:sys: replay start-to-exit 1478 s  exit=0 errors=0
+/home/admin/jr-parity/sysimage/after.log:appimage replay start-to-exit 1484 s exit=0 errors=0
