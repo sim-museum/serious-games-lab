@@ -252,7 +252,7 @@ Output plain text only — no markdown headings.'
     full_prompt="$prompt"$'\n\nScreenshot files (use the Read tool to view each):\n'"$file_list"
 
     local out_file="$report_dir/claude_vision_analysis.txt"
-    if timeout 240 claude -p --max-turns 8 "$full_prompt" > "$out_file" 2>/dev/null \
+    if timeout 240 claude -p --max-turns 8 --model opus "$full_prompt" > "$out_file" 2>/dev/null \
         && [[ -s "$out_file" ]]; then
         msg_ok "Vision analysis written to $(basename "$report_dir")/$(basename "$out_file")"
     else

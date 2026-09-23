@@ -61,7 +61,7 @@ Rules:
 PROMPT_EOF
 )"
 
-    if timeout 300 claude -p --max-turns 1 --model haiku "${prompt}
+    if timeout 300 claude -p --max-turns 1 --model opus "${prompt}
 
 Here is the SGF file:
 

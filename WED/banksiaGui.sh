@@ -156,27 +156,37 @@ if [[ -n "$new_pgn_files" ]]; then
     VENV_DIR="$SCRIPT_DIR/openingRepertoire/venv"
     STOCKFISH="$(command -v stockfish 2>/dev/null || echo /usr/games/stockfish)"
 
+    # Only PGNs that Stockfish successfully analysed go to Claude; the
+    # raw game has no variations for Claude to explain.
+    stockfish_files=""
     if [[ -d "$VENV_DIR" && -x "$STOCKFISH" ]]; then
         while IFS= read -r pgn_file; do
             [[ -z "$pgn_file" ]] && continue
             base=$(basename "$pgn_file")
             annotated="${pgn_file%.pgn}_analysed.pgn"
             echo "  Analysing: $base"
-            "$VENV_DIR/bin/python3" "$SCRIPT_DIR/chessmaster/stockfish_annotate.py" \
-                "$pgn_file" "$annotated" --engine "$STOCKFISH" --depth 15 \
-                && { mv "$annotated" "$pgn_file"; echo "  Done: $base"; } \
-                || { rm -f "$annotated"; echo "  Analysis failed for $base"; }
+            if "$VENV_DIR/bin/python3" "$SCRIPT_DIR/chessmaster/stockfish_annotate.py" \
+                "$pgn_file" "$annotated" --engine "$STOCKFISH" --depth 15; then
+                mv "$annotated" "$pgn_file"
+                echo "  Done: $base"
+                stockfish_files=$(printf '%s\n%s' "$stockfish_files" "$pgn_file")
+            else
+                rm -f "$annotated"
+                echo "  Analysis failed for $base"
+            fi
         done <<< "$new_pgn_files"
     else
         echo "  Stockfish or python-chess venv not available, skipping analysis."
     fi
+    stockfish_files=$(echo "$stockfish_files" | sed '/^$/d')
 
-    # Add English-language annotations via Claude Code
+    # Add English-language annotations via Claude Code (Opus) to the
+    # Stockfish-analysed PGNs only.
     source "$SCRIPT_DIR/claude_annotate_pgn.sh"
     while IFS= read -r pgn_file; do
         [[ -z "$pgn_file" ]] && continue
         claude_annotate_pgn "$pgn_file"
-    done <<< "$new_pgn_files"
+    done <<< "$stockfish_files"
 
     echo "  Annotated PGN(s) saved to afterGameReport/$(basename "$report_subdir")/"
 fi

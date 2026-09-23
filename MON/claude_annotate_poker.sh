@@ -81,7 +81,7 @@ Rules:
 PROMPT_EOF
 )"
 
-    if timeout 120 claude -p --max-turns 1 "${prompt}
+    if timeout 120 claude -p --max-turns 1 --model opus "${prompt}
 
 Here is the poker session data:
 
