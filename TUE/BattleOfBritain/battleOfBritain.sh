@@ -7,7 +7,13 @@
 #    Once the installation is complete, it applies necessary patches and launches the game.
 
 #!/bin/bash
-cd "$(dirname "${BASH_SOURCE[0]}")"
+# Resolve to an absolute path BEFORE cd'ing. ${BASH_SOURCE[0]} is whatever
+# path the caller used, so re-deriving it after the cd resolves against the
+# new working directory — which broke `source .../launcher/lib/...` below
+# when the launcher invoked this script by a relative path.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+cd "$SCRIPT_DIR"
 
 # Set up Wine runner environment
 setup_wine_runner() {
@@ -41,13 +47,21 @@ mkdir -p "$WINEPREFIX"
 # Set Windows XP mode silently (no GUI)
 wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
 
+# Install wine-gecko up front so the game's online documentation works.
+# Left to itself, wine offers to download gecko on first use and the download
+# fails: winehq's redirect service now serves a 2008-era file whatever version
+# is asked for, so wine's checksum rejects it and puts up
+# "Unexpected checksum of downloaded file." See scripts/install_gecko.sh.
+# Non-fatal by design — gecko only affects in-game docs, nothing else.
+"$REPO_ROOT/scripts/install_gecko.sh" "$WINEPREFIX" || true
+
 export BoB_INSTALL="$PWD/INSTALL"
 
 # Check if BoB is installed
 if [ -f "$WINEPREFIX/drive_c/Program Files/Rowan Software/Battle Of Britain/bob.exe" ]; then
     # Defend against stale wineserver shm state (e.g. post-failed-boot) that
     # causes non-deterministic null-deref crashes on 3D entry.
-    source "$(dirname "${BASH_SOURCE[0]}")/../../launcher/lib/clean_wineserver.sh"
+    source "$REPO_ROOT/launcher/lib/clean_wineserver.sh"
     clean_wineserver
 
     # Disable winegstreamer to prevent crash on video playback
@@ -270,8 +284,7 @@ echo "has been achieved and looks great. If your desired resolution is not liste
 echo "like Claude Code to add it for you. Higher resolution is better!"
 echo "Set all other graphics options to maximum values."
 echo "If the mouse cursor disappears, hold down"
-echo "CTRL F6 to show the mouse cursor. To view online documentation, install wine gecko when"
-echo "prompted. If asked to wait or force quit, use <ALT> TAB to find this gecko prompt dialog."
+echo "CTRL F6 to show the mouse cursor."
 echo " "
 echo " "; echo "Applying patch 1 of 2"; echo " "
 wine "Z:$(echo "$BoB_INSTALL/RR ROWANBOB GRAPHICS MOD/bob_v099.exe" | sed 's|/|\\|g')" 2>/dev/null 1>/dev/null

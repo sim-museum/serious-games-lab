@@ -72,8 +72,10 @@ fi
 # Tight swap risks systemd-oomd killing long apt/pip steps in PHASE 2.
 SWAP_MB=$(free -m | awk '/^Swap:/ {print $2+0}')
 RECOMMENDED_SWAP_GB=8
-SWAP_GB=$(( SWAP_MB / 1024 ))
-if [[ $SWAP_MB -lt $((RECOMMENDED_SWAP_GB * 1024)) ]]; then
+# mkswap reserves a header page, so an 8G swapfile reports 8191 MB, not 8192.
+# Round to nearest GB and allow 64 MB of slack so a correctly-sized swap passes.
+SWAP_GB=$(( (SWAP_MB + 512) / 1024 ))
+if [[ $SWAP_MB -lt $((RECOMMENDED_SWAP_GB * 1024 - 64)) ]]; then
     echo "  [WARN] Swap: ${SWAP_GB} GB available (${RECOMMENDED_SWAP_GB} GB recommended)"
     if [[ -f /swap.img ]]; then
         echo "         Resize /swap.img: sudo swapoff /swap.img && sudo rm /swap.img && sudo fallocate -l ${RECOMMENDED_SWAP_GB}G /swap.img && sudo chmod 600 /swap.img && sudo mkswap /swap.img && sudo swapon /swap.img"
