@@ -370,21 +370,21 @@ if [ ! -f "$WINEPREFIX/drive_c/Sierra/GPL/gpl.exe" ]; then
     cd "$INSTALL_DIR/gpl_additionalCarsets_67F2_CA66/tracks/66CAmod/gpl_stjovite"
     wine trackInstall.exe 2>/dev/null 1>/dev/null
     
+    # The four installers below are Inno Setup with a skinned wizard that
+    # draws a blank black window under the GE-Proton install runner.  Their
+    # silent mode works (same as Wilmot/Skidfun above), so run them that way.
+    ca66_tracks="$INSTALL_DIR/gpl_additionalCarsets_67F2_CA66/tracks/66CAmod"
     echo ""; echo "installing BHampton"; echo ""
-    cd "$INSTALL_DIR/gpl_additionalCarsets_67F2_CA66/tracks/66CAmod/GPL_Bhampton_v1.01"
-    wine GPL_Bhampton_v1.01.exe 2>/dev/null 1>/dev/null
+    wine "$ca66_tracks/GPL_Bhampton_v1.01/GPL_Bhampton_v1.01.exe" /VERYSILENT /DIR="C:\\Sierra\\GPL" 2>/dev/null 1>/dev/null
     
-    echo ""; echo "installing Riverside 66"; echo ""
-    cd "$INSTALL_DIR/gpl_additionalCarsets_67F2_CA66/tracks/66CAmod/GPL_Riverside_66_6v1.0"
-    wine GPL_Riverside_66_6v1.0.exe 2>/dev/null 1>/dev/null
+    echo ""; echo "installing Riverside 66 (installs as tracks/riside66)"; echo ""
+    wine "$ca66_tracks/GPL_Riverside_66_6v1.0/GPL_Riverside_66_6v1.0.exe" /VERYSILENT /DIR="C:\\Sierra\\GPL" 2>/dev/null 1>/dev/null
     
     echo ""; echo "installing Nassau"; echo ""
-    cd "$INSTALL_DIR/gpl_additionalCarsets_67F2_CA66/tracks/66CAmod/GPL_Nassau_v1.0"
-    wine GPL_Nassau_v1.0.exe 2>/dev/null 1>/dev/null
+    wine "$ca66_tracks/GPL_Nassau_v1.0/GPL_Nassau_v1.0.exe" /VERYSILENT /DIR="C:\\Sierra\\GPL" 2>/dev/null 1>/dev/null
     
     echo ""; echo "installing Stardust"; echo ""
-    cd "$INSTALL_DIR/gpl_additionalCarsets_67F2_CA66/tracks/66CAmod/Stardust v1.0"
-    wine "Stardust v1.0.exe" 2>/dev/null 1>/dev/null
+    wine "$ca66_tracks/Stardust v1.0/Stardust v1.0.exe" /VERYSILENT /DIR="C:\\Sierra\\GPL" 2>/dev/null 1>/dev/null
     
     # Sync additional track files
     common_path="$INSTALL_DIR/gpl_additionalCarsets_67F2_CA66/tracks/66CAmod"
