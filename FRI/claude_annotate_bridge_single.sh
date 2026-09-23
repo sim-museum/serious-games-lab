@@ -80,7 +80,7 @@ PROMPT_EOF
 
 tmp_out="$(mktemp --suffix=.bdl)"
 
-if timeout 120 claude -p --max-turns 1 "${prompt}
+if timeout 120 claude -p --max-turns 1 --model opus "${prompt}
 
 Here is the Q-Plus BDL game log:
 

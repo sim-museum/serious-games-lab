@@ -109,8 +109,9 @@ if [ -n "$CM_EXE" ]; then
     done < "$pgn_snapshot"
     rm -f "$pgn_snapshot" "$pgn_after" "$pgn_sizes"
 
-    # De-duplicate
-    new_pgn_files=$(echo "$new_pgn_files" | sort -u | sed '/^$/d')
+    # De-duplicate paths, keeping order: brand-new (named) files first,
+    # then tail extracts of cumulative files.
+    new_pgn_files=$(echo "$new_pgn_files" | sed '/^$/d' | awk '!seen[$0]++')
 
     if [[ -n "$new_pgn_files" ]]; then
         echo ""
@@ -126,7 +127,14 @@ if [ -n "$CM_EXE" ]; then
         VENV_DIR="$SCRIPT_DIR/../openingRepertoire/venv"
         STOCKFISH="$(command -v stockfish 2>/dev/null || echo /usr/games/stockfish)"
 
-        annotated_files=""
+        # Chessmaster writes each game twice: to a per-opponent file
+        # ("Test vs Eric 9-8-2026.PGN") and appended to the cumulative
+        # "Rated Games.PGN".  Hash the converted game so the second copy is
+        # skipped and each game is analysed exactly once.
+        seen_hashes=""
+        # Only PGNs that Stockfish successfully analysed go to Claude; a
+        # plain converted PGN has no variations for Claude to explain.
+        stockfish_files=""
         while IFS= read -r pgn_file; do
             [[ -z "$pgn_file" ]] && continue
             base=$(basename "$pgn_file")
@@ -137,30 +145,42 @@ if [ -n "$CM_EXE" ]; then
             sed 's/\x8b/K/g; s/\x89/Q/g; s/\x86/B/g; s/\x87/N/g; s/\x88/R/g' "$pgn_file" \
                 | tr -cd '[:print:]\n\r\t' > "$converted"
 
+            game_hash=$(tr -d '\r' < "$converted" | sed '/^[[:space:]]*$/d' | md5sum | cut -d' ' -f1)
+            if grep -qx "$game_hash" <<< "$seen_hashes"; then
+                echo "  Skipping duplicate game (already queued from another PGN): $base"
+                rm -f "$converted"
+                continue
+            fi
+            seen_hashes=$(printf '%s\n%s' "$seen_hashes" "$game_hash")
+
             # Step 2: Run Stockfish analysis if venv and engine available.
             # Output lands directly in $report_subdir.
             annotated="$report_subdir/${base%.PGN}.pgn"
             if [[ -d "$VENV_DIR" && -x "$STOCKFISH" ]]; then
-                "$VENV_DIR/bin/python3" "$SCRIPT_DIR/stockfish_annotate.py" \
-                    "$converted" "$annotated" --engine "$STOCKFISH" --depth 15 \
-                    && echo "  Stockfish analysis complete: $(basename "$annotated")" \
-                    || { echo "  Stockfish analysis failed, saving converted PGN."; cp "$converted" "$annotated"; }
+                if "$VENV_DIR/bin/python3" "$SCRIPT_DIR/stockfish_annotate.py" \
+                    "$converted" "$annotated" --engine "$STOCKFISH" --depth 15; then
+                    echo "  Stockfish analysis complete: $(basename "$annotated")"
+                    stockfish_files=$(printf '%s\n%s' "$stockfish_files" "$annotated")
+                else
+                    echo "  Stockfish analysis failed, saving converted PGN."
+                    cp "$converted" "$annotated"
+                fi
             else
                 echo "  Stockfish or python-chess venv not available, saving converted PGN."
                 cp "$converted" "$annotated"
             fi
             rm -f "$converted"
-            annotated_files=$(printf '%s\n%s' "$annotated_files" "$annotated")
         done <<< "$new_pgn_files"
-        annotated_files=$(echo "$annotated_files" | sed '/^$/d')
+        stockfish_files=$(echo "$stockfish_files" | sed '/^$/d')
 
-        # Add English-language annotations via Claude Code (in-place in $report_subdir)
+        # Add English-language annotations via Claude Code (Opus) to the
+        # Stockfish-analysed PGNs only, in-place in $report_subdir.
         source "$SCRIPT_DIR/../claude_annotate_pgn.sh"
         while IFS= read -r pgn_annotated; do
             [[ -z "$pgn_annotated" ]] && continue
             [[ -f "$pgn_annotated" ]] || continue
             claude_annotate_pgn "$pgn_annotated"
-        done <<< "$annotated_files"
+        done <<< "$stockfish_files"
 
         echo "PGN files saved to afterGameReport/$(basename "$report_subdir")/"
     fi

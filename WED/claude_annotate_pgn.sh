@@ -6,7 +6,9 @@
 #
 # Requires: claude CLI (Claude Code) on PATH.
 # If claude is not available the function silently returns 0.
-# The annotated PGN replaces the original file.
+# Only PGNs that already carry Stockfish variations ("{ best:" markers)
+# are sent to Claude; a plain, un-analysed PGN is skipped.
+# Always runs on Opus (never Fable). The annotated PGN replaces the original file.
 
 claude_annotate_pgn() {
     local pgn_file="$1"
@@ -15,6 +17,14 @@ claude_annotate_pgn() {
 
     local base
     base="$(basename "$pgn_file")"
+
+    # Only annotate the Stockfish-analysed PGN.  The prompt asks Claude to
+    # explain the engine's variations, so a PGN without any "{ best:"
+    # markers is the raw game and must not be sent.
+    if ! grep -q '{ best:' "$pgn_file"; then
+        echo "  Skipping Claude annotation (no Stockfish variations): $base"
+        return 0
+    fi
     echo "  Adding English annotations via Claude Code: $base"
 
     local tmp_out
@@ -75,7 +85,7 @@ PROMPT_EOF
     in_results="$(grep -oE '(1-0|0-1|1/2-1/2)' "$pgn_file" | tail -1)"
     in_event="$(grep -c '^\[Event ' "$pgn_file")"
 
-    if timeout 600 claude -p --max-turns 1 --model sonnet --no-session-persistence "${prompt}
+    if timeout 600 claude -p --max-turns 1 --model opus --no-session-persistence "${prompt}
 
 Here is the PGN file:
 
