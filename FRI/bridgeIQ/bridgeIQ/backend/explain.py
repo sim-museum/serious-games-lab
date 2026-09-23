@@ -171,13 +171,51 @@ def explain_card(card: Card,
                  leader: Seat,
                  contract: Optional[Contract],
                  is_opening_lead: bool,
-                 engine_who: str = "") -> Explanation:
+                 engine_who: str = "",
+                 engine_reason: str = "",
+                 engine_tag: str = "") -> Explanation:
     """Explain a single card play by `seat`.
 
     `trick_before` are the cards already played to the current trick, in
     order, BEFORE `seat` plays `card`. `leader` is who led the trick.
-    Uses only public information — never biq's concealed holding.
+
+    When `engine_reason` is supplied it is biq's ACTUAL recorded rationale for
+    this exact card (captured by the play engine at the moment it chose), and
+    it is shown verbatim. Otherwise the explanation is reconstructed from
+    public information only — never biq's concealed holding.
     """
+    recon = _reconstruct_card(card, seat, trick_before, leader, contract,
+                              is_opening_lead, engine_who)
+    if not engine_reason:
+        return recon
+
+    # biq HAS a recorded reason for this exact card — show it verbatim. For the
+    # search engines (alpha-mu / Monte-Carlo) that reason explains HOW the card
+    # was chosen, not WHAT it does, so also append the public technique
+    # classification. For technique-named reasons (opening lead, signals, draw
+    # trumps, …) the reason already IS the technique, so that would be redundant.
+    ex = Explanation()
+    ex.title = recon.title
+    ex.subtitle = recon.subtitle
+    ex.headline = engine_reason
+    ex.citation = engine_tag or "biq's line"
+    if engine_tag in ("Alpha-mu search", "Monte-Carlo + DDS") and recon.headline:
+        ex.points.append(f"In technique terms: {recon.headline}")
+        ex.points.extend(recon.points)
+    ex.note = _engine_note(engine_who, bidding=False)
+    return ex
+
+
+def _reconstruct_card(card: Card,
+                      seat: Seat,
+                      trick_before: List[Card],
+                      leader: Seat,
+                      contract: Optional[Contract],
+                      is_opening_lead: bool,
+                      engine_who: str = "") -> Explanation:
+    """Reconstruct a card explanation from PUBLIC information only — never
+    biq's concealed holding. Used when biq has no stored reason, and as the
+    technique classification appended to a search-engine reason."""
     ex = Explanation()
     ex.title = f"{_SEAT_NAME[seat]} plays {card.symbol()}"
 

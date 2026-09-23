@@ -28,9 +28,12 @@ const LIGHTDIR = Float32[0.4, 1.0, 0.25]
 print("loading textures… "); texidx = Render.texture_index(DIR); println(length(texidx), " dds in archive")
 trackItems = Render.build_track(TRACK, texidx)
 println("  track textured: ", count(it->it.tex!=0, trackItems), "/", length(trackItems))
-carItems  = Render.build_track(CARP, Render.car_texture_index(GD))
+const CARTEX = Render.car_texture_index(GD)
+carItems  = Render.build_track(CARP, CARTEX)
 println("  car textured: ", count(it->it.tex!=0, carItems), "/", length(carItems))
-wheelItem = Render.item(Render.wheel_mesh(0.33f0, 0.19f0))
+swItem = Render.build_track([Render.extract_steering_wheel(GD)], CARTEX)[1]
+println("  steering wheel tex: ", swItem.tex!=0)
+wheelItem = Render.item(Render.wheel_mesh(0.33f0, 0.13f0))
 const WHEELS = ((1.4f0,0.33f0,0.735f0),(1.4f0,0.33f0,-0.735f0),(-1.4f0,0.34f0,0.705f0),(-1.4f0,0.34f0,-0.705f0))
 
 wheelmat(carModel,wx,wy,wz)=carModel*Render.translate(Float32[wx,wy,wz])*Render.rotz(0.3f0)
@@ -51,7 +54,9 @@ function snap(fname, eye, ctr; carModel=Render.ident())
     for (wx,wy,wz) in WHEELS
         Render.draw(prog, wheelItem, vp, carModel*Render.translate(Float32[wx,wy,wz])*Render.rotz(0.3f0))
     end
-    hv = Render.compose_hud(W, H, cs.v*3.6, cs.gear, cs.rpm, MODEL.eng.rev_limit, 0.4, 0.0)
+    swModel = carModel * Render.translate(Float32[0.05,0.66,0]) * Render.rotz(0.6f0) * Render.rotx(-1.1f0)
+    Render.draw(prog, swItem, vp, swModel; bright=1.3)
+    hv = Render.compose_hud(W, H, cs.v*3.6, cs.gear, cs.rpm, MODEL.eng.rev_limit, 0.4, 0.0, cs.tc)
     Render.hud_draw(hudprog, hudvao, hudvbo, hv, W, H)
     glFinish()
     buf=Vector{UInt8}(undef,W*H*3); glReadPixels(0,0,W,H,GL_RGB,GL_UNSIGNED_BYTE,buf)
@@ -67,8 +72,8 @@ wx,wy,wz = cs.x, cs.y, -cs.z
 carModel = Render.translate(Float32[wx,wy,wz]) * Render.roty(Float32(cs.θ))
 fwd = [cos(cs.θ), 0.0, -sin(cs.θ)]
 snap("/tmp/native_chase.ppm", [wx-fwd[1]*9, wy+3.2, wz-fwd[3]*9], [wx+fwd[1]*3, wy+0.6, wz+fwd[3]*3]; carModel=carModel)
-eye=[wx+fwd[1]*0.1, wy+1.12, wz+fwd[3]*0.1]
-snap("/tmp/native_cockpit.ppm", eye, [eye[1]+fwd[1]*9, eye[2]-2.0, eye[3]+fwd[3]*9]; carModel=carModel)
+eye=[wx-fwd[1]*0.35, wy+0.92, wz-fwd[3]*0.35]   # driver's eyes, behind the wheel
+snap("/tmp/native_cockpit.ppm", eye, [eye[1]+fwd[1]*9, eye[2]-1.8, eye[3]+fwd[3]*9]; carModel=carModel)
 # elevated front-right angle so the car's ground shadow is visible
 side=[fwd[3], 0.0, -fwd[1]]
 snap("/tmp/native_shadow.ppm", [wx+fwd[1]*5+side[1]*5, wy+5.0, wz+fwd[3]*5+side[3]*5], [wx,wy+0.3,wz]; carModel=carModel)

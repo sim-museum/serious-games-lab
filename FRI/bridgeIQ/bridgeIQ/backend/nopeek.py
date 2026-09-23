@@ -27,6 +27,21 @@ from .cardplay_planner import (is_boss_card, filter_safe_discards,
 from . import cardplay_plan
 
 
+def _why(explain: Optional[dict], tag: str, reason: str) -> None:
+    """Record WHY the card about to be returned was chosen.
+
+    `explain` is an optional mutable dict the caller passes in when it wants
+    the rationale (the UI's click-to-explain path). It is None on the hot
+    rollout paths (declarer_search / defender_search call decide() thousands
+    of times), so this is a zero-cost no-op there. `tag` is a short technique
+    label (used as the popup's citation chip); `reason` is a one-sentence
+    plain-English explanation of the actual branch taken.
+    """
+    if explain is not None:
+        explain["tag"] = tag
+        explain["reason"] = reason
+
+
 # ---------------------------------------------------------------- redaction
 
 def _dummy_seat(board: BoardState) -> Optional[Seat]:
@@ -116,7 +131,8 @@ def _beats(card: Card, win_card: Card, lead: Suit, trump: Optional[Suit]) -> boo
 
 # ----------------------------------------------------------------- policies
 
-def _opening_lead(board: BoardState, seat: Seat) -> Card:
+def _opening_lead(board: BoardState, seat: Seat,
+                  explain: Optional[dict] = None) -> Card:
     """Defender's opening lead via biq's rule-based lead engine (native_lead).
     It uses ONLY the leader's own hand + public auction/contract — no peek."""
     from . import native_lead
@@ -126,16 +142,25 @@ def _opening_lead(board: BoardState, seat: Seat) -> Card:
             auction=board.auction, dealer=board.dealer, leader=seat,
             vulnerability=board.vulnerability)
         if d is not None and d.card is not None:
+            # native_lead records the ACTUAL reasons: why this suit, why this
+            # card within it. Surface both verbatim.
+            reason = " ".join(r for r in (getattr(d, "suit_choice_reason", ""),
+                                          getattr(d, "card_choice_reason", ""))
+                              if r).strip()
+            _why(explain, "Opening lead",
+                 reason or "Opening lead from the standard lead tables.")
             return d.card
     except Exception:
         pass
+    _why(explain, "Opening lead", "Low from the longest suit.")
     return _by_suit(board.hands[seat].cards)[
         max(_by_suit(board.hands[seat].cards),
             key=lambda s: len(_by_suit(board.hands[seat].cards)[s]))][-1]
 
 
 def _safe_defender_lead(board: BoardState, seat: Seat, legal: List[Card],
-                        trump: Optional[Suit]) -> Card:
+                        trump: Optional[Suit],
+                        explain: Optional[dict] = None) -> Card:
     """Subsequent defensive lead: don't underlead honours into a suit contract.
     Prefer top of a touching-honour sequence, the top of an AK, a singleton
     (ruff), or a low card from an honour-LESS suit; underlead only as a last
@@ -158,6 +183,10 @@ def _safe_defender_lead(board: BoardState, seat: Seat, legal: List[Card],
     for s in sorted(by, key=lambda s: -len(by[s])):
         top = seq_top(by[s])
         if top is not None:
+            _why(explain, "Safe defensive lead",
+                 "Leading the top of a touching-honour sequence (or an A-K) — "
+                 "a safe, aggressive lead that never gives declarer a trick by "
+                 "underleading an honour.")
             return top
     # 2) RETURN PARTNER'S SUIT — continue the suit partner attacked. Lead the
     #    higher from a remaining doubleton, else a low card (original count).
@@ -169,19 +198,30 @@ def _safe_defender_lead(board: BoardState, seat: Seat, legal: List[Card],
             break
     if partner_suit is not None and partner_suit != trump and partner_suit in by:
         cards = by[partner_suit]                       # high → low
+        _why(explain, "Return partner's suit",
+             "Continuing the suit partner attacked — returning the higher of a "
+             "remaining doubleton, otherwise low to preserve count.")
         return cards[0] if len(cards) == 2 else cards[-1]
     # 3) a singleton in a side suit (ruff try) vs a suit contract
     if trump is not None:
         for s in by:
             if len(by[s]) == 1:
+                _why(explain, "Singleton lead (ruff try)",
+                     "Leading a singleton in a side suit, hoping to ruff the "
+                     "next round.")
                 return by[s][0]
     # 3) low from an honour-less suit (no A/K/Q to protect)
     honourless = [s for s in by if all(c.rank.value > 2 for c in by[s])]
     if honourless:
         s = max(honourless, key=lambda s: len(by[s]))
+        _why(explain, "Safe low lead",
+             "Leading low from a suit with no honour to protect — a passive, "
+             "safe exit that gives nothing away.")
         return by[s][-1]
     # 4) last resort: low from the longest
     s = max(by, key=lambda s: len(by[s]))
+    _why(explain, "Passive lead",
+         "No safe attacking lead available — leading low from the longest suit.")
     return by[s][-1]
 
 
@@ -191,7 +231,8 @@ def _played_values(board: BoardState, suit: Suit) -> set:
 
 
 def _develop_finesse(board: BoardState, seat: Seat, legal: List[Card],
-                     trump: Optional[Suit], declarer: Seat) -> Optional[Card]:
+                     trump: Optional[Suit], declarer: Seat,
+                     explain: Optional[dict] = None) -> Optional[Card]:
     """Declarer on lead: if the OTHER declarer hand holds a split tenace over a
     missing honour (AQ / KJ / QT ...), lead a low card from THIS hand toward it.
     The finesse itself falls out of 3rd-hand-high when the other hand follows.
@@ -218,11 +259,16 @@ def _develop_finesse(board: BoardState, seat: Seat, legal: List[Card],
                       for v in range(0, 11))
         if finesse and len(mine) > best_len:
             best_card, best_len = mine[-1], len(mine)   # lead our lowest toward it
+    if best_card is not None:
+        _why(explain, "Finesse",
+             "Leading a low card toward a split tenace in the other hand "
+             "(e.g. A-Q or K-J), taking the finesse against the missing honour.")
     return best_card
 
 
 def _establish_suit(board: BoardState, seat: Seat, legal: List[Card],
-                    trump: Optional[Suit], declarer: Seat) -> Optional[Card]:
+                    trump: Optional[Suit], declarer: Seat,
+                    explain: Optional[dict] = None) -> Optional[Card]:
     """Attack our longest combined side suit to set up length tricks — what a
     good declarer does after drawing trumps, before cashing scattered winners.
     Pick the longest non-trump suit (5+ combined) where we hold the control to
@@ -250,10 +296,19 @@ def _establish_suit(board: BoardState, seat: Seat, legal: List[Card],
         return None                                    # suit is in partner's hand
     top = here[0]
     if is_boss_card(top, board, seat, [], declarer):
+        _why(explain, "Establish long suit",
+             "Attacking our longest combined side suit to set up length tricks "
+             "— cashing the top winner in it.")
         return top                                     # cash/run a winner
     if (len(here) >= 2 and top.rank.value <= 3
             and here[1].rank.value == top.rank.value + 1):
+        _why(explain, "Establish long suit",
+             "Establishing our longest side suit — leading the top of a "
+             "touching-honour sequence to force out the missing honour.")
         return top                                     # top of a sequence: force
+    _why(explain, "Establish long suit",
+         "Establishing our longest side suit — conceding a low round now to set "
+         "up length winners later.")
     return here[-1]                                    # low: concede to set up length
 
 
@@ -271,7 +326,8 @@ def _outstanding_trumps(board: BoardState, trump: Optional[Suit],
 
 
 def _lead(board: BoardState, seat: Seat, legal: List[Card],
-          trump: Optional[Suit], declarer: Seat) -> Card:
+          trump: Optional[Suit], declarer: Seat,
+          explain: Optional[dict] = None) -> Card:
     """On lead, not the opening lead."""
     decl_side = seat.is_ns() == declarer.is_ns()
     if decl_side:
@@ -284,15 +340,21 @@ def _lead(board: BoardState, seat: Seat, legal: List[Card],
             my_trumps = sorted((c for c in legal if c.suit == trump),
                                key=lambda c: c.rank.value)
             if my_trumps:
+                _why(explain, "Draw trumps",
+                     "Drawing trumps — the defenders still hold some, so leading "
+                     "a high trump forces theirs out and stops them ruffing our "
+                     "winners.")
                 return my_trumps[0]                # highest trump from this hand
         planned = cardplay_plan.planned_lead(board, seat, [])
         if planned is not None and any(c.suit == planned.suit
                                        and c.rank == planned.rank
                                        for c in legal):
+            _why(explain, "Declarer plan",
+                 "Following the pre-computed declarer plan for this deal.")
             return planned
         # 2) ESTABLISH the long suit (the trick source) before cashing scattered
         #    short-suit winners — a good declarer attacks length early.
-        est = _establish_suit(board, seat, legal, trump, declarer)
+        est = _establish_suit(board, seat, legal, trump, declarer, explain)
         if est is not None:
             return est
         # 3) cash a guaranteed winner (boss card) — lowest such, to keep
@@ -302,9 +364,12 @@ def _lead(board: BoardState, seat: Seat, legal: List[Card],
         if bosses:
             by = _by_suit(bosses)
             longest = max(by, key=lambda s: (len(by[s]), -s.value))
+            _why(explain, "Cash a winner",
+                 "Cashing a guaranteed winner (a master card), taking it from "
+                 "our longest such suit to keep communications.")
             return by[longest][0]                      # the boss (top) to cash
         # 3) develop a finesse toward the other hand's tenace
-        fin = _develop_finesse(board, seat, legal, trump, declarer)
+        fin = _develop_finesse(board, seat, legal, trump, declarer, explain)
         if fin is not None:
             return fin
         # DECLARER PLANNER (sees both hands): rather than lead a passive low card
@@ -313,15 +378,21 @@ def _lead(board: BoardState, seat: Seat, legal: List[Card],
         pc = declarer_plan.plan_lead(board, seat, declarer, trump)
         if pc is not None and any(c.suit == pc.suit and c.rank == pc.rank
                                   for c in legal):
+            _why(explain, "Cross to the other hand",
+                 "Crossing to the partner (dummy/declarer) hand, which holds the "
+                 "winners we want to reach.")
             return pc
         # 4) otherwise lead low from our longest non-trump side suit
         by = _by_suit([c for c in legal if c.suit != trump]) or _by_suit(legal)
         if by:
             longest = max(by, key=lambda s: (len(by[s]), -s.value))
+            _why(explain, "Passive lead",
+                 "Nothing active to do — leading low from our longest side suit.")
             return by[longest][-1]                     # low card
+        _why(explain, "Forced lead", "Leading our lowest remaining card.")
         return legal[-1]
     # defender on lead (not opening): sound technique, no underleading honours
-    return _safe_defender_lead(board, seat, legal, trump)
+    return _safe_defender_lead(board, seat, legal, trump, explain)
 
 
 def _should_holdup(board: BoardState, seat: Seat, trick: List[Card],
@@ -357,7 +428,8 @@ def _should_holdup(board: BoardState, seat: Seat, trick: List[Card],
 
 
 def _follow(board: BoardState, seat: Seat, legal: List[Card],
-            trick: List[Card], trump: Optional[Suit], declarer: Seat) -> Card:
+            trick: List[Card], trump: Optional[Suit], declarer: Seat,
+            explain: Optional[dict] = None) -> Card:
     """Follow suit. legal = our cards in the led suit, high → low."""
     led = trick[0].suit
     pos = len(trick)                                   # 1=2nd,2=3rd,3=4th hand
@@ -373,14 +445,24 @@ def _follow(board: BoardState, seat: Seat, legal: List[Card],
         # partner/dummy winning — play a non-winning card, but SIGNAL with it
         # (attitude if partner's suit, count if an opponent's): textbook carding
         # at zero trick cost (every legal card here loses this trick anyway).
+        _why(explain, "Signal",
+             "Our side already wins this trick, so the card is free — playing "
+             "the standard signal (attitude in partner's suit, count in "
+             "declarer's) to tell partner about this suit.")
         return signals.choose_signal_card(legal, board, seat, trick, declarer,
                                            trump)
     beating = [c for c in legal if _beats(c, win_card, led, trump)]
     if not beating:
+        _why(explain, "Signal",
+             "Can't beat the card that's winning, so this trick is lost anyway "
+             "— playing the standard signal to inform partner.")
         return signals.choose_signal_card(legal, board, seat, trick, declarer,
                                            trump)
     # HOLD-UP (NT): duck a single stopper to cut defenders' communications.
     if trump is None and _should_holdup(board, seat, trick, declarer, legal):
+        _why(explain, "Hold-up",
+             "Hold-up play: ducking with our single stopper to sever the "
+             "defenders' communications before we have to win.")
         return low
     cheapest = beating[-1]                              # lowest card that still wins
     if pos == 1:                                       # 2nd hand
@@ -396,15 +478,27 @@ def _follow(board: BoardState, seat: Seat, legal: List[Card],
                                   c.rank.value == led_card.rank.value + 1
                                   for c in lh.cards))
             if honours and not seq:
+                _why(explain, "Cover an honour",
+                     "Covering the led honour with an honour to promote our "
+                     "side's spot cards.")
                 return honours[-1]                     # cheapest sufficient honour
+        _why(explain, "Second hand low",
+             "Second hand low — no reason to spend an honour before seeing what "
+             "third hand does.")
         return low                                     # 2nd hand low otherwise
     if pos == 2:                                       # 3rd hand high (cheaply)
+        _why(explain, "Third hand high",
+             "Third hand high — playing the cheapest card that still wins the "
+             "trick for our side.")
         return cheapest
+    _why(explain, "Fourth hand",
+         "Fourth hand — winning as cheaply as possible.")
     return cheapest                                    # 4th hand: win as cheaply
 
 
 def _discard(board: BoardState, seat: Seat, legal: List[Card],
-             trick: List[Card], declarer: Seat) -> Card:
+             trick: List[Card], declarer: Seat,
+             explain: Optional[dict] = None) -> Card:
     """Void in the led suit and not ruffing: pitch a safe card that SIGNALS
     (suit-preference / attitude) instead of a bare low spot."""
     from . import signals
@@ -412,6 +506,10 @@ def _discard(board: BoardState, seat: Seat, legal: List[Card],
     trump = (board.contract.suit
              if board.contract and board.contract.suit != Suit.NOTRUMP
              else None)
+    _why(explain, "Discard",
+         "Void in the led suit and can't ruff usefully — pitching a safe card "
+         "that also signals (suit-preference / attitude) while keeping our "
+         "winners and guards intact.")
     return signals.choose_signal_card(safe, board, seat, trick, declarer, trump)
 
 
@@ -447,7 +545,8 @@ def _get_dds():
 
 
 def _alphamu_card(b: BoardState, seat: Seat, trick: List[Card],
-                  declarer: Seat, trump: Optional[Suit]) -> Optional[Card]:
+                  declarer: Seat, trump: Optional[Suit],
+                  explain: Optional[dict] = None) -> Optional[Card]:
     """Card via alpha-mu: sample the HIDDEN layouts consistent with the play (a
     BELIEF — never the actual cards), DDS-evaluate, commit ONE line across
     indistinguishable layouts. DDS on representative samples is not peeking; the
@@ -513,7 +612,16 @@ def _alphamu_card(b: BoardState, seat: Seat, trick: List[Card],
         from . import signals
         tb = lambda tied: signals.choose_signal_card(
             tied, b, seat, trick, declarer, trump)
-    return amu.choose(b, seat, trick, worlds, tiebreak=tb)
+    chosen = amu.choose(b, seat, trick, worlds, tiebreak=tb)
+    if chosen is not None:
+        side = "defence" if defending else "declarer play"
+        _why(explain, "Alpha-mu search",
+             f"Alpha-mu single-dummy search ({side}): sampled {len(worlds)} "
+             "hidden layouts consistent with the play so far, double-dummy "
+             "evaluated each, and committed to the one line that maximises "
+             "tricks across all of them"
+             + (" — ties broken by the standard signal." if defending else "."))
+    return chosen
 
 
 def _defense_rollout_card(b: BoardState, seat: Seat, trick: List[Card],
@@ -543,10 +651,14 @@ def _lead_candidates(legal: List[Card]) -> List[Card]:
 
 def decide(board: BoardState, seat: Seat,
            current_trick_cards: Optional[List[Card]] = None,
-           search: bool = True) -> Optional[Card]:
+           search: bool = True,
+           explain: Optional[dict] = None) -> Optional[Card]:
     """Pick `seat`'s card using only entitled information. Redacts first.
     `search=True` lets the DECLARER use a single-dummy lookahead at its leads;
-    rollouts call back with search=False (greedy policy, no recursion)."""
+    rollouts call back with search=False (greedy policy, no recursion).
+    Pass `explain={}` to have the chosen technique recorded in
+    ``explain['tag']`` / ``explain['reason']`` (used by the UI's click-to-
+    explain popup); it is None on the hot rollout paths, so this is free there."""
     trick = list(current_trick_cards or [])
     b = redact(board, seat, trick)
     hand = b.hands[seat]
@@ -555,6 +667,7 @@ def decide(board: BoardState, seat: Seat,
     lead_suit = trick[0].suit if trick else None
     legal = _legal(hand, lead_suit)
     if len(legal) == 1:
+        _why(explain, "Forced", "Only one legal card to play.")
         return legal[0]
 
     trump = (board.contract.suit
@@ -565,7 +678,7 @@ def decide(board: BoardState, seat: Seat,
     opening = on_lead and not board.tricks
 
     if opening:
-        return _opening_lead(b, seat)
+        return _opening_lead(b, seat, explain)
     # Alpha-mu search: DDS on belief-sampled hidden layouts + a consistent line.
     # Strong (DDS evaluates vs best play) without peeking or PIMC's omniscient
     # tells. Declarer side always; defenders when BIQ_AMU_DEFENSE (the partner is
@@ -583,18 +696,26 @@ def decide(board: BoardState, seat: Seat,
             wi = _winning_index(trick, trump)
             if not any(_beats(c, trick[wi], lead_suit, trump) for c in legal):
                 from . import signals as _sig
+                _why(explain, "Signal",
+                     "Following suit but unable to win this trick, so the choice "
+                     "of spot is free — playing the standard signal (attitude / "
+                     "count) so partner can read our holding.")
                 return _sig.choose_signal_card(legal, b, seat, trick,
                                                declarer, trump)
         amc = None
         if defending and _DEF_ROLLOUT:
             amc = _defense_rollout_card(b, seat, trick, declarer, trump, legal)
+            if amc is not None:
+                _why(explain, "Defensive rollout",
+                     "Chose the defensive card by Monte-Carlo rollout against a "
+                     "realistic (no-peek) partner.")
         elif not defending or _AMU_DEFENSE:
-            amc = _alphamu_card(b, seat, trick, declarer, trump)
+            amc = _alphamu_card(b, seat, trick, declarer, trump, explain)
         if amc is not None and any(c.suit == amc.suit and c.rank == amc.rank
                                    for c in legal):
             return amc
     if on_lead:
-        return _lead(b, seat, legal, trump, declarer)
+        return _lead(b, seat, legal, trump, declarer, explain)
     if any(c.suit == lead_suit for c in legal):
-        return _follow(b, seat, legal, trick, trump, declarer)
-    return _discard(b, seat, legal, trick, declarer)
+        return _follow(b, seat, legal, trick, trump, declarer, explain)
+    return _discard(b, seat, legal, trick, declarer, explain)

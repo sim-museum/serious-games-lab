@@ -148,8 +148,9 @@ class PreferencesConfig:
     # Explain biq's actions: when ON, clicking a bid in the auction or a card
     # on the table pops up a window explaining why biq made that call/play
     # (how it fits the bidding system / what card-play technique applies).
-    # OFF by default — it's a teaching aid, not needed for ordinary play.
-    explain_actions_enabled: bool = False
+    # ON by default — clicking a biq action to see why is a headline feature;
+    # toggle it off in Preferences if the popups get in the way.
+    explain_actions_enabled: bool = True
 
 
 @dataclass

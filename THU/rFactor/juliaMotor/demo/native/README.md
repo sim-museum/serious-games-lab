@@ -9,11 +9,14 @@ materials, shadows and post-processing.
 
 ```sh
 cd /home/g/sgl/THU/rFactor/juliaMotor/demo/native
-julia --project=. drive_native.jl        # opens a native window; drive it
+julia -t 2 --project=. drive_native.jl   # -t 2 runs the engine-audio thread
 ```
 
-First launch precompiles GLFW/ModernGL (one-time, ~a minute) and extracts the
-track/car geometry; after that it's instant.
+First launch precompiles GLFW/ModernGL/PortAudio (one-time, ~a minute) and
+extracts the track/car geometry; after that it's instant.  `-t 2` gives the
+engine audio its own thread so the GL render loop never starves it; without it
+the app still runs, just silent.  Engine sound is the car's own onboard samples
+(`Sounds/F158/Vanwall_V254`) crossfaded by RPM — **M** mutes.
 
 **Controls** — keyboard *and* the Logitech joystick natively (no browser
 Gamepad API): `W`/`S` throttle/brake, `A`/`D` steer, `E`/`Q` shift up/down,
