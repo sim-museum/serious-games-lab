@@ -568,8 +568,9 @@ def _alphamu_card(b: BoardState, seat: Seat, trick: List[Card],
         known_seats, biq_seats = {seat, dummy}, {seat}
     else:
         known_seats, biq_seats = {declarer, dummy}, {declarer, dummy}
-    from . import signal_trust
-    if defending and _READ_SIGNALS and signal_trust.reading_active():
+    from . import signal_trust, signals as _signals
+    signalling = _signals.is_enabled()
+    if defending and _READ_SIGNALS and signalling and signal_trust.reading_active():
         # HARD-FILTER the sampled partner hands by partner's own signals: keep
         # only layouts biq's convention would have produced (legitimate info —
         # partner is telling us). Over-sample, filter, fall back if too few.
@@ -604,11 +605,13 @@ def _alphamu_card(b: BoardState, seat: Seat, trick: List[Card],
     amu = alphamu.AlphaMu(trump, declarer, _get_dds(), depth=_AMU_DEPTH,
                           time_budget=_AMU_BUDGET, biq_seats=biq_seats,
                           defense_rollout_leaf=(defending and _DEF_ROLLOUT_LEAF),
-                          vul=b.vulnerability, signal_margin=_SIGNAL_MARGIN)
+                          vul=b.vulnerability,
+                          signal_margin=_SIGNAL_MARGIN if signalling else 0.0)
     # When DEFENDING, break trick-equivalent ties by the standard signal so the
     # carding reads like a real defender (zero trick cost — these tie for best).
+    # Signalling OFF: no tie-break and no margin — alpha-mu's best card stands.
     tb = None
-    if defending:
+    if defending and signalling:
         from . import signals
         tb = lambda tied: signals.choose_signal_card(
             tied, b, seat, trick, declarer, trump)
@@ -620,7 +623,8 @@ def _alphamu_card(b: BoardState, seat: Seat, trick: List[Card],
              "hidden layouts consistent with the play so far, double-dummy "
              "evaluated each, and committed to the one line that maximises "
              "tricks across all of them"
-             + (" — ties broken by the standard signal." if defending else "."))
+             + (" — ties broken by the standard signal."
+                if defending and signalling else "."))
     return chosen
 
 
@@ -690,9 +694,11 @@ def decide(board: BoardState, seat: Seat,
         # play the STANDARD signal among ALL legal cards — exactly what
         # signal_read inverts — making biq a perfectly READABLE signaller (so a
         # partner reading these signals never filters out biq's true hand).
-        # Bypass alpha-mu for this card only.
-        if (defending and lead_suit is not None and legal
-                and legal[0].suit == lead_suit):
+        # Bypass alpha-mu for this card only. Skipped when signalling is OFF
+        # (preference): alpha-mu then picks the card on trick value alone.
+        from . import signals as _sigsw
+        if (defending and _sigsw.is_enabled() and lead_suit is not None
+                and legal and legal[0].suit == lead_suit):
             wi = _winning_index(trick, trump)
             if not any(_beats(c, trick[wi], lead_suit, trump) for c in legal):
                 from . import signals as _sig

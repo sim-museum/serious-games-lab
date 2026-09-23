@@ -32,6 +32,13 @@ _HONOUR = 3   # rank.value: A=0,K=1,Q=2,J=3 are honours; T=4; spots are 5..12
 # always agree. Set from the GUI preference via set_convention().
 _UDCA = os.environ.get("BIQ_SIGNAL_UDCA", "0") == "1"
 
+# Signalling ON/OFF (GUI preference "Play defensive signals"; env BIQ_SIGNALLING).
+# OFF = biq never spends a card on a signal: choose_signal_card() returns the
+# plain lowest card, nopeek skips its signal-only shortcuts, the alpha-mu
+# signal margin is 0 (no near-tie widening) and partner-signal reading is off.
+# Use this when the signal must never take precedence over winning a trick.
+_ENABLED = os.environ.get("BIQ_SIGNALLING", "1") == "1"
+
 
 def set_convention(udca: bool) -> None:
     global _UDCA
@@ -40,6 +47,25 @@ def set_convention(udca: bool) -> None:
 
 def is_udca() -> bool:
     return _UDCA
+
+
+def set_enabled(enabled: bool) -> None:
+    global _ENABLED
+    _ENABLED = bool(enabled)
+
+
+def is_enabled() -> bool:
+    return _ENABLED
+
+
+def lowest_card(cands: List[Card]) -> Card:
+    """Plain no-signal play: the lowest-ranking candidate (a discard pitches
+    the lowest card of the longest candidate suit)."""
+    by: dict = {}
+    for c in cands:
+        by.setdefault(c.suit, []).append(c)
+    suit = max(by, key=lambda s: (len(by[s]), -s.value))
+    return max(by[suit], key=lambda c: c.rank.value)      # rank.value 12 = the 2
 
 
 def _winner_seat(trick: List[Card], leader: Seat, trump: Optional[Suit]) -> Seat:
@@ -112,6 +138,8 @@ def choose_signal_card(cands: List[Card], board: BoardState, seat: Seat,
     (opponent's suit); mixed suits / on a discard → suit-preference."""
     if len(cands) <= 1:
         return cands[0]
+    if not _ENABLED:
+        return lowest_card(cands)
     pos = len(trick)
     if pos == 0 or len({c.suit for c in cands}) > 1:
         return _discard_signal(cands, board, seat, trump)

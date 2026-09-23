@@ -82,6 +82,9 @@ class PreferencesConfig:
     use_monte_carlo_play: bool = True  # Monte Carlo simulation (MC+DDS fallback)
     use_nopeek_play: bool = True  # no-peek alpha-mu engine (default - strongest;
     # never peeks at hidden cards, signals + reads partner signals)
+    signalling_enabled: bool = True  # play defensive signals at all. False =
+    # never spend a card on a signal (plain lowest card / pure trick value);
+    # partner-signal reading is off too. See backend.signals.set_enabled().
     signalling_convention: str = "standard"  # defensive carding biq plays AND
     # expects from partner: "standard" (hi=encourage, hi-lo=even) or "udca"
     # (upside-down count & attitude). Emitter + reader both use it.
@@ -379,9 +382,14 @@ class ConfigManager:
             self.config.preferences.use_nopeek_play = data["preference.use_nopeek_play"] == "1"
         if "preference.signalling" in data:
             self.config.preferences.signalling_convention = data["preference.signalling"]
-        # Apply the signalling convention to the live engine (emitter + reader).
+        if "preference.signalling_enabled" in data:
+            self.config.preferences.signalling_enabled = (
+                data["preference.signalling_enabled"] == "1")
+        # Apply the signalling switch + convention to the live engine
+        # (emitter + reader).
         try:
             from backend import signals as _sig
+            _sig.set_enabled(self.config.preferences.signalling_enabled)
             _sig.set_convention(
                 self.config.preferences.signalling_convention == "udca")
         except Exception:
@@ -474,6 +482,8 @@ class ConfigManager:
             "preference.use_mc_play": "1" if self.config.preferences.use_monte_carlo_play else "0",
             "preference.use_nopeek_play": "1" if self.config.preferences.use_nopeek_play else "0",
             "preference.signalling": self.config.preferences.signalling_convention,
+            "preference.signalling_enabled": (
+                "1" if self.config.preferences.signalling_enabled else "0"),
             "preference.legacy_colors": "1" if self.config.preferences.legacy_colors else "0",
             "preference.show_ben_bid_analysis": "1" if self.config.preferences.show_ben_bid_analysis else "0",
             "preference.bidding_engine": self.config.preferences.bidding_engine,

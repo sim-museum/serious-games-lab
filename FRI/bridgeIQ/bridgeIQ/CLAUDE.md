@@ -67,6 +67,14 @@ Shipped this arc (all A/B-gated with the SEEDED `tools/nopeek_eval.py --rng`):
   suit-pref among trick-equivalent cards; emitted via the alpha-mu `tiebreak`.
 - **Reliable signaller**: `AlphaMu.signal_margin` (default 0.15) so biq plays the
   convention card among near-equal spots — trick-neutral-to-positive.
+- **Signalling ON/OFF switch (2026-09-22)**: Preferences ▸ Defensive Signalling ▸
+  "Play defensive signals" (`preferences.signalling_enabled`, env `BIQ_SIGNALLING=0`
+  for the harness clients; `signals.set_enabled()`). OFF = `choose_signal_card`
+  returns the plain lowest card, nopeek skips its pure-signal shortcut, the alpha-mu
+  signal margin is 0 with no tie-break, and partner-signal reading is off. Added
+  because a signal was taking precedence over winning a trick; A/B it with
+  `tools/qplus_loop_sessions.sh` (`BIQ_SIGNALLING=1` vs `0`, `NOPEEK=1`).
+  Test: `test_signalling_switch.py`.
 - Interior-sequence opening-lead fix (KJTx/AJTx/AT9x → J/J/T, was the bottom).
 
 Measured + SHELVED (default-off, documented negatives): defence rollout

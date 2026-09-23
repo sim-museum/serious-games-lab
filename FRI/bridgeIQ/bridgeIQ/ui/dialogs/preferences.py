@@ -170,6 +170,14 @@ class PreferencesDialog(QDialog):
         # Defensive signalling convention (biq plays this AND expects it from
         # partner; the partner-signal reader stays in sync).
         sig_group = QGroupBox("Defensive Signalling")
+        sig_outer = QVBoxLayout()
+        self.signalling_enabled_check = QCheckBox(
+            "Play defensive signals (attitude / count / suit-preference)")
+        self.signalling_enabled_check.setToolTip(
+            "Off: biq never spends a card on a signal — it plays the plain\n"
+            "lowest card when it can't win and chooses every other card on\n"
+            "trick value alone. Partner-signal reading is off too.")
+        sig_outer.addWidget(self.signalling_enabled_check)
         sig_layout = QHBoxLayout()
         sig_layout.addWidget(QLabel("Convention:"))
         self.signalling_combo = QComboBox()
@@ -181,7 +189,10 @@ class PreferencesDialog(QDialog):
             "Attitude/count signals biq gives and reads from partner.\n"
             "Standard or Upside-Down Count & Attitude (UDCA).")
         sig_layout.addWidget(self.signalling_combo, 1)
-        sig_group.setLayout(sig_layout)
+        sig_outer.addLayout(sig_layout)
+        self.signalling_enabled_check.toggled.connect(
+            self.signalling_combo.setEnabled)
+        sig_group.setLayout(sig_outer)
         layout.addWidget(sig_group)
 
         layout.addStretch()
@@ -533,7 +544,10 @@ class PreferencesDialog(QDialog):
         else:
             self.play_engine_radio.setChecked(True)
 
-        # Defensive signalling convention
+        # Defensive signalling switch + convention
+        enabled = bool(getattr(self.prefs, 'signalling_enabled', True))
+        self.signalling_enabled_check.setChecked(enabled)
+        self.signalling_combo.setEnabled(enabled)
         idx = self.signalling_combo.findData(
             getattr(self.prefs, 'signalling_convention', 'standard'))
         self.signalling_combo.setCurrentIndex(max(0, idx))
@@ -649,10 +663,12 @@ class PreferencesDialog(QDialog):
 
         # Defensive signalling convention — apply to the live engine now so the
         # emitter and the partner-signal reader both switch together.
+        self.prefs.signalling_enabled = self.signalling_enabled_check.isChecked()
         self.prefs.signalling_convention = \
             self.signalling_combo.currentData() or "standard"
         try:
             from backend import signals as _sig
+            _sig.set_enabled(self.prefs.signalling_enabled)
             _sig.set_convention(self.prefs.signalling_convention == "udca")
         except Exception:
             pass

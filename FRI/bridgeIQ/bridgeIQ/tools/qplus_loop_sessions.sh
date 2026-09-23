@@ -25,10 +25,20 @@
 #
 # Usage: tools/qplus_loop_sessions.sh [N_SESSIONS] [DEALS] [SYS]
 #   SYS: 'random' (default) | 'SAYC,TwoOverOne' (fixed NS,EW)
+#
+# Env knobs:
+#   NOPEEK=1 (default)   biq plays the no-peek alpha-mu engine (--nopeek);
+#                        NOPEEK=0 = the older MC+DDS cardplay.
+#   BIQ_SIGNALLING=0     biq plays NO defensive signals (the "Play defensive
+#                        signals" preference, off). Inherited by the clients.
+#   WP_SERVER=<prefix>   Q-Plus wine prefix (default: FRI/WP next to biq).
 set -u
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"; cd "$ROOT"
 N="${1:-4}"; DEALS="${2:-64}"; SYS="${3:-random}"
-WP_SERVER="${WP_SERVER:-/home/h/sgl/FRI/WP}"
+WP_SERVER="${WP_SERVER:-$(cd "$ROOT/../.." && pwd)/WP}"
+NOPEEK="${NOPEEK:-1}"
+CLIENT_EXTRA=""; [ "$NOPEEK" = "1" ] && CLIENT_EXTRA="--nopeek"
+export BIQ_SIGNALLING="${BIQ_SIGNALLING:-1}"
 SRV_BTN="$HOME/.qplus_server_buttons.json"
 SYS_CAL="$HOME/.qplus_mixed_corpus.json"
 RESULTS="$ROOT/tools/runs/loop_results"; mkdir -p "$RESULTS"
@@ -78,11 +88,14 @@ run_session() {
 
   echo "[loop] launching biq (direct, fresh logs)…"
   : > tools/runs/biq_N.log; : > tools/runs/biq_S.log; rm -f tools/runs/pair_ipc/*.card 2>/dev/null
+  echo "[loop] biq: NOPEEK=$NOPEEK BIQ_SIGNALLING=$BIQ_SIGNALLING"
+  # shellcheck disable=SC2086
   setsid python3 tools/biq_qnet_client.py --host 127.0.0.1 --port 5555 --seat N \
-    --num-samples 40 --log tools/runs/biq_N.log --auto-system --pair >/dev/null 2>&1 </dev/null &
+    --num-samples 40 --log tools/runs/biq_N.log --auto-system --pair $CLIENT_EXTRA >/dev/null 2>&1 </dev/null &
   sleep 3
+  # shellcheck disable=SC2086
   setsid python3 tools/biq_qnet_client.py --host 127.0.0.1 --port 5555 --seat S \
-    --num-samples 40 --log tools/runs/biq_S.log --auto-system --pair >/dev/null 2>&1 </dev/null &
+    --num-samples 40 --log tools/runs/biq_S.log --auto-system --pair $CLIENT_EXTRA >/dev/null 2>&1 </dev/null &
   for _ in $(seq 1 30); do
     [ "$(grep -c 'handshake complete' tools/runs/biq_N.log 2>/dev/null)" -ge 1 ] && \
     [ "$(grep -c 'handshake complete' tools/runs/biq_S.log 2>/dev/null)" -ge 1 ] && break
@@ -99,6 +112,7 @@ run_session() {
 
   echo "[loop] aggregating session $idx…"
   cp tools/runs/biq_N.log "$RESULTS/biq_N_session_$idx.log"
+  echo "nopeek=$NOPEEK signalling=$BIQ_SIGNALLING sys=$SYS deals=$DEALS" > "$RESULTS/session_${idx}.cfg"
   python3 tools/qnet_score_aggregate.py --log tools/runs/biq_N.log --our-seat S \
     > "$RESULTS/session_$idx.txt" 2>&1
   grep -E 'Net IMPs/deal|Total IMPs' "$RESULTS/session_$idx.txt"
