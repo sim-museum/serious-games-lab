@@ -16,6 +16,7 @@ export Mesh3DO, parse_3do, gpl_placements
 
 # E64 S4: walk every LOD child (the pre-fix behaviour) instead of only the highest-detail one
 const LOD_ALL = get(ENV,"JM_LOD_ALL","0") != "0"
+const POSTPROC = Ref{Any}(nothing)   # ROADCURVE-1: (path, mesh) -> mesh, see the end of parse_3do
 
 # positioner local matrix: Translate(d) * Rot(m, GPL Euler about X,Y,Z) * Scale(s).
 # Places a sub-object (hands, wheel, mirrors, suspension) relative to its parent.
@@ -510,7 +511,11 @@ function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}
             println("   [posdiag] group $g short paths:      ", join(["$v x [$k]" for (k,v) in sort(collect(short), by=x->-x[2])][1:min(end,3)], "  "))
         end
     end
-    Mesh3DO(tris, sort(collect(used_tex)), groups)
+    m_out = Mesh3DO(tris, sort(collect(used_tex)), groups)
+    # ROADCURVE-1: a caller-installed post-pass (the sim rounds the track's road polygons onto its
+    # racing curve). Applied to top-level parses only, so every consumer of this file -- the physics
+    # HAT and the render extraction alike -- sees the same geometry.
+    (extdepth == 0 && POSTPROC[] !== nothing) ? POSTPROC[](path, m_out) : m_out
 end
 
 """

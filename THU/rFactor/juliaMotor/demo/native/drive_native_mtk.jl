@@ -503,6 +503,7 @@ const FUEL_MARGIN = max(0, tryparse(Int, get(ENV,"JM_FUEL_MARGIN","10")) |> x-> 
 # table+YAML template (so the file is byte-identical in structure / any iRacing tool
 # reads it) and fill the channels juliaMotor produces.
 const IBTREC0 = !haskey(ENV, "JM_NOIBT")         # .ibt telemetry ON by default (set JM_NOIBT to disable)
+include(joinpath(@__DIR__, "roadcurve.jl")); using .RoadCurve   # ROADCURVE-1
 include(joinpath(@__DIR__, "step_guard.jl")); using .StepGuard   # TERRAIN-STEP, see groundz_phys
 include(joinpath(@__DIR__, "solid_geom.jl")); using .SolidGeom   # SOLID-BOX: disc/box gap + normal for every solid
 const REPLAY_FILE = get(ENV, "JM_REPLAY", "")    # E18: if set, PLAY BACK this .jmr recording instead of driving
@@ -1542,6 +1543,8 @@ if SKIDPAD
     const TRK_CAL = (on = false, sign = 1.0, off = 0.0, sscale = 1.0)
     const TRK_ROAD_LAT = 5.4
     const TRK_BLEND = 1.0
+    const TRK_CORR_ON = false
+    trk_road(s, lat) = 0.0
     ground_road(x, z) = (0.0, true)
 else
     tstamp("track parse begins"); print("loading GPL ", GPLNAME, "… "); flush(stdout)
@@ -1614,10 +1617,29 @@ else
         print(length(SECPARTS), " groups / ", length(SECTRI), " tris / ",
               length(RINGSPRITES), " sprites… ")
     end
-    const TRACKMESH = isempty(SECTRI) ? TRACKMESH0 :
-        Render.GPL3DO.Mesh3DO([TRACKMESH0.tris; SECTRI], TRACKMESH0.textures,
-                              [TRACKMESH0.groups; fill(0, length(SECTRI))])
-    const TERRAIN  = isempty(SECTRI) ? TERRAIN0 : GPLTrack.build_hat(TRACKMESH; exclude=HAT_EXCLUDE, exclude_pred=HAT_EXCLUDE_PRED, drop_overpass=MONZA, road_pred=ROAD_PRED)
+    # ROADCURVE-1 (PO 2026-09-25): round the track .3do's polygonal curves onto the racing ribbon's
+    # curve (see roadcurve.jl). Installed as a parse post-pass so the render extraction below (which
+    # re-parses ZTRK) draws exactly the geometry the physics HAT is built from. Default ON at Watkins
+    # Glen only -- the PO's report and the one track verified against its gold; JM_ROADCURVE=1/0 forces.
+    # JM_ROADCURVE_TOL = the chord tolerance (m) below which an edge stays straight.
+    const ROADCURVE_ON = get(ENV, "JM_ROADCURVE", GPLNAME == "watglen" ? "1" : "0") != "0"
+    const TRACKMESH0C = if ROADCURVE_ON
+        let P = [(p[1], p[3]) for p in RIBBON0.pos], q = RIBBON0.perp[1], tol = parse(Float64, get(ENV, "JM_ROADCURVE_TOL", "0.05")), sig = parse(Float64, get(ENV, "JM_ROADCURVE_SIG", "2.0"))
+            length(P) > 2 && hypot(P[end][1]-P[1][1], P[end][2]-P[1][2]) < 0.5 && pop!(P)   # closed loop, no repeated node
+            post(path, m) = abspath(path) == abspath(ZTRK) ? RoadCurve.curve_mesh(m, P, (q[1], q[3]); tol=tol, sig=sig)[1] : m
+            Render.GPL3DO.POSTPROC[] = post
+            mc, st = RoadCurve.curve_mesh(TRACKMESH0, P, (q[1], q[3]); tol=tol, sig=sig)
+            println("  [roadcurve] ON: ", st.tris_in, " -> ", st.tris_out, " tris (", st.curved, " polygons rounded; ",
+                    st.mapped, "/", st.verts, " vertices in the track frame; tol ", tol, " m; JM_ROADCURVE=0 disables)")
+            mc
+        end
+    else
+        TRACKMESH0
+    end
+    const TRACKMESH = isempty(SECTRI) ? TRACKMESH0C :
+        Render.GPL3DO.Mesh3DO([TRACKMESH0C.tris; SECTRI], TRACKMESH0C.textures,
+                              [TRACKMESH0C.groups; fill(0, length(SECTRI))])
+    const TERRAIN  = (isempty(SECTRI) && !ROADCURVE_ON) ? TERRAIN0 : GPLTrack.build_hat(TRACKMESH; exclude=HAT_EXCLUDE, exclude_pred=HAT_EXCLUDE_PRED, drop_overpass=MONZA, road_pred=ROAD_PRED)
     const TRKSURF  = GPLTrack.build_surface(ALIGNED, TERRAIN)
     const LAPLEN = maximum(TRKSURF.lapdist)              # lap length [m], for start/finish wrap detection
     # TRACKSMOOTH-3 S2: the .trk altitude spline as the PLAYER's road height (see GPLTrack.TrkAlt).
@@ -1656,6 +1678,80 @@ else
     end
     const TRK_ROAD_LAT = parse(Float64, get(ENV, "JM_TRK_ROAD_LAT", "5.4"))   # |lateral| inside which the spline is the road; blends to the mesh over TRK_BLEND
     const TRK_BLEND = 1.0
+    # SINK-1 (PO 2026-09-25, Watkins Glen: "the user's car descends a meter or so into the road surface,
+    # such that the car is half submerged"). The spline is calibrated with ONE offset (the lap median), but
+    # the car is drawn on the MESH. JM_HATPROBE="cmp:0:3768:2" measured road minus mesh round the lap:
+    # p50 +0.03 m, but -0.60 m for 400 m at s=2200..2440 and -0.2..-0.65 m from s=3440 to the line, plus a
+    # 0.5 m STEP at the wrap (the ribbon lap is 15 m longer than the .trk's, so mod(s, total) wrapped
+    # early). Fix: (a) stretch ribbon lapdist onto the .trk lap so the wrap is continuous; (b) a correction
+    # table mesh - spline on a 2 m x 5-lateral grid, LOW-PASSED along the lap (Gaussian sigma
+    # JM_TRK_CORR_SIG, 8 m), added to the spline. The low-pass keeps the surface smooth (curvature of the
+    # correction <= 0.003 /m, i.e. the crease-free ride TRACKSMOOTH-3 bought) while its mean follows the
+    # drawn road: residual p50 0.003 / p99 0.10 m. JM_TRK_CORR=0 restores the single-offset spline.
+    const TRK_CORR_ON = TRK_CAL.on && get(ENV, "JM_TRK_CORR", "1") != "0"
+    const TRK_SSCALE = TRK_CORR_ON ? TRKALT.total / LAPLEN : TRK_CAL.sscale
+    const TRK_CORR_LAT = (-5.0, -2.5, 0.0, 2.5, 5.0)
+    const TRK_CORR = let
+        if !TRK_CORR_ON
+            (ds = 1.0, t = zeros(1, 5))
+        else
+            n = max(8, round(Int, LAPLEN / 2.0)); ds = LAPLEN / n
+            _ld = TRKSURF.lapdist; _np = length(TRKSURF.pos)
+            raw = fill(NaN, n, 5)
+            for i in 1:n
+                s = (i - 1) * ds
+                k = clamp(searchsortedlast(_ld, s), 1, _np - 1); fr = (s - _ld[k]) / max(_ld[k+1] - _ld[k], 1e-6)
+                p = TRKSURF.pos[k]; q = TRKSURF.pos[k+1]; pp = TRKSURF.perp[k]
+                x = p[1] + (q[1]-p[1])*fr; z = p[3] + (q[3]-p[3])*fr
+                for (j, lat) in enumerate(TRK_CORR_LAT)
+                    h = JuliaMotor.hat3d(TERRAIN, x + lat*pp[1], z + lat*pp[3]; ref=Inf)
+                    h[3] && (raw[i, j] = Float64(h[1]) - (GPLTrack.trk_height(TRKALT, s * TRK_SSCALE, TRK_CAL.sign * lat) + TRK_CAL.off))
+                end
+            end
+            # Outliers are NOT road: a bridge deck over the track (Zandvoort +3.4 m), the Ring's building plateau
+            # in the HAT (+8.4 m). Real spline error is smooth along the lap (Spa reaches -1.97 m), so a sample is
+            # dropped when it sits > 0.5 m off its own +-20 m running median, or beyond 2.5 m outright.
+            nrej = 0
+            let kmed = round(Int, 20.0 / ds), r0 = copy(raw)
+                for j in 1:5, i in 1:n
+                    v = r0[i, j]; isnan(v) && continue
+                    win = filter(!isnan, [r0[mod1(i + m, n), j] for m in -kmed:kmed])
+                    md = sort!(win)[div(length(win) + 1, 2)]
+                    (abs(v - md) > 0.5 || abs(v) > 2.5) && (raw[i, j] = NaN; nrej += 1)
+                end
+            end
+            sig = parse(Float64, get(ENV, "JM_TRK_CORR_SIG", "8.0")); kw = ceil(Int, 3sig / ds)
+            w = [exp(-0.5 * (m*ds/sig)^2) for m in -kw:kw]
+            t = zeros(n, 5)
+            for j in 1:5, i in 1:n                     # circular, NaN-aware Gaussian (holes in the mesh are skipped)
+                a = 0.0; b = 0.0
+                for m in -kw:kw
+                    v = raw[mod1(i + m, n), j]; isnan(v) && continue
+                    a += w[m+kw+1] * v; b += w[m+kw+1]
+                end
+                t[i, j] = b > 0 ? a / b : 0.0
+            end
+            fin = filter(!isnan, raw); res = sort!(abs.(filter(!isnan, raw .- t)))
+            println("  [trksurf] SINK-1 correction: sscale ", round(TRK_SSCALE, digits=5), ", mesh-spline raw min ",
+                    round(minimum(fin), digits=3), " max ", round(maximum(fin), digits=3), " m -> residual p50 ",
+                    round(res[div(length(res)+1, 2)], digits=3), " p99 ", round(res[max(1, round(Int, 0.99*length(res)))], digits=3),
+                    " m (sigma ", sig, " m; ", nrej, " outlier samples dropped; JM_TRK_CORR=0 disables)")
+            (ds = ds, t = t)
+        end
+    end
+    # correction at ribbon lapdist s, ribbon lateral lat: Catmull-Rom along the lap (C1), linear across
+    function trk_corr(s, lat)
+        TRK_CORR_ON || return 0.0
+        t = TRK_CORR.t; n = size(t, 1)
+        u = mod(s, LAPLEN) / TRK_CORR.ds; i = floor(Int, u); f = u - i
+        l = clamp(lat, TRK_CORR_LAT[1], TRK_CORR_LAT[end])
+        j = clamp(floor(Int, (l - TRK_CORR_LAT[1]) / 2.5) + 1, 1, 4); g = (l - TRK_CORR_LAT[j]) / 2.5
+        cr(jj) = (p0 = t[mod1(i, n), jj]; p1 = t[mod1(i+1, n), jj]; p2 = t[mod1(i+2, n), jj]; p3 = t[mod1(i+3, n), jj];
+                  0.5 * (2p1 + (-p0 + p2)*f + (2p0 - 5p1 + 4p2 - p3)*f^2 + (-p0 + 3p1 - 3p2 + p3)*f^3))
+        cr(j) * (1 - g) + cr(j + 1) * g
+    end
+    # THE road height the player and the AI drive on (ribbon lapdist, ribbon lateral)
+    trk_road(s, lat) = GPLTrack.trk_height(TRKALT, s * TRK_SSCALE, TRK_CAL.sign * lat) + TRK_CAL.off + trk_corr(s, lat)
     # TRACKSMOOTH-3 S3: the same road height for the AI -- a pure query (no LASTZ/ONTRACK side effects, no
     # step guard): the spline on the tarmac, blended into the mesh at the edge, the mesh elsewhere.
     # Returns (height, found). Used for the AI rail's node heights and for re-grounding drawn AI poses.
@@ -1667,7 +1763,7 @@ else
             if hr.found
                 al = abs(hr.lateral)
                 if al < TRK_ROAD_LAT + TRK_BLEND
-                    ht = GPLTrack.trk_height(TRKALT, hr.lapdist * TRK_CAL.sscale, TRK_CAL.sign * hr.lateral) + TRK_CAL.off
+                    ht = trk_road(hr.lapdist, hr.lateral)
                     w = clamp((TRK_ROAD_LAT + TRK_BLEND - al) / TRK_BLEND, 0.0, 1.0)
                     return (ok ? w*ht + (1-w)*hm : ht, true)
                 end
@@ -2909,7 +3005,7 @@ if get(ENV,"JM_HATPROBE","") != ""
         _h = JuliaMotor.hat3d(TERRAIN, _px, _pz; ref=Inf); _hr = JuliaMotor.hat(TRKSURF, _px, _pz)
         println("== JM_HATPROBE pt (", _px, ",", _pz, "): mesh h=", _h[3] ? round(Float64(_h[1]), digits=3) : NaN,
                 "  ribbon found=", _hr.found, " lapdist=", round(_hr.lapdist, digits=2), " lateral=", round(_hr.lateral, digits=2), " ribbon h=", round(_hr.height, digits=3),
-                "  spline h=", TRK_CAL.on ? round(GPLTrack.trk_height(TRKALT, _hr.lapdist * TRK_CAL.sscale, TRK_CAL.sign * _hr.lateral) + TRK_CAL.off, digits=3) : NaN,
+                "  spline h=", TRK_CAL.on ? round(trk_road(_hr.lapdist, _hr.lateral), digits=3) : NaN,
                 "  spline(lat 0)=", TRK_CAL.on ? round(GPLTrack.trk_height(TRKALT, _hr.lapdist, 0.0) + TRK_CAL.off, digits=3) : NaN)
         let _n = length(TRKSURF.pos), _d = [ (TRKSURF.pos[i][1]-_px)^2 + (TRKSURF.pos[i][3]-_pz)^2 for i in 1:_n ], _o = sortperm(_d)
             println("   nearest ribbon nodes: ", join(["#$(i) ld=$(round(TRKSURF.lapdist[i],digits=1)) d=$(round(sqrt(_d[i]),digits=2)) pos=($(round(TRKSURF.pos[i][1],digits=1)),$(round(TRKSURF.pos[i][3],digits=1)))" for i in _o[1:4]], "  "))
@@ -2919,6 +3015,28 @@ if get(ENV,"JM_HATPROBE","") != ""
             TRK_CAL.on && println("   spline s=", _s, " lat 0 -> ", round(GPLTrack.trk_height(TRKALT, _s, 0.0) + TRK_CAL.off, digits=3), "  lat +3 -> ", round(GPLTrack.trk_height(TRKALT, _s, 3.0) + TRK_CAL.off, digits=3), "  lat -3 -> ", round(GPLTrack.trk_height(TRKALT, _s, -3.0) + TRK_CAL.off, digits=3))
         end
         flush(stdout); haskey(ENV, "JM_HATPROBE_EXIT") && exit(0)
+    elseif startswith(spec, "cmp:")
+        # SINK-1 (PO 2026-09-25: "the user's car descends a meter or so into the road surface"): the
+        # player drives on ground_road (the .trk spline on the tarmac) but the EYE sees the mesh. Print
+        # both, across the road, round the lap. JM_HATPROBE="cmp:<s0>:<s1>:<step>" (+ JM_HATPROBE_EXIT=1).
+        _f = split(spec, ":"); _s0 = parse(Float64, _f[2]); _s1 = parse(Float64, _f[3]); _st = parse(Float64, _f[4])
+        println("== JM_HATPROBE cmp s=$_s0..$_s1 step $_st -- road (physics) minus mesh (drawn), lat -5 -3 0 3 5 ==")
+        _n = length(TRKSURF.pos); _ld = TRKSURF.lapdist
+        for _s in _s0:_st:_s1
+            _i = clamp(searchsortedlast(_ld, _s), 1, _n - 1); _fr = (_s - _ld[_i]) / max(_ld[_i+1] - _ld[_i], 1e-6)
+            _p = TRKSURF.pos[_i]; _q = TRKSURF.pos[_i+1]; _pp = TRKSURF.perp[_i]
+            _x = _p[1] + (_q[1]-_p[1])*_fr; _z = _p[3] + (_q[3]-_p[3])*_fr
+            _out = String[]
+            for _lat in (-5.0, -3.0, 0.0, 3.0, 5.0)
+                _wx = _x + _lat*_pp[1]; _wz = _z + _lat*_pp[3]
+                _h = JuliaMotor.hat3d(TERRAIN, _wx, _wz; ref=Inf); _r = ground_road(_wx, _wz)
+                push!(_out, (_h[3] && _r[2]) ? string(round(_r[1] - Float64(_h[1]), digits=3)) : "NaN")
+            end
+            _h0 = JuliaMotor.hat3d(TERRAIN, _x, _z; ref=Inf)
+            println("   cmp s=", round(_s, digits=1), " mesh0=", _h0[3] ? round(Float64(_h0[1]), digits=2) : NaN, " d=", join(_out, " "))
+        end
+        flush(stdout)
+        haskey(ENV, "JM_HATPROBE_EXIT") && exit(0)
     elseif startswith(spec, "cl:")
         # TRACKSMOOTH-2: walk the sim's OWN aligned centreline (TRKSURF.pos, the ribbon nodes) at a fine
         # step and print the physics ground height, so creases in the road mesh -- the player's "jounce
@@ -2935,7 +3053,7 @@ if get(ENV,"JM_HATPROBE","") != ""
             _h = JuliaMotor.hat3d(TERRAIN, _x, _z; ref=Inf)
             _hh = _h[3] ? Float64(_h[1]) : NaN
             if _h[3] && haskey(ENV, "JM_HATPROBE_TRK") && TRK_CAL.on   # TRACKSMOOTH-3: the .trk spline instead
-                _hh = GPLTrack.trk_height(TRKALT, _s * TRK_CAL.sscale, 0.0) + TRK_CAL.off
+                _hh = trk_road(_s, 0.0)   # SINK-1: the surface the car drives (spline + mesh correction)
             end
             if _h[3] && haskey(ENV, "JM_HATPROBE_SMOOTH")   # TRACKSMOOTH-2: report the filtered ground instead
                 _hdg = atan(_q[3]-_p[3], _q[1]-_p[1]); _sp = parse(Float64, get(ENV, "JM_GROUND_SMOOTH", "1.0"))
@@ -6572,12 +6690,18 @@ function terrain_roll(cs)
 end
 
 # ---- camera (pitch/roll = total body orientation, applied to the cockpit view only) ----
-const CHASE_D  = parse(Float32, get(ENV,"JM_CHASE_D","4.6"))    # metres behind the car
-# E102-S12: 1.35/0.80 -> 0.7/0.5, the gold's replay-chase height (E102-S11: from 1.35 m the level
-# megaphones project as a droop -- the PO's "axles pointing downward"; at 0.7 they read as the
-# gold's). JM_CHASE_H=1.35 JM_CHASE_LY=0.8 restores the old eye.
-const CHASE_H  = parse(Float32, get(ENV,"JM_CHASE_H","0.7"))    # metres above the car origin
-const CHASE_LY = parse(Float32, get(ENV,"JM_CHASE_LY","0.5"))   # look-at height 2 m ahead
+# CHASEGOLD-1 (PO 2026-09-25: "change the V chase view to be above and behind the user's car, as in the
+# gold standard watkins glen video, not directly behind the car as it is now"). Fitted to the gold
+# (`260802_watkinsGlen_nintendo.mp4`, t=40 s, a straight) with a pinhole model on four CAR-relative
+# features -- rear-tyre contact row 0.770 H, rear outer span 0.486 H, front-tyre top row 0.522 H, front
+# span 0.285 H -- whose real sizes were calibrated from our own capture at a known eye. The fit is exact
+# (4 equations, 4 unknowns): vertical FOV 51 deg, eye 1.93 m above the road, 5.75 m behind the car
+# origin (4.32 m behind the rear axle), pitched 9.5 deg down. E102-S12's 0.7 m eye was the gold REPLAY
+# chase height, not the V view. Old eye: JM_CHASE_D=4.6 JM_CHASE_H=0.7 JM_CHASE_LY=0.5 JM_CHASE_FOV=62.
+const CHASE_D  = parse(Float32, get(ENV,"JM_CHASE_D","5.75"))   # metres behind the car
+const CHASE_H  = parse(Float32, get(ENV,"JM_CHASE_H","1.93"))   # metres above the car origin (= the road)
+const CHASE_LY = parse(Float32, get(ENV,"JM_CHASE_LY","0.63"))  # look-at height 2 m ahead
+const PROJ_CHASE = Render.perspective_revz(deg2rad(parse(Float32, get(ENV,"JM_CHASE_FOV","51"))), Float32(W/H), 0.35f0, 3000f0)
 const CHASE_MIN = parse(Float64, get(ENV,"JM_CHASE_MIN","0.45"))  # E102-S12: eye never below road + this
 function camera(cs, pitch=0.0, roll=0.0)
     wx,wy,wz = cs.x, cs.y, -cs.z; fx,fz = cos(cs.θ), -sin(cs.θ)   # render world un-mirrors physics z
@@ -6595,7 +6719,7 @@ function camera(cs, pitch=0.0, roll=0.0)
             h = JuliaMotor.hat3d(TERRAIN, Float64(eye[1]), Float64(-eye[3]); ref=Inf)   # groundz is let-local
             h[3] && (eye[2] = max(eye[2], Float64(h[1]) + CHASE_MIN))
         end
-        return PROJ * Render.lookat(Float32.(eye), Float32.(ctr), Float32[0,1,0]), Float32.(eye)
+        return PROJ_CHASE * Render.lookat(Float32.(eye), Float32.(ctr), Float32[0,1,0]), Float32.(eye)
     end
     # COCKPIT: the camera takes yaw from the chassis and pitch/roll from the LOW-PASS head tilt (E53,
     # caller-supplied cam_pitch/cam_roll).  On a slow road bank that low-pass ≈ the chassis tilt, so the
@@ -7017,7 +7141,7 @@ function main()
             if hr.found
                 al = abs(hr.lateral)
                 if al < TRK_ROAD_LAT + TRK_BLEND
-                    ht = GPLTrack.trk_height(TRKALT, hr.lapdist * TRK_CAL.sscale, TRK_CAL.sign * hr.lateral) + TRK_CAL.off
+                    ht = trk_road(hr.lapdist, hr.lateral)
                     w = clamp((TRK_ROAD_LAT + TRK_BLEND - al) / TRK_BLEND, 0.0, 1.0)
                     g = Float32(w*ht + (1-w)*Float64(g))
                 end

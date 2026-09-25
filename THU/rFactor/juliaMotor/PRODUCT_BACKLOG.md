@@ -19155,3 +19155,50 @@ the grandstand and the banner are part of the main track mesh / landmass section
 Start/finish captures (s=3700..3890 and s=40, chase and cockpit) are queued.
 
 ### E102-S13 (Fable 5.1, 2026-09-19) — 🔴→✅ **regression from S12: "Julia appImage does not load the skidpad" (PO) — `UndefVarError: TERRAIN` in `camera()`.** The chase-eye HAT clamp assumed every track has a terrain; the skidpad builds none. Guarded with `@isdefined(TERRAIN)`; skidpad + Watkins smoke queued; repacked as the 260919b AppImage
+
+### PO request 2026-09-25 -- three Watkins Glen fixes against the gold (`260802_watkinsGlen_nintendo.mp4`)
+*"1. change the "V" chase view to be above and behind the user's car, as in the gold standard watkins glen video,
+not directly behind the car as it is now 2. fix the bug where the user's car descends a meter or so into the road
+surface, such that the car is half submerged in the track 3. the curves going into and out of the watkins glen
+carrosel/sweeper are piecewise linear rather than smooth curves as in the gold standard - make them smooth curves"*
+Evidence: `parity/po_260925/`.
+
+**SINK-1 -- the .trk physics road sat up to 0.65 m BELOW the drawn mesh.** New probe `JM_HATPROBE="cmp:s0:s1:step"`
+prints road (physics) minus mesh (drawn) at lateral -5/-3/0/+3/+5 round the lap. TRACKSMOOTH-3 calibrated the spline
+with ONE offset (the lap median, +0.089 m), but locally: -0.60 m for 400 m at s=2200..2440, -0.2..-0.65 m from
+s=3440 to the line, and a 0.5 m STEP at the wrap (the ribbon lap is 15 m longer than the .trk's, so `mod(s, total)`
+wrapped early). Fix: ribbon lapdist is stretched onto the .trk lap (`sscale` 0.99629 at WG) and a correction table
+(mesh - spline, 2 m x 5 laterals, Gaussian low-pass sigma 8 m along the lap) is added: `trk_road(s, lat)`, used by
+the player (`groundz_phys`) and the AI (`ground_road`). |road - mesh| p99 0.594 -> 0.077 m, worst -0.651 -> -0.399 m
+(s=2320 centre: -0.592 -> -0.002). The crease gate still holds: |dslope| per 0.5 m max 0.0013 lap-wide (limit 0.005).
+`JM_TRK_CORR=0` reverts, `JM_TRK_CORR_SIG` sets sigma.
+
+**CHASEGOLD-1 -- the V view moved up and back, fitted to the gold.** Pinhole fit on four car-relative features of
+the gold chase frame at t=40 s (rear-tyre contact row 0.770 H, rear span 0.486 H, front-tyre top row 0.522 H, front
+span 0.285 H; real sizes calibrated from our own capture at a known eye): vertical FOV 51 deg, eye 1.93 m above the
+road, 5.75 m behind the car origin, 9.5 deg down. Shipped as `JM_CHASE_D=5.75 JM_CHASE_H=1.93 JM_CHASE_LY=0.63`
+plus a chase-only projection `JM_CHASE_FOV=51` (replay cameras keep 62). Same-scale check vs the gold
+(`chase_fit_same_scale_vs_gold.jpg`): front-tyre tops and rear contacts on the same rows, rear span 190 vs 196 px.
+Old eye: `JM_CHASE_D=4.6 JM_CHASE_H=0.7 JM_CHASE_LY=0.5 JM_CHASE_FOV=62`. (E102-S12's 0.7 m came from the REPLAY
+chase of the race gold, not the V view -- the megaphones read slightly downward again from this height, as S11 said.)
+
+**ROADCURVE-1 -- the Loop's road polygons rounded onto the track curve (`roadcurve.jl`).** The .3do itself is
+polygonal there: rows 8.5-9 m apart, inner-curb chords to ~20 m (plot of the raw mesh). The 2,840 `0x0F` and 68
+`0x10` nodes the parser does not handle were checked first: 0x10 is a lap-distance switch whose children are
+already reached by other paths (walking them adds 0 triangles), so no finer LOD is being missed. The warp maps each
+vertex to (u, lat) on a Catmull-Rom through the low-passed ribbon (exact inverse, so original vertices never move)
+and splits an edge at F(mean u, mean lat) while that point is > 5 cm off the chord; the split depends only on the
+edge, so neighbours and coplanar overlays split identically (no T-junctions). Applied as a `GPL3DO.POSTPROC` so the
+HAT and the render draw the same curved mesh. WG: 13,953 -> 150,510 tris, straights untouched, fps unchanged
+(57-58 either way, 5 AI). The racing groove now shows under the car as in the gold (it was missing near the camera
+before). Default ON at Watkins Glen only; `JM_ROADCURVE=1` tries it elsewhere (Monza's banking deck crosses its own
+road -- check before enabling there), `JM_ROADCURVE=0` reverts, `JM_ROADCURVE_TOL` / `_SIG` tune.
+
+**Regression (same day).** Skidpad, Zandvoort, Monza, Spa, Ring: smoke clean with a chase capture each. SINK-1 is on
+wherever the .trk surface is, and `JM_HATPROBE=cmp` says it fixes every track, most of all the long ones
+(|road - mesh| p50 / p99, before -> after): WG 0.085/0.60 -> 0.004/0.09, Zandvoort 0.17/2.20 -> 0.012/0.28, Monza
+0.10/1.06 -> 0.001/0.045, **Spa 0.91/5.71 -> 0.003/0.10**, **Ring 0.51/4.78 -> 0.008/0.21**. Structures in the mesh
+above the road are rejected, not followed (> 0.5 m off the +-20 m running median, or > 2.5 m): Zandvoort 70
+samples (a +3.4 m deck), Ring 506 (the +8.4 m building plateau); Monza's -3.2 / Ring's -8.4 m residuals are those.
+Chase parity gate: DIFF 26.2 / 23.2 / 28.2 against a 1.73 in-run spread -- the camera move itself; frames reviewed
+(`chase_gate_ref_vs_new_ring.jpg`: all valid, no void) and **re-seeded**.
