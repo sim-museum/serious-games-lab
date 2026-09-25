@@ -1,5 +1,6 @@
 [deps]
 GLFW = "f7f18e0c-5ee9-5ccd-a5bf-e8befd85ed98"
+JRPhysics = "7c3b1a52-9e4d-4f61-b0a8-2d5e6f7a8b91"
 JuliaMotor = "5d2c8e17-4b6f-49a3-8e91-c7f2a0b35d48"
 ModelingToolkit = "961ee093-0014-501f-94e3-6117800e7a78"
 ModernGL = "66fc600b-dfda-50eb-8b99-91cfa97b1301"

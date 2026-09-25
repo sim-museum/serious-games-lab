@@ -19282,3 +19282,27 @@ The cl probe in TRK mode now reports the blended surface the car actually drives
 **Regression:** skidpad + all five tracks smoke clean; Spa fps 40 -> 42-44 (5 AI off); chase parity gate DIFF 31.4 / 17.3 /
 21.5 against a 0.29 in-run spread = the grade + horizon change, frames reviewed (`chase_gate_reseed2.jpg`) and re-seeded.
 Tools for the next round: `tools/goldsweep/` (sweep.sh, align.py with TWIN/PHASE anchors, colour.py, grass.py).
+
+### PHYSPRE-1 (PO 2026-09-25: "build the AppImage and push" / "pre-compile what speeds things up, but not what has minimal speed impact when making the AppImage")
+Measured first (JM_TIMING, Watkins Glen, 5-AI race launch / replay load, start to game loop):
+
+| configuration | race launch | replay | physics build phase |
+|---|---|---|---|
+| no sysimage, physics `include`d (as shipped before) | 243 s | 235 s | 93 s |
+| full 1.19 GB sysimage ("ivy", shipped in 260920h) | 209 s | 198 s | 87 s |
+| **JRPhysics package, no sysimage (this)** | **144 s** | **136 s** | **5 s** |
+
+**Why the sysimage never reached the physics:** `drive_rt.jl` / `drive_rt3d.jl` were `include`d as loose files -- by the
+sim AND by the sysimage trace -- so every launch made new modules, and nothing compiled for the car could be reused
+(E80-S3 had proved the build ~100 % compilation: a second build takes 0.1 s). New package `JRPhysics` owns those two
+modules and precompiles a workload of exactly what the sim runs (3-D player car + shared-system AI field). The sim now
+`using JRPhysics`; `JM_PHYS_INCLUDE=1` restores the loose-file load (the modules' ENV-read constants -- traction aid,
+contact caps -- are fixed at their defaults in the package; neither launcher nor sim sets them).
+**The trap found on the way:** the cache was still thrown away in the sim (5 s standalone, 96-99 s in the sim). Bisected
+file by file to `audio.jl` -> `using SampledSignals` (via PortAudio): loading it after the physics INVALIDATES the
+cached symbolic code. JRPhysics now loads SampledSignals itself before its workload; with every sim module loaded the
+player build is 6.3 s. Physics identical by construction (same source) and by check (v = 5.17 m/s after 60 steps both ways).
+**Sysimage dropped from the AppImage:** it now only buys package loading (~10-20 s of 144 s) for a 1.19 GB file, a
+multi-hour 13 GB build this box has OOM'd on, and it would have to be rebuilt to include JRPhysics or it invalidates
+the package cache. `jlracer.so` (and two older sysimages, 1.8 GB, that 260920h was also shipping) moved to
+`~/jr-parity/sysimage/`. Skidpad smoke 91 s clean.

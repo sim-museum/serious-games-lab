@@ -2,7 +2,7 @@
 
 julia_version = "1.12.6"
 manifest_format = "2.0"
-project_hash = "064f714fce82325b34feb0fd7b0dc63e4985707c"
+project_hash = "183e24eb40b16b7038eb1d86476103e5d755c79b"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "bbc22a9a08a0ef6460041086d8a7b27940ed4ffd"
@@ -849,6 +849,12 @@ deps = ["Artifacts", "Preferences"]
 git-tree-sha1 = "7204148362dafe5fe6a273f855b8ccbe4df8173e"
 uuid = "692b3bcd-3c85-4b1f-b108-f13ce0eb3210"
 version = "1.8.0"
+
+[[deps.JRPhysics]]
+deps = ["ModelingToolkit", "OrdinaryDiffEq", "PrecompileTools", "SampledSignals"]
+path = "../../JRPhysics"
+uuid = "7c3b1a52-9e4d-4f61-b0a8-2d5e6f7a8b91"
+version = "0.1.0"
 
 [[deps.Jieko]]
 deps = ["ExproniconLite"]

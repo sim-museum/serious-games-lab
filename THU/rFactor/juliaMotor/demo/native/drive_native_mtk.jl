@@ -10,8 +10,16 @@ using GLFW, ModernGL, LinearAlgebra, Dates, Serialization
 const _T0 = time()
 tstamp(lbl) = get(ENV,"JM_TIMING","0") != "0" && println("[t+", round(time()-_T0, digits=1), "s] ", lbl)
 using JuliaMotor, RFactorData
-include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","drive_rt.jl"))); using .DriveRT  # MTK physics (planar)
-include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","drive_rt3d.jl"))); using .DriveRT3D
+# PHYSPRE-1: the physics modules come from the JRPhysics PACKAGE, whose precompile image caches the compiled
+# car (player build 37.6 s -> 5.0 s measured). Included as loose files, every launch made new modules and
+# recompiled the car from scratch. JM_PHYS_INCLUDE=1 restores the loose-file load (their ENV knobs live).
+if get(ENV, "JM_PHYS_INCLUDE", "0") != "0"
+    include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","drive_rt.jl"))); using .DriveRT  # MTK physics (planar)
+    include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","drive_rt3d.jl"))); using .DriveRT3D
+else
+    using JRPhysics
+    using JRPhysics.DriveRT, JRPhysics.DriveRT3D
+end
 include(joinpath(@__DIR__,"people_filter.jl")); using .PeopleFilter   # E101: loose-people name rule, shared with its gate
 include(joinpath(@__DIR__,"gpl_lp.jl")); using .GPLLP                    # E84/E89: GPL .lp AI lines (race.lp speed table)
 include(joinpath(@__DIR__,"susp_pose.jl")); using .SuspPose
