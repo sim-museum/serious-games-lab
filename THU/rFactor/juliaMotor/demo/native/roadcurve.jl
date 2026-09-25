@@ -129,13 +129,27 @@ end
 
 """Round the mesh's road-area polygons onto the curve through `P0` (closed ribbon nodes, x/y ground
 plane, low-passed by `sig` nodes), with `perp1` the ribbon's lateral direction at node 1 (lateral sign)."""
-function curve_mesh(m::Mesh3DO, P0::Vector{NTuple{2,Float64}}, perp1::NTuple{2,Float64}; tol=0.05, maxlat=25.0, maxdepth=5, sig=2.0)
+function curve_mesh(m::Mesh3DO, P0::Vector{NTuple{2,Float64}}, perp1::NTuple{2,Float64}; tol=0.05, maxlat=25.0, maxdepth=5, sig=2.0,
+                    heights::Vector{Float64}=Float64[], overhead=4.0, overlat=12.0)
     P = smooth_loop(P0, sig)
     c0 = Curve(P, 1.0); q = cpoint(c0, 0.0); t = hypot(q[3], q[4])
     sgn = ((-q[4]/t)*perp1[1] + (q[3]/t)*perp1[2]) >= 0 ? 1.0 : -1.0
     c = Curve(P, sgn)
     cache = Dict{NTuple{3,Float32},Tuple{Float64,Float64,Bool}}()
-    mk(p, n, uv) = (pr = get!(() -> project(c, Float64(p[1]), Float64(p[2]), maxlat), cache, p); V(p, n, uv, pr[1], pr[2], pr[3]))
+    # Structures OVER the road (bridge decks, Monza's banking overpass) must not be bent to follow the road
+    # beneath them: a vertex within `overlat` of the centreline and more than `overhead` above the ribbon
+    # stays out of the warp (its edges stay straight).
+    nover = Ref(0)
+    function proj_ok(p)
+        pr = project(c, Float64(p[1]), Float64(p[2]), maxlat)
+        if pr[3] && !isempty(heights) && abs(pr[2]) < overlat
+            nh = length(heights); u = pr[1]; i = floor(Int, u); f = u - i
+            h = heights[mod1(i, nh)]*(1-f) + heights[mod1(i+1, nh)]*f
+            Float64(p[3]) - h > overhead && (nover[] += 1; return (0.0, 0.0, false))
+        end
+        pr
+    end
+    mk(p, n, uv) = (pr = get!(() -> proj_ok(p), cache, p); V(p, n, uv, pr[1], pr[2], pr[3]))
     out = Tri[]; groups = Int[]; nsplit = 0
     DIAG = get(ENV, "JM_ROADCURVE_DIAG", "0") != "0"; hist = Dict{Int,Int}(); hadd = Dict{Int,Int}(); tx = Dict{String,Int}()
     for (t, g) in zip(m.tris, m.groups)
@@ -156,7 +170,7 @@ function curve_mesh(m::Mesh3DO, P0::Vector{NTuple{2,Float64}}, perp1::NTuple{2,F
         println("  [roadcurve] added tris by texture: ", join(["$k=$v" for (k, v) in sort(collect(tx), by = x -> -x[2])], " "))
     end
     (Mesh3DO(out, m.textures, groups), (tris_in = length(m.tris), tris_out = length(out), curved = nsplit,
-                                        verts = length(cache), mapped = nok))
+                                        verts = length(cache), mapped = nok, overhead = nover[]))
 end
 
 end # module

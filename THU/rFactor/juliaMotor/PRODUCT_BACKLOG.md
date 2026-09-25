@@ -19202,3 +19202,83 @@ above the road are rejected, not followed (> 0.5 m off the +-20 m running median
 samples (a +3.4 m deck), Ring 506 (the +8.4 m building plateau); Monza's -3.2 / Ring's -8.4 m residuals are those.
 Chase parity gate: DIFF 26.2 / 23.2 / 28.2 against a 1.73 in-run spread -- the camera move itself; frames reviewed
 (`chase_gate_ref_vs_new_ring.jpg`: all valid, no void) and **re-seeded**.
+
+### PO request 2026-09-25 (second) -- smoothed curves on every track; every track vs its gold video; the WG start banner twice
+*"turn on smoothed curves on every track (not just watkin's glen). Check every track vs. gold standard track video and
+correct any differences - for example the banner at the start/finish line at Watkin's Glen is placed twice compared to
+gold standard - fix this"*. Evidence: `parity/po_260925/`; working set `~/jr-parity/p2/`.
+
+**Method (the all-track comparison).** Chase-view capture every 20 m (WG, Zandvoort, Monza), 40 m (Spa), 50 m (Ring) --
+`~/jr-parity/p2/sweep.sh`; the five `26080x_*_nintendo.mp4` golds at 1 fps; `align.py` pairs them. Image features across
+two renderers proved too weak to align on (a free DP parked on one spot; a free global phase picked 860 m where the gold
+starts at 3730 m), so the alignment is ANCHORED: the gold lap window and start point read by eye from the start/finish
+views, time -> distance through the PO's own telemetry speed profile scaled to the gold lap time. Good to ~100 m, which is
+enough to review scenery pair by pair (pages `pairs_<track>_NN.jpg`).
+
+**ROADCURVE-1 on every track.** Default ON everywhere (`JM_ROADCURVE=0` reverts). New guard: a vertex within 12 m of the
+centreline and > 4 m above the ribbon (a bridge deck, Monza's banking overpass) stays out of the warp.
+
+**OBJDUP-2 -- the WG start banner drawn twice (the PO's example).** The banner is `tpole3` (KENDALL + telegraph poles),
+not `startbox` (which OBJDUP-1 culled by name on 09-19). `tpole3.3do` is TWO single-sided boards 1.5 m apart (y=+-0.75),
+each with its own banner and pole pair; GPL culls back faces so one shows, we drew both (two banners, four poles).
+Fixed by rule, not name: an object whose area is >= 40 % back-to-back parallel faces of one texture, 0.2-3 m apart, is
+drawn culled, keeping the faces that point OUTWARD from its centre (geometric, so a model's winding convention cannot pick
+the wrong side). It picks tpole3 (100 %) and startbox (46 %) -- and for startbox chooses the same face as OBJDUP-1's
+hand-tuned cull, an independent check. Census across all placed objects printed with `JM_TWINBOARD_DIAG=1`;
+`JM_TWINBOARD_CULL=0` reverts. Capture: one banner, one pole each side, as the gold grid (260915 race gold t=68 s).
+
+**HORIZ3DO-1 -- the horizon is now GPL's own `horiz.3do` on every track.** `build_horizon` guessed a layout from panel
+names and its texture lookup PREFIX-matches: at WG `horiz0` matched one of the four 90-degree panels horiz01..04 and wrapped
+it round 360 degrees -- the blurred green-brown smear where the gold shows crisp hills. Every track ships `horiz.3do` with
+each panel's exact azimuth/elevation (WG hills 0..+4.3 deg over a `shoriz` band; Zandvoort 6 panels + 13 cloud cards;
+Monza and the Ring their own sky and ground). `Render.build_horizon_3do` draws its textured triangles camera-centred,
+scaled to 2.5 km (inside the far plane, angles kept); near-white haze rows are keyed out only where the file has no sky of
+its own. Monza's pale "floor" beyond the trees is gone (GPL's ground texture fills it). `JM_HORIZ3DO=0` reverts.
+
+**CULLBOUND-1 -- Monza's forest walls hung in the air.** Objects were distance- and frustum-culled by their ORIGIN with a
+fixed 80 m sphere; Monza's forest objects run 185-372 m from their origin. A wall whose origin fell behind the camera
+vanished while most of it lay ahead, and the walls still in view read as truncated canopies crossing over the road
+(isolated with the new `JM_LAYERS_OFF=obj,bb,hz`; footprints printed with `JM_OBJNEAR="gx,gy,r"`). Culling now uses each
+object's world-space bounding sphere (radii p50 73 m, max 315 m at Monza). Spa, 1,446 objects: 40 fps before, 42-44 after.
+`JM_CULLBOUND=0` reverts.
+
+**GRADEGOLD-1 -- road and vegetation drawn too bright on every track.** Measured on the aligned pairs (road patch beside
+the rear wheels; saturated vegetation pixels in the lower frame), ours / gold: road WG 1.37, Zandvoort 1.53, Spa 1.29,
+Ring 1.32, Monza 0.82 (its own E57 grade over-corrected); grass WG 1.30, Zandvoort 1.19, Spa 1.24, Ring 1.20, Monza 1.23.
+Per-surface gains on the track draw: road textures x0.72 (`JM_ROAD_GAIN`), Monza's road grade 0.42 -> 0.51, vegetation
+textures (classified by the texture's own mean colour) x0.81 (`JM_VEG_GAIN`).
+
+**Differences seen and NOT changed (the PO's call):** trackside crowds are much sparser than every gold -- that is the
+standing rule "remove line-of-people objects if there's any chance they could be in the road or partially hanging in air"
+(E79/E101); red verge marker posts at Zandvoort (gold) are absent -- not yet traced.
+
+**Results (final sweeps, same aligned positions as the "before" measurement), ours / gold:**
+
+| track | road before -> after | grass before -> after |
+|---|---|---|
+| Watkins Glen | 1.37 -> 0.99 | 1.30 -> 1.03 |
+| Zandvoort | 1.53 -> 1.09 | 1.19 -> 0.97 |
+| Monza | 0.82 -> 0.96 | 1.23 -> 1.01 |
+| Spa | 1.29 -> 0.92 | 1.24 -> 1.03 |
+| Nürburgring | 1.32 -> 0.94 | 1.20 -> 0.96 |
+
+(WG's autumn `Grass`/`bank*` are khaki, not green-dominant -- vegetation is also matched by NAME: gras/bank/verge/field.)
+
+**HORIZ3DO-1 addendum -- absolute height.** GPL places horiz.3do in absolute track height; scaled by k about the camera, the
+ring is lifted by (1-k) x camera height so every vertex keeps its true elevation angle. At the Ring (camera ~560 m up) the
+full lift had drawn the hills ~2.4 deg too high, filling the sky (`ring_horizon_lift.jpg`).
+
+**SINK-1b -- the correction on every track, made safe.** Turning ROADCURVE on everywhere re-ran the crease gate on all five
+tracks and found a 3.4 m step at the Ring (s=3935) and a 0.68 dslope spike (s=3494-3512). Both were SINK-1's own outlier
+rejection: the Ring's .trk spline is locally 3-3.7 m off the drawn road, and a running-median / absolute-cap rule could
+not tell that from a bridge, so it rejected the samples and left steps at the edges. Now: (a) the mesh is sampled at the
+surface nearest the spline from above (`hat3d(ref = spline + 3 m)`), so a deck over the road is never the target; (b) no
+statistical rejection; (c) a CONFIDENCE table -- where the smoothed correction cannot fit the mesh within 0.3-0.8 m over
++-10 m, the player/AI ground fades from the spline to the drawn mesh (536 of 57,105 samples at the Ring, 44 at Monza).
+Crease gate inside each lap, max |dslope| per 0.5 m: WG 0.0013, Zandvoort 0.0021, Monza 0.0029, Ring 0.0043, Spa 0.0197
+at ONE spot (s=13770, a mesh-fallback crease near the pits; p99.9 0.0029) -- the only value over the 0.005 limit, logged.
+The cl probe in TRK mode now reports the blended surface the car actually drives.
+
+**Regression:** skidpad + all five tracks smoke clean; Spa fps 40 -> 42-44 (5 AI off); chase parity gate DIFF 31.4 / 17.3 /
+21.5 against a 0.29 in-run spread = the grade + horizon change, frames reviewed (`chase_gate_reseed2.jpg`) and re-seeded.
+Tools for the next round: `tools/goldsweep/` (sweep.sh, align.py with TWIN/PHASE anchors, colour.py, grass.py).

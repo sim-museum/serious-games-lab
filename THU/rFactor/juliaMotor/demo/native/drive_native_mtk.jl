@@ -105,8 +105,8 @@ const SPA      = TRACKSEL == "spa"      # E71-S12: needs the road-only centrelin
 # The default track bright/ambfill (0.72/0.34) is fine on the other 4 GPL tracks, so this is gated to Monza.
 # Road: pull bright/ambfill WAY down to land the asphalt on a real grey.  Barriers ("dark" category):
 # lift like the trackside objects do.  Tunable via JM_MONZA_* if the PO wants to re-grade.
-const MZ_ROAD_B = parse(Float64, get(ENV, "JM_MONZA_ROAD_B", "0.42"))   # road brightness  (default 0.72)
-const MZ_ROAD_A = parse(Float64, get(ENV, "JM_MONZA_ROAD_A", "0.10"))   # road ambient fill (default 0.34)
+const MZ_ROAD_B = parse(Float64, get(ENV, "JM_MONZA_ROAD_B", "0.51"))   # GRADEGOLD-1 (2026-09-25): 0.42 measured 0.82x the gold asphalt -> x1.22   # road brightness  (default 0.72)
+const MZ_ROAD_A = parse(Float64, get(ENV, "JM_MONZA_ROAD_A", "0.12"))   # road ambient fill (default 0.34)
 const MZ_DARK_B = parse(Float64, get(ENV, "JM_MONZA_DARK_B", "1.05"))   # barrier brightness
 const MZ_DARK_A = parse(Float64, get(ENV, "JM_MONZA_DARK_A", "0.55"))   # barrier ambient fill (lift the carbonized black)
 const MZ_BANK_B = parse(Float64, get(ENV, "JM_MONZA_BANK_B", "0.55"))   # sopraelevata banking deck: tone the glaring white concrete down toward grey
@@ -1545,6 +1545,7 @@ if SKIDPAD
     const TRK_BLEND = 1.0
     const TRK_CORR_ON = false
     trk_road(s, lat) = 0.0
+    trk_conf(s, lat) = 0.0
     ground_road(x, z) = (0.0, true)
 else
     tstamp("track parse begins"); print("loading GPL ", GPLNAME, "… "); flush(stdout)
@@ -1619,18 +1620,18 @@ else
     end
     # ROADCURVE-1 (PO 2026-09-25): round the track .3do's polygonal curves onto the racing ribbon's
     # curve (see roadcurve.jl). Installed as a parse post-pass so the render extraction below (which
-    # re-parses ZTRK) draws exactly the geometry the physics HAT is built from. Default ON at Watkins
-    # Glen only -- the PO's report and the one track verified against its gold; JM_ROADCURVE=1/0 forces.
+    # re-parses ZTRK) draws exactly the geometry the physics HAT is built from. JM_ROADCURVE=0 disables.
     # JM_ROADCURVE_TOL = the chord tolerance (m) below which an edge stays straight.
-    const ROADCURVE_ON = get(ENV, "JM_ROADCURVE", GPLNAME == "watglen" ? "1" : "0") != "0"
+    # 2026-09-25 (PO: "turn on smoothed curves on every track"): default ON everywhere.
+    const ROADCURVE_ON = get(ENV, "JM_ROADCURVE", "1") != "0"
     const TRACKMESH0C = if ROADCURVE_ON
-        let P = [(p[1], p[3]) for p in RIBBON0.pos], q = RIBBON0.perp[1], tol = parse(Float64, get(ENV, "JM_ROADCURVE_TOL", "0.05")), sig = parse(Float64, get(ENV, "JM_ROADCURVE_SIG", "2.0"))
-            length(P) > 2 && hypot(P[end][1]-P[1][1], P[end][2]-P[1][2]) < 0.5 && pop!(P)   # closed loop, no repeated node
-            post(path, m) = abspath(path) == abspath(ZTRK) ? RoadCurve.curve_mesh(m, P, (q[1], q[3]); tol=tol, sig=sig)[1] : m
+        let P = [(p[1], p[3]) for p in RIBBON0.pos], HS = [p[2] for p in RIBBON0.pos], q = RIBBON0.perp[1], tol = parse(Float64, get(ENV, "JM_ROADCURVE_TOL", "0.05")), sig = parse(Float64, get(ENV, "JM_ROADCURVE_SIG", "2.0"))
+            length(P) > 2 && hypot(P[end][1]-P[1][1], P[end][2]-P[1][2]) < 0.5 && (pop!(P); pop!(HS))   # closed loop, no repeated node
+            post(path, m) = abspath(path) == abspath(ZTRK) ? RoadCurve.curve_mesh(m, P, (q[1], q[3]); tol=tol, sig=sig, heights=HS)[1] : m
             Render.GPL3DO.POSTPROC[] = post
-            mc, st = RoadCurve.curve_mesh(TRACKMESH0, P, (q[1], q[3]); tol=tol, sig=sig)
+            mc, st = RoadCurve.curve_mesh(TRACKMESH0, P, (q[1], q[3]); tol=tol, sig=sig, heights=HS)
             println("  [roadcurve] ON: ", st.tris_in, " -> ", st.tris_out, " tris (", st.curved, " polygons rounded; ",
-                    st.mapped, "/", st.verts, " vertices in the track frame; tol ", tol, " m; JM_ROADCURVE=0 disables)")
+                    st.mapped, "/", st.verts, " vertices in the track frame, ", st.overhead, " left alone as overhead; tol ", tol, " m; JM_ROADCURVE=0 disables)")
             mc
         end
     else
@@ -1693,7 +1694,7 @@ else
     const TRK_CORR_LAT = (-5.0, -2.5, 0.0, 2.5, 5.0)
     const TRK_CORR = let
         if !TRK_CORR_ON
-            (ds = 1.0, t = zeros(1, 5))
+            (ds = 1.0, t = zeros(1, 5), cf = ones(1, 5))
         else
             n = max(8, round(Int, LAPLEN / 2.0)); ds = LAPLEN / n
             _ld = TRKSURF.lapdist; _np = length(TRKSURF.pos)
@@ -1704,22 +1705,16 @@ else
                 p = TRKSURF.pos[k]; q = TRKSURF.pos[k+1]; pp = TRKSURF.perp[k]
                 x = p[1] + (q[1]-p[1])*fr; z = p[3] + (q[3]-p[3])*fr
                 for (j, lat) in enumerate(TRK_CORR_LAT)
-                    h = JuliaMotor.hat3d(TERRAIN, x + lat*pp[1], z + lat*pp[3]; ref=Inf)
-                    h[3] && (raw[i, j] = Float64(h[1]) - (GPLTrack.trk_height(TRKALT, s * TRK_SSCALE, TRK_CAL.sign * lat) + TRK_CAL.off))
+                    hs = GPLTrack.trk_height(TRKALT, s * TRK_SSCALE, TRK_CAL.sign * lat) + TRK_CAL.off
+                    h = JuliaMotor.hat3d(TERRAIN, x + lat*pp[1], z + lat*pp[3]; ref=hs + 3.0)   # the road, not a deck over it
+                    h[3] || (h = JuliaMotor.hat3d(TERRAIN, x + lat*pp[1], z + lat*pp[3]; ref=Inf))
+                    h[3] && (raw[i, j] = Float64(h[1]) - hs)
                 end
             end
-            # Outliers are NOT road: a bridge deck over the track (Zandvoort +3.4 m), the Ring's building plateau
-            # in the HAT (+8.4 m). Real spline error is smooth along the lap (Spa reaches -1.97 m), so a sample is
-            # dropped when it sits > 0.5 m off its own +-20 m running median, or beyond 2.5 m outright.
+            # Structures over the road are skipped by the ref'd query above (a deck is not the surface nearest the
+            # spline). No statistical rejection: a running-median rule could not tell a bridge from a genuine 3 m
+            # spline error (the Ring, s=3490-3510) and left steps at the edges of what it rejected.
             nrej = 0
-            let kmed = round(Int, 20.0 / ds), r0 = copy(raw)
-                for j in 1:5, i in 1:n
-                    v = r0[i, j]; isnan(v) && continue
-                    win = filter(!isnan, [r0[mod1(i + m, n), j] for m in -kmed:kmed])
-                    md = sort!(win)[div(length(win) + 1, 2)]
-                    (abs(v - md) > 0.5 || abs(v) > 2.5) && (raw[i, j] = NaN; nrej += 1)
-                end
-            end
             sig = parse(Float64, get(ENV, "JM_TRK_CORR_SIG", "8.0")); kw = ceil(Int, 3sig / ds)
             w = [exp(-0.5 * (m*ds/sig)^2) for m in -kw:kw]
             t = zeros(n, 5)
@@ -1731,12 +1726,24 @@ else
                 end
                 t[i, j] = b > 0 ? a / b : 0.0
             end
+            # CONFIDENCE: where the smooth correction cannot follow the mesh (a local spline error sharper than
+            # sigma), the spline is not the road -- fade to the drawn mesh there. c = 1 while the worst residual in
+            # +-10 m is under 0.3 m, 0 above 0.8 m.
+            kc = round(Int, 10.0 / ds); cf = ones(n, 5)
+            for j in 1:5, i in 1:n
+                mx = 0.0
+                for m in -kc:kc
+                    v = raw[mod1(i + m, n), j]; isnan(v) || (mx = max(mx, abs(v - t[mod1(i + m, n), j])))
+                end
+                cf[i, j] = clamp(1.0 - (mx - 0.3) / 0.5, 0.0, 1.0)
+            end
+            nlow = count(<(0.99), cf)
             fin = filter(!isnan, raw); res = sort!(abs.(filter(!isnan, raw .- t)))
             println("  [trksurf] SINK-1 correction: sscale ", round(TRK_SSCALE, digits=5), ", mesh-spline raw min ",
                     round(minimum(fin), digits=3), " max ", round(maximum(fin), digits=3), " m -> residual p50 ",
                     round(res[div(length(res)+1, 2)], digits=3), " p99 ", round(res[max(1, round(Int, 0.99*length(res)))], digits=3),
-                    " m (sigma ", sig, " m; ", nrej, " outlier samples dropped; JM_TRK_CORR=0 disables)")
-            (ds = ds, t = t)
+                    " m (sigma ", sig, " m; spline confidence < 1 on ", nlow, " of ", 5n, " samples -> mesh there; JM_TRK_CORR=0 disables)")
+            (ds = ds, t = t, cf = cf)
         end
     end
     # correction at ribbon lapdist s, ribbon lateral lat: Catmull-Rom along the lap (C1), linear across
@@ -1749,6 +1756,15 @@ else
         cr(jj) = (p0 = t[mod1(i, n), jj]; p1 = t[mod1(i+1, n), jj]; p2 = t[mod1(i+2, n), jj]; p3 = t[mod1(i+3, n), jj];
                   0.5 * (2p1 + (-p0 + p2)*f + (2p0 - 5p1 + 4p2 - p3)*f^2 + (-p0 + 3p1 - 3p2 + p3)*f^3))
         cr(j) * (1 - g) + cr(j + 1) * g
+    end
+    function trk_conf(s, lat)
+        TRK_CORR_ON || return 1.0
+        c = TRK_CORR.cf; n = size(c, 1)
+        u = mod(s, LAPLEN) / TRK_CORR.ds; i = floor(Int, u); f = u - i
+        l = clamp(lat, TRK_CORR_LAT[1], TRK_CORR_LAT[end])
+        j = clamp(floor(Int, (l - TRK_CORR_LAT[1]) / 2.5) + 1, 1, 4); g = (l - TRK_CORR_LAT[j]) / 2.5
+        a0 = c[mod1(i+1, n), j]*(1-f) + c[mod1(i+2, n), j]*f; a1 = c[mod1(i+1, n), j+1]*(1-f) + c[mod1(i+2, n), j+1]*f
+        a0*(1-g) + a1*g
     end
     # THE road height the player and the AI drive on (ribbon lapdist, ribbon lateral)
     trk_road(s, lat) = GPLTrack.trk_height(TRKALT, s * TRK_SSCALE, TRK_CAL.sign * lat) + TRK_CAL.off + trk_corr(s, lat)
@@ -1764,7 +1780,7 @@ else
                 al = abs(hr.lateral)
                 if al < TRK_ROAD_LAT + TRK_BLEND
                     ht = trk_road(hr.lapdist, hr.lateral)
-                    w = clamp((TRK_ROAD_LAT + TRK_BLEND - al) / TRK_BLEND, 0.0, 1.0)
+                    w = clamp((TRK_ROAD_LAT + TRK_BLEND - al) / TRK_BLEND, 0.0, 1.0) * trk_conf(hr.lapdist, hr.lateral)   # SINK-1b: mesh where the spline is unreliable
                     return (ok ? w*ht + (1-w)*hm : ht, true)
                 end
             end
@@ -3053,7 +3069,7 @@ if get(ENV,"JM_HATPROBE","") != ""
             _h = JuliaMotor.hat3d(TERRAIN, _x, _z; ref=Inf)
             _hh = _h[3] ? Float64(_h[1]) : NaN
             if _h[3] && haskey(ENV, "JM_HATPROBE_TRK") && TRK_CAL.on   # TRACKSMOOTH-3: the .trk spline instead
-                _hh = trk_road(_s, 0.0)   # SINK-1: the surface the car drives (spline + mesh correction)
+                _hh = ground_road(_x, _z)[1]   # SINK-1b: the surface the car drives (spline + correction, mesh where unreliable)
             end
             if _h[3] && haskey(ENV, "JM_HATPROBE_SMOOTH")   # TRACKSMOOTH-2: report the filtered ground instead
                 _hdg = atan(_q[3]-_p[3], _q[1]-_p[1]); _sp = parse(Float64, get(ENV, "JM_GROUND_SMOOTH", "1.0"))
@@ -3231,6 +3247,50 @@ const W, H = 1440, 810
 # JM_OBJ_FF flips the winding convention if the culled world renders inside-out (mirror remap parity).
 const OBJ_CULLFACE = get(ENV,"JM_OBJ_CULL","0") != "0"
 const STARTBOX_CULL = get(ENV,"JM_STARTBOX_CULL","1") != "0"   # OBJDUP-1: cull the start gantry (see the OBJECTS draw loop)
+# OBJDUP-2 (PO 2026-09-25: "the banner at the start/finish line at Watkins Glen is placed twice compared to
+# gold standard"). OBJDUP-1 culled `startbox` by name, but the banner the PO means is `tpole3` -- the
+# KENDALL banner on telegraph poles -- and it is built the same way: TWO single-sided boards 1.5 m apart
+# (y = +0.75 and -0.75), each with its own banner quad and its own pole pair. GPL culls back faces, so
+# from either side exactly one board shows; drawn two-sided we showed both: two banners, four poles.
+# Rule instead of a name list: an object whose area is mostly back-to-back parallel faces of one texture
+# (0.2-3 m apart) and is small is a "twin board"; it is drawn culled, keeping the faces that point
+# OUTWARD from the object's centre (decided from the geometry, so a model's winding convention cannot
+# make it keep the wrong side). JM_TWINBOARD_CULL=0 reverts; JM_TWINBOARD_DIAG=1 prints every verdict.
+const TWINBOARD_CULL = get(ENV, "JM_TWINBOARD_CULL", "1") != "0"
+# diagnostic layer switches for attributing a pixel to a pass: JM_LAYERS_OFF="obj,bb,hz"
+const _LAYOFF = split(get(ENV, "JM_LAYERS_OFF", ""), ",")
+OBJBOUND = Tuple{NTuple{3,Float32},Float32}[]   # CULLBOUND-1 (filled with OBJECTS; empty on the Ring path -> origin fallback)
+const LAYOFF_OBJ = "obj" in _LAYOFF; const LAYOFF_BB = "bb" in _LAYOFF; const LAYOFF_HZ = "hz" in _LAYOFF
+const TWINBOARD = Dict{String,Bool}()     # object name -> true: keep CCW (GL front) faces; false: keep CW
+function twinboard_classify!(nm, parts)
+    (TWINBOARD_CULL && !haskey(TWINBOARD, nm)) || return
+    P = NTuple{3,Float64}[]; Nn = NTuple{3,Float64}[]; Cc = NTuple{3,Float64}[]; Ar = Float64[]; Tx = String[]
+    for pp in parts, k in 1:33:length(pp.verts)-32
+        v = pp.verts
+        a = (Float64(v[k]), Float64(v[k+1]), Float64(v[k+2])); b = (Float64(v[k+11]), Float64(v[k+12]), Float64(v[k+13])); c = (Float64(v[k+22]), Float64(v[k+23]), Float64(v[k+24]))
+        e1 = b .- a; e2 = c .- a; n = (e1[2]*e2[3]-e1[3]*e2[2], e1[3]*e2[1]-e1[1]*e2[3], e1[1]*e2[2]-e1[2]*e2[1])
+        l = sqrt(sum(n .^ 2)); l > 1e-9 || continue
+        push!(Nn, n ./ l); push!(Cc, (a .+ b .+ c) ./ 3); push!(Ar, l/2); push!(Tx, pp.tex)
+    end
+    n = length(Ar); (2 <= n <= 400) || return
+    tot = sum(Ar); paired = falses(n)
+    for i in 1:n, j in i+1:n
+        (Tx[i] == Tx[j] && Ar[i] > 0.05 && Ar[j] > 0.05) || continue
+        sum(Nn[i] .* Nn[j]) < -0.99 || continue
+        d = Cc[j] .- Cc[i]; sep = sum(d .* Nn[i]); 0.2 < abs(sep) < 3.0 || continue
+        sqrt(max(sum(d .^ 2) - sep^2, 0.0)) < 2.0 || continue
+        paired[i] = paired[j] = true
+    end
+    frac = sum(Ar[paired]) / tot
+    ctr = (sum(Cc[i][1]*Ar[i] for i in 1:n), sum(Cc[i][2]*Ar[i] for i in 1:n), sum(Cc[i][3]*Ar[i] for i in 1:n)) ./ tot
+    outw = sum(Ar[i] * sign(sum(Nn[i] .* (Cc[i] .- ctr))) for i in 1:n if paired[i]; init = 0.0)
+    istwin = frac >= 0.4
+    get(ENV, "JM_TWINBOARD_DIAG", "0") != "0" && frac > 0 &&
+        println("  [twinboard] ", rpad(nm, 12), " tris ", n, "  back-to-back area ", round(frac, digits=2),
+                "  outward(CCW) ", round(outw / max(sum(Ar[paired]), 1e-9), digits=2), istwin ? "  -> CULLED" : "")
+    istwin && (TWINBOARD[nm] = outw >= 0)
+    nothing
+end
 const OBJ_FF_CW    = get(ENV,"JM_OBJ_FF","cw") == "cw"
 # SPA-FPS-1 (2026-09-07): Spa's replay lap runs 30-41 fps (world draw 26 of 29 ms) with 600-1000 trackside
 # meshes inside this radius, the Ring 58 fps with ~190. JM_OBJ_CULL_D=<m> A/Bs the radius (2200 = the old value).
@@ -3826,6 +3886,44 @@ monza_surf(t) = (startswith(t,"trrow") || startswith(t,"asp")) ? :road :
                 :other
 tstamp("  [E80] track categories / crowd tint begins")
 const TRACKCAT = MONZA ? [monza_surf(lowercase(p.tex)) for p in TRACK] : Symbol[]
+# GRADEGOLD-1 (PO 2026-09-25: "check every track vs. gold standard track video and correct any differences").
+# Measured on the aligned gold/ours chase laps (median of road patches beside the rear wheels, and of
+# saturated vegetation pixels in the lower frame), ours / gold:
+#   road   WG 1.37  Zandvoort 1.53  Spa 1.29  Ring 1.32  (Monza 0.82 under its own E57 grade)
+#   grass  WG 1.30  Zandvoort 1.19  Spa 1.24  Ring 1.20  Monza 1.23
+# So every track's asphalt and vegetation ground were drawn ~1.4x / ~1.23x too bright. Per-surface gains
+# on the track draw: road textures (ROAD_TEX) x JM_ROAD_GAIN (0.72; Monza keeps its own road grade, raised
+# 0.42 -> 0.51), vegetation textures x JM_VEG_GAIN (0.81) -- vegetation = the texture's own mean colour is
+# green-dominant, so fences, rails, buildings and paint are untouched. 1.0 / 1.0 reverts.
+const ROAD_GAIN = parse(Float32, get(ENV, "JM_ROAD_GAIN", "0.72"))
+const VEG_GAIN  = parse(Float32, get(ENV, "JM_VEG_GAIN", "0.81"))
+const TRACKGAIN = let cache = Dict{String,Float32}()
+    function vegtex(t)
+        get!(cache, t) do
+            r = Render.tex_rgba(TEXIDX, t); r === nothing && return 1f0
+            w, h, px = r; n = w*h; (n > 0 && length(px) >= 4n) || return 1f0
+            sr = 0.0; sg = 0.0; sb = 0.0; c = 0
+            @inbounds for i in 0:max(1, n ÷ 4096):n-1
+                px[4i+4] < 0x80 && continue
+                sr += px[4i+1]; sg += px[4i+2]; sb += px[4i+3]; c += 1
+            end
+            c == 0 && return 1f0
+            sr /= c; sg /= c; sb /= c
+            (sg > sb + 15 && sg >= sr - 10) ? VEG_GAIN : 1f0
+        end
+    end
+    g = Float32[]
+    for p in TRACK
+        lt = lowercase(p.tex)
+        # vegetation by NAME as well: Watkins Glen's autumn `Grass`/`bank*` are khaki, not green-dominant,
+        # and measured 1.24x the gold with the colour test alone
+        vegname = occursin("gras", lt) || startswith(lt, "bank") || occursin("verge", lt) || occursin("field", lt) || occursin("wiese", lt)
+        push!(g, ROAD_TEX(lt) ? (MONZA ? 1f0 : ROAD_GAIN) : vegname ? VEG_GAIN : vegtex(lt))
+    end
+    println("  [grade] GRADEGOLD-1: ", count(==(ROAD_GAIN), g), " road parts x", ROAD_GAIN, ", ", count(==(VEG_GAIN), g),
+            " vegetation parts x", VEG_GAIN, " (of ", length(g), ")")
+    g
+end
 # E57: in the COMBINED Monza the paddock + banking + road-course corner sections are placed OBJECTS
 # (not part of trrow01), drawn at full object brightness ⇒ the paddock/connector pavement glares white
 # and the banking deck blinds.  Grade those paved/banking objects by NAME like the track surfaces;
@@ -3850,7 +3948,13 @@ is_crowd_obj(nm) = occursin("stand", nm) || occursin("tribun", nm) || occursin("
 # GPL sky dome: the 12-panel horizon ring (horiz0..11), camera-centred backdrop.
 tstamp("  [E80] horizon ring begins")
 const HORIZON_RING = if !SKIDPAD
-    Render.build_horizon(TEXIDX)
+    # HORIZ3DO-1: the track's own horiz.3do (loose file first, then the .dat -- GPL's precedence);
+    # JM_HORIZ3DO=0 restores the name-guessing ring.
+    let hp = get(ENV, "JM_HORIZ3DO", "1") != "0" ? track_file("horiz", ".3do") : "",
+        hz = (hp != "" && isfile(hp)) ? Render.build_horizon_3do(TEXIDX, hp) : Render.Item[]
+        println("  [horizon] ", isempty(hz) ? "name-guessed ring (no usable horiz.3do)" : "horiz.3do: $(length(hz)) textured panels")
+        isempty(hz) ? Render.build_horizon(TEXIDX) : hz
+    end
 else   # skidpad: borrow the Nürburgring (Eifel forest) horizon backdrop for orientation
     try
         Render.build_horizon(Render.gpl_texture_index(joinpath(GPLBASE, "nurburg")))
@@ -4257,6 +4361,7 @@ let objnames=Set{String}()
                         end
                     end
                     lverts[inst.name] = vs
+                    twinboard_classify!(lowercase(inst.name), parts)
                     _tb = time(); objmesh[inst.name] = Render.build_gpl(parts, TEXIDX); _e92.bld[] += time() - _tb
                 end
             end
@@ -4840,6 +4945,44 @@ let objnames=Set{String}()
     global OBJECTS = [(objmesh[i.name], Render.translate(Float32[i.x, plozfp(i), -i.y]) * Render.roty(Float32(OBJ_YAW_SIGN * -i.yaw + objyawfix(i.name))), istree(i.name) && (graze_mesh || !(MONZA || WATGLEN)), (Float32(i.x), plozfp(i), Float32(-i.y)), lowercase(i.name))
                       for i in insts if get(objmesh,i.name,nothing) !== nothing &&
                           !drop(i.name) && !onroad_crowd(i) && !perp_crowd(i) && !onroad_bldg(i) && !onroad_fp(i) && (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && onground(i)]
+    # CULLBOUND-1 (2026-09-25, Monza gold parity): objects were distance- and frustum-culled by their ORIGIN
+    # with a fixed 80 m sphere, but Monza's forest walls run up to 185 m from their origin (trees01, trees50
+    # 372 m). A wall whose origin fell behind the camera vanished while most of it lay ahead, leaving the
+    # walls whose origins were still in view as truncated canopies hanging over the road. Cull on each
+    # object's real world-space bounding sphere instead. JM_CULLBOUND=0 restores the origin test.
+    global OBJBOUND = map(OBJECTS) do (items, mat, grz, opos, onm)
+        pts = NTuple{3,Float32}[]
+        for pp in get(objverts, onm, get(objverts, uppercase(onm), [])), k in 1:11:length(pp.verts)-10
+            w = mat * Float32[pp.verts[k], pp.verts[k+1], pp.verts[k+2], 1f0]; push!(pts, (w[1], w[2], w[3]))
+        end
+        isempty(pts) && return ((opos[1], opos[2], opos[3]), 80f0)
+        c = (sum(first, pts)/length(pts), sum(p -> p[2], pts)/length(pts), sum(last, pts)/length(pts))
+        r = maximum(p -> sqrt((p[1]-c[1])^2 + (p[2]-c[2])^2 + (p[3]-c[3])^2), pts)
+        (c, max(Float32(r), 5f0))
+    end
+    get(ENV, "JM_CULLBOUND", "1") == "0" && (OBJBOUND = [((o[4][1], o[4][2], o[4][3]), 80f0) for o in OBJECTS])
+    println("  [cull] CULLBOUND-1: object bounding radii p50 ", round(sort([b[2] for b in OBJBOUND])[max(1, length(OBJBOUND)÷2)], digits=1),
+            " m, max ", round(maximum([b[2] for b in OBJBOUND]; init=0f0), digits=1), " m")
+    # diag: JM_OBJNEAR="gx,gy,r" -- every drawn object near a GPL point, with its world footprint in the
+    # ribbon frame (lapdist / lateral / height above the road), per texture part.
+    if get(ENV, "JM_OBJNEAR", "") != ""
+        _q = parse.(Float64, split(ENV["JM_OBJNEAR"], ","))
+        for (items, mat, grz, opos, onm) in OBJECTS
+            hypot(opos[1] - _q[1], -opos[3] - _q[2]) < _q[3] || continue
+            for pp in get(objverts, onm, get(objverts, uppercase(onm), []))
+                v = pp.verts; lats = Float64[]; lds = Float64[]; hs = Float64[]
+                for k in 1:11:length(v)-10
+                    w = mat * Float32[v[k], v[k+1], v[k+2], 1f0]
+                    hr = JuliaMotor.hat(TRKSURF, Float64(w[1]), Float64(-w[3]))
+                    hr.found || continue
+                    push!(lats, hr.lateral); push!(lds, hr.lapdist); push!(hs, w[2] - hr.height)
+                end
+                isempty(lats) && continue
+                println("  [objnear] ", rpad(onm, 10), rpad(pp.tex, 9), " lat ", round.(extrema(lats), digits=1), " s ", round.(extrema(lds)), " h-road ", round.(extrema(hs), digits=1))
+            end
+        end
+        flush(stdout)
+    end
     # E97 (2026-08-30): watglen loads 66 trackside objects today; four E80/E88/E92-era logs record
     # 163 for the same track. Rather than argue from old logs -- which are themselves suspect, since
     # a Zandvoort-labelled one prints the identical 163/39/110 triple -- attribute every removal.
@@ -7142,7 +7285,7 @@ function main()
                 al = abs(hr.lateral)
                 if al < TRK_ROAD_LAT + TRK_BLEND
                     ht = trk_road(hr.lapdist, hr.lateral)
-                    w = clamp((TRK_ROAD_LAT + TRK_BLEND - al) / TRK_BLEND, 0.0, 1.0)
+                    w = clamp((TRK_ROAD_LAT + TRK_BLEND - al) / TRK_BLEND, 0.0, 1.0) * trk_conf(hr.lapdist, hr.lateral)   # SINK-1b: mesh where the spline is unreliable
                     g = Float32(w*ht + (1-w)*Float64(g))
                 end
             end
@@ -9723,7 +9866,7 @@ function main()
         # flip=true = the X-mirrored rear view: the clip-space flip reverses winding, so the
         # object-pass face cull swaps its culled side (same faces kept, opposite GL name).
         drawworld = function(vp_, eye_, flip::Bool)
-            HORIZON_RING === nothing || Render.draw_horizon(prog, HORIZON_RING, vp_, eye_; tint=GRADE.ringtint)   # GPL horizon ring backdrop
+            (HORIZON_RING === nothing || LAYOFF_HZ) || Render.draw_horizon(prog, HORIZON_RING, vp_, eye_; tint=GRADE.ringtint)   # GPL horizon ring backdrop
             # E60 (D6, 260801 gold video): TRACK-mesh signs (VREDESTEIN at Tarzan …) drew with uBackFlip=0, so
             # when the coplanar dedup keeps the away-facing decal the text renders MIRRORED.  Objects already
             # un-mirror back faces; give the track mesh the same treatment (road/kerb back faces are unseen).
@@ -9754,12 +9897,14 @@ function main()
                     cat = TRACKCAT[ti]
                     b, a = cat === :road ? (MZ_ROAD_B, MZ_ROAD_A) : cat === :dark ? (MZ_DARK_B, MZ_DARK_A) :
                            cat === :bank ? (MZ_BANK_B, MZ_BANK_A) : (MZ_OTHER_B, MZ_OTHER_A)
-                    Render.draw(prog, it, vp_, Render.ident(); bright=b, ambfill=a)
+                    gg = ti <= length(TRACKGAIN) ? TRACKGAIN[ti] : 1f0
+                    Render.draw(prog, it, vp_, Render.ident(); bright=b*gg, ambfill=a*gg)
                 else
                     # E69-S7: make the track-draw lighting tunable so the warm cast measured against
                     # gold (asphalt R-B: gold -2.5..-5.3, native +7.8..+12.7 across three tracks
                     # each) can be attributed rather than guessed at.
-                    Render.draw(prog, it, vp_, Render.ident(); bright=TRACK_BRIGHT, ambfill=TRACK_AMB)
+                    gg = ti <= length(TRACKGAIN) ? TRACKGAIN[ti] : 1f0   # GRADEGOLD-1
+                    Render.draw(prog, it, vp_, Render.ident(); bright=TRACK_BRIGHT*gg, ambfill=TRACK_AMB*gg)
                 end
             end
             (@isdefined SEC_FROM) && length(trackItems) >= SEC_FROM && glDisable(GL_CULL_FACE)   # E68 S9b: section cull off before objects
@@ -9777,9 +9922,11 @@ function main()
             # draw call each for everything inside the radius -- behind the camera and off to the sides included.
             # A clip-space test skips what this pass's camera cannot see (each mirror pass brings its own vp_,
             # so it culls for its own view). JM_FRUSTUM_CULL=0 reverts.
-            for (items,mat,grz,opos,onm) in OBJECTS                   # trackside objects (trees graze-fade; uBackFlip stays 1 when un-culled)
-                (eye_[1]-opos[1])^2+(eye_[2]-opos[2])^2+(eye_[3]-opos[3])^2 > (flip ? MIR_OBJ_CULL2 : OBJ_CULL2) && continue   # distance cull (mirror gets its own radius, S14)
-                FRUSTUM_CULL && !infrustum(vp_, opos, 80f0) && continue
+            for (oi,(items,mat,grz,opos,onm)) in enumerate(OBJECTS)   # trackside objects
+                LAYOFF_OBJ && continue   # (trees graze-fade; uBackFlip stays 1 when un-culled)
+                bc, br = oi <= length(OBJBOUND) ? OBJBOUND[oi] : ((opos[1], opos[2], opos[3]), 80f0)   # CULLBOUND-1: the object's real bounding sphere
+                max(sqrt((eye_[1]-bc[1])^2+(eye_[2]-bc[2])^2+(eye_[3]-bc[3])^2) - br, 0f0)^2 > (flip ? MIR_OBJ_CULL2 : OBJ_CULL2) && continue   # distance cull (mirror gets its own radius, S14)
+                FRUSTUM_CULL && !infrustum(vp_, bc, br) && continue
                 ob, oa = 1.05, 0.55                                    # default object grade (grandstands/buildings)
                 if MONZA                                               # E57: tone the combined-circuit paved/banking object surfaces
                     g = monza_obj_grade(onm)
@@ -9792,8 +9939,12 @@ function main()
                 # ghost copy. The A/B with E60's cull rule (parity/po_260919/wg_banner_cull_ab.jpg) kept
                 # the WRONG face (mirrored text): this model winds the other way. Cull it by name with the
                 # opposite face; nothing else changes. JM_STARTBOX_CULL=0 reverts.
-                _sbcull = STARTBOX_CULL && !OBJ_CULLFACE && onm == "startbox"
-                if _sbcull; glEnable(GL_CULL_FACE); glCullFace(xor(OBJ_FF_CW, flip) ? GL_BACK : GL_FRONT); glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 0); end
+                _twin = OBJ_CULLFACE ? nothing : get(TWINBOARD, onm, nothing)   # OBJDUP-2: geometric face choice
+                _sbcull = (STARTBOX_CULL && !OBJ_CULLFACE && onm == "startbox") || _twin !== nothing
+                if _sbcull
+                    glEnable(GL_CULL_FACE); glCullFace(_twin === nothing ? (xor(OBJ_FF_CW, flip) ? GL_BACK : GL_FRONT) : (xor(_twin, flip) ? GL_BACK : GL_FRONT))
+                    glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 0)
+                end
                 for it in items; Render.draw(prog, it, vp_, mat; bright=ob, ambfill=oa, graze=grz, tint=otint); end   # grandstands/buildings: ambfill kills the "post-Hiroshima carbonized" shadow faces → vibrant GPL look
                 if _sbcull; glDisable(GL_CULL_FACE); glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 1); end
             end
@@ -9806,6 +9957,7 @@ function main()
             OBJ_CULLFACE && glDisable(GL_CULL_FACE)
             glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 0)
             for (it,pos,w,h) in BILLBOARDS                            # trees/sprites
+                LAYOFF_BB && continue
                 (eye_[1]-pos[1])^2+(eye_[2]-pos[2])^2+(eye_[3]-pos[3])^2 > (flip ? MIR_BB_CULL2 : BB_CULL2) && continue       # distance cull (mirror radius, S14)
                 FRUSTUM_CULL && !infrustum(vp_, pos, max(w, h) + 5f0) && continue
                 Render.draw(prog, it, vp_, Render.billboard_model(pos,w,h,eye_); bright=BB_BRIGHT, ambfill=BB_AMB, unlit=!BB_LIT)  # E83-S3: unlit by default (GPL pre-lit art); E70-S7 tunables only matter with JM_BILLBOARD_LIT=1

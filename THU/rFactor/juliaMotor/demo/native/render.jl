@@ -319,6 +319,7 @@ uniform float uExposure;
 uniform vec3 uSunCol;     // directional-sun tint (warm white on the sunny grade; white = neutral GPL)
 uniform vec3 uAmbSky;     // up-facing sky-fill colour (cool blue on the sunny grade → cooler shadows)
 uniform float uSat;       // output saturation multiplier (>1 = punchier sunny colours; 1 = neutral)
+uniform int uSkyKey;      // HORIZ3DO-1: key out the panels' near-white haze rows (tracks whose horiz.3do has no sky)
 uniform vec3 uSkyTint;    // GPL horizon-ring multiply (warm/brighten the overcast band toward sunny)
 uniform vec3 uTint;       // per-draw colour multiply (default white = no-op; e.g. de-blue the crowd MIP)
 uniform int uMirrorGlass; // 1 for the cockpit mirror glass quads → unlit round-masked RTT sample (E64)
@@ -359,7 +360,14 @@ void main(){
       t.a = pow(t.a, 1.0 + smoothstep(140.0, 460.0, length(vWorld-uCamPos))*4.0);
     } else if(t.a < 0.04) discard;              // blended/opaque: plain soft alpha-to-coverage
   }
-  if(uSky==1){ o=vec4(t.rgb*uSkyTint, 1.0); return; }     // horizon ring: unlit, unfogged backdrop (tinted/brightened per grade)
+  if(uSky==1){                                            // HORIZ3DO-1: panels cut out their sky
+    if(t.a < 0.5) discard;
+    // the panels' upper rows are opaque near-white haze that GPL fogs into its own sky; ours is not
+    // that colour, so key them out (bright AND unsaturated) and let our sky show through
+    float mn = min(t.r, min(t.g, t.b)), mx = max(t.r, max(t.g, t.b));
+    float key = smoothstep(0.80, 0.93, mn) * (1.0 - smoothstep(0.06, 0.14, mx - mn));
+    if(uSkyKey==1 && key > 0.5) discard;           // only when the horizon has no GPL sky of its own
+    o=vec4(t.rgb*uSkyTint, 1.0); return; }     // horizon ring: unlit, unfogged backdrop (tinted/brightened per grade)
   if(uMirrorGlass==1){                                    // E64 live mirror glass: round-masked rear-view RTT sample, unlit
     vec2 d=vC.xy-vec2(0.5);                               // vC.xy = disc-local 0..1 coords (colour attr repurposed by the glass quad)
     if(dot(d,d)>0.25) discard;                            // round glass on a round disc
@@ -2001,14 +2009,50 @@ function build_horizon(idx::GPLTex; R=2500f0, e_lo=deg2rad(-6f0), e_hi=deg2rad(2
     items
 end
 
+const HORIZ_KEY = Ref(false)
+const HORIZ_K = Ref(0f0)      # HORIZ3DO-1: the uniform scale applied to horiz.3do (0 = the old fully camera-centred ring)
+"""HORIZ3DO-1 (2026-09-25, gold parity): GPL's OWN horizon -- the track's `horiz.3do` -- as a camera-
+centred backdrop. build_horizon above guesses a layout from panel names, and its texture lookup
+prefix-matches: at Watkins Glen `horiz0` matched ONE of the four 90-degree panels horiz01..04 and wrapped it
+round 360 degrees (a 4x-stretched, blurred smear where the gold shows crisp hills). horiz.3do places every
+panel exactly (WG: hills at elevation 0..4.29 deg over a `shoriz` band -4.29..0; Zandvoort: six panels +
+thirteen cloud cards; the Ring: its own sky and ground). Untextured triangles (the 1e9 m sky box) are
+skipped; the rest is scaled uniformly to radius R so it sits inside the far plane with every angle kept.
+`path` = a .3do on disk. Returns Item[] (empty if the file has no textured panels)."""
+function build_horizon_3do(idx::GPLTex, path::AbstractString; R=2500f0)
+    m = GPL3DO.parse_3do(path)
+    tris = [t for t in m.tris if t.tex != "" && all(hypot(q[1], q[2]) < 1f6 for q in t.p)]
+    isempty(tris) && return Item[]
+    HORIZ_KEY[] = !any(t -> lowercase(t.tex) == "sky", tris)
+    rmax = maximum(hypot(q[1], q[2], q[3]) for t in tris for q in t.p)
+    k = Float32(R / rmax)
+    HORIZ_K[] = k
+    by = Dict{String,Vector{Float32}}()
+    for t in tris, i in 1:3
+        p = t.p[i]; uv = t.uv[i]
+        append!(get!(by, t.tex, Float32[]), (k*p[1], k*p[3], -k*p[2], 0f0, 1f0, 0f0, 1f0, 1f0, 1f0, uv[1], uv[2]))   # (gx, gz, -gy)
+    end
+    items = Item[]
+    for (tex, q) in by
+        r = tex_rgba(idx, tex); r === nothing && continue
+        tid = upload_rgba(r[1], r[2], r[3]); vao, n = upload(q)
+        push!(items, Item(vao, n, tid, (1f0, 1f0, 1f0)))
+    end
+    items
+end
+
 """Draw the horizon ring centred on the camera, unlit + unfogged, behind the scene
 (depth-write off so closer geometry overwrites it)."""
 function draw_horizon(prog, ring, vp, campos; tint=(1f0,1f0,1f0))
     isempty(ring) && return
     glUniform1i(glGetUniformLocation(prog,"uSky"), 1)
     u3(prog,"uSkyTint",tint)
+    glUniform1i(glGetUniformLocation(prog,"uSkyKey"), HORIZ_KEY[] ? 1 : 0)
     glDepthMask(GL_FALSE)
-    M = translate(Float32[campos[1],campos[2],campos[3]])
+    # GPL places horiz.3do in ABSOLUTE track height. Scaled by k about the camera, a vertex keeps its true
+    # elevation angle only if the ring is lifted by (1-k)*camera height, not by the full height: at the Ring
+    # (camera ~560 m up) the old full lift drew the hills ~2.4 deg too high. k = 0 (no horiz.3do) is the old ring.
+    M = translate(Float32[campos[1], (1f0 - HORIZ_K[])*campos[2], campos[3]])
     for it in ring; draw(prog, it, vp, M; bright=1.0); end
     glDepthMask(GL_TRUE)
     glUniform1i(glGetUniformLocation(prog,"uSky"), 0)
