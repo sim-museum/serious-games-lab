@@ -101,7 +101,7 @@ STAMP_DST="$W/.build-stamp"
 if [ -f "$STAMP_SRC" ] && ! cmp -s "$STAMP_SRC" "$STAMP_DST" 2>/dev/null; then
   echo "Updating game code from this AppImage ($(cat "$STAMP_SRC"))..." >&2
   ok=1
-  for d in demo JuliaMotor JuliaMotorMTK RFactorData; do
+  for d in demo JuliaMotor JuliaMotorMTK RFactorData RFactorTelemetry JRPhysics; do   # PHYSPRE-1: JRPhysics is new (and RFactorTelemetry was never refreshed)
     [ -d "$HERE/usr/share/julia/juliaMotor/$d" ] || continue
     rm -rf "$W/THU/rFactor/juliaMotor/.new_$d"
     if cp -a "$HERE/usr/share/julia/juliaMotor/$d" "$W/THU/rFactor/juliaMotor/.new_$d"; then
@@ -134,4 +134,18 @@ Categories=Game;Simulation;
 EOF
 python3 "$S/mkicon.py" "$APP/juliaracer.png" 8b2f3f
 ln -sf juliaracer.png "$APP/.DirIcon"
+# PHYSPRE-1 (2026-09-25): the in-house path packages (JuliaMotor, RFactor*, JRPhysics -- the precompiled car
+# physics) record their ABSOLUTE source path in their caches, so caches built in the dev tree are rejected in
+# an install ("because it is for file <dev path> not file <install path>") and the first launch recompiles
+# them (~3 min). Precompile them once more AT THE INSTALL PATH the AppRun uses, inside a bubblewrap mount
+# namespace that binds this AppDir's project there (the real install is not touched), into the bundled
+# depot. On this machine they then validate as shipped; another user/machine pays the one-time precompile.
+INST="${JR_PRECOMPILE_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/julia-racer}/THU/rFactor/juliaMotor"
+if command -v bwrap >/dev/null && [ "${JR_NO_INSTALL_PRECOMPILE:-0}" = 0 ]; then
+  echo ">> precompiling the path packages at the install path $INST ..."
+  mkdir -p "$INST"
+  bwrap --dev-bind / / --bind "$APP/usr/share/julia/juliaMotor" "$INST" \
+    env PATH="$APP/usr/share/julia/depot/$RTREL/bin:$PATH" JULIA_DEPOT_PATH="$APP/usr/share/julia/depot:" \
+    julia --project="$INST/demo/native" -e 'using Pkg; Pkg.precompile(); using JRPhysics, JuliaMotor, RFactorData; println("   install-path caches OK")'
+fi
 echo ">> AppDir ready: $APP  ($(du -sh "$APP" | cut -f1))"

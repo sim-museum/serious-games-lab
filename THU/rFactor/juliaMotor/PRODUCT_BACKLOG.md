@@ -19306,3 +19306,20 @@ player build is 6.3 s. Physics identical by construction (same source) and by ch
 multi-hour 13 GB build this box has OOM'd on, and it would have to be rebuilt to include JRPhysics or it invalidates
 the package cache. `jlracer.so` (and two older sysimages, 1.8 GB, that 260920h was also shipping) moved to
 `~/jr-parity/sysimage/`. Skidpad smoke 91 s clean.
+
+### DELIVERY 260925 -- `~/Documents/260925/JuliaRacer-x86_64-260925.AppImage` (1.84 GB, sha256 5488e8e589e8942a...), verified from its own runtime at the install path
+HEAD at pack time: PHYSPRE-1 on top of today's two gold-parity commits. **No sysimage** (PHYSPRE-1); the image is 1.84 GB
+against 'h''s AppDir of 9.8 GB (h also carried 3 GB of sysimages, two of them unused).
+Two packer fixes found by verifying rather than assuming:
+* **The AppRun code refresh never copied new or unlisted package dirs** (`demo JuliaMotor JuliaMotorMTK RFactorData`):
+  on the PO's existing install JRPhysics would never have arrived and the sim would not have loaded. Now
+  `... RFactorTelemetry JRPhysics` (RFactorTelemetry had never been refreshed either).
+* **Path-package caches are keyed to their absolute source path**: relocated, JuliaMotor/RFactor*/JRPhysics were
+  rejected (14 rejections, 4 precompiles, 189 s first launch). The packer now precompiles them at the install path
+  (`~/.local/share/julia-racer/...`) inside a bubblewrap mount namespace into the bundled depot
+  (`JR_NO_INSTALL_PRECOMPILE=1` skips; `JR_PRECOMPILE_HOME` retargets). On another user/machine the first launch
+  precompiles once.
+Verification (`~/Documents/260925/logs/verify_jr.sh`: mounted image, code at the install path in a namespace, EMPTY user
+depot): cache check 0 rejections / 0 precompiled; Watkins Glen 5-AI race launch **144 s** to the game loop, 0 errors
+(was 243 s on the include route, 209 s with the sysimage); skidpad 92 s, 0 errors; start/finish capture
+`parity/po_260925/appimage_260925_wg_sf.jpg` shows the new chase view, horizon, grade and single banner.
