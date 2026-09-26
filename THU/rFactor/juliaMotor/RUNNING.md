@@ -11,6 +11,21 @@ mode (Training / Practice / Race), AI count + speed %, laps — then race. Julia
 startup is slow per track (~2 min; faster with the `jlracer.so` sysimage).
 Requires a healthy GL display session.
 
+## GPL data (`THU/WP`) — one-time, per machine
+
+The demo and tool scripts resolve the GPL install as
+`<repo>/THU/WP/drive_c/Sierra/GPL/...` (`@__DIR__/../../../../WP`). `WP` is the
+Wine prefix from the sglBinaries archives and is **never in git** (`.gitignore`:
+`**/WP`), so each checkout needs its own link to wherever that prefix lives:
+
+```bash
+ln -sfn /path/to/your/sgl/THU/WP THU/WP    # from the repo root
+```
+
+Until 2026-09-26 this symlink was committed, pointing at one machine's
+`/home/admin/sgl/THU/WP`; it dangled everywhere else. If a pull just deleted your
+`THU/WP`, re-create it with the command above.
+
 ## Check progress
 
 | What | Where (all under `THU/rFactor/juliaMotor/`) |
