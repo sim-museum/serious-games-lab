@@ -3360,9 +3360,17 @@ const FRUSTUM_CULL = get(ENV, "JM_FRUSTUM_CULL", "1") != "0"
     cy = vp[2,1]*x + vp[2,2]*y + vp[2,3]*z + vp[2,4]
     cw = vp[4,1]*x + vp[4,2]*y + vp[4,3]*z + vp[4,4]
     cw < -r && return false
-    lim = cw + r * 1.2f0                 # generous: a bounding sphere in clip units, no exact projection of r
-    abs(cx) > lim && return false
-    abs(cy) > lim && return false
+    # PERF-3: the side planes are row4 +- row1/row2; a sphere is outside when its signed distance to one is
+    # below -r * |plane normal|. The old fixed margin (cw + 1.2r) under-padded the top/bottom planes, whose
+    # normal is sqrt(1 + P22^2) ~ 2.4 at the 51 deg chase FOV, so parts hanging just below the screen edge
+    # were culled while visible (Spa verge, shot s=11000 chase).
+    @inbounds for i in 1:2
+        c = i == 1 ? cx : cy
+        for sg in (1f0, -1f0)
+            ax = vp[4,1] + sg*vp[i,1]; ay = vp[4,2] + sg*vp[i,2]; az = vp[4,3] + sg*vp[i,3]
+            cw + sg*c < -r * sqrt(ax*ax + ay*ay + az*az) && return false
+        end
+    end
     true
 end
 # E70-S7: the restored billboards render vegetation CYAN (3.42% of frame vs 0.01% with them off).
@@ -3443,12 +3451,16 @@ const SHOT_SETTLE = parse(Int, get(ENV, "JM_SHOT_SETTLE", "38"))
 # and for each AI car, in the RENDER frame the eye is looking at.
 const WHEELGAP = parse(Int, get(ENV, "JM_WHEELGAP", "0"))
 const PACE_ON  = get(ENV, "JM_PACE", "1") != "0"
+const DSTAT = get(ENV, "JM_DRAWSTATS", "0") != "0"; const GPUSYNC = get(ENV, "JM_GPUSYNC", "0") != "0"   # PERF-2 per-pass timing
+const DS_LOOP = Ref(0.0); const DS_PREV = Ref(0.0); const DS_SIM = zeros(2); const DS_T0 = Ref(0.0); const DS_SIMACC = zeros(3); const DS_T = zeros(6); const DS_ACC = zeros(5); const DS_N = zeros(Int, 6); const DS_NA = zeros(Int, 6); const DS_CNT = Ref(0)
 const ALLOCSITES = get(ENV, "JM_ALLOCSITES", "0") != "0"
 const ALLOCPROF = parse(Int, get(ENV, "JM_ALLOCPROF", "0"))   # PERF-1: bytes allocated per frame, by phase
 const ALLOC_MARK = zeros(Int, 5); const ALLOC_ACC = zeros(Int, 4); const ALLOC_N = Ref(0)
 const PACE_HI  = parse(Float64, get(ENV, "JM_PACE_HI", "19.0")) / 1000
 const PACE_LO  = parse(Float64, get(ENV, "JM_PACE_LO", "15.0")) / 1000
 const PACE_EMA = Ref(0.0); const PACE_INT = Ref(1); const FPS_DTS = Float64[]
+const GC_EVERY = parse(Int, get(ENV, "JM_GC_EVERY", "0")); const GC_MS = zeros(3)   # PERF-3 (default set after measurement)
+const PACE_WARM = parse(Int, get(ENV, "JM_PACE_WARM", "120"))   # PERF-3: frames of JIT warm-up the pacer ignores
 get(ENV, "JM_GCLOG", "0") != "0" && GC.enable_logging(true)   # PERF-1: print every GC pause (hitch attribution)
 const FPSDIAG = parse(Int, get(ENV, "JM_FPSDIAG", "0"))   # E80: frame-time report, per view
 const FRAMEPROF = parse(Int, get(ENV, "JM_FRAMEPROF", "0"))  # E80: per-PHASE frame profiler
@@ -3950,8 +3962,57 @@ tstamp("  texture INDEX built")   # E80: split the "texture load" phase -- at Sp
                                   # a 900 s run never reaches the frame loop, so which HALF matters.
 const TRACK_BRIGHT = parse(Float32, get(ENV,"JM_TRACK_BRIGHT","0.72"))
 const TRACK_AMB    = parse(Float32, get(ENV,"JM_TRACK_AMB","0.34"))
-trackItems = Render.build_gpl(TRACK, TEXIDX)
+const trackItems = Render.build_gpl(TRACK, TEXIDX)   # PERF-3: const -- an untyped global boxed every per-frame read
 tstamp("  build_gpl done (GL uploads)")   # E80
+# PERF-3 (PO 2026-09-26: "30 is OK, but not very good. Gold standard is a solid 60 fps"): every track part
+# was drawn in all three passes every frame (Ring: 459k tris x shadow + mirror + main). build_gpl is 1:1
+# with TRACK, so give each part a world bounding sphere and let each pass skip the parts it cannot see:
+# the shadow pass against the 70 m light box, the camera passes against their frustum.
+# JM_TRACKCULL=0 draws every part again.
+const TRACKCULL = get(ENV, "JM_TRACKCULL", "1") != "0"
+const TRACKCULL_SH = TRACKCULL && get(ENV, "JM_TRACKCULL_SHADOW", "1") != "0"   # the shadow-pass half alone
+const TRACKBOUND = map(TRACK) do tp
+    v = tp.verts; n = length(v) ÷ 11
+    n == 0 && return ((0f0, 0f0, 0f0), 0f0)
+    lo = [Inf32, Inf32, Inf32]; hi = [-Inf32, -Inf32, -Inf32]
+    for k in 1:11:length(v)-10, j in 1:3
+        lo[j] = min(lo[j], v[k+j-1]); hi[j] = max(hi[j], v[k+j-1])
+    end
+    c = ((lo[1]+hi[1])/2, (lo[2]+hi[2])/2, (lo[3]+hi[3])/2)
+    (c, Float32(sqrt(sum(((hi .- lo) ./ 2) .^ 2))) + 0.5f0)
+end
+length(TRACKBOUND) == length(trackItems) || error("PERF-3: TRACK/trackItems not 1:1")
+const TRACK_ASPGROOVE = [(lt_ = lowercase(tp.tex); occursin("asp", lt_) || startswith(lt_, "groove")) for tp in TRACK]
+println("  [cull] PERF-3: track part radii p50 ", round(sort(last.(TRACKBOUND))[max(1, end ÷ 2)], digits=1),
+        " m, p90 ", round(sort(last.(TRACKBOUND))[max(1, (9*end) ÷ 10)], digits=1), " m, max ",
+        round(maximum(last.(TRACKBOUND); init=0f0), digits=1), " m over ", length(TRACKBOUND), " parts")
+# PERF-3: the AI draws as typed functions -- inside the frame loop `ai_poses` (a different type per branch)
+# and `spin` are boxed closure captures, so every pose matrix came back as a heap object.
+ai_body_mat(p, cm) = Render.pose_matrix(p[1], p[2], -p[3], p[4], p[5], p[6], cm.body_off[1], cm.body_off[2], cm.body_off[3])
+ai_wheel_mat(p, wx, wz, r, spin) = Render.pose_matrix(p[1], p[2], -p[3], p[4], p[5], p[6], wx, r, wz) * Render.rotz(Float32(spin))
+function draw_ai_depth!(dp, poses, chassis, spin)
+    for (p, cm) in zip(poses, chassis)
+        bm = ai_body_mat(p, cm); for it in cm.body; Render.draw_depth(dp, it, bm); end
+        for (wx,wz,_,r,nm) in cm.wheelspec, it in cm.wheels[nm]; Render.draw_depth(dp, it, ai_wheel_mat(p, wx, wz, r, spin)); end
+    end
+end
+function draw_ai_main!(prog, vp, poses, chassis, spin, nowheels::Bool)
+    for (p, cm) in zip(poses, chassis)
+        bm = ai_body_mat(p, cm); for it in cm.body; Render.draw(prog, it, vp, bm; bright=AI_BRIGHT, spec=0.10, ambfill=AI_AMB); end
+        nowheels && continue
+        for (wx,wz,_,r,nm) in cm.wheelspec, it in cm.wheels[nm]; Render.draw(prog, it, vp, ai_wheel_mat(p, wx, wz, r, spin)); end
+    end
+end
+# ortho light box: clip is linear, so a sphere is outside when its centre is > 1 + r/half-extent out on any axis
+@inline function inlightbox(lvp::AbstractMatrix, pos, r::Float32)
+    x = Float32(pos[1]); y = Float32(pos[2]); z = Float32(pos[3])
+    for i in 1:3
+        c = Float32(lvp[i,1])*x + Float32(lvp[i,2])*y + Float32(lvp[i,3])*z + Float32(lvp[i,4])
+        s = sqrt(Float32(lvp[i,1])^2 + Float32(lvp[i,2])^2 + Float32(lvp[i,3])^2)   # clip units per metre
+        abs(c) > 1f0 + r * s && return false
+    end
+    true
+end
 # E57: build_gpl is 1:1 with TRACK, but Items drop the texture NAME (GPL parts all carry the same
 # fallback grey col) — so classify each track surface HERE from its TrackPart.tex name for the per-
 # surface render grade below.  GPL Monza names: road = trrow*/asp* (the over-bright asphalt MIP),
@@ -6227,7 +6288,7 @@ if get(ENV,"JM_TEXDIAG","")!=""
     flush(stdout)
 end
 
-carItems   = Render.build_gpl(CARP, GPLTEX; tag="carp")   # Lotus body, GPL .mip textures (E102 S9: tag for JM_TINT_ITEM)
+const carItems = Render.build_gpl(CARP, GPLTEX; tag="carp")   # Lotus body, GPL .mip textures (E102 S9: tag for JM_TINT_ITEM)
 # E102 S12: both tagged "extra" ON PURPOSE. Item indices restart per list, so
 # JM_TINT_ITEM="extra:1-2" covers PIPEP's one item and AXLEP's two in a SINGLE run --
 # three candidates for one four-minute capture. A hit is then bisected with a narrower range.
@@ -8661,7 +8722,9 @@ function main()
     println("  (Logitech joystick works natively — push=throttle, pull=brake, roll=steer)\n")
     EngineAudio.start(ENG)   # start audio NOW (after the long track load) — starting it mid-load
                              # let the stream underflow on big tracks (Nürburgring) and go silent
-    SMOKE || GLFW.ShowWindow(win)   # reveal the window now that loading is done (avoids the WM "Not Responding")
+    (SMOKE && !haskey(ENV, "JM_SMOKE_SHOW")) || GLFW.ShowWindow(win)   # reveal the window now that loading is done (avoids the WM "Not Responding")
+    # PERF-3: a HIDDEN window is not paced by the compositor (XWayland/NVIDIA: ~58 Hz whatever the work),
+    # so a smoke frame-rate figure says nothing about the PO's screen. JM_SMOKE_SHOW=1 maps it for timing runs.
     # E59 multi-shot smoke state: current shot, the frame it was placed on, all-done flag.
     shot_idx = Ref(0); shot_t0 = Ref(0); shots_done = Ref(isempty(SHOTS))
     if SMOKE && !isempty(SHOTS)
@@ -9262,9 +9325,11 @@ function main()
             # engine being re-specified. With a dead engine the revs fall and E98's stall rule
             # drops MANUAL to AUTO on its own, which is what a driver would want.
             PLAYER_HDG[] = cs.θ   # TRACKSMOOTH-2: the crease filter samples along this heading
+            _tps = time()
             step_carX!(cs, inp.throttle * DriveRT3D.engine_power(), inp.brake, inp.steer, dt > 1e-4 ? dt : 1/60;
                         clutch=inp.clutch, up=inp.shift_up, dn=inp.shift_down, manual=!inp.autoshift,
                         groundz=groundz_phys)
+            DS_SIM[1] += time() - _tps
             if !SKIDPAD     # track position + lap timing
             hr = JuliaMotor.hat(TRKSURF, cs.x, cs.z)            # track-relative position (for lapdist/lateral HUD)
             if hr.found
@@ -9636,7 +9701,7 @@ function main()
                  (rf = rep_ai_raw[rep_focus[]]; (rf[1], rf[2], rf[3], rf[4]))
             vp, eye = replay_camera(REPLAY_CAMS[rep_cam[]], fp[1], fp[2], fp[3], fp[4])
         end
-        carModel = Render.translate(Float32[cs.x, cs.y, -cs.z]) * Render.roty(Float32(cs.θ)) *
+        carModel = Render.translate(cs.x, cs.y, -cs.z) * Render.roty(Float32(cs.θ)) *
                    Render.rotz(Float32(pitch_ter)) * Render.rotx(Float32(roll_ter))   # whole car follows the hill (pitch + cross-slope roll)
         tiltModel = carModel * Render.rotz(Float32(pitch_dyn)) * Render.rotx(Float32(rollv))   # full body tilt (terrain + dynamic)
         bodyModel = tiltModel * Render.translate(BODY_OFF)  # body dives/squats + rolls (3-D)
@@ -9647,11 +9712,11 @@ function main()
         # front wheels appear to RISE relative to the cockpit; squat on power → they drop; roll right →
         # the body leans onto the planted right wheel (it rises) and lifts off the left (it drops).  The
         # wheels stay UPRIGHT/level (they never get the body lean) — they're not bolted to the chassis.
-        wheelmat(wx,wz,steer,r) = carModel * Render.translate(Float32[wx, r, wz]) *
+        wheelmat(wx,wz,steer,r) = carModel * Render.translate(wx, r, wz) *
                      (steer ? Render.roty(δ) : Render.ident()) * Render.rotz(Float32(spin))
         # E95: a torn-off wheel is in the WORLD, not on the car -- so it gets its own transform
         # rather than carModel's. Render axes are (x, up, -z), matching the trackside placement.
-        loosemat(lx,ly,lz,sp) = Render.translate(Float32[lx, ly, -lz]) * Render.rotz(Float32(sp))
+        loosemat(lx,ly,lz,sp) = Render.translate(lx, ly, -lz) * Render.rotz(Float32(sp))
         # advance + place the AI field (rail-followers on the centreline)
         ai_hit = Ref(false); ddt = dt > 1e-4 ? dt : 1/60
         # an AI car's body orientation = its physics pitch (already settles to the fore/aft slope) +
@@ -9731,7 +9796,7 @@ function main()
             for (i, pc) in enumerate(AIPHYS)
                 thr, brk, st = RaceAI.controller(AILINE, AICARS[i].s, AICARS[i].lane, AICARS[i].tlane, vts[i],
                                                  pc.x, pc.z, pc.θ, pc.v, AIyaw(pc); power = AI_POWER)
-                DriveRT3D.step_car3d!(pc, thr, brk, st, ddt; manual=false, groundz=groundz_ai)
+                _tas = time(); DriveRT3D.step_car3d!(pc, thr, brk, st, ddt; manual=false, groundz=groundz_ai); DS_SIM[2] += time() - _tas
                 # GRASS by the rendered road half-width (|lateral|>ROAD_HALFW), the SAME yardstick as the
                 # player — NOT TRKSURF.on_track, whose 9 m half-width is far wider than the visible road, so
                 # AI ran the verge near the finish straight penalty-free + drafting (PO saw them do exactly that).
@@ -9980,11 +10045,16 @@ function main()
             flush(stdout)
         end
         ALLOCPROF > 0 && (ALLOC_MARK[2] = Base.gc_bytes())   # sim (input, physics, AI, contacts)
+        DSTAT && (DS_LOOP[] += (DS_PREV[] > 0 ? now - DS_PREV[] : 0.0); DS_PREV[] = now)
+        DSTAT && (GPUSYNC && glFinish(); DS_T[1] = time(); Render.NDRAW[] = 0; Render.NTRI[] = 0; DS_SIMACC[1] += DS_T[1] - now; DS_SIMACC[2] += DS_SIM[1]; DS_SIMACC[3] += DS_SIM[2]; fill!(DS_SIM, 0.0))
         # ---- shadow pass: scene depth from the sun, light box on the car ----
         _tp_d = time()
         lightVP = Render.light_vp(Float32[cs.x, cs.y, -cs.z], LIGHTDIR)
         Render.shadow_pass(depthprog, shadowfbo, lightVP) do dp
-            for it in trackItems; Render.draw_depth(dp, it, Render.IDENT); end
+            for (ti, it) in enumerate(trackItems)
+                TRACKCULL_SH && !inlightbox(lightVP, TRACKBOUND[ti][1], TRACKBOUND[ti][2]) && continue   # PERF-3
+                Render.draw_depth(dp, it, Render.IDENT)
+            end
             for it in carItems; Render.draw_depth(dp, it, bodyModel); end
             for (wx,wz,steer,r,nm) in WHEELS, it in WHEELITEMS[nm]
                 is_loose(nm) && continue                                   # E95: this one came off
@@ -9993,10 +10063,7 @@ function main()
             for (lx,ly,lz,_,_,_,sp,_,nm) in LOOSE_WHEELS, it in WHEELITEMS[nm]
                 Render.draw_depth(dp, it, loosemat(lx,ly,lz,sp))
             end
-            for (p, cm) in zip(ai_poses, AICHASSIS)            # AI cars cast shadows too
-                let _bm = aiBody(p, cm); for it in cm.body; Render.draw_depth(dp, it, _bm); end; end
-                for (wx,wz,_,r,nm) in cm.wheelspec, it in cm.wheels[nm]; Render.draw_depth(dp, it, aiWheel(p,wx,wz,r)); end
-            end
+            draw_ai_depth!(dp, ai_poses, AICHASSIS, spin)     # AI cars cast shadows too (PERF-3: typed barrier)
         end
         # ---- shared world draw: everything both the main pass and the E64 mirror pass see.
         # flip=true = the X-mirrored rear view: the clip-space flip reverses winding, so the
@@ -10014,7 +10081,7 @@ function main()
                 # SKIDPAD-GOLD-1 S2: same guard as RINGSPRITES above -- ROADTESS is a const defined
                 # inside the GPL-track branch, so on the synthetic SKIDPAD it does not exist and this
                 # line threw UndefVarError from inside main(). Second of the same class in one file.
-                if (@isdefined ROADTESS) && ROADTESS && ti <= length(TRACKMAIN) && (lt_ = lowercase(TRACK[ti].tex); occursin("asp", lt_) || startswith(lt_, "groove"))
+                if (@isdefined ROADTESS) && ROADTESS && ti <= length(TRACKMAIN) && TRACK_ASPGROOVE[ti]   # PERF-3: precomputed (was a lowercase() String per part per frame)
                     continue
                 end
                 # E68 S9b: landmass SECTIONS draw single-sided like GPL — culls the dark edge-skirt
@@ -10029,6 +10096,7 @@ function main()
                     if TRACK_RAILCULL[ti]; glEnable(GL_CULL_FACE); glCullFace(xor(OBJ_FF_CW, flip) ? GL_FRONT : GL_BACK)
                     else; glDisable(GL_CULL_FACE); end
                 end
+                TRACKCULL && !infrustum(vp_, TRACKBOUND[ti][1], TRACKBOUND[ti][2]) && continue   # PERF-3 (after the cull-state toggles)
                 if MONZA                                                 # E57: per-surface grade — its asphalt MIP is over-bright, its barriers carbonized
                     cat = TRACKCAT[ti]
                     b, a = cat === :road ? (MZ_ROAD_B, MZ_ROAD_A) : cat === :dark ? (MZ_DARK_B, MZ_DARK_A) :
@@ -10094,7 +10162,7 @@ function main()
             for (it,pos,w,h,yaw) in STATICTREES                      # wide forest-edge panels (authored yaw, graze-fade)
                 (eye_[1]-pos[1])^2+(eye_[2]-pos[2])^2+(eye_[3]-pos[3])^2 > BB_CULL2 && continue
                 FRUSTUM_CULL && !infrustum(vp_, pos, max(w, h) + 5f0) && continue
-                Render.draw(prog, it, vp_, Render.translate(Float32[pos[1],pos[2],pos[3]])*Render.roty(yaw)*Render.scalexyz(w,h,1f0); bright=1.3, ambfill=0.8, graze=true, unlit=!BB_LIT)   # E63/MZ3: the comment always claimed graze-fade but the call never passed it → a wide Monza forest strip seen EDGE-ON rendered as a dark triangular SLAB at the S/F. graze=true fades edge-on quads (uGraze) so the strip shows face-on as a tree-line and vanishes edge-on
+                Render.draw(prog, it, vp_, Render.translate(pos[1],pos[2],pos[3])*Render.roty(yaw)*Render.scalexyz(w,h,1f0); bright=1.3, ambfill=0.8, graze=true, unlit=!BB_LIT)   # E63/MZ3: the comment always claimed graze-fade but the call never passed it → a wide Monza forest strip seen EDGE-ON rendered as a dark triangular SLAB at the S/F. graze=true fades edge-on quads (uGraze) so the strip shows face-on as a tree-line and vanishes edge-on
             end
             OBJ_CULLFACE && glDisable(GL_CULL_FACE)
             glUniform1i(Render.uloc(prog,"uBackFlip"), 0)
@@ -10109,16 +10177,9 @@ function main()
             end
             end)(BILLBOARDS)
             PROF_BB[] += time() - _tp_b; _tp_c = time()
-            for (p, cm) in zip(ai_poses, AICHASSIS)                 # AI grid (Ferrari/Brabham/BRM/Eagle/Cooper)
-                let _bm = aiBody(p, cm); for it in cm.body; Render.draw(prog, it, vp_, _bm; bright=AI_BRIGHT, spec=0.10, ambfill=AI_AMB); end; end
-                # E106-S25: JM_NO_AI_WHEELS=1 suppresses the AI wheel draw. The rods on the AI rear
-                # tyre are neither the wheel mesh (max radius 0.336, nothing beyond) nor the wrapper
-                # (all variants complete) -- so shooting the SAME replay frame with the wheels gone
-                # says whether the ring survives, i.e. whether it is drawn by something else.
-                if !AI_NOWHEELS
-                    for (wx,wz,_,r,nm) in cm.wheelspec, it in cm.wheels[nm]; Render.draw(prog, it, vp_, aiWheel(p,wx,wz,r)); end
-                end
-            end
+            # AI grid (Ferrari/Brabham/BRM/Eagle/Cooper). E106-S25: JM_NO_AI_WHEELS=1 suppresses the AI wheel draw
+            # (the rods on the AI rear tyre were neither the wheel mesh nor the wrapper). PERF-3: typed barrier.
+            draw_ai_main!(prog, vp_, ai_poses, AICHASSIS, spin, AI_NOWHEELS)
             PROF_CARS[] += time() - _tp_c
             # E85-S5: the REMOTE cars, drawn through exactly the same path as the AI field -- same
             # body/wheel transforms, so anything true of an AI car's placement is true of theirs.
@@ -10130,6 +10191,7 @@ function main()
                 end
             end
         end
+        DSTAT && (GPUSYNC && glFinish(); DS_T[2] = time(); DS_N[1] = Render.NDRAW[]; DS_N[4] = Render.NTRI[])
         # ---- E64 mirror pass: the rear view into the mirror RTT (cockpit view only) ----
         # E80 (PO 2026-08-27: "10 frames/sec in cockpit view, better in nintendo view"). MEASURED at
         # Spa, same spot, same settle:
@@ -10201,6 +10263,7 @@ function main()
             end   # MIRROR_HALVES > 0 (S15)
             glBindFramebuffer(GL_FRAMEBUFFER, 0)
         end
+        DSTAT && (GPUSYNC && glFinish(); DS_T[3] = time(); DS_N[2] = Render.NDRAW[]; DS_N[5] = Render.NTRI[])
         # ---- main pass (reversed-Z: [0,1] clip, near→1/far→0, GEQUAL, clear 0) ----
         glViewport(0,0,W,H)
         glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE); glDepthFunc(GL_GEQUAL); glClearDepth(0.0)
@@ -10227,7 +10290,7 @@ function main()
             for (i,it) in enumerate(_items); _in_car_range(i) || continue; Render.draw(prog, it, vp, bodyModel; bright=1.2, spec=0.08, ambfill=0.78); end
         end   # PO: lift the self-shadowed footwell/tub further out of black (GPL pre-lights the interior evenly)
         # E106-S4: exhausts at hub height (chrome: a touch of spec so the megaphones catch the sun)
-        let pm = bodyModel * Render.translate(Float32[0, PIPE_LIFT, 0])
+        let pm = bodyModel * Render.translate(0, PIPE_LIFT, 0)
             for it in pipeItems; Render.draw(prog, it, vp, pm; bright=1.15, spec=0.25, ambfill=0.6); end
         end
         # E106-S9: the driveshafts, horizontal from diff to hub
@@ -10244,7 +10307,7 @@ function main()
                 end
             end
             for it in driverItems; Render.draw(prog, it, vp, bodyModel; bright=1.2, spec=0.10, ambfill=0.55); end
-            helmModel = bodyModel * Render.translate(Float32[HELM_OFF[1],HELM_OFF[2],HELM_OFF[3]])
+            helmModel = bodyModel * Render.translate(HELM_OFF[1],HELM_OFF[2],HELM_OFF[3])
             for it in helmItems; Render.draw(prog, it, vp, helmModel; bright=1.2, spec=0.12, ambfill=0.60); end
         end
         # gauge cluster (real GPL dash7A dial faces): the dash sits BELOW the scuttle/black panels in the
@@ -10290,7 +10353,7 @@ function main()
         # CARGOLD-1 S9 (PO 2026-09-07: "Steering wheel is also installed upside down"): the gold's three spokes
         # are a Y (two up, one down to the hub); ours had the single spoke UP. A half turn about the column
         # (JM_SW_ROT, degrees, default 180) puts the wheel as the gold has it; the steering input adds to it.
-        swModel = bodyModel * Render.translate(SWCENTER) * Render.rotaxis(SWAXIS, Float32(inp.steer*2.5 + SW_ROT)) * Render.translate(-SWCENTER)
+        swModel = bodyModel * Render.translate(SWCENTER) * Render.rotaxis(SWAXIS, Float32(inp.steer*2.5 + SW_ROT)) * Render.translate(-SWCENTER[1], -SWCENTER[2], -SWCENTER[3])
         for it in swItems; Render.draw(prog, it, vp, swModel; bright=1.2, ambfill=0.34); end
         # E64 S2 (Z-CK4): gloved hands + forearms, cockpit view only (the chase driver figure has its
         # own DRIVER_TEX arms).  Hands turn with the wheel, forearms stay put — GPL-era articulation.
@@ -10321,6 +10384,7 @@ function main()
         α_tc = clamp(dt/0.10, 0.0, 1.0)              # smooth the traction-circle display (coarse-mesh Fz spikes → no flicker)
         tc_hud = ntuple(i -> ntuple(j -> tc_hud[i][j] + (cs.tc[i][j]-tc_hud[i][j])*α_tc, 3), 4)
         ALLOCPROF > 0 && (ALLOC_MARK[4] = Base.gc_bytes())   # main world pass
+        DSTAT && (GPUSYNC && glFinish(); DS_T[4] = time(); DS_N[3] = Render.NDRAW[]; DS_N[6] = Render.NTRI[])
         _t_hud = time()
         Render.hud_draw(hudprog, hudvao, hudvbo,
             Render.compose_hud(W, H, cs.v*3.6, cs.gear, cs.rpm, 9500.0, inp.throttle, inp.brake, inp.clutch, tc_hud;
@@ -10443,7 +10507,7 @@ function main()
                     if !isempty(FPS_DTS)
                         _d = sort(FPS_DTS) .* 1000
                         println("  [pace] frame interval ms: p10 ", round(_d[max(1, length(_d)÷10)], digits=1), "  p50 ", round(_d[max(1, length(_d)÷2)], digits=1),
-                                "  p90 ", round(_d[max(1, 9*length(_d)÷10)], digits=1), "  max ", round(_d[end], digits=1), "  (interval ", PACE_INT[], ")")
+                                "  p90 ", round(_d[max(1, 9*length(_d)÷10)], digits=1), "  max ", round(_d[end], digits=1), "  >25ms ", count(>(25.0), _d), "/", length(_d), "  (interval ", PACE_INT[], ")")
                         empty!(FPS_DTS)
                     end
                     flush(stdout); FPS_ACC[] = 0.0; FPS_N[] = 0
@@ -10467,15 +10531,46 @@ function main()
             end
         end
         if PACE_ON && (!SMOKE || haskey(ENV, "JM_PACE_TEST"))
-            _wk = time() - now
-            PACE_EMA[] = PACE_EMA[] == 0.0 ? _wk : 0.95*PACE_EMA[] + 0.05*_wk
+            # PERF-3: the first frame (4.9 s of JIT) seeded the EMA and every session opened at 30 Hz; a single
+            # crash/GC hitch (288 ms) flipped it again. Skip the warm-up and clamp each sample, so only a
+            # SUSTAINED over-budget load (~30+ frames) drops the rate.
+            _wk = min(time() - now, 1.5 * PACE_HI)
+            if frames > PACE_WARM
+                PACE_EMA[] = PACE_EMA[] == 0.0 ? _wk : 0.95*PACE_EMA[] + 0.05*_wk
+            end
             if PACE_INT[] == 1 && PACE_EMA[] > PACE_HI
                 PACE_INT[] = 2; GLFW.SwapInterval(2); println("  [pace] work ", round(1000*PACE_EMA[], digits=1), " ms -> steady 30 Hz"); flush(stdout)
             elseif PACE_INT[] == 2 && PACE_EMA[] < PACE_LO
                 PACE_INT[] = 1; GLFW.SwapInterval(1); println("  [pace] work ", round(1000*PACE_EMA[], digits=1), " ms -> 60 Hz"); flush(stdout)
             end
         end
+        # PERF-3: the automatic collector let ~190 MB pile up and then paused 30-60 ms (2-4 dropped frames every
+        # ~4 s at the Ring: the PO's "jerky"). A young-generation collection every GC_EVERY frames, issued here
+        # while the GPU is still finishing the frame (the CPU would otherwise just wait in SwapBuffers), keeps each
+        # pause small enough to fit the slack. JM_GC_EVERY=0 leaves it to the automatic collector.
+        if GC_EVERY > 0 && frames % GC_EVERY == 0 && frames > 0
+            _tg = time(); GC.gc(false); _tg = time() - _tg
+            GC_MS[1] += _tg; GC_MS[2] = max(GC_MS[2], _tg); GC_MS[3] += 1
+            if FPSDIAG > 0 && GC_MS[3] >= 20
+                println("  [gc] young collections: mean ", round(1000GC_MS[1]/GC_MS[3], digits=2), " ms  max ", round(1000GC_MS[2], digits=2), " ms  (every ", GC_EVERY, " frames)"); flush(stdout)
+                fill!(GC_MS, 0.0)
+            end
+        end
+        DSTAT && (GPUSYNC && glFinish(); DS_T[5] = time())
         GLFW.SwapBuffers(win)
+        if DSTAT
+            DS_T[6] = time()
+            for k in 1:5; DS_ACC[k] += DS_T[k+1] - DS_T[k]; end
+            for k in 1:6; DS_NA[k] += DS_N[k]; end
+            DS_CNT[] += 1
+            if DS_CNT[] >= 240
+                c = DS_CNT[]; f(x) = round(1000x/c, digits=2)
+                println("  [drawstats] FRAME ", f(DS_LOOP[]), " ms  = SIM ", f(DS_SIMACC[1]), " (player phys ", f(DS_SIMACC[2]), ", AI phys ", f(DS_SIMACC[3]), ")  shadow ", f(DS_ACC[1]), "  mirror ", f(DS_ACC[2]), "  main ", f(DS_ACC[3]), "  hud ", f(DS_ACC[4]), "  swap ", f(DS_ACC[5]),
+                        "   draws: shadow ", DS_NA[1]÷c, " mirror ", (DS_NA[2]-DS_NA[1])÷c, " main ", (DS_NA[3]-DS_NA[2])÷c,
+                        "   ktris: shadow ", DS_NA[4]÷c÷1000, " mirror ", (DS_NA[5]-DS_NA[4])÷c÷1000, " main ", (DS_NA[6]-DS_NA[5])÷c÷1000, GPUSYNC ? "  (GPU-synced)" : "")
+                flush(stdout); fill!(DS_ACC, 0.0); fill!(DS_NA, 0); fill!(DS_SIMACC, 0.0); DS_LOOP[] = 0.0; DS_CNT[] = 0
+            end
+        end
         # JM_FRAMEDUMP="<start>:<count>" dumps CONSECUTIVE frames, which the existing JM_SHOTS
         # cannot: it settles and dumps one frame per teleport, so it can photograph a scene but
         # never a TEMPORAL artefact. The PO's strobing mirrors are exactly that -- a single frame

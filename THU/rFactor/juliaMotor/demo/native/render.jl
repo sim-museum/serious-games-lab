@@ -8,6 +8,7 @@
 # 11 floats: position(3) normal(3) colour(3) uv(2).
 module Render
 using GLFW, ModernGL, LinearAlgebra
+using StaticArrays   # PERF-3: 4x4 transforms live on the stack (were ~0.3 MB/frame of heap garbage)
 using JuliaMotor, RFactorData
 include("gpl3do.jl"); using .GPL3DO        # Grand Prix Legends model parser (Lotus 49)
 include("gplmip.jl"); using .GPLMip        # GPL .mip texture decoder
@@ -231,7 +232,16 @@ function wheel_mesh(r, hw; seg=28)
 end
 
 # ---- mat4 helpers (standard form; Julia column-major == GL column-major) ----
-ident() = Matrix{Float32}(I,4,4)
+# PERF-3: every helper returns an immutable SMatrix -- products of them allocate nothing, which took the GC
+# pause (30-60 ms every ~4 s at the Ring, the PO's "jerky") out of the frame loop. Nothing mutates a returned
+# matrix (checked: no M[i,j]= / mul! on one outside these builders). umat() hands GL a contiguous copy.
+const M4 = SMatrix{4,4,Float32,16}
+ident() = M4(1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1)
+const _U4 = Matrix{Float32}(undef, 4, 4)
+"""PERF-3: a Matrix{Float32} GL can take a pointer to, without allocating (single render thread)."""
+@inline umat(M::Matrix{Float32}) = M
+@inline umat(M::AbstractMatrix) = (copyto!(_U4, M); _U4)
+const NDRAW = Ref(0); const NTRI = Ref(0)   # PERF-2: draw calls / triangles per frame (JM_DRAWSTATS)
 const IDENT = Matrix{Float32}(I,4,4)   # PERF-1: shared read-only identity for draws (never mutate)
 """PERF-1: T(t) * Ry(ay) * Rz(az) * Rx(ax) * T(o) in ONE allocation -- the AI car transforms were built from
 four matrices and three products per body PART per pass (the top allocation site, >1 MB/frame)."""
@@ -242,26 +252,23 @@ function pose_matrix(tx, ty, tz, ay, az, ax, ox = 0f0, oy = 0f0, oz = 0f0)
     r21 = sz;     r22 = cz*cx;              r23 = -cz*sx
     r31 = -sy*cz; r32 = sy*sz*cx + cy*sx;   r33 = -sy*sz*sx + cy*cx
     o1, o2, o3 = Float32(ox), Float32(oy), Float32(oz)
-    M = Matrix{Float32}(undef, 4, 4)
-    M[1,1]=r11; M[1,2]=r12; M[1,3]=r13; M[1,4]=Float32(tx) + r11*o1 + r12*o2 + r13*o3
-    M[2,1]=r21; M[2,2]=r22; M[2,3]=r23; M[2,4]=Float32(ty) + r21*o1 + r22*o2 + r23*o3
-    M[3,1]=r31; M[3,2]=r32; M[3,3]=r33; M[3,4]=Float32(tz) + r31*o1 + r32*o2 + r33*o3
-    M[4,1]=0f0; M[4,2]=0f0; M[4,3]=0f0; M[4,4]=1f0
-    M
+    M4(r11, r21, r31, 0f0,  r12, r22, r32, 0f0,  r13, r23, r33, 0f0,   # column-major
+       Float32(tx) + r11*o1 + r12*o2 + r13*o3, Float32(ty) + r21*o1 + r22*o2 + r23*o3,
+       Float32(tz) + r31*o1 + r32*o2 + r33*o3, 1f0)
 end
-function translate(t)
-    M=ident(); M[1,4]=t[1]; M[2,4]=t[2]; M[3,4]=t[3]; M
-end
+# (column-major constructor arguments: column 1 first)
+translate(t) = M4(1,0,0,0, 0,1,0,0, 0,0,1,0, t[1],t[2],t[3],1)
+translate(x, y, z) = M4(1,0,0,0, 0,1,0,0, 0,0,1,0, x,y,z,1)
 function roty(a)
-    c,s = cos(a),sin(a); M=ident(); M[1,1]=c; M[1,3]=s; M[3,1]=-s; M[3,3]=c; Float32.(M)
+    c,s = cos(a),sin(a); M4(c,0,-s,0, 0,1,0,0, s,0,c,0, 0,0,0,1)
 end
 function rotz(a)
-    c,s = cos(a),sin(a); M=ident(); M[1,1]=c; M[1,2]=-s; M[2,1]=s; M[2,2]=c; Float32.(M)
+    c,s = cos(a),sin(a); M4(c,s,0,0, -s,c,0,0, 0,0,1,0, 0,0,0,1)
 end
 function rotx(a)
-    c,s = cos(a),sin(a); M=ident(); M[2,2]=c; M[2,3]=-s; M[3,2]=s; M[3,3]=c; Float32.(M)
+    c,s = cos(a),sin(a); M4(1,0,0,0, 0,c,s,0, 0,-s,c,0, 0,0,0,1)
 end
-scalexyz(x,y,z) = Float32[x 0 0 0; 0 y 0 0; 0 0 z 0; 0 0 0 1]
+scalexyz(x,y,z) = M4(x,0,0,0, 0,y,0,0, 0,0,z,0, 0,0,0,1)
 # average vertex normal of a mesh part (11-float stride) — the steering wheel's
 # disc normal, i.e. its column axis (already raked toward the front axle in the mesh)
 function disc_normal(v)
@@ -272,14 +279,14 @@ end
 # rotation about an arbitrary unit axis (Rodrigues) — used to spin the steering
 # wheel about its own column axis (the disc normal) without re-orienting it
 function rotaxis(axis, θ)
-    x,y,z = normalize(Float64.(collect(axis))); c=cos(θ); s=sin(θ); t=1-c; M=ident()
-    M[1,1]=t*x*x+c;   M[1,2]=t*x*y-s*z; M[1,3]=t*x*z+s*y
-    M[2,1]=t*x*y+s*z; M[2,2]=t*y*y+c;   M[2,3]=t*y*z-s*x
-    M[3,1]=t*x*z-s*y; M[3,2]=t*y*z+s*x; M[3,3]=t*z*z+c; Float32.(M)
+    x,y,z = normalize(SVector{3,Float64}(axis[1], axis[2], axis[3])); c=cos(θ); s=sin(θ); t=1-c
+    M4(t*x*x+c, t*x*y+s*z, t*x*z-s*y, 0,
+       t*x*y-s*z, t*y*y+c, t*y*z+s*x, 0,
+       t*x*z+s*y, t*y*z-s*x, t*z*z+c, 0,  0, 0, 0, 1)
 end
 function perspective(fovy,aspect,near,far)
-    f=1/tan(fovy/2); M=zeros(Float32,4,4)
-    M[1,1]=f/aspect;M[2,2]=f;M[3,3]=(far+near)/(near-far);M[3,4]=2*far*near/(near-far);M[4,3]=-1; M
+    f=1/tan(fovy/2)
+    M4(f/aspect,0,0,0, 0,f,0,0, 0,0,(far+near)/(near-far),-1, 0,0,2*far*near/(near-far),0)
 end
 # Reversed-Z perspective: maps near→1, far→0 into a [0,1] clip-depth range.  Needs the
 # main pass set up with glClipControl(ZERO_TO_ONE) + glDepthFunc(GEQUAL) + glClearDepth(0).
@@ -288,13 +295,13 @@ end
 # 150 m+ (advertising signs on fences) stop z-fighting — the strobe a standard [−1,1]
 # 24-bit buffer can't avoid.
 function perspective_revz(fovy,aspect,near,far)
-    f=1/tan(fovy/2); M=zeros(Float32,4,4)
-    M[1,1]=f/aspect; M[2,2]=f
-    M[3,3]=near/(far-near); M[3,4]=far*near/(far-near); M[4,3]=-1; M
+    f=1/tan(fovy/2)
+    M4(f/aspect,0,0,0, 0,f,0,0, 0,0,near/(far-near),-1, 0,0,far*near/(far-near),0)
 end
 function lookat(eye,ctr,up)
-    f=normalize(ctr.-eye); s=normalize(cross(f,up)); u=cross(s,f)
-    Float32[ s[1] s[2] s[3] -dot(s,eye); u[1] u[2] u[3] -dot(u,eye); -f[1] -f[2] -f[3] dot(f,eye); 0 0 0 1 ]
+    e = SVector{3,Float64}(eye[1], eye[2], eye[3]); c = SVector{3,Float64}(ctr[1], ctr[2], ctr[3])
+    f=normalize(c .- e); s=normalize(cross(f, SVector{3,Float64}(up[1], up[2], up[3]))); u=cross(s,f)
+    M4(s[1],u[1],-f[1],0, s[2],u[2],-f[2],0, s[3],u[3],-f[3],0, -dot(s,e),-dot(u,e),dot(f,e),1)
 end
 
 # ---- shaders (textured diffuse × two-sided Lambert + hemispheric ambient) ----
@@ -515,7 +522,7 @@ u3(prog,name,t)=glUniform3f(uloc(prog,name), Float32(t[1]),Float32(t[2]),Float32
 function draw_sky(skyprog, vao, invVP, campos, lightdir; cloud::Real=1.0, horizon=HORIZON, zenith=ZENITH)
     glDisable(GL_DEPTH_TEST); glDepthMask(GL_FALSE)
     glUseProgram(skyprog)
-    glUniformMatrix4fv(uloc(skyprog,"uInvVP"),1,GL_FALSE,Matrix{Float32}(invVP))
+    glUniformMatrix4fv(uloc(skyprog,"uInvVP"),1,GL_FALSE,umat(invVP))
     u3(skyprog,"uCamPos",campos); u3(skyprog,"uHorizon",horizon); u3(skyprog,"uZenith",zenith); u3(skyprog,"uLightDir",lightdir)
     glUniform1f(uloc(skyprog,"uCloud"), Float32(cloud))
     glBindVertexArray(vao); glDrawArrays(GL_TRIANGLES,0,3)
@@ -607,9 +614,7 @@ function depthprogram()
     p=glCreateProgram(); glAttachShader(p,compile(DEPTH_VS,GL_VERTEX_SHADER)); glAttachShader(p,compile(DEPTH_FS,GL_FRAGMENT_SHADER)); glLinkProgram(p); p
 end
 function ortho(l,r,b,t,n,f)
-    M=zeros(Float32,4,4)
-    M[1,1]=2/(r-l); M[2,2]=2/(t-b); M[3,3]=-2/(f-n)
-    M[1,4]=-(r+l)/(r-l); M[2,4]=-(t+b)/(t-b); M[3,4]=-(f+n)/(f-n); M[4,4]=1; M
+    M4(2/(r-l),0,0,0, 0,2/(t-b),0,0, 0,0,-2/(f-n),0, -(r+l)/(r-l),-(t+b)/(t-b),-(f+n)/(f-n),1)
 end
 const SHADOW_SIZE = 2048
 function make_shadow_fbo(size=SHADOW_SIZE)
@@ -652,19 +657,20 @@ function shadow_pass(drawfn, depthprog, fbo, lightVP; size=SHADOW_SIZE)
     # reversed-Z main pass — so the shadow map + the sampler logic in the FS are untouched
     glClipControl(GL_LOWER_LEFT, GL_NEGATIVE_ONE_TO_ONE); glDepthFunc(GL_LESS); glClearDepth(1.0)
     glBindFramebuffer(GL_FRAMEBUFFER,fbo); glViewport(0,0,size,size); glClear(GL_DEPTH_BUFFER_BIT)
-    glUseProgram(depthprog); glUniformMatrix4fv(uloc(depthprog,"uLightVP"),1,GL_FALSE,Matrix{Float32}(lightVP))
+    glUseProgram(depthprog); glUniformMatrix4fv(uloc(depthprog,"uLightVP"),1,GL_FALSE,umat(lightVP))
     glEnable(GL_POLYGON_OFFSET_FILL); glPolygonOffset(2.5f0, 4.0f0)
     drawfn(depthprog)
     glDisable(GL_POLYGON_OFFSET_FILL); glBindFramebuffer(GL_FRAMEBUFFER,0)
 end
 function draw_depth(depthprog, item, model)
-    glUniformMatrix4fv(uloc(depthprog,"uModel"),1,GL_FALSE, model isa Matrix{Float32} ? model : Matrix{Float32}(model))   # PERF-1: no copy
+    glUniformMatrix4fv(uloc(depthprog,"uModel"),1,GL_FALSE, umat(model))   # PERF-1: no copy
     glBindVertexArray(item.vao); glDrawArrays(GL_TRIANGLES,0,item.n)
+    NDRAW[] += 1; NTRI[] += item.n ÷ 3
 end
 """Bind the shadow map + light matrix for the main pass (shadow on texture unit 1)."""
 function bind_shadow(prog, shadowtex, lightVP; unit=1, size=SHADOW_SIZE)
     glUseProgram(prog)
-    glUniformMatrix4fv(uloc(prog,"uLightVP"),1,GL_FALSE,Matrix{Float32}(lightVP))
+    glUniformMatrix4fv(uloc(prog,"uLightVP"),1,GL_FALSE,umat(lightVP))
     glActiveTexture(GL_TEXTURE0+unit); glBindTexture(GL_TEXTURE_2D,shadowtex)
     glUniform1i(uloc(prog,"uShadow"),Int32(unit))
     glUniform1f(uloc(prog,"uShadowTexel"),Float32(1/size))
@@ -2365,7 +2371,7 @@ function build_track(parts, texidx)
     end
     items
 end
-setmat(prog,name,M)=glUniformMatrix4fv(uloc(prog,name),1,GL_FALSE,M)
+setmat(prog,name,M)=glUniformMatrix4fv(uloc(prog,name),1,GL_FALSE,umat(M))
 # E69-S8: white balance, default measured to bring native's neutral surfaces onto gold's.
 # JM_WBAL="r,g,b" overrides; JM_WBAL="1,1,1" disables.
 # E72-S13: set once per track at load (drive_native_mtk sets it from GRADE selection).
@@ -2409,6 +2415,7 @@ function draw(prog, item::Item, vp, model; bright::Real=1.0, spec::Real=0.0, amb
         glUniform1i(uloc(prog,"uHasTex"),0)
     end
     glBindVertexArray(item.vao); glDrawArrays(GL_TRIANGLES,0,item.n)
+    NDRAW[] += 1; NTRI[] += item.n ÷ 3
     depthbias && glDisable(GLenum(0x8037))
 end
 """Upload a bare interleaved blob as an untextured Item (car, wheels)."""

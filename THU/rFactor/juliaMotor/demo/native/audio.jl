@@ -153,6 +153,7 @@ function mix!(out::Matrix{Float32}, eng::Engine)
     end
 end
 
+const AUDIO_BLOCKWRITE = get(ENV, "JM_AUDIO_BLOCKWRITE", "0") != "0"   # PERF-3 A/B switch
 """Start the audio thread (needs Julia ≥2 threads).  Returns the Engine; update
 `eng.rpm[]` from the game loop, call `stop!(eng)` to end."""
 function start(eng::Engine)
@@ -228,6 +229,18 @@ function start(eng::Engine)
                     @inbounds for i in eachindex(buf)
                         x = buf[i]
                         buf[i] = isfinite(x) ? (x > 1f0 ? 1f0 : x < -1f0 ? -1f0 : x) : 0f0
+                    end
+                    # PERF-3: Pa_WriteStream is a plain (not GC-safe) ccall that BLOCKS until the device has room,
+                    # and a stop-the-world GC must wait for this thread to leave it: every collection in the frame
+                    # loop paid up to a buffer period on top of its own ~6 ms (measured: GC.gc(false) 36-40 ms wall
+                    # for a 5.7 ms pause), i.e. 2-4 dropped frames each time -- the PO's "jerky". Wait in Julia
+                    # (sleep is a safepoint) until the whole buffer fits, so the write itself never blocks.
+                    # JM_AUDIO_BLOCKWRITE=1 restores the blocking write.
+                    if !AUDIO_BLOCKWRITE
+                        n_ = size(buf, 1)
+                        while eng.running[] && (wa_ = PortAudio.LibPortAudio.Pa_GetStreamWriteAvailable(stream.pointer_to)) >= 0 && wa_ < n_
+                            sleep(0.002)
+                        end
                     end
                     write(stream, buf)
                     wfails = 0                           # a clean write → clear the failure backoff

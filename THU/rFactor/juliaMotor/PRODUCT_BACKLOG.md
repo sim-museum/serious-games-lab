@@ -19399,3 +19399,37 @@ object now drops `people0*` textures (the bushes stay); `parity/po_260926/zandvo
 
 **Regression (2026-09-26):** skidpad + five tracks smoke clean with captures (`parity/po_260926/final_all_tracks.jpg`);
 chase parity gate PASS (3 screens within 7.09, in-run spread 1.18).
+
+## PERF-3 (PO 2026-09-26: "can the julia frame rate be improved? 30 is OK, but not very good. Gold standard is a solid 60 fps with wine GPL")
+
+**The smoke-run frame rate was a measurement artefact.** Every hidden-window (`JM_SMOKE`) run sat at ~57.8 fps whatever the
+work -- with the AI, objects, billboards and horizon all off it was still 58.1, and `swap` absorbed 9.8 ms. glxgears on the
+same display runs 60.0 windowed and at 1920x1080. A hidden XWayland/NVIDIA window is not paced by the compositor.
+`JM_SMOKE_SHOW=1` maps the window for timing runs; visible, the Ring (cockpit, 5 AI) runs 59.2-59.8 with the PERF-1 build.
+The PO's "30" is the shipped AppImage (55daf20), which predates PERF-1/PACE-1.
+
+**The jerks were the audio thread holding up every GC.** `JM_GCLOG` showed a GC every ~4 s at the Ring, 30-60 ms each.
+Forced young collections (`JM_GC_EVERY`) took 36-40 ms wall for a 5.7 ms pause: the rest was time-to-safepoint.
+PortAudio.jl calls `Pa_WriteStream` as a plain (not GC-safe) blocking ccall, so a stop-the-world GC waits for the audio
+thread's write to return. The feeder now polls `Pa_GetStreamWriteAvailable` and `sleep`s (a safepoint) until the whole
+buffer fits, so the write never blocks. A/B at the Ring, same build: blocking write GC 39-45 ms wall, non-blocking 6.5-10 ms
+(`JM_AUDIO_BLOCKWRITE=1` restores the old write). Ring, visible, pacer on, 3000 frames: 59.5-60.0 fps, 7/1920 frame
+intervals > 25 ms. Forcing collections every 30/60 frames scored the same within noise (5 and 7 of 1920), so
+`JM_GC_EVERY` stays 0 (automatic).
+
+**Pacer.** The adaptive 30/60 Hz pacer seeded its average with the first frame (4.9 s of JIT), so every session opened at
+30 Hz; one crash/GC hitch (288 ms) flipped it again. It now skips the first 120 frames (`JM_PACE_WARM`) and clamps each
+sample to 1.5x `JM_PACE_HI`. `[pace]` lines now count intervals > 25 ms.
+
+**Allocation.** `Render` 4x4 helpers (ident/translate/rot*/scalexyz/rotaxis/lookat/perspective/ortho/pose_matrix) return
+StaticArrays `SMatrix` (0 bytes per product, measured); `umat()` hands GL a reused buffer. `trackItems`/`carItems` are
+const; the AI draws are typed functions (`draw_ai_depth!`/`draw_ai_main!`); the per-part `lowercase(tex)` in the track
+loop is precomputed. ~700 -> ~590 KB/frame before the barriers (sites via `JM_ALLOCSITES`).
+
+**Track-part culling (`JM_TRACKCULL`).** Each track part has a bounding sphere; the camera passes skip parts outside
+their frustum and the shadow pass skips parts outside the 70 m light box (`JM_TRACKCULL_SHADOW`). Spa main pass 4.5 ->
+1.8 ms, 1682 -> 444 draws. The Ring's parts span up to 4 km, so there it saves draws, not triangles.
+**Frustum bug fixed (pre-existing):** `infrustum` padded spheres by a fixed `1.2r` in clip units; the top/bottom planes
+need `r*sqrt(1+P22^2)` (~2.4r at the 51 deg chase FOV). Parts and trackside objects just below/above the screen edge were
+culled while visible (found as a missing verge at Spa s=11000 chase: 47,711 px -> 1,500 px vs cull-off, inside the
+same-config repeat noise). Now an exact normalised-plane test.
