@@ -807,7 +807,7 @@ class DriveTab(QWidget):
         except OSError:
             self._sim_log = None
         # use the prebuilt sysimage if present (skips ~40-80 s of physics/render JIT)
-        jlargs = ["-t", "2", "--project=."]
+        jlargs = ["-t", "2", "--gcthreads=3,1", "--project=."]   # PERF-1: parallel GC mark + concurrent sweep (pauses 32-39 ms -> 16 ms)
         sysimg = os.path.join(HERE, "jlracer.so")
         fast = os.path.exists(sysimg)
         if fast:
@@ -1065,7 +1065,7 @@ class ReplayTab(QWidget):
         self.progress.setValue(0)
         self.progress.setFormat("starting Julia…  (a replay loads the whole track, like a race: 3–4 min)")
         self.progress.setVisible(True)
-        jlargs = ["-t", "2", "--project=."]
+        jlargs = ["-t", "2", "--gcthreads=3,1", "--project=."]   # PERF-1: parallel GC mark + concurrent sweep (pauses 32-39 ms -> 16 ms)
         sysimg = os.path.join(HERE, "jlracer.so")
         if os.path.exists(sysimg):
             jlargs += ["-J", sysimg]

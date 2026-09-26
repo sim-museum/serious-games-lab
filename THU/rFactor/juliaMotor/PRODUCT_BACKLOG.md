@@ -19323,3 +19323,79 @@ Verification (`~/Documents/260925/logs/verify_jr.sh`: mounted image, code at the
 depot): cache check 0 rejections / 0 precompiled; Watkins Glen 5-AI race launch **144 s** to the game loop, 0 errors
 (was 243 s on the include route, 209 s with the sysimage); skidpad 92 s, 0 errors; start/finish capture
 `parity/po_260925/appimage_260925_wg_sf.jpg` shows the new chase view, horizon, grade and single banner.
+
+### PO test session 2026-09-25 (`~/Videos/260925_julia.mp4`, 35 min, all five tracks, 5 AI) -- found and fixed
+Races ended at WG (t=97 s, 205 -> 74 km/h in 0.2 s on a straight), the Ring (t=93 s, 114 -> 31 km/h "as if it hit
+something on an empty road coming out of the grandstand area"), Spa (Bus Stop, wheels torn off) and Zandvoort (into a
+crowd wall). The PO's telemetry files + `last_sim_run.log` located each one.
+
+**RAILMIRROR-1 -- every guardrail collision box was at the MIRROR IMAGE of its rail.** E90's rail boxes are built from
+TRACKMAIN, which is in the RENDER frame (render z = -physics z; `camera()` negates it). The builder used render z as
+physics z, so each rail's box sat at (x, -z): invisible walls scattered across open road, and the real rails not
+collidable. Both the WG and Ring race-enders were the car at road speed hitting a box on the tarmac (`JM_SOLIDNEAR` at
+the stop points: a 0.6 x 8 m `railbox` on the Ring centreline, a rail at WG lat 5.5). `JM_RAILBOX_NEAR` prints the rail
+triangles near a point: the Ring's box came from a road-level rail 287 m away in height (the mirror point). Fixed by
+negating z (`JM_RAIL_MIRROR_OLD=1` for A/B); at the Ring 265 correctly-placed boxes now fail the tarmac test that 8 did
+before. RAILHIGH-1 on top: a rail box also carries its height; one whose bottom is > 2 m (`JM_RAIL_OVERHEAD`) above
+the road under it (bridge/gantry railing) does not collide.
+
+**AIGROUND-1 -- the AI physics cars used the PLAYER's ground closure.** `groundz_phys` carries the player's step-guard
+history (PLAYER_G) and filters along the player's heading (PLAYER_HDG); every AI step overwrote the former and used
+the latter. The AI now call `groundz_ai` = the same road surface (`ground_road`: spline + correction on the tarmac,
+mesh elsewhere) with no shared state.
+
+**RUNOFF-1 -- Spa's Bus Stop: the collision terrain ends 9 m from the centreline while grass is drawn beyond** (the only
+surface there is a tree-row mesh), so running wide met the invisible world-edge wall at 131 km/h. A collision-mesh
+hole within `JM_RUNOFF_W` (20 m) of the centreline is now run-off (coast at the held height), not the world edge.
+
+**ZANDCROWD-1** -- the PO: remove all lines of spectators at Zandvoort. Standing crowd rows were already dropped on
+every track; the rows are also forced off at Zandvoort (`JM_KEEP_ZANDCROWD=1`). The crowd wall in the PO's frame
+was not a placed crowd object (none within 60 m of the stop point) -- still to be identified.
+
+**Frame pacing (PO: "why does motion seem jerky, especially at spa, but at every track?").** Measured, cockpit view,
+5 AI, autodrive: WG 58, Zandvoort 58, Monza 58, **Ring 37, Spa 28** fps against a 60 Hz vsync. Below 60 each frame is
+held for an uneven 1-2-3 refreshes (judder); at 58 one frame in ~30 is doubled (a hitch every half second). PERF-1:
+(a) uniform locations cached per program (every draw did ~17 driver name lookups): Spa 28 -> 32; (b) screen-size
+culling (`JM_MINPIX` 1.5 px) for objects and sprites. At the Ring the shadow + two mirror world passes dominate --
+attribution in progress.
+
+**COCKPITGOLD-1** -- eye 0.52 -> 0.40, gaze drop 0.55 -> 0.12, FOV 70 -> 60, chosen against the gold race's cockpit
+frames (a pinhole fit put the eye behind the roll hoop, so the final values come from a capture sweep).
+
+**Verification of the race-enders.** Autodrive through the PO's Ring crash site with the OLD rail frame
+(`JM_RAIL_MIRROR_OLD=1`) wrecks at lapdist 1723, lat 0, 140 km/h -- the PO's crash reproduced. Fixed: the same
+autodrive runs 631 -> 1726 -> 3118 with no wreck and no contact (24 m/s; at 40 m/s it now meets a REAL rail at 631 by
+running wide, which the mirrored boxes had left uncollidable).
+
+**OVERHANG-1 (Spa "overhead yellow polygon ... downhill to Burnenville").** `JM_OVERROAD` (now over the tarmac only,
+|lat| < 4 m) finds exactly one non-bridge surface over the road on the five tracks: Spa `MSTgrL9B`, 910 m2 at 3.7 m,
+s~7400; plus a 114 m2 grass polygon 4.2 m over the Ring at s~15500. Horizontal triangles > 20 m2 over the tarmac,
+2.5-6 m above it (above 6 m = roof/gantry, kept), not br*, are dropped at parse -- render and collision alike.
+
+**PERF-1 / PACE-1 -- the jerky motion, all tracks.** Three causes, measured:
+1. GC pauses: the sim allocated ~2.2 MB/frame; an 11-15 ms GC pause fired every ~40 frames (`JM_GCLOG=1`) -- the
+   hitch the PO saw even at "58 fps". `JM_ALLOCSITES=1` (Profile.Allocs over frames 300-600) named the sites: the AI
+   car transforms built 4 matrices + 3 products per body PART per pass (fused into `Render.pose_matrix`, computed once
+   per car); untyped globals OBJECTS/OBJBOUND/BILLBOARDS boxing every loop iteration (function barriers); per-sprite
+   matrix products (one reused buffer); `ident()` per track draw (`Render.IDENT`). Now ~0.53 MB/frame, and the launcher
+   runs Julia with `--gcthreads=3,1` (parallel mark, concurrent sweep): pauses 16 ms every ~3.7 s instead of 11-15 ms
+   every ~0.7 s.
+2. Frame rate: Ring 37 / Spa 28 fps in cockpit (5 AI). The mirrors are the largest cost (Ring mirrors off: 57.5).
+   Uniform locations cached (17 driver name lookups per draw), size culling, mirror culling at the mirror's own
+   resolution: Spa 28 -> 31, Ring 37 -> 39-41.
+3. Pacing: below 60 Hz a frame was held for an uneven 1-2-3 refreshes. When work > 19 ms (`JM_PACE_HI`) the sim now
+   presents at a steady 30 Hz (every frame exactly two refreshes), back to 60 below 15 ms; when the mirror is starved it
+   renders one half per frame alternately instead of both halves every third frame (a spike by construction).
+   `[pace]` lines report frame-interval p10/p50/p90/max with `JM_FPSDIAG`.
+
+**AIGFX-1 (partial)** -- the AI cars read near-black from behind where the gold's are bright; liveries are correct from
+the front/side (captures `parity/po_260925/ai_*`). AI ambient fill 0.62 -> 0.78 (the player car's). The remaining gap
+is geometry/material: GPL's rear is light textured exhausts/gearbox, ours the posed rear-suspension plates and a dark
+chrome block -- the E75/E82 line, still open.
+
+**ZANDCROWD-1 b.** The crowd wall in the PO's Zandvoort frame is not a crowd-named object: `JM_LAYERS_OFF=obj` makes it
+vanish, and `JM_OBJNEAR` lists `bushes04` (x100+) and `shrub1` carrying `people01/02/03` texture strips. At Zandvoort every
+object now drops `people0*` textures (the bushes stay); `parity/po_260926/zandvoort_people_removed.jpg`.
+
+**Regression (2026-09-26):** skidpad + five tracks smoke clean with captures (`parity/po_260926/final_all_tracks.jpg`);
+chase parity gate PASS (3 screens within 7.09, in-run spread 1.18).

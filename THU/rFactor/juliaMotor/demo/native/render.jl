@@ -232,6 +232,23 @@ end
 
 # ---- mat4 helpers (standard form; Julia column-major == GL column-major) ----
 ident() = Matrix{Float32}(I,4,4)
+const IDENT = Matrix{Float32}(I,4,4)   # PERF-1: shared read-only identity for draws (never mutate)
+"""PERF-1: T(t) * Ry(ay) * Rz(az) * Rx(ax) * T(o) in ONE allocation -- the AI car transforms were built from
+four matrices and three products per body PART per pass (the top allocation site, >1 MB/frame)."""
+function pose_matrix(tx, ty, tz, ay, az, ax, ox = 0f0, oy = 0f0, oz = 0f0)
+    cy, sy = cos(Float32(ay)), sin(Float32(ay)); cz, sz = cos(Float32(az)), sin(Float32(az)); cx, sx = cos(Float32(ax)), sin(Float32(ax))
+    # R = Ry*Rz*Rx with roty/rotz/rotx exactly as defined above
+    r11 = cy*cz;  r12 = -cy*sz*cx + sy*sx;  r13 = cy*sz*sx + sy*cx
+    r21 = sz;     r22 = cz*cx;              r23 = -cz*sx
+    r31 = -sy*cz; r32 = sy*sz*cx + cy*sx;   r33 = -sy*sz*sx + cy*cx
+    o1, o2, o3 = Float32(ox), Float32(oy), Float32(oz)
+    M = Matrix{Float32}(undef, 4, 4)
+    M[1,1]=r11; M[1,2]=r12; M[1,3]=r13; M[1,4]=Float32(tx) + r11*o1 + r12*o2 + r13*o3
+    M[2,1]=r21; M[2,2]=r22; M[2,3]=r23; M[2,4]=Float32(ty) + r21*o1 + r22*o2 + r23*o3
+    M[3,1]=r31; M[3,2]=r32; M[3,3]=r33; M[3,4]=Float32(tz) + r31*o1 + r32*o2 + r33*o3
+    M[4,1]=0f0; M[4,2]=0f0; M[4,3]=0f0; M[4,4]=1f0
+    M
+end
 function translate(t)
     M=ident(); M[1,4]=t[1]; M[2,4]=t[2]; M[3,4]=t[3]; M
 end
@@ -483,14 +500,24 @@ function skyprogram()
     p=glCreateProgram(); glAttachShader(p,compile(SKY_VS,GL_VERTEX_SHADER)); glAttachShader(p,compile(SKY_FS,GL_FRAGMENT_SHADER)); glLinkProgram(p); p
 end
 function empty_vao(); v=Ref{GLuint}(); glGenVertexArrays(1,v); v[]; end
-u3(prog,name,t)=glUniform3f(glGetUniformLocation(prog,name), Float32(t[1]),Float32(t[2]),Float32(t[3]))
+# PERF-1 (2026-09-25, PO: "why does motion seem jerky, especially at spa, but at every track?"): every draw
+# looked up ~17 uniforms BY NAME through the driver, thousands of draws per frame. Locations are fixed once a
+# program is linked, so cache them per (program, name). Programs are built once at startup and never relinked.
+const _ULOC = Dict{UInt32,Dict{String,GLint}}()
+@inline function uloc(prog, name::AbstractString)
+    d = get!(Dict{String,GLint}, _ULOC, UInt32(prog))
+    l = get(d, name, GLint(-2))
+    l == -2 || return l
+    l = glGetUniformLocation(prog, name); d[String(name)] = l; l
+end
+u3(prog,name,t)=glUniform3f(uloc(prog,name), Float32(t[1]),Float32(t[2]),Float32(t[3]))
 """Draw the gradient sky behind everything (depth test off, no depth write)."""
 function draw_sky(skyprog, vao, invVP, campos, lightdir; cloud::Real=1.0, horizon=HORIZON, zenith=ZENITH)
     glDisable(GL_DEPTH_TEST); glDepthMask(GL_FALSE)
     glUseProgram(skyprog)
-    glUniformMatrix4fv(glGetUniformLocation(skyprog,"uInvVP"),1,GL_FALSE,Matrix{Float32}(invVP))
+    glUniformMatrix4fv(uloc(skyprog,"uInvVP"),1,GL_FALSE,Matrix{Float32}(invVP))
     u3(skyprog,"uCamPos",campos); u3(skyprog,"uHorizon",horizon); u3(skyprog,"uZenith",zenith); u3(skyprog,"uLightDir",lightdir)
-    glUniform1f(glGetUniformLocation(skyprog,"uCloud"), Float32(cloud))
+    glUniform1f(uloc(skyprog,"uCloud"), Float32(cloud))
     glBindVertexArray(vao); glDrawArrays(GL_TRIANGLES,0,3)
     glDepthMask(GL_TRUE); glEnable(GL_DEPTH_TEST)
 end
@@ -568,8 +595,8 @@ function resolve_and_fxaa(fxaaprog, vao, msfbo, resolvefbo, resolvetex, w, h)
     glBindFramebuffer(GL_FRAMEBUFFER, 0); glViewport(0,0,w,h)
     glDisable(GL_DEPTH_TEST)
     glUseProgram(fxaaprog); glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, resolvetex)
-    glUniform1i(glGetUniformLocation(fxaaprog,"uTex"), 0)
-    glUniform2f(glGetUniformLocation(fxaaprog,"uInv"), 1f0/w, 1f0/h)
+    glUniform1i(uloc(fxaaprog,"uTex"), 0)
+    glUniform2f(uloc(fxaaprog,"uInv"), 1f0/w, 1f0/h)
     glBindVertexArray(vao); glDrawArrays(GL_TRIANGLES,0,3)
     glEnable(GL_DEPTH_TEST)
 end
@@ -625,22 +652,22 @@ function shadow_pass(drawfn, depthprog, fbo, lightVP; size=SHADOW_SIZE)
     # reversed-Z main pass — so the shadow map + the sampler logic in the FS are untouched
     glClipControl(GL_LOWER_LEFT, GL_NEGATIVE_ONE_TO_ONE); glDepthFunc(GL_LESS); glClearDepth(1.0)
     glBindFramebuffer(GL_FRAMEBUFFER,fbo); glViewport(0,0,size,size); glClear(GL_DEPTH_BUFFER_BIT)
-    glUseProgram(depthprog); glUniformMatrix4fv(glGetUniformLocation(depthprog,"uLightVP"),1,GL_FALSE,Matrix{Float32}(lightVP))
+    glUseProgram(depthprog); glUniformMatrix4fv(uloc(depthprog,"uLightVP"),1,GL_FALSE,Matrix{Float32}(lightVP))
     glEnable(GL_POLYGON_OFFSET_FILL); glPolygonOffset(2.5f0, 4.0f0)
     drawfn(depthprog)
     glDisable(GL_POLYGON_OFFSET_FILL); glBindFramebuffer(GL_FRAMEBUFFER,0)
 end
 function draw_depth(depthprog, item, model)
-    glUniformMatrix4fv(glGetUniformLocation(depthprog,"uModel"),1,GL_FALSE,Matrix{Float32}(model))
+    glUniformMatrix4fv(uloc(depthprog,"uModel"),1,GL_FALSE, model isa Matrix{Float32} ? model : Matrix{Float32}(model))   # PERF-1: no copy
     glBindVertexArray(item.vao); glDrawArrays(GL_TRIANGLES,0,item.n)
 end
 """Bind the shadow map + light matrix for the main pass (shadow on texture unit 1)."""
 function bind_shadow(prog, shadowtex, lightVP; unit=1, size=SHADOW_SIZE)
     glUseProgram(prog)
-    glUniformMatrix4fv(glGetUniformLocation(prog,"uLightVP"),1,GL_FALSE,Matrix{Float32}(lightVP))
+    glUniformMatrix4fv(uloc(prog,"uLightVP"),1,GL_FALSE,Matrix{Float32}(lightVP))
     glActiveTexture(GL_TEXTURE0+unit); glBindTexture(GL_TEXTURE_2D,shadowtex)
-    glUniform1i(glGetUniformLocation(prog,"uShadow"),Int32(unit))
-    glUniform1f(glGetUniformLocation(prog,"uShadowTexel"),Float32(1/size))
+    glUniform1i(uloc(prog,"uShadow"),Int32(unit))
+    glUniform1f(uloc(prog,"uShadowTexel"),Float32(1/size))
 end
 
 """Per-frame scene uniforms (camera position + distance fog into the haze)."""
@@ -650,12 +677,12 @@ function set_scene_uniforms(prog, campos; fognear=300f0, fogfar=2400f0,
     glUseProgram(prog)
     u3(prog,"uCamPos",campos); u3(prog,"uFogCol",fogcol)
     u3(prog,"uSunCol",suncol); u3(prog,"uAmbSky",ambsky)
-    glUniform1f(glGetUniformLocation(prog,"uSat"),Float32(sat))
-    glUniform1f(glGetUniformLocation(prog,"uFogNear"),Float32(fognear))
-    glUniform1f(glGetUniformLocation(prog,"uFogFar"),Float32(fogfar))
-    glUniform3f(glGetUniformLocation(prog,"uTint"),1f0,1f0,1f0)   # frame default white (draws that bypass draw(), e.g. the horizon ring)
-    glUniform1i(glGetUniformLocation(prog,"uMirrorGlass"),0)      # frame default off (same bypass-draw safety)
-    glUniform1i(glGetUniformLocation(prog,"uMacro"), get(ENV,"JM_MACRO","1")=="0" ? 0 : 1)   # E68 S3 A/B
+    glUniform1f(uloc(prog,"uSat"),Float32(sat))
+    glUniform1f(uloc(prog,"uFogNear"),Float32(fognear))
+    glUniform1f(uloc(prog,"uFogFar"),Float32(fogfar))
+    glUniform3f(uloc(prog,"uTint"),1f0,1f0,1f0)   # frame default white (draws that bypass draw(), e.g. the horizon ring)
+    glUniform1i(uloc(prog,"uMirrorGlass"),0)      # frame default off (same bypass-draw safety)
+    glUniform1i(uloc(prog,"uMacro"), get(ENV,"JM_MACRO","1")=="0" ? 0 : 1)   # E68 S3 A/B
 end
 
 # ---- 2D HUD: flat-coloured quads in pixel space (7-segment digits + bars), no
@@ -855,7 +882,7 @@ end
 function hud_draw(prog,vao,vbo,v,W,H)
     isempty(v) && return
     glDisable(GL_DEPTH_TEST); glUseProgram(prog)
-    glUniform2f(glGetUniformLocation(prog,"uRes"),Float32(W),Float32(H))
+    glUniform2f(uloc(prog,"uRes"),Float32(W),Float32(H))
     glBindVertexArray(vao); glBindBuffer(GL_ARRAY_BUFFER,vbo)
     glBufferData(GL_ARRAY_BUFFER,sizeof(v),v,GL_DYNAMIC_DRAW)
     glVertexAttribPointer(0,2,GL_FLOAT,false,5*4,Ptr{Cvoid}(0)); glEnableVertexAttribArray(0)
@@ -2045,9 +2072,9 @@ end
 (depth-write off so closer geometry overwrites it)."""
 function draw_horizon(prog, ring, vp, campos; tint=(1f0,1f0,1f0))
     isempty(ring) && return
-    glUniform1i(glGetUniformLocation(prog,"uSky"), 1)
+    glUniform1i(uloc(prog,"uSky"), 1)
     u3(prog,"uSkyTint",tint)
-    glUniform1i(glGetUniformLocation(prog,"uSkyKey"), HORIZ_KEY[] ? 1 : 0)
+    glUniform1i(uloc(prog,"uSkyKey"), HORIZ_KEY[] ? 1 : 0)
     glDepthMask(GL_FALSE)
     # GPL places horiz.3do in ABSOLUTE track height. Scaled by k about the camera, a vertex keeps its true
     # elevation angle only if the ring is lifted by (1-k)*camera height, not by the full height: at the Ring
@@ -2055,14 +2082,23 @@ function draw_horizon(prog, ring, vp, campos; tint=(1f0,1f0,1f0))
     M = translate(Float32[campos[1], (1f0 - HORIZ_K[])*campos[2], campos[3]])
     for it in ring; draw(prog, it, vp, M; bright=1.0); end
     glDepthMask(GL_TRUE)
-    glUniform1i(glGetUniformLocation(prog,"uSky"), 0)
+    glUniform1i(uloc(prog,"uSky"), 0)
 end
 
 """Model matrix for a billboard at render `pos` (base), sized `w`×`h`, yawed to face
 the camera at `eye`."""
+# PERF-1: T*Ry*S written out into ONE reused buffer -- the old form allocated three matrices and two products
+# per sprite per pass (a large share of the ~2 MB/frame that drove a GC pause every ~40 frames). The caller
+# uses the matrix immediately (uploaded as a uniform), so reusing the buffer is safe on the single render thread.
+const _BBM = Matrix{Float32}(I, 4, 4)
 function billboard_model(pos, w, h, eye)
-    yaw = atan(eye[1]-pos[1], eye[3]-pos[3])
-    translate(Float32[pos[1],pos[2],pos[3]]) * roty(Float32(yaw)) * scalexyz(Float32(w),Float32(h),1f0)
+    yaw = atan(eye[1]-pos[1], eye[3]-pos[3]); c = Float32(cos(yaw)); sn = Float32(sin(yaw))
+    M = _BBM
+    M[1,1] = c*Float32(w); M[1,2] = 0f0;         M[1,3] = sn;  M[1,4] = Float32(pos[1])
+    M[2,1] = 0f0;          M[2,2] = Float32(h);  M[2,3] = 0f0; M[2,4] = Float32(pos[2])
+    M[3,1] = -sn*Float32(w); M[3,2] = 0f0;       M[3,3] = c;   M[3,4] = Float32(pos[3])
+    M[4,1] = 0f0; M[4,2] = 0f0; M[4,3] = 0f0; M[4,4] = 1f0
+    M
 end
 
 """Index every .dds in the track's .mas archives (name → bytes), so textures
@@ -2329,7 +2365,7 @@ function build_track(parts, texidx)
     end
     items
 end
-setmat(prog,name,M)=glUniformMatrix4fv(glGetUniformLocation(prog,name),1,GL_FALSE,M)
+setmat(prog,name,M)=glUniformMatrix4fv(uloc(prog,name),1,GL_FALSE,M)
 # E69-S8: white balance, default measured to bring native's neutral surfaces onto gold's.
 # JM_WBAL="r,g,b" overrides; JM_WBAL="1,1,1" disables.
 # E72-S13: set once per track at load (drive_native_mtk sets it from GRADE selection).
@@ -2354,23 +2390,23 @@ function draw(prog, item::Item, vp, model; bright::Real=1.0, spec::Real=0.0, amb
         glPolygonOffset(-2.5f0, -4f0)   # E106-S10: -1/-1 left the mirrors still flickering (PO)
     end
     setmat(prog,"uVP",vp); setmat(prog,"uModel",model)
-    glUniform1i(glGetUniformLocation(prog,"uUnlit"), unlit ? 1 : 0)   # E83-S3: sprites at texture brightness
-    glUniform3f(glGetUniformLocation(prog,"uTint"), Float32(tint[1]), Float32(tint[2]), Float32(tint[3]))   # per-draw colour multiply (default white = no-op)
-    glUniform1i(glGetUniformLocation(prog,"uMirrorGlass"), mirrorglass ? 1 : 0)   # E64: live mirror glass quad
-    glUniform1f(glGetUniformLocation(prog,"uBright"), Float32(bright))
-    glUniform1f(glGetUniformLocation(prog,"uSpec"), Float32(spec))
-    glUniform1f(glGetUniformLocation(prog,"uAlpha"), Float32(alpha))
-    glUniform1f(glGetUniformLocation(prog,"uAmbFill"), Float32(ambfill))
-    glUniform3f(glGetUniformLocation(prog,"uWBal"), WBAL[1], WBAL[2], WBAL[3])
-    glUniform1f(glGetUniformLocation(prog,"uExposure"), EXPOSURE[])
-    glUniform1i(glGetUniformLocation(prog,"uGraze"), graze ? 1 : 0)
-    glUniform1i(glGetUniformLocation(prog,"uCutout"), get(CUTOUT_TEX, item.tex, false) ? 1 : 0)
+    glUniform1i(uloc(prog,"uUnlit"), unlit ? 1 : 0)   # E83-S3: sprites at texture brightness
+    glUniform3f(uloc(prog,"uTint"), Float32(tint[1]), Float32(tint[2]), Float32(tint[3]))   # per-draw colour multiply (default white = no-op)
+    glUniform1i(uloc(prog,"uMirrorGlass"), mirrorglass ? 1 : 0)   # E64: live mirror glass quad
+    glUniform1f(uloc(prog,"uBright"), Float32(bright))
+    glUniform1f(uloc(prog,"uSpec"), Float32(spec))
+    glUniform1f(uloc(prog,"uAlpha"), Float32(alpha))
+    glUniform1f(uloc(prog,"uAmbFill"), Float32(ambfill))
+    glUniform3f(uloc(prog,"uWBal"), WBAL[1], WBAL[2], WBAL[3])
+    glUniform1f(uloc(prog,"uExposure"), EXPOSURE[])
+    glUniform1i(uloc(prog,"uGraze"), graze ? 1 : 0)
+    glUniform1i(uloc(prog,"uCutout"), get(CUTOUT_TEX, item.tex, false) ? 1 : 0)
     if item.tex != 0
-        glUniform1i(glGetUniformLocation(prog,"uHasTex"),1)
+        glUniform1i(uloc(prog,"uHasTex"),1)
         glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D,item.tex)
-        glUniform1i(glGetUniformLocation(prog,"uTex"),0)
+        glUniform1i(uloc(prog,"uTex"),0)
     else
-        glUniform1i(glGetUniformLocation(prog,"uHasTex"),0)
+        glUniform1i(uloc(prog,"uHasTex"),0)
     end
     glBindVertexArray(item.vao); glDrawArrays(GL_TRIANGLES,0,item.n)
     depthbias && glDisable(GLenum(0x8037))
@@ -2440,8 +2476,8 @@ text_width(font::Font, str; scale=1.0) = sum((get(font.glyphs,ch,get(font.glyphs
 function text_draw(prog,vao,vbo,font::Font,v,W,H)
     isempty(v) && return
     glDisable(GL_DEPTH_TEST); glEnable(GL_BLEND); glBlendFunc(GL_ONE,GL_ONE_MINUS_SRC_ALPHA)
-    glUseProgram(prog); glUniform2f(glGetUniformLocation(prog,"uRes"),Float32(W),Float32(H))
-    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D,font.tex); glUniform1i(glGetUniformLocation(prog,"uAtlas"),0)
+    glUseProgram(prog); glUniform2f(uloc(prog,"uRes"),Float32(W),Float32(H))
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D,font.tex); glUniform1i(uloc(prog,"uAtlas"),0)
     glBindVertexArray(vao); glBindBuffer(GL_ARRAY_BUFFER,vbo)
     glBufferData(GL_ARRAY_BUFFER,sizeof(v),v,GL_DYNAMIC_DRAW)
     glVertexAttribPointer(0,2,GL_FLOAT,false,7*4,Ptr{Cvoid}(0));   glEnableVertexAttribArray(0)

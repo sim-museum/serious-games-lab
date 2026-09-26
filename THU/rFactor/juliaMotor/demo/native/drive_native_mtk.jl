@@ -1631,19 +1631,43 @@ else
     # re-parses ZTRK) draws exactly the geometry the physics HAT is built from. JM_ROADCURVE=0 disables.
     # JM_ROADCURVE_TOL = the chord tolerance (m) below which an edge stays straight.
     # 2026-09-25 (PO: "turn on smoothed curves on every track"): default ON everywhere.
+    # OVERHANG-1 (PO 2026-09-25, Spa: "remove overhead yellow polygon you go under as you head downhill to
+    # Burnenville"). JM_OVERROAD found one surface over the tarmac anywhere on the five tracks that is not a
+    # bridge: Spa's MSTgrL9B, a 910 m2 horizontal field polygon 3.7 m above the road at s~7400 (GPL data).
+    # Rule: a horizontal triangle (> 20 m2) whose centroid is over the tarmac (|lat| < 4 m) and > 2.5 m above the
+    # road, with a non-bridge texture (not br*), is dropped from the track mesh -- render and collision alike.
+    # JM_KEEP_OVERHANG=1 keeps it.
+    function drop_overhang(m)
+        get(ENV, "JM_KEEP_OVERHANG", "0") != "0" && return m
+        keep = trues(length(m.tris)); ndrop = 0; names = Set{String}()
+        for (k, t) in enumerate(m.tris)
+            lt = lowercase(t.tex); startswith(lt, "br") && continue
+            cx = sum(q[1] for q in t.p)/3; cy = sum(q[2] for q in t.p)/3; cz = sum(q[3] for q in t.p)/3
+            n1 = (t.p[2][1]-t.p[1][1], t.p[2][2]-t.p[1][2], t.p[2][3]-t.p[1][3]); n2 = (t.p[3][1]-t.p[1][1], t.p[3][2]-t.p[1][2], t.p[3][3]-t.p[1][3])
+            nx = n1[2]*n2[3]-n1[3]*n2[2]; ny = n1[3]*n2[1]-n1[1]*n2[3]; nz = n1[1]*n2[2]-n1[2]*n2[1]; nn = sqrt(nx^2+ny^2+nz^2)
+            (nn > 40.0 && abs(nz)/nn > 0.5) || continue            # area = nn/2 > 20 m2, horizontal
+            hr = JuliaMotor.hat(RIBBON0, cx, cy)
+            (hr.found && abs(hr.lateral) < 4.0 && 2.5 < cz - hr.height < 6.0) || continue   # > 6 m: a roof or gantry, kept
+            keep[k] = false; ndrop += 1; push!(names, t.tex)
+        end
+        ndrop == 0 && return m
+        println("  [overhang] OVERHANG-1: dropped ", ndrop, " polygon(s) hanging over the tarmac: ", join(names, " "), " (JM_KEEP_OVERHANG=1 keeps)")
+        Render.GPL3DO.Mesh3DO(m.tris[keep], m.textures, m.groups[keep])
+    end
     const ROADCURVE_ON = get(ENV, "JM_ROADCURVE", "1") != "0"
     const TRACKMESH0C = if ROADCURVE_ON
         let P = [(p[1], p[3]) for p in RIBBON0.pos], HS = [p[2] for p in RIBBON0.pos], q = RIBBON0.perp[1], tol = parse(Float64, get(ENV, "JM_ROADCURVE_TOL", "0.05")), sig = parse(Float64, get(ENV, "JM_ROADCURVE_SIG", "2.0"))
             length(P) > 2 && hypot(P[end][1]-P[1][1], P[end][2]-P[1][2]) < 0.5 && (pop!(P); pop!(HS))   # closed loop, no repeated node
-            post(path, m) = abspath(path) == abspath(ZTRK) ? RoadCurve.curve_mesh(m, P, (q[1], q[3]); tol=tol, sig=sig, heights=HS)[1] : m
+            post(path, m) = abspath(path) == abspath(ZTRK) ? RoadCurve.curve_mesh(drop_overhang(m), P, (q[1], q[3]); tol=tol, sig=sig, heights=HS)[1] : m
             Render.GPL3DO.POSTPROC[] = post
-            mc, st = RoadCurve.curve_mesh(TRACKMESH0, P, (q[1], q[3]); tol=tol, sig=sig, heights=HS)
+            mc, st = RoadCurve.curve_mesh(drop_overhang(TRACKMESH0), P, (q[1], q[3]); tol=tol, sig=sig, heights=HS)
             println("  [roadcurve] ON: ", st.tris_in, " -> ", st.tris_out, " tris (", st.curved, " polygons rounded; ",
                     st.mapped, "/", st.verts, " vertices in the track frame, ", st.overhead, " left alone as overhead; tol ", tol, " m; JM_ROADCURVE=0 disables)")
             mc
         end
     else
-        TRACKMESH0
+        Render.GPL3DO.POSTPROC[] = (path, m) -> abspath(path) == abspath(ZTRK) ? drop_overhang(m) : m
+        drop_overhang(TRACKMESH0)
     end
     const TRACKMESH = isempty(SECTRI) ? TRACKMESH0C :
         Render.GPL3DO.Mesh3DO([TRACKMESH0C.tris; SECTRI], TRACKMESH0C.textures,
@@ -1794,6 +1818,30 @@ else
             end
         end
         (hm, ok)
+    end
+    # diag JM_OVERROAD=1: every track-mesh triangle whose centroid is over the road corridor (|lat| < 7 m) and
+    # > 2.5 m above the road there -- bridges, gantries, and any stray polygon hanging over the track. Exits.
+    if get(ENV, "JM_OVERROAD", "0") != "0"
+        cnt = Dict{Tuple{String,Int},Vector{Float64}}()
+        for t in TRACKMESH.tris
+            cx = sum(q[1] for q in t.p)/3; cy = sum(q[2] for q in t.p)/3; cz = sum(q[3] for q in t.p)/3
+            hr = JuliaMotor.hat(TRKSURF, cx, cy)
+            (hr.found && abs(hr.lateral) < parse(Float64, get(ENV, "JM_OVERROAD_LAT", "4.0"))) || continue
+            dh = cz - hr.height
+            dh > 2.5 || continue
+            k = (t.tex, round(Int, hr.lapdist / 50) * 50)
+            e = get!(cnt, k, [0.0, Inf, -Inf, 0.0]); e[1] += 1; e[2] = min(e[2], dh); e[3] = max(e[3], dh)
+            a = 0.5*sqrt(sum(((t.p[2][i]-t.p[1][i])*(t.p[3][j]-t.p[1][j]) - (t.p[2][j]-t.p[1][j])*(t.p[3][i]-t.p[1][i]))^2 for (i,j) in ((1,2),(2,3),(1,3))))
+            e[4] += a
+            # horizontal share: |normal z|
+            n1 = (t.p[2][1]-t.p[1][1], t.p[2][2]-t.p[1][2], t.p[2][3]-t.p[1][3]); n2 = (t.p[3][1]-t.p[1][1], t.p[3][2]-t.p[1][2], t.p[3][3]-t.p[1][3])
+            nz = n1[1]*n2[2]-n1[2]*n2[1]; nn = sqrt((n1[2]*n2[3]-n1[3]*n2[2])^2 + (n1[3]*n2[1]-n1[1]*n2[3])^2 + nz^2)
+            nn > 0 && abs(nz)/nn > 0.5 && (length(e) < 5 ? push!(e, a) : (e[5] += a))
+        end
+        for (k, e) in sort(collect(cnt), by = x -> x[1][2])
+            println("  [overroad] s~", lpad(k[2], 6), "  ", rpad(k[1], 10), " tris ", Int(e[1]), "  area ", round(e[4], digits=1), " m2 (horizontal ", round(length(e) >= 5 ? e[5] : 0.0, digits=1), ")  height ", round(e[2], digits=1), "..", round(e[3], digits=1), " m")
+        end
+        flush(stdout); exit(0)
     end
     const CAR = DriveCar(MODEL, TRKSURF; terrain=TERRAIN)    # racing ribbon from the .trk centreline
     println(TERRAIN, "  ", TRKSURF)
@@ -3327,6 +3375,15 @@ end
 const BB_LIT    = get(ENV,"JM_BILLBOARD_LIT","0") != "0"
 const BB_BRIGHT = parse(Float32, get(ENV,"JM_BB_BRIGHT","1.55"))
 const BB_AMB    = parse(Float32, get(ENV,"JM_BB_AMB","0.85"))
+# PERF-1 (2026-09-25): screen-size culling. At Spa the main pass spent 12 ms on objects and 11 ms on
+# sprites (1,446 objects, 2,428 sprites), most of them distant trees and figures a pixel or two tall. A thing
+# whose size/distance projects to fewer than JM_MINPIX pixels (1.5) is skipped. f ~ 700 px per unit of
+# size/distance at the shipped FOVs.
+const MINPIX_K = Float32(parse(Float64, get(ENV, "JM_MINPIX", "1.5")) / 700.0)
+# The mirror FBO is 384x192 for two ~78 deg views: ~120 px per unit of size/distance, not 700. Measured at the Ring
+# (cockpit, 5 AI): mirrors on 34-36 fps, mirrors off 57.5 -- the two mirror world passes were drawing with the MAIN
+# view's radii (objects 2.2 km, sprites 1.3 km) and pixel density. They now cull at the mirror's own resolution.
+const MINPIX_K_MIR = Float32(parse(Float64, get(ENV, "JM_MINPIX", "1.5")) / 120.0)
 const BB_CULL2  = 1300f0^2      # billboards (tree/shrub/crowd sprites) — far ones add little
 # SPA-FPS-1 S14 (2026-09-15): the same two radii, for the MIRROR pass only. S12/S13 measured the
 # mirror costing ~20 ms a frame at Spa -- more than the rest of the scene -- because the pass runs
@@ -3334,8 +3391,10 @@ const BB_CULL2  = 1300f0^2      # billboards (tree/shrub/crowd sprites) — far 
 # grandstand 2 km behind the car occupies a couple of pixels there. Cull the mirror's world harder
 # and the cost falls without touching what the driver sees ahead. Defaults keep today's behaviour
 # exactly (same radii as the main view) so nothing changes until the knobs are set.
-const MIR_OBJ_CULL2 = parse(Float32, get(ENV, "JM_MIRROR_OBJ_CULL_D", "2200"))^2
-const MIR_BB_CULL2  = parse(Float32, get(ENV, "JM_MIRROR_BB_CULL_D",  "1300"))^2
+const AI_BRIGHT = parse(Float64, get(ENV, "JM_AI_BRIGHT", "1.25"))   # AIGFX-1: AI body grade (A/B knobs)
+const AI_AMB    = parse(Float64, get(ENV, "JM_AI_AMB", "0.78"))   # AIGFX-1: the player car's fill (was 0.62): the gold's AI tails read bright, ours near-black
+const MIR_OBJ_CULL2 = parse(Float32, get(ENV, "JM_MIRROR_OBJ_CULL_D", "450"))^2    # PERF-1: was 2200 -- see MINPIX_K_MIR
+const MIR_BB_CULL2  = parse(Float32, get(ENV, "JM_MIRROR_BB_CULL_D",  "250"))^2     # PERF-1: was 1300
 const SMOKE = haskey(ENV, "JM_SMOKE")     # headless self-test: hidden window, auto-exit
 const SMOKE_FRAMES = parse(Int, get(ENV, "JM_SMOKE_FRAMES", "40"))   # SPA-FPS-1 S8: 40 is JIT warm-up
 # E59 multi-shot smoke: JM_SHOTS="s:view:name;s:view:name;…" photographs MANY points of the lap in ONE
@@ -3383,6 +3442,14 @@ const SHOT_SETTLE = parse(Int, get(ENV, "JM_SHOT_SETTLE", "38"))
 # That quantity had never been printed. JM_WHEELGAP=<n> prints it every n frames, for the player
 # and for each AI car, in the RENDER frame the eye is looking at.
 const WHEELGAP = parse(Int, get(ENV, "JM_WHEELGAP", "0"))
+const PACE_ON  = get(ENV, "JM_PACE", "1") != "0"
+const ALLOCSITES = get(ENV, "JM_ALLOCSITES", "0") != "0"
+const ALLOCPROF = parse(Int, get(ENV, "JM_ALLOCPROF", "0"))   # PERF-1: bytes allocated per frame, by phase
+const ALLOC_MARK = zeros(Int, 5); const ALLOC_ACC = zeros(Int, 4); const ALLOC_N = Ref(0)
+const PACE_HI  = parse(Float64, get(ENV, "JM_PACE_HI", "19.0")) / 1000
+const PACE_LO  = parse(Float64, get(ENV, "JM_PACE_LO", "15.0")) / 1000
+const PACE_EMA = Ref(0.0); const PACE_INT = Ref(1); const FPS_DTS = Float64[]
+get(ENV, "JM_GCLOG", "0") != "0" && GC.enable_logging(true)   # PERF-1: print every GC pause (hitch attribution)
 const FPSDIAG = parse(Int, get(ENV, "JM_FPSDIAG", "0"))   # E80: frame-time report, per view
 const FRAMEPROF = parse(Int, get(ENV, "JM_FRAMEPROF", "0"))  # E80: per-PHASE frame profiler
 const PROF_WORLD = Ref(0.0); const PROF_HUD = Ref(0.0); const PROF_N = Ref(0); const PROF_TOT = Ref(0.0)
@@ -3684,6 +3751,7 @@ const AIplace! = DriveRT3D.place3d!
 const FENCE = parse(Float64, get(ENV, "JM_FENCE", "13.0"))   # E7: track boundary (m from centreline) — you can't leave the world
 const RACEEND_SECS = parse(Float64, get(ENV, "JM_RACEEND_SECS", "12"))   # RACEEND-1: chequered banner duration after the flag (0 = off)
 const RACEEND_T0 = Ref(-1.0)
+const RUNOFF_W = parse(Float64, get(ENV, "JM_RUNOFF_W", "20.0"))   # RUNOFF-1: collision-mesh holes this close to the centreline are run-off
 const FENCE_GRACE = parse(Float64, get(ENV, "JM_FENCE_GRACE", "2.5"))   # off-HAT distance before the trackside collision fires (tolerates sub-car mesh cracks; small so the fence feels like a wall)
 const FENCE_FAR  = parse(Float64, get(ENV, "JM_FENCE_FAR", "16.0"))     # E56: the physical wall contains within a few m; if the car is STILL this far past the edge the wall failed → a last-resort (non-routine) hard containment so it can never escape into the void
 # GRASS PENALTY (feel): SOFTENED — at 0.9 the drag scrubbed ~90 %/s of speed, and the 5.5 m threshold
@@ -3747,7 +3815,7 @@ glEnable(GL_DEPTH_TEST); glEnable(GL_MULTISAMPLE)
 glEnable(GL_SAMPLE_ALPHA_TO_COVERAGE)                                   # MSAA-smooth the alpha cutout edges (signs/trees/crowd)
 glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)   # GPL cutout/glass alpha
 prog = Render.program(); glUseProgram(prog)
-glUniform3f(glGetUniformLocation(prog,"uLightDir"), 0.4f0, 1.0f0, 0.25f0)
+glUniform3f(Render.uloc(prog,"uLightDir"), 0.4f0, 1.0f0, 0.25f0)
 skyprog = Render.skyprogram(); skyvao = Render.empty_vao()
 hudprog = Render.hud_program(); (hudvao, hudvbo) = Render.hud_buffers()
 # TEXTHUD-1 (GOLDMATCH-JR-1 S1): the text overlay pass. JM_NO_TEXT_HUD=1 disables it; a missing
@@ -4280,8 +4348,13 @@ let objnames=Set{String}()
     # bale protruding into the road"; the GPL gold standard shows a single-λ gantry off the road.  Strip
     # those roadward parts from THIS object only (per-name, scoped) — keep the λ frame + DUNLOP banner +
     # marshals.  Toggle/extend via JM_STARTBOX_KEEP=1 (keep everything).
+    # ZANDCROWD-1 b: the Zandvoort spectator lines are NOT crowd-named objects -- `bushes04` (x100+) and `shrub1`
+    # carry `people01/02/03` texture strips (JM_OBJNEAR listing), so the name rule never saw them. At Zandvoort
+    # every object drops those textures; the bushes stay. JM_KEEP_ZANDCROWD=1 keeps them.
+    _zpeople = (ZANDV && get(ENV, "JM_KEEP_ZANDCROWD", "0") == "0") ?
+        Tuple(vcat([["people0$k", "People0$k", "PEOPLE0$k"] for k in 1:9]...)) : ()
     obj_extra_excl(nm) = (nm=="startbox" && !haskey(ENV,"JM_STARTBOX_KEEP")) ?
-        ("sfbox01","sfbox02","sfbox03","hay01","hay02") : ()
+        ("sfbox01","sfbox02","sfbox03","hay01","hay02", _zpeople...) : _zpeople
     objmesh=Dict{String,Any}(); ymn=Dict{String,Float32}(); ymx=Dict{String,Float32}(); bbinfo=Dict{String,Any}()
     lxmn=Dict{String,Float32}(); lxmx=Dict{String,Float32}(); lzmn=Dict{String,Float32}(); lzmx=Dict{String,Float32}()
     objverts=Dict{String,Any}()   # SOLID-BOX ground truth: the parts, so a hook can transform real vertices   # E71-S8 local horizontal AABB
@@ -4555,8 +4628,12 @@ let objnames=Set{String}()
     # standcrowd row, including the ones the PO drove through on the back stretch.
     # Now unconditional (all tracks). JM_KEEP_CROWDROWS=1 restores them.
     _dropcrowdrows = get(ENV,"JM_KEEP_CROWDROWS","0") == "0"
+    # ZANDCROWD-1 (PO 2026-09-25: "remove all lines of spectators from zandervoort - all are misplaced";
+    # the PO's race ended facing a wall of them). Every standing crowd row goes at Zandvoort; the seated
+    # grandstand/pit-building crowds (part of those meshes) stay. JM_KEEP_ZANDCROWD=1 restores them.
+    _zandcrowd_off = ZANDV && get(ENV, "JM_KEEP_ZANDCROWD", "0") == "0"
     drop(nm) = (!isempty(_keeptest) && any(p->startswith(nm,p), _keeptest)) ? false :
-               (_dropcrowdrows && standcrowd(nm)) ||
+               (_dropcrowdrows && standcrowd(nm)) || (_zandcrowd_off && standcrowd(nm)) ||
                (!isempty(_droptest) && any(p->startswith(nm,p), _droptest)) || (!standcrowd(nm) && (
                (startswith(nm,"grass") && !KEEP_GRASS) || (startswith(nm,"herbe") && !KEEP_GRASS) || nm == "infield" ||
                nm == "hotels" ||                                             # E45: Zandvoort backdrop building cluster — a 310 m garbage bbox that never grounds → floats in the sky above the grandstand; the horizon ring + dunes carry the backdrop without it
@@ -5337,14 +5414,27 @@ let objnames=Set{String}()
                             startswith(lt,"gd_rail") || startswith(lt,"rail") || startswith(lt,"brdgarm") ||
                             startswith(lt,"brdgfen")),
             ntri = 0
+            _rbn = (e = get(ENV, "JM_RAILBOX_NEAR", ""); isempty(e) ? nothing : parse.(Float64, split(e, ",")))
+            RAIL_ZSIGN = get(ENV, "JM_RAIL_MIRROR_OLD", "0") != "0" ? 1f0 : -1f0
             for prt in TRACKMAIN
                 railtex2(prt.tex) || continue
                 v = prt.verts; n = length(v) ÷ 11
                 for t in 0:3:(n-3)
                     xs = (v[11t+1], v[11(t+1)+1], v[11(t+2)+1])
                     ys = (v[11t+2], v[11(t+1)+2], v[11(t+2)+2])
-                    zs = (v[11t+3], v[11(t+1)+3], v[11(t+2)+3])
+                    # RAILMIRROR-1 (2026-09-25): TRACKMAIN is in the RENDER frame, whose z is the MIRROR of the
+                    # physics z (render = (gx, gz, -gy); physics z = gy -- see camera()). The boxes were built
+                    # with render z as physics z, so every guardrail's collision box sat at the mirror image of
+                    # the track -- invisible walls across open road (the PO's Ring "bounce on an empty road"
+                    # at s=1726, the Watkins Glen stop at s=1058) while the real rails had no collision.
+                    # JM_RAIL_MIRROR_OLD=1 restores the old (wrong) frame for A/B.
+                    zs = RAIL_ZSIGN .* (v[11t+3], v[11(t+1)+3], v[11(t+2)+3])
                     cx = sum(xs)/3; cz = sum(zs)/3
+                    if _rbn !== nothing && hypot(cx - _rbn[1], cz - _rbn[2]) < _rbn[3]
+                        _hr = JuliaMotor.hat(TRKSURF, cx, cz)
+                        println("  [railnear] ", rpad(prt.tex, 9), " c=(", round(cx, digits=1), ",", round(cz, digits=1), ") x ", round.(extrema(xs), digits=1),
+                                " z ", round.(extrema(zs), digits=1), " y ", round.(extrema(ys), digits=2), "  ribbon ", _hr.found ? "lat $(round(_hr.lateral, digits=1)) h $(round(_hr.height, digits=2))" : "none")
+                    end
                     kx = floor(Int, cx/cell); kz = floor(Int, cz/cell)
                     k = (kx, kz)
                     e = get!(acc, k, [Inf, -Inf, Inf, -Inf, Inf, -Inf])
@@ -5360,7 +5450,7 @@ let objnames=Set{String}()
                     ntri += 1
                 end
             end
-            nadded = 0; nreject = 0
+            nadded = 0; nreject = 0; nover = 0
             for (_, e) in acc
                 hx = (e[2] - e[1]) / 2; hz = (e[4] - e[3]) / 2
                 (hx < 0.05 && hz < 0.05) && continue        # degenerate sliver: nothing to hit
@@ -5374,13 +5464,29 @@ let objnames=Set{String}()
                     nreject += 1
                     continue
                 end
+                # RAILHIGH-1 (PO 2026-09-25: "neubergring problem where car bounces as if it hit something on
+                # an empty road coming out of the grandstand area"; also a Watkins Glen race ended the same
+                # way). A rail box is 2-D: it ignored the rail's HEIGHT, so the railing of a bridge or
+                # gantry OVER the road -- thin, and so exempt from the tarmac test above -- became a wall
+                # across the road at ground level (the Ring s=1726: a 0.6 x 8 m box on the centreline).
+                # A rail whose bottom is more than JM_RAIL_OVERHEAD m (2.0) above the road under it is
+                # overhead: no collision.
+                let hr = JuliaMotor.hat(TRKSURF, ox, oz), gr = JuliaMotor.hat3d(TERRAIN0, ox, oz; ref = e[5] - 0.5)
+                    groundy = hr.found ? hr.height : (gr[3] ? Float64(gr[1]) : NaN)
+                    if isfinite(groundy) && e[5] - groundy > parse(Float64, get(ENV, "JM_RAIL_OVERHEAD", "2.0"))
+                        nover += 1
+                        get(ENV, "JM_RAILBOX_DIAG", "0") != "0" && println("  [railbox] overhead: (", round(ox, digits=1), ", ", round(oz, digits=1),
+                            ") rail y ", round(e[5], digits=1), "..", round(e[6], digits=1), " road ", round(groundy, digits=1))
+                        continue
+                    end
+                end
                 push!(SOLIDS, (ox, oz, max(hx, hz), :wall))
                 push!(SOLIDNAMES, "railbox")
                 push!(SOLIDBOX, (hx, hz, 0.0))
                 nadded += 1
             end
             println("== JM_RAIL_SOLID: ", ntri, " rail tris -> ", nadded, " collision boxes of <=",
-                    cell, " m (", nreject, " rejected for covering tarmac); solids ",
+                    cell, " m (", nreject, " rejected for covering tarmac, ", nover, " overhead); solids ",
                     length(SOLIDS) - nadded, " -> ", length(SOLIDS))
             flush(stdout)
         end
@@ -6182,8 +6288,8 @@ const MIRROR_ADAPT    = get(ENV,"JM_MIRROR_ADAPT","1") != "0"
 # flopped between every-frame and every-3rd (35 skips in one run) -- which is exactly the
 # intermittent strobing E106 fixed, reintroduced by the fix for Spa. Back off only above the HIGH
 # mark and resume only below the LOW mark, so the mode is stable in the band between.
-const MIRROR_ADAPT_MS = parse(Float64, get(ENV,"JM_MIRROR_ADAPT_MS","30.0"))      # back off above this
-const MIRROR_RESUME_MS = parse(Float64, get(ENV,"JM_MIRROR_RESUME_MS","24.0"))    # resume below this
+const MIRROR_ADAPT_MS = parse(Float64, get(ENV,"JM_MIRROR_ADAPT_MS","18.0"))   # PACE-1: was 30 -- back off as soon as 60 Hz is lost      # back off above this
+const MIRROR_RESUME_MS = parse(Float64, get(ENV,"JM_MIRROR_RESUME_MS","14.0"))  # PACE-1: was 24    # resume below this
 const MIRROR_STARVED  = Ref(false)   # current mode, held between the two marks
 const MIRROR_ADAPT_N  = parse(Int,     get(ENV,"JM_MIRROR_ADAPT_N","3"))       # refresh rate when starved
 const MIRROR_EMA      = Ref(0.0)    # smoothed frame time, seconds
@@ -6665,7 +6771,13 @@ tstamp("  [E80] AI car models done / projection")
 # gives the gold's dash and wheel size, 72 keeps more of the wheels in frame, 80 (the old default) made the
 # dash small and the scuttle a "visor". Default 70; JM_FOV overrides.
 tstamp("  [E80] .. AI cars done -> input/camera defs begin")
-const PROJ_COCKPIT = Render.perspective_revz(deg2rad(parse(Float32,get(ENV,"JM_FOV","70"))), Float32(W/H), 0.20f0, 3000f0)
+# COCKPITGOLD-1 (PO 2026-09-25: "fix cockpit view to be closer to gold standard (see gold standard watkins glen
+# race)"). Gold 260915 race, cockpit frames: the eye sits LOW behind a large wheel -- the dash and scuttle hide
+# the nose, the front tyre tops sit at the frame edges near the horizon, and the gaze is nearly level. A pinhole
+# fit on those features, constrained by the roll hoop behind the seat, and a capture sweep
+# (parity/po_260925/cockpit_*.jpg) chose eye height 0.40 (was 0.52), gaze drop 0.12 over 4 m (was 0.55) and a
+# 60 deg vertical FOV (was 70). Old view: JM_EYE_Y=0.52 JM_EYE_DROP=0.55 JM_FOV=70.
+const PROJ_COCKPIT = Render.perspective_revz(deg2rad(parse(Float32,get(ENV,"JM_FOV","60"))), Float32(W/H), 0.20f0, 3000f0)
 
 # ---- input: edge-detected shift, view + auto-gearbox toggle ----
 mutable struct Ctl; prevUp::Bool; prevDn::Bool; prevV::Bool; prevG::Bool; prevM::Bool; prevRec::Bool; prevRestart::Bool; view::Int; auto::Bool; cluWarned::Bool; end
@@ -6882,7 +6994,7 @@ function camera(cs, pitch=0.0, roll=0.0)
     # at the bottom of the frame; at 0.46/0.40 the scuttle rose into the eye line and read as a "visor"
     # (PO). A/B: car_gold/lotus_cockpit_eyeA.png (0.25/0.52 = this) vs eyeB.png (0.10/0.60, a helmet cam,
     # too far back) vs gold_crop.png. FOV (JM_FOV 80) untouched -- the gold's dash may want it narrower.
-    ex,ey,ez,drop = parse(Float32,get(ENV,"JM_EYE_X","0.25")), parse(Float32,get(ENV,"JM_EYE_Y","0.52")), 0.0f0, parse(Float32,get(ENV,"JM_EYE_DROP","0.55"))   # GPL: low seat just behind the wheel, ~level gaze (see the road), dash fills the lower frame; tunable via JM_EYE_*
+    ex,ey,ez,drop = parse(Float32,get(ENV,"JM_EYE_X","0.25")), parse(Float32,get(ENV,"JM_EYE_Y","0.40")), 0.0f0, parse(Float32,get(ENV,"JM_EYE_DROP","0.12"))   # GPL: low seat just behind the wheel, ~level gaze (see the road), dash fills the lower frame; tunable via JM_EYE_*
     R = Render.roty(Float32(cs.θ)) * Render.rotz(Float32(pitch)) * Render.rotx(Float32(roll))   # = the chassis rotation
     R3(a,b,c) = (w = R * Float32[a,b,c,0f0]; Float32[w[1],w[2],w[3]])     # rotate a body-frame direction into the world
     eye = Float32[wx,wy,wz] + R3(BODY_OFF[1]+ex, BODY_OFF[2]+ey, BODY_OFF[3]+ez)   # eye fixed in the body frame
@@ -6928,7 +7040,7 @@ function replay_camera(mode, x, y, z, θ)
     rx, rz = -fz, fx                                        # render right = forward × up (horizontal)
     P = Float32[wx, wy, wz]
     if mode === :cockpit
-        ex,ey,drop = parse(Float32,get(ENV,"JM_EYE_X","0.25")), parse(Float32,get(ENV,"JM_EYE_Y","0.52")), parse(Float32,get(ENV,"JM_EYE_DROP","0.55"))
+        ex,ey,drop = parse(Float32,get(ENV,"JM_EYE_X","0.25")), parse(Float32,get(ENV,"JM_EYE_Y","0.40")), parse(Float32,get(ENV,"JM_EYE_DROP","0.12"))
         R = Render.roty(Float32(θ))
         R3(a,b,c) = (w = R*Float32[a,b,c,0f0]; Float32[w[1],w[2],w[3]])
         eye = P + R3(BODY_OFF[1]+ex, BODY_OFF[2]+ey, 0f0)
@@ -7310,6 +7422,13 @@ function main()
         PLAYER_G[] = gf
         Float32(gf)
     end
+    # AIGROUND-1 (2026-09-25, PO: "AI skitter sideways ... user car bounce around on what should be a smooth
+    # track"). The AI physics cars were stepped with groundz_phys -- the PLAYER's closure: its step guard
+    # compares against PLAYER_G (the player's previous ground) and its crease filter samples along PLAYER_HDG
+    # (the player's heading). Every AI call therefore overwrote the player's ground history, and each AI's
+    # ground was filtered along the player's direction of travel. The AI get their own stateless query: the
+    # same road surface (spline + correction on the tarmac, mesh elsewhere), no guard, no shared state.
+    groundz_ai(x, y) = (r = ground_road(x, y); r[2] ? Float32(r[1]) : NaN32)
     cs0 = SKIDPAD ? (x=0.0, z=0.0, θ=0.0) : spawn(CAR; v0=0.0)   # spawn pose (skidpad: pad centre)
     LASTZ = Ref(0.0); ONTRACK = Ref(true)
     LASTGX = Ref(cs0.x); LASTGZ = Ref(cs0.z)   # last position INSIDE the world (terrain HAT) — for the boundary
@@ -8235,7 +8354,7 @@ function main()
             for (i,pc) in enumerate(AIPHYS)
                 r = AIyaw(pc); maxr = max(maxr, abs(r)); abs(r) > 2.5 && (spins += 1)
                 thr,brk,st = RaceAI.controller(AILINE, AICARS[i].s, AICARS[i].lane, AICARS[i].tlane, vts[i], pc.x, pc.z, pc.θ, pc.v, r; power=AI_POWER)
-                DriveRT3D.step_car3d!(pc, thr, brk, st, 1/60; manual=false, groundz=groundz_phys)
+                DriveRT3D.step_car3d!(pc, thr, brk, st, 1/60; manual=false, groundz=groundz_ai)
                 ho = solid_hit(pc.x, pc.z, pc.θ, pc.v); ho !== nothing && AIbump!(pc, ho[1], ho[2], ho[3], ho[4], ho[5], ho[6])   # E15 in the self-test too
             end
         end
@@ -8572,6 +8691,7 @@ function main()
         # both lets a headless run cover a whole lap and makes it DETERMINISTIC (a gate that
         # depends on machine speed is not a gate). Unset = the shipped wall-clock behaviour.
         now = time()
+        ALLOCPROF > 0 && (ALLOC_MARK[1] = Base.gc_bytes())
         dt = FIXED_DT > 0 ? FIXED_DT : clamp(now-last, 0.0, 0.05)
         last = now
         inp, rst, recover, restart = read_input()
@@ -9225,7 +9345,13 @@ function main()
             end
             if ONTRACK[]; LASTGX[] = cs.x; LASTGZ[] = cs.z; OFFDIST[] = 0.0   # inside the world
                 BND_FX[] = 0.0; BND_FY[] = 0.0; BND_MZ[] = 0.0               # E56: release the world-edge wall
-            elseif hr.found && abs(hr.lateral) < ROAD_HALFW
+            elseif (hr.found && abs(hr.lateral) < ROAD_HALFW) ||
+                   (RUNOFF_W > 0 && CLINE !== nothing && abs(RaceAI.project(CLINE, cs.x, cs.z)[2]) < RUNOFF_W)
+                # RUNOFF-1 (2026-09-25, PO: "tires fall off/bouncing car which ended several of the races"): at
+                # Spa's Bus Stop the collision terrain ENDS 9 m from the centreline while grass is drawn beyond,
+                # so a car running wide met the invisible world-edge wall at 131 km/h and lost its wheels.
+                # A hole in the collision mesh within JM_RUNOFF_W m (20) of the centreline is run-off, not
+                # the edge of the world: coast at the held height like the corridor case below.
                 # E52: off the TERRAIN .3do mesh but still inside the road corridor (the .trk ribbon
                 # is continuous) → a gap in the collision mesh UNDER the Monza banking overpass, not the
                 # world edge.  Coast through at the held height; advance the in-world anchor so the
@@ -9605,7 +9731,7 @@ function main()
             for (i, pc) in enumerate(AIPHYS)
                 thr, brk, st = RaceAI.controller(AILINE, AICARS[i].s, AICARS[i].lane, AICARS[i].tlane, vts[i],
                                                  pc.x, pc.z, pc.θ, pc.v, AIyaw(pc); power = AI_POWER)
-                DriveRT3D.step_car3d!(pc, thr, brk, st, ddt; manual=false, groundz=groundz_phys)
+                DriveRT3D.step_car3d!(pc, thr, brk, st, ddt; manual=false, groundz=groundz_ai)
                 # GRASS by the rendered road half-width (|lateral|>ROAD_HALFW), the SAME yardstick as the
                 # player — NOT TRKSURF.on_track, whose 9 m half-width is far wider than the visible road, so
                 # AI ran the verge near the finish straight penalty-free + drafting (PO saw them do exactly that).
@@ -9755,10 +9881,11 @@ function main()
             push!(replay_buf, Float32(cs.t), Float32(cs.x), Float32(cs.y), Float32(cs.z), Float32(cs.θ))
             for p in ai_poses; push!(replay_buf, Float32(p[1]), Float32(p[2]), Float32(p[3]), Float32(p[4])); end
         end
-        aiCar(p)  = Render.translate(Float32[p[1], p[2], -p[3]]) * Render.roty(Float32(p[4])) *
-                    Render.rotz(Float32(p[5])) * Render.rotx(Float32(p[6]))   # body follows the hill (pitch + cross-slope/collision roll)
-        aiBody(p, cm) = aiCar(p) * Render.translate(collect(cm.body_off))
-        aiWheel(p,wx,wz,r) = aiCar(p) * Render.translate(Float32[wx, r, wz]) * Render.rotz(Float32(spin))
+        # PERF-1: one fused matrix per call (was 4 matrices + 3 products), and the body matrix is computed once
+        # per car per pass below (it was recomputed for every body PART) -- the top allocation site.
+        aiCar(p)  = Render.pose_matrix(p[1], p[2], -p[3], p[4], p[5], p[6])   # body follows the hill (pitch + cross-slope/collision roll)
+        aiBody(p, cm) = Render.pose_matrix(p[1], p[2], -p[3], p[4], p[5], p[6], cm.body_off[1], cm.body_off[2], cm.body_off[3])
+        aiWheel(p,wx,wz,r) = Render.pose_matrix(p[1], p[2], -p[3], p[4], p[5], p[6], wx, r, wz) * Render.rotz(Float32(spin))
         # ── E85-S5: exchange poses with the peer, and place its cars ON THE GROUND ───────────────
         if NETLINK !== nothing
             # ⚠️ YIELD FIRST. The socket reader is an `@async` task (netplay.jl keeps one long-lived
@@ -9852,11 +9979,12 @@ function main()
             end
             flush(stdout)
         end
+        ALLOCPROF > 0 && (ALLOC_MARK[2] = Base.gc_bytes())   # sim (input, physics, AI, contacts)
         # ---- shadow pass: scene depth from the sun, light box on the car ----
         _tp_d = time()
         lightVP = Render.light_vp(Float32[cs.x, cs.y, -cs.z], LIGHTDIR)
         Render.shadow_pass(depthprog, shadowfbo, lightVP) do dp
-            for it in trackItems; Render.draw_depth(dp, it, Render.ident()); end
+            for it in trackItems; Render.draw_depth(dp, it, Render.IDENT); end
             for it in carItems; Render.draw_depth(dp, it, bodyModel); end
             for (wx,wz,steer,r,nm) in WHEELS, it in WHEELITEMS[nm]
                 is_loose(nm) && continue                                   # E95: this one came off
@@ -9866,7 +9994,7 @@ function main()
                 Render.draw_depth(dp, it, loosemat(lx,ly,lz,sp))
             end
             for (p, cm) in zip(ai_poses, AICHASSIS)            # AI cars cast shadows too
-                for it in cm.body; Render.draw_depth(dp, it, aiBody(p, cm)); end
+                let _bm = aiBody(p, cm); for it in cm.body; Render.draw_depth(dp, it, _bm); end; end
                 for (wx,wz,_,r,nm) in cm.wheelspec, it in cm.wheels[nm]; Render.draw_depth(dp, it, aiWheel(p,wx,wz,r)); end
             end
         end
@@ -9878,7 +10006,7 @@ function main()
             # E60 (D6, 260801 gold video): TRACK-mesh signs (VREDESTEIN at Tarzan …) drew with uBackFlip=0, so
             # when the coplanar dedup keeps the away-facing decal the text renders MIRRORED.  Objects already
             # un-mirror back faces; give the track mesh the same treatment (road/kerb back faces are unseen).
-            glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 1)
+            glUniform1i(Render.uloc(prog,"uBackFlip"), 1)
             secfrom = (@isdefined SEC_FROM) ? SEC_FROM : typemax(Int)
             PROF_DEPTH[] += time() - _tp_d; _tp_t = time()
             for (ti, it) in enumerate(trackItems)                        # ambfill lifts shadowed walls/fences out of the "carbonized" black under the flat overcast light
@@ -9906,13 +10034,13 @@ function main()
                     b, a = cat === :road ? (MZ_ROAD_B, MZ_ROAD_A) : cat === :dark ? (MZ_DARK_B, MZ_DARK_A) :
                            cat === :bank ? (MZ_BANK_B, MZ_BANK_A) : (MZ_OTHER_B, MZ_OTHER_A)
                     gg = ti <= length(TRACKGAIN) ? TRACKGAIN[ti] : 1f0
-                    Render.draw(prog, it, vp_, Render.ident(); bright=b*gg, ambfill=a*gg)
+                    Render.draw(prog, it, vp_, Render.IDENT; bright=b*gg, ambfill=a*gg)
                 else
                     # E69-S7: make the track-draw lighting tunable so the warm cast measured against
                     # gold (asphalt R-B: gold -2.5..-5.3, native +7.8..+12.7 across three tracks
                     # each) can be attributed rather than guessed at.
                     gg = ti <= length(TRACKGAIN) ? TRACKGAIN[ti] : 1f0   # GRADEGOLD-1
-                    Render.draw(prog, it, vp_, Render.ident(); bright=TRACK_BRIGHT*gg, ambfill=TRACK_AMB*gg)
+                    Render.draw(prog, it, vp_, Render.IDENT; bright=TRACK_BRIGHT*gg, ambfill=TRACK_AMB*gg)
                 end
             end
             (@isdefined SEC_FROM) && length(trackItems) >= SEC_FROM && glDisable(GL_CULL_FACE)   # E68 S9b: section cull off before objects
@@ -9923,18 +10051,23 @@ function main()
                 # GPL is D3D-era (CW front); after the winding-preserving remap those faces are GL "back",
                 # so cull GL_FRONT to keep them.  JM_OBJ_FF=ccw culls GL_BACK if a track's data disagrees.
                 glEnable(GL_CULL_FACE); glCullFace(xor(OBJ_FF_CW, flip) ? GL_FRONT : GL_BACK)
-                glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 0)
+                glUniform1i(Render.uloc(prog,"uBackFlip"), 0)
             end
             PROF_TRACK[] += time() - _tp_t; _tp_o = time()
             # SPA-FPS-1 S3 (2026-09-07): Spa's frame was 9-15 ms of trackside objects + 9-15 ms of billboards, one
             # draw call each for everything inside the radius -- behind the camera and off to the sides included.
             # A clip-space test skips what this pass's camera cannot see (each mirror pass brings its own vp_,
             # so it culls for its own view). JM_FRUSTUM_CULL=0 reverts.
-            for (oi,(items,mat,grz,opos,onm)) in enumerate(OBJECTS)   # trackside objects
+            # PERF-1: function barrier -- OBJECTS/OBJBOUND are untyped globals, so the loop body boxed every value
+            # (a top allocation site). Passing them in lets the loop compile for their concrete types.
+            (function (_OBJS, _BND)
+            for (oi,(items,mat,grz,opos,onm)) in enumerate(_OBJS)   # trackside objects
                 LAYOFF_OBJ && continue   # (trees graze-fade; uBackFlip stays 1 when un-culled)
-                bc, br = oi <= length(OBJBOUND) ? OBJBOUND[oi] : ((opos[1], opos[2], opos[3]), 80f0)   # CULLBOUND-1: the object's real bounding sphere
+                bc, br = oi <= length(_BND) ? _BND[oi] : ((opos[1], opos[2], opos[3]), 80f0)   # CULLBOUND-1: the object's real bounding sphere
                 max(sqrt((eye_[1]-bc[1])^2+(eye_[2]-bc[2])^2+(eye_[3]-bc[3])^2) - br, 0f0)^2 > (flip ? MIR_OBJ_CULL2 : OBJ_CULL2) && continue   # distance cull (mirror gets its own radius, S14)
                 FRUSTUM_CULL && !infrustum(vp_, bc, br) && continue
+                # PERF-1: size cull -- an object whose bounding sphere covers < JM_MINPIX pixels is not drawn
+                br < (flip ? MINPIX_K_MIR : MINPIX_K) * sqrt((eye_[1]-bc[1])^2+(eye_[2]-bc[2])^2+(eye_[3]-bc[3])^2) && continue
                 ob, oa = 1.05, 0.55                                    # default object grade (grandstands/buildings)
                 if MONZA                                               # E57: tone the combined-circuit paved/banking object surfaces
                     g = monza_obj_grade(onm)
@@ -9951,11 +10084,12 @@ function main()
                 _sbcull = (STARTBOX_CULL && !OBJ_CULLFACE && onm == "startbox") || _twin !== nothing
                 if _sbcull
                     glEnable(GL_CULL_FACE); glCullFace(_twin === nothing ? (xor(OBJ_FF_CW, flip) ? GL_BACK : GL_FRONT) : (xor(_twin, flip) ? GL_BACK : GL_FRONT))
-                    glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 0)
+                    glUniform1i(Render.uloc(prog,"uBackFlip"), 0)
                 end
                 for it in items; Render.draw(prog, it, vp_, mat; bright=ob, ambfill=oa, graze=grz, tint=otint); end   # grandstands/buildings: ambfill kills the "post-Hiroshima carbonized" shadow faces → vibrant GPL look
-                if _sbcull; glDisable(GL_CULL_FACE); glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 1); end
+                if _sbcull; glDisable(GL_CULL_FACE); glUniform1i(Render.uloc(prog,"uBackFlip"), 1); end
             end
+            end)(OBJECTS, OBJBOUND)
             PROF_OBJ[] += time() - _tp_o; _tp_b = time()
             for (it,pos,w,h,yaw) in STATICTREES                      # wide forest-edge panels (authored yaw, graze-fade)
                 (eye_[1]-pos[1])^2+(eye_[2]-pos[2])^2+(eye_[3]-pos[3])^2 > BB_CULL2 && continue
@@ -9963,16 +10097,20 @@ function main()
                 Render.draw(prog, it, vp_, Render.translate(Float32[pos[1],pos[2],pos[3]])*Render.roty(yaw)*Render.scalexyz(w,h,1f0); bright=1.3, ambfill=0.8, graze=true, unlit=!BB_LIT)   # E63/MZ3: the comment always claimed graze-fade but the call never passed it → a wide Monza forest strip seen EDGE-ON rendered as a dark triangular SLAB at the S/F. graze=true fades edge-on quads (uGraze) so the strip shows face-on as a tree-line and vanishes edge-on
             end
             OBJ_CULLFACE && glDisable(GL_CULL_FACE)
-            glUniform1i(glGetUniformLocation(prog,"uBackFlip"), 0)
-            for (it,pos,w,h) in BILLBOARDS                            # trees/sprites
+            glUniform1i(Render.uloc(prog,"uBackFlip"), 0)
+            (function (_BBS)   # PERF-1: function barrier (BILLBOARDS is an untyped global)
+            for (it,pos,w,h) in _BBS                            # trees/sprites
                 LAYOFF_BB && continue
-                (eye_[1]-pos[1])^2+(eye_[2]-pos[2])^2+(eye_[3]-pos[3])^2 > (flip ? MIR_BB_CULL2 : BB_CULL2) && continue       # distance cull (mirror radius, S14)
+                _d2 = (eye_[1]-pos[1])^2+(eye_[2]-pos[2])^2+(eye_[3]-pos[3])^2
+                _d2 > (flip ? MIR_BB_CULL2 : BB_CULL2) && continue       # distance cull (mirror radius, S14)
+                max(w, h) < 2f0 * (flip ? MINPIX_K_MIR : MINPIX_K) * sqrt(_d2) && continue       # PERF-1: sub-pixel sprite
                 FRUSTUM_CULL && !infrustum(vp_, pos, max(w, h) + 5f0) && continue
                 Render.draw(prog, it, vp_, Render.billboard_model(pos,w,h,eye_); bright=BB_BRIGHT, ambfill=BB_AMB, unlit=!BB_LIT)  # E83-S3: unlit by default (GPL pre-lit art); E70-S7 tunables only matter with JM_BILLBOARD_LIT=1
             end
+            end)(BILLBOARDS)
             PROF_BB[] += time() - _tp_b; _tp_c = time()
             for (p, cm) in zip(ai_poses, AICHASSIS)                 # AI grid (Ferrari/Brabham/BRM/Eagle/Cooper)
-                for it in cm.body; Render.draw(prog, it, vp_, aiBody(p, cm); bright=1.25, spec=0.10, ambfill=0.62); end
+                let _bm = aiBody(p, cm); for it in cm.body; Render.draw(prog, it, vp_, _bm; bright=AI_BRIGHT, spec=0.10, ambfill=AI_AMB); end; end
                 # E106-S25: JM_NO_AI_WHEELS=1 suppresses the AI wheel draw. The rods on the AI rear
                 # tyre are neither the wheel mesh (max radius 0.336, nothing beyond) nor the wrapper
                 # (all variants complete) -- so shooting the SAME replay frame with the wheels gone
@@ -9987,7 +10125,7 @@ function main()
             if !isempty(NETPOSES[]) && !isempty(AICARMODELS)
                 for (nid, p) in NETPOSES[]          # MP-5: the host's AI ids pick their own chassis
                     cm = AICARMODELS[NetPlay.chassis_slot(nid, length(AICARMODELS))]
-                    for it in cm.body; Render.draw(prog, it, vp_, aiBody(p, cm); bright=1.25, spec=0.10, ambfill=0.62); end
+                    let _bm = aiBody(p, cm); for it in cm.body; Render.draw(prog, it, vp_, _bm; bright=AI_BRIGHT, spec=0.10, ambfill=AI_AMB); end; end
                     for (wx,wz,_,r,nm) in cm.wheelspec, it in cm.wheels[nm]; Render.draw(prog, it, vp_, aiWheel(p,wx,wz,r)); end
                 end
             end
@@ -10016,13 +10154,23 @@ function main()
         # about a LIVE drive; JM_MIRROR_IN_REPLAY=1 drops the term so the strobe test can be taken
         # headlessly from a replay, which is the only way to take it without the display.
         _mir_noreplay = !REPLAY || get(ENV, "JM_MIRROR_IN_REPLAY", "0") != "0"
+        # PACE-1 (2026-09-25, PO: "why does motion seem jerky"): when starved, the old back-off rendered BOTH
+        # mirror halves on one frame in three -- a long frame every third frame, i.e. judder by construction.
+        # Now the mirror stays live every frame and renders ONE half per frame, alternating: each mirror at
+        # 30 Hz, the cost spread evenly. JM_MIRROR_ALT=0 restores the every-Nth behaviour.
+        _mir_alt = MIRROR_ADAPT && MIRROR_STARVED[] && get(ENV, "JM_MIRROR_ALT", "1") != "0"
         mirror_live = MIRROR_RTT && CTL.view == 0 && _mir_noreplay &&
-                      (_mir_every <= 1 || (frames % _mir_every) == 0)
+                      (_mir_alt || _mir_every <= 1 || (frames % _mir_every) == 0)
         (MIRROR_RTT && CTL.view == 0 && _mir_noreplay && !mirror_live) && (MIRROR_SKIPPED[] += 1)
         if mirror_live
             glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE); glDepthFunc(GL_GEQUAL); glClearDepth(0.0)   # same reversed-Z as the main pass
             glBindFramebuffer(GL_FRAMEBUFFER, mirfbo); glViewport(0,0,MIRW,MIRH)
+            _mir_half = _mir_alt ? (frames % 2) : -1          # PACE-1: which half this frame (-1 = both)
+            if _mir_half >= 0
+                glEnable(GL_SCISSOR_TEST); glScissor(_mir_half == 0 ? 0 : MIRW÷2, 0, MIRW÷2, MIRH)
+            end
             glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
+            _mir_half >= 0 && glDisable(GL_SCISSOR_TEST)
             # SPA-FPS-1 S15: JM_MIRROR_HALVES decomposes the mirror's cost. 2 = normal (one camera
             # per disc), 1 = only the left disc, 0 = bind + clear and NOTHING drawn. S14 proved the
             # cost is not the distance-culled object/billboard lists; this says whether it is the
@@ -10031,7 +10179,8 @@ function main()
             # E64 S10: one camera PER DISC at the mirror's own cowl position (left half of the FBO =
             # left/z+ mirror), so each glass sees backward-outward like the gold — tail at the inner
             # edge only, road dominating.  The glass quads' per-half UV split is unchanged.
-            for (x0, side) in (MIRROR_HALVES == 1 ? ((0, 1),) : ((0, 1), (MIRW÷2, -1)))
+            for (x0, side) in (_mir_half == 0 ? ((0, 1),) : _mir_half == 1 ? ((MIRW÷2, -1),) :
+                               MIRROR_HALVES == 1 ? ((0, 1),) : ((0, 1), (MIRW÷2, -1)))
                 glViewport(x0, 0, MIRW÷2, MIRH)
                 mvp, meye = mirror_camera(cs, cam_pitch, cam_roll, side)
                 Render.draw_sky(skyprog, skyvao, inv(mvp), meye, LIGHTDIR;
@@ -10066,6 +10215,7 @@ function main()
         # JM_FPSDIAG times the whole frame as one number. So nothing could say where the ~65 ms goes.
         # JM_FRAMEPROF=<n> prints the split every n frames. Buckets are cheap wall-clock reads around
         # phases that already exist; no restructuring.
+        ALLOCPROF > 0 && (ALLOC_MARK[3] = Base.gc_bytes())   # shadow + mirror passes
         _t_world = time()
         drawworld(vp, eye, false)
         FRAMEPROF > 0 && (PROF_WORLD[] += time() - _t_world)
@@ -10170,6 +10320,7 @@ function main()
         end
         α_tc = clamp(dt/0.10, 0.0, 1.0)              # smooth the traction-circle display (coarse-mesh Fz spikes → no flicker)
         tc_hud = ntuple(i -> ntuple(j -> tc_hud[i][j] + (cs.tc[i][j]-tc_hud[i][j])*α_tc, 3), 4)
+        ALLOCPROF > 0 && (ALLOC_MARK[4] = Base.gc_bytes())   # main world pass
         _t_hud = time()
         Render.hud_draw(hudprog, hudvao, hudvbo,
             Render.compose_hud(W, H, cs.v*3.6, cs.gear, cs.rpm, 9500.0, inp.throttle, inp.brake, inp.clutch, tc_hud;
@@ -10277,6 +10428,7 @@ function main()
             _now = time()
             if FPS_T0[] > 0
                 FPS_ACC[] += _now - FPS_T0[]; FPS_N[] += 1; FRAMEPROF > 0 && (PROF_TOT[] += _now - FPS_T0[])
+                push!(FPS_DTS, _now - FPS_T0[])   # PACE-1: frame-interval spread, not just the mean
                 if FPS_N[] >= FPSDIAG
                     _ms = 1000*FPS_ACC[]/FPS_N[]
                     # SPA-FPS-1 (PO 2026-09-06: "spa has low frame rate at places, but the ring does not"): each
@@ -10288,10 +10440,40 @@ function main()
                             "  ", round(1000/_ms, digits=1), " fps  (", round(_ms, digits=1), " ms/frame)",
                             "  s=", _hr.found ? round(Int, _hr.lapdist) : -1, "  objs_in_range=", _nobj, "/", length(OBJECTS),
                             "  billboards=", length(BILLBOARDS), "  trees=", length(STATICTREES))
+                    if !isempty(FPS_DTS)
+                        _d = sort(FPS_DTS) .* 1000
+                        println("  [pace] frame interval ms: p10 ", round(_d[max(1, length(_d)÷10)], digits=1), "  p50 ", round(_d[max(1, length(_d)÷2)], digits=1),
+                                "  p90 ", round(_d[max(1, 9*length(_d)÷10)], digits=1), "  max ", round(_d[end], digits=1), "  (interval ", PACE_INT[], ")")
+                        empty!(FPS_DTS)
+                    end
                     flush(stdout); FPS_ACC[] = 0.0; FPS_N[] = 0
                 end
             end
             FPS_T0[] = _now
+        end
+        # PACE-1: a frame that cannot make 60 Hz under vsync is shown for an uneven 1-2-3 refreshes (the PO's
+        # "jerky, especially at Spa": Spa 28-31 fps, Ring 37-41 fps measured). When the WORK time (frame start
+        # to here, excluding the vsync wait) stays over JM_PACE_HI ms (19.0), present every 2nd refresh -- a
+        # steady 30 Hz, every frame held exactly two refreshes -- and return to 60 Hz below JM_PACE_LO (15.0).
+        # The physics dt is the real frame time, so motion stays true either way. JM_PACE=0 disables.
+        if ALLOCPROF > 0
+            ALLOC_MARK[5] = Base.gc_bytes()                     # HUD etc.
+            for k in 1:4; ALLOC_ACC[k] += ALLOC_MARK[k+1] - ALLOC_MARK[k]; end
+            ALLOC_N[] += 1
+            if ALLOC_N[] >= ALLOCPROF
+                println("  [alloc] KB/frame: sim ", round(Int, ALLOC_ACC[1]/ALLOC_N[]/1024), "  shadow+mirror ", round(Int, ALLOC_ACC[2]/ALLOC_N[]/1024),
+                        "  world ", round(Int, ALLOC_ACC[3]/ALLOC_N[]/1024), "  hud ", round(Int, ALLOC_ACC[4]/ALLOC_N[]/1024)); flush(stdout)
+                fill!(ALLOC_ACC, 0); ALLOC_N[] = 0
+            end
+        end
+        if PACE_ON && (!SMOKE || haskey(ENV, "JM_PACE_TEST"))
+            _wk = time() - now
+            PACE_EMA[] = PACE_EMA[] == 0.0 ? _wk : 0.95*PACE_EMA[] + 0.05*_wk
+            if PACE_INT[] == 1 && PACE_EMA[] > PACE_HI
+                PACE_INT[] = 2; GLFW.SwapInterval(2); println("  [pace] work ", round(1000*PACE_EMA[], digits=1), " ms -> steady 30 Hz"); flush(stdout)
+            elseif PACE_INT[] == 2 && PACE_EMA[] < PACE_LO
+                PACE_INT[] = 1; GLFW.SwapInterval(1); println("  [pace] work ", round(1000*PACE_EMA[], digits=1), " ms -> 60 Hz"); flush(stdout)
+            end
         end
         GLFW.SwapBuffers(win)
         # JM_FRAMEDUMP="<start>:<count>" dumps CONSECUTIVE frames, which the existing JM_SHOTS
@@ -10352,6 +10534,31 @@ function main()
         end
 
         frames += 1
+        # PERF-1 diag: JM_ALLOCSITES=1 samples allocations over frames 300..600 and prints the top sites.
+        if ALLOCSITES
+            if frames == 300
+                @eval Main using Profile; Base.invokelatest(() -> (Profile.Allocs.clear(); Profile.Allocs.start(sample_rate = 0.02)))
+            elseif frames == 600
+                Base.invokelatest() do
+                    Profile.Allocs.stop(); r = Profile.Allocs.fetch()
+                    cnt = Dict{String,Tuple{Int,Int}}()
+                    for a in r.allocs
+                        site = "?"
+                        for fr in a.stacktrace
+                            f = string(fr.file)
+                            (occursin("drive_native_mtk", f) || occursin("render.jl", f) || occursin("ai.jl", f) || occursin("drive_rt", f)) || continue
+                            site = string(basename(f), ":", fr.line, " ", fr.func); break
+                        end
+                        c = get(cnt, site, (0, 0)); cnt[site] = (c[1] + 1, c[2] + a.size)
+                    end
+                    println("  [allocsites] top sites (sampled 2%, frames 300-600):")
+                    for (k, v) in sort(collect(cnt), by = x -> -x[2][2])[1:min(end, 25)]
+                        println("     ", lpad(round(Int, v[2]/0.02/300/1024), 6), " KB/frame  ", lpad(v[1], 6), " samples  ", k)
+                    end
+                    flush(stdout)
+                end
+            end
+        end
         # SPA-FPS-1 S6: smoothed frame time for the adaptive mirror decision above. An EMA rather
         # than the instantaneous dt so one slow frame (a texture upload, a GC pause) cannot flip the
         # mirror off and on, which would itself look like strobing.
