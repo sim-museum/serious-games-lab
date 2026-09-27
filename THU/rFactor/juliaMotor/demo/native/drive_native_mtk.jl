@@ -5450,7 +5450,25 @@ let objnames=Set{String}()
         # v10: the exemption must match the census's own "thin" (0.5 m): a 0.5-1.0 m-deep part
         # (house36's wall slab, a bush row) was exempt here yet counted there -- the survivors of
         # v6-v9 all lived in that gap.
-        min(hx, hz) < 0.5 && return false
+        # SPABUMP-1 (PO 2026-09-26, Spa: "something that looks like an armco across the road just after
+        # the start/finish line; the car bounces a little going over it"). The PO's own run ended here:
+        # the telemetry shows the car straight and centred at 155 km/h (lat 1.0-3.3 m, slip 0-6 deg) when
+        # it hit a solid, and JM_SOLIDNEAR names it -- `railbox`, a wall box of half 0.3 x 2.9 m at
+        # (2151.7, -1333.1). The rail triangles it was built from sit at ribbon lat 5.0-5.2 m, correctly
+        # at the road edge, but the 8 m cell that box belongs to spans x 2144..2152 while the armco spans
+        # 2153..2157: the box landed at lat ~1.7 m, ON THE RACING LINE, and it is invisible because there
+        # is no drawn rail there.
+        # It survived this guard because a THIN box was exempt outright. The exemption's reason is sound
+        # -- GPL's own armco stands on the concrete edge strip and must stay solid (v5 rejected 168 of
+        # them) -- but "thin" does not imply "at the edge". Keep the exemption for a barrier whose CENTRE
+        # is off the corridor tarmac, and refuse it to one sitting on the road.
+        if min(hx, hz) < 0.5
+            if JuliaMotor.hat3d(ROADHAT, cx, cz; ref = Inf)[3]
+                hr0 = JuliaMotor.hat(TRKSURF, cx, cz)
+                (hr0.found && hr0.on_track) && return true
+            end
+            return false
+        end
         c = cos(ψ); sn = sin(ψ)
         nx = max(3, ceil(Int, 5hx)); nz = max(3, ceil(Int, 5hz))    # v8: ~0.4 m grid (1 m still let house36's 0.74 m strip through)
         for ix in 0:nx, iz in 0:nz

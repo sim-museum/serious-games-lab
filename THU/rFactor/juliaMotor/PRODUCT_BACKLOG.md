@@ -19874,3 +19874,31 @@ foliage changed nothing, because the offending part lives inside a grandstand.
 
 STILL OPEN from the same PO sighting: "a bright yellow rectangular polygon that goes over the road just
 after that left turn" -- a different object, not yet located.
+
+### SPABUMP-1 (PO: "something like an armco across the road just after the start/finish line; the car bounces a little going over it") -- FIXED, and it was ending races
+
+**The PO's own session log is the evidence.** Their last Spa run ended in a wreck, and the telemetry
+approach trace shows a car doing nothing wrong: straight and centred at 155 km/h for the last 4 s
+(lat 1.0..3.3 m, slip 0-6 deg, "off 0.0"), then `hard impact -- engine disconnected, race over` with
+`CLOSING speed 36.5 m/s into a solid`. The wreck reporter distinguishes a real solid from the invisible
+world-boundary test, and it said SOLID.
+
+`JM_SOLIDNEAR` named it: **`railbox`, a wall box of half 0.3 x 2.9 m at (2151.7, -1333.1)**, 5.3 m from
+the impact. `railbox` is not a placed object -- it is synthesised from rail-textured track-mesh triangles
+bucketed into 8 m cells (JM_RAIL_SOLID). `JM_RAILBOX_NEAR` shows the armco it was built from sitting at
+ribbon lat 5.0-5.2 m, correctly at the road edge -- but the 8 m cell that box belongs to spans
+x 2144..2152 while the armco spans x 2153..2157, so the box landed at **lat ~1.7 m, on the racing line**,
+and it is invisible because no rail is drawn there.
+
+**Why the guard missed it.** `box_covers_tarmac` exempted any box with `min(half-extent) < 0.5 m`
+outright, on the reasoning that a thin box is GPL's own armco standing on the concrete edge strip (v5
+rejected 168 of those and made barriers drive-through). The reasoning is sound and the test is not:
+**thin does not imply at the edge**. A 0.3 x 2.9 m box on the racing line is thin too.
+
+Fix: keep the exemption for a barrier whose CENTRE is off the corridor tarmac, refuse it to one whose
+centre is on the road. Spa: rail boxes 40 -> 37, rejected-for-tarmac 151 -> 154, and the box 5.3 m from
+the PO's crash point is gone; the nearest surviving `railbox` is 44 m away at the edge, where it belongs.
+
+This also explains the PO's SOUND report: after `engine disconnected, race over` the engine is dead, so
+the remainder of that run is silent. SOUND-1 is a real and separate defect (the feeder delivered zero
+frames), but a race ending 25 s in is why some of their runs went quiet early.
