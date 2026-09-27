@@ -412,4 +412,139 @@ function build_surface(centreline, hat; halfwidth=9.0,
     JuliaMotor.TrackSurface(pos; halfwidth=halfwidth, cell=25.0)
 end
 
+# GPL .trk centreline ↔ mesh alignment.  The .trk start point can be parsed with a
+# large constant offset from the .3do mesh (the GPL Nürburgring start sits ~87 km off
+# in z), which would float the racing line off the ground.  The line's SHAPE is
+# correct, so we slide it (pure translation) to maximise overlap with the terrain HAT:
+# estimate the offset from bbox centres, then grid-search + refine.  Zandvoort already
+# aligns (offset ≈ 0) so it's returned untouched.
+function align_centreline(cl, hat)
+    sample = cl[1:max(1, length(cl) ÷ 400):end]
+    cov(dx, dz) = count(p -> JuliaMotor.hat3d(hat, p[1]+dx, p[2]+dz; ref=Inf)[3], sample) / length(sample)
+    cov(0.0, 0.0) > 0.6 && return cl                              # already on the mesh (Zandvoort)
+    xs = Float64[]; zs = Float64[]
+    for tr in hat.tris, p in (tr.a, tr.b, tr.c); push!(xs, p[1]); push!(zs, p[3]); end
+    dx0 = (minimum(xs)+maximum(xs))/2 - (minimum(p[1] for p in cl)+maximum(p[1] for p in cl))/2
+    dz0 = (minimum(zs)+maximum(zs))/2 - (minimum(p[2] for p in cl)+maximum(p[2] for p in cl))/2
+    best = (cov(dx0, dz0), dx0, dz0)
+    for dx in dx0-400:40:dx0+400, dz in dz0-400:40:dz0+400
+        c = cov(dx, dz); c > best[1] && (best = (c, dx, dz))
+    end
+    for dx in best[2]-40:8:best[2]+40, dz in best[3]-40:8:best[3]+40
+        c = cov(dx, dz); c > best[1] && (best = (c, dx, dz))
+    end
+    println("centreline aligned: ", round(Int, best[1]*100), "% on terrain, offset (",
+            round(Int, best[2]), ", ", round(Int, best[3]), ")")
+    [(p[1]+best[2], p[2]+best[3]) for p in cl]
+end
+
+"""The .trk elevation as a height field over the ribbon's own (node index, lateral) frame -- the field
+ROADCURVE warps the drawn road onto (GPLROAD-1). `hat` is the RAW track HAT, used to calibrate: the
+lateral SIGN of the .trk trace frame against ours, the bulk vertical OFFSET, and a low-passed
+(mesh - spline) correction so the field follows the drawn road's mean without inheriting its creases.
+Returns `(u, lat) -> height`, or `nothing` when the .trk does not describe this ribbon."""
+function trk_height_field(ta, ribbon, hat; corrsig = 8.0, outlier = 2.0)
+    if abs(ta.total - ribbon.lap_length) > 0.02 * ribbon.lap_length
+        println("  [roadcurve] vertical OFF: .trk lap ", round(ta.total, digits=1), " m vs ribbon ",
+                round(ribbon.lap_length, digits=1), " m")
+        nothing
+    else
+        np = length(ribbon.pos)
+        res1 = Float64[]; resm = Float64[]; off0 = Float64[]
+        for i in 1:6:np
+            q = ribbon.pos[i]; pq = ribbon.perp[i]; sv = ribbon.lapdist[i]
+            h0 = JuliaMotor.hat3d(hat, q[1], q[3]; ref = q[2] + 3.0)
+            h0[3] || continue
+            abs(Float64(h0[1]) - q[2]) <= outlier || continue
+            push!(off0, Float64(h0[1]) - GPLTrack.trk_height(ta, sv, 0.0))
+            for lat in (-4.0, 4.0)
+                hm = JuliaMotor.hat3d(hat, q[1] + lat*pq[1], q[3] + lat*pq[3]; ref = q[2] + 3.0)
+                hm[3] || continue
+                push!(res1, abs(Float64(hm[1]) - GPLTrack.trk_height(ta, sv,  lat) - off0[end]))
+                push!(resm, abs(Float64(hm[1]) - GPLTrack.trk_height(ta, sv, -lat) - off0[end]))
+            end
+        end
+        med(v) = isempty(v) ? 0.0 : (u = sort(v); u[div(length(u)+1, 2)])
+        if length(off0) < 20
+            println("  [roadcurve] vertical OFF: only ", length(off0), " mesh samples on the centreline")
+            nothing
+        else
+            rc_off = med(copy(off0)); rc_sgn = med(copy(res1)) <= med(copy(resm)) ? 1.0 : -1.0
+            println("  [roadcurve] vertical ON: .trk elevation spline, lateral sign ", rc_sgn,
+                    " (residual +", round(med(copy(res1)), digits=3), " / -", round(med(copy(resm)), digits=3),
+                    " m), offset ", round(rc_off, digits=3), " m over ", length(off0), " samples")
+            # u is the 1-based node index into the curve's node list; map it to lap distance the same
+            # way the curve interpolates position, then read the spline. Wrap through the closing node.
+            sv = ribbon.lapdist; lapl = ribbon.lap_length
+            nn = (length(sv) > 2 && hypot(ribbon.pos[end][1]-ribbon.pos[1][1],
+                                          ribbon.pos[end][3]-ribbon.pos[1][3]) < 0.5) ? length(sv)-1 : length(sv)
+            s_of(u) = (i = floor(Int, u); f = u - i;
+                       s0 = sv[mod1(i, nn)]; s1 = i+1 > nn ? lapl : sv[mod1(i+1, nn)];
+                       s1 < s0 && (s1 += lapl); s0 + (s1-s0)*f)
+            # A single offset is not enough. The .trk elevation and the .3do differ by up to ~1 m in
+            # places (SINK-1 measured raw mesh - spline from -0.20 to +1.05 m at Watkins Glen), so a
+            # flat spline would drag the drawn road off the mesh there -- and, with a safety cap, would
+            # move some vertices and not their neighbours, which is a worse seam than the one being
+            # fixed. Same remedy as SINK-1 for the physics: add the (mesh - spline) difference,
+            # LOW-PASSED along the lap, so the field keeps the spline's smoothness (the Gaussian
+            # cannot introduce curvature the samples did not have) while its mean follows the drawn
+            # road. Sampled on the RAW mesh, which is what this pass is about to reshape.
+            rc_dl = [-5.0, -2.5, 0.0, 2.5, 5.0]
+            rc_ds = 2.0
+            rc_ns = max(8, ceil(Int, lapl / rc_ds))
+            rc_raw = zeros(rc_ns, length(rc_dl))
+            for k in 1:rc_ns
+                sq = (k-1) * lapl / rc_ns
+                i = clamp(searchsortedlast(sv, sq), 1, length(sv))
+                j = mod1(i+1, length(sv)); f = (sq - sv[i]) / max((i == length(sv) ? lapl : sv[i+1]) - sv[i], 1e-9)
+                pa = ribbon.pos[i]; pb = ribbon.pos[j]; pq = ribbon.perp[i]
+                bx = pa[1] + (pb[1]-pa[1])*f; bz = pa[3] + (pb[3]-pa[3])*f
+                hb = pa[2] + (pb[2]-pa[2])*f
+                for (c, lat) in enumerate(rc_dl)
+                    # ref, not Inf: on a raw track HAT the TOPMOST surface at a point on the road is often
+                    # a banner, a bridge or a tree. Read with Inf, the Nurburgring's correction came out
+                    # spanning -11.8 to +10.2 m -- that is scenery, not road. `outlier` drops whatever
+                    # survives that and still cannot be a road surface.
+                    hm = JuliaMotor.hat3d(hat, bx + lat*pq[1], bz + lat*pq[3]; ref = hb + 3.0)
+                    d = hm[3] ? Float64(hm[1]) - GPLTrack.trk_height(ta, sq, rc_sgn*lat) - rc_off : NaN
+                    rc_raw[k, c] = (isfinite(d) && abs(d) <= outlier) ? d : NaN
+                end
+            end
+            # fill gaps (off-mesh samples) from the nearest valid station, then Gaussian low-pass
+            for c in 1:length(rc_dl)
+                any(isfinite, view(rc_raw, :, c)) || (rc_raw[:, c] .= 0.0; continue)
+                last = 0.0
+                for k in 1:rc_ns; isfinite(rc_raw[k, c]) ? (last = rc_raw[k, c]) : (rc_raw[k, c] = last); end
+                for k in rc_ns:-1:1; isfinite(rc_raw[k, c]) || (rc_raw[k, c] = 0.0); end
+            end
+            rc_sig = corrsig / rc_ds
+            rc_cor = let kk = ceil(Int, 3*rc_sig), w = [exp(-0.5*(j/rc_sig)^2) for j in -ceil(Int,3*rc_sig):ceil(Int,3*rc_sig)]
+                w ./= sum(w)
+                [sum(w[j+kk+1] * rc_raw[mod1(k+j, rc_ns), c] for j in -kk:kk) for k in 1:rc_ns, c in 1:length(rc_dl)]
+            end
+            nval = count(isfinite, rc_raw)
+            rmin = minimum(x for x in rc_raw if isfinite(x); init = Inf)
+            rmax = maximum(x for x in rc_raw if isfinite(x); init = -Inf)
+            println("  [roadcurve] vertical correction: ", nval, "/", length(rc_raw),
+                    " road samples, raw (mesh - spline) min ",
+                    round(rmin, digits=3), " max ", round(rmax, digits=3),
+                    " m -> low-passed (sigma ", round(rc_sig*rc_ds, digits=1), " m) min ",
+                    round(minimum(rc_cor), digits=3), " max ", round(maximum(rc_cor), digits=3), " m")
+            function rc_corr(sq, lat)
+                fk = mod(sq, lapl) / lapl * rc_ns + 1
+                k0 = floor(Int, fk); fk -= k0
+                a = mod1(k0, rc_ns); b = mod1(k0+1, rc_ns)
+                l = clamp(lat, rc_dl[1], rc_dl[end])
+                c = clamp(searchsortedlast(rc_dl, l), 1, length(rc_dl)-1)
+                g = (l - rc_dl[c]) / (rc_dl[c+1] - rc_dl[c])
+                (rc_cor[a, c]*(1-g) + rc_cor[a, c+1]*g)*(1-fk) + (rc_cor[b, c]*(1-g) + rc_cor[b, c+1]*g)*fk
+            end
+            function rc_h(u, lat)
+                sq = s_of(u)
+                GPLTrack.trk_height(ta, sq, rc_sgn*lat) + rc_off + rc_corr(sq, lat)
+            end
+        end
+    end
+end
+
 end # module

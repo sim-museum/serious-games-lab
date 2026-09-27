@@ -943,31 +943,9 @@ function skidpad_parts()
     parts
 end
 
-# GPL .trk centreline ↔ mesh alignment.  The .trk start point can be parsed with a
-# large constant offset from the .3do mesh (the GPL Nürburgring start sits ~87 km off
-# in z), which would float the racing line off the ground.  The line's SHAPE is
-# correct, so we slide it (pure translation) to maximise overlap with the terrain HAT:
-# estimate the offset from bbox centres, then grid-search + refine.  Zandvoort already
-# aligns (offset ≈ 0) so it's returned untouched.
-function align_centreline(cl, hat)
-    sample = cl[1:max(1, length(cl) ÷ 400):end]
-    cov(dx, dz) = count(p -> JuliaMotor.hat3d(hat, p[1]+dx, p[2]+dz; ref=Inf)[3], sample) / length(sample)
-    cov(0.0, 0.0) > 0.6 && return cl                              # already on the mesh (Zandvoort)
-    xs = Float64[]; zs = Float64[]
-    for tr in hat.tris, p in (tr.a, tr.b, tr.c); push!(xs, p[1]); push!(zs, p[3]); end
-    dx0 = (minimum(xs)+maximum(xs))/2 - (minimum(p[1] for p in cl)+maximum(p[1] for p in cl))/2
-    dz0 = (minimum(zs)+maximum(zs))/2 - (minimum(p[2] for p in cl)+maximum(p[2] for p in cl))/2
-    best = (cov(dx0, dz0), dx0, dz0)
-    for dx in dx0-400:40:dx0+400, dz in dz0-400:40:dz0+400
-        c = cov(dx, dz); c > best[1] && (best = (c, dx, dz))
-    end
-    for dx in best[2]-40:8:best[2]+40, dz in best[3]-40:8:best[3]+40
-        c = cov(dx, dz); c > best[1] && (best = (c, dx, dz))
-    end
-    println("centreline aligned: ", round(Int, best[1]*100), "% on terrain, offset (",
-            round(Int, best[2]), ", ", round(Int, best[3]), ")")
-    [(p[1]+best[2], p[2]+best[3]) for p in cl]
-end
+# GPL .trk centreline <-> mesh alignment lives in GPLTrack: it is pure (a HAT and a polyline), and the
+# GPLROAD-1 gate needs the same alignment to stand a ribbon on the real track mesh.
+align_centreline(cl, hat) = GPLTrack.align_centreline(cl, hat)
 
 # D4 (PO): the GPL .trk DRIVING line hugs the road EDGE through corners (it is the racing groove, not the
 # geometric centre of the tarmac), so lane-0 — what SHIFT-R drops you onto and what the AI takes as its
@@ -1669,6 +1647,14 @@ else
         Render.GPL3DO.Mesh3DO(m.tris[keep], m.textures, m.groups[keep])
     end
     const ROADCURVE_ON = get(ENV, "JM_ROADCURVE", "1") != "0"
+    # GPLROAD-1 (PO 2026-09-26, "Julia tracks are noticably piecewise linear"): a VERTICAL warp was tried
+    # here -- move the road's vertices onto the .trk's analytic elevation cubic, which the physics has
+    # read since TRACKSMOOTH-3 but the drawn mesh never did. It is not shipped, because the measurement
+    # said there is nothing to fix: gplroad_smoke put the road ROADCURVE already draws within 0.4 cm
+    # (Monza p50) to 5.7 cm (Watkins Glen p90) of that spline, and the warp made both slightly worse
+    # (Watkins p50 0.004 -> 0.032 m, curvature p99 0.0228 -> 0.0480 /m) because it can only move a
+    # vertex onto a field that is already under it. The visible faceting is therefore NOT vertical; the
+    # remaining lever is the HORIZONTAL split tolerance, JM_ROADCURVE_TOL (see below).
     const TRACKMESH0C = if ROADCURVE_ON
         let P = [(p[1], p[3]) for p in RIBBON0.pos], HS = [p[2] for p in RIBBON0.pos], q = RIBBON0.perp[1], tol = parse(Float64, get(ENV, "JM_ROADCURVE_TOL", "0.05")), sig = parse(Float64, get(ENV, "JM_ROADCURVE_SIG", "2.0"))
             length(P) > 2 && hypot(P[end][1]-P[1][1], P[end][2]-P[1][2]) < 0.5 && (pop!(P); pop!(HS))   # closed loop, no repeated node
@@ -3141,6 +3127,17 @@ const WTRACK_R = parse(Float32, get(ENV,"JM_TRACK_R","0.74"))   # rear half-trac
 # prints the height the car's ground query returns around that point -- the instrument for
 # "the car levitated on a building": scenery baked into the terrain mesh reads as drivable
 # ground, and shows up here as a plateau metres above the surrounding road.
+# (lapdist, lateral) -> world (x, z) on the ribbon, for the probes that walk the lap.
+# Linear within the ribbon segment, which is what `lateral` is defined against; the wrap segment
+# uses lap_length as its end (TRACKSMOOTH-3 S2 / SEAM-1), so the last few metres resolve too.
+function hat_at_lapdist(sv, lat)
+    np = length(TRKSURF.pos); ld = TRKSURF.lapdist
+    i = clamp(searchsortedlast(ld, mod(sv, TRKSURF.lap_length)), 1, np)
+    send = i == np ? TRKSURF.lap_length : ld[i+1]
+    f = (mod(sv, TRKSURF.lap_length) - ld[i]) / max(send - ld[i], 1e-9)
+    j = mod1(i+1, np); pa = TRKSURF.pos[i]; pb = TRKSURF.pos[j]; q = TRKSURF.perp[i]
+    (pa[1] + (pb[1]-pa[1])*f + lat*q[1], pa[3] + (pb[3]-pa[3])*f + lat*q[3])
+end
 if get(ENV,"JM_HATPROBE","") != ""
     # a single "x,z" prints a grid; a ";"-separated LIST prints the height along a path (the
     # instrument for "where did the ground go" -- a gap is a hole the car can drop through).
@@ -3180,6 +3177,125 @@ if get(ENV,"JM_HATPROBE","") != ""
             end
             _h0 = JuliaMotor.hat3d(TERRAIN, _x, _z; ref=Inf)
             println("   cmp s=", round(_s, digits=1), " mesh0=", _h0[3] ? round(Float64(_h0[1]), digits=2) : NaN, " d=", join(_out, " "))
+        end
+        flush(stdout)
+        haskey(ENV, "JM_HATPROBE_EXIT") && exit(0)
+    elseif startswith(spec, "vcrease:")
+        # GPLROAD-1's ruler: the DRAWN road's vertical creasing. Walks the lap along a lateral offset,
+        # reading the raw track mesh (hat3d on TERRAIN -- not mesh_ground, whose 4-point stencil would
+        # blur exactly what is being measured), and reports the second difference of height per node.
+        # A slope break at a polygon row shows up as a spike; a smooth road gives near zero.
+        # Scale-free: the second difference is divided by step^2, so it is a curvature [1/m].
+        # JM_HATPROBE="vcrease:<lat0,lat1,...>:<step>" (+ JM_HATPROBE_EXIT=1).
+        _f = split(spec, ":"); _lats = parse.(Float64, split(_f[2], ",")); _st = parse(Float64, _f[3])
+        println("== JM_HATPROBE vcrease: drawn-mesh curvature along the lap, step ", _st, " m, lap ",
+                round(LAPLEN, digits=1), " m")
+        _allk = Float64[]
+        for _lat in _lats
+            hs = Float64[]; miss = 0
+            _s = 0.0
+            while _s < LAPLEN
+                hr = hat_at_lapdist(_s, _lat)
+                if hr === nothing; miss += 1; push!(hs, NaN)
+                else
+                    h = JuliaMotor.hat3d(TERRAIN, hr[1], hr[2]; ref=Inf)
+                    push!(hs, h[3] ? Float64(h[1]) : NaN); h[3] || (miss += 1)
+                end
+                _s += _st
+            end
+            ks = Float64[]; kat = Float64[]
+            for i in 2:length(hs)-1
+                (isnan(hs[i-1]) || isnan(hs[i]) || isnan(hs[i+1])) && continue
+                push!(ks, abs(hs[i-1] - 2hs[i] + hs[i+1]) / _st^2); push!(kat, (i-1)*_st)
+            end
+            # RINGBUMP-1 (PO 2026-09-26, Nurburgring: "there is something on the road that makes the car
+            # bounce a little directly under the banner just before you get to the highest point of the
+            # track"). A bump IS a curvature spike in the surface the wheels read, so the worst spikes
+            # at lat 0 name it by lap distance -- no guesswork about which object it is.
+            if !isempty(ks)
+                _o = sortperm(ks; rev = true)
+                _pk = Int[]                                   # keep only peaks > 15 m apart
+                for i in _o; all(j -> abs(kat[i] - kat[j]) > 15.0, _pk) && (push!(_pk, i); length(_pk) >= 8 && break); end
+                println("      worst creases at lapdist: ",
+                        join((string(round(Int, kat[i]), "m(", round(ks[i], digits=3), ", h=",
+                                     round(hs[i+1], digits=2), ")") for i in _pk), "  "))
+            end
+            _hv = [h for h in hs if !isnan(h)]
+            if !isempty(_hv)
+                _im = argmax([isnan(h) ? -Inf : h for h in hs])
+                _wm = hat_at_lapdist((_im-1)*_st, _lat)
+                println("      highest point: lapdist ", round(Int, (_im-1)*_st), " m, altitude ",
+                        round(hs[_im], digits=2), " m, world (", round(_wm[1], digits=1), ", ", round(_wm[2], digits=1), ")")
+            end
+            append!(_allk, ks)
+            _q(v, pp) = (u = sort(copy(v)); isempty(u) ? NaN : u[clamp(ceil(Int, pp*length(u)), 1, length(u))])
+            println("   lat ", lpad(_lat, 5), ": ", length(ks), " nodes (", miss, " off-mesh)  |curvature| 1/m: p50 ",
+                    rpad(round(_q(ks, 0.5), digits=5), 8), " p99 ", rpad(round(_q(ks, 0.99), digits=5), 8),
+                    " max ", round(maximum(ks; init = NaN), digits=5))
+        end
+        if !isempty(_allk)
+            _q2(v, pp) = (u = sort(copy(v)); u[clamp(ceil(Int, pp*length(u)), 1, length(u))])
+            println("   ALL: p50 ", round(_q2(_allk, 0.5), digits=5), " p90 ", round(_q2(_allk, 0.9), digits=5),
+                    " p99 ", round(_q2(_allk, 0.99), digits=5), " max ", round(maximum(_allk), digits=5))
+        end
+        flush(stdout)
+        haskey(ENV, "JM_HATPROBE_EXIT") && exit(0)
+    elseif startswith(spec, "edge:")
+        # GPLROAD-1 (PO 2026-09-26: "Tracks in GPL are continuous, with no sharp edges. Julia tracks are
+        # noticably piecewise linear, with polygon corners you can see when there's a white boundary at
+        # the edge of the road"). The .trk describes the road ANALYTICALLY: constant-curvature arcs with
+        # 16 lateral traces, the innermost pair at +-5.49 m being the road edge where the white line is.
+        # The .3do is a baked polygon copy of it (measured: `edge1` chords median 20.5 m, which bulges
+        # 0.45 m off the Loop's R=117 m arc and 1.3 m off the tightest R=38 m arc).
+        # This measures what we actually DRAW: for each vertex of the road-edge parts, the distance to
+        # the nearest point of the analytic .trk edge. ROADCURVE rounds the mesh onto our ribbon, so this
+        # says how much of GPL's own curve that recovers and how much is left for a real .trk-generated
+        # ribbon. JM_HATPROBE="edge:<n>" samples n stations of the analytic edge; JM_HATPROBE_EXIT=1.
+        _ns = parse(Int, split(spec, ":")[2])
+        if TRKALT === nothing
+            println("== JM_HATPROBE edge: no .trk altitude spline on this track")
+        else
+            _ta = TRKALT
+            # the analytic edge: the .trk centreline walked densely, offset to the innermost trace
+            _cl = GPLTrack.trk_centreline(track_file(GPLNAME, ".trk"))
+            _al = align_centreline(_cl, ROADHAT)              # same alignment the ribbon gets
+            _nn = length(_al); _sv = zeros(_nn)
+            for i in 2:_nn; _sv[i] = _sv[i-1] + hypot(_al[i][1]-_al[i-1][1], _al[i][2]-_al[i-1][2]); end
+            _edge = parse(Float64, get(ENV, "JM_EDGE_LAT", string(abs(_ta.lat[div(length(_ta.lat),2)]))))
+            _pts = NTuple{2,Float64}[]
+            for k in 0:_ns-1
+                t = k/_ns * _sv[end]
+                i = clamp(searchsortedlast(_sv, t), 1, _nn-1); f = (t - _sv[i])/max(_sv[i+1]-_sv[i], 1e-9)
+                px = _al[i][1] + (_al[i+1][1]-_al[i][1])*f; pz = _al[i][2] + (_al[i+1][2]-_al[i][2])*f
+                tx = _al[i+1][1]-_al[i][1]; tz = _al[i+1][2]-_al[i][2]; tl = max(hypot(tx,tz), 1e-9)
+                push!(_pts, (px - tz/tl*_edge, pz + tx/tl*_edge))     # one side is enough for a chord test
+            end
+            # the DRAWN road-edge vertices (the white line's own parts)
+            _dev = Float64[]; _nv = Ref(0)
+            for prt in TRACKMAIN
+                lt = lowercase(String(prt.tex))
+                (startswith(lt, "edge") || startswith(lt, "sline") || startswith(lt, "pline")) || continue
+                v = prt.verts; nvert = length(v) ÷ 11
+                for q in 0:nvert-1
+                    vx = Float64(v[11q+1]); vz = -Float64(v[11q+3])    # render z is the mirror of physics z
+                    _nv[] += 1
+                    d = Inf
+                    for (ex, ez) in _pts
+                        dd = (vx-ex)^2 + (vz-ez)^2; dd < d && (d = dd)
+                    end
+                    push!(_dev, sqrt(d))
+                end
+            end
+            if isempty(_dev)
+                println("== JM_HATPROBE edge: no road-edge parts found (textures edge*/sline*/pline*)")
+            else
+                _qq2(v, pp) = (u = sort(copy(v)); u[clamp(ceil(Int, pp*length(u)), 1, length(u))])
+                println("== JM_HATPROBE edge: ", _nv[], " drawn road-edge vertices vs the analytic .trk edge at lat ",
+                        round(_edge, digits=2), " m")
+                println("   distance to the true edge [m]: p50 ", round(_qq2(_dev,0.5), digits=3),
+                        " p90 ", round(_qq2(_dev,0.9), digits=3), " p99 ", round(_qq2(_dev,0.99), digits=3),
+                        " max ", round(maximum(_dev), digits=3))
+            end
         end
         flush(stdout)
         haskey(ENV, "JM_HATPROBE_EXIT") && exit(0)
