@@ -3982,6 +3982,25 @@ const OBJ_RECZ_TOL = parse(Float64, get(ENV, "JM_OBJ_RECZ_TOL", "0.5"))
 # JM_GRANDL_YAW=<deg> overrides (0 = the old facing).
 const GRANDL_YAW = deg2rad(parse(Float64, get(ENV, "JM_GRANDL_YAW", "180")))
 objyawfix(nm) = (startswith(lowercase(nm), "gstand") ? GSTAND_YAW : lowercase(nm) == "grandl" ? GRANDL_YAW : 0.0) + OBJ_YAW_ADD
+# ZANDGRAND-1 (PO 2026-09-26, Zandvoort: "the grandstand just behind the start/finish line on the left,
+# which should be parallel to the track, but in fact is angled such that the edge farthest from the
+# start/finish line actually protrudes into the track"). GPL's record agrees with the PO: `gstand` is
+# placed at yaw -2.4 deg where the track heading is -2.5 deg, i.e. PARALLEL to 0.1 deg. We draw it
+# rotated, and the measurement says by twice its yaw -- the sign.
+# MEASURED with JM_OBJNEAR, the lateral span of each part of the stand (a part of a stand that runs
+# ALONGSIDE the track spans ~1 m of lateral; one drawn diagonally spans tens):
+#   drawn yaw = -yaw_gpl (shipped): crwdtop 8.3..31.5, gnd_lwal 14.6..35.0, gfront 14.6..21.9  -> diagonal,
+#       and its near end reaches lat 8.3 m, toward the track, which is what the PO sees
+#   drawn yaw = +yaw_gpl:            crwdtop 21.9..39.1, gnd_lwal 22.1..42.6, gfront 21.9..22.7 -> PARALLEL,
+#       the whole stand 22-42 m clear of the centreline
+#   JM_OBJ_MIRROR=0:                 crwdtop -10.4..21.9  -> crosses to the far side of the track; worse
+# This is the third structure to need a yaw correction (Watkins Glen's `grandl` +180 in OBJPLACE-1, Spa's
+# `gstands` +90 in SPA-ROUTE-1, now this), which is evidence that the global convention is wrong and has
+# been compensated object by object. Flipping it globally would move the Ring's 2,188 yawed placements
+# that the PO has accepted by eye, so that stays a separate, capture-based experiment; this fixes the
+# object the PO reported, by the measurement above. JM_OBJ_YAW_FLIP="" empties the list.
+const OBJ_YAW_FLIP = Set(split(lowercase(get(ENV, "JM_OBJ_YAW_FLIP", "gstand")), ","; keepempty = false))
+objyawsign(nm) = lowercase(nm) in OBJ_YAW_FLIP ? -1.0 : 1.0
 # TRACKGOLD-1 S4 probe (2026-09-06): the Ring's in-place veils (wehr-l2/l3, last01, hohe-lg3: placement yaw 0,
 # geometry authored around, not at, the origin) land across the road. If the object meshes' Z mirror does
 # not match the placement frame, off-origin geometry flips to the other side of its origin while
@@ -5302,7 +5321,7 @@ let objnames=Set{String}()
                              " placed-object PARTS are foliage -> graded like the track's vegetation ",
                              "(", round(TRACK_BRIGHT*VEG_GAIN, digits=2), "/", round(TRACK_AMB*VEG_GAIN, digits=2),
                              ") instead of the grandstand grade (1.05/0.55); JM_OBJ_VEG=0 reverts")
-    global OBJECTS = [(objmesh[i.name], Render.translate(Float32[i.x, plozfp(i), -i.y]) * Render.roty(Float32(OBJ_YAW_SIGN * -i.yaw + objyawfix(i.name))), istree(i.name) && (graze_mesh || !(MONZA || WATGLEN)), (Float32(i.x), plozfp(i), Float32(-i.y)), lowercase(i.name))
+    global OBJECTS = [(objmesh[i.name], Render.translate(Float32[i.x, plozfp(i), -i.y]) * Render.roty(Float32(OBJ_YAW_SIGN * objyawsign(i.name) * -i.yaw + objyawfix(i.name))), istree(i.name) && (graze_mesh || !(MONZA || WATGLEN)), (Float32(i.x), plozfp(i), Float32(-i.y)), lowercase(i.name))
                       for i in insts if get(objmesh,i.name,nothing) !== nothing &&
                           !drop(i.name) && !onroad_crowd(i) && !perp_crowd(i) && !onroad_bldg(i) && !onroad_fp(i) && (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && onground(i)]
     # CULLBOUND-1 (2026-09-25, Monza gold parity): objects were distance- and frustum-culled by their ORIGIN
