@@ -1830,13 +1830,13 @@ function build_gpl(parts0, idx::GPLTex; tag::String="")
                 # so the remaining question is the IMAGE, not the mapping.
                 if get(ENV,"JM_TEXDUMP","") == key && r !== nothing
                     let (w_, h_, px_) = (r[1], r[2], r[3])
-                        open("/home/admin/appimage-build/tex_" * key * ".ppm", "w") do io
+                        open(joinpath(get(ENV, "JM_TEXDUMP_DIR", "/tmp"), "tex_" * key * ".ppm"), "w") do io
                             write(io, "P6\n$(w_) $(h_)\n255\n")
                             for i in 0:(w_*h_-1)
                                 write(io, px_[4i+1], px_[4i+2], px_[4i+3])
                             end
                         end
-                        println("  [texdump] ", key, " ", w_, "x", h_, " -> /home/admin/appimage-build/tex_", key, ".ppm")
+                        println("  [texdump] ", key, " ", w_, "x", h_, " -> ", joinpath(get(ENV, "JM_TEXDUMP_DIR", "/tmp"), "tex_" * key * ".ppm"))
                     end
                 end
                 _t1 = time()

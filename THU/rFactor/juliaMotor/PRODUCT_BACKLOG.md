@@ -19843,3 +19843,34 @@ GPL's is opaque too -- what was obtrusive about it was the glare, which is gone.
 **Also seen while capturing, not yet an item:** a brown triangle hangs over the steering wheel in the
 SKIDPAD cockpit view (absent at Spa) -- an untextured poly drawn at the wrong scale, most likely the same
 family as the E106-S10 flat-poly work.
+
+### SPAYELLOW-1a (PO: "the initial view shows mostly a yellow blob, like a hillside colored bright yellow, on the left side of the screen") -- FIXED
+
+Bisected with `JM_LAYERS_OFF`: with trackside OBJECTS off the pixel is sky, so the blob is a placed
+object, not terrain and not a billboard. Named with `JM_OBJNEAR`: Spa's `gstands` -- the main grandstand --
+contains a part called **`grass1`, a grass apron running from the track edge out to lat +40.6 m** along
+the pit straight. It is a grandstand PART, so it took the grandstand grade.
+
+The grade is the defect. Trackside objects draw at `bright 1.05 / ambfill 0.55`; the same foliage on the
+TRACK draws at `TRACK_BRIGHT*VEG_GAIN = 0.583 / TRACK_AMB*VEG_GAIN = 0.275`, because GRADEGOLD-1 gave the
+track's vegetation a gain and never gave one to objects. Measured on the Spa grid, that apron rendered
+**(249, 250, 73)** -- 2.4x its texture with red and green CLIPPED at 255 -- where GPL's equivalent bank is
+(133, 144, 136) and has no yellow anywhere.
+
+Fix: grade foliage **per PART, not per object** (`build_gpl` emits one Item per part, in order, so a Bool
+per item suffices). Classifying the object would not have worked: `gstands` is mostly crowd and stand
+textures, so the object is not foliage even though that one part is. 147 of 2237 placed-object parts at
+Spa are foliage. Objects get their own, slightly wider foliage test than the track's: GRADEGOLD-1's test
+is tuned on grass (green well above blue) and a tree-line is darker and bluer -- Spa's `pinend` is
+(61, 85, 76) and fails it by 6 -- so objects use "green is the largest channel and clearly above red",
+which still rejects sky, cloud, concrete and crowds. The track's test is untouched, so no track grading
+moves. `JM_OBJ_VEG=0` reverts.
+
+RESULT: (249, 250, 73) -> **(142, 138, 39)**, no clipping, against GPL's (133, 144, 136).
+
+Two wrong turns, both recorded: `hill13` (a 300 x 20 m `pinend` backdrop ridge 61 m from the grid) looked
+like the culprit by name and position and is not what fills the view; and classifying whole OBJECTS as
+foliage changed nothing, because the offending part lives inside a grandstand.
+
+STILL OPEN from the same PO sighting: "a bright yellow rectangular polygon that goes over the road just
+after that left turn" -- a different object, not yet located.

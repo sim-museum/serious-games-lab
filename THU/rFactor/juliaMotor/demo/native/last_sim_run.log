@@ -1,0 +1,153 @@
+  clutch: axis 4 (ridable slider)  <- X3D default
+  → track: Spa
+  → mode: Race  (1 laps, 5 AI cars)
+┌ Warning: AI grip anchor: no .ibt in /home/g/sgl-jr/THU/rFactor/juliaMotor/data/iracing -- keeping fallback 13.67
+└ @ Main ~/sgl-jr/THU/rFactor/juliaMotor/demo/native/drive_native_mtk.jl:547
+┌ Warning: AI vmax anchor: no .ibt in /home/g/sgl-jr/THU/rFactor/juliaMotor/data/iracing -- keeping fallback 87.8
+└ @ Main ~/sgl-jr/THU/rFactor/juliaMotor/demo/native/drive_native_mtk.jl:583
+┌ Warning: E100: no ibt at /home/g/sgl-jr/THU/rFactor/juliaMotor/data/iracing/lotus49_nurburgring (none found).ibt -- gearbox falls back to built-in constants (SKIDPAD setup)
+└ @ Main ~/sgl-jr/THU/rFactor/juliaMotor/demo/native/drive_native_mtk.jl:675
+  gearbox: [2.23, 1.72, 1.32, 1.09, 0.916]  final 4.11   <- built-in fallback (SKIDPAD setup -- NOT from an ibt)
+  mass:    617.0 kg  front 45.5%
+  springs: 18250 / 18250 / 29200 / 29200 N/m (FL/FR/RL/RR)   <- built-in fallback (Nurburgring setup -- NOT from an ibt)
+  ride ht: 75.0 / 75.0 / 75.0 / 75.0 mm (FL/FR/RL/RR)   <- built-in fallback (0.075 m at every corner -- NOT from an ibt, and no rake)
+  setup:   session default (unmodified)
+  (.ibt telemetry off: the iRacing template is not in this checkout — lotus49_nurburgring (none found).ibt. The plain-text telemetry below is unaffected.)
+loading GPL spa67…   road-only HAT: 17372 road tris (align/recentre oracle)
+centreline re-centred on the visible road (pass 1/4): max shift 4.0 m, mean 2.64 m, at-start 4.0 m
+centreline re-centred on the visible road (pass 2/4): max shift 4.0 m, mean 0.63 m, at-start 1.32 m
+centreline re-centred on the visible road (pass 3/4): max shift 3.0 m, mean 0.22 m, at-start 0.25 m
+centreline re-centred on the visible road (pass 4/4): max shift 2.8 m, mean 0.18 m, at-start -0.25 m
+  [ribbon] de-folded: dropped 41 node(s) that doubled back (JM_RIBBON_DEFOLD=0 keeps them)
+  [ribbon] curvature repaired: 79 node(s) under 12.0 m -> 0 in 5 round(s); min radius 1.76 -> 12.13 m; 261 of 4719 nodes moved (JM_RIBBON_SMOOTH=0 disables)
+  [roadcurve] ON: 92548 -> 225549 tris (25958 polygons rounded; 20589/27291 vertices in the track frame, 33 left alone as overhead; tol 0.05 m; JM_ROADCURVE=0 disables)
+  [ribbon] de-folded: dropped 41 node(s) that doubled back (JM_RIBBON_DEFOLD=0 keeps them)
+  [ribbon] curvature repaired: 79 node(s) under 12.0 m -> 0 in 5 round(s); min radius 1.76 -> 12.13 m; 261 of 4719 nodes moved (JM_RIBBON_SMOOTH=0 disables)
+  [trksurf] ON: lateral sign 1.0 (residual +0.008 / -0.22 m), vertical offset -0.008 m, centreline |mesh-trk| p50 0.045 p90 0.139 m over 787 samples
+  [trksurf] SINK-1 correction: sscale 1.00021, mesh-spline raw min -0.376 max 0.923 m -> residual p50 0.003 p99 0.047 m (sigma 8.0 m; spline confidence < 1 on 50 of 35275 samples -> mesh there; JM_TRK_CORR=0 disables)
+TriangleHAT(225549 triangles, grid 202×251)  TrackSurface(4719 segments, lap 14109.1 m, grid 152×190)
+extracting geometry…   E68 S10: rail/fence dedup dropped 237 coplanar-duplicate tris
+  [noseuv] GRILLE-FIX re-mapped 32 facet(s) across 2 part(s) from their non-grille front neighbours (JM_NOSE_GRILLEFIX=0 reverts)
+  [noseuv] CARPIN grille-fix: 36 facet(s) across 4 part(s)
+  [dashvflip] dash7: 7.0 tris, v[0.023,1.0] -> mirrored about 0.511
+  [dashvflip] ldashr: 7.0 tris, v[0.023,1.0] -> mirrored about 0.511
+  [dashvflip] flipped v on 42 dash vertices
+  [swuv] sterlot: rotated UVs 180 deg on 6 vertices
+  [swuv] parts fixed: 6 vertices
+382 track parts + 16 Lotus body parts
+┌ Warning: Assignment to `_h` in soft scope is ambiguous because a global variable by the same name exists: `_h` will be treated as a new local. Disambiguate by using `local _h` to suppress this warning or `global _h` to assign to the existing global variable.
+└ @ ~/sgl-jr/THU/rFactor/juliaMotor/demo/native/drive_native_mtk.jl:3164
+┌ Warning: Assignment to `_h` in soft scope is ambiguous because a global variable by the same name exists: `_h` will be treated as a new local. Disambiguate by using `local _h` to suppress this warning or `global _h` to assign to the existing global variable.
+└ @ ~/sgl-jr/THU/rFactor/juliaMotor/demo/native/drive_native_mtk.jl:3286
+┌ Warning: Assignment to `_hh` in soft scope is ambiguous because a global variable by the same name exists: `_hh` will be treated as a new local. Disambiguate by using `local _hh` to suppress this warning or `global _hh` to assign to the existing global variable.
+└ @ ~/sgl-jr/THU/rFactor/juliaMotor/demo/native/drive_native_mtk.jl:3287
+┌ Warning: Assignment to `_sl` in soft scope is ambiguous because a global variable by the same name exists: `_sl` will be treated as a new local. Disambiguate by using `local _sl` to suppress this warning or `global _sl` to assign to the existing global variable.
+└ @ ~/sgl-jr/THU/rFactor/juliaMotor/demo/native/drive_native_mtk.jl:3300
+  [wheels] Lotus: hubs from lotus.3do  front x=1.53 rear x=-0.88 half-track 0.76/0.77 (+BODY_OFF -0.55)  now (0.98,0.76) (0.98,-0.76) (-1.43,0.77) (-1.43,-0.77)
+  [axle] x0=-0.885 hub z=0.772  bbox x[-0.909,-0.861] z[-0.772,0.772]  (rear hub raw x=-0.885)
+  PHYSICS: full-3D vehicle (default) — heave/pitch/roll + suspension travel + jumps
+loading textures…   [aniso] requested 16.0 → texture reports 16.0   (driver maximum 16.0)
+  [cull] PERF-3: track part radii p50 71.2 m, p90 1770.5 m, max 3077.9 m over 382 parts
+  [grade] GRADEGOLD-1: 54 road parts x0.72, 255 vegetation parts x0.81 (of 382)
+  [horizon] horiz.3do: 14 textured panels
+  E68: building house46 centred ON the road (lat=-2.9 m, s=5180) — dropped
+  [cull] CULLBOUND-1: object bounding radii p50 5.0 m, max 161.0 m
+  ROAD-1: 30 disc(s) shrunk to clear the road: arm_sf0@-212,914 3.1→0.7 wwambu@59,537 1.1→0.0 shrub4@1874,-906 1.5→0.5 shrub4@1925,-922 1.5→0.1 bushrow5@1346,-2228 1.5→0.0 shrub5@1339,-2232 1.5→0.0 bushrow5@1329,-2240 1.5→0.0 simcao@1350,-2229 0.7→0.0 opelrk@1344,-2232 0.9→0.0 prinzv@1337,-2236 0.7→0.0 r4@1332,-2238 0.7→0.0 bush2@934,-2453 1.5→0.9 …
+  ROAD-1: 57 solid box(es) rejected for covering tarmac (disc fallback): arm_sf0@-215,905 matiho@-55,703 matiho@-53,707 house9@1567,-860 house12@1760,-898 house12@1755,-893 shrub4@1873,-906 shrub2@1892,-914 shrub4@1924,-922 shrub4@2099,-1432 shrub2@2089,-1448 shrub2@2043,-1513 …
+== JM_RAIL_SOLID: 1212 rail tris -> 40 collision boxes of <=8.0 m (151 rejected for covering tarmac, 0 overhead); solids 1303 -> 1343
+  E68: building house46 centred ON the road (lat=-2.9 m, s=5180) — dropped
+1448 trackside objects + 2435 billboards + 0 forest panels + 1343 solid (collidable)
+381/382 track + 15/16 Lotus parts textured
+  loading AI car: Ferrari …   [wheels] Ferrari: hubs from the mesh  front x=1.58 rear x=-0.82 half-track 0.77/0.77 (+body off -0.54)  was (1.05,0.62) (1.05,-0.62) (-1.15,0.66) (-1.15,-0.66)  now (1.04,0.78) (1.04,-0.78) (-1.36,0.77) (-1.36,-0.77)
+27 parts
+  loading AI car: Brabham …   [wheels] Brabham: hubs from the mesh  front x=1.4 rear x=-0.99 half-track 0.68/0.7 (+body off -0.28)  was (1.05,0.62) (1.05,-0.62) (-1.15,0.66) (-1.15,-0.66)  now (1.11,0.67) (1.11,-0.68) (-1.27,0.7) (-1.27,-0.71)
+43 parts
+  loading AI car: BRM …   [wheels] BRM: hubs from the mesh  front x=1.53 rear x=-0.91 half-track 0.75/0.76 (+body off -0.52)  was (1.05,0.62) (1.05,-0.62) (-1.15,0.66) (-1.15,-0.66)  now (1.01,0.75) (1.01,-0.75) (-1.43,0.76) (-1.43,-0.76)
+31 parts
+  loading AI car: Eagle …   [wheels] Eagle: hubs from the mesh  front x=1.49 rear x=-0.96 half-track 0.76/0.76 (+body off -0.09)  was (1.05,0.62) (1.05,-0.62) (-1.15,0.66) (-1.15,-0.66)  now (1.4,0.76) (1.4,-0.76) (-1.05,0.76) (-1.05,-0.76)
+42 parts
+  loading AI car: Cooper …   [wheels] Cooper: hubs from the mesh  front x=1.55 rear x=-0.88 half-track 0.75/0.73 (+body off -0.46)  was (1.05,0.62) (1.05,-0.62) (-1.15,0.66) (-1.15,-0.66)  now (1.09,0.75) (1.09,-0.75) (-1.34,0.73) (-1.34,-0.73)
+42 parts
+  TYRE (3-D): physics-based brush model (default)
+  [AI rail] de-folded: dropped 41 node(s) that doubled back (JM_RIBBON_DEFOLD=0 keeps them)
+  CLINE: centreline length = 14144 m  (spa)
+  AI speed profile: GPL race.lp (4705 records, adj 0.988, cap 90.0 m/s)  <- /home/g/sgl-jr/THU/WP/drive_c/Sierra/GPL/tracks/spa67/race.lp
+  → AI pace spread (power/weight, gridded fastest-first): Ferrari 99%, Brabham 96%, BRM 97%, Eagle 100%, Cooper 95%
+  → AI grid: Ferrari, Brabham, BRM, Eagle, Cooper
+  → AI pace: 60% of GPL (ref 200.3s → target 333.9s; rail 215.7s, scale 0.65)
+  force feedback: off (no wheel found)
+
+  COUNTDOWN START — 5 s on the clock, then GREEN for the whole field at once.
+
+  ═══ GRID ═══
+   P1  Ferrari
+   P2  Brabham
+   P3  BRM
+   P4  Eagle
+   P5  Cooper
+   P6  You (no practice lap)
+  → You start P6 of 6 at s=0.0 m — wait for the countdown
+
+  → fuel: 85.4 L = 11 laps (1 race + 10 margin)  (7.76 L/lap)
+
+  Drive:  W/S gas·brake   A/D steer   E/Q shift   C clutch   R respawn   ⇧R recover-to-track   ^R restart session   V view   G auto⇄manual   M mute   Esc quit
+  AUTO gearbox by default — just press the throttle and go (no clutch needed).  Press G for
+  MANUAL: hold the clutch (C / stick button) to shift E/Q (release it too low and it bogs).
+  Lap times top-left: white = last, green = best.  Telemetry → ./spa_racer_*.txt
+  (Logitech joystick works natively — push=throttle, pull=brake, roll=steer)
+
+  [joy] 4 axes raw = -0.0, 0.0, 0.0, 1.0
+  [audio] output -> 'pulse' (follows the Ubuntu default sink; JM_AUDIO_DEV overrides)
+        buttons = 16   shift-up btn 1, shift-down btn 2   clutch axis 4
+  ★ PRESS ANY KEY TO START COUNTDOWN
+  → COUNTDOWN ARMED
+  [clutch] held IN (1.0) with throttle — the engine will rev but the car will not move. If you are not holding it, the slider (axis 4) is parked at the clutch-in end; move it to the other end to release.
+  → GREEN
+  [WRECK] hard impact at 155.0 km/h — engine disconnected, race over
+  [WRECK]   cause: CLOSING speed 36.5 m/s into a solid
+  [WRECK]   at world (2151.4, -1328.5)
+  [WRECK]   approach (last 3.9 s, 10 Hz):  t-Δ    x       z      v km/h   slip°   off m   lat m   lapdist
+  [WRECK]      -3.9   2143.0 -1159.9   154.0       -     0.0     1.3     3785
+  [WRECK]      -3.8   2144.2 -1164.8   154.0     2.0     0.0     1.2     3790
+  [WRECK]      -3.7   2145.3 -1169.6   154.0     2.0     0.0     1.1     3795
+  [WRECK]      -3.6   2146.3 -1173.8   154.0     2.0     0.0     1.0     3799
+  [WRECK]      -3.5   2147.1 -1178.0   155.0     2.0     0.0     1.0     3804
+  [WRECK]      -3.4   2147.9 -1182.3   155.0     1.0     0.0     1.0     3808
+  [WRECK]      -3.3   2148.9 -1187.2   155.0     1.0     0.0     1.1     3813
+  [WRECK]      -3.2   2149.6 -1191.4   155.0     0.0     0.0     1.3     3817
+  [WRECK]      -3.1   2150.4 -1195.7   155.0     1.0     0.0     1.4     3821
+  [WRECK]      -3.0   2151.2 -1200.6   155.0     1.0     0.0     1.4     3826
+  [WRECK]      -2.8   2152.0 -1205.5   155.0     1.0     0.0     1.2     3831
+  [WRECK]      -2.7   2152.7 -1210.5   155.0     2.0     0.0     1.2     3836
+  [WRECK]      -2.6   2153.3 -1214.8   155.0     2.0     0.0     1.3     3841
+  [WRECK]      -2.5   2153.8 -1219.7   155.0     2.0     0.0     1.3     3846
+  [WRECK]      -2.4   2154.2 -1224.0   155.0     2.0     0.0     1.2     3850
+  [WRECK]      -2.3   2154.7 -1229.0   155.0     2.0     0.0     0.9     3855
+  [WRECK]      -2.2   2155.0 -1234.1   155.0     2.0     0.0     0.7     3860
+  [WRECK]      -2.1   2155.2 -1238.4   155.0     2.0     0.0     0.6     3864
+  [WRECK]      -2.0   2155.4 -1243.4   155.0     1.0     0.0     0.6     3869
+  [WRECK]      -1.9   2155.6 -1247.7   155.0     1.0     0.0     0.6     3874
+  [WRECK]      -1.7   2155.7 -1252.7   155.0     1.0     0.0    -0.3     3879
+  [WRECK]      -1.6   2155.8 -1257.8   156.0     0.0     0.0    -1.1     3884
+  [WRECK]      -1.5   2155.8 -1262.1   156.0     0.0     0.0    -1.1     3888
+  [WRECK]      -1.4   2155.9 -1267.2   156.0     0.0     0.0     0.1     3893
+  [WRECK]      -1.3   2156.0 -1272.3   157.0     0.0     0.0     1.3     3898
+  [WRECK]      -1.2   2156.0 -1276.6   157.0     0.0     0.0     1.8     3903
+  [WRECK]      -1.1   2156.0 -1281.0   157.0     0.0     0.0     2.0     3907
+  [WRECK]      -1.0   2156.0 -1286.1   157.0     1.0     0.0     2.2     3912
+  [WRECK]      -0.9   2156.0 -1290.5   157.0     2.0     0.0     2.5     3917
+  [WRECK]      -0.8   2155.8 -1295.5   157.0     3.0     0.0     2.8     3922
+  [WRECK]      -0.6   2155.6 -1300.6   157.0     3.0     0.0     3.1     3927
+  [WRECK]      -0.5   2155.1 -1305.7   157.0     4.0     0.0     3.2     3932
+  [WRECK]      -0.4   2154.7 -1310.0   156.0     4.0     0.0     3.2     3936
+  [WRECK]      -0.3   2154.1 -1314.3   156.0     5.0     0.0     3.3     3940
+  [WRECK]      -0.2   2153.3 -1319.3   156.0     6.0     0.0     3.3     3945
+  [WRECK]      -0.1   2152.5 -1323.6   155.0     6.0     0.0     3.3     3950
+  [WRECK]       0.0   2151.5 -1327.8   155.0     5.0     0.0     3.2     3954
+  [WRECK] lotwlf torn off at 140.0 km/h
+  [WRECK] lotwlr torn off at 81.0 km/h
+  [WRECK] car came to rest
+  wrote replay: /home/g/sgl-jr/THU/rFactor/juliaMotor/data/juliaracer/replay_spa 5ai 2026-09-26 22-04-26.jmr  (1510 frames, 147 KB)
+bye
+
+[juliaRacer] sim exited: code=0 status=<ExitStatus.NormalExit: 0>

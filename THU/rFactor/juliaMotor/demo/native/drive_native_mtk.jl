@@ -4195,21 +4195,51 @@ const TRACKCAT = MONZA ? [monza_surf(lowercase(p.tex)) for p in TRACK] : Symbol[
 # green-dominant, so fences, rails, buildings and paint are untouched. 1.0 / 1.0 reverts.
 const ROAD_GAIN = parse(Float32, get(ENV, "JM_ROAD_GAIN", "0.72"))
 const VEG_GAIN  = parse(Float32, get(ENV, "JM_VEG_GAIN", "0.81"))
-const TRACKGAIN = let cache = Dict{String,Float32}()
-    function vegtex(t)
-        get!(cache, t) do
-            r = Render.tex_rgba(TEXIDX, t); r === nothing && return 1f0
-            w, h, px = r; n = w*h; (n > 0 && length(px) >= 4n) || return 1f0
-            sr = 0.0; sg = 0.0; sb = 0.0; c = 0
-            @inbounds for i in 0:max(1, n ÷ 4096):n-1
-                px[4i+4] < 0x80 && continue
-                sr += px[4i+1]; sg += px[4i+2]; sb += px[4i+3]; c += 1
-            end
-            c == 0 && return 1f0
-            sr /= c; sg /= c; sb /= c
-            (sg > sb + 15 && sg >= sr - 10) ? VEG_GAIN : 1f0
+# SPAYELLOW-1: the vegetation test, shared by the track gains below and by the OBJECT grade (objects
+# never had one, which is how a 300 m foliage ridge came to be drawn at grandstand brightness).
+const _VEGCACHE = Dict{String,Bool}()
+function is_veg_tex(t)
+    get!(_VEGCACHE, t) do
+        r = Render.tex_rgba(TEXIDX, t); r === nothing && return false
+        w, h, px = r; n = w*h; (n > 0 && length(px) >= 4n) || return false
+        sr = 0.0; sg = 0.0; sb = 0.0; c = 0
+        @inbounds for i in 0:max(1, n ÷ 4096):n-1
+            px[4i+4] < 0x80 && continue
+            sr += px[4i+1]; sg += px[4i+2]; sb += px[4i+3]; c += 1
         end
+        c == 0 && return false
+        sr /= c; sg /= c; sb /= c
+        (sg > sb + 15 && sg >= sr - 10)
     end
+end
+# The track test above is GRADEGOLD-1's, tuned on GRASS (green well above blue), and it is left exactly
+# as it was so no track grading moves. A tree-line is darker and bluer than grass -- Spa's `pinend` is
+# (61, 85, 76), which fails `green > blue + 15` by 6 -- so objects get their own, slightly wider test:
+# green is the LARGEST channel and clearly above red. That admits foliage and tree-lines while still
+# rejecting sky/cloud (blue-dominant), concrete and crowds.
+const _FOLCACHE = Dict{String,Bool}()
+function is_foliage_tex(t)
+    get!(_FOLCACHE, t) do
+        r = Render.tex_rgba(TEXIDX, t); r === nothing && return false
+        w, h, px = r; n = w*h; (n > 0 && length(px) >= 4n) || return false
+        sr = 0.0; sg = 0.0; sb = 0.0; c = 0
+        @inbounds for i in 0:max(1, n ÷ 4096):n-1
+            px[4i+4] < 0x80 && continue
+            sr += px[4i+1]; sg += px[4i+2]; sb += px[4i+3]; c += 1
+        end
+        c == 0 && return false
+        sr /= c; sg /= c; sb /= c
+        (sg >= sr + 10 && sg >= sb)
+    end
+end
+const OBJ_VEG_GRADE = get(ENV, "JM_OBJ_VEG", "1") != "0"
+# PER PART, not per object: Spa's `gstands` is a grandstand whose parts include `grass1`, a grass
+# apron running from the track edge out to lat +40 m -- classify the OBJECT and that apron keeps the
+# grandstand grade, which is exactly the PO's yellow hillside. build_gpl emits one Item per part in
+# order, so a Bool per item is enough to grade each part on its own texture.
+const OBJVEG = Dict{String,Vector{Bool}}()
+const TRACKGAIN = let
+    vegtex(t) = is_veg_tex(t) ? VEG_GAIN : 1f0
     g = Float32[]
     for p in TRACK
         lt = lowercase(p.tex)
@@ -4665,6 +4695,10 @@ let objnames=Set{String}()
                     end
                     lverts[inst.name] = vs
                     twinboard_classify!(lowercase(inst.name), parts)
+                    # SPAYELLOW-1: is this object VEGETATION? Same test GRADEGOLD-1 uses on track parts
+                    # (the texture's own mean colour is green-dominant), area-weighted over the object's
+                    # parts, so a foliage backdrop grades like the track's grass and a grandstand does not.
+                    OBJ_VEG_GRADE && (OBJVEG[lowercase(inst.name)] = Bool[is_foliage_tex(lowercase(pp.tex)) for pp in parts])
                     _tb = time(); objmesh[inst.name] = Render.build_gpl(parts, TEXIDX); _e92.bld[] += time() - _tb
                 end
             end
@@ -5249,6 +5283,11 @@ let objnames=Set{String}()
     end
     tstamp("  [E80] .. object mesh placement done; OBJECTS build begins")
     graze_mesh = get(ENV,"JM_GRAZE_MESH","0") != "0"
+    OBJ_VEG_GRADE && println("  [objveg] SPAYELLOW-1: ", sum(count(v) for v in values(OBJVEG); init=0), " of ",
+                             sum(length(v) for v in values(OBJVEG); init=0),
+                             " placed-object PARTS are foliage -> graded like the track's vegetation ",
+                             "(", round(TRACK_BRIGHT*VEG_GAIN, digits=2), "/", round(TRACK_AMB*VEG_GAIN, digits=2),
+                             ") instead of the grandstand grade (1.05/0.55); JM_OBJ_VEG=0 reverts")
     global OBJECTS = [(objmesh[i.name], Render.translate(Float32[i.x, plozfp(i), -i.y]) * Render.roty(Float32(OBJ_YAW_SIGN * -i.yaw + objyawfix(i.name))), istree(i.name) && (graze_mesh || !(MONZA || WATGLEN)), (Float32(i.x), plozfp(i), Float32(-i.y)), lowercase(i.name))
                       for i in insts if get(objmesh,i.name,nothing) !== nothing &&
                           !drop(i.name) && !onroad_crowd(i) && !perp_crowd(i) && !onroad_bldg(i) && !onroad_fp(i) && (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && onground(i)]
@@ -10314,6 +10353,18 @@ function main()
                 # PERF-1: size cull -- an object whose bounding sphere covers < JM_MINPIX pixels is not drawn
                 br < (flip ? MINPIX_K_MIR : MINPIX_K) * sqrt((eye_[1]-bc[1])^2+(eye_[2]-bc[2])^2+(eye_[3]-bc[3])^2) && continue
                 ob, oa = 1.05, 0.55                                    # default object grade (grandstands/buildings)
+                # SPAYELLOW-1 (PO 2026-09-26, Spa: "the initial view shows mostly a yellow blob, like a
+                # hillside colored bright yellow, on the left side of the screen"). Bisected with
+                # JM_LAYERS_OFF: with objects off the pixel is sky, so the blob is a placed OBJECT --
+                # `hill13`, a 300 x 20 m foliage backdrop ridge 61 m from the Spa grid, textured `pinend`
+                # (a dark green tree-line: mean RGB 61,85,76). It was drawn at the GRANDSTAND grade,
+                # 1.05/0.55, while the SAME foliage on the track draws at TRACK_BRIGHT*VEG_GAIN = 0.583
+                # and TRACK_AMB*VEG_GAIN = 0.275 -- GRADEGOLD-1 gave the track's vegetation a gain and
+                # never gave one to objects. Measured on the Spa grid: the ridge rendered (249,250,73),
+                # i.e. 2.4x its texture with red and green CLIPPED, against ~1.2x for the same texture on
+                # the track, and gold shows no yellow there at all. Ground cover is ground cover: grade a
+                # vegetation-textured object like the track's vegetation. JM_OBJ_VEG=0 restores 1.05/0.55.
+                _ovg = OBJ_VEG_GRADE ? get(OBJVEG, onm, nothing) : nothing
                 if MONZA                                               # E57: tone the combined-circuit paved/banking object surfaces
                     g = monza_obj_grade(onm)
                     g === :road && ((ob, oa) = (MZ_ROAD_B, MZ_ROAD_A)); g === :bank && ((ob, oa) = (MZ_BANK_B, MZ_BANK_A))
@@ -10331,7 +10382,11 @@ function main()
                     glEnable(GL_CULL_FACE); glCullFace(_twin === nothing ? (xor(OBJ_FF_CW, flip) ? GL_BACK : GL_FRONT) : (xor(_twin, flip) ? GL_BACK : GL_FRONT))
                     glUniform1i(Render.uloc(prog,"uBackFlip"), 0)
                 end
-                for it in items; Render.draw(prog, it, vp_, mat; bright=ob, ambfill=oa, graze=grz, tint=otint); end   # grandstands/buildings: ambfill kills the "post-Hiroshima carbonized" shadow faces → vibrant GPL look
+                for (_ii, it) in enumerate(items)                                        # SPAYELLOW-1: foliage PARTS take the track's vegetation grade
+                    _fol = _ovg !== nothing && _ii <= length(_ovg) && _ovg[_ii]
+                    Render.draw(prog, it, vp_, mat; bright = _fol ? TRACK_BRIGHT*VEG_GAIN : ob,
+                                ambfill = _fol ? TRACK_AMB*VEG_GAIN : oa, graze=grz, tint=otint)
+                end   # grandstands/buildings: ambfill kills the "post-Hiroshima carbonized" shadow faces → vibrant GPL look
                 if _sbcull; glDisable(GL_CULL_FACE); glUniform1i(Render.uloc(prog,"uBackFlip"), 1); end
             end
             end)(OBJECTS, OBJBOUND)
