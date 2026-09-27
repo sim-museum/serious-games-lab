@@ -19679,3 +19679,90 @@ assumed:
 **The PO's eye is still the oracle.** Every number here is geometry and instrumentation; "the AI look
 smooth and the car does not bounce" is a judgement made from the driving seat, and the Ring is the track
 to judge it on -- it had 77 folded nodes and the worst ribbon of the five.
+
+## PO session 2026-09-26 (evening): GPL's own approach, and eight track/car defects
+
+The PO's order, recorded verbatim in intent. Two architecture items and eight defects; the architecture
+items are the headline and the defects are separable, so they are listed as their own items with the
+evidence already in hand against each.
+
+### GPLROAD-1 (architecture): draw the road GPL's way -- generate it from the .trk, do not round the .3do
+
+MEASURED basis (2026-09-26): the .trk is 47 constant-curvature ARC sections for Watkins Glen's 3755 m
+lap (the Loop is six sections at R=117.4 m, the tightest arc anywhere is R=38.4 m), 16 lateral TRACES at
+fixed offsets (+-5.49 m is the road EDGE, exactly where the white line is; then +-6.10, 9.14, 10.36,
++-18.29, +-35.56, 41.66, +-96.62), and a per-section, per-trace CUBIC elevation. Sixteen smooth rails
+swept along forty-seven arcs: that is a road generator.
+The .3do is a coarse baked copy of it. Longest edge per road polygon: `asphalt` median 16.2 m (p90 52),
+`edge1` -- the white boundary line -- median **20.5 m** (p90 98), `groove` 13.1, `curb` 13.4. A 20 m chord
+on the Loop's arc bulges **0.45 m** off the true edge; on the R=38.4 m arc, **1.3 m**. The giveaway that
+the mesh was generated from the .trk at SECTION resolution: its longest road chord is 542.32 m against
+the .trk's longest section of 542.3 m. (TRACKSMOOTH-3 S1 showed the same in elevation: r = 0.9999 against
+the .trk spline, residual p50 0.10 m.)
+So GPL's smoothness cannot come from the mesh -- the mesh does not contain it. Whether GPL regenerates
+the ribbon at draw time or subdivides the mesh using the arcs is NOT established here; either way the
+curve comes from the .trk.
+Our physics already reads the analytic surface (TRACKSMOOTH-3 + SEAM-1). The VISUAL still comes from the
+mesh, rounded by ROADCURVE-1 -- and ROADCURVE warps onto `RIBBON0`, our own ribbon, NOT onto the .trk
+arcs. Until SEAM-1 that ribbon had 0.017 m segments, folds and a 1.8 m minimum curvature radius, so the
+rounding pass was faithfully reproducing a kinked curve. SEAM-1's ribbon repair therefore feeds the
+renderer too, and the road edges should already be better; NOT yet confirmed by capture.
+The item: sweep the 16 traces along the arcs with their cubic elevations and draw THAT (the white line
+becomes a rail, smooth at any zoom, which is why GPL's is). Cheaper intermediate: keep ROADCURVE but give
+it the .trk arcs as its curve instead of our ribbon.
+
+### GPLAI-1 (architecture): drive GPL's own line set, and slot between lines smoothly
+
+PO: *"GPL AI does slot from one line to another, it can move laterally, but it does so smoothly unlike
+the current jerky julia AI."*
+MEASURED basis (2026-09-26): GPL ships SIX line files per track at ~3 m of lap distance per record
+(Watkins Glen 1252 records, Monza 1918, Nordschleife 7591). Decoded record = 5 float32: longitudinal
+speed in m/tick at 36 Hz, lateral velocity, lateral offset (m), one unknown, one always zero.
+* `race.lp` -- the line and its speed.
+* `pass1.lp` / `pass2.lp` -- the LEFT and RIGHT rails, one-sided and collapsing: at Watkins Glen
+  `pass1 - race` never goes below 0.00 m and `pass2 - race` never above, and where the road is too narrow
+  both sit ON the race line. Monza's pass1 is median +1.1 m, reaching +5.5 where there is room.
+* Each line carries **its own speed**: pass1 vs race correlates at r = 0.99 but differs by up to 13 m/s
+  (Watkins Glen) and **24.5 m/s** (the Ring). In GPL, going off-line to pass costs authored speed.
+* `minrace.lp` / `maxrace.lp` bracket the race line (race inside on 98-100 % of records), a corridor of
+  median 5.9-8.3 m. Their speed column is implausible as a target (median 12-17 m/s) -- meaning unknown.
+* `pit.lp` -- the pit route in the same frame.
+Per-driver variation is a multiplier on shared lines, not a line per car: `driver.ini` gives `aggression`,
+`alertness`, `experience`, `hype`, `qualifying`, `quickness`, `smoothness`, `magic_grip`, `variability`,
+all within +-5 % of 1.0, plus per-driver failure probabilities. Per-track AI tuning is in
+`track.ini [ ai_track ]` with Papyrus's own comments: `dlong_speed_adj_coeff` (1.016 Monza -> 1.046
+Zandvoort) scales every .lp speed, `dlong_speed_maximum` caps it (2.26-2.47 m/tick = 81-89 m/s),
+`track_dlong_sep_coeff` sets how close they race (0.66 Monza, 1.25 Rouen *"increase because of Scierie"*).
+What is NOT established: the runtime rule that picks race vs pass1 vs pass2. That lives in the executable.
+We currently load ONLY `race.lp`'s speed table; `set_gpl_lateral!` exists in ai.jl and nothing calls it,
+so GPL's own lines are decoded and unused, and min/maxrace -- the real corridor -- are untouched while our
+AI runs a relaxation-derived line inside a guessed +-3.8 m curvature-tapered band that needed a soft-clamp
+to stop sawtoothing. The item: drive GPL's four line files, take the corridor from min/maxrace, and make
+the transition between lines a smooth lateral move (SEAM-1 gave the lane a bounded acceleration; GPL's own
+records carry a lateral VELOCITY field, which is a better source than any rule we invent).
+
+### The eight defects (PO, verbatim intent)
+
+| id | track | defect |
+|---|---|---|
+| ZANDGRAND-1 | Zandvoort | the grandstand just behind the start/finish line on the LEFT should be parallel to the track; it is angled so its far edge protrudes INTO the track |
+| RINGTREE-1 | Nürburgring | tree "curtains" across the road in several places -- you drive THROUGH the curtain before you can see anything beyond it |
+| RINGTREE-2 | Nürburgring | individual trees intrude into the road without blocking all of it |
+| RINGBUMP-1 | Nürburgring | something on the road makes the car bounce directly under the banner just before the highest point of the track |
+| WGGANTRY-1 | Watkins Glen | the start/finish banner/gantry is placed TWICE |
+| SPAYELLOW-1 | Spa | the initial (chase) view shows a bright yellow blob like a hillside on the left; pressing V to cockpit view removes it. Also a bright yellow rectangular polygon OVER the road just after the first left-hander |
+| SPABUMP-1 | Spa | something like an armco across the road just after the start/finish line; the car bounces over it |
+| SPAHOUSE-1 | Spa | the house at the end of the front winding straight, before the 90-degree left down to Burnenville, is MISSING -- it is the landmark that says the straight is ending and to turn left |
+| VISOR-1 | car | the cockpit-view visor should be translucent, unobtrusive and symmetrical; it is an almost solid bright yellow, heavier on the right than the left |
+
+FIRST HYPOTHESIS, cheap and shared: SPAYELLOW-1 and VISOR-1 are both "bright yellow", and this renderer
+draws a polygon whose texture did not resolve with GPL's own flat colour -- which has turned the cockpit
+cowl bright yellow before (render.jl carries a `yellowish(col)` heuristic and a planar-projection path
+precisely for that). If both are texture-resolution failures, they are one fix, not two.
+SECOND: RINGTREE-2, RINGBUMP-1 and SPABUMP-1 are all "an object's mesh is on the road", and
+`road_clear_smoke`'s Ring sweep ALREADY enumerates 115 such stations by object name and lateral offset
+(shrb-srl, s_treen1/2, s_bush01, s_tree06, half01/02/09, trow_001, out_tn_1, xk_flat*, tierg-l1/2/3,
+meus-lg1, doho-rg2, schw-lg1, wehr-l6, bridge3b). That gate is the instrument for two of these items.
+THIRD: ZANDGRAND-1 and WGGANTRY-1 are the object-PLACEMENT family (OBJPLACE-1/OBJDUP-1 already added a
+per-name yaw fix for `grandl` and culled a duplicate gantry by name), and CLAUDE.md's open item says the
+placement convention applies YAW ONLY while GPL's records carry pitch and roll too.
