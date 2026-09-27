@@ -8,7 +8,12 @@
 # treatment's clean numbers mean nothing -- the first version of this probe read the centreline
 # instead of the racing line and reported both arms identical to five decimals.
 const D = normpath(joinpath(@__DIR__, "..", "..", "demo", "native"))
-const G = "/home/admin/sgl-julia-racer/THU/WP/drive_c/Sierra/GPL/tracks"
+# SEAM-1 (2026-09-26): resolved from THIS checkout, not from one machine's home directory. The
+# hardcoded /home/admin path made this gate unrunnable anywhere else -- it died on a missing file
+# (ai_field) or skipped every track and still printed a verdict (softband), which is the
+# "green gate that protects nothing" this suite exists to prevent. JM_GPL_* override.
+const G = get(ENV, "JM_GPL_TRACKS",
+            normpath(joinpath(@__DIR__, "..", "..", "..", "..", "WP", "drive_c", "Sierra", "GPL", "tracks")))
 arm(track, env) = begin
     out = read(`env $(env) TRACK=$(joinpath(G, track)) julia --project=$(D) $(joinpath(D, "hw_rough_probe.jl"))`, String)
     r = match(r"reversals=(\d+)", out); m = match(r"max\|rl\|=([0-9.]+)", out)

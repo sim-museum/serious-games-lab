@@ -253,10 +253,159 @@ function trk_height(ta::TrkAlt, s::Real, lat::Real)
     h(k)*(1-f) + h(k+1)*f
 end
 
-"""Build the racing-ribbon TrackSurface from the centreline, lifted to ground height."""
-function build_surface(centreline, hat; halfwidth=9.0)
+"""
+    defold(cl; label) -> centreline
+
+Drop centreline nodes that DOUBLE BACK on the path (SEAM-1, PO 2026-09-26).
+
+The aligned centreline is re-centred on the visible road over several passes, and those passes move
+each node laterally -- which can leave the path reversing at a node. Where it does, the track frame
+`(lapdist, lateral)` is MULTI-VALUED: two different lap distances name nearly the same patch of
+tarmac, and the nearest-foot rule flips between them as a car drives through. MEASURED at Watkins
+Glen, sampling the ribbon at 0.2 m steps of lapdist near the start/finish: the world point jumped
+2.1 m between lapdist 3734.0 and 3734.2 and 2.9 m back at 3736.6, and the driven road height with it
+(0.19 m and 0.23 m in ONE FRAME -- the largest steps left in the lap once the ribbon was resampled
+uniformly, and present in BOTH projection arms, which is how the fold was told apart from the
+projection). The AI rail is built from the same centreline and inherits the same folds, so its arc
+length jumps there too -- one fold, both symptoms, at one place on the track.
+
+A fold is a node whose two chords point in opposite directions. On a 3-4 m centreline even a 20 m
+hairpin turns only ~11 deg per node, so more than 90 deg is never real geometry. Several passes,
+because adjacent folded nodes hide each other. JM_RIBBON_DEFOLD=0 keeps them (the control arm).
+"""
+function defold(cl; label = "centreline")
+    (get(ENV, "JM_RIBBON_DEFOLD", "1") == "0" || length(cl) <= 8) && return cl
+    out = collect(cl); nrm = 0
+    for _ in 1:4
+        m = length(out); m > 8 || break
+        keep = trues(m)
+        for k in 1:m
+            a = out[mod1(k-1, m)]; b = out[k]; c = out[mod1(k+1, m)]
+            ax = b[1]-a[1]; az = b[2]-a[2]; bx = c[1]-b[1]; bz = c[2]-b[2]
+            (ax*bx + az*bz < 0) && (keep[k] = false)
+        end
+        all(keep) && break
+        out = out[keep]; nrm += m - length(out)
+    end
+    nrm > 0 && println("  [", label, "] de-folded: dropped ", nrm, " node(s) that doubled back ",
+                       "(JM_RIBBON_DEFOLD=0 keeps them)")
+    out
+end
+
+"""Build the racing-ribbon TrackSurface from the centreline, lifted to ground height.
+
+SEAM-1 (PO 2026-09-26: "seams in the road surface, where the track is piecewise linear rather than
+smooth"). The centreline handed in here has been ALIGNED and then re-centred on the visible road over
+four passes, and those passes move each node laterally -- which bunches some nodes together and
+stretches others apart. MEASURED on the sim's own Watkins Glen ribbon: 940 segments with spacing from
+**0.017 m to 27.1 m** (median 2.31, p05 0.55). This ribbon is not just geometry: it carries the
+(lapdist, lateral) frame that the .trk altitude spline and the SINK-1 correction table are read
+through, so a 2 cm segment beside a 3 m one is a fault in the FRAME. It showed up as isolated 0.2-0.4 m
+steps in the driven road height (p99 2.3 m/s of vertical velocity per frame, worst 23 m/s at lapdist
+3750 -- and the ribbon's shortest segment, 0.017 m, sits at lapdist 3752).
+
+So resample to a uniform `spacing` by arc length before building. A polyline resampled along its own
+chords has the same shape (no smoothing, no shortcutting), and every consumer of the frame gets nodes
+it can interpolate: this is what `RaceAI.build_line` has always done for the AI rail (3.0 m) and what
+the ribbon never did. JM_RIBBON_SPACING overrides; 0 keeps the raw nodes."""
+function build_surface(centreline, hat; halfwidth=9.0,
+                       spacing=parse(Float64, get(ENV, "JM_RIBBON_SPACING", "3.0")))
+    cl = collect(centreline)
+    # SEAM-1 part two: the re-centring passes can leave the centreline DOUBLING BACK on itself. Where it
+    # does, (lapdist, lateral) is MULTI-VALUED -- two different lap distances name nearly the same patch
+    # of tarmac -- and the nearest-foot rule flips between them as the car drives. MEASURED at Watkins
+    # Glen: sampling the ribbon at 0.2 m steps of lapdist near the start/finish, the world point jumped
+    # 2.1 m between lapdist 3734.0 and 3734.2 and 2.9 m back at 3736.6, and the driven road height with
+    # it (0.19 m and 0.23 m in one frame -- the largest steps left in the lap after the ribbon was made
+    # uniform, and present in BOTH projection arms, which is what identified the fold rather than the
+    # projection). A fold is a node whose two chords point in opposite directions: on a 3-4 m ribbon even
+    # a 20 m-radius hairpin turns only ~11 deg per node, so >90 deg is never real geometry. Drop those
+    # nodes (a few passes, since neighbours can hide each other) before resampling.
+    cl = defold(cl; label = "ribbon")
+    if spacing > 0 && length(cl) > 2
+        m = length(cl)
+        cum = zeros(m+1)
+        for i in 1:m
+            j = i % m + 1
+            cum[i+1] = cum[i] + hypot(cl[j][1]-cl[i][1], cl[j][2]-cl[i][2])
+        end
+        total = cum[m+1]
+        nf = max(m ÷ 2, round(Int, total/spacing))      # never coarser than half the input
+        fine = Vector{NTuple{2,Float64}}(undef, nf)
+        for k in 1:nf
+            d = (k-1)/nf * total
+            j = clamp(searchsortedlast(cum, d), 1, m)
+            f = (d - cum[j]) / max(cum[j+1]-cum[j], 1e-9)
+            a = cl[j]; b = cl[j % m + 1]
+            fine[k] = (a[1] + (b[1]-a[1])*f, a[2] + (b[2]-a[2])*f)
+        end
+        cl = fine
+    end
+    # SEAM-1 part three: the frame's own CURVATURE. `(lapdist, lateral)` is single-valued only out to the
+    # local radius of curvature: where the re-centred centreline has a jog tighter than the lateral offset
+    # a car is running at, that car has TWO feet on the ribbon and the nearest one flips as it drives --
+    # the last family of ~0.2 m one-frame steps in the driven road height. MEASURED minimum radius before
+    # any repair: Watkins Glen 1.80 m, the Ring 1.74 m (73 nodes under 12 m), Spa 1.76 m (79), Monza
+    # 2.77 m (21), Zandvoort 6.07 m (2) -- "centrelines" with 2 m kinks in them.
+    #
+    # The repair smooths the NEIGHBOURHOOD of each offending node and then LOOKS AGAIN, widening nothing
+    # and repeating until no node is left under the bar. Three shapes were measured, and the order of
+    # preference is the measurement's, not mine:
+    #   * one local pass (halo +-3, 12 passes): does NOT converge -- the Ring kept 5 nodes under 12 m,
+    #     Monza 3, Spa 6, because a kink whose neighbours are pinned cannot be pulled straight. Monza's
+    #     worst surface step went to 20.5 m/s (against 2.6 for the global filter) and the Ring's road
+    #     corridor got slightly WORSE than the control (123 anomalies vs 121).
+    #   * a global Laplacian (every node, 6 passes): converged and measured well everywhere (Monza max
+    #     2.6 m/s, Ring corridor 115 vs the control's 121) but moves all ~8,451 Ring nodes to repair 73.
+    #   * ITERATED local (this): converges like the global one while moving only the neighbourhoods that
+    #     need it. Rounds are capped so a pathological ribbon cannot loop forever.
+    # JM_RIBBON_SMOOTH=0 disables; JM_RIBBON_RMIN sets the radius bar; JM_RIBBON_ROUNDS caps the rounds.
+    let passes = parse(Int, get(ENV, "JM_RIBBON_SMOOTH", "6")), lam = 0.3,
+        rmin = parse(Float64, get(ENV, "JM_RIBBON_RMIN", "12.0")),
+        rounds = parse(Int, get(ENV, "JM_RIBBON_ROUNDS", "12")), halo = 3
+        radii(v) = begin
+            m = length(v); r = fill(Inf, m)
+            for k in 1:m
+                a = v[mod1(k-1,m)]; b = v[k]; c = v[mod1(k+1,m)]
+                ax = b[1]-a[1]; az = b[2]-a[2]; bx = c[1]-b[1]; bz = c[2]-b[2]
+                la = hypot(ax,az); lb = hypot(bx,bz)
+                (la < 1e-6 || lb < 1e-6) && continue
+                dth = atan(ax*bz - az*bx, ax*bx + az*bz)
+                r[k] = abs(dth) < 1e-9 ? Inf : (la+lb)/2 / abs(dth)
+            end
+            r
+        end
+        if passes > 0 && length(cl) > 8
+            r0 = radii(cl); m = length(cl)
+            tight0 = count(<(rmin), r0)
+            if tight0 > 0
+                touched = falses(m); rnd = 0
+                for _ in 1:rounds
+                    r = radii(cl); tight = findall(<(rmin), r)
+                    isempty(tight) && break
+                    rnd += 1
+                    mask = falses(m)
+                    for k in tight, d in -halo:halo; mask[mod1(k+d, m)] = true; touched[mod1(k+d, m)] = true; end
+                    for _ in 1:passes
+                        nxt = copy(cl)
+                        for k in 1:m
+                            mask[k] || continue
+                            a = cl[mod1(k-1,m)]; b = cl[k]; c = cl[mod1(k+1,m)]
+                            nxt[k] = (b[1] + lam*(a[1] + c[1] - 2b[1]), b[2] + lam*(a[2] + c[2] - 2b[2]))
+                        end
+                        cl = nxt
+                    end
+                end
+                r1 = radii(cl)
+                println("  [ribbon] curvature repaired: ", tight0, " node(s) under ", rmin, " m -> ",
+                        count(<(rmin), r1), " in ", rnd, " round(s); min radius ",
+                        round(minimum(r0), digits=2), " -> ", round(minimum(r1), digits=2), " m; ",
+                        count(touched), " of ", m, " nodes moved (JM_RIBBON_SMOOTH=0 disables)")
+            end
+        end
+    end
     pos = NTuple{3,Float64}[]
-    for (cx, cy) in centreline
+    for (cx, cy) in cl
         h = JuliaMotor.hat3d(hat, cx, cy; ref=Inf)
         push!(pos, (cx, h[3] ? h[1] : 0.0, cy))      # (x=gx, y=height, z=gy)
     end

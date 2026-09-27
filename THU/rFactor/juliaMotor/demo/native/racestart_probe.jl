@@ -10,7 +10,8 @@ using Random
 
 function main()
     Random.seed!(7)
-    T = "/home/admin/sgl-julia-racer/THU/WP/drive_c/Sierra/GPL/tracks/watglen"
+    T = joinpath(get(ENV, "JM_GPL_TRACKS", normpath(joinpath(@__DIR__, "..", "..", "..", "..",
+                                            "WP", "drive_c", "Sierra", "GPL", "tracks"))), "watglen")
     dat = GPLDat.parse_dat(joinpath(T, "watglen.dat"))
     tmp = tempname()*".trk"; write(tmp, dat["watglen.trk"])
     line = RaceAI.build_line(GPLTrack.trk_centreline(tmp), (x,z) -> 0.0)

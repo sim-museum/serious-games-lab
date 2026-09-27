@@ -8,7 +8,12 @@
 include("gpldat.jl"); using .GPLDat; include("gpltrack.jl"); using .GPLTrack
 include("ai.jl"); using .RaceAI
 using Statistics, Printf
-T = get(ENV, "TRACK", "/home/admin/sgl-julia-racer/THU/WP/drive_c/Sierra/GPL/tracks/watglen")
+# SEAM-1 (2026-09-26): resolved from THIS checkout, not from one machine's home directory. The
+# hardcoded /home/admin path made this gate unrunnable anywhere else -- it died on a missing file
+# (ai_field) or skipped every track and still printed a verdict (softband), which is the
+# "green gate that protects nothing" this suite exists to prevent. JM_GPL_* override.
+T = get(ENV, "TRACK", joinpath(get(ENV, "JM_GPL_TRACKS",
+        normpath(joinpath(@__DIR__, "..", "..", "..", "..", "WP", "drive_c", "Sierra", "GPL", "tracks"))), "watglen"))
 name = basename(T)
 # GPL track dirs are inconsistently cased (watglen.dat but monza.DAT), and a hand-written list of
 # two spellings silently produced NO OUTPUT for monza -- which reads as "the track failed" rather

@@ -3,7 +3,12 @@
 include("gpldat.jl"); using .GPLDat; include("gpltrack.jl"); using .GPLTrack; include("ai.jl"); using .RaceAI; include("gpl_lp.jl"); using .GPLLP
 using Statistics, Random
 Random.seed!(7)
-T = "/home/admin/sgl-julia-racer/THU/WP/drive_c/Sierra/GPL/tracks/monza"
+# SEAM-1 (2026-09-26): resolved from THIS checkout, not from one machine's home directory. The
+# hardcoded /home/admin path made this gate unrunnable anywhere else -- it died on a missing file
+# (ai_field) or skipped every track and still printed a verdict (softband), which is the
+# "green gate that protects nothing" this suite exists to prevent. JM_GPL_* override.
+T = get(ENV, "TRACK", joinpath(get(ENV, "JM_GPL_TRACKS",
+        normpath(joinpath(@__DIR__, "..", "..", "..", "..", "WP", "drive_c", "Sierra", "GPL", "tracks"))), "monza"))
 d = GPLDat.parse_dat(joinpath(T, "monza.DAT")); tmp = tempname()*".trk"; write(tmp, d["monza.trk"])
 line = RaceAI.build_line(GPLTrack.trk_centreline(tmp), (x,z) -> 0.0)
 if get(ENV, "JM_AI_GPLLINE", "0") != "0"

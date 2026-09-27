@@ -4,7 +4,11 @@
 include("gpldat.jl"); using .GPLDat; include("gpltrack.jl"); using .GPLTrack
 include("ai.jl"); using .RaceAI
 using Printf
-G = "/home/admin/sgl-julia-racer/THU/WP/drive_c/Sierra/GPL/tracks"
+# SEAM-1 (2026-09-26): the GPL tracks resolved from THIS checkout (same depth for tools/ and
+# demo/native/: ../../../../WP), with JM_GPL_TRACKS to override. The hardcoded /home/admin path
+# made the gate that drives this probe die on a missing file on every other machine.
+G = get(ENV, "JM_GPL_TRACKS", normpath(joinpath(@__DIR__, "..", "..", "..", "..",
+                                            "WP", "drive_c", "Sierra", "GPL", "tracks")))
 name = get(ENV, "TRK", "watglen"); T = joinpath(G, name)
 GOLD = Dict("watglen"=>66.912, "monza"=>90.202)[name]
 dat = first(filter(f -> lowercase(basename(f)) == name*".dat", joinpath.(T, readdir(T))))

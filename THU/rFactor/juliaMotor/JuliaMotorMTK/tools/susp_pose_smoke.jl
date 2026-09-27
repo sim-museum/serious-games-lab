@@ -7,7 +7,13 @@
 const D = normpath(joinpath(@__DIR__, "..", "..", "demo", "native"))
 include(joinpath(D, "render.jl")); using .Render
 include(joinpath(D, "susp_pose.jl")); using .SuspPose
-const LOT = "/home/admin/sgl-julia-racer/THU/WP/drive_c/Sierra/GPL/cars/cars67/lotus/lotus.3do"
+# SEAM-1 (2026-09-26): resolved from THIS checkout, not from one machine's home directory. The
+# hardcoded /home/admin path made this gate unrunnable anywhere else -- it died on a missing file
+# (ai_field) or skipped every track and still printed a verdict (softband), which is the
+# "green gate that protects nothing" this suite exists to prevent. JM_GPL_* override.
+const LOT = get(ENV, "JM_GPL_LOTUS",
+              normpath(joinpath(@__DIR__, "..", "..", "..", "..", "WP", "drive_c", "Sierra", "GPL",
+                                "cars", "cars67", "lotus", "lotus.3do")))
 isfile(LOT) || (println("lotus.3do not found"); exit(2))
 # E82-S2: extract exactly as the sim does -- clipped at the wheel face (0.85). Without the clip these
 # assemblies reach |z| = 1.12-1.16, spearing through the rear tyres: the PO's "chrome spider-legs".

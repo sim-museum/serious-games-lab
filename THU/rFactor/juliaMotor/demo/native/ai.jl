@@ -266,7 +266,26 @@ function build_line(pts, groundz; spacing = 3.0, halfwidth = 3.0)   # E16: racin
         flush(stdout)
     end
     y = Float64[(h = groundz(x[i], z[i]); isfinite(h) ? h : 0.0) for i in 1:n]
-    AILine(x, z, y, s, θ, κ, rl, s[end])
+    # SEAM-1 (PO 2026-09-26, "no strange sideways jumps"): the lap length MUST include the closing
+    # chord (node n -> node 1). It used to be `s[end]`, the distance from node 1 to node n, which
+    # leaves the last segment of a CLOSED loop out of the lap: `mod(s, total)` then wrapped one node
+    # EARLY, so every AI car reaching s = total was still at node n and the wrap moved it to node 1 --
+    # MEASURED at Watkins Glen: a 3.019 m position jump, taken in one frame, at the start/finish line,
+    # by every car on every lap (a drawn velocity step of 181 m/s, the largest single jump in the
+    # field's whole 90 s run). `_locate` below completes the fix: it can now address the closing
+    # segment instead of clamping to n-1 and extrapolating the Catmull-Rom past its node.
+    AILine(x, z, y, s, θ, κ, rl, s[end] + hypot(x[1]-x[end], z[1]-z[end]))
+end
+
+# SEAM-1: curvature AT an arc length, interpolated between nodes. `line.κ` is a per-node array and
+# the controller read it as `line.κ[_locate(line, s)[1]]` -- piecewise constant, so the look-ahead
+# DISTANCE it sizes (la = min(la, 0.32/κ)) jumped at every node crossing, and with it the look-ahead
+# point and the heading error. That was the residual steer step left after the projection fix
+# (measured: p99 0.0118 -> see below). Linear between nodes is enough: what the steer needs is a
+# continuous VALUE, and κ is already a 5-node-smoothed array.
+function curv_at(line::AILine, s)
+    i, f = _locate(line, s); j = i % length(line.κ) + 1
+    line.κ[i]*(1-f) + line.κ[j]*f
 end
 
 "Racing-line lateral offset (m, left +) at arc-length `s`."
@@ -288,8 +307,59 @@ end
 mutable struct AICar; s::Float64; v::Float64; lap::Int; lane::Float64; tlane::Float64; spin::Float64; follow::Float64
     pace::Float64        # per-car PHYSICS pace factor (power/weight) — the Eagle out-paces the BRM (the field spreads)
     mishap::Float64      # remaining time (s) of a current off/spin mishap — drops the car right back, GPL-style
+    vlane::Float64       # SEAM-1: lateral speed of the lane change [m/s] — a STATE, so it cannot step (see lane_step!)
 end
-AICar(s, v, lap, lane) = AICar(s, v, lap, lane, lane, 0.0, 0.0, 1.0, 0.0)   # tlane=current lane; spin=collision yaw; follow=tailgate timer (s)
+AICar(s, v, lap, lane) = AICar(s, v, lap, lane, lane, 0.0, 0.0, 1.0, 0.0, 0.0)   # tlane=current lane; spin=collision yaw; follow=tailgate timer (s)
+
+# SEAM-1 (PO 2026-09-26: "AI car motion is smooth, with no strange sideways jumps"). The shipped AI
+# are the KINEMATIC field (AI_PHYSICS is opt-in and nothing in the launcher sets it), and their lane
+# was a RATE-limited chase: `lane += clamp(tgt - lane, -2.4dt, 2.4dt)`. A rate limit bounds the
+# lateral SPEED but says nothing about its derivative, so every lane change began, ended or reversed
+# with the lateral speed stepping by the full 2.4 m/s -- 4.8 on a reversal -- in a single frame. That
+# is a car starting to move sideways instantly, which is exactly "jump sideways".
+# MEASURED (demo/native/seam_probe.jl part E: 5 cars, 90 s, Watkins Glen, the sim's own step_field!):
+# the drawn car's lateral velocity stepped by up to 5.62 m/s in one frame, p99 0.66, and 485 of
+# 26,990 car-frames (1.8 %) stepped by more than 0.5 m/s -- while `lane` itself never moved more than
+# 0.063 m in a frame. The jump was never in the position, it was in the rate.
+# The lane now carries its own SPEED, limited in acceleration. `vdes` uses the braking-distance law
+# sqrt(2*a*e) so the car decelerates INTO its target lane without overshooting it (a plain
+# proportional chase with an acceleration limit overshoots and then hunts). Peak lateral speed is
+# unchanged at LANE_V, so a lane change is the same manoeuvre, ~0.2 s longer.
+# JM_AI_LANE_ACCEL=0 restores the old instant-rate chase exactly, as the A/B control arm.
+const LANE_V = 2.4                                                              # peak lane speed [m/s] (was the rate limit)
+const LANE_K = 3.0                                                              # [1/s] linear gain near the target lane
+const LANE_A = Ref(-1.0)                                                        # [m/s^2]; resolved at runtime, not precompile
+@inline function lane_accel()
+    LANE_A[] < 0.0 && (LANE_A[] = something(tryparse(Float64, get(ENV, "JM_AI_LANE_ACCEL", "8.0")), 8.0))
+    LANE_A[]
+end
+lane_accel!(a::Real) = (LANE_A[] = float(a); a)
+"""Move `car.lane` toward `tgt` with bounded lateral speed AND bounded lateral acceleration, clamped
+to ±`lim`. Returns nothing; updates `car.lane` and `car.vlane`."""
+function lane_step!(car::AICar, tgt, dt, lim)
+    a = lane_accel()
+    if a <= 0.0                                    # control arm: the old instant-rate chase
+        car.lane += clamp(tgt - car.lane, -LANE_V*dt, LANE_V*dt)
+        car.lane  = clamp(car.lane, -lim, lim)
+        car.vlane = 0.0
+        return nothing
+    end
+    e = tgt - car.lane
+    # vdes: the cap far out, the braking law approaching, and a LINEAR law within ~LANE_V/LANE_K of the
+    # target. The linear term is not decoration -- with sqrt(2ae) alone the acceleration limit cannot
+    # bring vlane to zero exactly at e = 0, so the lane overshoots, reverses, and limit-cycles at
+    # +-a*dt. MEASURED, first attempt (sqrt law only): the per-frame lateral-velocity step got WORSE
+    # than the code it replaced, p50 0.018 -> 0.110 m/s and 485 -> 651 frames over 0.5 m/s. Inside the
+    # linear region the accel limit never saturates (K^2|e| << a), so the approach is a clean
+    # exponential with a 1/K second time constant.
+    vdes = clamp(sign(e) * min(LANE_V, LANE_K*abs(e), sqrt(2.0*a*abs(e))), -LANE_V, LANE_V)
+    car.vlane += clamp(vdes - car.vlane, -a*dt, a*dt)
+    car.lane += car.vlane*dt
+    if car.lane < -lim || car.lane > lim
+        car.lane = clamp(car.lane, -lim, lim); car.vlane = 0.0                   # pinned at the band edge: no stored rate
+    end
+    nothing
+end
 
 const RAIL     = 2.4    # pass-deviation offset to either side of the racing line (m)
 const LANE_MAX = 3.8    # E16 (PO): never get within ~a car-width of either edge — road half-width 5.5 − car 1.7 = 3.8
@@ -355,12 +425,14 @@ end
 
 "Grid of `n` AI cars staggered ~9 m apart behind arc-length `start_s`, alternating lanes."
 init_cars(line::AILine, n; start_s = 0.0) =
-    [AICar(mod(start_s - 9.0*i, line.total), 25.0, 0, iseven(i) ? 2.4 : -2.4, 0.0, 0.0, 0.0, 1.0, 0.0) for i in 1:n]  # tlane=0 = on the racing line; pace set by the app from car physics
+    [AICar(mod(start_s - 9.0*i, line.total), 25.0, 0, iseven(i) ? 2.4 : -2.4, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0) for i in 1:n]  # tlane=0 = on the racing line; pace set by the app from car physics
 
 function _locate(line::AILine, sq)
     sq = mod(sq, line.total)
-    i = clamp(searchsortedlast(line.s, sq), 1, length(line.s)-1)
-    f = (sq - line.s[i]) / max(line.s[i+1]-line.s[i], 1e-6)
+    n = length(line.s)
+    i = clamp(searchsortedlast(line.s, sq), 1, n)          # SEAM-1: n, not n-1 -- the closing segment
+    send = i == n ? line.total : line.s[i+1]               # its far end is the lap length, not s[n+1]
+    f = (sq - line.s[i]) / max(send - line.s[i], 1e-6)
     i, f
 end
 
@@ -468,15 +540,110 @@ function reground(p, height)
     length(p) >= 6 ? (p[1], h[1], p[3], p[4], p[5], p[6]) : (p[1], h[1], p[3], p[4])
 end
 
-"Project a world point onto the line → (arc-length s, signed lateral offset, left +)."
-function project(line::AILine, x, z)
-    bi = 1; bd = Inf
-    @inbounds for i in 1:length(line.x)
-        d = (line.x[i]-x)^2 + (line.z[i]-z)^2
-        d < bd && (bd = d; bi = i)
+# SEAM-1 (PO 2026-09-26: "AI cars skitter (jump sideways) at times, often at corners"). THIS is the
+# AI half of that. `project` returned the nearest NODE's arc length and a lateral measured in that
+# node's frame, so the two numbers the controller steers on were QUANTISED to the 3 m node spacing.
+# MEASURED on the shipped line (demo/native/seam_probe.jl, Watkins Glen, a car driven along a
+# perfectly smooth path at 25 m/s, 9014 frames):
+#   * s advanced on 14 % of frames and stood still on 86 %, then jumped a whole 2.999 m node;
+#   * the projected lateral stepped up to 0.120 m in one frame;
+#   * the commanded STEER stepped up to 0.194 of full lock in one frame (p99 0.072), and the
+#     direction of the steer change reversed on 15.6 % of frames.
+# A car on a smooth path should command a smooth wheel: every one of those numbers is instrument-free
+# evidence of the skitter, and none of it is the physics or the racing line -- it is the AI reading
+# its own position through a staircase.
+#
+# Now: nearest node (LOCAL to `hint` when the caller has last frame's s), then Newton on the
+# Catmull-Rom curve through the same nodes -- the curve `pose_at` already uses for the rail, so the
+# AI is measured against the line it is driven along. s is the foot point's arc length and lat its
+# signed distance, both C1 across a node. JM_AI_PROJ_NODE=1 restores the nearest-node projection as
+# the A/B control (read at runtime -- see the hat.jl note on precompiled Refs).
+@inline _crp(p0, p1, p2, p3, t) =
+    0.5 * (2p1 + (-p0 + p2)*t + (2p0 - 5p1 + 4p2 - p3)*t^2 + (-p0 + 3p1 - 3p2 + p3)*t^3)
+@inline _crv(p0, p1, p2, p3, t) =
+    0.5 * ((-p0 + p2) + 2t*(2p0 - 5p1 + 4p2 - p3) + 3t*t*(-p0 + 3p1 - 3p2 + p3))
+@inline _cra(p0, p1, p2, p3, t) =
+    0.5 * (2*(2p0 - 5p1 + 4p2 - p3) + 6t*(-p0 + 3p1 - 3p2 + p3))
+const PROJ_NODE = Ref(false); const PROJ_NODE_SEEN = Ref(false)
+@inline function proj_node()
+    if !PROJ_NODE_SEEN[]
+        PROJ_NODE[] = get(ENV, "JM_AI_PROJ_NODE", "0") != "0"; PROJ_NODE_SEEN[] = true
     end
-    lat = (x-line.x[bi])*(-sin(line.θ[bi])) + (z-line.z[bi])*cos(line.θ[bi])
-    (line.s[bi], lat)
+    PROJ_NODE[]
+end
+proj_node!(on::Bool) = (PROJ_NODE[] = on; PROJ_NODE_SEEN[] = true; on)
+
+"""Project a world point onto the line → (arc-length s, signed lateral offset, left +).
+
+`hint` = an arc length near the answer (last frame's s). With one, the nearest node is found in a
+±`HINTW`-node window instead of a full sweep -- O(1) instead of O(n), and it keeps the search on the
+car's own stretch of track where the circuit passes close to itself. A hint whose window best sits
+at the window EDGE is treated as stale and the full sweep runs, so a teleported/respawned car still
+projects correctly."""
+const HINTW = 12
+function project(line::AILine, x, z; hint = nothing)
+    n = length(line.x)
+    bi = 0; bd = Inf; edge = false
+    if hint !== nothing && n > 2HINTW + 2
+        i0 = clamp(searchsortedlast(line.s, mod(float(hint), line.total)), 1, n)
+        @inbounds for d in -HINTW:HINTW
+            i = mod(i0 - 1 + d, n) + 1
+            dd = (line.x[i]-x)^2 + (line.z[i]-z)^2
+            dd < bd && (bd = dd; bi = i; edge = abs(d) == HINTW)
+        end
+    end
+    if bi == 0 || edge
+        bd = Inf
+        @inbounds for i in 1:n
+            d = (line.x[i]-x)^2 + (line.z[i]-z)^2
+            d < bd && (bd = d; bi = i)
+        end
+    end
+    if proj_node()
+        lat = (x-line.x[bi])*(-sin(line.θ[bi])) + (z-line.z[bi])*cos(line.θ[bi])
+        return (line.s[bi], lat)
+    end
+    # the foot point lies on one of the two segments meeting at the nearest node: start from the
+    # closer one, in its own parameter, then let Newton migrate across nodes as needed.
+    prv = mod(bi - 2, n) + 1
+    seg, t = let a = line.x[prv], b = line.x[bi], az = line.z[prv], bz = line.z[bi]
+        l2 = (b-a)^2 + (bz-az)^2
+        tb = l2 < 1e-9 ? 1.0 : clamp(((x-a)*(b-a) + (z-az)*(bz-az))/l2, 0.0, 1.0)
+        tb > 0.999 ? (bi, 0.0) : (prv, tb)      # at/past the node → start on the forward segment
+    end
+    @inbounds for _ in 1:3
+        h = mod(seg-2, n)+1; j = mod(seg, n)+1; k = mod(seg+1, n)+1
+        ax, bx, cx, dx = line.x[h], line.x[seg], line.x[j], line.x[k]
+        az, bz, cz, dz = line.z[h], line.z[seg], line.z[j], line.z[k]
+        ex = _crp(ax,bx,cx,dx,t) - x; ez = _crp(az,bz,cz,dz,t) - z
+        v1x = _crv(ax,bx,cx,dx,t); v1z = _crv(az,bz,cz,dz,t)
+        a2x = _cra(ax,bx,cx,dx,t); a2z = _cra(az,bz,cz,dz,t)
+        g1 = ex*v1x + ez*v1z
+        g2 = v1x*v1x + v1z*v1z + ex*a2x + ez*a2z
+        # g2 <= 0 means this stationary point is a MAXIMUM of the distance, not a minimum (a query far
+        # off the ribbon, or inside the curve's centre of curvature): Newton would step AWAY from the
+        # foot. Keep the chord's answer there instead -- exactly what the polyline did.
+        g2 <= 1e-9 && break
+        st = clamp(-g1/g2, -0.5, 0.5)
+        t += st
+        if t < 0.0
+            seg = mod(seg-2, n)+1; t += 1.0
+        elseif t > 1.0
+            seg = mod(seg, n)+1; t -= 1.0
+        end
+        abs(st) < 1e-6 && break
+    end
+    t = clamp(t, 0.0, 1.0)
+    h = mod(seg-2, n)+1; j = mod(seg, n)+1; k = mod(seg+1, n)+1
+    fx = _crp(line.x[h], line.x[seg], line.x[j], line.x[k], t)
+    fz = _crp(line.z[h], line.z[seg], line.z[j], line.z[k], t)
+    tx = _crv(line.x[h], line.x[seg], line.x[j], line.x[k], t)
+    tz = _crv(line.z[h], line.z[seg], line.z[j], line.z[k], t)
+    tl = hypot(tx, tz)
+    nx, nz = tl < 1e-9 ? (-sin(line.θ[seg]), cos(line.θ[seg])) : (-tz/tl, tx/tl)   # left normal
+    lat = (x - fx)*nx + (z - fz)*nz
+    s2 = j == 1 ? line.total : line.s[j]
+    (mod(line.s[seg] + t*(s2 - line.s[seg]), line.total), lat)
 end
 
 "Curvature-limited target speed at arc-length `s`, moving at `v` (m/s).  Scans a BRAKING
@@ -582,7 +749,7 @@ aistat_reset!() = (AISTAT.engage = AISTAT.release = AISTAT.match = AISTAT.qsnap 
 Returns (s_samples, v_samples). This is what a car does with nobody ahead -- the baseline any
 'fall back' must be measured against, because a car braking for Ascari is not falling back."""
 function free_speed_profile(line::AILine; scale = 1.0, dt = 1/60, ds = 5.0, amax = AMAX[], vmax = VMAX[], vmin = 12.0)
-    car = AICar(0.0, 25.0, 0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0)
+    car = AICar(0.0, 25.0, 0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     n = max(2, round(Int, line.total / ds)); vs = fill(NaN, n)
     for _ in 1:2                                     # two laps: the second overwrites the standing-start first
         while car.lap < 1
@@ -715,8 +882,7 @@ function step_field!(cars::Vector{AICar}, line::AILine, dt;
         gl = gpl_racelane(line, car.s)
         if gl === nothing
             tgt = clamp(racelane(line, car.s) + lanebias(i, length(cars)) + car.tlane, -LANE_MAX, LANE_MAX)   # racing line + per-car bias + pass deviation
-            car.lane += clamp(tgt - car.lane, -2.4*dt, 2.4*dt)        # deliberate lane changes (not twitchy)
-            car.lane  = clamp(car.lane, -LANE_MAX, LANE_MAX)
+            lane_step!(car, tgt, dt, LANE_MAX)                        # SEAM-1: bounded lateral accel, not just speed
         else
             # E84-S8: GPL's own line and rails. The pass deviation uses GPL's rail on that side
             # (asymmetric, per record) instead of a fixed +/-RAIL; the lane is clamped to the wider
@@ -724,8 +890,7 @@ function step_field!(cars::Vector{AICar}, line::AILine, dt;
             dev = car.tlane == 0.0 ? 0.0 : something(gpl_rail(line, car.s, car.tlane > 0 ? 1 : -1), car.tlane)
             tgt = gl + lanebias(i, length(cars)) + dev
             lim = max(LANE_MAX, abs(gl) + LANE_MAX)
-            car.lane += clamp(tgt - car.lane, -2.4*dt, 2.4*dt)
-            car.lane  = clamp(car.lane, -lim, lim)
+            lane_step!(car, tgt, dt, lim)                             # SEAM-1: bounded lateral accel, not just speed
         end
         car.v     = advance_speed(car.v, vt, dt)            # realistic accel/brake (not slot-car)
         car.spin *= exp(-dt/0.45)                           # collision yaw decays back to the line heading
@@ -947,7 +1112,7 @@ function controller(line::AILine, cs, clane, dev, tv, cx, cz, cθ, cv, r; power 
     la = clamp(6.0 + cv*0.35, 6.0, 20.0)                  # look-ahead DISTANCE in metres (density-independent)
     # SHORTEN the look-ahead in a tight corner so the chord follows the arc instead of cutting the
     # apex to the inside (the T1-hairpin problem): cap it to a fraction of the corner radius.
-    κloc = max(line.κ[_locate(line, cs)[1]], line.κ[_locate(line, cs + 0.5*la)[1]], 1e-4)
+    κloc = max(curv_at(line, cs), curv_at(line, cs + 0.5*la), 1e-4)   # SEAM-1: interpolated, not per-node
     la = clamp(min(la, 0.32/κloc), 4.0, 20.0)
     tlane = clamp(racelane(line, cs + la) + dev, -LANE_MAX, LANE_MAX)    # target = racing line ahead + pass offset
     here  = clamp(racelane(line, cs)      + dev, -LANE_MAX, LANE_MAX)

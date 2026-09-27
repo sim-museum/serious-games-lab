@@ -1674,7 +1674,14 @@ else
                               [TRACKMESH0C.groups; fill(0, length(SECTRI))])
     const TERRAIN  = (isempty(SECTRI) && !ROADCURVE_ON) ? TERRAIN0 : GPLTrack.build_hat(TRACKMESH; exclude=HAT_EXCLUDE, exclude_pred=HAT_EXCLUDE_PRED, drop_overpass=MONZA, road_pred=ROAD_PRED)
     const TRKSURF  = GPLTrack.build_surface(ALIGNED, TERRAIN)
-    const LAPLEN = maximum(TRKSURF.lapdist)              # lap length [m], for start/finish wrap detection
+    # SEAM-1 (PO 2026-09-26): the CLOSED lap length, not maximum(lapdist). `lapdist[end]` is the
+    # distance from node 1 to the LAST node, which leaves the closing segment (last node -> node 1) out
+    # of the lap -- one node, ~4 m at Watkins Glen. hat() correctly reports lapdist out to
+    # TRKSURF.lap_length (it uses lap_length for the wrap segment, TRACKSMOOTH-3 S2), so over that last
+    # ~4 m every consumer of LAPLEN was out of range: `mod(s, LAPLEN)` in trk_corr wrapped to the START
+    # of the correction table while the car was still short of the line, stepping the road height at the
+    # start/finish line on every lap, and lap fractions / fuel-per-lap were short by the same 0.1 %.
+    const LAPLEN = TRKSURF.lap_length                    # lap length [m], for start/finish wrap detection
     # TRACKSMOOTH-3 S2: the .trk altitude spline as the PLAYER's road height (see GPLTrack.TrkAlt).
     # Calibrated HERE against the mesh so the choice is measured on every track, not assumed:
     # (a) the lateral SIGN between the ribbon's `lateral` (+ along perp) and the .trk trace frame,
@@ -1787,7 +1794,13 @@ else
         j = clamp(floor(Int, (l - TRK_CORR_LAT[1]) / 2.5) + 1, 1, 4); g = (l - TRK_CORR_LAT[j]) / 2.5
         cr(jj) = (p0 = t[mod1(i, n), jj]; p1 = t[mod1(i+1, n), jj]; p2 = t[mod1(i+2, n), jj]; p3 = t[mod1(i+3, n), jj];
                   0.5 * (2p1 + (-p0 + p2)*f + (2p0 - 5p1 + 4p2 - p3)*f^2 + (-p0 + 3p1 - 3p2 + p3)*f^3))
-        cr(j) * (1 - g) + cr(j + 1) * g
+        # SEAM-1: Catmull-Rom ACROSS the lateral columns too. Linear across a 2.5 m column made the
+        # correction's CROSS-SLOPE a step function of lateral: a car moving sideways -- which is what
+        # it is doing in a corner -- crossed a column and its vertical velocity stepped. Along the lap
+        # this was already C1 (above); now both axes are. Ends clamp the outer column (no 5th column
+        # to borrow), which is outside the road anyway.
+        q0 = cr(clamp(j - 1, 1, 5)); q1 = cr(j); q2 = cr(j + 1); q3 = cr(clamp(j + 2, 1, 5))
+        0.5 * (2q1 + (-q0 + q2)*g + (2q0 - 5q1 + 4q2 - q3)*g^2 + (-q0 + 3q1 - 3q2 + q3)*g^3)
     end
     function trk_conf(s, lat)
         TRK_CORR_ON || return 1.0
@@ -1798,26 +1811,73 @@ else
         a0 = c[mod1(i+1, n), j]*(1-f) + c[mod1(i+2, n), j]*f; a1 = c[mod1(i+1, n), j+1]*(1-f) + c[mod1(i+2, n), j+1]*f
         a0*(1-g) + a1*g
     end
+    # SEAM-1: the road-edge blend as a SMOOTHSTEP, not a linear ramp. The spline-to-mesh weight was
+    # clamp(u) with u linear in |lateral|, so at both ends of the blend band (|lat| = TRK_ROAD_LAT and
+    # TRK_ROAD_LAT+TRK_BLEND) dw/dlat stepped from 0 to 1/TRK_BLEND. With the mesh and the spline
+    # 0.1 m apart there -- SINK-1 measured up to 0.6 m in places -- a car drifting across the band at
+    # 1 m/s of lateral speed took that as a vertical-velocity step of the same order as the frame
+    # seam this item fixes. 3u^2-2u^3 is the same 0..1 ramp with zero slope at both ends.
+    smoothblend(u) = (c = clamp(u, 0.0, 1.0); c*c*(3.0 - 2.0*c))
     # THE road height the player and the AI drive on (ribbon lapdist, ribbon lateral)
     trk_road(s, lat) = GPLTrack.trk_height(TRKALT, s * TRK_SSCALE, TRK_CAL.sign * lat) + TRK_CAL.off + trk_corr(s, lat)
     # TRACKSMOOTH-3 S3: the same road height for the AI -- a pure query (no LASTZ/ONTRACK side effects, no
     # step guard): the spline on the tarmac, blended into the mesh at the edge, the mesh elsewhere.
     # Returns (height, found). Used for the AI rail's node heights and for re-grounding drawn AI poses.
+    # SEAM-1: where the MESH is what the car drives on -- off the tarmac, or on it where the spline's
+    # confidence has faded (SINK-1b) -- it is a strip-wise approximation with creases in it:
+    # TRACKSMOOTH-2 measured slope steps of 2.6 deg and a 4 cm lip along the Watkins Glen ribbon, and
+    # those are the surviving jolts in this query (measured: ground_road driven at 3 m off the
+    # centreline had p99 2.26 m/s of vertical-velocity step per frame where the spline itself gives
+    # 0.01). The player's own ground already box-filters the mesh along its direction of travel
+    # (ground_smoothed, TRACKSMOOTH-2) -- but this query is shared with the AI and has no heading, so
+    # the stencil is symmetric: the mesh at the point plus four samples a metre out. A crease becomes a
+    # ramp the same way. A sample that misses the HAT (hole, world edge) keeps the raw centre value, so
+    # the edge/hole logic above is unchanged. JM_MESH_SMOOTH=0 disables.
+    const MESH_SMOOTH = parse(Float64, get(ENV, "JM_MESH_SMOOTH", "1.0"))   # stencil radius [m]
+    # `ref` = a height the ROAD is known to be near (the spline), or Inf when nothing is known. hat3d
+    # returns the topmost surface at or below `ref`, so passing the spline + 3 m keeps a BANNER, BRIDGE
+    # or GANTRY deck over the road out of the ground query -- the SINK-1 correction builder already did
+    # this ("the road, not a deck over it") but the live query did not.
+    # SEAM-1 HONEST STATUS: this guard has NO measured effect on the five tracks driven so far (Watkins
+    # Glen and Spa were re-measured with and without it and the numbers were identical to four decimals).
+    # It was added while chasing a 22 cm step under the Watkins Glen start banner that turned out to be a
+    # FOLD in the centreline (GPLTrack.defold), not a deck. It is kept anyway, and this is the reason:
+    # the correction builder already does exactly this ("the road, not a deck over it") because a deck
+    # entering the blend is a METRE-scale error in the ground, the blend weight there is small enough
+    # that nothing about the road changes when no deck is present, and the query is the one the car
+    # drives on. A guard with a known failure to prevent, no measured cost and no measured effect is
+    # kept; it is not evidence for anything.
+    function mesh_ground(x, z, ref = Inf)
+        h0 = JuliaMotor.hat3d(TERRAIN, x, z; ref=ref)
+        if !h0[3] && ref != Inf                 # nothing under the reference: fall back to the topmost
+            h0 = JuliaMotor.hat3d(TERRAIN, x, z; ref=Inf)
+        end
+        (h0[3] && MESH_SMOOTH > 0.0) || return (Float64(h0[1]), h0[3])
+        acc = Float64(h0[1]); n = 1
+        for (dx, dz) in ((MESH_SMOOTH, 0.0), (-MESH_SMOOTH, 0.0), (0.0, MESH_SMOOTH), (0.0, -MESH_SMOOTH))
+            h = JuliaMotor.hat3d(TERRAIN, x + dx, z + dz; ref=ref)
+            h[3] || return (Float64(h0[1]), true)
+            acc += Float64(h[1]); n += 1
+        end
+        (acc/n, true)
+    end
     function ground_road(x, z)
-        h = JuliaMotor.hat3d(TERRAIN, x, z; ref=Inf)
-        hm = Float64(h[1]); ok = h[3]
         if TRK_CAL.on && !SKIDPAD
             hr = JuliaMotor.hat(TRKSURF, x, z)
             if hr.found
                 al = abs(hr.lateral)
                 if al < TRK_ROAD_LAT + TRK_BLEND
                     ht = trk_road(hr.lapdist, hr.lateral)
-                    w = clamp((TRK_ROAD_LAT + TRK_BLEND - al) / TRK_BLEND, 0.0, 1.0) * trk_conf(hr.lapdist, hr.lateral)   # SINK-1b: mesh where the spline is unreliable
+                    w = smoothblend((TRK_ROAD_LAT + TRK_BLEND - al) / TRK_BLEND) * trk_conf(hr.lapdist, hr.lateral)   # SINK-1b: mesh where the spline is unreliable
+                    # the spline IS the road here: no mesh query at all (this is the common case on the
+                    # tarmac, and it is now also the CHEAP case -- one HAT query saved per call)
+                    w >= 0.999 && return (ht, true)
+                    hm, ok = mesh_ground(x, z, ht + 3.0)   # the road under a banner, not the banner
                     return (ok ? w*ht + (1-w)*hm : ht, true)
                 end
             end
         end
-        (hm, ok)
+        mesh_ground(x, z)
     end
     # diag JM_OVERROAD=1: every track-mesh triangle whose centroid is over the road corridor (|lat| < 7 m) and
     # > 2.5 m above the road there -- bridges, gantries, and any stray polygon hanging over the track. Exits.
@@ -3106,6 +3166,107 @@ if get(ENV,"JM_HATPROBE","") != ""
             end
             _h0 = JuliaMotor.hat3d(TERRAIN, _x, _z; ref=Inf)
             println("   cmp s=", round(_s, digits=1), " mesh0=", _h0[3] ? round(Float64(_h0[1]), digits=2) : NaN, " d=", join(_out, " "))
+        end
+        flush(stdout)
+        haskey(ENV, "JM_HATPROBE_EXIT") && exit(0)
+    elseif startswith(spec, "road:")
+        # SEAM-1 diagnostic: the road HEIGHT FIELD itself, in the (lapdist, lateral) coordinates the sim
+        # uses -- no path, no projection, so a spike here is in the surface and a spike that appears only
+        # in "drv:" is in the path. Prints the spline, the SINK-1 correction, their sum and the
+        # confidence. JM_HATPROBE="road:<lat>:<s0>:<s1>:<step>" (+ JM_HATPROBE_EXIT=1).
+        _f = split(spec, ":"); _lat = parse(Float64, _f[2])
+        _s0 = parse(Float64, _f[3]); _s1 = parse(Float64, _f[4]); _st = parse(Float64, _f[5])
+        # ribbon node spacing: the (lapdist, lateral) frame and the Catmull-Rom curve through these nodes
+        # are only as well-behaved as the nodes. A near-zero-length segment makes any interpolating curve
+        # overshoot, so this is the first thing to check when a smooth field still rides roughly.
+        let _sp = [hypot(TRKSURF.pos[mod1(i+1,length(TRKSURF.pos))][1]-TRKSURF.pos[i][1],
+                         TRKSURF.pos[mod1(i+1,length(TRKSURF.pos))][3]-TRKSURF.pos[i][3]) for i in 1:length(TRKSURF.pos)]
+            _o = sortperm(_sp)
+            println("== ribbon: ", length(_sp), " segments  spacing min ", round(minimum(_sp), digits=3),
+                    " p05 ", round(sort(_sp)[max(1,round(Int,0.05*length(_sp)))], digits=3),
+                    " median ", round(sort(_sp)[div(length(_sp),2)], digits=3),
+                    " max ", round(maximum(_sp), digits=3), " m")
+            println("   five shortest at lapdist: ", join((string(round(TRKSURF.lapdist[i], digits=1), "(", round(_sp[i], digits=2), "m)") for i in _o[1:min(5,end)]), " "))
+        end
+        println("== JM_HATPROBE road lat=", _lat, " s=", _s0, "..", _s1, " step ", _st,
+                "  (LAPLEN=", round(LAPLEN, digits=2), ", ribbon lapdist[end]=", round(TRKSURF.lapdist[end], digits=2),
+                ", .trk lap=", round(TRKALT === nothing ? NaN : TRKALT.total, digits=2), ", sscale=", round(TRK_SSCALE, digits=5), ")")
+        _prev = Ref(NaN); _prevg = Ref(NaN)
+        _npos = length(TRKSURF.pos); _ldp = TRKSURF.lapdist
+        for _s in _s0:_st:_s1
+            _hsp = TRK_CAL.on ? GPLTrack.trk_height(TRKALT, _s * TRK_SSCALE, TRK_CAL.sign * _lat) + TRK_CAL.off : NaN
+            _hc = trk_corr(_s, _lat); _hr2 = trk_road(_s, _lat); _cf = trk_conf(_s, _lat)
+            # and what the DRIVEN query returns at the matching world point, with the mesh beside it --
+            # the only way to see whether a step is in the field, the mesh, or the blend between them
+            _ii = clamp(searchsortedlast(_ldp, _s), 1, _npos)
+            _ee = _ii == _npos ? TRKSURF.lap_length : _ldp[_ii+1]
+            _ff = clamp((_s - _ldp[_ii]) / max(_ee - _ldp[_ii], 1e-6), 0.0, 1.0)
+            _jj = mod1(_ii+1, _npos); _pa = TRKSURF.pos[_ii]; _pb = TRKSURF.pos[_jj]; _pq = TRKSURF.perp[_ii]
+            _wx2 = _pa[1] + (_pb[1]-_pa[1])*_ff + _lat*_pq[1]; _wz2 = _pa[3] + (_pb[3]-_pa[3])*_ff + _lat*_pq[3]
+            _gm = JuliaMotor.hat3d(TERRAIN, _wx2, _wz2; ref=Inf)
+            _gr = ground_road(_wx2, _wz2)
+            _hq = JuliaMotor.hat(TRKSURF, _wx2, _wz2)
+            # the SAME query through the polyline projection, for the arm comparison at one point
+            JuliaMotor.hat_polyline!(true); _hp = JuliaMotor.hat(TRKSURF, _wx2, _wz2); JuliaMotor.hat_polyline!(false)
+            println("   s=", rpad(round(_s, digits=2), 8), " spline=", rpad(round(_hsp, digits=3), 7),
+                    " corr=", rpad(round(_hc, digits=3), 7), " road(s,lat)=", rpad(round(_hr2, digits=3), 7),
+                    " conf=", rpad(round(_cf, digits=3), 6),
+                    " | mesh=", rpad(_gm[3] ? round(Float64(_gm[1]), digits=3) : NaN, 8),
+                    " driven=", rpad(round(_gr[1], digits=3), 7),
+                    " xz=(", round(_wx2, digits=2), ",", round(_wz2, digits=2), ")",
+                    " C1(ld=", round(_hq.lapdist, digits=2), ", lat=", round(_hq.lateral, digits=2), ")",
+                    " poly(ld=", round(_hp.lapdist, digits=2), ", lat=", round(_hp.lateral, digits=2), ")",
+                    " d(driven)=", isnan(_prevg[]) ? "-" : string(round(_gr[1] - _prevg[], digits=4)))
+            _prev[] = _hr2; _prevg[] = _gr[1]
+        end
+        flush(stdout)
+        haskey(ENV, "JM_HATPROBE_EXIT") && exit(0)
+    elseif startswith(spec, "drv:")
+        # SEAM-1 (PO 2026-09-26): the player's bounce, measured in the SIM's own frame -- the real mesh,
+        # the real SINK-1 correction table, the real road-edge blend, the real .trk spline. Drive a
+        # SMOOTH path (Catmull-Rom through the ribbon nodes, offset laterally along the curve normal) at
+        # `v` m/s in 1/60 s steps and report the per-frame STEP in the vertical velocity of the surface
+        # the car actually drives (ground_road). On a smooth surface that step is ~0; a seam is a spike.
+        # JM_HATPROBE="drv:<lat>:<v>" (+ JM_HATPROBE_EXIT=1).  JM_HAT_POLYLINE=1 is the control arm.
+        _f = split(spec, ":"); _lat = parse(Float64, _f[2]); _v = parse(Float64, _f[3])
+        _dt = 1/60; _np = length(TRKSURF.pos); _ld = TRKSURF.lapdist
+        _cr(p0,p1,p2,p3,t) = 0.5*(2p1 + (-p0+p2)*t + (2p0-5p1+4p2-p3)*t^2 + (-p0+3p1-3p2+p3)*t^3)
+        _crd(p0,p1,p2,p3,t) = 0.5*((-p0+p2) + 2t*(2p0-5p1+4p2-p3) + 3t*t*(-p0+3p1-3p2+p3))
+        _hh = Float64[]; _sl = Float64[]; _miss = Ref(0)
+        for _k in 0:floor(Int, LAPLEN/(_v*_dt))
+            _s = _k*_v*_dt
+            _i = clamp(searchsortedlast(_ld, _s), 1, _np); _e = _i == _np ? LAPLEN : _ld[_i+1]
+            _t = clamp((_s - _ld[_i]) / max(_e - _ld[_i], 1e-6), 0.0, 1.0)
+            _h4 = mod1(_i-1, _np); _j4 = mod1(_i+1, _np); _k4 = mod1(_i+2, _np)
+            _a = TRKSURF.pos[_h4]; _b = TRKSURF.pos[_i]; _c = TRKSURF.pos[_j4]; _d = TRKSURF.pos[_k4]
+            _x = _cr(_a[1],_b[1],_c[1],_d[1],_t); _z = _cr(_a[3],_b[3],_c[3],_d[3],_t)
+            _tx = _crd(_a[1],_b[1],_c[1],_d[1],_t); _tz = _crd(_a[3],_b[3],_c[3],_d[3],_t)
+            _tl = max(hypot(_tx, _tz), 1e-9)
+            _px2 = _x + _lat*(-_tz/_tl); _pz2 = _z + _lat*(_tx/_tl)
+            _r = ground_road(_px2, _pz2)
+            _r[2] ? push!(_hh, _r[1]) : (_miss[] += 1; push!(_hh, isempty(_hh) ? 0.0 : _hh[end]))
+            push!(_sl, _s)
+        end
+        _w = [(_hh[i+1]-_hh[i])/_dt for i in 1:length(_hh)-1]
+        _st2 = [abs(_w[i+1]-_w[i]) for i in 1:length(_w)-1]
+        _qq(v, p) = (u = sort(copy(v)); u[clamp(ceil(Int, p*length(u)), 1, length(u))])
+        _wi = argmax(_st2)
+        println("== JM_HATPROBE drv lat=", _lat, " v=", _v, " frame=", get(ENV, "JM_HAT_POLYLINE", "0") == "0" ? "C1 curve" : "POLYLINE (control)",
+                " -- vertical-velocity step per 1/60 s frame [m/s]:")
+        println("   p50 ", round(_qq(_st2, 0.5), digits=4), "  p90 ", round(_qq(_st2, 0.9), digits=4),
+                "  p99 ", round(_qq(_st2, 0.99), digits=4), "  max ", round(maximum(_st2), digits=4),
+                "  (worst at s=", round(_sl[_wi], digits=1), " m)  frames ", length(_st2), ", off-road samples ", _miss[])
+        # WHAT is at the worst spots: the spline's own confidence there (1 = the spline is the road,
+        # < 1 = faded to the mesh) and the height either side of the step. Without this the tail is just
+        # a number and there is no way to tell a crease in the mesh from a fault in the spline.
+        let _ord = sortperm(_st2, rev=true), _seen = Float64[]
+            for _k in _ord
+                any(abs(_sl[_k] - _p2) < 8.0 for _p2 in _seen) && continue   # one report per location
+                push!(_seen, _sl[_k]); length(_seen) > 5 && break
+                println("     s=", round(_sl[_k], digits=1), "  step ", round(_st2[_k], digits=2),
+                        " m/s   h ", round(_hh[_k], digits=3), " -> ", round(_hh[_k+1], digits=3), " -> ", round(_hh[_k+2], digits=3),
+                        "   spline confidence ", round(trk_conf(_sl[_k], _lat), digits=3))
+            end
         end
         flush(stdout)
         haskey(ENV, "JM_HATPROBE_EXIT") && exit(0)
@@ -7466,8 +7627,16 @@ function main()
                 al = abs(hr.lateral)
                 if al < TRK_ROAD_LAT + TRK_BLEND
                     ht = trk_road(hr.lapdist, hr.lateral)
-                    w = clamp((TRK_ROAD_LAT + TRK_BLEND - al) / TRK_BLEND, 0.0, 1.0) * trk_conf(hr.lapdist, hr.lateral)   # SINK-1b: mesh where the spline is unreliable
-                    g = Float32(w*ht + (1-w)*Float64(g))
+                    w = smoothblend((TRK_ROAD_LAT + TRK_BLEND - al) / TRK_BLEND) * trk_conf(hr.lapdist, hr.lateral)   # SINK-1b: mesh where the spline is unreliable
+                    # SEAM-1: the mesh half of the blend must be the ROAD, not a banner/bridge deck over
+                    # it. `g` above is the topmost surface (and stays the step guard's input); for the
+                    # blend, take the surface at or below the spline + 3 m where they differ.
+                    gm = Float64(g)
+                    if w < 0.999
+                        hd = JuliaMotor.hat3d(TERRAIN, x, y; ref = ht + 3.0)
+                        hd[3] && (gm = ground_smoothed(x, y, Float32(hd[1])))
+                    end
+                    g = Float32(w*ht + (1-w)*gm)
                 end
             end
         end
@@ -7549,7 +7718,11 @@ function main()
     # robust projection wrap instead of the ribbon lapdist (the ribbon has a seam at S/F that
     # broke the wrap → laps never counted → no finish).  AILINE = CLINE when there's a field.
     # TRACKSMOOTH-3 S3: the rail's node heights come from the road surface (spline on tarmac), not the mesh strips
-    CLINE  = !SKIDPAD ? RaceAI.build_line(ALIGNED, (x, z) -> (r = ground_road(x, z); r[2] ? r[1] : NaN)) : nothing
+    # SEAM-1: de-fold before the rail is built, for the same reason the ribbon is de-folded (see
+    # GPLTrack.defold): a node where the re-centred centreline doubles back makes the AI's arc length
+    # multi-valued, so `project` flips between two feet and the controller's look-ahead jumps there.
+    CLINE  = !SKIDPAD ? RaceAI.build_line(GPLTrack.defold(ALIGNED; label = "AI rail"),
+                                          (x, z) -> (r = ground_road(x, z); r[2] ? r[1] : NaN)) : nothing
     CLINE !== nothing && println("  CLINE: centreline length = ", round(Int, CLINE.total), " m  (", TRACKSEL, ")")
     # BNDWRECK-1 S10: vertex DENSITY per 50 m. S9's other candidate for the bad projection is that
     # the line is sparse around lapdist 1750-1849 -- the band where |lat| reads 47-58 m and where
@@ -8399,7 +8572,7 @@ function main()
         nstep=5400   # 90 s
         for _ in 1:nstep
             for (i,pc) in enumerate(AIPHYS)
-                s,lat = RaceAI.project(AILINE, pc.x, pc.z); AICARS[i].s=s; AICARS[i].lane=lat; AICARS[i].v=pc.v
+                s,lat = RaceAI.project(AILINE, pc.x, pc.z; hint = AICARS[i].s); AICARS[i].s=s; AICARS[i].lane=lat; AICARS[i].v=pc.v
                 maxlat = max(maxlat, abs(lat))
                 aidist[i] += hypot(pc.x-lastx[i], pc.z-lastz[i]); lastx[i]=pc.x; lastz[i]=pc.z
                 offhat = !JuliaMotor.hat3d(TERRAIN, pc.x, pc.z; ref=Inf)[3]
@@ -9766,7 +9939,11 @@ function main()
             # GC HYBRID: project each physics car onto the line → update the brain → the controller
             # steers it toward its rail at the planned speed → step the JM 2-D physics.
             for (i, pc) in enumerate(AIPHYS)
-                s, lat = RaceAI.project(AILINE, pc.x, pc.z); prevs = AICARS[i].s
+                # SEAM-1: last frame's arc length as the projection hint -- it keeps the search on this
+                # car's own stretch of rail (a circuit that passes close to itself has two feet to find)
+                # and costs 0.355 us instead of 2.12 (measured); a stale hint falls back to a full sweep.
+                prevs = AICARS[i].s
+                s, lat = RaceAI.project(AILINE, pc.x, pc.z; hint = prevs)
                 AICARS[i].s = s; AICARS[i].lane = lat; AICARS[i].v = pc.v
                 (prevs > AILINE.total*0.7 && s < AILINE.total*0.3) && (AICARS[i].lap += 1)
                 TRACE_DS && ds_note!(s - prevs, pc.v, ddt, AILINE.total)

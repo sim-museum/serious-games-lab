@@ -155,6 +155,90 @@ function hat_stats()
 end
 hat_reset!() = (HAT_CALLS[] = 0; HAT_NS[] = 0; nothing)
 
+# ---------------------------------------------------------------------------------------------
+# SEAM-1 (PO 2026-09-26: "AI cars skitter (jump sideways) ... often at corners ... the places where
+# they do this often coincide with locations where the user's car jolts or bounces ... seams in the
+# road surface, where the track is piecewise linear rather than smooth").
+#
+# The ribbon's (lapdist, lateral) pair is the TRACK FRAME: every surface query the sim makes on the
+# tarmac -- the .trk altitude spline for the player's ground, the AI's road height -- is evaluated at
+# these two coordinates. Projecting onto the 3 m POLYLINE makes that frame only C0, and the clamp
+# t in [0,1] makes it WORSE than C0 near a node: on the inside of a corner the nearest segment
+# switches (a seam), and on the outside both segments clamp to the node (a fan where lapdist
+# stalls). A perfectly smooth height spline read at a kinked coordinate is a kinked surface.
+#
+# MEASURED before the fix (demo/native/seam_probe.jl, Watkins Glen, a car on a smooth path at
+# 25 m/s, vertical-velocity step per 1/60 s frame, p99 / max):
+#   lateral +0 m: 0.045 / 0.140 m/s      the same spline at the TRUE arc length: 0.011 / 0.017
+#   lateral +2 m: 0.198 / 0.531 m/s                                              0.010 / 0.016
+#   lateral +4 m: 0.383 / 0.953 m/s                                              0.011 / 0.015
+# The step scales with the LATERAL OFFSET (0.045 -> 0.198 -> 0.383) and vanishes when the same
+# spline is read at the true arc length, which is the signature of the frame and not of the surface;
+# the worst 5 % of steps sit at curvature 0.0055-0.0087 /m (R = 115-180 m) against a lap median of
+# 0.0011 /m (R = 918 m), i.e. IN THE CORNERS. 0.95 m/s in one frame is a 58 m/s^2 impulse.
+#
+# THE FIX: project onto the Catmull-Rom curve through the same nodes instead. It is the curve the AI
+# rail already uses for its poses (RaceAI.pose_at), it passes through every node so no geometry
+# moves, and it is C1 -- so the foot point, and with it lapdist and lateral, vary smoothly as the
+# car drives, INCLUDING across a node. Newton on g(u) = |C(u) - q|^2 from the polyline's own answer:
+# two or three steps, and because both neighbouring segments converge to the same foot point the
+# segment the search happened to pick no longer shows up in the answer. JM_HAT_POLYLINE=1 restores
+# the polyline projection exactly, as the A/B control.
+@inline _cr(p0, p1, p2, p3, t) =
+    0.5 * (2p1 + (-p0 + p2)*t + (2p0 - 5p1 + 4p2 - p3)*t^2 + (-p0 + 3p1 - 3p2 + p3)*t^3)
+@inline _crd(p0, p1, p2, p3, t) =
+    0.5 * ((-p0 + p2) + 2t*(2p0 - 5p1 + 4p2 - p3) + 3t*t*(-p0 + 3p1 - 3p2 + p3))
+@inline _crdd(p0, p1, p2, p3, t) =
+    0.5 * (2*(2p0 - 5p1 + 4p2 - p3) + 6t*(-p0 + 3p1 - 3p2 + p3))
+
+# ⚠ READ AT RUNTIME, NOT AT PRECOMPILE. `Ref(get(ENV, ...))` at module scope is evaluated when the
+# package is PRECOMPILED and baked into the cache, so the control arm silently ran the treatment:
+# JM_HAT_POLYLINE=1 reproduced the treatment's numbers to five decimals, which reads as "the fix
+# does nothing" rather than "the switch is dead". (This project has booked that class of instrument
+# fault three times -- see the AI-skittering sprints.) First call resolves it; hat_polyline!() sets it.
+const HAT_POLYLINE = Ref(false)
+const HAT_POLY_SEEN = Ref(false)
+@inline function hat_polyline()
+    if !HAT_POLY_SEEN[]
+        HAT_POLYLINE[] = get(ENV, "JM_HAT_POLYLINE", "0") != "0"
+        HAT_POLY_SEEN[] = true
+    end
+    HAT_POLYLINE[]
+end
+"""Project onto the polyline instead of the C1 curve (SEAM-1 A/B control)."""
+hat_polyline!(on::Bool) = (HAT_POLYLINE[] = on; HAT_POLY_SEEN[] = true; on)
+
+"""Foot point of (x,z) on the Catmull-Rom ribbon curve, refined from segment `seg`, parameter `t`.
+Returns `(seg, t)` with t in [0,1]; the search MIGRATES across nodes so it follows one foot point
+rather than one segment (that migration is what makes the frame continuous at a node)."""
+@inline function _ribbon_foot(ts::TrackSurface, seg::Int, t::Float64, x::Float64, z::Float64)
+    n = length(ts.pos)
+    n < 4 && return (seg, clamp(t, 0.0, 1.0))
+    @inbounds for _ in 1:3
+        i = seg; h = mod1(i-1, n); j = mod1(i+1, n); k = mod1(i+2, n)
+        ax, bx, cx2, dx2 = ts.pos[h][1], ts.pos[i][1], ts.pos[j][1], ts.pos[k][1]
+        az, bz, cz2, dz2 = ts.pos[h][3], ts.pos[i][3], ts.pos[j][3], ts.pos[k][3]
+        ex = _cr(ax, bx, cx2, dx2, t) - x;  ez = _cr(az, bz, cz2, dz2, t) - z
+        d1x = _crd(ax, bx, cx2, dx2, t);    d1z = _crd(az, bz, cz2, dz2, t)
+        d2x = _crdd(ax, bx, cx2, dx2, t);   d2z = _crdd(az, bz, cz2, dz2, t)
+        g1 = ex*d1x + ez*d1z                       # d/dt of |C-q|^2 / 2
+        g2 = d1x*d1x + d1z*d1z + ex*d2x + ez*d2z   # its derivative
+        # g2 <= 0 means this stationary point is a MAXIMUM of the distance, not a minimum (a query far
+        # off the ribbon, or inside the curve's centre of curvature): Newton would step AWAY from the
+        # foot. Keep the chord's answer there instead -- exactly what the polyline did.
+        g2 <= 1e-9 && break
+        step = clamp(-g1/g2, -0.5, 0.5)            # a node is one unit of t: never leap more than half
+        t += step
+        if t < 0.0                                 # walked off the near end -> the previous segment
+            seg = mod1(seg - 1, n); t += 1.0
+        elseif t > 1.0                              # ... or the far end -> the next one
+            seg = mod1(seg + 1, n); t -= 1.0
+        end
+        abs(step) < 1e-6 && break
+    end
+    (seg, clamp(t, 0.0, 1.0))
+end
+
 function hat(ts::TrackSurface, x::Real, z::Real)
     if HAT_COUNT_ON[]
         HAT_CALLS[] += 1
@@ -191,18 +275,35 @@ function _hat_impl(ts::TrackSurface, x::Real, z::Real)
     end
     best == 0 && return HATResult(0.0, (0.0, 1.0, 0.0), false, 0.0, 0.0, false, (1.0, 0.0))
 
-    s = best; t = bestt; s2 = mod1(s + 1, n)
+    # SEAM-1: refine the polyline's answer to the foot point on the C1 curve through the same nodes.
+    poly = hat_polyline()
+    s, t = poly ? (best, bestt) : _ribbon_foot(ts, best, bestt, Float64(x), Float64(z))
+    s2 = mod1(s + 1, n)
     a, b = ts.pos[s], ts.pos[s2]
-    cy = a[2] + t * (b[2] - a[2])                       # centerline height
     pp = unit((ts.perp[s][1] + t * (ts.perp[s2][1] - ts.perp[s][1]),
                ts.perp[s][2] + t * (ts.perp[s2][2] - ts.perp[s][2]),
                ts.perp[s][3] + t * (ts.perp[s2][3] - ts.perp[s][3])))
     nn = unit((ts.normal[s][1] + t * (ts.normal[s2][1] - ts.normal[s][1]),
                ts.normal[s][2] + t * (ts.normal[s2][2] - ts.normal[s][2]),
                ts.normal[s][3] + t * (ts.normal[s2][3] - ts.normal[s][3])))
-    # signed lateral offset of (x,z) from the centerline, along perp(x,z)
-    cx0, cz0 = a[1] + t * (b[1] - a[1]), a[3] + t * (b[3] - a[3])
-    lat = (x - cx0) * pp[1] + (z - cz0) * pp[3]
+    # centreline point, height and lateral direction ON THE CURVE (the polyline arm keeps the chord)
+    local cx0, cz0, cy, ppx, ppz
+    if poly
+        cx0 = a[1] + t * (b[1] - a[1]); cz0 = a[3] + t * (b[3] - a[3])
+        cy  = a[2] + t * (b[2] - a[2])
+        ppx = pp[1]; ppz = pp[3]
+    else
+        h4 = mod1(s - 1, n); k4 = mod1(s + 2, n)
+        p0, p1, p2, p3 = ts.pos[h4], ts.pos[s], ts.pos[s2], ts.pos[k4]
+        cx0 = _cr(p0[1], p1[1], p2[1], p3[1], t); cz0 = _cr(p0[3], p1[3], p2[3], p3[3], t)
+        cy  = _cr(p0[2], p1[2], p2[2], p3[2], t)      # centreline height is C1 too, not a chord
+        tx  = _crd(p0[1], p1[1], p2[1], p3[1], t); tz = _crd(p0[3], p1[3], p2[3], p3[3], t)
+        tl  = hypot(tx, tz)
+        # left normal of the CURVE tangent (the same convention the node perps are built with)
+        ppx, ppz = tl < 1e-9 ? (pp[1], pp[3]) : (-tz/tl, tx/tl)
+    end
+    # signed lateral offset of (x,z) from the centreline, along perp(x,z)
+    lat = (x - cx0) * ppx + (z - cz0) * ppz
     # banking: moving `lat` along perp changes height by lat * perp.y
     height = cy + lat * pp[2]
     hwl = ts.halfwidth[s][1] + t * (ts.halfwidth[s2][1] - ts.halfwidth[s][1])
@@ -213,7 +314,11 @@ function _hat_impl(ts::TrackSurface, x::Real, z::Real)
     # lapdist near the start/finish (the .trk surface, lap fractions) got a mid-lap answer. The far end
     # of the wrap segment is the lap length, not 0.
     ld2 = s2 == 1 ? ts.lap_length : ts.lapdist[s2]
+    # SEAM-1 note: lapdist stays LINEAR in the segment parameter. Making it arc-length-exact along
+    # the curve (two-point Gauss on |C'|, normalised per segment) was tried and measured: Watkins
+    # Glen, 4 m off the centreline, p99 vertical-velocity step 0.0241 -> 0.0241 m/s and max 0.0613 ->
+    # 0.0616. It buys nothing, so the flops are not spent in the sim's hottest query.
     ld = ts.lapdist[s] + t * (ld2 - ts.lapdist[s])
     ld >= ts.lap_length && (ld -= ts.lap_length)
-    HATResult(height, nn, ontrack, lat, ld, true, (pp[1], pp[3]))
+    HATResult(height, nn, ontrack, lat, ld, true, (ppx, ppz))
 end

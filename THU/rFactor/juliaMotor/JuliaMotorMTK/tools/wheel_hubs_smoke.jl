@@ -7,7 +7,12 @@
 # here, (c) the source wires the mesh hubs into both the AI loader and the Lotus WHEELS.
 const NATIVE = normpath(joinpath(@__DIR__, "..", "..", "demo", "native"))
 include(joinpath(NATIVE, "render.jl")); using .Render
-const BASE = "/home/admin/sgl-julia-racer/THU/WP/drive_c/Sierra/GPL/cars/cars67"
+# SEAM-1 (2026-09-26): resolved from THIS checkout, not from one machine's home directory. The
+# hardcoded /home/admin path made this gate unrunnable anywhere else -- it died on a missing file
+# (ai_field) or skipped every track and still printed a verdict (softband), which is the
+# "green gate that protects nothing" this suite exists to prevent. JM_GPL_* override.
+const BASE = get(ENV, "JM_GPL_CARS",
+               normpath(joinpath(@__DIR__, "..", "..", "..", "..", "WP", "drive_c", "Sierra", "GPL", "cars", "cars67")))
 expect = Dict("lotus"=>(1.53,-0.89,0.71,0.70), "ferrari"=>(1.57,-0.83,0.74,0.73), "brabham"=>(1.38,-1.00,0.67,0.70),
               "brm"=>(1.53,-0.91,0.75,0.76), "eagle"=>(1.50,-0.96,0.76,0.76), "coventry"=>(1.53,-0.90,0.71,0.69))
 fails = Ref(0)

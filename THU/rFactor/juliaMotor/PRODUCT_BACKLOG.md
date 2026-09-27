@@ -19433,3 +19433,249 @@ their frustum and the shadow pass skips parts outside the 70 m light box (`JM_TR
 need `r*sqrt(1+P22^2)` (~2.4r at the 51 deg chase FOV). Parts and trackside objects just below/above the screen edge were
 culled while visible (found as a missing verge at Spa s=11000 chase: 47,711 px -> 1,500 px vs cull-off, inside the
 same-config repeat noise). Now an exact normalised-plane test.
+
+## SEAM-1 (PO 2026-09-26: "julia racer AI cars skitter (jump sideways) at times, often at corners. The places where they do this on a track often coincide with locations where the users' car jolts or bounces. The root cause appears to be seams in the road surface, where the track is piecewise linear rather than smooth. I notice this at every track; I noticed it just now at the ring, spa and monza. Fix this such that AI car motion is smooth, with no strange sideways jumps, and the user car does not bounce for no apparent reason while going over these non-physical seams in the track")
+
+**The PO's reading is right, and it is sharper than "the surface is faceted": the seams are in the
+FRAME the surface is read through, not in the surface.** TRACKSMOOTH-3 already replaced the road's
+height with the .trk altitude spline, which is smooth (C1 across every section, measured). But every
+query of that spline is made at the ribbon's `(lapdist, lateral)` -- and those two numbers came from
+projecting onto a 3 m POLYLINE. A smooth surface read at a kinked coordinate is a kinked surface, and
+the same polyline served the AI its own position. One defect, both symptoms, which is exactly why the
+PO sees them in the same places.
+
+New instruments, both with working control arms:
+* `demo/native/seam_probe.jl` -- no sim, no GL, no eye. Drives a car along a perfectly smooth path and
+  measures what the sim's own queries return: the per-frame step in the road's vertical velocity, the
+  arc length and lateral the AI controller steers on, the commanded steer, and the kinematic field's
+  drawn motion. On a smooth path every one of those is smooth, so any step is the code's.
+* `JM_HATPROBE="drv:<lat>:<v>"` and `"road:<lat>:<s0>:<s1>:<step>"` in the app -- the same two
+  measurements inside the running sim, against the real mesh, the real correction table and the real
+  blend. `drv:` drives a smooth path; `road:` dumps the height field in (lapdist, lateral) with its
+  spline / correction / confidence parts, so a spike in the FIELD can be told from a spike in the PATH.
+  (That distinction earned its keep twice below.)
+* `JuliaMotorMTK/tools/seam_smoke.jl`, registered in `gates.sh` -- 19 checks, three tracks, two arms.
+
+### The defects, each measured, each with a control arm
+
+**1. The track frame was a polyline (`JuliaMotor/src/hat.jl`).** `hat(::TrackSurface)` projected onto
+the nearest chord and clamped `t` to [0,1], so on the inside of a corner the nearest segment switches
+(a seam in lapdist) and on the outside both segments clamp to the node (a fan where lapdist stalls).
+Watkins Glen, a smooth path at 25 m/s, per-frame step in the road's vertical velocity, p99 / max:
+
+| lateral | polyline frame | the same spline at the TRUE arc length |
+|---|---|---|
+| 0 m | 0.045 / 0.140 m/s | 0.011 / 0.017 |
+| 2 m | 0.198 / 0.531 m/s | 0.010 / 0.016 |
+| 4 m | 0.383 / 0.953 m/s | 0.011 / 0.015 |
+
+The step scales with the lateral offset and vanishes at the true arc length: the signature of the
+frame, not the surface. The worst 5 % sit at curvature 0.0055-0.0087 /m (R = 115-180 m) against a lap
+median of 0.0011 /m -- **in the corners**, as reported. 0.95 m/s in one frame is a 58 m/s^2 impulse.
+FIX: refine the polyline's answer to the foot point on the Catmull-Rom curve through the same nodes
+(Newton, 3 steps, migrating across nodes so it follows one foot point rather than one segment). It is
+the curve the AI rail already uses, it passes through every node so no geometry moves, and it is C1.
+AFTER: p99/max 0.013/0.039 at 2 m, 0.024/0.061 at 4 m -- 15x, and at lateral 0 it now equals the
+spline's own floor exactly. `JM_HAT_POLYLINE=1` is the control arm.
+
+**2. The AI read its own position through a 3 m staircase (`RaceAI.project`).** It returned the
+nearest NODE's arc length and a lateral measured in that node's frame. On a smooth path at 25 m/s:
+the arc length advanced on 14 % of frames and stood still on 86 %, then jumped a whole 2.999 m node;
+the lateral stepped up to 0.120 m in one frame; **the commanded steer stepped up to 0.194 of full lock
+in one frame** (p99 0.072) and reversed direction on 15.6 % of frames. FIX: nearest node (local to a
+`hint` when the caller has last frame's s -- O(1) instead of the old full sweep), then the same Newton
+refinement on the rail's Catmull-Rom curve. AFTER: 0 % stalled frames, lateral step max 0.0005 m,
+steer step max 0.024, **steer JERK p99 0.0863 -> 0.00051 (170x)**. `JM_AI_PROJ_NODE=1` is the control.
+
+**3. The AI rail's lap length left out its closing segment (`RaceAI.build_line` / `_locate`).**
+`AILine.total` was `s[end]` -- the distance from node 1 to the LAST node -- so the closing chord was
+not in the lap and `mod(s, total)` wrapped one node early: a car reaching s = total was still at node
+n, and the wrap moved it to node 1. MEASURED: a **3.019 m position jump, in one frame, at the
+start/finish line, by every car on every lap** (a drawn velocity step of 181 m/s -- the largest single
+jump in the field's whole 90 s run). `_locate` clamped the node index to n-1, so the last 3 m of the
+lap was extrapolated off the end of the previous segment. Both fixed; the step across the line is now
+0.020 m per 2 cm of travel, i.e. continuous.
+
+**4. The lane moved with bounded SPEED but unbounded ACCELERATION (`step_field!`).** The shipped AI
+are the kinematic field (`AI_PHYSICS` is opt-in and nothing in the launcher sets it), and their lane
+was `lane += clamp(tgt - lane, -2.4dt, 2.4dt)`. A rate limit says nothing about the rate's derivative,
+so every lane change began, ended or reversed with the lateral speed stepping the full 2.4 m/s -- 4.8
+on a reversal -- in one frame. MEASURED on 5 cars x 90 s: lane-rate step max **4.80 m/s** (p99 0.46).
+FIX: the lane carries its own speed, limited in acceleration (`JM_AI_LANE_ACCEL`, default 8 m/s^2),
+with the target approached by `min(cap, K|e|, sqrt(2a|e|))` so it decelerates in without overshoot.
+AFTER: lane-rate step max 0.133 m/s (36x), and the drawn car's lateral JERK max 4.56 -> 0.93 m/s.
+FIRST ATTEMPT WAS WRONG AND THE MEASUREMENT CAUGHT IT: `sqrt(2a|e|)` alone cannot stop exactly at
+e = 0 under an acceleration limit, so the lane overshot and limit-cycled at +-a*dt -- the per-frame
+lateral-velocity step got WORSE than the code it replaced (p50 0.018 -> 0.110 m/s, frames over
+0.5 m/s 485 -> 651). The linear term inside the knee is what fixes that.
+
+**5. `LAPLEN` excluded the ribbon's closing segment too (`drive_native_mtk.jl`).** It was
+`maximum(TRKSURF.lapdist)` while `hat()` correctly reports lapdist out to `TRKSURF.lap_length`, so
+over the last ~4 m of every lap `mod(s, LAPLEN)` in `trk_corr` wrapped to the START of the correction
+table while the car was still short of the line -- a step in the road height at the start/finish line,
+every lap -- and lap fractions and fuel-per-lap were short by 0.1 %.
+
+**6. The sim's ribbon was not a usable frame at all (`GPLTrack.build_surface`).** Defects 1-5 are the
+mathematics of the frame; this is the geometry it is carried on, and it is only visible in the sim. The
+centreline is ALIGNED and then re-centred on the visible road over four passes, and those passes move
+each node laterally. MEASURED on the sim's own Watkins Glen ribbon: 940 segments with spacing
+**min 0.017 m, p05 0.554, median 2.311, max 27.112 m**; **14 nodes where the path DOUBLED BACK** on
+itself; and a **minimum curvature radius of 1.8 m**, with 15 nodes under 10 m. A ribbon like that is
+not just ugly geometry: it carries the `(lapdist, lateral)` frame the .trk spline and the SINK-1
+correction table are read through, so
+* a 2 cm segment beside a 3 m one makes any interpolating curve through the nodes overshoot;
+* a fold makes the frame MULTI-VALUED -- two lap distances name the same tarmac, and the nearest-foot
+  rule flips between them as the car drives;
+* a curvature radius below the lateral offset a car is running at does the same thing without any fold.
+
+That is what the sim-level tail was. Driving a smooth path 3 m off the centreline at 25 m/s and reading
+the road height the car actually drives (`JM_HATPROBE="drv:3.0:25.0"`), Watkins Glen, per-frame step in
+vertical velocity:
+
+| | p50 | p90 | p99 | max |
+|---|---|---|---|---|
+| before (polyline frame, raw ribbon) | 0.0025 | 0.1164 | 2.2313 | **23.65 m/s** |
+| frame fixes 1-5 only | 0.0011 | 0.0058 | 2.2574 | 22.96 |
+| + uniform 3 m resample | 0.0009 | 0.0054 | 0.0185 | 12.39 |
+| + de-fold (14 nodes) | 0.0009 | 0.0054 | 0.0172 | 11.00 |
+| + curvature repair (min radius 1.8 -> 12.9 m, nodes under 10 m 15 -> 0) | **0.0009** | **0.0053** | **0.0146** | **0.0202** |
+
+**p99 153x, max 1170x.** The five worst remaining steps in the lap are all 0.020 m/s, all at spline
+confidence 1.0 -- the smooth surface's own gradient, nothing else. The curvature repair is LOCAL: only nodes within +-3 of one whose
+radius is under 12 m move (12 of 341 on the gate's synthetic ribbon), so the corridor the rest of the
+track is measured against stays exactly where the re-centring put it. A GLOBAL Laplacian filter was
+tried first and rejected on shape, not on its numbers -- it moved every node to repair fifteen, and the
+road corridor is what `road_clear_smoke` measures trackside objects against. The .trk calibration and the
+correction table are both rebuilt from the result, so the surface stays tied to the drawn road. The AI rail is built from the same centreline and gets the same
+de-fold (`CLINE`), because a fold makes its arc length multi-valued too -- one fault, both symptoms, at
+one place on the track. `JM_RIBBON_SPACING=0`, `JM_RIBBON_DEFOLD=0`, `JM_RIBBON_SMOOTH=0` revert each.
+
+HOW THE FOLD WAS IDENTIFIED, because the method matters: the first two suspects were a deck over the
+road (the Watkins Glen start banner is right there) and my own Newton refinement. Dumping the height
+FIELD in (lapdist, lateral) with `JM_HATPROBE="road:..."` showed it was perfectly smooth -- so the
+spike was in the PATH, not the surface. Printing the world point and BOTH projections at the same
+samples then showed the sample point jumping 2.1 m for a 0.2 m step of lapdist, with the two
+projections agreeing with each other to 0.3 m. A defect both arms share is not the arm.
+
+**7. The mesh was unfiltered where it is still the surface (`ground_road`).** Off the tarmac, and on it
+where the spline's confidence has faded (SINK-1b), the car drives on the mesh -- a strip-wise
+approximation with 2.6 deg slope steps and a 4 cm lip (TRACKSMOOTH-2 measured those). The player's own
+ground already box-filters the mesh along its direction of travel; this query is shared with the AI and
+has no heading, so it now averages the mesh over a symmetric 4-point stencil a metre out
+(`JM_MESH_SMOOTH=0` disables). It also got cheaper on the road: where the spline's weight is 1 the mesh
+is not queried at all, which saves a TriangleHAT query per call in the common case.
+
+**8. A guard kept without evidence, and labelled as such.** `ground_road` and the player's blend now ask
+the mesh for the surface at or below the spline + 3 m, so a banner/bridge deck cannot become the ground
+where the blend uses the mesh (the correction builder has always done this -- "the road, not a deck over
+it"). It has NO measured effect on the five tracks driven: Watkins Glen and Spa were re-measured with
+and without it and matched to four decimals. It is kept because the failure it prevents is metre-scale
+and the cost is nil, and the comment in the code says exactly that. It is not evidence for anything.
+
+### Cost
+
+`hat(TrackSurface)` 0.562 -> 0.678 us/call (+21 %; at the sim's ~14k calls/s that is 1.7 ms/s).
+`RaceAI.project` 2.122 -> 2.237 us without a hint, and **0.355 us with one** -- the live AI loops pass
+last frame's arc length, so the projection is now 6x CHEAPER than the code it replaced as well as
+continuous.
+
+### Sim-level verification, all five tracks, both arms
+
+`JM_HATPROBE="drv:3.0:25.0"`: drive a smooth path 3 m off the centreline at 25 m/s and record the
+per-frame step in the vertical velocity of the surface the car actually drives (the real mesh, the real
+SINK-1 correction, the real blend). CONTROL = every SEAM-1 switch off (`JM_HAT_POLYLINE=1
+JM_RIBBON_DEFOLD=0 JM_RIBBON_SMOOTH=0`). Units m/s per 1/60 s frame.
+
+| track | frames | arm | p50 | p90 | p99 | max |
+|---|---|---|---|---|---|---|
+| Watkins Glen | 9,019 | control | 0.0020 | 0.0685 | 0.7600 | 13.87 |
+| Watkins Glen | 9,003 | **SEAM-1** | 0.0009 | 0.0053 | **0.0146** | **0.0205** |
+| Nürburgring | 54,679 | control | 0.0074 | 0.1423 | 1.2556 | 35.17 |
+| Nürburgring | 54,589 | **SEAM-1** | 0.0030 | 0.0149 | **0.0375** | **0.3224** |
+| Spa | 34,014 | control | 0.0018 | 0.0596 | 0.7228 | 35.40 |
+| Spa | 33,860 | **SEAM-1** | 0.0007 | 0.0039 | **0.0171** | **0.2643** |
+| Monza | 13,866 | control | 0.0007 | 0.0101 | 0.1396 | 17.16 |
+| Monza | 13,830 | **SEAM-1** | 0.0003 | 0.0022 | **0.0069** | **2.5620** |
+| Zandvoort | 10,040 | control | 0.0045 | 0.0637 | 0.3475 | 4.0181 |
+| Zandvoort | 10,039 | **SEAM-1** | 0.0026 | 0.0154 | **0.0384** | **1.9547** |
+
+Every percentile improves on every track. p99 falls 9x (Zandvoort) to 52x (Watkins Glen); the max falls
+677x at Watkins Glen, 134x at Spa, 109x at the Ring. Ribbon repairs per track (folds dropped; nodes under
+the 12 m curvature bar -> 0; nodes moved by the repair):
+
+| track | folds | min radius [m] | nodes under 12 m | rounds | nodes moved |
+|---|---|---|---|---|---|
+| Watkins Glen | 14 | 1.80 -> 16.05 | 18 -> 0 | 1 | 62 of 1,255 |
+| Nürburgring | **77** | 1.74 -> 12.21 | 73 -> 0 | 2 | 273 of 8,451 |
+| Spa | 41 | 1.76 -> 12.13 | 79 -> 0 | 5 | 261 of 4,719 |
+| Monza | 51 | 2.77 -> 12.20 | 21 -> 0 | 2 | 85 of 1,926 |
+| Zandvoort | 2 | 6.07 -> 12.60 | 2 -> 0 | 1 | 9 of 1,395 |
+
+THREE REPAIR SHAPES WERE MEASURED, and the one that shipped is the measurement's choice, not the one I
+argued for:
+
+| shape | Monza worst step | Ring corridor anomalies | converged | Ring nodes moved |
+|---|---|---|---|---|
+| single local pass (halo +-3) | **20.49 m/s** | 123 | NO (Ring 5, Spa 6, Monza 3 left) | 261 |
+| global Laplacian, every node | 2.56 m/s | **115** | yes | 8,451 (all) |
+| **iterated local (shipped)** | **2.56 m/s** | 123 | yes | 273 |
+
+I preferred the single local pass on the grounds that it touches least, and it was WRONG: a kink whose
+neighbours are pinned cannot be pulled straight, so the worst offenders survived and Monza's worst step
+came out eight times the global filter's. Iterating the local repair -- smooth the offenders'
+neighbourhoods, look again, repeat -- converges like the global filter (equal at Monza and Watkins Glen,
+BETTER at the Ring 0.32 vs 0.37, Spa 0.26 vs 0.32 and Zandvoort 1.95 vs 2.48) while moving 3 % of the
+Ring's nodes instead of all of them. The global filter keeps one advantage, and it is not this item's
+metric: it happens to pull the road corridor slightly clear of the Ring's intruding trackside meshes
+(115 anomaly stations against the control's 121), where the iterated repair reads 123. Those shrubs are
+pre-existing (see the gate section below) and shipping a whole-ribbon move to shave an unrelated
+pre-existing count is the wrong trade.
+
+**OPEN, and small:** Monza (s=5694) and Zandvoort (s=2346) each keep ONE step of ~3-4 cm per lap
+(max 2.56 and 1.95 m/s at a single station), against p99 of 0.0069 and 0.0384. Those two are also where
+the control's max was lowest (17.2 and 4.0), so what is left is a different and much smaller thing than
+the frame seam -- one spot, not a family. Not chased: p99 is the ride, and it is now 0.007-0.038 m/s
+everywhere.
+
+**AI self-test** (the sim's own pre-existing oracle: 5 physics AI, 90 s, Watkins Glen), two independent
+pairs. This test is NOISY -- the field is chaotic and the control's own numbers moved a lot between
+runs -- so what it supports is the direction, not a ratio:
+
+| pair | arm | max yaw rate | spins | distance [m] |
+|---|---|---|---|---|
+| 1 | control (frame + projection reverted) | 5.79 | 46 | 912-3386 (one car stuck 320 frames) |
+| 1 | SEAM-1 | 3.13 | 15 | 2505-3372 |
+| 2 | control (every switch reverted) | 3.19 | 7 | 1995-3413 |
+| 2 | SEAM-1 | **2.13** | **0** | 2171-3119 |
+
+Zandvoort `JM_SMOKE` end-to-end: loads, renders, `bye`, exit 0.
+
+### The gate suite: 38 of 40, and both failures attributed
+
+`tools/gates.sh`: 38 PASS. The two failures are NOT this item's, and both were checked rather than
+assumed:
+
+* `transmission_smoke` -- nine checks read real `.ibt` session setups and there are no captures in
+  `data/iracing` on this box, so it fails for missing data. Environmental, pre-existing.
+* `road_clear_smoke` -- this gate could not run here at all before today (it died on the hardcoded
+  `/home/admin` track path). Now it runs: **Spa PASSES** (`inside=0`, no object standing on the road) and
+  the RING reports 115 "ON-ROAD MESH" stations -- trackside shrubs, trees and a bridge whose mesh reaches
+  into the road corridor at |lat| 4.1-8.8 m. Since SEAM-1 moves the ribbon that corridor is measured
+  against, this was attributed rather than explained away: the Ring terrain sweep was run twice, once with
+  every SEAM-1 switch reverted (`JM_RIBBON_SPACING=0 JM_RIBBON_DEFOLD=0 JM_RIBBON_SMOOTH=0`) and once
+  with the repairs.
+
+  | arm | anomaly stations | clean points |
+  |---|---|---|
+  | control (raw ribbon) | **121** | 5582 |
+  | SEAM-1, global Laplacian | **115** | 5577 |
+  | SEAM-1 as shipped (iterated local) | **123** | 5569 |
+
+  Pre-existing: the same shrubs, trees and bridge are there in every arm, and the count moves by a couple
+  of stations out of 5,569 because objects sitting at |lat| 4.1-4.9 m against a ~5 m corridor flip sides
+  of the boundary when the ribbon moves by centimetres. It is a real defect and it belongs to ROAD-1, not
+  here: the Ring's trackside furniture intrudes on the corridor. Worth an item of its own.
+
+**The PO's eye is still the oracle.** Every number here is geometry and instrumentation; "the AI look
+smooth and the car does not bounce" is a judgement made from the driving seat, and the Ring is the track
+to judge it on -- it had 77 folded nodes and the worst ribbon of the five.
