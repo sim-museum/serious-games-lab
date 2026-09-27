@@ -976,7 +976,13 @@ end
 # VISIBLE road: scan left + right along the lateral normal to the road-mesh edges (the road-only HAT) and
 # move the point toward the MIDPOINT (a damped, clamped, smoothed fraction so a one-sided pit-lane/apron
 # can't drag it and the line stays continuous).  JM_NO_RECENTRE=1 restores the raw .trk line.
-function recentre_on_road(cl, hat; reach = 14.0, step = 0.5, frac = 1.0, cap = 4.0, passes = 1)
+# GPLAI-1: `shift` accumulates how far each node has been moved along its own left normal, summed over
+# the passes. GPL's .lp lines give a lateral offset from the .trk centreline; ours is re-centred on the
+# visible road (up to 4 m at Watkins Glen), so `gpl_dlat - shift` is that offset in OUR frame. The shift
+# was computed and thrown away before, which is why `set_gpl_lateral!` has existed unused: without it
+# GPL's own racing line could only be trusted on a track that is never re-centred.
+function recentre_on_road(cl, hat; reach = 14.0, step = 0.5, frac = 1.0, cap = 4.0, passes = 1,
+                          shift = nothing)
     n = length(cl)
     on(x, z) = JuliaMotor.hat3d(hat, x, z; ref = Inf)[3]
     for pass in 1:passes
@@ -1038,6 +1044,7 @@ function recentre_on_road(cl, hat; reach = 14.0, step = 0.5, frac = 1.0, cap = 4
             end
         end
         cl = [(p = cl[i]; (nx, ny) = nrm(i); (p[1]+nx*sm[i], p[2]+ny*sm[i])) for i in 1:n]
+        shift === nothing || (shift .+= sm)          # GPLAI-1: keep the total, per node, in the caller's vector
         println("centreline re-centred on the visible road (pass ", pass, "/", passes, "): max shift ",
                 round(maximum(abs, sm), digits=1), " m, mean ", round(sum(abs, sm)/n, digits=2),
                 " m, at-start ", round(sm[1], digits=2), " m")
@@ -1596,7 +1603,14 @@ else
             TERRAIN0
         end
     end
-    const ALIGNED  = let a = align_centreline(GPLTrack.trk_centreline(track_file(GPLNAME, ".trk")), ROADHAT)
+    # GPLAI-1: filled by recentre_on_road, one entry per .trk centreline node, in metres to the LEFT.
+    const RECENTRE_SHIFT = zeros(length(GPLTrack.trk_centreline(track_file(GPLNAME, ".trk"))))
+    # GPLAI-1: the ALIGNED-but-not-yet-re-centred line is GPL's own .trk centreline expressed in mesh
+    # coordinates, which is the reference GPL's .lp dlat is measured from. Keeping it lets a GPL line
+    # record be placed in the world exactly (point + dlat along the local normal) and then read back in
+    # OUR frame through hat(), instead of approximating the re-centring shift by lap fraction.
+    const ALIGNED0 = align_centreline(GPLTrack.trk_centreline(track_file(GPLNAME, ".trk")), ROADHAT)
+    const ALIGNED  = let a = ALIGNED0
         # D4: pull lane-0 to the road's geometric centre (Zandvoort).  SKIP on Monza — its wide pit
         # straight + pit lane skew the "midpoint" so the recentre over-shifts the racing line toward the
         # pit wall (4 m, capped); the raw GPL .trk line is the correct groove there.
@@ -1613,7 +1627,7 @@ else
         # restores the raw line for every track, which is the revert path.
         haskey(ENV, "JM_NO_RECENTRE") ? a :
             haskey(ENV,"JM_NORECENTRE") ? (println("  re-centring SKIPPED (JM_NORECENTRE) — E84-S4 A/B"); a) :
-            recentre_on_road(a, ROADHAT; passes = (ROADHAT === TERRAIN0 ? 1 : 4))
+            recentre_on_road(a, ROADHAT; passes = (ROADHAT === TERRAIN0 ? 1 : 4), shift = RECENTRE_SHIFT)
     end
     const RIBBON0  = GPLTrack.build_surface(ALIGNED, TERRAIN0)
     # GPL Nürburgring places its landmass/scenery as .dat sub-objects via 0x0E nodes;
@@ -8428,6 +8442,80 @@ function main()
                     end
                 end
                 RaceAI.set_gpl_speeds!(min.(gv .* adj, vcap))
+                # GPLAI-1 (PO 2026-09-26: "Use GPL's actual approach for both the track and the AI ...
+                # GPL AI does slot from one line to another ... but it does so smoothly"). GPL ships the
+                # LINES as well as the speeds: race.lp is the racing line, pass1/pass2 the left and right
+                # passing rails (one-sided -- measured at Watkins Glen, pass1 is never right of race and
+                # pass2 never left, and where the road is narrow both collapse onto it), each with its own
+                # dlat per 3 m record. `set_gpl_lateral!` has existed unused since E84-S8 because the dlat
+                # is measured from the .trk centreline while ours is re-centred on the visible road.
+                # Two existing calibrations close that gap: TRK_CAL.sign already measures how the .trk's
+                # lateral frame maps onto the ribbon's (TRACKSMOOTH-3 fitted it against the mesh), and
+                # RECENTRE_SHIFT now records how far each node was moved. JM_AI_GPLLAT=0 keeps our own
+                # relaxation-derived line.
+                if get(ENV, "JM_AI_GPLLAT", "1") != "0"
+                    lp1 = joinpath(ZD, "pass1.lp"); lp2 = joinpath(ZD, "pass2.lp")
+                    if isfile(lp1) && isfile(lp2)
+                        gr = Float64.(GPLLP.read_lp(lp).dlat)
+                        g1 = Float64.(GPLLP.read_lp(lp1).dlat)
+                        g2 = Float64.(GPLLP.read_lp(lp2).dlat)
+                        nrec = length(gr)
+                        sgn = TRK_CAL.on ? TRK_CAL.sign : 1.0
+                        # place GPL's record in the world on ITS OWN reference line, then read the lateral
+                        # back in ours. A0 is the aligned .trk centreline; its cumulative arc length gives
+                        # the point for record i (records are one per 3 m of GPL's lap).
+                        A0 = ALIGNED0; nA = length(A0)
+                        sA = zeros(nA)
+                        for k in 2:nA; sA[k] = sA[k-1] + hypot(A0[k][1]-A0[k-1][1], A0[k][2]-A0[k-1][2]); end
+                        lenA = sA[end] + hypot(A0[1][1]-A0[end][1], A0[1][2]-A0[end][2])
+                        function gpl_to_ours(dlat, i)
+                            t = (i-1)/nrec * lenA
+                            k = clamp(searchsortedlast(sA, t), 1, nA); j = k % nA + 1
+                            f = (t - sA[k]) / max((j == 1 ? lenA : sA[j]) - sA[k], 1e-6)
+                            px = A0[k][1] + (A0[j][1]-A0[k][1])*f; pz = A0[k][2] + (A0[j][2]-A0[k][2])*f
+                            tx = A0[j][1]-A0[k][1]; tz = A0[j][2]-A0[k][2]; tl = max(hypot(tx,tz), 1e-9)
+                            nx = -tz/tl; nz = tx/tl                       # left normal of GPL's own line
+                            d = sgn*dlat
+                            hr = JuliaMotor.hat(TRKSURF, px + nx*d, pz + nz*d)
+                            hr.found ? hr.lateral : d
+                        end
+                        corr(v) = [gpl_to_ours(v[i], i) for i in 1:min(nrec, length(v))]
+                        cr, c1, c2 = corr(gr), corr(g1), corr(g2)
+                        # SELF-VALIDATING, because the frame reconciliation cannot be assumed: GPL's dlat is
+                        # measured from ITS centreline and ours is re-centred on the visible road by up to
+                        # 4 m, so the mapping is only as good as that reconciliation. If too much of the
+                        # mapped line lands off the asphalt, the mapping is wrong for this track and GPL's
+                        # line would drive the AI onto the grass -- keep our own line and say so.
+                        # MEASURED at Watkins Glen: mapping by lap fraction put 192 of 1252 records beyond
+                        # 4.5 m; placing each record on GPL's own reference line and reading the lateral
+                        # back through hat() puts 85 there. JM_AI_GPLLAT_TOL sets the bar.
+                        _off = count(x -> abs(x) > 4.5, cr) / length(cr)
+                        _tol = parse(Float64, get(ENV, "JM_AI_GPLLAT_TOL", "0.02"))
+                        if _off > _tol
+                            println("  AI racing LINE: GPL's line REFUSED on ", TRACKSEL, " -- ",
+                                    round(100*_off, digits=1), "% of its records map beyond 4.5 m of our",
+                                    " centreline (bar ", round(100*_tol, digits=1), "%), so the frame",
+                                    " reconciliation is not good enough here; keeping our own racing line.",
+                                    " JM_AI_GPLLAT_TOL raises the bar, JM_AI_GPLLAT=0 disables outright.")
+                        else
+                        RaceAI.set_gpl_lateral!(cr, c1, c2)
+                        let q = sort(copy(cr)), m = length(q)
+                            println("  AI racing LINE: corrected lateral p05 ", round(q[max(1,m÷20)], digits=2),
+                                    " p50 ", round(q[m÷2], digits=2), " p95 ", round(q[19m÷20], digits=2),
+                                    " m; |lat| > 4.5 m on ", count(x -> abs(x) > 4.5, cr), " of ", m,
+                                    " records (a line off the road would show here)")
+                        end
+                        println("  AI racing LINE: GPL race/pass1/pass2.lp (", nrec, " records, lateral sign ",
+                                sgn, ", re-centre shift mean ",
+                                round(sum(abs, RECENTRE_SHIFT)/max(length(RECENTRE_SHIFT),1), digits=2),
+                                " m) -> our frame: race median ", round(sum(cr)/length(cr), digits=2),
+                                " m, rails ", round(sum(c1)/length(c1), digits=2), " / ",
+                                round(sum(c2)/length(c2), digits=2), " m  <- ", lp1)
+                        end
+                    else
+                        @warn "JM_AI_GPLLAT: no pass1.lp/pass2.lp in $ZD -- AI keep our own racing line"
+                    end
+                end
                 println("  AI speed profile: GPL race.lp (", length(gv), " records, adj ", adj, ", cap ", round(vcap, digits=1), " m/s)  <- ", lp)
             else
                 @warn "JM_AI_GPLLINE: no race.lp in $ZD -- AI keep the κ speed model"

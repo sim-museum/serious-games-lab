@@ -19902,3 +19902,38 @@ the PO's crash point is gone; the nearest surviving `railbox` is 44 m away at th
 This also explains the PO's SOUND report: after `engine disconnected, race over` the engine is dead, so
 the remainder of that run is silent. SOUND-1 is a real and separate defect (the feeder delivered zero
 frames), but a race ending 25 s in is why some of their runs went quiet early.
+
+### GPLAI-1 sprint 1: GPL's own racing line and rails, wired and SELF-VALIDATING (Zandvoort accepts; WG and Monza refuse)
+
+`set_gpl_lateral!` has existed in ai.jl since E84-S8 with nothing calling it, because GPL's `.lp` dlat is
+measured from ITS centreline while ours is aligned to the mesh and then re-centred on the visible road by
+up to 4 m. Two things closed that gap:
+* `recentre_on_road` now RETURNS the shift it applies (it was computed and discarded);
+* better still, a GPL record can be placed in the world on **GPL's own reference line** -- the aligned
+  but not-yet-re-centred centreline, kept as `ALIGNED0` -- and its lateral read back through `hat()` in
+  our frame. That needs no approximation at all.
+
+MEASURED, both ways, at Watkins Glen (records whose mapped lateral lands beyond 4.5 m of our centreline,
+i.e. off the asphalt): by lap-fraction shift **192 of 1252**; by exact placement **85 of 1252**. The
+exact method is better and still not good enough there.
+
+So the feature validates itself per track rather than assuming: if more than `JM_AI_GPLLAT_TOL` (2 %) of
+the mapped line lands off the road, GPL's line is REFUSED for that track and our own is kept, with the
+percentage printed.
+
+| track | records off the road | verdict |
+|---|---|---|
+| Zandvoort | **2 of 1397 (0.14 %)** | ACCEPTED -- race median +0.17 m, rails +1.53 / -1.80 m |
+| Watkins Glen | 85 of 1252 (6.8 %) | refused |
+| Monza | 947 of 1918 (49.4 %) | refused |
+
+AI self-test at Zandvoort (5 physics AI, 90 s), GPL's line vs ours: distance 2345-2552 m vs 2337-2559,
+max yaw 2.27 vs 2.08 rad/s, spins 0 vs 0. No regression where it is accepted; whether it LOOKS like GPL's
+line is the PO's call, and `JM_AI_GPLLAT=0` is the A/B.
+
+NEXT SPRINTS, in order: (1) improve the reconciliation so WG and Monza qualify -- Monza at 49 % says our
+Monza centreline is far from GPL's, which is its own finding; (2) take the CORRIDOR from
+`minrace.lp`/`maxrace.lp` instead of our guessed +-3.8 m curvature-tapered band and its soft clamp;
+(3) give each rail its OWN speed (pass1 differs from race by up to 13 m/s at WG, 24.5 on the Ring), which
+is how GPL makes going off-line cost time; (4) slot between lines using GPL's own lateral-VELOCITY field
+rather than the acceleration limit SEAM-1 invented.
