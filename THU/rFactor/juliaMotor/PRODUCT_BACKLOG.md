@@ -19802,3 +19802,44 @@ backoff. `JM_AUDIO_BLOCKWRITE=1` remains as the A/B (PortAudio.jl's write, not G
 
 So the audio comes back AND the median collection is 4.8x shorter than the blocking write it replaces,
 which is what PERF-3 wanted in the first place.
+
+### VISOR-1 (PO: "the cockpit view visor should be translucent, unobtrusive and symmetrical; at present it is an almost solid bright yellow, more on the right then the left") -- FIXED
+
+Measured against GPL itself (a frame from the gold Spa cockpit video, `gold standard/julia racer/spa/
+260802_spa_cockpit.mp4`), counting bright-yellow pixels in the lower half of the frame:
+
+| | yellow | mean RGB | clipped at 255 | left / right |
+|---|---|---|---|---|
+| GPL gold | **0.3 %** | (158, 129, 39) | 0 % | 94 / 6 |
+| ours, shipped | **12.1 %** | (248, 252, 119) | **75 %** | 11 / 89 |
+| ours, planar polys not drawn | 0.1 % | -- | -- | -- |
+| **ours, VISOR-1** | **0.1 %** | -- | -- | symmetric |
+
+**Bisected, not guessed:** `JM_FLATPOLY=glass` (draw no planar poly) took the yellow from 12.1 % to 0.1 %,
+so the yellow is the PLANAR PROJECTION of the livery onto the cockpit surround, not the body texture.
+
+**Two wrong hypotheses, both killed by measurement, both recorded in render.jl so they are not retried:**
+1. *The stripe is off-centre in the atlas.* Over the whole of `lotd.mip` the yellow columns are 115..163
+   (u 0.445..0.637, centre 0.541), which says "off-centre" -- but over the rows the surround actually
+   samples (v 0.25..0.50) the stripe's weighted centre is **u = 0.5001**. Averaging a texture over rows
+   nobody samples measures a different stripe. Setting u0 = 0.541 made the render worse, as predicted by
+   the correct measurement afterwards.
+2. *The flat/textured split is lopsided.* It is not: `lotd.3DO` has 48 flat polys left and 48 right
+   (0.685 m2 / 0.709 m2), and the planar band maps |y| <= 0.378 symmetrically onto u 0.371..0.629.
+   The render's 89 %-right bias is LIGHTING on a symmetric band, not the mapping.
+
+**The actual defect is the amount of yellow.** GPL's surround is a dark green rim under a khaki cowl with
+no bright yellow on it; ours swept the band straight across the livery's centre stripe, so 42 % of the
+surround sampled the stripe and clipped. The surround now samples the livery's GREEN instead
+(u 0.30..0.44 -- measured green at that v: u=0.28 -> RGB (0,60,24), 0.32 -> (0,68,32), 0.40 -> (0,56,24)),
+keeping a little variation across it. `JM_PLANAR_U0=0.5 JM_PLANAR_UW=0.34` restores the old sweep.
+
+**Not claimed:** GPL's cowl is khaki where ours is green, and every feature of our car reads ~1.3x
+brighter than gold's (steering-wheel red 131,72,52 vs 99,53,46; dash 120,93,87 vs 89,84,84) -- the same
+over-brightness GRADEGOLD-1 measured for track surfaces but never applied to the CAR. That is a separate
+item (CARBRIGHT-1), not this one. The PO's "translucent" is also not addressed: this is bodywork, and
+GPL's is opaque too -- what was obtrusive about it was the glare, which is gone.
+
+**Also seen while capturing, not yet an item:** a brown triangle hangs over the steering wheel in the
+SKIDPAD cockpit view (absent at Spa) -- an untextured poly drawn at the wrong scale, most likely the same
+family as the E106-S10 flat-poly work.

@@ -1557,7 +1557,7 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
             # the atlas's centre band above the hole (u 0.37..0.63, v 0.25..0.50): JM_PLANAR_BAND=1 (default)
             # maps the surround INTO that band only (y across the stripe, x along it); =0 is the full fit.
             planar && (uv = (PLANAR_SIDE && abs(t.n[i][3]) < 0.5f0) ? PLANAR_SIDE_UV :
-                            PLANAR_BAND ? (0.5f0 - 0.34f0*p[2], 0.25f0 + 0.25f0*clamp((p[1] + 0.18f0)/1.22f0, 0f0, 1f0)) :
+                            PLANAR_BAND ? (PLANAR_U0 - PLANAR_UW*p[2], 0.25f0 + 0.25f0*clamp((p[1] + 0.18f0)/1.22f0, 0f0, 1f0)) :
                             ((p[2] + PLANAR_W/2f0)/PLANAR_W, (p[1] - PLANAR_X0)/PLANAR_L))
             # E36: untextured COCKPIT tris (the tub/floor) take the `grey` shade when JM_TUB_GREY makes it
             # silver — the `grey` param was a no-op before (baked vertex colour used t.col).  Gated on
@@ -1636,6 +1636,29 @@ const PLANAR_L = parse(Float32, get(ENV,"JM_PLANAR_L","-3.24"))     # longitudin
 const PLANAR_SIDE = get(ENV,"JM_PLANAR_SIDE","1") != "0"             # S6: vertical planar faces take one green texel
 const PLANAR_BAND = get(ENV,"JM_PLANAR_BAND","1") != "0"             # S9: the surround maps into the atlas centre band (green + stripe)
 const PLANAR_SIDE_UV = let v = parse.(Float32, split(get(ENV,"JM_PLANAR_SIDE_UV","0.3,0.42"), ",")); (v[1], v[2]) end
+# VISOR-1 (PO 2026-09-26: "the cockpit view visor should be translucent, unobtrusive and symmetrical;
+# at present it is an almost solid bright yellow, more on the right then the left"). MEASURED on lotd.mip (256x256): the livery's yellow stripe occupies columns 115..163, i.e.
+# u 0.445..0.637, centre **0.541** -- the car's stripe is not centred in the image. With the band running
+# u 0.371..0.629 (|y| <= 0.38 through u = 0.5 - 0.34y), a stripe 0.192 wide starting at 0.445 therefore
+# filled the RIGHT 71 % of the surround and left green only down the left edge: the PO's asymmetry, and
+# what a capture at Spa shows (spa_view0: green left, bright yellow right).
+# Centre the band on the STRIPE instead of on the image, so the surround reads green-stripe-green with
+# equal 0.033 u (~10 cm) margins either side. JM_PLANAR_U0 overrides; 0.5 restores the old off-centre map.
+# MEASURED, and the first measurement was WRONG in a way worth recording: over the WHOLE of lotd.mip the
+# yellow columns run 115..163 (u 0.445..0.637, centre 0.541), which looks like an off-centre stripe -- but
+# over the band the surround actually samples (v 0.25..0.50) the stripe's weighted centre is u = 0.5001
+# and its >50 % columns are 115..142 (u 0.445..0.555, width 0.109). The stripe IS centred there, and the
+# render's right-bias is lighting, not mapping. The DEFECT is the AMOUNT of yellow:
+#   GPL gold (Spa cockpit video)  0.3 % of the lower frame is yellow, mean RGB (158,129, 39), none clipped
+#   ours, band across the stripe 12.1 %                        mean RGB (248,252,119), 75 % clipped at 255
+#   ours, flat polys not drawn    0.1 %   <- the yellow IS the planar projection (bisected with JM_FLATPOLY)
+# GPL's surround is a dark green rim under a khaki cowl with no bright yellow on it at all, so the
+# surround should sample the livery's GREEN, not sweep across its centre stripe. At the v the surround
+# uses, u 0.20..0.44 is all green (measured: u=0.28 -> RGB (0,60,24), u=0.32 -> (0,68,32), u=0.40 ->
+# (0,56,24)), so map |y| <= 0.38 into u 0.30..0.44 and keep a little variation across it.
+# JM_PLANAR_U0/JM_PLANAR_UW restore the old sweep (0.5 / 0.34) for an A/B.
+const PLANAR_U0 = parse(Float32, get(ENV, "JM_PLANAR_U0", "0.37"))
+const PLANAR_UW = parse(Float32, get(ENV, "JM_PLANAR_UW", "0.184"))
 const STEER_TEX = ("sterlot","lotster","lsterlog")
 """Extract the steering wheel as its own parts + pivot (centre, column axis) in the
 rig frame (X fwd, Y up, Z left), so the app can rotate it with steering input."""
