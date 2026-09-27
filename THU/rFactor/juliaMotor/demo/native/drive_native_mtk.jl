@@ -1629,6 +1629,31 @@ else
     # Rule: a horizontal triangle (> 20 m2) whose centroid is over the tarmac (|lat| < 4 m) and > 2.5 m above the
     # road, with a non-bridge texture (not br*), is dropped from the track mesh -- render and collision alike.
     # JM_KEEP_OVERHANG=1 keeps it.
+    # RINGBUMP-1 (PO 2026-09-26, Nurburgring: "there is something on the road that makes the car bounce a
+    # little directly under the banner just before you get to the highest point of the track").
+    # LOCATED, not yet fixed. Driving the smooth line at lateral -4 m, the vertical velocity of the
+    # surface the car reads steps by 46.5 m/s at s=1594.7 -- every other point on that line steps by
+    # under 1.7 m/s, and the centreline's worst over the whole 22.7 km lap is 0.20 m/s. The summit is at
+    # s=1945, so this is indeed just before it. JM_HATPROBE="drv:-4,-2,0,2,4:40" reproduces it.
+    # It is NOT the banner. Two things rule that out: the ground rises only 0.40 m (619.602 -> 620.003 ->
+    # 619.630 over two frames at 40 m/s, a ~0.7 m long spike), and the banner geometry JM_OVERROAD names
+    # there (`signs`, 6.8 m2 horizontal, and `pitside2`, 11.2 m2) sits 2.6-3.4 m up. A 0.4 m step is at
+    # wheel height. The spline's confidence at that station is 0.4, i.e. the road is 40 % spline and 60 %
+    # mesh, so the MESH must disagree with the spline by ~0.7 m there -- a crease or fold in the track
+    # mesh at lateral -4, which is why the centreline never feels it.
+    # JM_HATPROBE="fold:1594.7:3:0.5" shows the MESH there: at s=1594.2..1594.7, lateral -4.5 to -5.0, it
+    # jumps 619.49 -> 622.72 m -- a 3.23 m plateau, 0.75 m long -- while the spline runs smoothly through
+    # 619.70. The 0.40 m the car reads is that plateau diluted by the confidence blend, not its height.
+    # It is a NEAR-VERTICAL face, not an overhang: a 0.75 m wide, 3.2 m tall column of "ground" at the road
+    # edge is a banner SUPPORT POST, baked into the track mesh, and the HAT reads its side as drivable.
+    # OVERHANG-1 cannot touch it -- that filter drops HORIZONTAL polygons (abs(nz)/nn > 0.5) over the
+    # tarmac, which is why three attempts at widening it (area 20 -> 4 -> 0.5 m2 per triangle, corridor
+    # |lat| 4 -> 6 m, and running it over SECTRI as well) each dropped nothing and were each reverted.
+    # This belongs to the hat_hole / box_covers_tarmac family: scenery inside the road corridor read as
+    # ground. The fix is a build_hat rule -- a near-VERTICAL triangle within the corridor that rises well
+    # above the road is a post or a wall and is never drivable -- which touches every track, so it needs
+    # its own gate with a control arm before it ships. At lateral -5 the same post family gives 79.7 m/s
+    # at s=1602.7, so there is more than one.
     function drop_overhang(m)
         get(ENV, "JM_KEEP_OVERHANG", "0") != "0" && return m
         keep = trues(length(m.tris)); ndrop = 0; names = Set{String}()
@@ -3130,6 +3155,13 @@ const WTRACK_R = parse(Float32, get(ENV,"JM_TRACK_R","0.74"))   # rear half-trac
 # (lapdist, lateral) -> world (x, z) on the ribbon, for the probes that walk the lap.
 # Linear within the ribbon segment, which is what `lateral` is defined against; the wrap segment
 # uses lap_length as its end (TRACKSMOOTH-3 S2 / SEAM-1), so the last few metres resolve too.
+function hat_height_at(sv)
+    np = length(TRKSURF.pos); ld = TRKSURF.lapdist
+    i = clamp(searchsortedlast(ld, mod(sv, TRKSURF.lap_length)), 1, np)
+    send = i == np ? TRKSURF.lap_length : ld[i+1]
+    f = (mod(sv, TRKSURF.lap_length) - ld[i]) / max(send - ld[i], 1e-9)
+    j = mod1(i+1, np); TRKSURF.pos[i][2] + (TRKSURF.pos[j][2] - TRKSURF.pos[i][2])*f
+end
 function hat_at_lapdist(sv, lat)
     np = length(TRKSURF.pos); ld = TRKSURF.lapdist
     i = clamp(searchsortedlast(ld, mod(sv, TRKSURF.lap_length)), 1, np)
@@ -3180,6 +3212,34 @@ if get(ENV,"JM_HATPROBE","") != ""
         end
         flush(stdout)
         haskey(ENV, "JM_HATPROBE_EXIT") && exit(0)
+    elseif startswith(spec, "fold:")
+        # RINGBUMP-1: a step the car feels where the spline's confidence is low means the MESH disagrees
+        # with the spline. This prints, around one station, the spline height, the raw mesh height and
+        # their difference across the road -- so the fold can be seen and its texture named.
+        # JM_HATPROBE="fold:<s>:<halfwidth m>:<step m>" (+ JM_HATPROBE_EXIT=1).
+        _f = split(spec, ":"); _s0 = parse(Float64, _f[2])
+        _hw = length(_f) >= 4 ? parse(Float64, _f[3]) : 6.0
+        _stp = length(_f) >= 5 ? parse(Float64, _f[4]) : 0.25
+        println("== JM_HATPROBE fold around s=", _s0, " +-", _hw, " m, step ", _stp, " m")
+        for _lat in (-5.0, -4.5, -4.0, -3.5, -3.0, 0.0)
+            println("   lat ", _lat, ":")
+            _s = _s0 - _hw
+            while _s <= _s0 + _hw
+                _w = hat_at_lapdist(_s, _lat)
+                _rh = hat_height_at(_s)
+                _hm = JuliaMotor.hat3d(TERRAIN, _w[1], _w[2]; ref = _rh + 3.0)
+                _hs = TRK_CAL.on ? GPLTrack.trk_height(TRKALT, _s * TRK_SSCALE, TRK_CAL.sign * _lat) + TRK_CAL.off : NaN
+                _gr = ground_road(_w[1], _w[2])
+                println("      s=", rpad(round(_s, digits=2), 8),
+                        " mesh ", rpad(_hm[3] ? round(Float64(_hm[1]), digits=3) : NaN, 8),
+                        " spline ", rpad(round(_hs + trk_corr(_s, _lat), digits=3), 8),
+                        " ground ", rpad(round(_gr[1], digits=3), 8),
+                        " conf ", round(trk_conf(_s, _lat), digits=3))
+                _s += _stp
+            end
+        end
+        flush(stdout)
+        haskey(ENV, "JM_HATPROBE_EXIT") && exit(0)
     elseif startswith(spec, "vcrease:")
         # GPLROAD-1's ruler: the DRAWN road's vertical creasing. Walks the lap along a lateral offset,
         # reading the raw track mesh (hat3d on TERRAIN -- not mesh_ground, whose 4-point stencil would
@@ -3188,17 +3248,28 @@ if get(ENV,"JM_HATPROBE","") != ""
         # Scale-free: the second difference is divided by step^2, so it is a curvature [1/m].
         # JM_HATPROBE="vcrease:<lat0,lat1,...>:<step>" (+ JM_HATPROBE_EXIT=1).
         _f = split(spec, ":"); _lats = parse.(Float64, split(_f[2], ",")); _st = parse(Float64, _f[3])
-        println("== JM_HATPROBE vcrease: drawn-mesh curvature along the lap, step ", _st, " m, lap ",
-                round(LAPLEN, digits=1), " m")
+        # optional window: "vcrease:<lats>:<step>:<s0>:<s1>" restricts the walk to [s0, s1], so a site the
+        # whole-lap scan flagged can be re-read at a finer step without another full pass.
+        _w0 = length(_f) >= 5 ? parse(Float64, _f[4]) : 0.0
+        _w1 = length(_f) >= 5 ? parse(Float64, _f[5]) : LAPLEN
+        println("== JM_HATPROBE vcrease: drawn-mesh curvature, step ", _st, " m, s=", round(_w0, digits=1),
+                "..", round(_w1, digits=1), " of lap ", round(LAPLEN, digits=1), " m")
         _allk = Float64[]
         for _lat in _lats
             hs = Float64[]; miss = 0
-            _s = 0.0
-            while _s < LAPLEN
+            _s = _w0
+            while _s < _w1
                 hr = hat_at_lapdist(_s, _lat)
                 if hr === nothing; miss += 1; push!(hs, NaN)
                 else
-                    h = JuliaMotor.hat3d(TERRAIN, hr[1], hr[2]; ref=Inf)
+                    # ref, NOT Inf. `ref = Inf` returns the TOPMOST surface, which over a road is the
+                    # banner, the bridge or the tree -- not the road. The first Nurburgring scan with
+                    # Inf reported the lap's worst "crease" as an 8 m STEP at lapdist 1624 m, which is
+                    # the summit banner's own geometry and not something any wheel touches. Read the
+                    # way mesh_ground does: the highest surface within 3 m above the ribbon.
+                    _rh = hat_height_at(_s)
+                    h = JuliaMotor.hat3d(TERRAIN, hr[1], hr[2]; ref = _rh + 3.0)
+                    h[3] || (h = JuliaMotor.hat3d(TERRAIN, hr[1], hr[2]; ref = Inf))
                     push!(hs, h[3] ? Float64(h[1]) : NaN); h[3] || (miss += 1)
                 end
                 _s += _st
@@ -3206,7 +3277,7 @@ if get(ENV,"JM_HATPROBE","") != ""
             ks = Float64[]; kat = Float64[]
             for i in 2:length(hs)-1
                 (isnan(hs[i-1]) || isnan(hs[i]) || isnan(hs[i+1])) && continue
-                push!(ks, abs(hs[i-1] - 2hs[i] + hs[i+1]) / _st^2); push!(kat, (i-1)*_st)
+                push!(ks, abs(hs[i-1] - 2hs[i] + hs[i+1]) / _st^2); push!(kat, _w0 + (i-1)*_st)
             end
             # RINGBUMP-1 (PO 2026-09-26, Nurburgring: "there is something on the road that makes the car
             # bounce a little directly under the banner just before you get to the highest point of the
@@ -3223,8 +3294,8 @@ if get(ENV,"JM_HATPROBE","") != ""
             _hv = [h for h in hs if !isnan(h)]
             if !isempty(_hv)
                 _im = argmax([isnan(h) ? -Inf : h for h in hs])
-                _wm = hat_at_lapdist((_im-1)*_st, _lat)
-                println("      highest point: lapdist ", round(Int, (_im-1)*_st), " m, altitude ",
+                _wm = hat_at_lapdist(_w0 + (_im-1)*_st, _lat)
+                println("      highest point: lapdist ", round(Int, _w0 + (_im-1)*_st), " m, altitude ",
                         round(hs[_im], digits=2), " m, world (", round(_wm[1], digits=1), ", ", round(_wm[2], digits=1), ")")
             end
             append!(_allk, ks)
@@ -3357,8 +3428,11 @@ if get(ENV,"JM_HATPROBE","") != ""
         # SMOOTH path (Catmull-Rom through the ribbon nodes, offset laterally along the curve normal) at
         # `v` m/s in 1/60 s steps and report the per-frame STEP in the vertical velocity of the surface
         # the car actually drives (ground_road). On a smooth surface that step is ~0; a seam is a spike.
-        # JM_HATPROBE="drv:<lat>:<v>" (+ JM_HATPROBE_EXIT=1).  JM_HAT_POLYLINE=1 is the control arm.
-        _f = split(spec, ":"); _lat = parse(Float64, _f[2]); _v = parse(Float64, _f[3])
+        # JM_HATPROBE="drv:<lat>[,<lat>...]:<v>" (+ JM_HATPROBE_EXIT=1). JM_HAT_POLYLINE=1 is the control.
+        # RINGBUMP-1: a bump the PO feels is felt ON THEIR LINE, not on the centreline, and one
+        # Nurburgring parse costs ~10 minutes -- so drive a LIST of lateral offsets in the one load.
+        _f = split(spec, ":"); _latl = parse.(Float64, split(_f[2], ",")); _v = parse(Float64, _f[3])
+        for _lat in _latl
         _dt = 1/60; _np = length(TRKSURF.pos); _ld = TRKSURF.lapdist
         _cr(p0,p1,p2,p3,t) = 0.5*(2p1 + (-p0+p2)*t + (2p0-5p1+4p2-p3)*t^2 + (-p0+3p1-3p2+p3)*t^3)
         _crd(p0,p1,p2,p3,t) = 0.5*((-p0+p2) + 2t*(2p0-5p1+4p2-p3) + 3t*t*(-p0+3p1-3p2+p3))
@@ -3397,6 +3471,7 @@ if get(ENV,"JM_HATPROBE","") != ""
                         " m/s   h ", round(_hh[_k], digits=3), " -> ", round(_hh[_k+1], digits=3), " -> ", round(_hh[_k+2], digits=3),
                         "   spline confidence ", round(trk_conf(_sl[_k], _lat), digits=3))
             end
+        end
         end
         flush(stdout)
         haskey(ENV, "JM_HATPROBE_EXIT") && exit(0)
