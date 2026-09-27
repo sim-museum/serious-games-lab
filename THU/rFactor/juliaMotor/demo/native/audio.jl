@@ -154,6 +154,15 @@ function mix!(out::Matrix{Float32}, eng::Engine)
 end
 
 const AUDIO_BLOCKWRITE = get(ENV, "JM_AUDIO_BLOCKWRITE", "0") != "0"   # PERF-3 A/B switch
+# SOUND-1 (PO 2026-09-26: "occasionally I'd hear a blurt of car sound, but during the 5 runs julia racer
+# was mostly silent"). The engine was NOT the cause -- telemetry from all five of those runs shows a
+# healthy engine (rpm p50 1953-5054, p95 up to 8186, throttle open 84 % of the time at Zandvoort and the
+# Ring), so the rpm the mixer is fed was right and the OUTPUT path is what failed. This counts what the
+# feeder actually delivers: 44100 frames/s is real time, and anything much below it is a starved device,
+# which is heard as silence broken by blurts. JM_AUDIO_DIAG=1.
+const AUDIO_DIAG = get(ENV, "JM_AUDIO_DIAG", "0") != "0"
+const DIAG_T0 = Ref(0.0); const DIAG_FRAMES = Ref(0); const DIAG_WRITES = Ref(0)
+const DIAG_WORST = Ref(0.0); const DIAG_WAITW = Ref(0.0)
 """Start the audio thread (needs Julia ≥2 threads).  Returns the Engine; update
 `eng.rpm[]` from the game loop, call `stop!(eng)` to end."""
 function start(eng::Engine)
@@ -166,6 +175,7 @@ function start(eng::Engine)
     LAT = parse(Float64, get(ENV, "JM_AUDIO_LATENCY", "0.30"))   # bigger buffer = more headroom for a render hitch (GC, a heavy section) before it underflows
     Threads.@spawn begin
         buf = zeros(Float32, 1024, 2)
+        ilv = zeros(Float32, 2, 1024)     # SOUND-1: interleaved (LRLR) scratch for the GC-safe direct write
         # E95i (PO 2026-08-29: "sound was coming out of a monitor, not my speakers. My ubuntu sound
         # settings had no effect on the sound volume. The volume did increase when I reved.")
         # PortAudioStream(0,2) with no device asks PortAudio for ITS default, which on this box is a
@@ -195,7 +205,7 @@ function start(eng::Engine)
             println("  [audio] output -> '", audiodev, "' (follows the Ubuntu default sink; JM_AUDIO_DEV overrides)")
             flush(stdout)
         end
-        openfails = 0; wfails = 0
+        openfails = 0; wfails = 0; AUDIO_DIAG && (DIAG_T0[] = time())
         # Resilient feeder: a render-loop hitch (first-frame JIT, GC, a heavy trackside section) can
         # starve this thread and xrun the stream.  On a write error we REOPEN and keep going, with a
         # growing BACKOFF so we don't silently THRASH (open succeeds → next write fails → reopen …) — a
@@ -230,19 +240,53 @@ function start(eng::Engine)
                         x = buf[i]
                         buf[i] = isfinite(x) ? (x > 1f0 ? 1f0 : x < -1f0 ? -1f0 : x) : 0f0
                     end
-                    # PERF-3: Pa_WriteStream is a plain (not GC-safe) ccall that BLOCKS until the device has room,
-                    # and a stop-the-world GC must wait for this thread to leave it: every collection in the frame
-                    # loop paid up to a buffer period on top of its own ~6 ms (measured: GC.gc(false) 36-40 ms wall
-                    # for a 5.7 ms pause), i.e. 2-4 dropped frames each time -- the PO's "jerky". Wait in Julia
-                    # (sleep is a safepoint) until the whole buffer fits, so the write itself never blocks.
-                    # JM_AUDIO_BLOCKWRITE=1 restores the blocking write.
-                    if !AUDIO_BLOCKWRITE
+                    # SOUND-1 (PO 2026-09-26: "occasionally I'd hear a blurt of car sound, but during the 5 runs
+                    # julia racer was mostly silent"). PERF-3's premise was right -- Pa_WriteStream is a plain,
+                    # NOT GC-safe ccall that blocks until the device has room, so a stop-the-world GC waited for
+                    # this thread (39-45 ms wall for a 5.7 ms pause) -- but its remedy was wrong. It waited in
+                    # Julia with `sleep(0.002)` until the device reported room for a whole buffer, and `sleep`
+                    # YIELDS: on a 2-thread runtime whose other task is the compute-bound render loop, the audio
+                    # task is then not rescheduled for a very long time. MEASURED: a busy loop on the other thread
+                    # takes the feeder to ONE 1024-frame write in 9.4 s (0.2 % of real time), and the sim itself
+                    # never completed a single 2-second diagnostic window -- total silence, exactly as reported.
+                    # The availability query was innocent (it reads 17280 frames free, far above the 1024 wanted).
+                    #
+                    # So: block in C as before -- that keeps the device fed (measured 111 % of real time in the sim,
+                    # 117 % standalone) -- but call Pa_WriteStream ourselves with a GC-SAFE ccall, which Julia 1.12
+                    # supports. The runtime then treats this thread as parked for the duration, so a collection does
+                    # not wait for it and PERF-3's win is kept without its silence. PortAudio wants INTERLEAVED
+                    # frames, so the mixed (frames x 2) buffer is copied into a reused (2 x frames) scratch, whose
+                    # column-major memory is LRLR.
+                    # JM_AUDIO_BLOCKWRITE=1 goes back to PortAudio.jl's own write() (not GC-safe) as the A/B.
+                    _t0 = time()
+                    if AUDIO_BLOCKWRITE
+                        write(stream, buf)
+                    else
                         n_ = size(buf, 1)
-                        while eng.running[] && (wa_ = PortAudio.LibPortAudio.Pa_GetStreamWriteAvailable(stream.pointer_to)) >= 0 && wa_ < n_
-                            sleep(0.002)
+                        @inbounds for i in 1:n_
+                            ilv[1, i] = buf[i, 1]; ilv[2, i] = buf[i, 2]
+                        end
+                        rc = @ccall gc_safe=true PortAudio.LibPortAudio.libportaudio.Pa_WriteStream(
+                                   stream.pointer_to::Ptr{Cvoid}, pointer(ilv)::Ptr{Cfloat}, Culong(n_)::Culong)::Cint
+                        # paOutputUnderflowed (-9980) is a LATE buffer, not a broken stream: the data went out,
+                        # so keep going. Any other non-zero rc is a real error -> throw, and the loop above
+                        # reopens the stream with its backoff (the E95i resilience path).
+                        (rc == 0 || rc == -9980) || error("Pa_WriteStream returned $rc")
+                    end
+                    if AUDIO_DIAG
+                        _dt = time() - _t0
+                        DIAG_FRAMES[] += size(buf, 1); DIAG_WRITES[] += 1
+                        _dt > DIAG_WORST[] && (DIAG_WORST[] = _dt)
+                        if time() - DIAG_T0[] >= 2.0
+                            el = time() - DIAG_T0[]
+                            println("  [audio] ", round(Int, DIAG_FRAMES[]/el), " frames/s of 44100 (",
+                                    round(100*DIAG_FRAMES[]/el/44100, digits=1), "% of real time), ",
+                                    DIAG_WRITES[], " writes, worst write ", round(1000*DIAG_WORST[], digits=1),
+                                    " ms, worst wait ", round(1000*DIAG_WAITW[], digits=1), " ms")
+                            flush(stdout)
+                            DIAG_T0[] = time(); DIAG_FRAMES[] = 0; DIAG_WRITES[] = 0; DIAG_WORST[] = 0.0; DIAG_WAITW[] = 0.0
                         end
                     end
-                    write(stream, buf)
                     wfails = 0                           # a clean write → clear the failure backoff
                 end
             catch e

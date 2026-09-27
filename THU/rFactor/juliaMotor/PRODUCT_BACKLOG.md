@@ -19766,3 +19766,39 @@ meus-lg1, doho-rg2, schw-lg1, wehr-l6, bridge3b). That gate is the instrument fo
 THIRD: ZANDGRAND-1 and WGGANTRY-1 are the object-PLACEMENT family (OBJPLACE-1/OBJDUP-1 already added a
 per-name yaw fix for `grandl` and culled a duplicate gantry by name), and CLAUDE.md's open item says the
 placement convention applies YAW ONLY while GPL's records carry pitch and roll too.
+
+### SOUND-1 (PO 2026-09-26: "occasionally I'd hear a blurt of car sound, but during the 5 runs julia racer was mostly silent") -- FIXED
+
+**The engine was innocent.** Telemetry from all five of those runs (`demo/native/*_racer_*.txt`) shows a
+healthy engine: rpm p50 1953-5054, p95 6601-8186, under 1200 rpm on 0.0-2.2 % of samples, the car moving
+on 93-96 % of samples at Zandvoort and the Ring with the throttle open 84-85 % of the time. So the value
+the mixer is fed was right and the OUTPUT path was failing.
+
+**A new instrument first** (`JM_AUDIO_DIAG=1`): the feeder reports frames delivered per second of wall
+clock. 44100 is real time; far below it is a starved device, which is heard as silence broken by blurts.
+In the sim (Zandvoort, 900 frames): the shipped build **never completed a single 2-second window** -- no
+line at all -- while `JM_AUDIO_BLOCKWRITE=1` (PortAudio.jl's own write) ran at 111 %.
+
+**Cause: PERF-3's remedy, not its premise.** Its premise was right -- `Pa_WriteStream` is a plain, NOT
+GC-safe ccall that blocks until the device has room, so a stop-the-world GC waited for the audio thread.
+Its remedy waited in Julia instead, `sleep(0.002)` until the device reported room for a whole buffer --
+and `sleep` YIELDS. On a 2-thread runtime whose other task is the compute-bound render loop, the audio
+task is then barely rescheduled: measured standalone, a busy loop on the other thread takes the feeder to
+ONE 1024-frame write in 9.4 s (0.2 % of real time). The availability query itself was innocent (it reads
+17280 frames free against the 1024 wanted).
+
+**Fix:** block in C as before, but call `Pa_WriteStream` ourselves through a **GC-safe ccall** (Julia 1.12
+supports `@ccall gc_safe=true`), so the runtime treats the thread as parked and a collection does not wait
+for it. PortAudio wants interleaved frames, so the mixed (frames x 2) buffer is copied into a reused
+(2 x frames) scratch whose column-major memory is LRLR. `paOutputUnderflowed` (-9980) is treated as a late
+buffer, not a broken stream; any other non-zero return still reopens the stream through the existing E95i
+backoff. `JM_AUDIO_BLOCKWRITE=1` remains as the A/B (PortAudio.jl's write, not GC-safe).
+
+| arm | audio delivered | GC pause p50 | p90 | max |
+|---|---|---|---|---|
+| shipped (PERF-3 sleep-wait) | **0 %** (no writes at all) | -- | -- | -- |
+| PortAudio.jl write (not GC-safe) | 99.8 % | 16.0 ms | 71.3 | 253.2 |
+| **SOUND-1 gc-safe direct write** | **99.8 %** (steady 99.8-110 %) | **3.3 ms** | 81.4 | 259.1 |
+
+So the audio comes back AND the median collection is 4.8x shorter than the blocking write it replaces,
+which is what PERF-3 wanted in the first place.
