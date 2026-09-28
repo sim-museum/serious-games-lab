@@ -142,6 +142,13 @@ def _opening_lead(board: BoardState, seat: Seat,
             auction=board.auction, dealer=board.dealer, leader=seat,
             vulnerability=board.vulnerability)
         if d is not None and d.card is not None:
+            # Simulation checks the table lead against layouts consistent
+            # with the auction and replaces it when another lead is better.
+            from . import lead_sim
+            sim = lead_sim.choose_opening_lead(board, seat, d.card)
+            if sim is not None:
+                _why(explain, "Opening lead", sim[1])
+                return sim[0]
             # native_lead records the ACTUAL reasons: why this suit, why this
             # card within it. Surface both verbatim.
             reason = " ".join(r for r in (getattr(d, "suit_choice_reason", ""),
@@ -516,9 +523,12 @@ def _discard(board: BoardState, seat: Seat, legal: List[Card],
 # ------------------------------------------------------------------- entry
 
 import os
-_AMU_WORLDS = int(os.environ.get("BIQ_AMU_WORLDS", "6"))   # sampled layouts/decision
+# 10 layouts / 12 s: measured 2026-09-26 (nopeek_eval with auction, 2 seeds x
+# 40 deals): 106 tricks lost vs DD, against 121 with 6 / 5 s — the user asked
+# for strength over speed.
+_AMU_WORLDS = int(os.environ.get("BIQ_AMU_WORLDS", "10"))  # sampled layouts/decision
 _AMU_DEPTH = int(os.environ.get("BIQ_AMU_DEPTH", "2"))     # alpha-mu depth in tricks
-_AMU_BUDGET = float(os.environ.get("BIQ_AMU_BUDGET", "5")) # per-decision seconds
+_AMU_BUDGET = float(os.environ.get("BIQ_AMU_BUDGET", "12"))  # per-decision seconds
 _AMU_DEFENSE = os.environ.get("BIQ_AMU_DEFENSE", "1") == "1"  # defence alpha-mu
 _DEF_ROLLOUT = os.environ.get("BIQ_DEF_ROLLOUT", "0") == "1"  # defence rollout
 # (realistic no-peek partner) INSTEAD of alpha-mu defence's perfect-DD partner
@@ -542,6 +552,43 @@ def _get_dds():
         from .dds import DDSolver
         _DDS = DDSolver()
     return _DDS
+
+
+def _natural_declarer_card(tied: List[Card], b: BoardState, seat: Seat,
+                           trick: List[Card],
+                           trump: Optional[Suit]) -> Optional[Card]:
+    """Human-natural choice among cards the search rates exactly equal.
+    Following suit: win as cheaply as possible, else play the lowest.
+    Discarding: the lowest spot, never an honour when a spot will do.
+    Leading: a master card from the top (cash winners top-down), else the
+    lowest card of the suit the search liked."""
+    if not tied:
+        return None
+    # Rank.value: ACE=0 .. TWO=12, so a HIGHER value is a LOWER card.
+    if trick:
+        lead = trick[0].suit
+        follow = [c for c in tied if c.suit == lead]
+        if follow:
+            wi = _winning_index(trick, trump)
+            leader = Seat((seat.value - len(trick)) % 4)
+            ours = Seat((leader.value + wi) % 4).is_ns() == seat.is_ns()
+            winners = [c for c in follow if _beats(c, trick[wi], lead, trump)]
+            pool = winners if (winners and not ours) else follow
+            return max(pool, key=lambda c: c.rank.value)
+        ruffs = [c for c in tied if trump is not None and c.suit == trump]
+        if ruffs and len(ruffs) == len(tied):
+            return max(ruffs, key=lambda c: c.rank.value)
+        non_trump = [c for c in tied if c.suit != trump] or tied
+        return max(non_trump, key=lambda c: c.rank.value)
+    # Leading. (Only declarer's and dummy's hands are visible here.)
+    gone = {(c.suit, c.rank) for t in b.tricks for c in t.cards}
+    gone |= {(x.suit, x.rank) for h in b.hands.values() for x in h.cards}
+    for c in sorted(tied, key=lambda c: c.rank.value):
+        if all((c.suit, r) in gone for r in Rank if r.value < c.rank.value):
+            return c                                  # a master: cash it
+    first_suit = tied[0].suit
+    same = [c for c in tied if c.suit == first_suit]
+    return max(same, key=lambda c: c.rank.value)
 
 
 def _alphamu_card(b: BoardState, seat: Seat, trick: List[Card],
@@ -606,7 +653,8 @@ def _alphamu_card(b: BoardState, seat: Seat, trick: List[Card],
                           time_budget=_AMU_BUDGET, biq_seats=biq_seats,
                           defense_rollout_leaf=(defending and _DEF_ROLLOUT_LEAF),
                           vul=b.vulnerability,
-                          signal_margin=_SIGNAL_MARGIN if signalling else 0.0)
+                          signal_margin=(_SIGNAL_MARGIN if signalling
+                                         and defending else 0.0))
     # When DEFENDING, break trick-equivalent ties by the standard signal so the
     # carding reads like a real defender (zero trick cost — these tie for best).
     # Signalling OFF: no tie-break and no margin — alpha-mu's best card stands.
@@ -615,6 +663,12 @@ def _alphamu_card(b: BoardState, seat: Seat, trick: List[Card],
         from . import signals
         tb = lambda tied: signals.choose_signal_card(
             tied, b, seat, trick, declarer, trump)
+    elif not defending:
+        # Declaring: among EXACTLY tied cards play the natural one. Without
+        # this the search's first-listed card won ties, so dummy discarded
+        # the heart ACE on a spade (RUN2-004 trick 2): double-dummy neutral,
+        # absurd to a human watching.
+        tb = lambda tied: _natural_declarer_card(tied, b, seat, trick, trump)
     chosen = amu.choose(b, seat, trick, worlds, tiebreak=tb)
     if chosen is not None:
         side = "defence" if defending else "declarer play"

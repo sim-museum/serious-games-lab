@@ -42,8 +42,62 @@ def _winner(cards: List[Card], leader: Seat, trump: Optional[Suit]) -> Seat:
     return Seat((leader.value + wi) % 4)
 
 
+import os as _os
+# Card play conditioned on the BIDDING: oversample the hidden hands and keep
+# the layouts whose original 13 cards biq's own rules would have bid the
+# way those seats actually bid (BIQ_PLAY_AUCTION=0 disables).
+_PLAY_AUCTION = _os.environ.get("BIQ_PLAY_AUCTION", "1") == "1"
+_OVERSAMPLE = int(_os.environ.get("BIQ_PLAY_OVERSAMPLE", "8"))
+
+
 def _sample_defenders(board: BoardState, seat: Seat, current_trick: List[Card],
                       declarer: Seat, k: int, known_seats=None):
+    """k hidden-hand layouts; when an auction is known, the k most consistent
+    with it out of k*_OVERSAMPLE drawn (see _sample_defenders_raw)."""
+    auction = list(getattr(board, "auction", []) or [])
+    if not _PLAY_AUCTION or len(auction) < 4 or k <= 0:
+        return _sample_defenders_raw(board, seat, current_trick, declarer, k,
+                                     known_seats)
+    raw, hidden = _sample_defenders_raw(board, seat, current_trick, declarer,
+                                        k * _OVERSAMPLE, known_seats)
+    if len(raw) <= k:
+        return raw, hidden
+    try:
+        from . import bid_sim
+        played = {d: [] for d in hidden}
+        for t in board.tricks:
+            for i, c in enumerate(t.cards):
+                p = Seat((t.leader.value + i) % 4)
+                if p in played:
+                    played[p].append(_c52(c))
+        if current_trick:
+            lead = Seat((seat.value - len(current_trick)) % 4)
+            for i, c in enumerate(current_trick):
+                p = Seat((lead.value + i) % 4)
+                if p in played:
+                    played[p].append(_c52(c))
+        cache: dict = {}
+        partner = seat.partner()
+
+        def cost(a):
+            tot = 0.0
+            for d in hidden:
+                orig = list(a[d]) + played[d]
+                if len(orig) != 13:
+                    continue
+                m = bid_sim.auction_mismatch(board.dealer, board.vulnerability,
+                                             auction, d, orig, cache=cache,
+                                             opponent=(d != partner))
+                tot += (3.0 if d == partner else 1.0) * m
+            return tot
+        ranked = sorted(range(len(raw)), key=lambda i: (cost(raw[i]), i))
+        return [raw[i] for i in ranked[:k]], hidden
+    except Exception:
+        return raw[:k], hidden
+
+
+def _sample_defenders_raw(board: BoardState, seat: Seat, current_trick: List[Card],
+                          declarer: Seat, k: int, known_seats=None):
     """k plausible assignments of the unseen cards to the HIDDEN seats, honouring
     remaining counts, shown-out voids, and vacant-places weighting.
 

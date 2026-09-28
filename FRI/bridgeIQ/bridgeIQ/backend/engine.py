@@ -252,6 +252,15 @@ class BridgeEngine:
                 r for r in (getattr(decision, "suit_choice_reason", ""),
                             getattr(decision, "card_choice_reason", ""))
                 if r).strip()
+            # Simulated lead (leader's own hand + auction only): replaces the
+            # table lead when another lead does better on sampled layouts.
+            from . import lead_sim
+            sim = lead_sim.choose_opening_lead(board, leader, decision.card)
+            if sim is not None:
+                return EngineResponse(
+                    action=sim[0], who="sim-lead",
+                    candidates=[CardCandidate(card=sim[0], score=1.0)],
+                    reason=sim[1], reason_tag="Opening lead")
             return EngineResponse(
                 action=decision.card,
                 who="native-lead",

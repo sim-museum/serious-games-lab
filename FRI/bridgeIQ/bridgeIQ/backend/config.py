@@ -82,6 +82,9 @@ class PreferencesConfig:
     use_monte_carlo_play: bool = True  # Monte Carlo simulation (MC+DDS fallback)
     use_nopeek_play: bool = True  # no-peek alpha-mu engine (default - strongest;
     # never peeks at hidden cards, signals + reads partner signals)
+    sim_bidding_enabled: bool = True  # hybrid bidding: simulation checks the
+    # rules at judgment points (backend.bid_sim). Slower, stronger.
+    sim_leads_enabled: bool = True   # simulated opening leads (backend.lead_sim)
     signalling_enabled: bool = True  # play defensive signals at all. False =
     # never spend a card on a signal (plain lowest card / pure trick value);
     # partner-signal reading is off too. See backend.signals.set_enabled().
@@ -382,6 +385,18 @@ class ConfigManager:
             self.config.preferences.use_nopeek_play = data["preference.use_nopeek_play"] == "1"
         if "preference.signalling" in data:
             self.config.preferences.signalling_convention = data["preference.signalling"]
+        if "preference.sim_bidding_enabled" in data:
+            self.config.preferences.sim_bidding_enabled = (
+                data["preference.sim_bidding_enabled"] == "1")
+        if "preference.sim_leads_enabled" in data:
+            self.config.preferences.sim_leads_enabled = (
+                data["preference.sim_leads_enabled"] == "1")
+        try:
+            from backend import bid_sim as _bs, lead_sim as _ls
+            _bs.set_enabled(self.config.preferences.sim_bidding_enabled)
+            _ls.set_enabled(self.config.preferences.sim_leads_enabled)
+        except Exception:
+            pass
         if "preference.signalling_enabled" in data:
             self.config.preferences.signalling_enabled = (
                 data["preference.signalling_enabled"] == "1")
@@ -482,6 +497,10 @@ class ConfigManager:
             "preference.use_mc_play": "1" if self.config.preferences.use_monte_carlo_play else "0",
             "preference.use_nopeek_play": "1" if self.config.preferences.use_nopeek_play else "0",
             "preference.signalling": self.config.preferences.signalling_convention,
+            "preference.sim_bidding_enabled": (
+                "1" if self.config.preferences.sim_bidding_enabled else "0"),
+            "preference.sim_leads_enabled": (
+                "1" if self.config.preferences.sim_leads_enabled else "0"),
             "preference.signalling_enabled": (
                 "1" if self.config.preferences.signalling_enabled else "0"),
             "preference.legacy_colors": "1" if self.config.preferences.legacy_colors else "0",

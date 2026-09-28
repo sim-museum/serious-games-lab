@@ -380,6 +380,9 @@ class AlphaMu:
                 vals = self._continue_trick(partial, seat.next(), leader, 0,
                                             self.depth)
             except _Budget:
+                import os as _os
+                if _os.environ.get("BIQ_AMU_DEBUG"):
+                    print(f"[amu] budget hit after {len(scored)}/{len(cands)} cards", flush=True)
                 break                # out of time — keep the best evaluated so far
             mean = sum(vals.values()) / len(vals)
             scored.append((c, mean))
