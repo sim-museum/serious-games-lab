@@ -56,7 +56,14 @@ fi
 # system wine-9.0 services connections correctly. Suit glyphs don't
 # render under it, but that's irrelevant for the headless biq client /
 # automated measurement. See backend/QNET_PROTOCOL.md.
-WINE_BIN_SERVER="${WINE_BIN_SERVER:-/usr/bin/wine}"
+# Ubuntu's wine 10 splits the loaders: /usr/bin/wine is the wow64-only
+# 64-bit loader, which refuses the 32-bit prefix ("is a 32-bit installation,
+# it cannot support 64-bit applications"); /usr/bin/wine32 (package
+# wine32:i386) runs it. Prefer wine32 when present.
+if [ -z "${WINE_BIN_SERVER:-}" ]; then
+    if [ -x /usr/bin/wine32 ]; then WINE_BIN_SERVER=/usr/bin/wine32
+    else WINE_BIN_SERVER=/usr/bin/wine; fi
+fi
 if [ ! -x "$WINE_BIN_SERVER" ] && ! command -v "$WINE_BIN_SERVER" >/dev/null 2>&1; then
     echo "WARN: $WINE_BIN_SERVER not executable; falling back to \$WINE_BIN ($WINE_BIN)" >&2
     WINE_BIN_SERVER="$WINE_BIN"
@@ -96,7 +103,11 @@ case "$cmd" in
   server)
     cd "$FRI_ROOT"
     export WINEPREFIX="$WP_SERVER"
-    export WINEARCH=win32
+    # Do NOT export WINEARCH=win32 here: Ubuntu's wine 10 runs in wow64
+    # mode and refuses to start with it ("WINEARCH is set to 'win32' but
+    # this is not supported in wow64 mode"). The prefix already records its
+    # architecture, so the variable is unnecessary for an existing prefix.
+    unset WINEARCH
     if check_wine9 "$WINE_BIN_SERVER"; then
         echo "Launching Q-Plus SERVER instance..."
         echo "  Wine runner: $WINE_BIN_SERVER ($WINE9_VER — q-net OK)"
@@ -116,6 +127,12 @@ case "$cmd" in
     echo "  2. Pick port $SERVER_PORT when asked"
     echo "  3. Click Start (leave South=Local; a joining client makes its seat Extern)"
     echo ""
+    # Wine VIRTUAL DESKTOP is OPT-IN (QPLUS_VDESKTOP=1, see qplus_vdesktop.sh);
+    # default off. FRI/qplus.sh (hand play) always clears it.
+    if [ "${QPLUS_VDESKTOP:-0}" = "1" ]; then
+        WINEPREFIX="$WP_SERVER" WINE_BIN_SERVER="$WINE_BIN_SERVER" \
+            bash "$BIQ_ROOT/tools/qplus_vdesktop.sh" on "${QPLUS_VDESKTOP_SIZE:-1853x1011}"
+    fi
     cd "$WP_SERVER/drive_c/games/qbridge17"
     exec "$WINE_BIN_SERVER" QBRIDGE.EXE
     ;;

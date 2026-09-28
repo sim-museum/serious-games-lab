@@ -84,6 +84,10 @@ import json
 import os
 import random
 import subprocess
+try:
+    from tools import qplus_geom as _geom
+except ImportError:
+    import qplus_geom as _geom
 import sys
 import time
 from dataclasses import dataclass
@@ -667,13 +671,15 @@ def get_mouse() -> Tuple[int, int]:
     for line in out.splitlines():
         k, _, v = line.partition("=")
         env[k.strip()] = v.strip()
-    return int(env["X"]), int(env["Y"])
+    return _geom.norm(int(env["X"]), int(env["Y"]))      # capture frame
 
 
 def click_at(x: int, y: int, delay_ms: int = 30):
     """Move the pointer to (x,y) and click. `delay_ms` is the gap
     between mousemove and click — needs to be ≥ ~20 ms or Wine may
     not register the pointer position before the button event."""
+    x, y = _geom.shift(x, y)              # capture frame -> window's place now
+    _geom.activate_qplus()
     xdo("mousemove", str(x), str(y))
     time.sleep(delay_ms / 1000.0)
     xdo("click", "1")
@@ -2107,9 +2113,7 @@ class RunWorker(QObject):
         dialog never appeared (caller should skip this deal rather
         than blind-click into the wrong UI)."""
         for attempt in range(max_attempts):
-            self._click("config_menu")
-            self._pause_step()
-            self._click("bidding_system_item")
+            _geom.menu_pick("config_bidding_system")   # keyboard: menus ignore clicks
             self._pause_close()
             # Brief settle, then probe.
             time.sleep(0.2)

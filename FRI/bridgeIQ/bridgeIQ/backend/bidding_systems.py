@@ -606,6 +606,36 @@ def list_systems() -> List[str]:
     return [name for name, _, _ in _CATALOG]
 
 
+def system_name_for_qplus_code(code: str) -> Optional[str]:
+    """Map a Q-Plus bidding-system code — what its Q-NET `set_config` reports
+    as ``conv.bidding.N/S = A-SAYC-I`` — to the canonical biq system name.
+    Exact match on the catalog's .RCE stem first (A-SAYC-I, A-2-1-A, B-ACL-S,
+    F-FRA-M, P-P90M-A), then a family heuristic so a Q-Plus variant we don't
+    ship (e.g. another Precision file) still lands on the nearest system.
+    Returns None when nothing fits, so the caller can keep its current system."""
+    if not code:
+        return None
+    key = str(code).strip().upper()
+    if key.endswith(".RCE"):
+        key = key[:-4]
+    for name, rce, _ in _CATALOG:
+        if rce.upper()[:-4] == key:
+            return name
+    if key in _ALIASES:
+        return _ALIASES[key]
+    if "SAYC" in key:
+        return "SAYC"
+    if "2-1" in key or "2/1" in key or "TWO" in key:
+        return "TwoOverOne"
+    if "ACL" in key or "ACOL" in key:
+        return "StandardAcol"
+    if "FRA" in key or "FRENCH" in key:
+        return "StandardFrench"
+    if key.startswith("P-") or "P90" in key or "PREC" in key:
+        return "Precision90M"
+    return None
+
+
 def get_system(name: str) -> BiddingSystem:
     """Look up a bidding system by canonical name or alias.
 

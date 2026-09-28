@@ -17,6 +17,9 @@ export WINEPREFIX="$BASE_DIR/WP"
 export WINEARCH=win32
 # Set Windows XP mode silently (no GUI)
 wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
+# Hand play never uses Wine's virtual desktop; the biq test harness turns it
+# on for its own launches (bridgeIQ/bridgeIQ/tools/qplus_vdesktop.sh) — clear it.
+wine reg delete "HKEY_CURRENT_USER\\Software\\Wine\\Explorer" /v Desktop /f &>/dev/null
 
 # GUI harness directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

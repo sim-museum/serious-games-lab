@@ -55,7 +55,9 @@ sys_args() {
 
 kill_all_wine() {
   echo "[loop] killing Q-Plus + ALL wine (clears the listen socket)…"
-  WINEPREFIX="$WP_SERVER" wineserver -k 2>/dev/null
+  # Ubuntu's wine package keeps wineserver off PATH.
+  WS="$(command -v wineserver || ls /usr/lib/i386-linux-gnu/wine/wineserver /usr/lib/x86_64-linux-gnu/wine/wineserver 2>/dev/null | head -1)"
+  WINEPREFIX="$WP_SERVER" "${WS:-wineserver}" -k 2>/dev/null
   sleep 1
   pkill -9 -f 'biq[_]qnet_client' 2>/dev/null
   pkill -9 -f 'win[e]'      2>/dev/null
@@ -74,7 +76,7 @@ run_session() {
   echo "================= [loop] session $idx / $N ================="
   kill_all_wine
   echo "[loop] launching Q-Plus server (system wine-9.0)…"
-  WINE_BIN_SERVER=/usr/bin/wine setsid bash tools/qplus_dual_instance.sh server \
+  setsid bash tools/qplus_dual_instance.sh server \
     >/tmp/qplus_server_$idx.out 2>&1 </dev/null &
   sleep "$START_WAIT"
   # Start the bridge server via the calibrated Start button (the Local
@@ -83,18 +85,26 @@ run_session() {
   [ -n "${sx:-}" ] && { echo "[loop] clicking Start ($sx,$sy)"; click "$sx" "$sy"; }
   # wait for the server to listen
   local up=0
-  for _ in $(seq 1 30); do ss -tln 2>/dev/null | grep -q ':5555 ' && { up=1; break; }; sleep 1; done
-  if [ "$up" -ne 1 ]; then echo "[loop] WARN: :5555 never listened — skipping $idx"; kill_all_wine; return 1; fi
+  # Q-Plus may start its server on 5555 (documented rig) or on its own
+  # default 1100 — take whichever wineserver LISTEN socket appears.
+  PORT="${QPLUS_SERVER_PORT:-}"
+  for _ in $(seq 1 30); do
+    [ -z "$PORT" ] && PORT="$(ss -tlnp 2>/dev/null | awk '/LISTEN/ && /wineserver/ {sub(/.*:/,"",$4); print $4; exit}')"
+    [ -n "$PORT" ] && ss -tln 2>/dev/null | grep -q ":$PORT " && { up=1; break; }
+    sleep 1
+  done
+  if [ "$up" -ne 1 ]; then echo "[loop] WARN: bridge server never listened — skipping $idx"; kill_all_wine; return 1; fi
+  echo "[loop] bridge server on :$PORT"
 
   echo "[loop] launching biq (direct, fresh logs)…"
   : > tools/runs/biq_N.log; : > tools/runs/biq_S.log; rm -f tools/runs/pair_ipc/*.card 2>/dev/null
   echo "[loop] biq: NOPEEK=$NOPEEK BIQ_SIGNALLING=$BIQ_SIGNALLING"
   # shellcheck disable=SC2086
-  setsid python3 tools/biq_qnet_client.py --host 127.0.0.1 --port 5555 --seat N \
+  setsid python3 tools/biq_qnet_client.py --host 127.0.0.1 --port "$PORT" --seat N \
     --num-samples 40 --log tools/runs/biq_N.log --auto-system --pair $CLIENT_EXTRA >/dev/null 2>&1 </dev/null &
   sleep 3
   # shellcheck disable=SC2086
-  setsid python3 tools/biq_qnet_client.py --host 127.0.0.1 --port 5555 --seat S \
+  setsid python3 tools/biq_qnet_client.py --host 127.0.0.1 --port "$PORT" --seat S \
     --num-samples 40 --log tools/runs/biq_S.log --auto-system --pair $CLIENT_EXTRA >/dev/null 2>&1 </dev/null &
   for _ in $(seq 1 30); do
     [ "$(grep -c 'handshake complete' tools/runs/biq_N.log 2>/dev/null)" -ge 1 ] && \
