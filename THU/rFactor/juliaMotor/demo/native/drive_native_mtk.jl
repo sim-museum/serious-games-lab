@@ -2011,6 +2011,68 @@ else
                 end
             end
         end
+        # E109-S2: JM_ROADBLOCK_AT=<s> lists every qualifying surface within +-25 m of one station, so a
+        # "curtain" can be told apart from an artefact of binning. The question this answers: do several
+        # tree panels stand at DIFFERENT laterals (a row marching across the road) or at the same lateral
+        # and different lap distance (a row correctly lining the road, which the 5 m bin would then be
+        # merging into a false curtain)?
+        if haskey(ENV, "JM_ROADBLOCK_AT")
+            at_s = parse(Float64, ENV["JM_ROADBLOCK_AT"])
+            rows = Tuple{Float64,Float64,Float64,Float64,Float64,String}[]
+            for (k, v) in spans, (lo, hi, tx) in v
+                sv = k*rb_bin
+                abs(sv - at_s) <= 25.0 && push!(rows, (sv, lo, hi, hi-lo, 0.0, tx))
+            end
+            sort!(rows, by = x -> (x[1], x[2]))
+            println("  [roadblock] surfaces within 25 m of s=", at_s, ":  ", length(rows), " row(s)")
+            for (sv, lo, hi, w, _, tx) in rows[1:min(60, end)]
+                println("       s=", lpad(round(Int, sv), 6), " m  lateral ", lpad(round(lo, digits=1), 6),
+                        " .. ", rpad(round(hi, digits=1), 6), " (", round(w, digits=1), " m wide)   ", tx)
+            end
+        end
+        # E109-S2: where does GPL say to PUT these objects, versus where we draw them? The recorded lead is
+        # that the Ring's veils are "authored around, not at, the origin", so an object whose placement
+        # origin sits safely off the road can still be DRAWN across it. gpl_placements is a pure parse of
+        # the .3do's 0x0E nodes, so it can be read here without touching the scenery build.
+        if haskey(ENV, "JM_ROADBLOCK_PLACE")
+            pat = lowercase(get(ENV, "JM_ROADBLOCK_PLACE", "halftr"))
+            npl = Ref(0); onroad = Ref(0)
+            # `halftr*` is a TEXTURE, not an object name -- matching placements by name found nothing. So
+            # match on the placed sub-object's OWN mesh: parse it out of the track .dat and ask whether it
+            # uses a texture matching the pattern. That restores the instance -> texture link that SECPARTS
+            # loses when it merges the scenery by texture, and it is what lets the curtains be named.
+            texcache = Dict{String,Bool}()
+            function uses_tex(nm)
+                get!(texcache, lowercase(String(nm))) do
+                    v = get(TRACKDAT, lowercase(String(nm)) * ".3do", nothing)
+                    v === nothing && return false
+                    try
+                        q = joinpath(tempdir(), "jm_rb_" * lowercase(String(nm)) * ".3do")
+                        isfile(q) || write(q, v)
+                        any(t -> occursin(pat, lowercase(t.tex)), Render.GPL3DO.parse_3do(q).tris)
+                    catch; false end
+                end
+            end
+            println("  [roadblock] placed objects whose MESH uses a texture matching \"", pat, "\":")
+            try
+                for (nm, t) in Render.GPL3DO.gpl_placements(ZTRK)
+                    (isempty(pat) || uses_tex(nm)) || continue
+                    npl[] += 1
+                    # the 0x0E translation, in the same frame the mesh vertices use
+                    hr = JuliaMotor.hat(RIBBON0, Float64(t[1]), Float64(t[2]))
+                    hr.found || continue
+                    abs(hr.lateral) <= rb_lat && (onroad[] += 1)
+                    npl[] <= 24 && println("       ", rpad(String(nm), 12), " origin at s=",
+                                           lpad(round(Int, hr.lapdist), 6), " m lateral ",
+                                           lpad(round(hr.lateral, digits=1), 7), " m",
+                                           abs(hr.lateral) <= rb_lat ? "   <- ORIGIN IS ON THE ROAD" : "")
+                end
+                println("       ", npl[], " placement(s) matched; ", onroad[],
+                        " have their ORIGIN inside the corridor")
+            catch e
+                println("       (gpl_placements failed: ", sprint(showerror, e), ")")
+            end
+        end
         # union of the intervals in one bin, as a merged list, plus its total covered width
         function rb_union(v)
             iv = sort([(a, b) for (a, b, _) in v]); out = Tuple{Float64,Float64}[]

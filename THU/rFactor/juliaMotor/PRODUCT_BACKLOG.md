@@ -20545,3 +20545,34 @@ plausible positions, so the question is whether our placement convention puts th
 GPL's does not — the standing lead is the code's own note that the Ring's in-place veils are *"authored
 around, not at, the origin"*, which a yaw-only `placemat` mis-applies. Compare a `halftr*` instance's
 authored geometry against where we draw it before touching anything.
+
+### E109-S2 — the curtains named `half01`–`half09`/`half1s`, and the recorded hypothesis was never actually tested (sprint 2 of 4)
+
+**Named.** `halftr*` is a TEXTURE, so matching placements by name found nothing. Matching on each placed
+sub-object's own mesh instead — parse it out of the track `.dat`, ask which textures it uses — names the
+objects: **`half01`, `half02`, `half03`, `half04`, `half05`, `half06`, `half08`, `half09`, `half1s`**.
+**67 placements, and 52 of them have their ORIGIN inside the ±5.5 m road corridor**, several essentially on
+the centreline (`half1s` at lateral −0.5, −0.5, −0.7, +0.1 m). At s=6855 the curtain is a **single 9.7 m
+wide near-vertical quad** spanning lateral −4.2 … +5.5 m — one enormous panel, not a row of small ones and
+not an artefact of the 5 m binning (`JM_ROADBLOCK_AT=6857` lists exactly two triangles there).
+
+**The mechanism the code predicted, and the knob that cannot test it.** The comment at
+`TRACKGOLD-1 S4` states it exactly: the Ring's in-place veils have *"geometry authored around, not at, the
+origin. If the object meshes' Z mirror does not match the placement frame, off-origin geometry flips to the
+other side of its origin while origin-centred objects (trees) look right."* That fits perfectly — an origin
+at the road edge with geometry authored extending AWAY from the road becomes, mirrored, geometry extending
+ACROSS it, while ordinary origin-centred trees are unaffected.
+
+**But `JM_OBJ_MIRROR` does not reach this path, so that hypothesis has never been tested.** Measured
+against the curtain census: `JM_OBJ_MIRROR=1` → 43 curtain bins; `JM_OBJ_MIRROR=0` → **43 curtain bins**.
+Identical. The reason is structural: `gpl_scenery` (which builds the Ring's `SECTRI`/`SECPARTS` at line
+1617) contains **no mirror handling at all**, while the track mesh is extracted at line 2223 with
+`mirror=true`, and `OBJ_MIRROR` is not even defined until line 4416. So the Ring's scenery is built in a
+different handedness from the track it stands on, and the A/B recorded on 2026-09-06 (123 vs 125 anomalies
+against a 121 control) was toggling a knob with **no effect on this path** — another dead control arm, the
+same class as the `Ref(get(ENV,...))` flag baked at precompile time booked earlier in this project.
+
+**Sprint 3 (next on E109):** apply the track mesh's Z mirror to `gpl_scenery`'s sub-object meshes and
+measure `curtain_bins` against today's 43, with `partial_bins` (562) and the total placed count watched for
+collateral — the risk being that a mirror correct for off-origin geometry moves *every* Ring object, so the
+control arm is whether origin-centred scenery stays put.
