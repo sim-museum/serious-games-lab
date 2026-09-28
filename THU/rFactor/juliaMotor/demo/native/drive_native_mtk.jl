@@ -1058,8 +1058,16 @@ end
 
 function gpl_scenery(ztrk, datpack, ribbon)
     pls = Render.GPL3DO.gpl_placements(ztrk)
+    # E109-S3: every one of the 67 `half0*`/`half1s` veil placements sits at yaw MINUS road heading =
+    # +-90 deg (measured: -90.0, -88.0, +90.0, +93.3, +100.0, -86.0, ...). Data does not come out that
+    # uniform by accident, so the suspicion is a 90 deg error in how we read GPL's yaw, not GPL intending
+    # tree panels across its own road. JM_SCENERY_YAW_ADD=<deg> rotates every scenery placement about UP
+    # so the hypothesis can be A/B'd against the JM_ROADBLOCK curtain count. It is a PROBE: rotating all
+    # the Ring's scenery is not a fix, and a knob that helps the veils while wrecking everything else would
+    # show up as a rise in JM_ROADBLOCK's partial count.
+    scen_yaw = deg2rad(parse(Float64, get(ENV, "JM_SCENERY_YAW_ADD", "0")))
     function placemat(t)
-        d=(t[1],t[2],t[3]); m=(t[4],t[5],t[6]); s = t[7] <= 0 ? 1.0 : t[7]
+        d=(t[1],t[2],t[3]); m=(t[4]+scen_yaw,t[5],t[6]); s = t[7] <= 0 ? 1.0 : t[7]
         # GPL placement Euler angles: the 1st is YAW about UP (GPL comp-3), not roll about
         # the long axis — applied as yaw, terrain sections orient to the track and towers/
         # signs stay upright (just turned); applied as roll they all tilt over.  2nd = pitch
@@ -2062,10 +2070,26 @@ else
                     hr = JuliaMotor.hat(RIBBON0, Float64(t[1]), Float64(t[2]))
                     hr.found || continue
                     abs(hr.lateral) <= rb_lat && (onroad[] += 1)
-                    npl[] <= 24 && println("       ", rpad(String(nm), 12), " origin at s=",
-                                           lpad(round(Int, hr.lapdist), 6), " m lateral ",
-                                           lpad(round(hr.lateral, digits=1), 7), " m",
-                                           abs(hr.lateral) <= rb_lat ? "   <- ORIGIN IS ON THE ROAD" : "")
+                    # the placement EULER angles too. The TRACKGOLD-1 note says these veils carry
+                    # "placement yaw 0" -- if so, their geometry has a FIXED WORLD orientation that takes
+                    # no account of the road's heading, so on a curving track the panel crosses it
+                    # wherever the road turns away. That is a different mechanism from the Z mirror, and
+                    # the mirror one is dead: the scenery emit applies the SAME (gx, gz, -gy) remap the
+                    # track mesh uses (`Float32[q[1], q[3], -q[2], ...]`), so there is no handedness
+                    # mismatch between the Ring's scenery and the track it stands on.
+                    # `rh` is the road's heading at the object, so |yaw - rh| says whether the panel is
+                    # aligned with the road or indifferent to it.
+                    rh = let i = clamp(searchsortedlast(RIBBON0.lapdist, hr.lapdist), 1, length(RIBBON0.pos)),
+                             j = mod1(i+1, length(RIBBON0.pos))
+                        atan(RIBBON0.pos[j][3] - RIBBON0.pos[i][3], RIBBON0.pos[j][1] - RIBBON0.pos[i][1])
+                    end
+                    npl[] <= 24 && println("       ", rpad(String(nm), 10), " origin s=",
+                                           lpad(round(Int, hr.lapdist), 6), " lat ",
+                                           lpad(round(hr.lateral, digits=1), 6),
+                                           "  yaw ", lpad(round(rad2deg(Float64(t[4])), digits=1), 7),
+                                           " deg  road ", lpad(round(rad2deg(rh), digits=1), 7),
+                                           " deg  diff ", lpad(round(rad2deg(rem(Float64(t[4]) - rh, 2pi, RoundNearest)), digits=1), 7),
+                                           abs(hr.lateral) <= rb_lat ? "   <- ORIGIN ON ROAD" : "")
                 end
                 println("       ", npl[], " placement(s) matched; ", onroad[],
                         " have their ORIGIN inside the corridor")

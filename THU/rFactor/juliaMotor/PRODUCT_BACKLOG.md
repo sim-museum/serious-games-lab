@@ -20576,3 +20576,39 @@ same class as the `Ref(get(ENV,...))` flag baked at precompile time booked earli
 measure `curtain_bins` against today's 43, with `partial_bins` (562) and the total placed count watched for
 collateral — the risk being that a mirror correct for off-origin geometry moves *every* Ring object, so the
 control arm is whether origin-centred scenery stays put.
+
+### E109-S3 — two placement hypotheses REFUTED by measurement; the defect is on the render side (sprint 3 of 4)
+
+**S2's conclusion was WRONG and is withdrawn.** S2 said the Ring's scenery is built in a different
+handedness from the track. It is not: the scenery emit does `Float32[q[1], q[3], -q[2], …]` — the **same
+`(gx, gz, −gy)` remap** `extract_gpl_car(…; mirror=true)` applies to the track mesh. There is no handedness
+mismatch, and the mirror hypothesis the code has carried since 2026-09-06 is dead. (The one part of S2 that
+stands: `JM_OBJ_MIRROR` genuinely does not reach `gpl_scenery`, so that old A/B tested nothing. It was
+testing a knob with no effect, not confirming a null result.) Finding this also confirmed the census reads
+the frame correctly, so the 43 curtains are real.
+
+**The yaw hypothesis is dead too, and measurement killed it.** Every one of the 67 `half0*`/`half1s`
+placements sits at **yaw − road heading = ±90°** (−90.0, −88.0, +90.0, +93.3, +100.0, −86.0…). Data that
+uniform looked like a 90° convention error, so `JM_SCENERY_YAW_ADD` was added to A/B it:
+
+| scenery yaw offset | curtain bins | partial bins |
+|---|---|---|
+| **0° (shipped)** | **43** | 562 |
+| +90° | 232 | 626 |
+| −90° | 239 | 617 |
+
+Rotating makes it **five times worse**. So the current yaw is right, and the ±90° relationship is GPL's own
+intent: these are **occluder veils deliberately placed across the sightline**, to hide the world beyond.
+
+**So the defect is not WHERE we put them — it is how we DRAW them.** Two render candidates examined:
+* `SEC_TWOSIDED` already defaults to **off**, so the landmass sections are backface-culled. Not the cause.
+* Which leaves the cull **WINDING**: line 11063 does `glCullFace(xor(OBJ_FF_CW, flip) ? GL_FRONT : GL_BACK)`.
+  If the front-face convention is inverted for this path we cull the wrong side — showing exactly the faces
+  GPL hides, which is a precise description of "you have to drive through the curtain before you can see
+  anything on the other side".
+
+**Sprint 4 (last on E109) — and it can be tested HEADLESSLY**, which matters because a render needs a GL
+context this environment does not provide. If GPL expects these veils culled from the road side, their face
+NORMALS must point AWAY from the road. So: for every curtain triangle, take the dot product of its normal
+with the direction from the panel toward the road centreline. If the normals consistently point away, the
+panels are authored to be invisible from the car and our winding is inverted — no screenshot required.
