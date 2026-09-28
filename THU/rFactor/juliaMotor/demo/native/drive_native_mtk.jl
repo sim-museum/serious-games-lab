@@ -8748,6 +8748,65 @@ function main()
                         # mapping that preserves that is faithful and one that breaks it is not.
                         # Where the corridor is missing there is nothing to check against, so the old
                         # centreline bar still applies -- named separately so the log says which ran.
+                        # E107-S4: WHAT IS UNDER the records ROADHAT rejects? The S3 control -- "our own
+                        # racing line is 99.6 % on ROADHAT" -- is weaker than it looks, because
+                        # recentre_on_road FITTED our line to ROADHAT, so that score is close to
+                        # tautological and cannot show whether ROADHAT is complete. The question it
+                        # leaves open is decisive for this epic: when ROADHAT rejects a point on GPL's
+                        # line, is GPL's line really on grass, or is ROADHAT missing tarmac?
+                        # So: for each rejected point, name the texture of the nearest TRACK-MESH
+                        # triangle. Road-ish names mean our filter is incomplete; grass means GPL's .trk
+                        # line genuinely leaves the surface our mesh calls road -- which would be
+                        # consistent with recentre_on_road's own note that the .trk line "hugs the road
+                        # EDGE through corners (it is the racing groove, not the geometric centre)".
+                        if get(ENV, "JM_AI_GPLLAT_WHY", "0") != "0" && ROADHAT !== TERRAIN0
+                            _tex = Dict{String,Int}(); _none = Ref(0); _n = Ref(0)
+                            for i in 1:nrec
+                                q = gpl_world(Float64(GPLLP.read_lp(lp).dlat[i]), i)
+                                JuliaMotor.hat3d(ROADHAT, q[1], q[2]; ref = Inf)[3] && continue
+                                _n[] += 1
+                                best = ""; bd = Inf
+                                for t in TRACKMESH.tris
+                                    cx = (t.p[1][1]+t.p[2][1]+t.p[3][1])/3
+                                    cy = (t.p[1][2]+t.p[2][2]+t.p[3][2])/3
+                                    d2 = (cx-q[1])^2 + (cy-q[2])^2
+                                    d2 < bd && (bd = d2; best = t.tex)
+                                end
+                                bd > 400.0 ? (_none[] += 1) : (_tex[lowercase(best)] = get(_tex, lowercase(best), 0) + 1)
+                            end
+                            # CAVEAT ON THIS CENSUS: it names the nearest triangle's texture, not the
+                            # containing one, so a point 3 m off the groove strip still counts as
+                            # "groove". ROADHAT already includes groove/aspgrs/asphalt/concrete (4537
+                            # tris at Monza = exactly those plus sgrid/aspgrsr), so a road-ish name here
+                            # does NOT mean the filter is incomplete -- it means the point is NEAR road.
+                            # The distance below is the measure that actually separates the two cases:
+                            # decimetres means a small displacement (the re-centre shift), metres means
+                            # the record is properly off the surface.
+                            let _d = Float64[]
+                                for i in 1:nrec
+                                    q = gpl_world(Float64(GPLLP.read_lp(lp).dlat[i]), i)
+                                    JuliaMotor.hat3d(ROADHAT, q[1], q[2]; ref = Inf)[3] && continue
+                                    lo = Inf
+                                    for r in -20.0:0.25:20.0, ax in 1:2
+                                        p2 = ax == 1 ? (q[1]+r, q[2]) : (q[1], q[2]+r)
+                                        JuliaMotor.hat3d(ROADHAT, p2[1], p2[2]; ref = Inf)[3] && (lo = min(lo, abs(r)))
+                                    end
+                                    push!(_d, lo)
+                                end
+                                if !isempty(_d)
+                                    u = sort(_d); m = length(u)
+                                    println("  AI racing LINE [why] distance from a rejected record to the nearest road: p50 ",
+                                            round(u[m÷2], digits=2), " p90 ", round(u[max(1,9m÷10)], digits=2),
+                                            " max ", round(u[end], digits=2), " m  (", count(isinf, _d),
+                                            " with none within 20 m)")
+                                end
+                            end
+                            println("  AI racing LINE [why] ", _n[], " records rejected by ROADHAT; nearest track-mesh texture:")
+                            for (k, v) in sort(collect(_tex), by = x -> -x[2])[1:min(10, end)]
+                                println("     ", rpad(k, 12), v, "  (", round(100v/max(_n[],1), digits=1), "%)")
+                            end
+                            _none[] > 0 && println("     (", _none[], " with no track triangle within 20 m)")
+                        end
                         _tol = parse(Float64, get(ENV, "JM_AI_GPLLAT_TOL", "0.02"))
                         _refuse = false
                         # E107-S3, THE LOAD-BEARING TEST. The corridor-containment test below is

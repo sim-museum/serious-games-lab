@@ -20284,3 +20284,43 @@ of `A0` and score both arms against `ROADHAT`. An earlier attempt compared these
 (192 of 1252 off at Watkins Glen) versus exact `A0` placement (85 of 1252) and chose `A0` — but that
 comparison used the |lat| > 4.5 m bar, which this sprint has shown cannot judge the question. Redo it
 with the road oracle. If it works, Monza, Spa and the Ring all accept GPL's line.
+
+### E107-S4 — what is actually under GPL's line: a 1.5–3 m displacement, not grass (sprint 4 of 4 — ROTATING)
+
+S3 concluded "our reconciliation is what puts GPL's line on the grass". Right in direction, **overstated
+in degree**, and this sprint measures it properly.
+
+**First, a caveat on S3's own control.** "Our racing line is 99.6 % on `ROADHAT`" is close to
+tautological: `recentre_on_road` *fitted* our line to `ROADHAT`. That control shows the two are
+self-consistent; it cannot show `ROADHAT` is complete. So the question stayed open.
+
+**Texture census under Monza's 496 rejected records** (nearest track-mesh triangle): `grass` 220
+(44.4 %), `groove` 151 (30.4 %), `aspgrs` 51 (10.3 %), `shrub_s` 28, `concrete` 9, `twinarm` 7,
+`shrub_e` 5, `armco_s` 2, `asphalt` 1, `yarmc_s` 1. `ROADHAT` already contains
+groove/aspgrs/asphalt/concrete — Monza's 4537 road tris are *exactly* those plus sgrid/aspgrsr — so a
+road-ish name here does **not** mean the filter is incomplete. It means the point is merely NEAR road,
+because the census names the nearest triangle, not the containing one. Stated as a limitation of the
+instrument rather than glossed.
+
+**The measurement that settles it — distance from a rejected record to the nearest road:**
+
+> **p50 1.50 m, p90 2.50 m, max 3.25 m, and 0 of 496 with no road within 20 m.**
+
+So GPL's Monza line is never off in any meaningful sense. It is **systematically displaced by about
+1.5–3 m**, which on a ~10 m road fails a binary on/off test at the edges while being nowhere near the
+grass. Monza's re-centre shift is 5.0 m, so this is the uncorrected residual of exactly that shift —
+confirming S3's root cause while correcting its language.
+
+**Two consequences for when E107 comes back round:**
+1. **Apply the re-centre shift** (`RECENTRE_SHIFT`, recorded and currently unused for this purpose)
+   when placing GPL's records, and score both arms by the distance metric above rather than the binary
+   one. A 1.5 m median displacement is exactly the size of error a shift correction should remove.
+2. **The 95 % binary road bar is the wrong acceptance test** and should become graded — e.g. p90
+   distance-to-road under ~1 m. A binary test cannot distinguish "2 m off the edge" from "in the
+   trees", and those call for opposite decisions.
+
+**ROTATING to E108** per the PO's four-sprint rule. E107 state: GPL's dlat spring/damper shipped and
+gated (S1); Monza's refusal diagnosed as a band problem, not a mapping one (S2); GPL's corridor shipped
+and Watkins Glen now accepting GPL's line (S3); the residual displacement measured at 1.5–3 m with the
+fix identified (S4). Zandvoort and Watkins Glen accept GPL's line; Monza, Spa and the Ring refuse it
+and keep ours, which is safe and is now refused for a measured reason rather than a guessed bar.
