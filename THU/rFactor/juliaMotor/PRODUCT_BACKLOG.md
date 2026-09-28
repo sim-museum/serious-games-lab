@@ -20501,3 +20501,47 @@ subdivision cannot worsen.
 self-validates; ROADCURVE demonstrably halves edge chord length on all three tracks and cuts Spa's p99
 sagitta 37 %; the absolute level at Watkins Glen and Monza is under-sampled and unproven. **Whether the
 white line still reads as faceted is now a question for the PO's eye, not another metric.**
+
+---
+
+### E109-S1 — the Ring's tree curtains FOUND and NAMED: `halftr*`, in the drawn scenery only (sprint 1 of 4)
+
+PO 2026-09-26: *"there are tree 'curtains' across the road in several places, such that you have to drive
+through the curtain before you can see anything on the other side. There are also individual trees that
+intrude into the road without blocking the whole road."*
+
+**FOUND. 40 places on the Nürburgring where drawn scenery spans the road**, textured `halftr01`, `halftr02`,
+`halftr04`, `halftr05`, `halftr1s` — "half tree" panels — covering **5.7 m to the full 11.0 m** of the
+11 m corridor. Densest at s≈5535–5730 and s≈6855–7130 m, then scattered (8350, 9420, 16325, 18610, 19525…).
+And separately, the PO's *second* defect is a different object: `shrub_s`/`shrub_a` intrude at 364 stations
+but by **at most 1.25 m**, poking in from the verge — trees that intrude without blocking, exactly as
+described.
+
+**Why nothing found this before.** `gpl_scenery` returns the Ring's `.dat` sub-objects TWICE: `SECTRI` for
+collision (which is what `TRACKMESH` carries) and `SECPARTS` for drawing. The curtains are in **`SECPARTS`
+only** — drawn but not collidable. Every mesh-based census looked at `TRACKMESH` and correctly reported
+**zero** curtains. "You have to drive through the curtain before you can see anything" is a complaint about
+what is DRAWN, and the drawn copy was never being examined.
+
+**A MIS-ATTRIBUTION OF MY OWN, CORRECTED.** All session I recorded `road_clear_smoke`'s failure as
+"pre-existing Ring shrubs". It is not. That gate **cannot run in this environment at all**: both its arms
+(`JM_ROADSWEEP`, `JM_SWEEP`) sit at ~line 8256, long after `GLFW.Init` at 4203, so with no GL context the
+sim dies on `GLXBadFBConfig` before either prints anything and the gate reports "load failed". Its failure
+has said nothing about Ring trees for the whole session. This is precisely the fault the codebase already
+banked as *"headless hooks must exit"* (`JM_CENSUS_EXIT`, NOSE-1 S5) — and the count silently went 1 → 2
+mid-session without my noticing, because I was reading the verdict instead of the log.
+
+**Shipped:** `JM_ROADBLOCK=<corridor half-width>` — a census that runs **before any window**, examines the
+track mesh, the drawn scenery and the 1814 sprites, and classifies per 5 m station by the UNION of lateral
+spans, because a curtain is several ~3 m tree panels side by side and no single triangle spans the
+centreline (classifying per triangle reported 0 curtains against 6337 intrusions). `JM_ROADBLOCK_H` = how
+far above the road a surface must reach (1.5 m), `JM_ROADBLOCK_LOW` = how far down it must come (3.0 m) —
+the second test being what separates a curtain from a **bridge**: the first run listed
+`br_under+bridge+grass` at s=5790 covering the full 11 m, which is a bridge doing its job. With it, 59
+bins → 43.
+
+**Sprint 2 (next on E109):** decide the fix. The `halftr*` panels are legitimate GPL scenery placed at
+plausible positions, so the question is whether our placement convention puts them across the road when
+GPL's does not — the standing lead is the code's own note that the Ring's in-place veils are *"authored
+around, not at, the origin"*, which a yaw-only `placemat` mis-applies. Compare a `halftr*` instance's
+authored geometry against where we draw it before touching anything.

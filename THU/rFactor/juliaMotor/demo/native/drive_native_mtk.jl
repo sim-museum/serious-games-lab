@@ -1904,6 +1904,161 @@ else
         end
         mesh_ground(x, z)
     end
+    # E109-S1 (PO 2026-09-26, Nurburgring: "there are tree 'curtains' across the road in several places,
+    # such that you have to drive through the curtain before you can see anything on the other side. There
+    # are also individual trees that intrude into the road without blocking the whole road.")
+    #
+    # WHY A NEW CENSUS. The existing instrument for this, `road_clear_smoke`, CANNOT RUN HEADLESS: its two
+    # arms (JM_ROADSWEEP, JM_SWEEP) sit at ~line 8256, long after GLFW.Init at 4203, so without a GL
+    # context the sim dies before either prints anything and the gate reports "load failed". That is the
+    # fault the codebase already banked as "headless hooks must exit" (see JM_CENSUS_EXIT / NOSE-1 S5) --
+    # and it means the gate's failure all this session has said nothing whatever about Ring trees.
+    # This census runs HERE, before any window, on TRACKMESH -- which already includes SECTRI, the .dat
+    # sub-objects the Ring's scenery (and its veils) arrive as.
+    #
+    # WHAT A CURTAIN IS, geometrically: a NEAR-VERTICAL surface whose lateral span crosses the road and
+    # which stands well above it. A tree that merely intrudes covers part of the corridor; a curtain
+    # covers the middle. So each qualifying triangle is classified by whether its lateral span contains
+    # the centreline, and the two are counted separately, because the PO reported them as two defects.
+    # JM_ROADBLOCK=<corridor half-width m> (default 5.5); JM_ROADBLOCK_H = how far above the road a
+    # surface must reach to count (default 1.5 m, about eye height in a Lotus 49).
+    if haskey(ENV, "JM_ROADBLOCK")
+        rb_lat = (v = tryparse(Float64, get(ENV, "JM_ROADBLOCK", "")); v === nothing || v <= 0 ? 5.5 : v)
+        rb_h   = parse(Float64, get(ENV, "JM_ROADBLOCK_H", "1.5"))
+        # A surface must also come DOWN toward the road to be a curtain. A bridge deck spans the whole
+        # corridor too, and you drive under it: the first run of this census listed
+        # `br_under+bridge+grass` at s=5790 covering the full 11 m, which is a bridge doing its job.
+        # Requiring the geometry to reach below rb_low separates "blocks the view ahead" from "passes
+        # overhead". JM_ROADBLOCK_LOW overrides.
+        rb_low = parse(Float64, get(ENV, "JM_ROADBLOCK_LOW", "3.0"))
+        # A curtain is not one triangle. A tree quad is ~3 m wide, so a curtain you must drive THROUGH is
+        # several of them side by side, and no single triangle spans the centreline -- classifying per
+        # triangle reported 0 curtains against 6337 intrusions on a track where the PO describes curtains.
+        # So intervals are collected per lap-distance BIN and their union is what gets classified.
+        rb_bin = parse(Float64, get(ENV, "JM_ROADBLOCK_BIN", "5.0"))
+        spans = Dict{Int,Vector{Tuple{Float64,Float64,String}}}()
+        nv = Ref(0)
+        for t in TRACKMESH.tris
+            # near-vertical: the normal's vertical component is small
+            n1 = (t.p[2][1]-t.p[1][1], t.p[2][2]-t.p[1][2], t.p[2][3]-t.p[1][3])
+            n2 = (t.p[3][1]-t.p[1][1], t.p[3][2]-t.p[1][2], t.p[3][3]-t.p[1][3])
+            nx = n1[2]*n2[3]-n1[3]*n2[2]; ny = n1[3]*n2[1]-n1[1]*n2[3]; nz = n1[1]*n2[2]-n1[2]*n2[1]
+            nn = sqrt(nx^2 + ny^2 + nz^2)
+            (nn > 1e-6 && abs(nz)/nn < 0.35) || continue          # horizontal-ish: that is JM_OVERROAD's job
+            nv[] += 1
+            lats = Float64[]; hs = Float64[]; sds = Float64[]
+            ok = true
+            for q in t.p
+                hr = JuliaMotor.hat(RIBBON0, Float64(q[1]), Float64(q[2]))
+                hr.found || (ok = false; break)
+                push!(lats, hr.lateral); push!(hs, Float64(q[3]) - hr.height); push!(sds, hr.lapdist)
+            end
+            ok || continue
+            (maximum(hs) >= rb_h && minimum(hs) <= rb_low) || continue   # too low to block, or passes overhead
+            lo, hi = minimum(lats), maximum(lats)
+            (hi < -rb_lat || lo > rb_lat) && continue              # entirely off to one side
+            push!(get!(spans, floor(Int, sds[1]/rb_bin), Tuple{Float64,Float64,String}[]),
+                  (max(lo, -rb_lat), min(hi, rb_lat), lowercase(t.tex)))
+        end
+        # SPRITES TOO, and this is the point of the census. The Ring draws 1814 camera-facing billboards,
+        # and a billboard that always turns to face you reads exactly as the PO's "curtain ... you have to
+        # drive through before you can see anything on the other side" -- while appearing nowhere in the
+        # track MESH, which is why the mesh pass above finds 0 curtains. A sprite is counted as a panel of
+        # its own width centred on its position; its yaw is deliberately ignored, because a camera-facing
+        # sprite has no fixed yaw and presents its full width from any approach.
+        nsp = Ref(0)
+        if isdefined(Main, :RINGSPRITES) && RINGSPRITES !== nothing
+            for sp in RINGSPRITES
+                # sprite x/y/z are the RENDER frame (x, up, z); the HAT's horizontal pair is (x, -z)
+                hr = JuliaMotor.hat(RIBBON0, Float64(sp.x), -Float64(sp.z))
+                hr.found || continue
+                (Float64(sp.y) + Float64(sp.h) - hr.height >= rb_h &&
+                 Float64(sp.y) - hr.height <= rb_low) || continue   # too short to block, or hangs overhead
+                half = Float64(sp.w)/2
+                lo = hr.lateral - half; hi = hr.lateral + half
+                (hi < -rb_lat || lo > rb_lat) && continue
+                nsp[] += 1
+                push!(get!(spans, floor(Int, hr.lapdist/rb_bin), Tuple{Float64,Float64,String}[]),
+                      (max(lo, -rb_lat), min(hi, rb_lat), "sprite:" * lowercase(String(sp.name))))
+            end
+        end
+        # SECPARTS -- the DRAWN scenery -- as well. gpl_scenery returns two copies of the Ring's .dat
+        # sub-objects: SECTRI for collision (which is what TRACKMESH carries, and what the mesh pass above
+        # examined) and SECPARTS for rendering. If a veil is drawn but left out of the collision copy, the
+        # mesh pass cannot see it however carefully it looks -- and "you have to drive through the curtain
+        # before you can see anything" is a complaint about what is DRAWN, not about what is solid.
+        nsc = Ref(0); ntri_sec = Ref(0)
+        if isdefined(Main, :SECPARTS) && SECPARTS !== nothing
+            for prt in SECPARTS
+                v = prt.verts; n = length(v) ÷ 11
+                for q in 0:(n ÷ 3 - 1)                    # one triangle at a time
+                    lats = Float64[]; hs = Float64[]; sds = Float64[]; ok = true
+                    for c in 0:2
+                        k = 11*(3q + c)
+                        vx = Float64(v[k+1]); vy = Float64(v[k+2]); vz = Float64(v[k+3])
+                        hr = JuliaMotor.hat(RIBBON0, vx, -vz)
+                        hr.found || (ok = false; break)
+                        push!(lats, hr.lateral); push!(hs, vy - hr.height); push!(sds, hr.lapdist)
+                    end
+                    ok || continue
+                    ntri_sec[] += 1
+                    (maximum(hs) >= rb_h && minimum(hs) <= rb_low) || continue
+                    lo, hi = minimum(lats), maximum(lats)
+                    (hi < -rb_lat || lo > rb_lat) && continue
+                    nsc[] += 1
+                    push!(get!(spans, floor(Int, sds[1]/rb_bin), Tuple{Float64,Float64,String}[]),
+                          (max(lo, -rb_lat), min(hi, rb_lat), "drawn:" * lowercase(String(prt.tex))))
+                end
+            end
+        end
+        # union of the intervals in one bin, as a merged list, plus its total covered width
+        function rb_union(v)
+            iv = sort([(a, b) for (a, b, _) in v]); out = Tuple{Float64,Float64}[]
+            for (a, b) in iv
+                (isempty(out) || a > out[end][2] + 1e-9) ? push!(out, (a, b)) :
+                    (out[end] = (out[end][1], max(out[end][2], b)))
+            end
+            (out, sum(b - a for (a, b) in out; init = 0.0))
+        end
+        curtain = Tuple{Float64,Float64,String}[]; partial = Tuple{Float64,Float64,String}[]
+        for (k, v) in spans
+            u, w = rb_union(v)
+            covers0 = any(a <= 0.0 <= b for (a, b) in u)
+            tex = join(sort(unique(t for (_, _, t) in v)), "+")
+            (covers0 ? curtain : partial) === curtain ?
+                push!(curtain, (k*rb_bin, w, tex)) : push!(partial, (k*rb_bin, w, tex))
+        end
+        sort!(curtain, by = first); sort!(partial, by = x -> -x[2])
+        println("  [roadblock] track=", TRACKSEL, " corridor |lat| <= ", rb_lat, " m, must reach ", rb_h,
+                " m above the road; ", nv[], " near-vertical track-mesh triangles examined, ",
+                length(spans), " bins of ", rb_bin, " m touched; ", nsp[], " sprite panel(s) reach the corridor; of ", ntri_sec[],
+                " DRAWN scenery triangles near the ribbon, ", nsc[], " reach it")
+        println("  [roadblock] CURTAINS -- the union covers the CENTRELINE, so the car must drive through: ",
+                length(curtain), " bin(s)")
+        # group consecutive bins into places, which is what the PO counts
+        let places = Tuple{Float64,Float64,Float64,String}[]
+            for (sv, w, tx) in curtain
+                if !isempty(places) && sv - places[end][2] <= 2*rb_bin + 1e-9
+                    places[end] = (places[end][1], sv, max(places[end][3], w), places[end][4])
+                else
+                    push!(places, (sv, sv, w, tx))
+                end
+            end
+            println("     ", length(places), " place(s):")
+            for (s0, s1, w, tx) in places[1:min(20, end)]
+                println("       s=", lpad(round(Int, s0), 7), "..", rpad(round(Int, s1 + rb_bin), 7),
+                        " m  widest cover ", lpad(round(w, digits=2), 5), " m of the ", 2*rb_lat,
+                        " m corridor   ", tx)
+            end
+        end
+        println("  [roadblock] PARTIAL intrusions (widest first), ", length(partial), " bin(s):")
+        for (sv, w, tx) in partial[1:min(10, end)]
+            println("       s=", lpad(round(Int, sv), 7), " m  covers ", lpad(round(w, digits=2), 5), " m   ", tx)
+        end
+        println("ROADBLOCK_RESULT track=", TRACKSEL, " curtain_bins=", length(curtain),
+                " partial_bins=", length(partial))
+        flush(stdout); exit(0)      # headless hooks must exit -- see NOSE-1 S5 / JM_CENSUS_EXIT
+    end
     # diag JM_OVERROAD=1: every track-mesh triangle whose centroid is over the road corridor (|lat| < 7 m) and
     # > 2.5 m above the road there -- bridges, gantries, and any stray polygon hanging over the track. Exits.
     if get(ENV, "JM_OVERROAD", "0") != "0"
