@@ -20364,3 +20364,37 @@ taking the outermost, probably by clustering lateral per side; (b) the p99 colum
 every track, which is the polyline hopping between disjoint strip pieces rather than a real corner, so
 the 40 m chord filter needs replacing with proper strip segmentation; (c) only then tune
 `JM_ROADCURVE_TOL` against a trustworthy p90/p99.
+
+### E108-S2 — the plan-view ruler made sound; the white line's bulge measured in METRES (sprint 2 of 4)
+
+S1's ruler left Watkins Glen UNMEASURED and a p99 column of 92–115° that was polyline artefact, not road.
+Both are fixed, by abandoning polyline reconstruction altogether.
+
+**FIVE measures were tried. Recording all five, because four of them were wrong in instructive ways:**
+
+| # | measure | why it failed |
+|---|---|---|
+| (a) | turn angle, vertices bucketed by lap distance | interleaves the strip's TWO rows (inner/outer edge of the white line, ~0.2 m apart): 90° medians at 0.3 m spacing — **and the gate passed on it** |
+| (b) | outermost vertex per lap bin, keyed by side | hops between CONCENTRIC strips (WG has a curb outboard of the white line) → WG unmeasurable |
+| (c) | as (b), keyed by (side, texture), outer row only | raw arm came good, but ROADCURVE inserts midpoints at INTERMEDIATE laterals, so the treatment row stayed jumpy; a tight lateral tolerance cut Monza to 13 nodes |
+| (d) | angle between chord and ribbon tangent at the chord's MIDPOINT | geometrically backwards — a chord of an arc is parallel to its own mid-tangent, so the angle → 0 as the chord grows. It *rewarded* coarse tessellation: 0.61° raw vs 1.97° subdivided |
+| (e) | **SAGITTA**: max perpendicular distance from the ribbon's curve to the drawn chord, over the chord's lap span | **works.** In metres, grows as L²/8R, shrinks with subdivision, needs nothing ordered |
+
+**FIRST METRIC NUMBERS for "polygon corners you can see at the white boundary":**
+
+| track | raw `.3do` p50 / p90 / p99 | ROADCURVE p50 / p90 / p99 | chord p50 | chords |
+|---|---|---|---|---|
+| Watkins Glen | 0.139 / 0.334 / **1.152 m** | 0.085 / 0.170 / 0.460 m | 14.12 → 4.93 m | 980 → 5980 |
+| Monza | 0.106 / 0.323 / 0.942 m | 0.073 / 0.145 / 0.312 m | 16.34 → 8.00 m | 452 → 2143 |
+| Spa | 0.099 / 0.282 / 0.672 m | 0.047 / 0.134 / 0.355 m | 12.30 → 6.53 m | 4207 → 9495 |
+
+So the raw white line bulges up to **1.15 m** off the curve it should follow, ROADCURVE roughly halves
+that, **and 0.13–0.17 m at p90 survives** — which on a white line at the edge of the road is exactly what
+the PO can see. The defect is real, it is partly fixed, and it now has a number.
+
+**Note:** the `max` column is *identical* in both arms on all three tracks (1.559 / 1.065 / 1.368 m), so
+the very worst chords are ones ROADCURVE never splits at all — outside its `maxlat`, or exempted as
+overhead. Worth its own look.
+
+**Sprint 3 (next on E108):** tune `JM_ROADCURVE_TOL` (0.05 m today) against the p90 sagitta rather than
+against nothing, measuring the triangle cost; and find out why the worst chords are never split.

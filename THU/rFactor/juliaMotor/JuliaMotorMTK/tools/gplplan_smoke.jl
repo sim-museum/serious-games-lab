@@ -49,50 +49,72 @@ function load(dir, nm)
     (trk = getf(nm*".trk"), mesh = getf(nm*".3do"))
 end
 
-"""Turn angles of the road-edge strip, in plan.
+"""SAGITTA of the drawn road edge against a smooth curve, per edge chord, in METRES -- no polyline
+reconstruction, no vertex ordering, and no bias from chord length.
 
-FIRST ATTEMPT WAS WRONG AND THE GATE PASSED ANYWAY, which is the worse failure: it bucketed the strip's
-vertices by lap distance alone. But a white-line strip is TWO rows of vertices, its inner and outer edge
-~0.2 m apart, so ordering by lap distance interleaves them and consecutive "nodes" zig-zag across the
-stripe -- reported as a median turn of 90 deg at 0.3 m spacing, which is impossible for a road edge and
-should have been caught by reading the number rather than the verdict.
+FOUR EARLIER MEASURES FAILED, and recording why is the point of this comment:
+ (a) turn angle from vertices bucketed by lap distance -- interleaves the strip's two rows (inner and
+     outer edge of the white line, ~0.2 m apart): 90 deg medians at 0.3 m spacing, and the gate PASSED;
+ (b) outermost vertex per lap bin, keyed by side -- hops between CONCENTRIC strips (Watkins Glen has a
+     curb outboard of the white line), leaving that track unmeasurable;
+ (c) as (b) but keyed by (side, texture) and restricted to the outer row -- the raw arm came good, but
+     ROADCURVE inserts midpoints at INTERMEDIATE laterals, so the treatment row stayed jumpy, and a tight
+     lateral tolerance cut Monza to 13 usable nodes;
+ (d) angle between each chord and the ribbon tangent at the chord's MIDPOINT -- geometrically backwards.
+     A chord of an arc is parallel to its own mid-tangent, so that angle tends to ZERO as the chord gets
+     LONGER. It rewarded coarse tessellation: it read 0.61 deg for the raw mesh and 1.97 deg for the
+     subdivided one.
 
-So: per side of the road, bin the lap distance and keep the OUTERMOST vertex in each bin. That is the
-boundary a driver actually sees, and it is one polyline per side by construction."""
-function edge_turns(mesh, ribbon; bin = 1.0)
-    per = Dict{Int,Dict{Int,Tuple{Float64,Float64,Float64}}}()   # side => lap bin => (|lat|, x, z)
+WHAT IS MEASURED HERE. For each longitudinal chord of the strip, walk the ribbon's own curve across the
+chord's lap-distance span at the chord's lateral offset, and take the greatest perpendicular distance from
+that curve to the chord. That is the sagitta: the gap between the straight edge we DRAW and the curve the
+road actually follows -- which is exactly the bulge a driver sees as a polygon corner. It grows as the
+chord grows (L^2/8R) and shrinks with subdivision, it is in metres, and it needs nothing ordered."""
+function edge_devs(mesh, ribbon; latsame = 0.5, minlen = 1.0, nsamp = 8)
+    npos = length(ribbon.pos); ld = ribbon.lapdist; lap = ribbon.lap_length
+    "world point on the ribbon at lap distance sv, offset `lat` along the local normal"
+    function at(sv, lat)
+        i = clamp(searchsortedlast(ld, mod(sv, lap)), 1, npos)
+        send = i == npos ? lap : ld[i+1]
+        f = (mod(sv, lap) - ld[i]) / max(send - ld[i], 1e-9)
+        j = mod1(i+1, npos); pa = ribbon.pos[i]; pb = ribbon.pos[j]; q = ribbon.perp[i]
+        (pa[1] + (pb[1]-pa[1])*f + lat*q[1], pa[3] + (pb[3]-pa[3])*f + lat*q[3])
+    end
+    dev = Float64[]; len = Float64[]
+    seen = Set{NTuple{4,Int}}()
     for t in mesh.tris
         isedge(t.tex) || continue
-        for q in t.p
-            x = Float64(q[1]); z = Float64(q[2])
-            hr = JuliaMotor.hat(ribbon, x, z)
-            hr.found || continue
-            abs(hr.lateral) < 2.0 && continue          # the centre groove is not an edge strip
-            side = sign(hr.lateral) > 0 ? 1 : -1
-            d = get!(per, side, Dict{Int,Tuple{Float64,Float64,Float64}}())
-            k = floor(Int, hr.lapdist / bin)
-            cur = get(d, k, nothing)
-            (cur === nothing || abs(hr.lateral) > cur[1]) && (d[k] = (abs(hr.lateral), x, z))
+        h = Vector{Any}(undef, 3)
+        for k in 1:3
+            x = Float64(t.p[k][1]); z = Float64(t.p[k][2])
+            r = JuliaMotor.hat(ribbon, x, z)
+            h[k] = (r.found && abs(r.lateral) >= 2.0) ? (r.lapdist, r.lateral, x, z) : nothing
+        end
+        for (k1, k2) in ((1,2), (2,3), (3,1))
+            a = h[k1]; b = h[k2]
+            (a === nothing || b === nothing) && continue
+            abs(abs(a[2]) - abs(b[2])) > latsame && continue        # a cross-track edge, not longitudinal
+            sign(a[2]) == sign(b[2]) || continue                    # spans the road: not an edge chord
+            cx = round(Int, a[3]*100); cz = round(Int, a[4]*100)
+            dx = round(Int, b[3]*100); dz = round(Int, b[4]*100)
+            key = (cx, cz, dx, dz) < (dx, dz, cx, cz) ? (cx, cz, dx, dz) : (dx, dz, cx, cz)
+            key in seen && continue
+            push!(seen, key)
+            ex = b[3]-a[3]; ez = b[4]-a[4]; L = hypot(ex, ez)
+            (L < minlen || L > 60.0) && continue
+            sa = a[1]; sb = b[1]
+            abs(sb - sa) > lap/2 && continue                        # spans the start/finish wrap
+            lat = (a[2] + b[2])/2
+            worst = 0.0
+            for k in 1:nsamp-1
+                q = at(sa + (sb-sa)*k/nsamp, lat)
+                # perpendicular distance from the ribbon point to the drawn chord
+                worst = max(worst, abs((q[1]-a[3])*ez - (q[2]-a[4])*ex) / L)
+            end
+            push!(dev, worst); push!(len, L)
         end
     end
-    ang = Float64[]; spacing = Float64[]
-    for (_, d) in per
-        ks = sort(collect(keys(d)))
-        length(ks) < 3 && continue
-        for i in 2:length(ks)-1
-            # NOT "consecutive bins". The strip's own nodes are 9-18 m apart, so with a 1 m bin almost
-            # no two populated bins are adjacent -- requiring adjacency left 7 nodes at Watkins Glen and
-            # 0 at Monza. Take the kept vertices in lap order and reject a triple only when a chord is
-            # so long that the strip must be interrupted (pit entry, a bridge).
-            a = d[ks[i-1]]; b = d[ks[i]]; c = d[ks[i+1]]
-            ax = b[2]-a[2]; az = b[3]-a[3]; bx = c[2]-b[2]; bz = c[3]-b[3]
-            la = hypot(ax, az); lb = hypot(bx, bz)
-            (la < 1e-6 || lb < 1e-6 || la > 40.0 || lb > 40.0) && continue
-            cs = clamp((ax*bx + az*bz)/(la*lb), -1.0, 1.0)
-            push!(ang, rad2deg(acos(cs))); push!(spacing, la)
-        end
-    end
-    (ang = ang, spacing = spacing)
+    (ang = dev, spacing = len)
 end
 
 const fails = Ref(0); const checks = Ref(0)
@@ -119,12 +141,12 @@ function main()
         length(P) > 2 && hypot(P[end][1]-P[1][1], P[end][2]-P[1][2]) < 0.5 && (pop!(P); pop!(HS))
         q = rib.perp[1]
         cur, _ = RoadCurve.curve_mesh(raw, P, (q[1], q[3]); tol = 0.05, sig = 2.0, heights = HS)
-        c = edge_turns(raw, rib)
-        t = edge_turns(cur, rib)
+        c = edge_devs(raw, rib)
+        t = edge_devs(cur, rib)
         @printf("\n== %s: .trk lap %.0f m, %d edge nodes sampled\n", name, ta.total, length(c.ang))
         for (nm, r) in (("raw .3do (control)", c), ("ROADCURVE (shipped)", t))
             isempty(r.ang) && (println("   ", nm, ": no edge strip found"); continue)
-            @printf("   %-20s turn/node p50 %5.2f p90 %6.2f p99 %6.2f max %6.2f deg   node spacing p50 %5.2f p90 %6.2f m   %d nodes\n",
+            @printf("   %-20s sagitta p50 %5.3f p90 %6.3f p99 %6.3f max %6.3f m   chord len p50 %5.2f p90 %6.2f m   %d chords\n",
                     nm, pct(r.ang,0.5), pct(r.ang,0.9), pct(r.ang,0.99), maximum(r.ang),
                     pct(r.spacing,0.5), pct(r.spacing,0.9), length(r.ang))
         end
@@ -134,8 +156,8 @@ function main()
         # interleaved, which is exactly how the first version of this file reported nonsense AND PASSED.
         # A track that fails this is reported UNMEASURED rather than judged: its numbers mean nothing, and
         # asserting on them would be worse than asserting nothing.
-        if !(pct(c.ang, 0.5) < 15.0 && pct(t.ang, 0.5) < 15.0)
-            @printf("  ---   UNMEASURED: %s -- the edge polyline is still mis-ordered (median turn %.2f / %.2f deg,\n",
+        if !(pct(c.ang, 0.5) < 1.0 && pct(t.ang, 0.5) < 1.0)
+            @printf("  ---   UNMEASURED: %s -- the sagittas are implausible (median %.3f / %.3f m,\n",
                     name, pct(c.ang, 0.5), pct(t.ang, 0.5))
             println("        which a road edge cannot do). Its texture set is ", join(sort(unique(lowercase(t2.tex) for t2 in raw.tris if isedge(t2.tex))), " "),
                     " -- probably two concentric strips on one side (curb outside the white line), so")
@@ -143,12 +165,12 @@ function main()
             push!(unmeasured, name)
             continue
         end
-        ck(pct(c.ang, 0.99) > 5.0, "premise: the raw edge really does kink",
-           @sprintf("p99 %.2f deg > 5", pct(c.ang, 0.99)))
-        ck(pct(t.ang, 0.5) <= pct(c.ang, 0.5) + 1e-9, "ROADCURVE straightens the edge at the median",
-           @sprintf("%.2f <= %.2f deg per node", pct(t.ang, 0.5), pct(c.ang, 0.5)))
-        ck(pct(t.spacing, 0.5) <= pct(c.spacing, 0.5) + 1e-9, "ROADCURVE tessellates at least as finely",
-           @sprintf("median node spacing %.2f <= %.2f m", pct(t.spacing, 0.5), pct(c.spacing, 0.5)))
+        ck(pct(c.ang, 0.9) > 0.05, "premise: the raw edge really does depart from the curve",
+           @sprintf("p90 sagitta %.3f m > 0.05", pct(c.ang, 0.9)))
+        ck(pct(t.ang, 0.9) <= pct(c.ang, 0.9) + 1e-9, "ROADCURVE cuts the edge's sagitta",
+           @sprintf("p90 %.3f <= %.3f m", pct(t.ang, 0.9), pct(c.ang, 0.9)))
+        ck(pct(t.spacing, 0.5) <= pct(c.spacing, 0.5) + 1e-9, "ROADCURVE shortens the edge chords",
+           @sprintf("median chord %.2f <= %.2f m", pct(t.spacing, 0.5), pct(c.spacing, 0.5)))
     end
     println()
     isempty(unmeasured) || println("UNMEASURED tracks (instrument, not the road): ", join(unmeasured, " "))
