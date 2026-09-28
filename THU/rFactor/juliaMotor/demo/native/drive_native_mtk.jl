@@ -8690,6 +8690,44 @@ function main()
                             hr.found ? hr.lateral : d
                         end
                         corr(v) = [gpl_to_ours(v[i], i) for i in 1:min(nrec, length(v))]
+                        # E107-S3: the WORLD point of a GPL record, so the accepted line can be checked
+                        # against the road-only HAT rather than against a lateral bar. This is the
+                        # load-bearing test: widening the band to GPL's corridor is only safe if GPL's
+                        # line and rails actually sit on tarmac in OUR world.
+                        function gpl_world(dlat, i)
+                            t = (i-1)/nrec * lenA
+                            k = clamp(searchsortedlast(sA, t), 1, nA); j = k % nA + 1
+                            f = (t - sA[k]) / max((j == 1 ? lenA : sA[j]) - sA[k], 1e-6)
+                            px = A0[k][1] + (A0[j][1]-A0[k][1])*f; pz = A0[k][2] + (A0[j][2]-A0[k][2])*f
+                            tx = A0[j][1]-A0[k][1]; tz = A0[j][2]-A0[k][2]; tl = max(hypot(tx,tz), 1e-9)
+                            d = sgn*dlat
+                            (px - tz/tl*d, pz + tx/tl*d)
+                        end
+                        function onroad_frac(v)
+                            m = min(nrec, length(v)); m == 0 && return (1.0, 0)
+                            n_off = 0
+                            for i in 1:m
+                                q = gpl_world(v[i], i)
+                                JuliaMotor.hat3d(ROADHAT, q[1], q[2]; ref = Inf)[3] || (n_off += 1)
+                            end
+                            (1.0 - n_off/m, n_off)
+                        end
+                        # E107-S3: GPL's own CORRIDOR, minrace.lp/maxrace.lp, mapped through the same
+                        # reconciliation as the line. See ai.jl GPLBAND for the measurement that
+                        # motivated it (our fixed +-3.8 m is too wide where GPL pinches to 2.87 m and
+                        # far too narrow where GPL opens to 21.16 m).
+                        lpmn = joinpath(ZD, "minrace.lp"); lpmx = joinpath(ZD, "maxrace.lp")
+                        bnd_lo = nothing; bnd_hi = nothing
+                        if isfile(lpmn) && isfile(lpmx)
+                            try
+                                bnd_lo = corr(Float64.(GPLLP.read_lp(lpmn).dlat))
+                                bnd_hi = corr(Float64.(GPLLP.read_lp(lpmx).dlat))
+                            catch e
+                                println("  AI racing LINE: minrace/maxrace unreadable (", sprint(showerror, e),
+                                        ") -- keeping the fixed band")
+                                bnd_lo = nothing; bnd_hi = nothing
+                            end
+                        end
                         cr, c1, c2 = corr(gr), corr(g1), corr(g2)
                         # SELF-VALIDATING, because the frame reconciliation cannot be assumed: GPL's dlat is
                         # measured from ITS centreline and ours is re-centred on the visible road by up to
@@ -8699,16 +8737,115 @@ function main()
                         # MEASURED at Watkins Glen: mapping by lap fraction put 192 of 1252 records beyond
                         # 4.5 m; placing each record on GPL's own reference line and reading the lateral
                         # back through hat() puts 85 there. JM_AI_GPLLAT_TOL sets the bar.
-                        _off = count(x -> abs(x) > 4.5, cr) / length(cr)
+                        # E107-S3 REPLACES the old bar. It asked "does the mapped line land within 4.5 m
+                        # of OUR centreline", which refused Monza at 49.4% -- and S2 showed that was GPL's
+                        # own line being legitimately 4.5-13.4 m wide for ~1400 m, corroborated by
+                        # minrace/maxrace bracketing it at 514 of 514 records. A bar set by our own band
+                        # cannot judge GPL's line. The right question is whether the mapping is
+                        # SELF-CONSISTENT: does the mapped race line still sit inside the mapped corridor?
+                        # Measured on the raw files, race.lp is inside GPL's corridor on 100% of records at
+                        # Zandvoort, Monza and the Ring, 98.3% at Watkins Glen and 96.7% at Spa, so a
+                        # mapping that preserves that is faithful and one that breaks it is not.
+                        # Where the corridor is missing there is nothing to check against, so the old
+                        # centreline bar still applies -- named separately so the log says which ran.
                         _tol = parse(Float64, get(ENV, "JM_AI_GPLLAT_TOL", "0.02"))
-                        if _off > _tol
-                            println("  AI racing LINE: GPL's line REFUSED on ", TRACKSEL, " -- ",
-                                    round(100*_off, digits=1), "% of its records map beyond 4.5 m of our",
-                                    " centreline (bar ", round(100*_tol, digits=1), "%), so the frame",
-                                    " reconciliation is not good enough here; keeping our own racing line.",
-                                    " JM_AI_GPLLAT_TOL raises the bar, JM_AI_GPLLAT=0 disables outright.")
+                        _refuse = false
+                        # E107-S3, THE LOAD-BEARING TEST. The corridor-containment test below is
+                        # invariant to a BULK OFFSET of the whole mapping, which is precisely Monza's
+                        # failure mode (re-centre shift mean 5.0 m): it passes Monza at 100 % while a
+                        # quarter of the mapped line sits on grass. So the decision also requires the
+                        # mapped line to be ON THE ROAD, measured against ROADHAT -- the same road-only
+                        # mesh the align/recentre oracle uses.
+                        # ROADHAT is trustworthy here, which is checked and not assumed: OUR racing line
+                        # scores 99.6 % on it at Monza and 100.0 % at Spa (control arm below).
+                        _rd = 1.0
+                        if ROADHAT !== TERRAIN0
+                            _rd = onroad_frac(Float64.(GPLLP.read_lp(lp).dlat))[1]
+                            _rdtol = parse(Float64, get(ENV, "JM_AI_GPLROAD_TOL", "0.95"))
+                            if _rd < _rdtol
+                                _refuse = true
+                                println("  AI racing LINE: GPL's line REFUSED on ", TRACKSEL, " -- only ",
+                                        round(100*_rd, digits=1), "% of the mapped line lands on the road-only",
+                                        " mesh (bar ", round(100*_rdtol, digits=1), "%). The mapping, not GPL's",
+                                        " data: GPL's own minrace/maxrace bracket its race line, so the line is",
+                                        " sound and our reconciliation is what puts it on the grass.",
+                                        " JM_AI_GPLROAD_TOL lowers the bar, JM_AI_GPLLAT=0 disables outright.")
+                            end
+                        end
+                        if bnd_lo !== nothing && bnd_hi !== nothing
+                            _m = min(length(cr), length(bnd_lo), length(bnd_hi))
+                            _in = count(k -> min(bnd_lo[k], bnd_hi[k]) - 1e-6 <= cr[k] <= max(bnd_lo[k], bnd_hi[k]) + 1e-6, 1:_m)
+                            _out = 1.0 - _in/_m
+                            _btol = parse(Float64, get(ENV, "JM_AI_GPLBAND_TOL", "0.05"))
+                            println("  AI racing LINE: mapped race line inside GPL's own mapped corridor at ",
+                                    _in, " of ", _m, " records (", round(100*_in/_m, digits=1), "%); bar ",
+                                    round(100*(1-_btol), digits=1), "%")
+                            if _out > _btol
+                                _refuse = true
+                                println("  AI racing LINE: GPL's line REFUSED on ", TRACKSEL,
+                                        " -- the mapping does not preserve GPL's own corridor (",
+                                        round(100*_out, digits=1), "% of records fall outside it, bar ",
+                                        round(100*_btol, digits=1), "%); keeping our own racing line.",
+                                        " JM_AI_GPLBAND_TOL raises the bar, JM_AI_GPLLAT=0 disables outright.")
+                            end
                         else
+                            _off = count(x -> abs(x) > 4.5, cr) / length(cr)
+                            if _off > _tol
+                                _refuse = true
+                                println("  AI racing LINE: GPL's line REFUSED on ", TRACKSEL, " -- no corridor",
+                                        " files, and ", round(100*_off, digits=1), "% of its records map beyond",
+                                        " 4.5 m of our centreline (bar ", round(100*_tol, digits=1), "%);",
+                                        " keeping our own racing line. JM_AI_GPLLAT_TOL raises the bar.")
+                            end
+                        end
+                        if !_refuse
                         RaceAI.set_gpl_lateral!(cr, c1, c2)
+                        # Is the accepted line actually on tarmac? ROADHAT is the road-only mesh the
+                        # align/recentre oracle uses, so this is the same surface the car drives.
+                        # Reported for the line, both rails and both corridor walls -- if the corridor
+                        # walls are off road that is expected (they bound the usable width, and GPL's
+                        # own walls sit at the road edge), but the LINE and RAILS must not be.
+                        if ROADHAT !== TERRAIN0
+                            let (fr, nr) = onroad_frac(Float64.(GPLLP.read_lp(lp).dlat)),
+                                (f1, n1) = onroad_frac(g1), (f2, n2) = onroad_frac(g2)
+                                println("  AI racing LINE on the ROAD-ONLY mesh: race ", round(100*fr, digits=1),
+                                        "% (", nr, " off), pass1 ", round(100*f1, digits=1), "% (", n1,
+                                        " off), pass2 ", round(100*f2, digits=1), "% (", n2, " off)")
+                                # CONTROL ARM, and it is not optional. A low score for GPL's line means
+                                # nothing until OUR OWN line is scored on the same mesh: if ours scores
+                                # the same, ROADHAT is leaky and both numbers are instrument error. Two
+                                # measurements were already lost today to exactly that (a road-texture
+                                # filter that called the .trk centreline "off road" at 52 % of Watkins
+                                # Glen). Zero-lateral is the centreline our ribbon is built on, so it is
+                                # the strongest control available: it must score ~100 %.
+                                # NOTE ON FRAMES: gpl_world places a lateral off A0, GPL's reference
+                                # line, so it is the right tool for GPL's dlat and the WRONG tool for our
+                                # own lateral, which is measured off the re-centred centreline. Our line
+                                # is placed with pose_at on our own ribbon instead.
+                                let (fc, nc) = onroad_frac(zeros(nrec)), noff = 0
+                                    for i in 1:nrec
+                                        sv = 3.0*(i-1)
+                                        q = RaceAI.pose_at(AILINE, sv, RaceAI.racelane(AILINE, sv))
+                                        JuliaMotor.hat3d(ROADHAT, q[1], q[3]; ref = Inf)[3] || (noff += 1)
+                                    end
+                                    println("  AI racing LINE control: GPL's reference line (dlat 0) ",
+                                            round(100*fc, digits=1), "% on road (", nc, " off); OUR racing line ",
+                                            round(100*(1 - noff/nrec), digits=1), "% (", noff, " off)",
+                                            " -- if these are not near 100%, the road mesh is the fault and",
+                                            " the GPL numbers above mean nothing")
+                                end
+                            end
+                        end
+                        if bnd_lo !== nothing && bnd_hi !== nothing
+                            RaceAI.set_gpl_band!(bnd_lo, bnd_hi)
+                            let w = [abs(bnd_hi[k] - bnd_lo[k]) for k in 1:min(length(bnd_lo), length(bnd_hi))]
+                                sort!(w)
+                                println("  AI racing BAND: GPL's minrace/maxrace corridor -> our frame; width min ",
+                                        round(w[1], digits=2), " p50 ", round(w[length(w)÷2], digits=2), " max ",
+                                        round(w[end], digits=2), " m (was a fixed +-", RaceAI.LANE_MAX,
+                                        " m; margin ", RaceAI.BAND_MARGIN, " m each side; JM_AI_GPLBAND=0 reverts)")
+                            end
+                        end
                         let q = sort(copy(cr)), m = length(q)
                             println("  AI racing LINE: corrected lateral p05 ", round(q[max(1,m÷20)], digits=2),
                                     " p50 ", round(q[m÷2], digits=2), " p95 ", round(q[19m÷20], digits=2),

@@ -20240,3 +20240,47 @@ revisit the tolerance.
 **Sprint 3 (next):** replace the fixed ±3.8 m band with GPL's per-record corridor from
 `minrace.lp`/`maxrace.lp`, and change the refusal test from "within 4.5 m of our centreline" to
 "inside GPL's own corridor", which `race.lp` satisfies on ≥ 96.7 % of records on every track.
+
+### E107-S3 — GPL's corridor wired in; and the reconciliation's real state, measured (sprint 3 of 4)
+
+**Shipped.** `minrace.lp`/`maxrace.lp` now supply the AI's lateral band, per record and asymmetric,
+replacing the fixed ±3.8 m guess. `RaceAI.GPLBAND` / `set_gpl_band!` / `gpl_band`, an asymmetric wall
+test in `dlat_step!`, and `BAND_MARGIN = 0.85 m` (half the Lotus 49's track) kept clear of each wall
+because GPL's corridor bounds the *line* and a car has width. `JM_AI_GPLBAND=0` reverts.
+
+The mapped corridor reproduces the raw-file measurement almost exactly — Monza max 21.15 m against
+21.16 m measured, Zandvoort min 2.87 m — so the mapping preserves GPL's corridor faithfully.
+
+**The old refusal test was wrong and is replaced.** It asked "does the mapped line land within 4.5 m
+of OUR centreline", which refused Monza at 49.4 % for being GPL's own legitimately-wide line. A bar
+set by our own band cannot judge GPL's. But the obvious replacement — "is the mapped line inside the
+mapped corridor" — is **invariant to a bulk offset of the whole mapping**, and that is exactly Monza's
+failure mode: it passes Monza at 100 % while a quarter of the line sits on grass. So the decision now
+requires the mapped line to be **on the road**, against `ROADHAT`, the same road-only mesh the
+align/recentre oracle uses.
+
+**MEASURED, with the control arm that makes it meaningful:**
+
+| track | mapped race line on road | GPL's reference line (dlat 0) | **our own racing line** | verdict |
+|---|---|---|---|---|
+| Watkins Glen | **96.9 %** | 100.0 % | 100.0 % | **ACCEPTED** (was refused) |
+| Nürburgring | 81.5 % | — | — | refused |
+| Monza | 74.1 % | 91.4 % | **99.6 %** | refused |
+| Spa | 68.4 % | 92.0 % | **100.0 %** | refused |
+| Zandvoort | (no road-only HAT) | — | — | ACCEPTED, corridor installed |
+
+Our own line scoring 99.6–100 % is what licenses the rest of the column: `ROADHAT` is sound, so the
+GPL numbers are real and not another leaky filter.
+
+**Root cause found, and it is not GPL's data.** GPL's *reference line itself* — `A0`, the aligned but
+not re-centred `.trk` walk at dlat 0 — is off road at **8.6 % (Monza) and 8.0 % (Spa)**, while it is
+100 % on road at Watkins Glen. Everything placed off `A0` inherits that error, and the tracks that
+fail are exactly the tracks with a large re-centre shift (Monza 5.0 m, Spa 3.2 m, Watkins Glen only
+1.31 m). So the reconciliation error ≈ the re-centre shift, which the current code deliberately does
+*not* apply because placing on `A0` "needs no approximation". The measurement says otherwise.
+
+**Sprint 4 (last on E107 before rotating):** place GPL's records through the RE-CENTRED frame instead
+of `A0` and score both arms against `ROADHAT`. An earlier attempt compared these by lap-fraction shift
+(192 of 1252 off at Watkins Glen) versus exact `A0` placement (85 of 1252) and chose `A0` — but that
+comparison used the |lat| > 4.5 m bar, which this sprint has shown cannot judge the question. Redo it
+with the road oracle. If it works, Monza, Spa and the Ring all accept GPL's line.

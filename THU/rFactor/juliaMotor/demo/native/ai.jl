@@ -458,7 +458,7 @@ dlat_gpl!(on::Bool) = (DLAT_GPL[] = on ? 1 : 0; on)
 @inline dlat_mode(car) = car.tlane == 0.0 ? dlat_follow() : dlat_basic()
 """GPL's lateral law: a spring/damper on the dlat ACCELERATION goal, with the cornering gain pair
 above `vsw` of lateral speed and the acceleration capped by `max_lat_acc_from_speed * speed`."""
-function dlat_step!(car::AICar, tgt, dt, lim, g::DlatGains = dlat_mode(car))
+function dlat_step!(car::AICar, tgt, dt, lim, g::DlatGains = dlat_mode(car), band = nothing)
     cornering = abs(car.vlane) >= g.vsw
     k1 = cornering ? g.k1c : g.k1
     k2 = cornering ? g.k2c : g.k2
@@ -467,8 +467,11 @@ function dlat_step!(car::AICar, tgt, dt, lim, g::DlatGains = dlat_mode(car))
     a = clamp(a, -amax, amax)
     car.vlane += a*dt
     car.lane  += car.vlane*dt
-    if car.lane < -lim || car.lane > lim
-        car.lane = clamp(car.lane, -lim, lim); car.vlane = 0.0     # pinned at the band edge: no stored rate
+    # E107-S3: GPL's corridor is ASYMMETRIC, so the wall test takes (lo, hi) when one is supplied and
+    # falls back to the symmetric +-lim otherwise.
+    lo, hi = band === nothing ? (-lim, lim) : band
+    if car.lane < lo || car.lane > hi
+        car.lane = clamp(car.lane, lo, hi); car.vlane = 0.0        # pinned at the wall: no stored rate
     end
     nothing
 end
@@ -483,8 +486,8 @@ end
 lane_accel!(a::Real) = (LANE_A[] = float(a); a)
 """Move `car.lane` toward `tgt` with bounded lateral speed AND bounded lateral acceleration, clamped
 to ±`lim`. Returns nothing; updates `car.lane` and `car.vlane`."""
-function lane_step!(car::AICar, tgt, dt, lim)
-    dlat_gpl() && return dlat_step!(car, tgt, dt, lim)   # E107-S1: GPL's own law (JM_AI_DLAT_GPL=0 = control arm)
+function lane_step!(car::AICar, tgt, dt, lim, band = nothing)
+    dlat_gpl() && return dlat_step!(car, tgt, dt, lim, dlat_mode(car), band)   # E107-S1/S3 (JM_AI_DLAT_GPL=0 = control arm)
     a = lane_accel()
     if a <= 0.0                                    # control arm: the old instant-rate chase
         car.lane += clamp(tgt - car.lane, -LANE_V*dt, LANE_V*dt)
@@ -510,6 +513,9 @@ function lane_step!(car::AICar, tgt, dt, lim)
 end
 
 const RAIL     = 2.4    # pass-deviation offset to either side of the racing line (m)
+# E107-S3: GPL's corridor bounds the LINE; a car has width, so keep this much clear of each wall.
+# Half the Lotus 49's ~1.7 m track, which is the same reasoning LANE_MAX itself used.
+const BAND_MARGIN = parse(Float64, get(ENV, "JM_AI_BAND_MARGIN", "0.85"))
 const LANE_MAX = 3.8    # E16 (PO): never get within ~a car-width of either edge — road half-width 5.5 − car 1.7 = 3.8
 # AI-AVOID-1: choose the pass/avoid side by the room left after the LANE_MAX clamp, not by the
 # blocker alone. Default ON; JM_AI_AVOID_ROOM=0 is the control arm.
@@ -822,6 +828,49 @@ gpl_racelane(line::AILine, s) = (g = GPLLAT[]; g === nothing ? nothing : g[1][_g
 gpl_rail(line::AILine, s, side) = (g = GPLLAT[]; g === nothing ? nothing :
     (i = _gidx(line, s, length(g[1])); (side > 0 ? g[2][i] : g[3][i]) - g[1][i]))
 
+# E107-S3 (PO 2026-09-28: use GPL's data wherever possible): GPL ships the CORRIDOR as well as the
+# line -- minrace.lp and maxrace.lp, one record per 3 m like the rest. Our LANE_MAX was a fixed
+# +-3.8 m ("road half-width 5.5 - car 1.7"), and S2 measured that against GPL on all five tracks:
+#
+#   track          GPL corridor width min..max    race.lp inside GPL's own corridor
+#   Zandvoort       2.87 ..  9.14 m               1397/1397  100 %
+#   Watkins Glen    5.86 .. 11.67 m               1231/1252  98.3 %
+#   Monza           6.49 .. 21.16 m               1918/1918  100 %
+#   Spa             4.07 .. 13.21 m               4551/4705  96.7 %
+#   Nurburgring     4.85 .. 16.88 m               7591/7591  100 %
+#
+# So ours is too WIDE where GPL pinches and far too NARROW where GPL opens out (Monza's line runs
+# 4.5-13.4 m off the .trk centreline for ~1400 m across the start/finish line, and minrace/maxrace
+# bracket it there at 514 of 514 records). It is also ASYMMETRIC -- Monza maxrace p50 +4.12 against
+# minrace p50 -3.79 -- which a +-band cannot express at all.
+#
+# Stored as (lo, hi) per record in GPL's own dlat frame; the caller maps them into ours exactly as it
+# maps the line. JM_AI_GPLBAND=0 falls back to the fixed +-LANE_MAX.
+const GPLBAND = Ref{Union{Nothing,NTuple{2,Vector{Float64}}}}(nothing)
+function set_gpl_band!(lo, hi)
+    if lo === nothing || hi === nothing
+        GPLBAND[] = nothing; return nothing
+    end
+    a = Float64.(lo); b = Float64.(hi)
+    # do not trust the filenames to say which is which: order them per record.
+    GPLBAND[] = ([min(a[i], b[i]) for i in eachindex(a)], [max(a[i], b[i]) for i in eachindex(a)])
+    nothing
+end
+const GPLBAND_ON = Ref(-1)
+@inline function gplband_on()
+    GPLBAND_ON[] < 0 && (GPLBAND_ON[] = get(ENV, "JM_AI_GPLBAND", "1") != "0" ? 1 : 0)
+    GPLBAND_ON[] == 1
+end
+gplband_on!(on::Bool) = (GPLBAND_ON[] = on ? 1 : 0; on)
+"""GPL's own lateral bounds at `s`, as `(lo, hi)`, or `nothing` when no corridor is loaded.
+`margin` is kept clear of each wall so a car sits inside the corridor rather than on its edge."""
+function gpl_band(line::AILine, s; margin = 0.0)
+    (gplband_on() && GPLBAND[] !== nothing) || return nothing
+    g = GPLBAND[]; i = _gidx(line, s, length(g[1]))
+    lo = g[1][i] + margin; hi = g[2][i] - margin
+    lo <= hi ? (lo, hi) : ((g[1][i] + g[2][i])/2, (g[1][i] + g[2][i])/2)   # corridor narrower than 2*margin
+end
+
 function _vtarget(line::AILine, s, v; amax, vmax, vmin, scale)
     g = GPLV[]
     if g !== nothing
@@ -1028,17 +1077,32 @@ function step_field!(cars::Vector{AICar}, line::AILine, dt;
         end
         isfinite(rel) && player !== nothing && (vt = min(vt, max(player[3]*rel, 6.0)))   # ~player pace — never run away
         gl = gpl_racelane(line, car.s)
+        # E107-S3: GPL's own corridor (minrace/maxrace) in place of the fixed +-LANE_MAX, where loaded.
+        # CAR_MARGIN keeps the car off each wall rather than on it; GPL's corridor bounds the LINE, and
+        # a car has width.
+        bnd = gpl_band(line, car.s; margin = BAND_MARGIN)
         if gl === nothing
-            tgt = clamp(racelane(line, car.s) + lanebias(i, length(cars)) + car.tlane, -LANE_MAX, LANE_MAX)   # racing line + per-car bias + pass deviation
-            lane_step!(car, tgt, dt, LANE_MAX)                        # SEAM-1: bounded lateral accel, not just speed
+            tgt = racelane(line, car.s) + lanebias(i, length(cars)) + car.tlane   # racing line + per-car bias + pass deviation
+            if bnd === nothing
+                tgt = clamp(tgt, -LANE_MAX, LANE_MAX)
+                lane_step!(car, tgt, dt, LANE_MAX)                    # SEAM-1: bounded lateral accel, not just speed
+            else
+                tgt = clamp(tgt, bnd[1], bnd[2])
+                lane_step!(car, tgt, dt, max(abs(bnd[1]), abs(bnd[2])), bnd)
+            end
         else
             # E84-S8: GPL's own line and rails. The pass deviation uses GPL's rail on that side
             # (asymmetric, per record) instead of a fixed +/-RAIL; the lane is clamped to the wider
             # of our band and GPL's own table, never tighter than GPL drives.
             dev = car.tlane == 0.0 ? 0.0 : something(gpl_rail(line, car.s, car.tlane > 0 ? 1 : -1), car.tlane)
             tgt = gl + lanebias(i, length(cars)) + dev
-            lim = max(LANE_MAX, abs(gl) + LANE_MAX)
-            lane_step!(car, tgt, dt, lim)                             # SEAM-1: bounded lateral accel, not just speed
+            if bnd === nothing
+                lim = max(LANE_MAX, abs(gl) + LANE_MAX)               # the old guess: our band, widened to admit GPL's line
+                lane_step!(car, tgt, dt, lim)                         # SEAM-1: bounded lateral accel, not just speed
+            else
+                tgt = clamp(tgt, bnd[1], bnd[2])
+                lane_step!(car, tgt, dt, max(abs(bnd[1]), abs(bnd[2])), bnd)
+            end
         end
         car.v     = advance_speed(car.v, vt, dt)            # realistic accel/brake (not slot-car)
         car.spin *= exp(-dt/0.45)                           # collision yaw decays back to the line heading
