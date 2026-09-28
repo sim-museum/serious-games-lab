@@ -74,6 +74,29 @@ class ddTableResults(Structure):
     _fields_ = [("resTable", (c_int * 4) * 5)]
 
 
+# Batch table solving (libdds CalcAllTablesPBN, DDS 2.9: MAXNOOFTABLES=40).
+_MAXNOOFTABLES = 40
+
+
+class ddTableDealsPBN(Structure):
+    _fields_ = [("noOfTables", c_int),
+                ("deals", ddTableDealPBN * (_MAXNOOFTABLES * 5))]
+
+
+class ddTablesRes(Structure):
+    _fields_ = [("noOfBoards", c_int),
+                ("results", ddTableResults * (_MAXNOOFTABLES * 5))]
+
+
+class _parResults(Structure):
+    _fields_ = [("parScore", (c_char * 16) * 2),
+                ("parContractsString", (c_char * 128) * 2)]
+
+
+class _allParResults(Structure):
+    _fields_ = [("presults", _parResults * _MAXNOOFTABLES)]
+
+
 # ---------- Function prototypes ----------
 
 _dds.SolveBoardPBN.argtypes = [
@@ -86,6 +109,11 @@ _dds.CalcDDtablePBN.restype = c_int
 
 _dds.ErrorMessage.argtypes = [c_int, c_char * 80]
 _dds.ErrorMessage.restype = None
+
+_dds.CalcAllTablesPBN.argtypes = [POINTER(ddTableDealsPBN), c_int,
+                                  POINTER(c_int), POINTER(ddTablesRes),
+                                  POINTER(_allParResults)]
+_dds.CalcAllTablesPBN.restype = c_int
 
 _dds.SetMaxThreads.argtypes = [c_int]
 _dds.SetMaxThreads.restype = None
@@ -177,6 +205,12 @@ def _dds_to_c52(suit: int, rank: int) -> int:
     return suit * 13 + (14 - rank)
 
 
+# libdds SolveBoard mode (see DDSolver.solve). BIQ_DDS_MODE=0 restores the
+# old behaviour for A/B measurement only.
+import os as _os
+_SOLVE_MODE = int(_os.environ.get("BIQ_DDS_MODE", "1"))
+
+
 class DDSolver:
     """Per-call solver. Stateless wrapper over `SolveBoardPBN`.
 
@@ -232,7 +266,14 @@ class DDSolver:
 
             fut = _FutureTricks()
             target = -1   # -1 = find max tricks
-            mode = 0
+            # mode 1 = ALWAYS search. In mode 0 libdds skips the search when
+            # the hand to play has only one card (counting equivalents) and
+            # returns score -2 for it. Callers read score as a trick count,
+            # so every alpha-mu leaf whose leader held e.g. just c3-c2 was
+            # valued at -2 tricks: in RUN2-004 dummy led c3 from J932 into
+            # partner's c6 (stranding three club winners, 3 tricks) because
+            # cashing the J reached such a leaf and scored "0".
+            mode = _SOLVE_MODE
             rc = _dds.SolveBoardPBN(
                 dl, target, solutions, mode,
                 ctypes.byref(fut), 0
@@ -279,4 +320,42 @@ class DDSolver:
         for st_i, st in enumerate(strain_map):
             for se_i, se in enumerate(seat_map):
                 out[se][st] = int(table.resTable[st_i][se_i])
+        return out
+
+    def solve_dd_tables(self, pbns: List[str],
+                        strains=("S", "H", "D", "C", "NT")
+                        ) -> List[Dict[str, Dict[str, int]]]:
+        """Double-dummy tables for MANY deals at once (libdds solves them in
+        parallel on all cores). `strains` limits the work to the strains the
+        caller needs; the others come back missing from each table. Same
+        {declarer: {strain: tricks}} shape as solve_dd_table."""
+        seat_map = ["N", "E", "S", "W"]
+        strain_map = ["S", "H", "D", "C", "NT"]
+        want = [1 if st not in strains else 0 for st in strain_map]  # 0 = solve
+        n_strains = sum(1 for w in want if w == 0) or 1
+        per_call = max(1, (_MAXNOOFTABLES * 5) // n_strains)
+        per_call = min(per_call, _MAXNOOFTABLES)
+        out: List[Dict[str, Dict[str, int]]] = []
+        for i in range(0, len(pbns), per_call):
+            chunk = pbns[i:i + per_call]
+            deals = ddTableDealsPBN()
+            deals.noOfTables = len(chunk)
+            for k, pbn in enumerate(chunk):
+                deals.deals[k].cards = pbn.encode("utf-8")
+            res = ddTablesRes()
+            par = _allParResults()
+            filt = (c_int * 5)(*want)
+            rc = _dds.CalcAllTablesPBN(ctypes.byref(deals), -1, filt,
+                                       ctypes.byref(res), ctypes.byref(par))
+            if rc != 1:
+                raise RuntimeError(
+                    f"CalcAllTablesPBN failed: {get_error_message(rc)}")
+            for k in range(len(chunk)):
+                t = res.results[k]
+                tab: Dict[str, Dict[str, int]] = {se: {} for se in seat_map}
+                for st_i, st in enumerate(strain_map):
+                    if want[st_i] == 0:
+                        for se_i, se in enumerate(seat_map):
+                            tab[se][st] = int(t.resTable[st_i][se_i])
+                out.append(tab)
         return out
