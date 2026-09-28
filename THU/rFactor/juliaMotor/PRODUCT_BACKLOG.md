@@ -20193,3 +20193,50 @@ line — this is the PO's *"including use of AI line information included with e
 three of five tracks refuse it. Monza refuses **49.4 %** of records, which is not a tolerance problem
 but a statement that our Monza centreline is far from GPL's; start there, because a cause that large
 should be findable.
+
+### E107-S2 — WHY three of five tracks refuse GPL's line: mostly because our BAND is wrong (sprint 2 of 4)
+
+Monza refused 49.4 % of GPL's `race.lp` records. That is not a tolerance problem, and it is not a
+mapping bug either.
+
+**Read straight out of the file, frame-free:** Monza's `race.lp` reaches **|dlat| = 13.36 m**, with
+514 of 1918 records (26.8 %) beyond 4.5 m. Those records are not scattered — they form **three
+contiguous runs**, and the two large ones (469 records) are adjacent across the start/finish line,
+one stretch of ~1400 m where GPL's racing line sits 4.5–13.4 m to one side of the `.trk` centreline.
+
+**Corroborated by two independent files:** `minrace.lp` and `maxrace.lp` bracket `race.lp` at **514 of
+514 (100 %)** of exactly those records, with the corridor spanning −4.1 to +25.4 m there. Three files
+agree, so the 13 m is real data — not an index-origin artifact, not a phase error, not a bad frame.
+
+**GPL ships the corridor, and ours is wrong everywhere:**
+
+| track | GPL corridor width, min → max | ours (fixed ±3.8 m) | `race.lp` inside GPL's own corridor |
+|---|---|---|---|
+| Zandvoort | 2.87 → 9.14 m | 7.6 m — too WIDE at the pinch | 1397/1397 (100 %) |
+| Watkins Glen | 5.86 → 11.67 m | too narrow | 1231/1252 (98.3 %) |
+| Monza | 6.49 → **21.16 m** | far too narrow | 1918/1918 (100 %) |
+| Spa | 4.07 → 13.21 m | both, in different places | 4551/4705 (96.7 %) |
+| Nürburgring | 4.85 → 16.88 m | both | 7591/7591 (100 %) |
+
+`pit.lp` independently reaches −17.85 m at Watkins Glen and −12.91 m at Zandvoort, which is the pit
+lane and confirms these files share one frame in which large lateral values are meaningful. The
+corridor is also **asymmetric** (Monza `maxrace` p50 +4.12 against `minrace` p50 −3.79), which a
+fixed ±band cannot express at all.
+
+So `LANE_MAX = 3.8 m` is the blocker, and the refusal test is doing its job: it is correctly refusing
+a line we cannot yet represent. The order therefore changes — **take the corridor first**, then
+revisit the tolerance.
+
+**TWO INSTRUMENT FAULTS booked in this sprint, both mine, both caught by a control arm:**
+1. The first diagnostic built the track surface from `A0` — GPL's *own* reference line — then read
+   GPL's `dlat` back through it, so `hat().lateral` simply returned `dlat` and every track scored
+   0.0 % off-road. Circular; that column was discarded.
+2. The second used a road-only HAT filtered by texture name. Its control arm — the `.trk`
+   **centreline itself**, which is on the road by definition — read "off road" at 52.2 % of Watkins
+   Glen records and 14.3 % of Zandvoort's. The filter misses much of the real road surface, so its
+   absolute percentages are worthless. Only the *relative*, contiguous-run result survived, and the
+   `minrace`/`maxrace` cross-check above is what actually settled the question.
+
+**Sprint 3 (next):** replace the fixed ±3.8 m band with GPL's per-record corridor from
+`minrace.lp`/`maxrace.lp`, and change the refusal test from "within 4.5 m of our centreline" to
+"inside GPL's own corridor", which `race.lp` satisfies on ≥ 96.7 % of records on every track.
