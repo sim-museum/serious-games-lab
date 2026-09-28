@@ -2081,7 +2081,13 @@ else
                     catch; false end
                 end
             end
-            println("  [roadblock] placed objects whose MESH uses a texture matching \"", pat, "\":")
+            # E110: JM_ROADBLOCK_PLACE_NEAR=<lapdist> lists the placements nearest that station instead of
+            # the first 24 in file order, which is what is needed to ask "what is drawn at the start/finish
+            # line" -- the Watkins Glen doubled-gantry question.
+            near = haskey(ENV, "JM_ROADBLOCK_PLACE_NEAR") ? parse(Float64, ENV["JM_ROADBLOCK_PLACE_NEAR"]) : NaN
+            rows = Tuple{Float64,String,Float64,Float64,Float64}[]
+            println("  [roadblock] placed objects whose MESH uses a texture matching \"", pat, "\"",
+                    isnan(near) ? ":" : string(", nearest lapdist ", near, ":"))
             try
                 for (nm, t) in Render.GPL3DO.gpl_placements(ZTRK)
                     (isempty(pat) || uses_tex(nm)) || continue
@@ -2103,6 +2109,11 @@ else
                              j = mod1(i+1, length(RIBBON0.pos))
                         atan(RIBBON0.pos[j][3] - RIBBON0.pos[i][3], RIBBON0.pos[j][1] - RIBBON0.pos[i][1])
                     end
+                    if !isnan(near)
+                        dd = abs(rem(hr.lapdist - near, RIBBON0.lap_length, RoundNearest))
+                        push!(rows, (dd, String(nm), hr.lapdist, hr.lateral, rad2deg(Float64(t[4]))))
+                        continue
+                    end
                     npl[] <= 24 && println("       ", rpad(String(nm), 10), " origin s=",
                                            lpad(round(Int, hr.lapdist), 6), " lat ",
                                            lpad(round(hr.lateral, digits=1), 6),
@@ -2110,6 +2121,14 @@ else
                                            " deg  road ", lpad(round(rad2deg(rh), digits=1), 7),
                                            " deg  diff ", lpad(round(rad2deg(rem(Float64(t[4]) - rh, 2pi, RoundNearest)), digits=1), 7),
                                            abs(hr.lateral) <= rb_lat ? "   <- ORIGIN ON ROAD" : "")
+                end
+                if !isnan(near)
+                    sort!(rows, by = first)
+                    for (dd, nm, sv, lt, yw) in rows[1:min(30, end)]
+                        println("       ", rpad(nm, 10), " s=", lpad(round(Int, sv), 6), " lat ",
+                                lpad(round(lt, digits=1), 7), "  yaw ", lpad(round(yw, digits=1), 7),
+                                " deg   (", round(dd, digits=1), " m from s=", round(Int, near), ")")
+                    end
                 end
                 println("       ", npl[], " placement(s) matched; ", onroad[],
                         " have their ORIGIN inside the corridor")
@@ -5847,6 +5866,47 @@ let objnames=Set{String}()
         println("== JM_OBJDIAG ", length(insts), " instances -> ", kept, " OBJECTS")
         for (k,v) in sort(collect(why), by=x->-x[2])
             println("   removed by ", rpad(k,32), v)
+        end
+        # E111-S2: the aggregate says HOW MANY were removed; three open PO items need to know WHICH.
+        # JM_OBJDIAG_AT="<lapdist>[:<halfwidth>]" lists every instance in a window of the lap by name,
+        # with its verdict, so a specific complaint can be attributed to a specific filter:
+        #   * E111a, Spa's missing house before the 90 deg left -- the corner is s=1843..2070 (measured
+        #     from the .trk arcs), so JM_OBJDIAG_AT=1700:300 covers "the end of the front winding straight";
+        #   * E110, Watkins Glen's doubled start/finish gantry -- JM_OBJDIAG_AT=0:60;
+        #   * E111b, Spa's yellow polygon over the road after that left -- JM_OBJDIAG_AT=2150:250.
+        # This is a REPORT ONLY: it changes nothing about what is built. It cannot run in a headless
+        # sandbox, because everything here is downstream of GLFW.Init and the object build uploads GL
+        # buffers -- so it runs on a machine with a display, which is exactly where the defects are seen.
+        if get(ENV,"JM_OBJDIAG_AT","") != ""
+            _f = split(ENV["JM_OBJDIAG_AT"], ":")
+            _c = parse(Float64, _f[1]); _hw = length(_f) >= 2 ? parse(Float64, _f[2]) : 100.0
+            _rows = Tuple{Float64,String,Float64,String}[]
+            for i in insts
+                _hr = JuliaMotor.hat(TRKSURF, Float64(i.x), Float64(i.y))
+                _hr.found || continue
+                _d = abs(rem(_hr.lapdist - _c, TRKSURF.lap_length, RoundNearest))
+                _d <= _hw || continue
+                _r = get(objmesh,i.name,nothing) === nothing ? "NO MESH" :
+                     drop(i.name)              ? "drop() junk filter" :
+                     onroad_crowd(i)           ? "onroad_crowd" :
+                     perp_crowd(i)             ? "perp_crowd" :
+                     onroad_bldg(i)            ? "onroad_bldg" :
+                     onroad_fp(i)              ? "onroad_fp (footprint on road)" :
+                     !((get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0) ? "under 1 m tall" :
+                     !onground(i)              ? "not on ground" : "kept"
+                push!(_rows, (_hr.lapdist, lowercase(String(i.name)), _hr.lateral, _r))
+            end
+            sort!(_rows, by = x -> x[1])
+            println("== JM_OBJDIAG_AT s=", _c, " +-", _hw, " m: ", length(_rows), " instance(s)")
+            println("   (only the DROPPED ones are listed unless JM_OBJDIAG_AT_ALL=1)")
+            _all = get(ENV,"JM_OBJDIAG_AT_ALL","") != ""
+            for (_s, _n, _l, _r) in _rows
+                (_all || _r != "kept") || continue
+                println("      s=", lpad(round(Int,_s), 6), " lat ", lpad(round(_l, digits=1), 7),
+                        "  ", rpad(_n, 12), _r == "kept" ? "kept" : string("DROPPED by ", _r))
+            end
+            _nd = count(r -> r[4] != "kept", _rows)
+            println("   ", _nd, " dropped, ", length(_rows) - _nd, " kept in this window")
         end
         flush(stdout)
     end

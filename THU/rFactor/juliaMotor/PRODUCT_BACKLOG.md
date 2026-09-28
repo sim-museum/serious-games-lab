@@ -20776,3 +20776,36 @@ census hook that reports, per placement, whether it was kept and if not which fi
 (`drop`, `onroad_crowd`, `perp_crowd`, `onroad_bldg`, `onroad_fp`, the height test, `onground`). That single
 hook answers "why is the house missing", "what is drawn twice at the line" and "what yellow polygon is over
 the road" — and it is the same fault the codebase banked as *"headless hooks must exit"*, one level deeper.
+
+### E111-S2 — the per-object attribution hook; and a CORRECTION: the GL wall is intermittent, not structural (sprint 2 of 4)
+
+**Correction first, because three sprint write-ups rest on it.** E109-S1, E110-S2 and E111-S1 each state that
+the placed-object pipeline "cannot run in this environment" for want of a GL context. **That is wrong.**
+Earlier runs today completed the object build on the very same tracks — Spa printed *"1448 trackside objects
++ 2435 billboards"*, Monza *"118 trackside objects + 21 billboards"* — so the pipeline is reachable here.
+What is true is narrower: **GL access is intermittent**, and at the time those sprints ran it was failing
+(`GLXBadFBConfig` on context creation, now reproducing even on Zandvoort, so it is neither track-specific nor
+a consequence of the E108-S3 mesh increase, which affects buffers and not context creation). The earlier
+`road_clear_smoke` "load failed" verdict has the same cause. Treating a transient as a structural wall was
+the error, and it is the same habit as reading a verdict instead of a log.
+
+**`JM_OBJDIAG` already did most of what S2 set out to build.** It charges every instance that did not become
+an `OBJECT` to the *first* predicate that rejected it — `no-mesh`, `drop()`, `onroad_crowd`, `perp_crowd`,
+`onroad_bldg`, `onroad_fp`, `under 1 m tall`, `not on ground` — and reports the buckets. What it lacked was
+*which* object, which is what the three open items need.
+
+**Shipped: `JM_OBJDIAG_AT="<lapdist>[:<halfwidth>]"`** — lists every instance in a window of the lap by name,
+with its verdict, so a complaint maps to a filter. Report-only; it changes nothing that is built. Its answers
+for the three blocked items, in one launch each:
+
+| item | command |
+|---|---|
+| E111a — Spa's missing house before the 90° left (corner measured at s=1843–2070) | `TRACK=spa JM_SMOKE=1 JM_OBJDIAG=1 JM_OBJDIAG_AT=1700:300` |
+| E111b — Spa's yellow polygon over the road just after that left | `TRACK=spa JM_SMOKE=1 JM_OBJDIAG=1 JM_OBJDIAG_AT=2150:250 JM_OBJDIAG_AT_ALL=1` |
+| E110 — Watkins Glen's doubled start/finish gantry | `TRACK=watglen JM_SMOKE=1 JM_OBJDIAG=1 JM_OBJDIAG_AT=0:60 JM_OBJDIAG_AT_ALL=1` |
+
+**Not verified by running.** GL is unavailable as this sprint closes, so the hook has been checked for parse
+and for scope (every name it uses — `insts`, `objmesh`, `ymn`/`ymx`, `TRKSURF`, and the seven predicates — is
+in scope at that point, and all but `TRKSURF` are already used by the block it sits in) but it has **not been
+executed**. It is inert unless `JM_OBJDIAG` is set, so the risk to the shipped sim is confined to that.
+First action when GL returns: run the three commands above.
