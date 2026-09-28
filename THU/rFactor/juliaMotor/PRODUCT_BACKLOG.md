@@ -20612,3 +20612,42 @@ context this environment does not provide. If GPL expects these veils culled fro
 NORMALS must point AWAY from the road. So: for every curtain triangle, take the dot product of its normal
 with the direction from the panel toward the road centreline. If the normals consistently point away, the
 panels are authored to be invisible from the car and our winding is inverted — no screenshot required.
+
+### E109-S4 — the cull-winding hypothesis refuted too; the panels carry BOTH facings (sprint 4 of 4 — ROTATING)
+
+S3 narrowed the defect to the cull winding: an inverted front-face convention would show the faces GPL
+hides. Tested headlessly — no GL context needed — by taking each curtain triangle's WINDING normal and
+dotting it with the direction toward the road centreline. Done entirely in the render frame, because
+converting a position by `(x, y, −z)` is a **reflection** and would flip a cross product, which is precisely
+the trap this test is about.
+
+**Result, over 847 drawn surfaces in the corridor:**
+
+| front face points | share | |
+|---|---|---|
+| AWAY from the road | 452 | 53.4 % |
+| TOWARD the road | 395 | 46.6 % |
+
+with cos p10 **−0.998** and p90 **+0.996** — an even split with both extremes saturated. That is geometry
+containing **both facings**: either double-sided panels (two coincident triangles of opposite winding, the
+standard way to make a billboard visible from both sides) or closed hulls. The measurement cannot separate
+those two and does not need to, because the conclusion is the same either way: **backface culling cannot
+hide these panels, whichever side is culled.** The winding hypothesis is dead.
+
+**E109 after four sprints — what is established and what is not.**
+Established: 40 places on the Ring where drawn scenery spans the road, objects named `half01`–`half09` /
+`half1s` (67 placements, 52 with origins inside the ±5.5 m corridor); they are **drawn-only**, absent from
+the collision copy; the PO's second defect is separate and smaller (`shrub_s`/`shrub_a`, ≤ 1.25 m intrusion
+at 364 stations); and a headless census (`JM_ROADBLOCK`) now measures all of it, where the pre-existing
+instrument could not run at all.
+Refuted, each by measurement: the **Z mirror** (scenery and track use the same remap), the **placement yaw**
+(±90° is GPL's intent — rotating makes it 5× worse), and the **cull winding** (both facings present).
+
+**Leading hypothesis for when E109 returns:** these objects are not meant to be drawn *for this layout*.
+A numbered family of 67, all at ±90° to the road, with origins ON the road, reads like scenery belonging to a
+different track variant or gated at runtime — the Ring's `.3do` carries more than one configuration. The
+test is to find what distinguishes `half*` from the scenery that is placed correctly: a group id, a node
+flag, or a naming convention GPL keys on. Before that, note the base rate — 620 of 3109 Ring placements have
+origins inside the corridor, so "origin on the road" is common and is not by itself the discriminator.
+
+**ROTATING to E110** (Watkins Glen's doubled start/finish gantry) per the four-sprint rule.

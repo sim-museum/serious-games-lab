@@ -1995,7 +1995,7 @@ else
         # examined) and SECPARTS for rendering. If a veil is drawn but left out of the collision copy, the
         # mesh pass cannot see it however carefully it looks -- and "you have to drive through the curtain
         # before you can see anything" is a complaint about what is DRAWN, not about what is solid.
-        nsc = Ref(0); ntri_sec = Ref(0)
+        nsc = Ref(0); ntri_sec = Ref(0); normdots = Float64[]
         if isdefined(Main, :SECPARTS) && SECPARTS !== nothing
             for prt in SECPARTS
                 v = prt.verts; n = length(v) ÷ 11
@@ -2014,6 +2014,26 @@ else
                     lo, hi = minimum(lats), maximum(lats)
                     (hi < -rb_lat || lo > rb_lat) && continue
                     nsc[] += 1
+                    # E109-S4: WHICH WAY DOES THE FRONT FACE POINT? If GPL expects these veils culled from
+                    # the road side, their winding normal must point AWAY from the road -- and then our
+                    # showing them means the cull winding is inverted on this path.
+                    # Done entirely in the RENDER frame, which is the frame the GPU culls in, so no
+                    # handedness conversion is involved: converting a position by (x, y, -z) is a
+                    # REFLECTION and would flip a cross product, which is exactly the trap this test is
+                    # about. The vertices and the ribbon direction are both brought to render coords first,
+                    # and the cross product is taken there.
+                    let k0 = 11*(3q), k1 = 11*(3q+1), k2 = 11*(3q+2)
+                        ax = Float64(v[k1+1]) - Float64(v[k0+1]); ay = Float64(v[k1+2]) - Float64(v[k0+2]); az = Float64(v[k1+3]) - Float64(v[k0+3])
+                        bx = Float64(v[k2+1]) - Float64(v[k0+1]); by = Float64(v[k2+2]) - Float64(v[k0+2]); bz = Float64(v[k2+3]) - Float64(v[k0+3])
+                        gnx = ay*bz - az*by; gnz = ax*by - ay*bx      # horizontal components of the winding normal
+                        i = clamp(searchsortedlast(RIBBON0.lapdist, sds[1]), 1, length(RIBBON0.pos))
+                        pq = RIBBON0.perp[i]
+                        # ribbon perp is in the HAT frame (pq[1], pq[3]); render horizontal is (x, -z)
+                        inx = -sign(lats[1]) * pq[1]; inz = -sign(lats[1]) * (-pq[3])
+                        d = gnx*inx + gnz*inz
+                        nl = hypot(gnx, gnz)
+                        nl > 1e-9 && push!(normdots, d/nl)
+                    end
                     push!(get!(spans, floor(Int, sds[1]/rb_bin), Tuple{Float64,Float64,String}[]),
                           (max(lo, -rb_lat), min(hi, rb_lat), "drawn:" * lowercase(String(prt.tex))))
                 end
@@ -2140,6 +2160,18 @@ else
         println("  [roadblock] PARTIAL intrusions (widest first), ", length(partial), " bin(s):")
         for (sv, w, tx) in partial[1:min(10, end)]
             println("       s=", lpad(round(Int, sv), 7), " m  covers ", lpad(round(w, digits=2), 5), " m   ", tx)
+        end
+        if !isempty(normdots)
+            away = count(<(0.0), normdots); toward = count(>(0.0), normdots)
+            u = sort(copy(normdots))
+            println("  [roadblock] FRONT-FACE direction of the ", length(normdots),
+                    " drawn surfaces in the corridor (normal . direction toward the road centreline):")
+            println("     points AWAY from the road: ", away, " (", round(100away/length(normdots), digits=1),
+                    "%)   TOWARD it: ", toward, " (", round(100toward/length(normdots), digits=1), "%)")
+            println("     cos p10 ", round(u[max(1, length(u)÷10)], digits=3), " p50 ",
+                    round(u[length(u)÷2 + 1], digits=3), " p90 ", round(u[max(1, 9*length(u)÷10)], digits=3))
+            println("     reading: if these point AWAY, GPL culls them from the road side and our winding is",
+                    " inverted; if TOWARD, they are meant to be seen and the fault is elsewhere")
         end
         println("ROADBLOCK_RESULT track=", TRACKSEL, " curtain_bins=", length(curtain),
                 " partial_bins=", length(partial))
