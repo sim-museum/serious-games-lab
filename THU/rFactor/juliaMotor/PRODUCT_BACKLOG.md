@@ -20455,3 +20455,49 @@ which is exactly where they would show.
 Decide whether that is visible enough to chase further, which wants the PO's eye on a screenshot rather
 than another metric; and look at whether the `.trk`-generated road (E108's original sprint 4) can beat it
 outright rather than rounding the `.3do`.
+
+### E108-S4 — CORRECTION: S3's headline was measured against the wrong curve (sprint 4 of 4 — ROTATING)
+
+**S3's reported gain was overstated roughly twentyfold, and this sprint found it.** S3 claimed the road
+edge's p99 sagitta fell from 0.452 m to 0.214 m at Watkins Glen (2.1×) when the node-span guard was raised.
+Re-measured against the correct reference it is **0.589 → 0.575 m, about 2 %**.
+
+**Why.** ROADCURVE warps vertices onto `smooth_loop(P, sig)` — a Gaussian-smoothed curve — but the gate
+measured the sagitta against the **raw ribbon polyline**. The ribbon is re-centred node by node on the drawn
+road, so it carries cm-scale lateral wiggle; a long chord averages that out while a finely-subdivided one
+tracks the smoothed curve away from it. The ruler was charging the treatment for faithfully hitting its own
+target. Symptom that gave it away: Watkins Glen's median sagitta *rising* under ROADCURVE (0.066 → 0.130 m),
+which subdivision cannot do.
+
+**S3's change under the corrected reference — directionally right, much smaller, and track-dependent:**
+
+| track | p99 at MAXNODE 12 → 25 | chords |
+|---|---|---|
+| Watkins Glen | 0.589 → 0.575 m (−2 %) | 74 |
+| Monza | 0.350 → 0.320 m (−9 %) | 179 |
+| Spa | 0.367 → **0.230 m (−37 %)** | 2465 |
+
+**`MAXNODE = 25` is KEPT**, on the strength of Spa alone: 2465 chords is the only sample here worth
+believing, and there the p99 improves 37 % and p90 6 %. The +21.7 % / +33.0 % triangle cost now buys much
+less than S3 advertised, and that trade deserves the PO's eye rather than my assertion.
+
+**A second scope error, also corrected.** The edge textures (`aspgrs`, `curb`, …) also appear on aprons and
+paddock edges: the residual worst chords sat at lateral **−12 to +24 m**. A kink in a strip 24 m off the
+racing line is not the reported defect, and including it let paddock geometry set the headline p99/max. The
+measure is now confined to |lateral| ≤ 8 m (`JM_GPLPLAN_LAT`).
+
+**The gate now asserts only what its sample supports.** Confining to the road edge leaves Watkins Glen with
+74 chords and Monza 179, and across instrument revisions those percentiles moved by more than the effect
+being measured. Below a 500-chord floor the sagitta is printed and **not judged**. What is asserted
+everywhere is reference-free and has been stable through all seven revisions: **ROADCURVE halves the chord
+length** (11.3 → 4.9, 16.2 → 8.0, 13.0 → 7.2 m).
+
+**Lesson, at the cost of two sprints:** this measurement was rebuilt seven times and the verdict flipped
+with each rebuild. A metric whose sign depends on the choice of reference curve is not ready to justify a
+shipping decision — and the tell was available early, in a treatment arm that got "worse" at something
+subdivision cannot worsen.
+
+**ROTATING to E109** (Ring tree curtains) per the four-sprint rule. E108 state: a plan-view ruler exists and
+self-validates; ROADCURVE demonstrably halves edge chord length on all three tracks and cuts Spa's p99
+sagitta 37 %; the absolute level at Watkins Glen and Monza is under-sampled and unproven. **Whether the
+white line still reads as faceted is now a question for the PO's eye, not another metric.**
