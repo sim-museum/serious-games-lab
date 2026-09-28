@@ -21,6 +21,11 @@ this index was written; that is what it exists to stop.
 
 | item | what | state |
 |---|---|---|
+| **E107** | **EPIC (PO priority): Julia AI as close as possible to gold-standard GPL AI**, using GPL's `.lp` lines and the AI documentation under `~/sgl/THU` | NEW 2026-09-28. GPL's own `gpl_ai.ini` FOUND and read: its AI slots laterally with a **dlat acceleration spring/damper** over an 8-mode state machine, not the velocity clamp we invented. Sprint 1 = port that. |
+| **E108** | **EPIC (PO priority): tracks as close as possible to gold-standard GPL tracks** — no seams, no piecewise-linear turns, no piecewise-linear white stripes | NEW 2026-09-28. The VERTICAL is already within 0.4–5.7 cm of the .trk (`gplroad_smoke`), so this is a PLAN-VIEW and SHADING problem. Sprint 1 = build a plan-view ruler. |
+| **E109** | Nürburgring tree "curtains" across the road + individual trees intruding | NEW 2026-09-28. `road_clear_smoke` is already red on this; leads on file (`wehr-l2/l3`, `last01`, `hohe-lg3`). |
+| **E110** | Watkins Glen start/finish gantry drawn twice | NEW 2026-09-28. Only one placement exists, so it is a second draw path, not a second instance. |
+| **E111** | Spa: missing corner house before the 90° left; bright yellow polygon over the road after it | NEW 2026-09-28. `house12`/`house13` are in neither archive nor disk. |
 | **E85** | EPIC: multiplayer, the way GPL did it | **sprint 1 DONE** (E85-S1): poses cross two processes exactly, both ways, gated. Sprints 2–4 open. |
 | **E105** | a setup tab exposing modest chassis-setup changes | **values + reset DONE and gated** (E105-S1); the UI shell is the PO's call. NEW 2026-08-31. Relaxes the "no modifiable parameters" constraint, scoped to setup. assessed |
 | **E104** | every car floats 20–40 cm above the road; off-road contact is elastic (levitate/bounce) | ✅ **BOTH halves FIXED and gated** — (b) E104-S1 (the −999 off-mesh sentinel), (a) E104-S4 (found, fixed, gated; S2's mechanism was right). *Index row corrected 2026-09-18 — it had read "half (a) still open, needs a capture" for 17 days after S4 closed it.* |
@@ -19937,3 +19942,180 @@ Monza centreline is far from GPL's, which is its own finding; (2) take the CORRI
 (3) give each rail its OWN speed (pass1 differs from race by up to 13 m/s at WG, 24.5 on the Ring), which
 is how GPL makes going off-line cost time; (4) slot between lines using GPL's own lateral-VELOCITY field
 rather than the acceleration limit SEAM-1 invented.
+
+
+---
+
+# PO BACKLOG 2026-09-28 — two epics (higher priority) and three track defects
+
+**PO instruction on process:** *"Run scrum on this backlog, no more than 4 sprints on any one item
+before rotating to another, to avoid going down rabbit holes."* So: **≤ 4 consecutive sprints per
+item, then rotate**, whatever state it is in. Record the rotation point and what the next sprint
+would have been, so the item can be resumed cold.
+
+**PO instruction on approach:** *"Wherever possible, use GPL algorithms and data structures as much
+as possible — GPL is a classic game; to go off on our own without at least trying to do what Papyrus
+did is saying we can do it better than them. Never say never, but us better than Papy? that's a
+heavy lift."*
+
+This is a standing constraint on both epics, and it retires a habit this project has fallen into
+twice already: SEAM-1 invented a lateral-velocity clamp for AI slotting, and GPLAI-1 invented a
+±3.8 m curvature-tapered corridor. Both were guesses where GPL ships the real thing. **Before
+inventing a rule, find Papyrus's.** Where we cannot find theirs, say so explicitly and say what we
+substituted.
+
+---
+
+## E107 — EPIC (higher priority): make Julia's AI as close as possible to gold-standard GPL AI
+
+PO: *"make julia AI as close as possible to gold standard GPL AI, including use of AI line
+information included with each track, and documentation about GPL AI under ~/sgl/THU"*
+
+### The documentation the PO means — FOUND 2026-09-28, and it is far better than expected
+
+| file | what it gives |
+|---|---|
+| `~/sgl/THU/INSTALL/frameRateSwitching/gpl_ai_60fps.ini` (326 lines) | **GPL's own AI parameter file, every line commented.** 15 sections. This is GPL's AI architecture in named constants. |
+| `~/sgl/THU/INSTALL/originalDriverIniFiles/driver.ini` (683 lines) | per-driver personality: aggression, alertness, experience, hype, quickness, smoothness |
+| `~/sgl/THU/DOC/REFERENCE/GPL AI Tutorial v4b.wps.pdf` (701 KB) + `GPL AI Tutorial v4b/` | the community tutorial, with worked `driver.ini` examples |
+| `~/sgl/THU/DOC/REFERENCE/README_AI.txt` | the 60 fps AI patch notes (Pajunen/Pattinson, 2009) |
+| `~/sgl/THU/DOC/REFERENCE/the trackini for dummies by Ez.pdf` | `track.ini`, which is where per-track AI speed caps live |
+
+### What that file already settles (quoting its own comments)
+
+**GPL steers laterally with a SPRING/DAMPER on the dlat ACCELERATION goal — not a velocity clamp.**
+`dlat_accel_k1` = "k1 for dlat accel. goal spring/damper", `dlat_accel_k2` = k2. That is the direct
+answer to the PO's *"GPL AI does slot from one line to another, it can move laterally, but it does
+so smoothly"*, and it is **not** what SEAM-1's `lane_step!` does (a velocity clamp with an
+acceleration bound, invented here).
+
+**It is a state machine over "fuzzy lines", 8 modes, each with its own gains and lookahead**, and
+each mode has a STRAIGHT and a CORNERING variant switched at `switch_to_cornering_dlat_velocity =
+0.10` m/tick:
+
+| mode | `dlat_accel_k1` | `k2` | cornering `k1` | cornering `k2` | short-term lookahead (ticks) |
+|---|---|---|---|---|---|
+| `follow_line` | 0.0045 | 0.1202 | 0.0086 | 0.1432 | 17 |
+| `basic_line_transition` | 0.0056 | 0.1254 | 0.0092 | 0.1524 | 17 |
+| `abrupt_line_transition` | 0.0087 | 0.1224 | 0.0101 | 0.1274 | 16 |
+| `line_improvement` | 0.0050 | 0.1550 | 0.0090 | 0.2000 | 16 / 14 |
+| `entering_pits` | 0.0020 | 0.1200 | 0.0030 | 0.1400 | 36 |
+| `approaching_pit_stall` | 0.0020 | 0.1200 | 0.0030 | 0.1400 | 54 / 36 |
+| `leaving_pits` | 0.0020 | 0.1200 | 0.0030 | 0.1400 | 36 |
+
+Note the progression: `follow_line` is the softest, `abrupt_line_transition` nearly twice as stiff,
+pits softest of all. **The smoothness the PO wants is the k1/k2 pair, and the responsiveness is the
+mode switch.** Also on the table:
+
+* `[physics] max_lat_acc_from_speed = 0.0055` — "value * speed = max. lat accel allowed". A *speed
+  dependent* lateral limit, which is GPL's version of the bound SEAM-1 guessed at.
+* `[physics] yaw_accel_k1 = 0.12`, `yaw_accel_k2 = 1.00` — the yaw spring/damper; `driver.ini`
+  personality scales k1 (`aggression_yaw_k1_scaling`, `smoothness_yaw_k1_scaling`).
+* `[physics] inverse_slipcurve_k = 0.1667` — "(meters/tick²)/radian; calculated by JDK for use with
+  fnSlipcurve table by yaw pipeline". So there is a **yaw pipeline** with a slip curve table.
+* `[physics] alt_accel_k1/k2`, `pitch_accel_coeff`, `roll_accel_coeff`, `inertial_factor` — the AI
+  car is advanced by `aiAdvanceCarOnLine()`, i.e. GPL's AI cars are **not** run through the player's
+  tyre model. Ours are ("5 physics AI"). That difference is worth its own sprint to quantify.
+* `[follow_line] desired_dlong_sep = 14.0 m`, `avoid_time_coeff = 0.10` — "value * est. time to
+  collision = ticks before do obstacle avoidance". Longitudinal spacing and avoidance, given.
+* `[behavior]` — 34 named rules for overtaking: `straightaway_pass_dlong_sep = 10.0`,
+  `attempt_outbrake_dlong_sep = 12.4104`, `min_cornering_outside_pass_radius = 400 m`,
+  `auto_blocker_line_speed_pct = 0.74`, `min_dlat_sep_front/back = 2.70 m`.
+* `[magic] improve_*` + `[line_improvement]` — GPL **learns** its line in session, adjusting speed
+  per waypoint index by dlat error (`improve_up_threshold = 0.20 m`, `improve_down_threshold =
+  0.45 m`, `improve_up_amt = 0.5 %`, `improve_down_amt = 0.25 %`).
+
+### Where this epic stands before sprint 1
+
+GPLAI-1 sprint 1 landed (`b04b6e7d`): GPL's `.lp` line and rails wired in, self-validating per
+track — Zandvoort ACCEPTS (2 of 1397 records off the road), Watkins Glen refuses (85 of 1252, 6.8 %),
+Monza refuses (947 of 1918, 49.4 %). Monza at 49 % is its own finding: our Monza centreline is far
+from GPL's.
+
+### Sprint order for E107 (revised 2026-09-28 now the .ini is in hand)
+
+1. **Read the .ini in, and replace `lane_step!` with GPL's dlat spring/damper.** Load
+   `gpl_ai.ini` (ship a copy; it is data, not GPL code), implement the mode switch
+   (`follow_line` / `basic_line_transition` / `abrupt_line_transition` × straight/cornering) and
+   the `max_lat_acc_from_speed` bound. Gate: AI lateral jerk and the "skitter" metric, control arm
+   = today's invented clamp. This is the PO's *"slots smoothly"* item and it is now a port, not a
+   design.
+2. **Fix the reconciliation so Watkins Glen and Monza qualify** for GPL's line (see GPLAI-1's
+   note). Monza first — 49 % says something structural.
+3. **Corridor from `minrace.lp`/`maxrace.lp`** instead of our guessed ±3.8 m taper.
+4. **Per-rail speeds** (pass1 differs from race by up to 13 m/s at WG, 24.5 on the Ring) — GPL's way
+   of making off-line cost time.
+5. `driver.ini` personalities + `[behavior]` overtaking rules.
+6. Quantify AI-car integration: GPL's `aiAdvanceCarOnLine()` vs our full tyre model.
+
+---
+
+## E108 — EPIC (higher priority): make the tracks as close as possible to gold-standard GPL tracks
+
+PO: *"no seams, piecewise linear segments around turns, no piecewise linear white roadside
+stripes"*, using GPL's algorithms and data structures wherever possible.
+
+### What is already measured (do not redo these)
+
+* **The vertical is NOT the problem** (`417f6270`, gate `gplroad_smoke` 15/15). The road we draw
+  already tracks the `.trk` elevation cubic to **0.4 cm (Monza p50) – 5.7 cm (Watkins Glen p90)**;
+  a vertical warp made it worse and was reverted. See memory `jr-drawn-road-matches-trk`.
+* **The `.3do` road-edge node spacing**, which is what the PO can see: Monza 18.3 m, Watkins Glen
+  16.0 m, Spa 13.7 m, Nürburgring 9.2 m, Zandvoort 4.4 m. **The three tracks the PO named are the
+  three coarsest.** The `.trk` arcs turn up to 60–100° each (p90 22–51°).
+* ROADCURVE-1 rounds the mesh horizontally onto the ribbon and DOES subdivide (down to 0.5 m edges,
+  `maxdepth = 5`), but only where the chord deviates by more than `JM_ROADCURVE_TOL = 0.05 m`. On a
+  16 m chord that leaves every curve gentler than **R ≈ 640 m** unsplit — about **1.1° of kink per
+  node**, which is exactly a long, gentle curve's white line breaking into visible straights.
+* SEAM-1 (`0b80a0bb`) fixed the physics side: surface step p99 2.23 → 0.0146 m/s at Watkins Glen.
+
+### Sprint order for E108
+
+1. **A PLAN-VIEW instrument first.** Every ruler this project has for the road is vertical, and a
+   vertical ruler cannot see the defect the PO is describing. Measure the drawn white line's
+   in-plane turn angle per node and its deviation from the `.trk` arc, per track. No fix until
+   there is a number, and a control arm (`JM_ROADCURVE=0`).
+2. **`JM_ROADCURVE_TOL`**, now chosen against that number rather than left at a default nobody
+   measured. Cost is triangles; measure both.
+3. **Shading.** A GPL `.3do` triangle carries a `flat` flag. If the road is flat-shaded per
+   polygon, the bands are visible however fine the geometry is — and no amount of subdivision helps.
+   Check the flag, and check what GPL's own renderer does with it.
+4. **Generate the road from the `.trk` instead of rounding the `.3do`** — 47 arcs + 16 lateral
+   traces per section is the analytic road, and 3 m stations put every track below Zandvoort's
+   already-acceptable 4.4 m. This is the Papyrus data structure; the open question is the
+   band→texture mapping, which can be learned from the `.3do` by voting.
+
+---
+
+## E109 — Nürburgring: tree "curtains" across the road, and individual trees intruding
+
+PO 2026-09-26: *"there are tree 'curtains' across the road in several places, such that you have to
+drive through the curtain before you can see anything on the other side. There are also individual
+trees that intrude into the road without blocking the whole road."*
+
+Leads on file: a code comment names the Ring's in-place veils (`wehr-l2`/`l3`, `last01`,
+`hohe-lg3`) — placement yaw 0, geometry authored *around* the origin rather than at it, so the
+yaw-only `placemat` convention lands them across the road. A `JM_OBJ_MIRROR` A/B gave 123 (on) vs
+125 (off) anomalies against a 121 control, i.e. these intrusions are **pre-existing and not caused
+by SEAM-1**. `road_clear_smoke` fails on this today (1 failure, attributed) — so the gate already
+exists and is red; that is the starting instrument.
+
+## E110 — Watkins Glen: the start/finish gantry is placed twice
+
+PO 2026-09-26: *"the banner/gantry at the start/finished line is placed twice, there are two of
+them."* Investigated, unresolved: only ONE `startbox` instance is in the placement list, the cull
+knob has no measured effect, and note E58 mentions "a 2nd lambda". So the second one is probably not
+a second placement — candidates: the gantry is in the baked track mesh AND placed as an object, or it
+is drawn twice by two render paths.
+
+## E111 — Spa: the missing corner house, and the yellow polygon over the road
+
+PO 2026-09-26: *"The house at the end of the front winding straight, just before the 90 degree left-
+hand turn that goes down the hill to [Burnenville], is missing. That house is an important object
+because it shows you that the front straight is ending and that you need to turn left. Also, just
+after that left turn, there is still a bright yellow rectangular polygon that goes over the road."*
+
+Investigated: `house12`/`house13` are absent from both the archive and the disk; `haybox` has 14
+dropped placements but does exist loose; `spa67.3do` has a hole near that corner; `JM_SCENE_AT` is
+Ring-only so it could not be used to look. The yellow polygon over the road is separate from
+SPAYELLOW-1a (the hillside blob, fixed in `c07d7480`) and from OVERHANG-1's `MSTgrL9B` drop.
