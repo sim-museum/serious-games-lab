@@ -20686,3 +20686,45 @@ itself be the "second gantry".
 **Sprint 2 (next on E110):** find the second draw. Candidates in order: the object list drawn twice (an
 opaque pass and an alpha/cutout pass over the same items would show an alpha-textured banner twice), and
 whether `tpole3` survives the on-road filters.
+
+### E110-S2 — the "second gantry" is E58's own exclusion: the span is stripped, its logo panel is kept (sprint 2 of 4)
+
+**Two hypotheses refuted first.**
+* *Drawn from two lists (mesh + billboard).* Impossible by construction: line 5135 guards with
+  `(haskey(objmesh, name) || haskey(bbinfo, name)) && continue`, then sets **either** `bbinfo` **or**
+  `objmesh`. A name is classified once; nothing can be in both.
+* *`tpole3` dropped by the height filter.* No — `ymn`/`ymx` are read from vertex offset 2, which in the
+  render frame is UP, so `ymx−ymn` is the object's **height** (13.5 m for the pole), not its thickness. My
+  first reading of that filter was wrong. Whether the pole survives `onroad_fp` is still open.
+
+**What is actually drawn.** `obj_extra_excl("startbox")` strips `sfbox01`, `sfbox02`, `sfbox03`, `hay01`,
+`hay02` — E58's "roadward parts" half, still on by default while its gantry-push half (`JM_STARTBOX_PUSH`)
+now defaults to 0. Against the real mesh (132 tris, 8 textures):
+
+| texture | tris | local extent | fate |
+|---|---|---|---|
+| `(untex)` | 78 | x ±0.5, y −1.6…3.3, z 0.1…**6.6** | DRAWN — the tower/leg |
+| `sfbox01` | 12 | y **−4.6…4.6** (a 9.2 m span), z 0…4.9 | **STRIPPED — this is the beam across the road** |
+| `sfbox02` | 2 | y −1.6…4.6, z 3.9 (flat) | **STRIPPED** — the beam's underside |
+| `sflogo` | 4 | y −0.2…4.6, z **3.9…4.9** | **DRAWN** — the logo panel, at the stripped beam's own height |
+| `sfpeo`/`sfpeo2` | 2+2 | z 4.0…6.2 | DRAWN — figures on top |
+| `hay01`/`hay02` | 32 | z 0…1.2 | STRIPPED — hay bales |
+
+86 of 132 triangles survive. So we draw **a tower, plus a logo panel floating at 3.9–4.9 m where the beam
+used to be, plus two figures at 4.0–6.2 m** — with the beam that carried all of them removed. A tower and a
+detached banner at gantry height is a faithful description of "there are two of them".
+
+E58's aim was to clear a leg protruding into the road, but `sfbox01` is not a leg — it is the 9.2 m span
+(y −4.6…4.6, reaching the ground at z=0, so it contains the far leg *and* the beam). Removing it took the
+structure and left its decorations.
+
+**The A/B the PO can run in one lap:** `JM_STARTBOX_KEEP=1` draws the whole assembly. If the two-gantry look
+disappears and nothing then obstructs the track, the exclusion is simply wrong. If a leg does intrude,
+`JM_STARTBOX_PUSH=6` is E58's other half, which moves the gantry outward instead of dismembering it — the
+right tool for that problem.
+
+**E110 is BLOCKED for headless work.** The whole placed-object pipeline (`objmesh`, `OBJECTS`, the sprite
+split) is built at lines 5126–6614, *after* `GLFW.Init` at 4203, and this environment has no GL context. S1
+and S2 got this far by reading placements and meshes straight out of the `.dat`; deciding between "the
+exclusion is wrong" and "something else is drawn twice" needs to be **seen**. Rotating rather than spending
+S3/S4 on code reading that cannot be checked.
