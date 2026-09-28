@@ -20119,3 +20119,70 @@ Investigated: `house12`/`house13` are absent from both the archive and the disk;
 dropped placements but does exist loose; `spa67.3do` has a hole near that corner; `JM_SCENE_AT` is
 Ring-only so it could not be used to look. The yellow polygon over the road is separate from
 SPAYELLOW-1a (the hillside blob, fixed in `c07d7480`) and from OVERHANG-1's `MSTgrL9B` drop.
+
+---
+
+### E107-S1 — GPL's dlat spring/damper, ported and gated (sprint 1 of at most 4 before rotating)
+
+**What GPL does, and what we were doing instead.** `gpl_ai.ini` names the mechanism outright:
+`dlat_accel_k1` / `dlat_accel_k2` are "k1/k2 for dlat accel. goal spring/damper". SEAM-1 had written
+a *velocity clamp* here — a desired lateral speed `min(LANE_V, LANE_K|e|, sqrt(2a|e|))` chased under a
+constant acceleration bound. Both settle; only one is smooth, because SEAM-1's desired-speed curve is
+piecewise (its derivative jumps at every breakpoint) and its chase is bang-bang against ±a·dt, while
+GPL's is a linear second-order ODE.
+
+**Units, pinned not assumed.** Every gain is per tick and the tick is 36 Hz — the file proves it
+internally: `long_term_lookahead = 108` "in ticks" and `improve_initial_lookahead = 3.000000` "in
+seconds" describe the same learning system's lookahead, so 108 ticks = 3 s. SI: k1 × 36², k2 × 36.
+
+**Which file matters.** The STOCK Papyrus `gpl_ai.ini` (1998-08-28) is the gold standard, not the
+community 60 fps patch. Their dlat gains are byte-identical — the patch never touched them — but the
+patch more than halves `max_lat_acc_from_speed`, 0.0125 → 0.0055, so reading the wrong file would
+have silently imposed a different lateral limit. The loader prefers the checkout's own GPL tree and
+validates `parameter_table_magic_number == 1234`, the integrity check GPL performs on itself.
+
+**What the ported gains actually are** (ω = √k1, ζ = k2/2√k1):
+
+| mode | straight ω, ζ | cornering ω, ζ |
+|---|---|---|
+| `follow_line` | 2.42 rad/s, 0.90 | 3.34 rad/s, 0.77 |
+| `basic_line_transition` | 2.69 rad/s, 0.84 | 3.45 rad/s, 0.79 |
+| `abrupt_line_transition` | 3.36 rad/s, 0.66 | 3.62 rad/s, 0.63 |
+
+A slightly underdamped ~0.4 s lateral response, stiffening and getting livelier as the manoeuvre gets
+more urgent. That is a deliberately tuned controller, and it is what "slots smoothly" means.
+
+**MEASURED** (`gpldlat_smoke`, 8/8, both arms in-process, slot out to +2.4 m and back at 40 m/s):
+
+| | control (SEAM-1 clamp) | treatment (GPL) |
+|---|---|---|
+| lateral jerk p99 | 216.0 m/s³ | **58.2 m/s³** (4×) |
+| lateral jerk peak | 480.0 m/s³ | **68.8 m/s³** (7×) |
+| settling to the rail | 1.68 s | **1.50 s** |
+| overshoot | 0.000 m | 0.014 m |
+| peak lateral accel | 8.00 m/s² | 17.42 m/s² (cap 18.00) |
+
+So it is smoother *and* slightly quicker, for 14 mm of overshoot. GPL's speed-dependent cap holds, no
+limit cycle while holding the line, and the cornering gain pair does engage on a full-width slot
+(peak lateral speed 5.24 m/s vs the 3.60 m/s switch) — so the ported half is not dead code.
+
+**One honest caveat, and it is the next sprint's work.** At the frame where the target *steps*
+(0 → 2.4 m instantly), GPL's law spikes to 1045 m/s³ against the control's 480, because `a = −k1·e`
+and `e` jumps. That is inherent to a spring on a stepped goal — and in GPL the goal does **not** step:
+the line and its deviations are continuous functions of lap distance. The defect is therefore at our
+*call site*, which sets `car.tlane` from 0 to ±RAIL in one frame. The gate reports that frame
+separately rather than letting one artificial sample decide the verdict.
+
+**The one place this is still a guess, stated plainly** (per the PO's standing constraint): GPL picks
+the fuzzy line from a state machine we do not have. We select `follow_line` when `car.tlane == 0` and
+`basic_line_transition` otherwise; `abrupt_line_transition` is loaded but unreached, since no call
+site requests avoidance yet.
+
+**Two gate bugs found and fixed during the sprint**, both of which would have reported false numbers:
+`settle()` scanned to the end of the trace rather than to the next target switch, reporting both arms
+as "5.50 s" on a manoeuvre over by 2 s; and the source-of-parameters line printed before `gpl_ai()`
+had ever run, so it claimed "file absent" while the gains came from the file.
+
+**Sprint 2 (next on E107):** ramp `car.tlane` instead of stepping it, so the goal moves as GPL's does;
+then the reconciliation that would let Watkins Glen and Monza accept GPL's line (Monza refuses 49.4 %
+of records, which says our Monza centreline is far from GPL's).

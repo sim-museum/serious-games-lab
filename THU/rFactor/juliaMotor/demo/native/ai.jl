@@ -326,6 +326,153 @@ AICar(s, v, lap, lane) = AICar(s, v, lap, lane, lane, 0.0, 0.0, 1.0, 0.0, 0.0)  
 # proportional chase with an acceleration limit overshoots and then hunts). Peak lateral speed is
 # unchanged at LANE_V, so a lane change is the same manoeuvre, ~0.2 s longer.
 # JM_AI_LANE_ACCEL=0 restores the old instant-rate chase exactly, as the A/B control arm.
+# ============================ E107-S1: GPL's OWN AI PARAMETERS ============================
+# PO 2026-09-28: "make julia AI as close as possible to gold standard GPL AI ... Wherever possible,
+# use GPL algorithms and data structures as much as possible ... to go off on our own without at
+# least trying to do what papyrus did is saying we can do it better than them."
+#
+# GPL ships its AI's parameters in `gpl_ai.ini`, every line commented, and they describe the
+# architecture: lateral motion is a SPRING/DAMPER ON THE dlat ACCELERATION GOAL (`dlat_accel_k1` =
+# "k1 for dlat accel. goal spring/damper", `dlat_accel_k2` = k2), selected from a state machine of
+# "fuzzy line" modes, each with a STRAIGHT and a CORNERING gain pair switched at
+# `switch_to_cornering_dlat_velocity`. That is the answer to the PO's "GPL AI does slot from one line
+# to another ... but it does so smoothly", and it is not what SEAM-1 wrote here (a velocity clamp
+# under an acceleration bound, invented locally).
+#
+# UNITS. Every gain is per TICK, and the tick is 36 Hz. That is not assumed -- the file pins it
+# internally: `long_term_lookahead = 108` "in ticks" and `improve_initial_lookahead = 3.000000`
+# "in seconds" describe the lookahead of the same learning system, so 108 ticks = 3 s.
+# Converting to SI: k1 [1/s^2] = k1_tick * 36^2, k2 [1/s] = k2_tick * 36, v [m/s] = v_tick * 36.
+#
+# WHICH FILE. The STOCK Papyrus file (1998-08-28) is the gold standard, not the community 60 fps
+# patch. Their dlat gains are identical -- the patch never touched them -- but the patch more than
+# halves `max_lat_acc_from_speed` (0.0125 -> 0.0055) to suit its own tick rate, so reading the wrong
+# one would silently impose a different lateral limit.
+const GPLAI_TICK = 36.0                                       # ticks per second (pinned by the file itself)
+"Search order for GPL's AI parameter file. JM_GPL_AI_INI overrides everything."
+function gpl_ai_paths()
+    out = String[]
+    haskey(ENV, "JM_GPL_AI_INI") && push!(out, ENV["JM_GPL_AI_INI"])
+    for r in (normpath(joinpath(@__DIR__, "..", "..", "..", "..", "WP", "drive_c", "Sierra", "GPL")),
+              normpath(joinpath(homedir(), "sgl", "THU", "WP", "drive_c", "Sierra", "GPL")))
+        push!(out, joinpath(r, "gpl_ai.ini"))
+        push!(out, joinpath(r, "repository", "GPLPSInstaller", "Teamfix", "Papyrus", "gpl_ai.ini"))
+    end
+    out
+end
+"""Parse `gpl_ai.ini` into section => key => value. Tolerant by necessity: sections are written
+`[ name ]`, values are tab-separated from their `;` comment, and at least one shipped line
+(`cornering_dlat_accel_k1`) is missing its `;` altogether, so the value is the first token after the
+`=` that parses as a number."""
+function parse_gpl_ai(path)
+    out = Dict{String,Dict{String,Float64}}(); sec = ""
+    for ln in eachline(path)
+        t = strip(ln)
+        (isempty(t) || startswith(t, ";")) && continue
+        if startswith(t, "[")
+            sec = strip(strip(t, ['[', ']'])); get!(out, sec, Dict{String,Float64}()); continue
+        end
+        i = findfirst('=', t); i === nothing && continue
+        k = strip(t[1:i-1]); isempty(k) && continue
+        startswith(k, ";") && continue
+        v = nothing
+        for tok in split(replace(t[i+1:end], ';' => ' '))
+            v = tryparse(Float64, tok); v === nothing || break
+        end
+        v === nothing && continue
+        get!(out, sec, Dict{String,Float64}())[k] = v
+    end
+    out
+end
+const GPL_AI = Ref{Union{Nothing,Dict{String,Dict{String,Float64}}}}(nothing)
+const GPL_AI_SRC = Ref("")
+function gpl_ai()
+    GPL_AI[] === nothing || return GPL_AI[]
+    for p in gpl_ai_paths()
+        if isfile(p)
+            try
+                d = parse_gpl_ai(p)
+                # integrity check GPL performs on itself, so a truncated or wrong file is caught here
+                mg = get(get(d, "magic", Dict{String,Float64}()), "parameter_table_magic_number", 0.0)
+                if mg != 1234.0
+                    println("  [gplai] ", p, ": magic number ", mg, " != 1234 -- ignoring this file")
+                    continue
+                end
+                GPL_AI[] = d; GPL_AI_SRC[] = p
+                return d
+            catch e
+                println("  [gplai] ", p, ": ", sprint(showerror, e))
+            end
+        end
+    end
+    GPL_AI[] = Dict{String,Dict{String,Float64}}(); GPL_AI_SRC[] = ""
+    GPL_AI[]
+end
+"One GPL parameter, or `dflt` when the file is absent or lacks it."
+function gpl_par(sec, key, dflt)
+    d = gpl_ai(); sd = get(d, sec, nothing); sd === nothing && return dflt
+    get(sd, key, dflt)
+end
+# The dlat spring/damper, in SI, per fuzzy-line mode. Defaults are the STOCK Papyrus values, so the
+# sim behaves identically with or without the file present; the file is still read so a modded
+# install is honoured and so the numbers have a single source of truth.
+struct DlatGains
+    k1::Float64; k2::Float64                 # straight   [1/s^2], [1/s]
+    k1c::Float64; k2c::Float64               # cornering
+    vsw::Float64                             # dlat speed at which the cornering pair takes over [m/s]
+end
+function dlat_gains(sec, k1, k2, k1c, k2c)
+    t2 = GPLAI_TICK^2
+    DlatGains(gpl_par(sec, "dlat_accel_k1", k1) * t2,
+              gpl_par(sec, "dlat_accel_k2", k2) * GPLAI_TICK,
+              gpl_par(sec, "cornering_dlat_accel_k1", k1c) * t2,
+              gpl_par(sec, "cornering_dlat_accel_k2", k2c) * GPLAI_TICK,
+              gpl_par(sec, "switch_to_cornering_dlat_velocity", 0.10) * GPLAI_TICK)
+end
+# omega = sqrt(k1), zeta = k2/(2*sqrt(k1)): follow_line is omega 2.42 rad/s, zeta 0.90 -- a slightly
+# underdamped 0.4 s lateral response. abrupt_line_transition is 3.36 rad/s, zeta 0.66: faster and
+# livelier, which is what "abrupt" should mean.
+const DLAT_FOLLOW  = Ref{Union{Nothing,DlatGains}}(nothing)
+const DLAT_BASIC   = Ref{Union{Nothing,DlatGains}}(nothing)
+const DLAT_ABRUPT  = Ref{Union{Nothing,DlatGains}}(nothing)
+dlat_follow() = (DLAT_FOLLOW[] === nothing && (DLAT_FOLLOW[] = dlat_gains("follow_line", 0.0045, 0.1202, 0.0086, 0.1432)); DLAT_FOLLOW[])
+dlat_basic()  = (DLAT_BASIC[]  === nothing && (DLAT_BASIC[]  = dlat_gains("basic_line_transition", 0.0056, 0.1254, 0.0092, 0.1524)); DLAT_BASIC[])
+dlat_abrupt() = (DLAT_ABRUPT[] === nothing && (DLAT_ABRUPT[] = dlat_gains("abrupt_line_transition", 0.0087, 0.1224, 0.0101, 0.1274)); DLAT_ABRUPT[])
+# [physics] max_lat_acc_from_speed: "value * speed = max. lat accel allowed". Speed and accel are both
+# per tick, so in SI the coefficient is value * 36. Stock 0.0125 gives 18.0 m/s^2 at 40 m/s -- a
+# limit, not a target. Note this is SPEED-DEPENDENT, where SEAM-1's invented bound was a constant.
+const DLAT_AMAX_K = Ref(-1.0)
+dlat_amax_k() = (DLAT_AMAX_K[] < 0.0 && (DLAT_AMAX_K[] = gpl_par("physics", "max_lat_acc_from_speed", 0.0125) * GPLAI_TICK); DLAT_AMAX_K[])
+# A/B: JM_AI_DLAT_GPL=0 restores SEAM-1's velocity clamp exactly, as the control arm.
+const DLAT_GPL = Ref(-1)
+@inline function dlat_gpl()
+    DLAT_GPL[] < 0 && (DLAT_GPL[] = get(ENV, "JM_AI_DLAT_GPL", "1") != "0" ? 1 : 0)
+    DLAT_GPL[] == 1
+end
+dlat_gpl!(on::Bool) = (DLAT_GPL[] = on ? 1 : 0; on)
+# Mode selection. GPL picks the fuzzy line from its own state machine, which we do not have; the
+# closest signal we DO have is `car.tlane`, the pass/avoid deviation -- zero means holding the racing
+# line (follow_line), non-zero means moving to another line (basic_line_transition). This is OUR
+# substitution, not Papyrus's, and it is the one place in this law that is a guess. abrupt is
+# reserved for avoidance, which no call site requests yet.
+@inline dlat_mode(car) = car.tlane == 0.0 ? dlat_follow() : dlat_basic()
+"""GPL's lateral law: a spring/damper on the dlat ACCELERATION goal, with the cornering gain pair
+above `vsw` of lateral speed and the acceleration capped by `max_lat_acc_from_speed * speed`."""
+function dlat_step!(car::AICar, tgt, dt, lim, g::DlatGains = dlat_mode(car))
+    cornering = abs(car.vlane) >= g.vsw
+    k1 = cornering ? g.k1c : g.k1
+    k2 = cornering ? g.k2c : g.k2
+    a  = -k1*(car.lane - tgt) - k2*car.vlane
+    amax = dlat_amax_k() * max(car.v, 1.0)
+    a = clamp(a, -amax, amax)
+    car.vlane += a*dt
+    car.lane  += car.vlane*dt
+    if car.lane < -lim || car.lane > lim
+        car.lane = clamp(car.lane, -lim, lim); car.vlane = 0.0     # pinned at the band edge: no stored rate
+    end
+    nothing
+end
+
 const LANE_V = 2.4                                                              # peak lane speed [m/s] (was the rate limit)
 const LANE_K = 3.0                                                              # [1/s] linear gain near the target lane
 const LANE_A = Ref(-1.0)                                                        # [m/s^2]; resolved at runtime, not precompile
@@ -337,6 +484,7 @@ lane_accel!(a::Real) = (LANE_A[] = float(a); a)
 """Move `car.lane` toward `tgt` with bounded lateral speed AND bounded lateral acceleration, clamped
 to ±`lim`. Returns nothing; updates `car.lane` and `car.vlane`."""
 function lane_step!(car::AICar, tgt, dt, lim)
+    dlat_gpl() && return dlat_step!(car, tgt, dt, lim)   # E107-S1: GPL's own law (JM_AI_DLAT_GPL=0 = control arm)
     a = lane_accel()
     if a <= 0.0                                    # control arm: the old instant-rate chase
         car.lane += clamp(tgt - car.lane, -LANE_V*dt, LANE_V*dt)
