@@ -1,5 +1,260 @@
 # biq — Claude Code project notes
 
+## STATUS — FRESH64H live runs (2026-09-27/28, UNCOMMITTED)
+Run 12 hybrid (batch-1 rule fixes + Q-Plus opponent model): -107 / 64 = -1.67/bd
+(best hybrid so far; runs 7/9/10 were -2.29/-2.08/-2.33). Run 13 --rules-only:
+-177 = -2.77/bd. PAIRED hybrid - rules +77 IMP (+1.20/bd, SE 0.59; closed
+room identical 64/64): the 16 simulation boards +59 (won 9 12 39 48 55 ...,
+lost 6 -2, 18 -5), same-auction boards +18 (card-play variance). G+H paired:
++0.74/bd. Run 14 Precision90M hybrid: -236 / 63 = -3.75/bd, under-compete
+-109; hung on board 64 when N DOUBLED PARTNER'S 2D (1C-(1S)-P-(P)-2D-(P)-X).
+Fixed: _is_legal_bid now requires X/XX to be of the OPPONENTS' call;
+decide_bid never returns an illegal call (-> pass); the Precision 1C-response
+branch only on responder's first answer (len(partner_bids)==1). Regression
+cases added to test_qplus_match_fixes.py (81 checks). Precision/log files are
+kept out of the SAYC miners/profiles (file_system() filter). Profiles rebuilt:
+410 situations, 59% coverage. Results: tools/runs/results/run12-14*.qss, logs
+tools/runs/ab/run12-14*. Second-hand-low card tweak tested offline (58 deals:
+35 vs 32 tricks given away) - NOT adopted (working copy only, scratchpad biqwork).
+
+## STATUS — learning from Q-Plus's own records (2026-09-26 evening, UNCOMMITTED)
+Q-Plus writes every deal of both rooms with all four hands and every card
+(.qss sheets; DATA/LOG/*.bdl open room, *.cdl closed room). Three tools use it:
+* tools/qplus_auction_mine.py — every Q-Plus call replayed through biq's
+  rules; disagreements finished twice by biq's rules and scored DD (plain +
+  robust). `--live`: the FIRST call where the two rooms' auctions part, i.e.
+  biq's real call vs Q-Plus's with each program's real continuation (the
+  unflattered measure). Reports in tools/runs/mine/.
+  Finding: in auctions biq's partnership could reach ("on-path") biq's rule
+  calls cost only ~-92 IMP / 650 disagreements (biq-continuation DD, which
+  flatters biq); live first divergences: 374 boards, -880 real / -693 DD.
+* backend/qplus_model.py + tools/qplus_profile_build.py — per-situation HCP /
+  suit-length ranges of Q-Plus's calls (backend/data/qplus_call_profiles.json,
+  360 profiles, 57% of calls covered). BIQ_OPP_MODEL=qplus makes the bid_sim
+  sampler, lead sim and card-play sampling read OPPONENTS' calls with it
+  (biq_qnet_client sets it). Held-out test: suit-length error 3.97 -> 3.75,
+  HCP error unchanged. Small gain; grows with more recorded matches.
+* tools/play_audit.py — card-by-card DD audit of both rooms. Over runs 1-11:
+  biq gives away 1.11 DD tricks/deal declaring and 1.14 defending; Q-Plus
+  0.57 / 0.56. Opening leads equal; the gap is in later leads (defence and
+  declarer), discards, ruffs, 2nd-hand play.
+Rule fixes (batch 1, snapshot scratchpad nb_batch1.py): Texas completion
+(opener passed 4D!), 1NT with 5332 + five-card minor at 14 HCP, weak jump
+overcalls (no 3-level jump on 4-6 HCP, vul 2-level needs 6+, 9-10 -> simple
+2-level overcall), opener's competitive rebid of a 6-card suit (3-level needs
+15+ or 7 cards; second rebid needs 7), sanity "don't sell out" the same,
+1M-1NT-2m preference / 2H, weak 4-card fit after 1M-1NT-2x passes (was
+legalized into a 3-level raise). Miner: agreement 74.0 -> 74.8%, on-path
+-92 -> +38 IMP (in-sample).
+
+## STATUS — hybrid simulation bidding + simulated leads (2026-09-25 night, UNCOMMITTED)
+
+**Bidding = rules + simulation** (`backend/bid_sim.py`, entry `decide_bid(..., hand=...)`).
+The rule bidder proposes; at JUDGMENT points (`should_simulate`: not openings,
+not the uncontested first response, not conventions/slam machinery/forcing
+situations, not alerted calls) simulation checks it:
+1. *Sampler* — hidden hands are dealt so that biq's OWN rule bidder, holding
+   them, makes every call those seats made (passes included). Meaning = what
+   the rules do, so maker and reader can't drift. Soft HCP/length limits,
+   LEARNED by rejection-sampling the bidder per seat (hand-written
+   `auction_inference` only as fallback — it misreads e.g. Michaels), guide a
+   local search; a Metropolis card-swap chain then yields samples. Fixed-count
+   work → the same position always gets the same call (time is a safety cap).
+2. *Candidates* — rule call, pass, double, partnership suits (cheapest level and
+   game), 3NT.
+3. *Rollouts* — each candidate on each layout, auction finished by the rule
+   bidder at all four seats (partner's reaction is part of the value).
+4. *Scoring* — batched double-dummy (`DDSolver.solve_dd_tables`, libdds
+   CalcAllTablesPBN, only needed strains) with ±1-trick uncertainty; contracts
+   failing by 2+ scored doubled (rule bidders rarely penalty-double); IMPs vs
+   the rule call; override only if ≥ MARGIN (0.8) IMP better on average.
+Defaults 64 samples, ~2–5 s per simulated call. Switches: Preferences ▸ Mouse &
+Play ▸ "Simulation"; env BIQ_BID_SIM=0, BIQ_BID_SIM_SAMPLES/BUDGET/MARGIN.
+Q-NET client passes the hand and logs every "Simulation:" override.
+
+**Opening leads** (`backend/lead_sim.py`, hooked into nopeek + GUI engine):
+same sampler, every lead solved double-dummy on each layout, best average for
+the defence in IMPs vs the table lead; conventional card kept within a suit.
+BIQ_LEAD_SIM=0 disables.
+
+**Card play now uses the bidding** (`declarer_search._sample_defenders`): it
+oversamples ×8 and keeps the layouts whose original hands biq's rules would
+have bid as those seats did (it used only counts + shown-out suits before).
+BIQ_PLAY_AUCTION=0 disables. `tools/nopeek_eval.py` now passes the real
+auction (`--no-auction` for the old measurement).
+
+**Measured (double-dummy teams A/B, both directions).** Hybrid vs the SAME code
+rules-only: seed 101 **+1.92 IMP/bd** over 240 boards (SE 0.31; ±1-trick judge
++1.75), won 81 / lost 24; seed 202 +1.44 over 160 (SE 0.38; ±1 +1.32) →
+**+1.73 IMP/bd over 400 boards**. Hybrid vs the bidder committed on the morning
+of 2026-09-25: +1.57 over 160 boards (SE 0.40; ±1 +1.73). Overrides also need gain ≥ 2 SE (T_MIN) — without it
+coin-flip 3NT-over-4H choices slipped through. Card play (nopeek_eval with the
+auction, 80 deals, tricks lost vs DD): old 121 → auction sampling + sim leads +
+10 layouts / 12 s search 106; declarer diagnostic showed auction sampling itself
+neutral for declarer (318 vs 319 tricks), its gain is on defence. Defaults now
+BIQ_AMU_WORLDS=10, BIQ_AMU_BUDGET=12; Q-NET card timeout 60 s, biq_match idle 90 s.
+**Live paired check (FRESH64E, 2026-09-26): hybrid run 7 −2.29, rules-only run 8
+−2.08 vs Q-Plus; paired hybrid − rules = −9 IMP / 62 bds (−0.15, SE 0.68) —
+the offline +1.7 did NOT carry over.** Cause: rollouts use biq's rule bidder as
+the opponents, and it gets confused after interference, so junk calls scored
+well (3NT on 4 HCP, X on 2, 3H on 2: −45 IMP live); the offline A/B shared the
+same flaw. Fixes: `robust_result` — the OPPONENTS of the decider reply
+competently (double when it pays, outbid with their best DD contract, which can
+be doubled back); candidates must be justified by values / fit / length; the
+A/B now also reports a "robust judge" (`rsw` in the jsonl). A Q-Plus crash in
+the rules run (06:06, QBRIDGE.EXE exited while East chose a card) is now
+detected by biq_match (QPlusGone) instead of waiting for a click; previous
+client logs are archived to tools/runs/ab/. biq_match can send keys through a
+uinput virtual keyboard (no GNOME consent) if /dev/uinput is made accessible
+(a system change left to the user).
+Revised hybrid, offline seed 101 (160 held-out boards, vs same-code rules):
+pure DD +1.12 IMP/bd (SE 0.39), ±1 +0.98, robust judge +1.75 (SE 0.40); won 40
+/ lost 17. ~10 s per simulated call on an idle machine (full DD tables).
+Next live check: paired runs on FRESH64F.BDE (hybrid, then --rules-only).
+
+**Run 10 (FRESH64G, revised hybrid, 2026-09-26): −149 IMP / 64 = −2.33/bd.**
+Played in two halves (boards 1–24, then 24–64 after Q-Plus re-dealt board 24
+mid-run; see tools/HARNESS_STATUS_2026-09-25.md). Q-Plus's scoring table was
+empty for the second half, so the sheet was rebuilt from Q-Plus's own room
+logs (DATA/LOG/log-023.bdl = open room, .cdl = closed room) with
+tools/qplus_logs_to_qss.py, merged with the autosaved boards 1–24
+(M2026-09-26-K.qss) → tools/runs/results/run10_fresh64g_hybrid.qss; 39 boards
+cross-checked against report_score in the client logs, 0 mismatches. Buckets:
+bidding −136 (under-compete −76, overbid −40), cardplay −55, defence −28.
+16 simulation calls; the two 3NT jumps (bds 12, 56) were right (Q-Plus bid the
+same and made them) but biq's declarer play went down. Rule flaw seen, NOT yet
+fixed (bidder frozen until the paired rules-only run on FRESH64G): bd 21 South
+T.AQ753.A43.T876 passes 3S after 1C-1S-2H-2S-3C-3S (12 HCP, 4 clubs).
+**Run 11 (FRESH64G, --rules-only): −176 / 64 = −2.75/bd**
+(tools/runs/results/run11_fresh64g_rules.qss). Closed room identical 64/64.
+PAIRED hybrid − rules: +18 IMP (+0.28/bd, SE ≈ 0.49): the 13 boards where the
+simulation changed the auction +19 (won 5 10 13 38 45 = +38; lost 12 56 = −13
+where 3NT was right but biq's declarer play went down, 21 −3, 51 −3); the 51
+same-auction boards −1 (card-play run-to-run variation, lead sim ≈ 0).
+Promising, not yet significant. Biggest remaining leaks: rule bidding (−178
+in run 11) and notrump declarer play (bds 12, 56).
+
+Tests: `test_bid_sim.py` (sampler exactness, conventions untouched,
+determinism, budget, candidates legal, scoring, lead). Measurement:
+`tools/bidder_teams_ab.py current --new-hybrid` (hybrid vs same-code rules
+only), shardable with `--start/--jsonl`.
+
+## STATUS — fixes from the 2×64-board Q-Plus runs (2026-09-25, UNCOMMITTED)
+
+Every losing auction in runs 2/3 was replayed offline (the bidder reproduces
+all logged calls: `tools/competitive_decision_probe.py tools/runs/ab/run_*.log`)
+and traced to the rule that produced it. Fixed in `backend/native_bidder.py`
+(each fix names its board in a comment; all pinned in `test_qplus_match_fixes.py`):
+quant-4NT used the 1NT-OPENING range for a 12-14 REBID (RUN2-007); no
+game when responder would pass partner with 25+ combined (`_game_values_net`,
+RUN2-009); partner's reopening/competitive X after I passed was never answered
+→ penalty pass with 2 HCP (`_answer_partner_reopening_double`, RUN2-015); 17-count
+with 3 small in their suit silent (RUN2-017); illegal rebid → pass with 4-card
+support for partner's free bid (sanity 2g, RUN2-019); lebensohl relay not completed
+by either hand (RUN2-021); advancer without a raise always passed (`_advance_new_suit_or_nt`,
+RUN2-025/027); partner's competitive 3M read as a jump-raise / forcing new major /
+2nd-suit preference, and a RAISE of my suit read as a forcing reverse (RUN2-030/038);
+no balancing X over 3-level preempts + forced advances gated by HCP (RUN2-035);
+Truscott read on a later 2NT, 8-count invites over 12-14 (RUN2-046); no slam try
+with 19 opposite a limit raise (RUN2-047); 1S response capped at 18 HCP → "Jacoby
+2NT? No support — fallback", and RKC asker using opener's suit as trump (RUN2-053);
+no sandwich weak jump (RUN2-054); 4m instead of 3NT (RUN2-057); opener passing a
+negative X with a singleton (RUN2-060); plus preference (RUN2-008), 5-HCP 5-card
+major response (RUN2-050), responsive X of a double (illegal), 6NT at 33 over 2NT.
+**Measured:** `tools/bidder_teams_ab.py <baseline native_bidder.py>` (new, DD-scored
+teams match NEW vs BASELINE on random deals, both directions): +0.52 / +0.43 /
++0.46 IMP/bd on seeds 7/11/23 (1000 boards each); phantom slams 15 vs 14,
+"doubled them into a make" 22 vs 76. Overfitting check on a FRESH deck
+(`OWN-DEALS/FRESH64.BDE`, gen_test_deck seed 260925, never used in tuning):
++0.42 IMP/bd after three fixes it exposed (F64-* cases in the test file).
+
+**Card play — DDS wrapper bug (backend/dds.py):** `SolveBoardPBN` was called in
+mode 0, which returns score **-2** instead of searching when the hand to play has
+one distinct card. alpha-mu treated -2 as a trick count at every such leaf, so
+e.g. RUN2-004 dummy led c3 from J932 into partner's c6 (3 tricks). Now mode 1
+(`BIQ_DDS_MODE=0` restores the old behaviour for A/B only). `nopeek_eval.py`
+40 deals × seeds 5/9, mode 0 → 1: declarer leak 0.85/0.85 → 0.65/0.48 tr/deal,
+defence 1.13/0.93 → 0.83/0.80. Also: declarer
+tie-break among EXACTLY tied cards (`nopeek._natural_declarer_card` — no more
+DD-neutral ace discards), lead engine reads Unusual 2NT / Michaels suits (RUN2-062).
+
+**Live run 4 (blind deck FRESH64B.BDE, fixed code, bidder fp 69a3625b72):
+−0.31 IMP/board** (`tools/runs/results/run4_fresh64b_fixed.qss`; runs 2/3 were
+≈ −3.0 on other deals). DD card audit: biq 3.2 tricks lost /100 cards vs Q-Plus 2.4
+(runs 2/3: biq 4–6.7). Its losses drove a second round of fixes (R4-* cases in
+`test_qplus_match_fixes.py`, 50 checks): "forcing" free new suit with 2-3 HCP;
+contested 2NT read as Jacoby by both hands; opener passing a forcing contested new
+suit / natural 2NT; no Michaels advance (+ 2NT ask); doubler rebid now estimates
+partner from the answer type (jump / free / forced / balancing); 4-trump competitive
+jump raise + opener's 4M over their 4-level with shortness; 1NT opener never
+answered transfer-invites; 2/1 GF prefers 3NT with unbid suits stopped; lone 5-level
+rebids and reopening X of their game capped; king-ask (grand) needs the real trump
+queen unless trumps are partner's own suit; RKC after a limit raise needs 19+.
+Teams A/B vs committed bidder now **+0.74 / +0.73 / +0.66 IMP/bd** (seeds 7/11/23),
++0.66 / +0.75 on FRESH64 / FRESH64B; phantom slams equal (13 vs 13).
+
+`tools/biq_match.py` is now unattended after one click: Q-Plus's "Information about
+the bids done" window steals focus once per deal; the script closes it with Escape
+(only when it is focused), which returns focus to Q-Plus.
+
+**Live run 5 (blind FRESH64C.BDE, seed 260927, bidder fp 8695f4e184): −2.47
+IMP/board** (`run5_fresh64c.qss`). A hard deck — offline the new bidder is still
++0.62/bd vs the old on these deals — but it exposed more gaps, fixed (R5-* / AB-*
+cases, 68 checks): no 2M rebid with 7 cards; strong hand passing a weak two;
+Landy advance required an alert flag (Q-NET carries no alerts); reopening X with a
+5-card 2nd suit (≤16 HCP); no LAW raise of partner's preempt; pulling partner's X
+of a 4-level preempt with a flat hand; 1-level overcall suit-quality gate too strict
+for 6-card suits; lebensohl relay by a passed hand; no raise of partner's minor;
+minor overcaller never accepting UCB; limit raise declined with a void; 4M on
+3 trumps instead of 3NT after a negative X; cuebid reply repeated every round; the
+6-card-rebid cap now first-round ≤4 (15+), second round only as a shape save;
+opener's "opponents' suit" now in auction order and excluding cue-bids of ours.
+Opening leads: `native_lead._opp_suits` infers ARTIFICIAL opponent bids (cue of
+our suit, anything after their NT, after their 4NT, strong 2C/2D) and leading
+declarer's own suit is penalised; own 5-card bid suit gets a bonus vs NT
+(R5-018/033 now lead what Q-Plus led). Run 5 card audit: biq 3.8 tricks/100 cards
+vs Q-Plus 2.3; opening leads were the largest bucket.
+Teams A/B now **+0.84 / +0.79 / +0.69 IMP/bd**; phantom slams 12 vs 14.
+
+**Live run 6 (blind FRESH64D, seed 260928, fp 3b215a3185): −3.97 IMP/board.**
+Fixed after: super-accept → 3NT; 18-count 2C over 1NT (now jump shift); 1NT rebid
+"legalized" to 2NT instead of raising partner's major over interference; no slam
+gear in the game net (now RKC at 32 with a major fit); answerer passing doubler's
+raise; 8-card major overcall (now 4M preempt); new 3-level minor over a reverse
+(now 3NT, except with a bid 5-card major); Michaels advance to the 4-level with 4
+HCP. 76 checks. Teams A/B +0.84 / +0.85 / +0.69.
+
+**Methodology (read before the next run).** One 64-board live match has SE ≈ 0.8
+IMP/bd, so single runs can't show progress: old code −3.07 (runs 2/3), fixed code
+runs 4–6 −0.31/−2.47/−3.97 = −2.25 ± 0.45. Each run exposes 10–15 NEW distinct rule
+gaps (few repeats): a long tail, so board-by-board patching has diminishing returns.
+The regression guard (bidder_teams_ab) is biq-vs-old-biq scored double-dummy —
+not Q-Plus, and DD flatters aggressive bidding. Better: paired runs (old vs new code
+on the SAME deck vs Q-Plus), longer unattended matches, separate "find" decks from
+held-out "measure" decks, and prioritise by frequency over thousands of deals.
+Plot of today's runs: ~/Documents/260925/biq_vs_qplus_runs_260925.pdf.
+
+## STATUS — whole-system analysis + minimal harness (2026-09-25)
+
+**Why biq loses (~3 IMP/board to Q-Plus, same 61 deals twice):** see
+`~/Documents/260925/biq_vs_qplus_analysis.md` (+ `dd_audit.py`, a double-dummy
+audit of every card in both rooms). Bidding ≈ 2/3: biq misses 18/36 makeable
+games and 8/8 slams (Q-Plus 4 and 2), leaves long suits unbid, and partner
+doesn't recognise conventions (lebensohl 2NT passed when doubled, penalty pass
+with 2 HCP). The bidder has 13 "fallback" bids for hands no rule matches, e.g.
+`native_bidder.py` ~L4170 "Jacoby 2NT? No support — fallback" fires for a
+21-count with 6 spades because the 1S response is capped at 18 HCP.
+Card play: 4× Q-Plus's DD error rate, mostly declarer's mid-hand lead choice.
+Nothing in bidder/card engine changed since 2026-06-14; whole-system has been
+≈ −2.6…−3 IMP/board since that mode was first measured. Signalling ON is better
+(paired A/B +25 IMP) — keep it.
+
+**Harness: use `tools/biq_match.py`** (terminal script, keyboard only). User sets
+Q-Plus up by hand; script connects biq N+S on Enter, then presses Return at each
+phase (deal / start bidding / start play / each trick / next deal) only while
+Q-Plus has real keyboard focus. No mouse, no calibration, no virtual desktop.
+The control panel / button_loop / mixed_corpus click tooling is superseded.
+
 ## STATUS — slam bidding + harness cleanup (2026-06-14)
 
 Shipped on branch **24.04** and merged to **main** (merge `a01ef7a`). Run the app
