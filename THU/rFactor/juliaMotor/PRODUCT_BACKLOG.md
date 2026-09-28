@@ -20324,3 +20324,43 @@ gated (S1); Monza's refusal diagnosed as a band problem, not a mapping one (S2);
 and Watkins Glen now accepting GPL's line (S3); the residual displacement measured at 1.5–3 m with the
 fix identified (S4). Zandvoort and Watkins Glen accept GPL's line; Monza, Spa and the Ring refuse it
 and keep ours, which is safe and is now refused for a measured reason rather than a guessed bar.
+
+---
+
+### E108-S1 — a PLAN-VIEW ruler at last, and ROADCURVE shown to work in plan (sprint 1 of 4)
+
+Every road ruler this project had measured the **vertical** — `seam_smoke`, the `vcrease` probe,
+`gplroad_smoke` — and `gplroad_smoke` established the vertical is already fine (0.4 cm to 5.7 cm off the
+`.trk` elevation). A vertical ruler cannot see "polygon corners you can see when there's a white boundary
+at the edge of the road". `gplplan_smoke` measures the thing itself: the in-plane turn the white line
+makes at each of its own nodes, with the raw `.3do` as the control arm.
+
+**FIRST PLAN-VIEW NUMBERS, and the shipped feature does work here:**
+
+| track | | turn/node p50 | p90 | node spacing p50 |
+|---|---|---|---|---|
+| Monza | raw `.3do` | 2.16° | 5.00° | 15.99 m |
+| Monza | **ROADCURVE** | **1.31°** | **2.55°** | **8.08 m** |
+| Spa | raw `.3do` | 2.07° | 15.10° | 9.92 m |
+| Spa | **ROADCURVE** | **1.24°** | **10.55°** | **6.01 m** |
+
+So ROADCURVE roughly halves both the turn per node and the node spacing. That is the first evidence it
+helps the defect the PO actually reports, rather than the vertical one it was measured against before.
+
+**Watkins Glen is reported UNMEASURED, not judged.** Its median turn reads 91°, which a road edge cannot
+do, so the instrument is still mis-ordering there — WG carries `curb edge1 pline sline`, i.e. two
+concentric strips on one side (a curb outboard of the white line), and "outermost vertex per lap bin"
+hops between them. Its numbers would be meaningless and no assertion is made on them.
+
+**The gate has an INSTRUMENT SELF-TEST, and it earned it.** The first version bucketed the strip's
+vertices by lap distance alone — but a white line is TWO rows of vertices ~0.2 m apart, so that
+interleaves them, and it reported a 90° median turn at 0.3 m node spacing *and passed all its checks*. A
+gate that passes on impossible numbers is worse than no gate. The self-test now requires the median turn
+to be physically possible before any other check runs, and the gate fails outright if no track can be
+measured.
+
+**Sprint 2 (next on E108):** (a) order Watkins Glen correctly — separate concentric strips instead of
+taking the outermost, probably by clustering lateral per side; (b) the p99 column is still 92–115° on
+every track, which is the polyline hopping between disjoint strip pieces rather than a real corner, so
+the 40 m chord filter needs replacing with proper strip segmentation; (c) only then tune
+`JM_ROADCURVE_TOL` against a trustworthy p90/p99.
