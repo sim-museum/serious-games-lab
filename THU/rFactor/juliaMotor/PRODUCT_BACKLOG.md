@@ -20728,3 +20728,51 @@ split) is built at lines 5126–6614, *after* `GLFW.Init` at 4203, and this envi
 and S2 got this far by reading placements and meshes straight out of the `.dat`; deciding between "the
 exclusion is wrong" and "something else is drawn twice" needs to be **seen**. Rotating rather than spending
 S3/S4 on code reading that cannot be checked.
+
+---
+
+### E111-S1 — the corner located from the `.trk`; the missing house is NOT a missing mesh (sprint 1 of 4)
+
+**The corner, measured rather than recalled.** My Spa geography is not evidence, so the PO's *"90 degree
+left-hand turn that goes down the hill to Burnenville"* was found in the `.trk` arcs: it is **two consecutive
+arcs, +34.8° at s=1843 and +53.3° at s=1921 — +88.1° in total, dropping 4.6 m**. It is the only ~90° left in
+the first half of the lap, so the corner is **s ≈ 1843–2070 m**, and *"the end of the front winding
+straight, just before"* it is roughly s = 1550–1850.
+
+**A missing-mesh census for Spa** (every placement whose `.3do` is in neither the track archive nor loose on
+disk — such a placement draws nothing and says nothing, because the loader's `catch` swallows it):
+
+| name | placements | where |
+|---|---|---|
+| `t81` | 22 | off-ribbon |
+| `stree34` | 7 | off-ribbon, s=2020, s=3304 |
+| `house1a` | 4 | **s=2526, lateral −20.8** |
+| `malcafe` | 1 | s=3343, lateral +15.5 |
+| `stevecoa` | 1 | s=13605 |
+
+35 placements of 5 names, out of **9121 placements** against 502 `.3do` entries in the archive.
+
+**But none of them is the PO's house.** `house1a` sits at s=2526 — roughly 500 m *after* the corner, not just
+before it — and `malcafe` at s=3343 is further still. Both are absent from the whole GPL install (searched:
+no `house1a.3do` or `malcafe.3do` anywhere, and there is no global object archive), so GPL could not draw
+them either. Meanwhile every other Spa house — `house1`, `house1b`, `house2`, `house3`, `house4`, `house5`,
+`house6`, `house22`–`house49`, `housered`, `clhouse`, `housebox`, `chut` — has its mesh and is drawn.
+
+At the corner itself (s=1550–2100) there are 403 placements of 77 names, and **not one is missing a mesh**.
+The only building-like object there is `bu5` (3 placements, s=1573, lateral −26.4 m — set well back).
+
+**So the house is placed, has a mesh, and is dropped or culled at build time** — which lives in the pipeline
+at lines 5126–6614, *after* `GLFW.Init` at 4203, and cannot be measured here.
+
+**This is now the third item blocked on the same wall**: E110 (the doubled gantry), E111a (this) and E111b
+(the yellow polygon over the road — Spa's track mesh contains **nothing** spanning the road at any height:
+0 curtain bins, partials ≤ 0.88 m, and `JM_OVERROAD` finds only two vertical surfaces, `barr` at s=350 and
+`edg1` at s=5550). All three are questions about *placed objects*, and placed objects are unreachable
+headlessly.
+
+**Sprint 2 (next on E111) — unblock all three at once.** Make the placed-object pipeline inspectable without
+a GL context: either build `objmesh`/`OBJECTS`/`BILLBOARDS` before `GLFW.Init`, or give the object build a
+census hook that reports, per placement, whether it was kept and if not which filter dropped it
+(`drop`, `onroad_crowd`, `perp_crowd`, `onroad_bldg`, `onroad_fp`, the height test, `onground`). That single
+hook answers "why is the house missing", "what is drawn twice at the line" and "what yellow polygon is over
+the road" — and it is the same fault the codebase banked as *"headless hooks must exit"*, one level deeper.
