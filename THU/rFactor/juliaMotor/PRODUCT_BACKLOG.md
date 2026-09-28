@@ -20166,12 +20166,17 @@ So it is smoother *and* slightly quicker, for 14 mm of overshoot. GPL's speed-de
 limit cycle while holding the line, and the cornering gain pair does engage on a full-width slot
 (peak lateral speed 5.24 m/s vs the 3.60 m/s switch) — so the ported half is not dead code.
 
-**One honest caveat, and it is the next sprint's work.** At the frame where the target *steps*
-(0 → 2.4 m instantly), GPL's law spikes to 1045 m/s³ against the control's 480, because `a = −k1·e`
-and `e` jumps. That is inherent to a spring on a stepped goal — and in GPL the goal does **not** step:
-the line and its deviations are continuous functions of lap distance. The defect is therefore at our
-*call site*, which sets `car.tlane` from 0 to ±RAIL in one frame. The gate reports that frame
-separately rather than letting one artificial sample decide the verdict.
+**One caveat, examined and then DISMISSED — it is not a defect.** At the frame where the target
+*steps* (0 → 2.4 m instantly), GPL's law spikes to 1045 m/s³ against the control's 480, because
+`a = −k1·e` and `e` jumps. My first reading was that our call site should ramp `car.tlane`, and that
+was wrong on two counts. (a) GPL's dlat goal steps in exactly the same way: when a pass is initiated
+the goal becomes the *other line's* lateral, and the spring/damper's response to that step **is** the
+smooth slot — that is what the transition modes are for. Ramping the goal would be inventing
+something Papyrus did not do, which is the habit this epic exists to break. (b) Our AI cars are
+advanced kinematically (`pose_at(line, s, lane)`), so `lane` is a POSITION: a jerk spike means
+position's second derivative steps while position and velocity stay continuous, which is not visible.
+The gate still reports that frame separately, so the number is on the record rather than hidden
+inside a percentile.
 
 **The one place this is still a guess, stated plainly** (per the PO's standing constraint): GPL picks
 the fuzzy line from a state machine we do not have. We select `follow_line` when `car.tlane == 0` and
@@ -20183,6 +20188,8 @@ site requests avoidance yet.
 as "5.50 s" on a manoeuvre over by 2 s; and the source-of-parameters line printed before `gpl_ai()`
 had ever run, so it claimed "file absent" while the gains came from the file.
 
-**Sprint 2 (next on E107):** ramp `car.tlane` instead of stepping it, so the goal moves as GPL's does;
-then the reconciliation that would let Watkins Glen and Monza accept GPL's line (Monza refuses 49.4 %
-of records, which says our Monza centreline is far from GPL's).
+**Sprint 2 (next on E107):** the reconciliation that would let Watkins Glen and Monza accept GPL's
+line — this is the PO's *"including use of AI line information included with each track"*, and today
+three of five tracks refuse it. Monza refuses **49.4 %** of records, which is not a tolerance problem
+but a statement that our Monza centreline is far from GPL's; start there, because a cause that large
+should be findable.
