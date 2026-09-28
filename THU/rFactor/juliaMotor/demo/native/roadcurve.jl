@@ -20,6 +20,17 @@
 module RoadCurve
 using ..Render.GPL3DO: Tri, Mesh3DO
 
+const MAXNODE_LAT = Ref(-1.0)
+@inline function maxnode_lat()
+    MAXNODE_LAT[] < 0.0 && (MAXNODE_LAT[] = something(tryparse(Float64, get(ENV, "JM_ROADCURVE_MAXNODE_LAT", "12.0")), 12.0))
+    MAXNODE_LAT[]
+end
+const MAXNODE = Ref(-1.0)
+@inline function maxnode()
+    MAXNODE[] < 0.0 && (MAXNODE[] = something(tryparse(Float64, get(ENV, "JM_ROADCURVE_MAXNODE", "25")), 25.0))
+    MAXNODE[]
+end
+
 struct Curve
     P::Vector{NTuple{2,Float64}}   # closed loop, no repeated end node
     sgn::Float64                   # +1 if N = left normal agrees with the ribbon's perp
@@ -80,7 +91,31 @@ function edge_mid(c::Curve, a::V, b::V, tol)
     L < 0.5 && return nothing
     n = length(c.P); du = b.u - a.u
     du > n/2 && (du -= n); du < -n/2 && (du += n)
-    abs(du) > 12 && return nothing                       # spans too much of the lap: not a road edge
+    # E108-S3: this guard, not JM_ROADCURVE_TOL, is what leaves the worst road-edge chords straight.
+    # Measured (gplplan_smoke's sagitta, the gap between the drawn chord and the curve it should follow):
+    # the six worst chords at Watkins Glen and at Monza all PROJECT correctly but span 13.1-17.6 curve
+    # nodes, so a cap of 12 refused every one of them -- which is why the `max` sagitta was identical with
+    # ROADCURVE on and off (1.559 m at WG, 1.065 m at Monza). At ~3 m per ribbon node a cap of 12 stops
+    # splitting at ~36 m, and these are 31-55 m chords on gentle curves: plausible geometry, not the
+    # mapping failure the guard was written to catch. The guard's real job is to reject an edge whose two
+    # endpoints land at opposite ends of the lap, so the cap only has to stay far below that.
+    # The cap is raised only out to MAXNODE_LAT laterally, because the extra triangles should go where the
+    # defect is. Measured, sagitta p99 of the drawn road edge against triangle count in the SIM:
+    #   lateral gate   WG p99   Monza p99   WG tris            Spa tris
+    #   (shipped, 12)  0.452 m   0.305 m    67 234             225 549
+    #   8 m            0.452 m   0.305 m    79 313             281 145
+    #   12 m           0.214 m   0.186 m    81 803  (+21.7 %)  300 069  (+33.0 %)
+    #   25 m           0.196 m   0.184 m    93 187             --
+    # 12 m takes nearly all the gain; the chords still left straight sit at lateral 12-25 m, out on the
+    # aprons, where a kink in a white line is far less visible. The cost matters because the PO has an open
+    # frame-rate item (PERF-3) -- and note Spa, the track with that problem, takes the SMALLER relative
+    # hit, because its mesh is already dense so fewer of its chords reach the cap at all.
+    # This stays CRACK-FREE, which is the module's central invariant: the test reads only the edge's own
+    # two endpoints (their laterals), so the two triangles sharing an edge always decide it identically.
+    # Gating on TEXTURE instead would break that -- texture is per triangle, not per edge - and would
+    # open T-junctions along the road edge, exactly where they would be most visible.
+    # JM_ROADCURVE_MAXNODE / JM_ROADCURVE_MAXNODE_LAT override.
+    abs(du) > (max(abs(a.lat), abs(b.lat)) <= maxnode_lat() ? maxnode() : 12.0) && return nothing
     um = mod(a.u + du/2 - 1, n) + 1; lm = (a.lat + b.lat)/2
     m = F(c, um, lm)
     cx = (Float64(a.p[1]) + b.p[1])/2; cy = (Float64(a.p[2]) + b.p[2])/2

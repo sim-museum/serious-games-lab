@@ -20398,3 +20398,60 @@ overhead. Worth its own look.
 
 **Sprint 3 (next on E108):** tune `JM_ROADCURVE_TOL` (0.05 m today) against the p90 sagitta rather than
 against nothing, measuring the triangle cost; and find out why the worst chords are never split.
+
+### E108-S3 — the lever was a GUARD, not the tolerance (sprint 3 of 4)
+
+S2 left two questions: what should `JM_ROADCURVE_TOL` be, and why was the worst sagitta *identical* with
+ROADCURVE on and off. Both answered, and the answer to the second made the first almost irrelevant.
+
+**Why the worst chords were never split.** All six worst road-edge chords at both Watkins Glen and Monza
+**project correctly** but span **13.1–17.6 ribbon nodes**, and `edge_mid` carried
+`abs(du) > 12 && return nothing` — "spans too much of the lap: not a road edge". At ~3 m per node that
+stops splitting at ~36 m, and these are 31–55 m chords on gentle curves: ordinary geometry, not the
+mapping failure the guard was written to catch.
+
+**The tolerance sweep, for the record** (sagitta p90 / p99, triangle cost):
+
+| tol | WG p90 / p99 | tris | Monza p90 / p99 | tris |
+|---|---|---|---|---|
+| raw | 0.334 / 1.152 | — | 0.323 / 0.942 | — |
+| 0.20 | 0.208 / 1.109 | +38 % | 0.224 / 0.704 | +48 % |
+| **0.05 (shipped)** | 0.170 / 0.460 | +210 % | 0.145 / 0.312 | +246 % |
+| 0.02 | 0.160 / 0.376 | +473 % | 0.118 / 0.189 | +677 % |
+| 0.01 | 0.125 / 0.273 | +935 % | 0.111 / 0.182 | +1007 % |
+
+`max` stays at 1.559 / 1.065 m at **every** tolerance — the guard, not the tolerance, was the ceiling. And
+0.05 sits at the knee, so **tol is left alone**: 0.05 → 0.01 buys 3–4 cm for 3.3× the triangles, while
+raising the guard buys 2.1× on p99 for a fifth of that cost.
+
+**Shipped:** `JM_ROADCURVE_MAXNODE` = 25 (25 → 40 buys nothing: p99 0.196 vs 0.195), applied only out to
+`JM_ROADCURVE_MAXNODE_LAT` = 12 m laterally so the triangles go where the defect is.
+
+| lateral gate | WG p99 | Monza p99 | WG tris | Spa tris |
+|---|---|---|---|---|
+| shipped before | 0.452 m | 0.305 m | 67 234 | 225 549 |
+| 8 m | 0.452 m | 0.305 m | 79 313 | 281 145 |
+| **12 m** | **0.214 m** | **0.186 m** | 81 803 (**+21.7 %**) | 300 069 (**+33.0 %**) |
+| 25 m | 0.196 m | 0.184 m | 93 187 | — |
+
+The chords still left straight sit at lateral 12–25 m — out on the aprons, where a kink in a white line is
+far less visible. Cost matters here because PERF-3 is open, and note that **Spa, the track with the frame-
+rate problem, takes the smaller relative hit**: its mesh is already dense, so fewer of its chords reach the
+cap at all. SPA-FPS-1 also established the mirror's two `drawworld` passes are 55 % of the cockpit frame,
+so the track mesh is not the dominant cost there.
+
+**A COST FIGURE OF MY OWN WAS WRONG and nearly killed the change.** I first reported the blanket cap as
+"+115 % triangles at Watkins Glen" and reasoned from it that the fix was too expensive to ship. That
+compared against 43 303 tris — my *sweep tool's* count, built on a coarser ribbon (the un-re-centred
+centreline, ~4 m nodes) than the sim's (~3 m). The sim's actual shipped baseline is **67 234**, so the real
+cost is +21.7 %. Measure the baseline in the same place as the treatment.
+
+**Crack-freeness preserved:** the raised cap is gated on the edge's own two endpoint laterals, so the two
+triangles sharing an edge always decide identically. Gating on TEXTURE would have been cheaper still and
+would have broken it — texture is per triangle, not per edge — opening T-junctions along the road edge,
+which is exactly where they would show.
+
+**Sprint 4 (last on E108 before rotating):** the residual is now p90 0.13–0.17 m and p99 ~0.19–0.21 m.
+Decide whether that is visible enough to chase further, which wants the PO's eye on a screenshot rather
+than another metric; and look at whether the `.trk`-generated road (E108's original sprint 4) can beat it
+outright rather than rounding the `.3do`.
