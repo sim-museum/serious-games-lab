@@ -7,6 +7,13 @@ repo — it bundles copyrighted GPL assets, personal use). The exhaustive multi-
 history lives in the assistant memory `juliamotor-project.md`; this file is the
 working summary.
 
+## Token cost — read before a long session
+Sim runs are slow and tool outputs are large, so cost here scales badly with session length.
+**Rules: `../../260928/TOKEN_EFFICIENCY.md`.** In short: one blocking wait per background job (never
+poll), filter every output at the source, iterate in throwaway scripts, keep commit messages short,
+and start a fresh session per backlog item. A 6-hour unbroken session on 2026-09-28 cost ~26 % of a
+weekly token budget.
+
 ## Run it
 ```
 cd demo/native
