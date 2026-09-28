@@ -20651,3 +20651,38 @@ flag, or a naming convention GPL keys on. Before that, note the base rate — 62
 origins inside the corridor, so "origin on the road" is common and is not by itself the discriminator.
 
 **ROTATING to E110** (Watkins Glen's doubled start/finish gantry) per the four-sprint rule.
+
+---
+
+### E110-S1 — the doubled gantry is NOT in the data: one placement, one structure (sprint 1 of 4)
+
+PO 2026-09-26: *"the banner/gantry at the start/finished line is placed twice, there are two of them."*
+
+**Everything that could duplicate it in the data has been ruled out, headlessly:**
+
+| candidate | measured |
+|---|---|
+| a second placement | `startbox` has **exactly 1** placement (s=4 m, lateral −6.2, yaw 0.8°); 147 placements in `watglen.3do` and no other start/finish object |
+| two structures inside the one object | `startbox` is 132 tris; its `sf*` geometry (the banner proper, ignoring hay bales and spectators) is 22 tris spanning y −3.6…4.6 and x −0.5…0.5 — an 8.2 m wide, 0.5 m thin, 6.6 m tall panel whose **biggest internal gap is 1.44 m**: one connected structure |
+| a gantry baked into the track mesh | the only start/finish textures there are `start` (2 tris) and `usgp` (2 tris), both at z **−0.2…0.7 m** — **painted road markings**, not banners |
+| near-vertical geometry spanning the road at the line | the `JM_ROADBLOCK` census finds **0** curtain and **0** partial bins at Watkins Glen, at any height |
+
+So one banner exists in the data and the PO sees two: **the duplication is in the DRAW path**, which matches
+note E58's lead about "a 2nd lambda".
+
+**A limitation of the census, found and worth recording:** it runs before `GLFW.Init` (line 4203) by design,
+but ordinary placed objects are built at line 6331, *after* it — so `JM_ROADBLOCK` cannot see them at all. It
+covers the track mesh, the Ring's `.dat` scenery and the Ring's sprites. That is why Watkins Glen reports
+zero of everything and why this sprint had to read the placements and meshes straight out of the `.dat`
+instead. (Also why `JM_ROADBLOCK_LOW` had to be lifted to look for a gantry: the bridge exemption added in
+E109-S1 correctly excludes anything that passes overhead, which a banner does.)
+
+**Incidental find, not the PO's defect:** `tpole3` — a **13.5 m telegraph pole**, 0.4 m across — is placed at
+s=9 m, lateral **+0.6 m**, i.e. on the road centreline, yaw 87.9°. It is presumably dropped by one of the
+renderer's on-road footprint filters, since the PO has not reported a pole at the start line; worth
+confirming rather than assuming, because if it *is* drawn it is a second tall object at the line and could
+itself be the "second gantry".
+
+**Sprint 2 (next on E110):** find the second draw. Candidates in order: the object list drawn twice (an
+opaque pass and an alpha/cutout pass over the same items would show an alpha-textured banner twice), and
+whether `tpole3` survives the on-road filters.
