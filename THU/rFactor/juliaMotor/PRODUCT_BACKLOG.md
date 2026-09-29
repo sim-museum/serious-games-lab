@@ -23,7 +23,7 @@ this index was written; that is what it exists to stop.
 |---|---|---|
 | **E107** | **EPIC (PO priority): Julia AI as close as possible to gold-standard GPL AI**, using GPL's `.lp` lines and the AI documentation under `~/sgl/THU` | NEW 2026-09-28. GPL's own `gpl_ai.ini` FOUND and read: its AI slots laterally with a **dlat acceleration spring/damper** over an 8-mode state machine, not the velocity clamp we invented. Sprint 1 = port that. |
 | **E108** | **EPIC (PO priority): tracks as close as possible to gold-standard GPL tracks** — no seams, no piecewise-linear turns, no piecewise-linear white stripes | NEW 2026-09-28. The VERTICAL is already within 0.4–5.7 cm of the .trk (`gplroad_smoke`), so this is a PLAN-VIEW and SHADING problem. Sprint 1 = build a plan-view ruler. |
-| **E109** | Nürburgring tree "curtains" across the road + individual trees intruding | NEW 2026-09-28. `road_clear_smoke` is already red on this; leads on file (`wehr-l2/l3`, `last01`, `hohe-lg3`). |
+| **E109** | Nürburgring tree "curtains" across the road + individual trees intruding | ✅ **curtains FIXED** (E109-S5, 2026-09-28): road-spanning veil faces dropped by extent, `JM_ROADBLOCK` curtain bins 43 → 2 (the 2 left are `txxx60er` at s≈10720, not a tree), partial 562 → 383. `JM_VEIL_KEEP=1` reverts. Not yet eyeballed in a render. |
 | **E110** | Watkins Glen start/finish gantry drawn twice | NEW 2026-09-28. Only one placement exists, so it is a second draw path, not a second instance. |
 | **E111** | Spa: missing corner house before the 90° left; bright yellow polygon over the road after it | NEW 2026-09-28. `house12`/`house13` are in neither archive nor disk. |
 | **E85** | EPIC: multiplayer, the way GPL did it | **sprint 1 DONE** (E85-S1): poses cross two processes exactly, both ways, gated. Sprints 2–4 open. |
@@ -20809,3 +20809,28 @@ and for scope (every name it uses — `insts`, `objmesh`, `ymn`/`ymx`, `TRKSURF`
 in scope at that point, and all but `TRKSURF` are already used by the block it sits in) but it has **not been
 executed**. It is inert unless `JM_OBJDIAG` is set, so the risk to the shipped sim is confined to that.
 First action when GL returns: run the three commands above.
+
+### E109-S5 — the curtains removed: judge a face by its EXTENT, not its centroid (2026-09-28)
+
+**Why they survived.** `gpl_scenery` already drops scenery faces in the road corridor, but it tests the
+triangle's CENTROID (`|lat| < 5 m` and within 3 m of road height). A `half*` veil is a ~10 m tall panel, so
+its centroid sits > 3 m up and the rule never fires. S1–S4 looked for a placement/mirror/winding error;
+none exists (all refuted). How GPL itself hides them is still unknown: a node-tree walk of `nurburg.3do`
+found per-object node types `0x0F`/`0x10` (the latter with four squared-distance-like thresholds, and one
+1714-entry monotonic table that looks like a per-segment visibility index) that `gpl_placements`' flat
+scan ignores. Decoding that is the *faithful* fix and was not attempted (cost).
+
+**Fix.** A near-vertical face (`|n_z| ≤ 0.4`) is dropped when its per-vertex lateral extent overlaps
+±5.5 m AND it spans the sightline (bottom < road + 3 m, top > road + 1.5 m) — the same test `JM_ROADBLOCK`
+counts, so bridges are untouched. `JM_VEIL_KEEP=1` restores the old behaviour.
+
+| arm | curtain bins | partial bins | faces dropped |
+|---|---|---|---|
+| `JM_VEIL_KEEP=1` | 43 | 562 | 0 |
+| **fix (default)** | **2** | **383** | 739 |
+
+All `halftr*` bins are gone. The 2 left are `txxx60er` (s = 10720–10755, full 11 m), present in the
+baseline too; not a tree veil — open, unexamined. The partial drop (−179 bins) is shrub faces poking into the
+corridor, i.e. part of the PO's second complaint; the risk is visibly clipped verge shrubs.
+**Not yet verified by eye** — needs a render at s≈5535, 6857 and 10720 when GL is available.
+

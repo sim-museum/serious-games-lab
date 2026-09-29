@@ -1132,6 +1132,8 @@ function gpl_scenery(ztrk, datpack, ribbon)
     local n_offered=0; local n_treesrb=0; local n_nomesh=0; local n_kept=0
     sprites = NamedTuple[]                                   # E76-S8: billboard-stub placements
     n_people_dropped = Ref(0)                                # TRACKGOLD-1 S3: loose-people sprites removed
+    n_veil = Ref(0)                                          # E109-S5: road-spanning veil faces dropped
+    VEIL_DROP = get(ENV, "JM_VEIL_KEEP", "0") == "0"
     scene_names=Dict{String,Int}()
     for (nm,t) in pls
         n_offered += 1
@@ -1335,6 +1337,25 @@ function gpl_scenery(ztrk, datpack, ribbon)
             vx=w[3][1]-w[1][1]; vy=w[3][2]-w[1][2]; vz=w[3][3]-w[1][3]
             nz=ux*vy-uy*vx; nl=sqrt((uy*vz-uz*vy)^2+(uz*vx-ux*vz)^2+nz^2)
             (nl > 1f-6 && abs(nz)/nl > 0.4f0) && push!(hat, Render.GPL3DO.Tri(w, nn, tr.uv, tr.tex, tr.col, tr.flat, tr.ptype))
+            # E109-S5: the Ring's `half*` tree veils (E109-S1/S2) are tall near-vertical panels standing
+            # ACROSS the road. The centroid rule above misses them: a 10 m panel's centroid is > 3 m up.
+            # Judge a non-horizontal face by its EXTENT instead -- laterally overlapping the +-5.5 m
+            # corridor AND spanning the sightline (bottom within 3 m of the road, top above 1.5 m), the
+            # same test JM_ROADBLOCK counts. Bridges stay (their faces never come down to the road).
+            # JM_VEIL_KEEP=1 restores the old behaviour for an A/B.
+            if VEIL_DROP && nl > 1f-6 && abs(nz)/nl <= 0.4f0 && hr.found
+                hv = (JuliaMotor.hat(ribbon, w[1][1], w[1][2]), JuliaMotor.hat(ribbon, w[2][1], w[2][2]),
+                      JuliaMotor.hat(ribbon, w[3][1], w[3][2]))
+                if all(h -> h.found, hv)
+                    llo = minimum(h.lateral for h in hv); lhi = maximum(h.lateral for h in hv)
+                    zlo = min(w[1][3], w[2][3], w[3][3]) - hr.height
+                    zhi = max(w[1][3], w[2][3], w[3][3]) - hr.height
+                    if lhi > -5.5 && llo < 5.5 && zlo < 3.0 && zhi > 1.5
+                        n_veil[] += 1
+                        continue
+                    end
+                end
+            end
             # E68 S9 (PO/Ring ~s18400): a section's UNLIT UNDERSIDE hovered beside the crest as a
             # dark angular slab — we render scenery two-sided, GPL's single-sided cull hides these.
             # Skip strongly DOWN-facing faces that sit ABOVE road level BESIDE the corridor
@@ -1353,6 +1374,7 @@ function gpl_scenery(ztrk, datpack, ribbon)
         end
     end
     nskip > 0 && print("(skipped ", nskip, " flat sprite stubs) ")
+    n_veil[] > 0 && print("(dropped ", n_veil[], " road-spanning veil faces, E109-S5) ")
     if get(ENV,"JM_SCENEDIAG","") != ""
         println()
         println("== JM_SCENEDIAG scenery placements offered to the loader ==")
