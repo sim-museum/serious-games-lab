@@ -23,7 +23,7 @@ this index was written; that is what it exists to stop.
 |---|---|---|
 | **E107** | **EPIC (PO priority): Julia AI as close as possible to gold-standard GPL AI**, using GPL's `.lp` lines and the AI documentation under `~/sgl/THU` | NEW 2026-09-28. GPL's own `gpl_ai.ini` FOUND and read: its AI slots laterally with a **dlat acceleration spring/damper** over an 8-mode state machine, not the velocity clamp we invented. Sprint 1 = port that. |
 | **E108** | **EPIC (PO priority): tracks as close as possible to gold-standard GPL tracks** — no seams, no piecewise-linear turns, no piecewise-linear white stripes | NEW 2026-09-28. The VERTICAL is already within 0.4–5.7 cm of the .trk (`gplroad_smoke`), so this is a PLAN-VIEW and SHADING problem. Sprint 1 = build a plan-view ruler. |
-| **E109** | Nürburgring tree "curtains" across the road + individual trees intruding | ✅ **curtains FIXED** (E109-S5, 2026-09-28): road-spanning veil faces dropped by extent, `JM_ROADBLOCK` curtain bins 43 → 2 (the 2 left are `txxx60er` at s≈10720, not a tree), partial 562 → 383. `JM_VEIL_KEEP=1` reverts. Not yet eyeballed in a render. |
+| **E109** | Nürburgring tree "curtains" across the road + individual trees intruding | ✅ **curtains FIXED the GPL way** (E109-S6, 2026-09-28): GPL's method decoded — veils are drawn unconditionally and the `halftr*` textures' alpha clears the road. Texel census: all veils kept → **0 curtain bins**. Drop rule now only fires on drawn texels across the centreline (fires 0×). Also fixed the S5 regression that cut the s=5800 bridge's piers. Eyeballed at s=5500/6820/5735/5770. |
 | **E110** | Watkins Glen start/finish gantry drawn twice | NEW 2026-09-28. Only one placement exists, so it is a second draw path, not a second instance. |
 | **E111** | Spa: missing corner house before the 90° left; bright yellow polygon over the road after it | NEW 2026-09-28. `house12`/`house13` are in neither archive nor disk. |
 | **E85** | EPIC: multiplayer, the way GPL did it | **sprint 1 DONE** (E85-S1): poses cross two processes exactly, both ways, gated. Sprints 2–4 open. |
@@ -20833,4 +20833,50 @@ All `halftr*` bins are gone. The 2 left are `txxx60er` (s = 10720–10755, full 
 baseline too; not a tree veil — open, unexamined. The partial drop (−179 bins) is shrub faces poking into the
 corridor, i.e. part of the PO's second complaint; the risk is visibly clipped verge shrubs.
 **Not yet verified by eye** — needs a render at s≈5535, 6857 and 10720 when GL is available.
+
+### E109-S6 — GPL's veil method DECODED: the texture does it; S5 revised; the first bridge made whole (2026-09-28)
+
+**How `nurburg.3do` is organised** (decoded, headless, `extern`-free scripts): root = group{ `0x10` table
+of 1714 entries (track section → cell, monotonic), 892 per-segment 8-slot trees (slots 0/4/6 = three detail
+copies of the segment's BSP, slot 7 = a `0x10` of 4 distance thresholds), a group of all 893 cells }.
+`0x10` = `[16, n, n words]`, a data table. `0x0F` = a cell: `[15, (plane#, neighbour)×4, next-detail-copy,
+-1, 0×4, count, (x, y, z, positioner)×count]` — 4 NALP planes bound it, each with the neighbour across it;
+the object list is the ONLY route to a scenery object (the flat `0x0E` scan in `gpl_placements` bypasses it).
+Plane nodes `0x06`–`0x0B` = `[type, plane#, children]`. Every cell reached under a plane node lies on
+the camera cell's side of it.
+
+**What GPL does with the `half*` veils: nothing special.** Each is one quad (cuboid → selector → one
+`0x81F`), reached from its own segment's tree in every detail slot. No cull, plane gate or distance gate
+applies, and no facing pattern holds (17/17, 24/26). In GPL's own frame the `half01` quad is 21 × 18 m,
+exactly perpendicular to the track, 2.7 m above the asphalt. **The texture is the method:** every
+`halftr*` is a HALF-tree sheet whose left third is 0 % opaque. In GPL's frame the on-asphalt part of the
+panel samples only transparent columns for 49 of 67 placements. The rest put some opaque texels over paddock
+or run-off asphalt, never across the centreline (below).
+
+**The S1–S5 ruler was blind to alpha.** `JM_ROADBLOCK` now counts drawn TEXELS by default
+(`JM_ROADBLOCK_TEXEL=0` = faces):
+
+| arm | curtain | partial | veil faces dropped |
+|---|---|---|---|
+| all kept, face count (the old ruler) | 43 | 562 | 0 |
+| **all kept, texel count** | **0** | 496 | 0 |
+| S5 extent rule (`JM_VEIL_EXTENT=1`) | 0 | 373 | 739 |
+| **S6 (default)** | **0** | 496 | **0** |
+
+S6: the extent test is only a prefilter; a face is dropped only if its drawn texels
+(`veil_opaque_span`, alpha ≥ 0.04 = the shader's discard) span the centreline in the 0.3–3 m sightline.
+It fires 0 times. That makes it a safety net. Partial bins go back to 496 because S5's partial drop was
+collateral: verge shrubs and bridge piers that GPL draws. The PO's "individual trees intrude" complaint
+(`shrub_s`/`shrub_a`, ≤1.25 m) is therefore back to its pre-S5 state and still open.
+
+**The first bridge (s≈5800, `turn16`/`turn16b`), PO: "centre span hanging in mid-air".** S5's "bridges
+stay" was reasoned, not measured. Its rule dropped **5 `bridge` + 2 `br_under`** faces (piers at the
+asphalt edge reach the road), and the old centroid road-corridor rule dropped 2 more `br_under`. Fixed by S6
+plus exempting `BRIDGE_TEX` from the centroid rule: 23/23 `bridge` tris render (was 18). Every drop rule
+now reports per `object/texture` into the `JM_SCENE_AT` tally, so the next structure that loses faces
+gets named.
+
+**Eyeballed** (`JM_SHOTS`, cockpit): s=5735/5770 the bridge's abutments reach the road on both sides;
+s=5500 and 6820 the road is clear and the veils read as forest walls. Open, unexamined: faint thin
+diagonal lines at treetop height at s=6820 (wires, or a veil-edge alpha fringe?).
 

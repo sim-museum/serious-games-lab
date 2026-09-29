@@ -1056,6 +1056,35 @@ function dedup_scenery(tris)
     keep
 end
 
+# E109-S6: GPL's own answer to the Ring's tree veils, decoded from nurburg.3do. GPL reaches every
+# scenery object only through its segment's cell (0x0F) object list, in every detail slot of that
+# segment's tree -- the `half*` veils included, with no cull, plane gate or distance gate on them. What
+# keeps GPL's road clear is the TEXTURE: every `halftr*` is a HALF-tree sheet whose road-side columns
+# are alpha 0 (left third 0 % opaque). So a veil face is a curtain only where its OPAQUE texels fall in
+# the sightline. Returns the lateral span (lo, hi) of the texels the renderer would draw (alpha >= 0.04,
+# render.jl's discard) at |lateral| < lat and hlo..hhi above the road, or `nothing` if there are none.
+# `w` = three HAT-frame points (x, y, z-up); `tex` = (w, h, rgba) or nothing (= treat as opaque).
+function veil_opaque_span(w, uv, tex, ribbon; lat=5.5, hlo=0.3, hhi=3.0, n=16)
+    lo = Inf; hi = -Inf
+    for i in 0:n, j in 0:(n-i)
+        a = i/n; b = j/n; c = 1 - a - b
+        x = a*w[1][1] + b*w[2][1] + c*w[3][1]; y = a*w[1][2] + b*w[2][2] + c*w[3][2]
+        z = a*w[1][3] + b*w[2][3] + c*w[3][3]
+        hr = JuliaMotor.hat(ribbon, x, y); hr.found || continue
+        (abs(hr.lateral) < lat && hlo <= z - hr.height <= hhi) || continue
+        if tex !== nothing
+            tw, th, rgba = tex
+            u = a*uv[1][1] + b*uv[2][1] + c*uv[3][1]; v = a*uv[1][2] + b*uv[2][2] + c*uv[3][2]
+            px = mod(floor(Int, u*tw), tw); py = mod(floor(Int, v*th), th)
+            rgba[4*(py*tw + px) + 4] < 0x0a && continue
+        end
+        lo = min(lo, hr.lateral); hi = max(hi, hr.lateral)
+    end
+    lo <= hi ? (lo, hi) : nothing
+end
+
+const BRIDGE_TEX = ("bridge", "br_under")   # E109-S6: the Ring's bridge structure textures
+
 function gpl_scenery(ztrk, datpack, ribbon)
     pls = Render.GPL3DO.gpl_placements(ztrk)
     # E109-S3: every one of the 67 `half0*`/`half1s` veil placements sits at yaw MINUS road heading =
@@ -1125,6 +1154,10 @@ function gpl_scenery(ztrk, datpack, ribbon)
     scene_drop = Tuple{String,Float64,Float64,String}[]           # E76-S11: what was placed near it but never rendered, and why
     scene_z = Tuple{String,Float64,Float64}[]                     # E81: each rendered object's z range relative to the road beside it
     scene_tridrop = Dict{Tuple{String,String},Int}()             # E76-S11: (object, rule) -> triangles dropped inside the window
+    snote_at = get(ENV, "JM_SCENE_AT", ""); snote_win = parse(Float64, get(ENV, "JM_SCENE_WIN", "250"))
+    # E109-S6: every drop rule reports into the same per-object tally, so a structure losing faces is named
+    scene_note(nm, rule, h) = (snote_at != "" && h.found && abs(h.lapdist - parse(Float64, snote_at)) < snote_win) &&
+        (scene_tridrop[(nm, rule)] = get(scene_tridrop, (nm, rule), 0) + 1)
     # E76-S3: is the Ring's scenery even being LOADED? Its whole load is "184 groups / 4065 tris"
     # where Spa gets 1679 objects + 5132 billboards at a fifth the length (E76-S2), and gold's first
     # kilometre is lined with crowds and hoardings that native simply does not have. Before hunting
@@ -1134,6 +1167,9 @@ function gpl_scenery(ztrk, datpack, ribbon)
     n_people_dropped = Ref(0)                                # TRACKGOLD-1 S3: loose-people sprites removed
     n_veil = Ref(0)                                          # E109-S5: road-spanning veil faces dropped
     VEIL_DROP = get(ENV, "JM_VEIL_KEEP", "0") == "0"
+    VEIL_EXTENT = get(ENV, "JM_VEIL_EXTENT", "0") != "0"   # E109-S6: 1 = the S5 extent-only rule (A/B)
+    n_veil_clear = Ref(0)                                    # E109-S6: veil faces kept, road part transparent
+    veil_tex = Ref{Any}(nothing); veil_rgba = Dict{String,Any}()
     scene_names=Dict{String,Int}()
     for (nm,t) in pls
         n_offered += 1
@@ -1312,7 +1348,7 @@ function gpl_scenery(ztrk, datpack, ribbon)
                     ndrop_edge[] = ndrop_edge[] + 1
                 end
                 if get(ENV,"JM_SCENE_AT","") != "" && (let cgx=(w[1][1]+w[2][1]+w[3][1])/3; cgy=(w[1][2]+w[2][2]+w[3][2])/3; cgz=(w[1][3]+w[2][3]+w[3][3])/3; hrE = JuliaMotor.hat(ribbon, cgx, cgy); hrE.found && abs(hrE.lapdist - parse(Float64, ENV["JM_SCENE_AT"])) < parse(Float64, get(ENV,"JM_SCENE_WIN","250")) end)
-                    scene_tridrop[(nm, "stretched-edge")] = get(scene_tridrop, (nm, "stretched-edge"), 0) + 1
+                    scene_tridrop[(nm * "/" * tr.tex, "stretched-edge")] = get(scene_tridrop, (nm * "/" * tr.tex, "stretched-edge"), 0) + 1
                 end
                 continue
             end
@@ -1321,12 +1357,14 @@ function gpl_scenery(ztrk, datpack, ribbon)
             # the racing ribbon is queried in (gx,gy), road height is hr.height.
             cgx=(w[1][1]+w[2][1]+w[3][1])/3; cgy=(w[1][2]+w[2][2]+w[3][2])/3; cgz=(w[1][3]+w[2][3]+w[3][3])/3
             hr = JuliaMotor.hat(ribbon, cgx, cgy)
-            if (hr.found && abs(hr.lateral) < 5.0 && abs(cgz - hr.height) < 3.0)
+            # E109-S6: not a bridge's own structure -- the s=5800 bridge (turn16/turn16b) stands its piers
+            # at the asphalt edge, and dropping their faces left the span hanging in mid-air.
+            if (hr.found && abs(hr.lateral) < 5.0 && abs(cgz - hr.height) < 3.0) && !(lowercase(tr.tex) in BRIDGE_TEX)
                 if get(ENV,"JM_SCENEDROP","") != "" && occursin(lowercase(ENV["JM_SCENEDROP"]), lowercase(nm))
                     ndrop_road[] = ndrop_road[] + 1
                 end
                 if get(ENV,"JM_SCENE_AT","") != "" && abs(hr.lapdist - parse(Float64, ENV["JM_SCENE_AT"])) < parse(Float64, get(ENV,"JM_SCENE_WIN","250"))
-                    scene_tridrop[(nm, "road-corridor")] = get(scene_tridrop, (nm, "road-corridor"), 0) + 1
+                    scene_tridrop[(nm * "/" * tr.tex, "road-corridor")] = get(scene_tridrop, (nm * "/" * tr.tex, "road-corridor"), 0) + 1
                 end
                 continue
             end
@@ -1341,8 +1379,10 @@ function gpl_scenery(ztrk, datpack, ribbon)
             # ACROSS the road. The centroid rule above misses them: a 10 m panel's centroid is > 3 m up.
             # Judge a non-horizontal face by its EXTENT instead -- laterally overlapping the +-5.5 m
             # corridor AND spanning the sightline (bottom within 3 m of the road, top above 1.5 m), the
-            # same test JM_ROADBLOCK counts. Bridges stay (their faces never come down to the road).
-            # JM_VEIL_KEEP=1 restores the old behaviour for an A/B.
+            # same test JM_ROADBLOCK counts. (S5 claimed bridges stay; they did not -- see S6.)
+            # E109-S6: the extent test is now only a PREFILTER. GPL's own method (veil_opaque_span) is to
+            # draw the veil and let the texture's alpha clear the road, so a face is dropped only if its
+            # drawn texels span the centreline. JM_VEIL_EXTENT=1 = the S5 rule, JM_VEIL_KEEP=1 = none.
             if VEIL_DROP && nl > 1f-6 && abs(nz)/nl <= 0.4f0 && hr.found
                 hv = (JuliaMotor.hat(ribbon, w[1][1], w[1][2]), JuliaMotor.hat(ribbon, w[2][1], w[2][2]),
                       JuliaMotor.hat(ribbon, w[3][1], w[3][2]))
@@ -1351,8 +1391,26 @@ function gpl_scenery(ztrk, datpack, ribbon)
                     zlo = min(w[1][3], w[2][3], w[3][3]) - hr.height
                     zhi = max(w[1][3], w[2][3], w[3][3]) - hr.height
                     if lhi > -5.5 && llo < 5.5 && zlo < 3.0 && zhi > 1.5
-                        n_veil[] += 1
-                        continue
+                        # E109-S6: the extent test only says the face COULD block. GPL draws it anyway
+                        # and lets the texture's alpha clear the road, so drop it only if texels that
+                        # would actually be drawn fall in the sightline.
+                        if !VEIL_EXTENT
+                            veil_tex[] === nothing && (veil_tex[] = Render.gpl_texture_index(dirname(ztrk)))
+                            tx = get!(() -> Render.tex_rgba(veil_tex[], tr.tex), veil_rgba, tr.tex)
+                            # a CURTAIN (JM_ROADBLOCK's definition) = drawn texels across the centreline.
+                            # Opaque texels only at the road edge are a pier or a verge shrub: GPL draws
+                            # those, and dropping them is what cut the s=5800 bridge's piers away.
+                            sp = veil_opaque_span(w, tr.uv, tx, ribbon)
+                            clear = sp === nothing || !(sp[1] < 0.0 < sp[2])
+                            clear && (n_veil_clear[] += 1)
+                        else
+                            clear = false
+                        end
+                        if !clear
+                            n_veil[] += 1
+                            scene_note(nm * "/" * tr.tex, "veil", hr)
+                            continue
+                        end
                     end
                 end
             end
@@ -1363,6 +1421,7 @@ function gpl_scenery(ztrk, datpack, ribbon)
             if nl > 1f-6 && nz/nl < -0.5f0
                 hrz = JuliaMotor.hat(ribbon, cgx, cgy)
                 if hrz.found && 5.0 < abs(hrz.lateral) < 30.0 && cgz > hrz.height + 3.0
+                    scene_note(nm * "/" * tr.tex, "underside", hrz)
                     continue
                 end
             end
@@ -1374,7 +1433,7 @@ function gpl_scenery(ztrk, datpack, ribbon)
         end
     end
     nskip > 0 && print("(skipped ", nskip, " flat sprite stubs) ")
-    n_veil[] > 0 && print("(dropped ", n_veil[], " road-spanning veil faces, E109-S5) ")
+    n_veil[] > 0 && print("(dropped ", n_veil[], " road-spanning veil faces, E109-S5/S6; kept ", n_veil_clear[], " with a transparent road part) ")
     if get(ENV,"JM_SCENEDIAG","") != ""
         println()
         println("== JM_SCENEDIAG scenery placements offered to the loader ==")
@@ -2018,6 +2077,7 @@ else
         # mesh pass cannot see it however carefully it looks -- and "you have to drive through the curtain
         # before you can see anything" is a complaint about what is DRAWN, not about what is solid.
         nsc = Ref(0); ntri_sec = Ref(0); normdots = Float64[]
+        rb_texel = get(ENV, "JM_ROADBLOCK_TEXEL", "1") != "0"; rb_tex = Ref{Any}(nothing); rb_rgba = Dict{String,Any}()
         if isdefined(Main, :SECPARTS) && SECPARTS !== nothing
             for prt in SECPARTS
                 v = prt.verts; n = length(v) ÷ 11
@@ -2035,6 +2095,18 @@ else
                     (maximum(hs) >= rb_h && minimum(hs) <= rb_low) || continue
                     lo, hi = minimum(lats), maximum(lats)
                     (hi < -rb_lat || lo > rb_lat) && continue
+                    # E109-S6: judge what is DRAWN -- the span of texels the shader keeps, not the face.
+                    # A GPL half-tree veil across the road is a curtain only if its opaque half is there.
+                    if rb_texel
+                        rb_tex[] === nothing && (rb_tex[] = Render.gpl_texture_index(ZD))
+                        tx = get!(() -> Render.tex_rgba(rb_tex[], prt.tex), rb_rgba, prt.tex)
+                        k0 = 11*(3q); k1 = k0 + 11; k2 = k1 + 11
+                        wh = ((v[k0+1], -v[k0+3], v[k0+2]), (v[k1+1], -v[k1+3], v[k1+2]), (v[k2+1], -v[k2+3], v[k2+2]))
+                        uvs = ((v[k0+10], v[k0+11]), (v[k1+10], v[k1+11]), (v[k2+10], v[k2+11]))
+                        sp = veil_opaque_span(wh, uvs, tx, RIBBON0; lat=rb_lat, hlo=0.3, hhi=rb_h + 1.5)
+                        sp === nothing && continue
+                        lo, hi = sp
+                    end
                     nsc[] += 1
                     # E109-S4: WHICH WAY DOES THE FRONT FACE POINT? If GPL expects these veils culled from
                     # the road side, their winding normal must point AWAY from the road -- and then our
