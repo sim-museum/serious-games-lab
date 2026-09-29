@@ -1,6 +1,20 @@
 # biq — Claude Code project notes
 
-## STATUS — FRESH64H live runs (2026-09-27/28, UNCOMMITTED)
+## STATUS — FRESH64I live runs (2026-09-28)
+Run 15 hybrid SAYC -93 / 64 = -1.45/bd (best yet); run 16 rules-only -109 =
+-1.70/bd (best rules score; earlier -2.1..-2.8); run 17 Precision hybrid
+-109 / 63 = -1.73 (boards 2-64; a false start used board 1, so Q-Plus ran
+out of deals at the harness's 64th). PAIRED hybrid - rules +20 (+0.31/bd,
+SE 0.58); per deck so far: G +0.28, H +1.20, I +0.31.
+Simulation calls by type over paired decks G(part)/H/I: PASS instead of the
+rules' call 21 boards +84 IMP; DOUBLE 13 boards +1 (I: -32); other bid 8
+boards -6. Doubles that REPLACED the rules' own bid lost 22 on 4 boards (bds
+42/43: X of their 4m save instead of our making 4S); doubles instead of a
+pass won 11 on 5. Change: bid_sim.candidates offers X only when the rule
+call is pass/double. Profiles rebuilt with deck I.
+Results tools/runs/results/run15-17*.qss, logs tools/runs/ab/run15-17*.
+
+## STATUS — FRESH64H live runs (2026-09-27/28)
 Run 12 hybrid (batch-1 rule fixes + Q-Plus opponent model): -107 / 64 = -1.67/bd
 (best hybrid so far; runs 7/9/10 were -2.29/-2.08/-2.33). Run 13 --rules-only:
 -177 = -2.77/bd. PAIRED hybrid - rules +77 IMP (+1.20/bd, SE 0.59; closed

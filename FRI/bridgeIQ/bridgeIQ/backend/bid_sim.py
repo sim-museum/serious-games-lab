@@ -561,7 +561,14 @@ def candidates(state, hand: Hand, system, rule_bid: Bid) -> List[Bid]:
 
     add(nb.passb(why="Simulation candidate: pass"))
     last = state.last_non_pass
+    # A penalty double only as an alternative to PASSING. Replacing the rules'
+    # own bid with a double (doubling their 4-level save instead of bidding
+    # our 4S) lost 22 IMP on four FRESH64I boards; doubling where the rules
+    # would pass won 11 on five boards (live paired runs, 2026-09-28).
+    rule_is_bid = not (rule_bid.is_pass or rule_bid.is_double
+                       or rule_bid.is_redouble)
     if (last is not None and last[0] not in (state.seat, state.seat.partner())
+            and not rule_is_bid
             and not last[1].is_double and not last[1].is_redouble):
         add(nb.double(why="Simulation candidate: double"))
     opp_suits = set(state.suit_bid_by_opps)
