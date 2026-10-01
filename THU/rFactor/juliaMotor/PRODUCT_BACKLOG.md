@@ -23,7 +23,7 @@ this index was written; that is what it exists to stop.
 |---|---|---|
 | **E107** | **EPIC (PO priority): Julia AI as close as possible to gold-standard GPL AI**, using GPL's `.lp` lines and the AI documentation under `~/sgl/THU` | NEW 2026-09-28. GPL's own `gpl_ai.ini` FOUND and read: its AI slots laterally with a **dlat acceleration spring/damper** over an 8-mode state machine, not the velocity clamp we invented. Sprint 1 = port that. |
 | **E108** | **EPIC (PO priority): tracks as close as possible to gold-standard GPL tracks** — no seams, no piecewise-linear turns, no piecewise-linear white stripes | NEW 2026-09-28. The VERTICAL is already within 0.4–5.7 cm of the .trk (`gplroad_smoke`), so this is a PLAN-VIEW and SHADING problem. Sprint 1 = build a plan-view ruler. |
-| **E109** | Nürburgring tree "curtains" across the road + individual trees intruding | ✅ **curtains FIXED the GPL way** (E109-S6, 2026-09-28): GPL's method decoded — veils are drawn unconditionally and the `halftr*` textures' alpha clears the road. Texel census: all veils kept → **0 curtain bins**. Drop rule now only fires on drawn texels across the centreline (fires 0×). Also fixed the S5 regression that cut the s=5800 bridge's piers. Eyeballed at s=5500/6820/5735/5770. |
+| **E109** | Nürburgring tree "curtains" across the road + individual trees intruding | ✅ **curtains FIXED** (S6). **Individual trees MEASURED (S7–S10):** two sites stand ~1 m onto the drawn road — `halftr1s` s≈8350–8475 and `halftr07` s≈21350 — and both are exactly the veil placements at 98–110° to the road (the rest are ±90° and stand 1.7 m clear). Needs a GPL capture at s≈8400/21355 to tell data from our rotation pivot. |
 | **E110** | Watkins Glen start/finish gantry drawn twice | NEW 2026-09-28. Only one placement exists, so it is a second draw path, not a second instance. |
 | **E111** | Spa: missing corner house before the 90° left; bright yellow polygon over the road after it | NEW 2026-09-28. `house12`/`house13` are in neither archive nor disk. |
 | **E85** | EPIC: multiplayer, the way GPL did it | **sprint 1 DONE** (E85-S1): poses cross two processes exactly, both ways, gated. Sprints 2–4 open. |
@@ -20935,3 +20935,47 @@ gets named.
 s=5500 and 6820 the road is clear and the veils read as forest walls. Open, unexamined: faint thin
 diagonal lines at treetop height at s=6820 (wires, or a veil-edge alpha fringe?).
 
+### E109-S7..S10 (2026-09-30) — the PO's "individual trees" MEASURED: two sites, ~1 m onto the road, and both are the veils placed 10–20° off perpendicular (4 sprints — ROTATING)
+
+**New instrument — the ASPHALT pass** (part of `JM_ROADBLOCK`, prints `ASPHALT_RESULT`). The corridor
+census can't answer this complaint: ±5.5 m includes the verge, and its 1.5 m reach rule skips shrubs
+(≤ 1.25 m). The new pass counts drawn texels (alpha ≥ the shader's discard) standing 0.3–3 m above a **drawn
+road triangle** (`hat3d(ROADHAT, …)`, road/kerb/paint textures) directly beneath them.
+* **S7, first cut withdrawn:** grounded on the `.trk` halfwidth (`on_track`), it reported grass in 528 bins
+  — the `.trk` width reaches past the drawn asphalt. Re-grounded on `ROADHAT`: grass gone.
+* **S8, positive control:** `JM_ASPHALT_NOALPHA=1` (ignore alpha) floods the road with the Ring's
+  `halftr*` veils — 40 rows reaching |lat| 0.03–0.5 m, deep bins 3 → 69. The detector catches what it must.
+  The corridor census still reads 496 partial / 0 curtain (= S6), so nothing regressed.
+* **Shipped state:** 190 bins have texels over drawn road; **no tree texel is within 3.7 m of the
+  centreline.** Most rows are pit structures/buffers. `JM_ASPHALT_PAT=<a,b>` lists matching rows with the
+  drawn road edge on that side (walked out along the ribbon perpendicular) and the depth onto the road.
+
+**S9 — trees vs the drawn edge** (`JM_ASPHALT_GAP=halftr`; the veils are one-sided panels — no bin has
+opaque texels on both sides — so each side is judged alone). 25 veil bin-sides: depth onto road p10 −3.78,
+**p50 −1.72**, p90 +0.97 m. A veil's opaque edge normally stands 1.7 m OFF the road. Exceptions, all on
+the + side:
+
+| s | texture | inner \|lat\| | road edge | depth onto road |
+|---|---|---|---|---|
+| 8350–8475 | `halftr1s` | 3.72–3.96 | 4.85–5.0 | **1.13–1.14** |
+| 8375–8425 | `halftr1s` | 4.24–4.38 | 4.75–4.85 | 0.47–0.51 |
+| 8645 | `halftr1s` | 4.68 | 4.8 | 0.12 |
+| 21350 | `halftr07` | 3.83 | 4.8 | **0.97** |
+
+Shrubs are at the edge (−0.10 to +0.03 m), except `lshrub_s` at s≈13865–13910 (0.64–0.73 m on a 7.9 m-wide
+section). Out of scope, noted: pit-straight `wside`/`back*` structures stand 1.1–1.3 m onto the road at s≈1620.
+
+**S10 — the mechanism, by placement** (`JM_ROADBLOCK_PLACE=half JM_ROADBLOCK_PLACE_NEAR=<s>`, now also prints
+yaw − road heading). S3 noted most of the 67 veil placements sit at ±90° to the road and a few don't:
+* s≈8350–8650: **every** `half1s` placement is at **98–110°**.
+* s≈21350: `half07` alternates — 21355 and 21381 at **110°** (intruding), 21315 and 21331 at **90°** (21315 is
+  0.99 m clear).
+The geometry is authored offset from its origin (E109 lead), so a 10–20° rotation swings the panel's inner end
+sideways: a ~6 m offset turned 10° moves ~1 m, which is the size measured.
+
+**Open — data or transform?** If GPL draws these the same, they are faithful and the PO sees them in GPL too.
+If GPL pivots the rotation differently (geometry centre vs placement origin), ours is wrong only where yaw ≠ ±90°,
+which would explain why only these sites show it. **Decides it:** one GPL-under-Wine capture at Ring s≈8400 and
+s≈21355, or decoding GPL's placement pivot. Not a texel filter — that would cut trees GPL draws.
+
+**E109: 4 sprints this pass (S7–S10). ROTATING.**

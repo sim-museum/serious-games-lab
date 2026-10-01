@@ -2179,7 +2179,7 @@ else
             # the first 24 in file order, which is what is needed to ask "what is drawn at the start/finish
             # line" -- the Watkins Glen doubled-gantry question.
             near = haskey(ENV, "JM_ROADBLOCK_PLACE_NEAR") ? parse(Float64, ENV["JM_ROADBLOCK_PLACE_NEAR"]) : NaN
-            rows = Tuple{Float64,String,Float64,Float64,Float64}[]
+            rows = Tuple{Float64,String,Float64,Float64,Float64,Float64}[]
             println("  [roadblock] placed objects whose MESH uses a texture matching \"", pat, "\"",
                     isnan(near) ? ":" : string(", nearest lapdist ", near, ":"))
             try
@@ -2205,7 +2205,8 @@ else
                     end
                     if !isnan(near)
                         dd = abs(rem(hr.lapdist - near, RIBBON0.lap_length, RoundNearest))
-                        push!(rows, (dd, String(nm), hr.lapdist, hr.lateral, rad2deg(Float64(t[4]))))
+                        push!(rows, (dd, String(nm), hr.lapdist, hr.lateral, rad2deg(Float64(t[4])),
+                                     rad2deg(rem(Float64(t[4]) - rh, 2pi, RoundNearest))))
                         continue
                     end
                     npl[] <= 24 && println("       ", rpad(String(nm), 10), " origin s=",
@@ -2218,9 +2219,10 @@ else
                 end
                 if !isnan(near)
                     sort!(rows, by = first)
-                    for (dd, nm, sv, lt, yw) in rows[1:min(30, end)]
+                    for (dd, nm, sv, lt, yw, df) in rows[1:min(30, end)]
                         println("       ", rpad(nm, 10), " s=", lpad(round(Int, sv), 6), " lat ",
                                 lpad(round(lt, digits=1), 7), "  yaw ", lpad(round(yw, digits=1), 7),
+                                "  yaw-road ", lpad(round(df, digits=1), 7),
                                 " deg   (", round(dd, digits=1), " m from s=", round(Int, near), ")")
                     end
                 end
@@ -2285,6 +2287,126 @@ else
                     round(u[length(u)÷2 + 1], digits=3), " p90 ", round(u[max(1, 9*length(u)÷10)], digits=3))
             println("     reading: if these point AWAY, GPL culls them from the road side and our winding is",
                     " inverted; if TOWARD, they are meant to be seen and the fault is elsewhere")
+        end
+        # E109-S7: ASPHALT intrusion -- the PO's "individual trees that intrude into the road". The corridor
+        # census above cannot answer it: +-5.5 m includes the verge, where GPL draws shrubs too, and its
+        # 1.5 m reach rule skips shrubs (<= 1.25 m) entirely. This counts drawn texels standing 0.3-3 m
+        # above a DRAWN ROAD TRIANGLE (ROADHAT: road/kerb/paint textures only) directly beneath them.
+        # Not the .trk halfwidth: a first cut used HAT on_track and reported grass in 528 bins, i.e. the
+        # .trk width reaches past the asphalt. Ranked by the innermost texel's |lateral| (RIBBON0).
+        asp = Dict{Int,Vector{Tuple{Float64,String}}}()       # bin => [(innermost |lat|, source)]
+        asp_noalpha = get(ENV, "JM_ASPHALT_NOALPHA", "0") != "0"
+        asp_pat = lowercase(get(ENV, "JM_ASPHALT_PAT", ""))     # also list every row whose sources match
+        # JM_ASPHALT_GAP=<pat>: for faces whose texture matches, the innermost OPAQUE texel on each side of
+        # the centreline (0.3-3 m up, any ground beneath) -- the veil's clear gap -- against the drawn road.
+        asp_gpat = lowercase(get(ENV, "JM_ASPHALT_GAP", ""))
+        gapd = Dict{Int,Vector{Float64}}()                     # bin => [inner +lat, inner -lat]
+        overroad(x, y, z) = ((h, _, f) = JuliaMotor.hat3d(ROADHAT, x, y; ref = z); f && 0.3 <= z - h <= 3.0)
+        if isdefined(Main, :SECPARTS) && SECPARTS !== nothing
+            rb_tex[] === nothing && (rb_tex[] = Render.gpl_texture_index(ZD))
+            for prt in SECPARTS
+                v = prt.verts; n = length(v) ÷ 11
+                tx = get!(() -> Render.tex_rgba(rb_tex[], prt.tex), rb_rgba, prt.tex)
+                for q in 0:(n ÷ 3 - 1)
+                    k0 = 11*(3q); k1 = k0 + 11; k2 = k1 + 11
+                    wh = ((v[k0+1], -v[k0+3], v[k0+2]), (v[k1+1], -v[k1+3], v[k1+2]), (v[k2+1], -v[k2+3], v[k2+2]))
+                    uvs = ((v[k0+10], v[k0+11]), (v[k1+10], v[k1+11]), (v[k2+10], v[k2+11]))
+                    best = Inf; bs = NaN; m = 12      # best = SIGNED lateral of the innermost texel
+                    for i in 0:m, j in 0:(m-i)
+                        a = i/m; b = j/m; c = 1 - a - b
+                        x = Float64(a*wh[1][1] + b*wh[2][1] + c*wh[3][1]); y = Float64(a*wh[1][2] + b*wh[2][2] + c*wh[3][2])
+                        z = Float64(a*wh[1][3] + b*wh[2][3] + c*wh[3][3])
+                        isgap = !isempty(asp_gpat) && occursin(asp_gpat, lowercase(String(prt.tex)))
+                        (isgap || overroad(x, y, z)) || continue
+                        if tx !== nothing && !asp_noalpha     # JM_ASPHALT_NOALPHA=1: positive control
+                            tw, th, rgba = tx
+                            uu = a*uvs[1][1] + b*uvs[2][1] + c*uvs[3][1]; vv = a*uvs[1][2] + b*uvs[2][2] + c*uvs[3][2]
+                            px = mod(floor(Int, uu*tw), tw); py = mod(floor(Int, vv*th), th)
+                            rgba[4*(py*tw + px) + 4] < 0x0a && continue
+                        end
+                        hr = JuliaMotor.hat(RIBBON0, x, y); hr.found || continue
+                        if isgap
+                            if abs(hr.lateral) < 15 && 0.3 <= z - hr.height <= 3.0
+                                g_ = get!(gapd, floor(Int, hr.lapdist/rb_bin), [Inf, -Inf])
+                                hr.lateral >= 0 ? (g_[1] = min(g_[1], hr.lateral)) : (g_[2] = max(g_[2], hr.lateral))
+                            end
+                            overroad(x, y, z) || continue
+                        end
+                        abs(hr.lateral) < abs(best) && (best = hr.lateral; bs = hr.lapdist)
+                    end
+                    isfinite(best) && push!(get!(asp, floor(Int, bs/rb_bin), Tuple{Float64,String}[]),
+                                            (best, "drawn:" * lowercase(String(prt.tex))))
+                end
+            end
+        end
+        if isdefined(Main, :RINGSPRITES) && RINGSPRITES !== nothing
+            for sp in RINGSPRITES
+                hr = JuliaMotor.hat(RIBBON0, Float64(sp.x), -Float64(sp.z)); hr.found || continue
+                half = Float64(sp.w)/2; best = Inf
+                for f in -1:0.25:1
+                    x = Float64(sp.x) + f*half*hr.perp[1]; y = -Float64(sp.z) + f*half*hr.perp[2]
+                    (h, _, fd) = JuliaMotor.hat3d(ROADHAT, x, y; ref = Float64(sp.y) + 0.5)
+                    (fd && Float64(sp.y) - h <= 3.0 && Float64(sp.y) + Float64(sp.h) - h >= 0.3) || continue
+                    l_ = hr.lateral + f*half; abs(l_) < abs(best) && (best = l_)
+                end
+                isfinite(best) && push!(get!(asp, floor(Int, hr.lapdist/rb_bin), Tuple{Float64,String}[]),
+                                        (best, "sprite:" * lowercase(String(sp.name))))
+            end
+        end
+        # The drawn road EDGE on one side at station sd: walk out along the ribbon perpendicular until no
+        # road triangle lies beneath. depth = edge - |lat| = how far onto the drawn road the texel stands.
+        function asp_edge(sd, sg)
+            i = clamp(searchsortedlast(RIBBON0.lapdist, sd), 1, length(RIBBON0.pos))
+            p = RIBBON0.pos[i]; q = RIBBON0.perp[i]; e = 0.0
+            for d in 0.0:0.05:15.0
+                (_, _, f) = JuliaMotor.hat3d(ROADHAT, p[1] + sg*d*q[1], p[3] + sg*d*q[3]; ref = p[2] + 3.0)
+                f ? (e = d) : (d > e + 0.3 && break)
+            end
+            e
+        end
+        let rows = [(k*rb_bin, (b = v[argmin(abs.(first.(v)))][1]; b), join(sort(unique(last.(v))), "+")) for (k, v) in asp]
+            sort!(rows, by = r -> abs(r[2]))
+            bytex = Dict{String,Int}()
+            for (k, v) in asp, t in unique(last.(v)); bytex[t] = get(bytex, t, 0) + 1; end
+            deep = count(r -> abs(r[2]) < 3.0, rows)
+            println("  [roadblock] ASPHALT intrusions (drawn texels 0.3-3 m above a drawn road triangle): ",
+                    length(rows), " bin(s), ", deep, " within 3 m of the centreline")
+            for (t, c) in sort(collect(bytex), by = x -> -x[2])[1:min(12, end)]
+                println("       ", rpad(t, 28), lpad(c, 5), " bins")
+            end
+            for (sv, d, tx) in rows[1:min(15, end)]
+                println("       s=", lpad(round(Int, sv), 7), " m  innermost |lat| ", lpad(round(abs(d), digits=2), 5), " m   ", tx)
+            end
+            if !isempty(asp_pat)
+                pr = [r for r in rows if any(occursin(p_, r[3]) for p_ in split(asp_pat, ","))]
+                println("  [roadblock] ASPHALT rows matching '", asp_pat, "': ", length(pr))
+                for (sv, d, tx) in pr[1:min(40, end)]
+                    e_ = asp_edge(sv + rb_bin/2, sign(d))
+                    println("       pat s=", lpad(round(Int, sv), 7), " m  innermost |lat| ", lpad(round(abs(d), digits=2), 5),
+                            " m  road edge ", lpad(round(e_, digits=2), 5), " m  -> ", lpad(round(e_ - abs(d), digits=2), 6), " m onto the road   ", tx)
+                end
+            end
+            if !isempty(asp_gpat)
+                # The Ring's veils are ONE-SIDED panels (E109-S9: no bin has opaque texels on both sides), so
+                # each side is judged alone: depth = drawn road edge on that side - |innermost opaque texel|.
+                dl = Tuple{Float64,Float64,Float64,Float64}[]   # (s, side, inner |lat|, depth onto the road)
+                for k in sort(collect(keys(gapd))), sd in (1, 2)
+                    g_ = gapd[k]; isfinite(g_[sd]) || continue
+                    sg = sd == 1 ? 1.0 : -1.0; e_ = asp_edge(k*rb_bin + rb_bin/2, sg)
+                    push!(dl, (k*rb_bin, sg, abs(g_[sd]), e_ - abs(g_[sd])))
+                end
+                if !isempty(dl)
+                    ds = sort(last.(dl)); qq(f) = round(ds[clamp(round(Int, f*length(ds)), 1, length(ds))], digits=2)
+                    println("  [roadblock] veil inner edge vs drawn road edge ('", asp_gpat, "'): ", length(dl), " bin-sides; depth onto road",
+                            " p10 ", qq(0.1), " p50 ", qq(0.5), " p90 ", qq(0.9), " max ", round(ds[end], digits=2),
+                            "; ", count(>(0.0), ds), " > 0, ", count(>(0.5), ds), " > 0.5 m")
+                    for (sv, sg, il, dp) in sort(dl, by = x -> -x[4])[1:min(12, end)]
+                        println("       s=", lpad(round(Int, sv), 6), " side ", sg > 0 ? "+" : "-", "  inner ", lpad(round(il, digits=2), 6),
+                                "  depth ", lpad(round(dp, digits=2), 6))
+                    end
+                end
+            end
+            println("ASPHALT_RESULT track=", TRACKSEL, " bins=", length(rows), " deep_bins=", deep)
         end
         println("ROADBLOCK_RESULT track=", TRACKSEL, " curtain_bins=", length(curtain),
                 " partial_bins=", length(partial))
