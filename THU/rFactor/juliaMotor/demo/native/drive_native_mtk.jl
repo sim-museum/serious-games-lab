@@ -2280,7 +2280,8 @@ else
                     end
                     if !isnan(near)
                         dd = abs(rem(hr.lapdist - near, RIBBON0.lap_length, RoundNearest))
-                        push!(rows, (dd, String(nm), hr.lapdist, hr.lateral, rad2deg(Float64(t[4])),
+                        push!(rows, (dd, String(nm) * " p" * string(round(rad2deg(Float64(t[5])), digits=1)) *
+                                         " r" * string(round(rad2deg(Float64(t[6])), digits=1)), hr.lapdist, hr.lateral, rad2deg(Float64(t[4])),
                                      rad2deg(rem(Float64(t[4]) - rh, 2pi, RoundNearest))))
                         continue
                     end

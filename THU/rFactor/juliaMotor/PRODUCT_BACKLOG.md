@@ -36,7 +36,7 @@ this index was written; that is what it exists to stop.
 | **E91** | "Tesla brakes" — lift-off decelerates too hard | **Corrected 2026-09-30 (S8): 1.39–1.66×, not 3.44×** — iRacing `Clutch` 1 = engaged and every earlier split was inverted. About half the excess is clutch-in DRAG, not engine braking (S9). **Blocked on the PO:** one high-speed clutch-in + in-gear coast-down to pin CdA/Crr/eb together. |
 | **PERF-3** | frame rate (PO: "30 is OK, gold is a solid 60") | **S1–S4 (2026-09-30):** HEAD runs **55–60 fps cockpit on all 5 tracks**; the mid-race ~316 ms freeze was a first-use JIT compile (grass grip), removed, plus two more precompiled. **Needs a new AppImage** — the shipped one predates all of it. |
 | **E80** | 10 fps at Spa in cockpit view | **LOAD half:** analysis to S4 (244 s, 69 % compilation; sysimage cannot be built here). **RENDER half = `SPA-FPS-1`** (S12–S15: the mirror's two `drawworld` passes are 55 % of the cockpit frame; adaptation on by default). E80-S5 (2026-09-18) measured cockpit 33 fps / chase 56 fps with no AI. assessed |
-| **E81** | floating/misplaced billboards and buildings at the Ring | open; the Ring bypasses the pipeline the other tracks use. assessed |
+| **E81** | floating/misplaced billboards and buildings at the Ring | **S1–S4 (2026-10-01): not reproduced.** Both new candidates (s≈1600 pit-building backs = real "Hinter den Boxen"; s≈1385 slab = the pit wall, matching gold) are correct placement; the visible gap is the **missing Continental banner row** on that wall (E78). Needs a PO screenshot to go further. |
 | **E76** | restore objects deleted after the Ring start/finish | open, lead only. assessed |
 | **E78** | improve all 5 tracks against the gold videos | epic, open. assessed |
 | **E79** | audit every row-of-people object on all 5 tracks | partially served by E101's filter; the 5-track audit is not done. assessed |
@@ -21169,3 +21169,30 @@ Gates `wheelmu`, `offroad`, `drive3d` PASS.
 **Left:** a ~280 ms first-frame compile burst — it falls inside the 5 s countdown while the car is stationary.
 **For the PO to see any of this, a new AppImage is needed** (the shipped one predates PERF-1, PERF-3 and this).
 **PERF-3: 4 sprints. ROTATING.**
+
+### E81 S1..S4 (2026-10-01) — retrospective, then the two candidates the new censuses raised: both are CORRECT placement; the visible gap is missing wall art (ROTATING)
+
+**S1 — retrospective.** Established before: Ring sprites are grounded (1777/1863, median gap 0.0 m); the S/F area
+matches GPL structure for structure (09-06). Never done: the PO's "many" were never LOCATED outside the S/F —
+the work went where it could measure. New leads from E109's asphalt census (2026-09-30): pit-side structures
+(`wside`/`back*`/`clockl`/`balfront`) 1.1–1.3 m onto the road at s≈1620, and E109's finding that off-perpendicular
+veils are the ones that intrude. Plan: name those placements, photograph them, compare with the gold video.
+
+**S2 — s≈1590–1630 (`wierd123`, the pit building, origin lat −10.9, yaw −90.4° to the road).** Our view shows the
+BACK of the garages (`backl`/`backr`/`backgar`) facing the road — which looked like a 180° error until the location
+was placed: ~1.6 km in, after the Südkehre, is the Nordschleife's real **"Hinter den Boxen"** (the road runs behind
+the pits). The first comparison was against GPL's GRID frame — a different place. Correct geography.
+
+**S3 — s≈1385 (a grey slab standing diagonally right of the road).** Full placement records (`JM_ROADBLOCK_PLACE_NEAR`
+now also prints pitch/roll): pitch and roll are 0 on every placement here, so the Euler order of `placemat`
+(`Rrol·Rpit·Ryaw`, world-axis — suspect in general) cannot be the cause. `backgar` and `bkbill` have yaw exactly
+0.0 (44° to the road) while their neighbours align.
+
+**S4 — gold video, 30–74 s (`260802_nurburgring_cockpit.mp4`):** the same stretch in GPL shows the same grey
+wall rising diagonally in perspective — **with a row of yellow Continental banners along its top**. Ours is the
+same wall without the banners. Not a placement defect; it is the missing banner row E81's 09-06 note already
+named ("GPL: Continental/Bosch/Castrol boards along the pit wall; ours: bare wall") → E78/E76 appearance.
+
+**E81 status:** two more candidates eliminated with a reference image each. Placement is not reproduced anywhere
+measured. **Needs the PO:** a screenshot or station of a building or billboard that looks wrong; otherwise close
+into E78 (banner rows on the Ring's pit walls are the concrete appearance gap). **E81: 4 sprints. ROTATING.**
