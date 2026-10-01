@@ -21,12 +21,13 @@ this index was written; that is what it exists to stop.
 
 | item | what | state |
 |---|---|---|
-| **E107** | **EPIC (PO priority): Julia AI as close as possible to GPL AI** | **S5–S8 (2026-09-30):** the `.trk` decode is exact; our placement had a RIGID error (Monza 4.2 m). Refit (`JM_GPLREF=rigid`, default) puts GPL's own line on the road: **4 of 5 tracks now drive GPL's line + rails** (was 2). Spa at 94.0 % (bar 95). |
+| **E107** | **EPIC (PO priority): Julia AI as close as possible to GPL AI** | **S9–S10 (2026-10-01): graded on-road test (car body overlaps road) → Spa accepted, GPL's line on 5 of 5 tracks**; Monza aligned0 control still refused. **S5–S8 (2026-09-30):** the `.trk` decode is exact; our placement had a RIGID error (Monza 4.2 m). Refit (`JM_GPLREF=rigid`, default) puts GPL's own line on the road: **4 of 5 tracks now drive GPL's line + rails** (was 2). Spa at 94.0 % (bar 95). |
 | **E108** | **EPIC (PO priority): tracks as close as possible to GPL** | **S5–S8 (2026-09-30):** flat shading (100 % of road polys lack normals) refuted as the visible cause (A/B < 0.3 % of pixels); finer rounding (4× tris) invisible at WG's gentle curves. **Needs the PO: the track + station where the faceting shows.** |
 | **E109** | Nürburgring tree "curtains" across the road + individual trees intruding | ✅ **curtains FIXED** (S6). **Individual trees MEASURED (S7–S10):** two sites stand ~1 m onto the drawn road — `halftr1s` s≈8350–8475 and `halftr07` s≈21350 — and both are exactly the veil placements at 98–110° to the road (the rest are ±90° and stand 1.7 m clear). Needs a GPL capture at s≈8400/21355 to tell data from our rotation pivot. |
 | **E110** | Watkins Glen start/finish gantry drawn twice | NEW 2026-09-28. Only one placement exists, so it is a second draw path, not a second instance. |
 | **E111** | Spa: missing corner house before the 90° left; bright yellow polygon over the road after it | NEW 2026-09-28. `house12`/`house13` are in neither archive nor disk. |
-| **E85** | EPIC: multiplayer, the way GPL did it | **sprint 1 DONE** (E85-S1): poses cross two processes exactly, both ways, gated. Sprints 2–4 open. |
+| **E85** | EPIC: multiplayer, the way GPL did it |  **sprint 1 DONE** (E85-S1): poses cross two processes exactly, both ways, gated. Sprints 2–4 open. |
+| **MP-GUI-1** | multiplayer in the PyQt launcher (PO 2026-10-01) | **S1 DONE (2026-10-01):** Drive-tab Host/Join/address/port + launcher lobby that copies the host's race settings; two-process test passes. Two-PC race from the GUI not yet run. |
 | **E105** | a setup tab exposing modest chassis-setup changes | **values + reset DONE and gated** (E105-S1); the UI shell is the PO's call. NEW 2026-08-31. Relaxes the "no modifiable parameters" constraint, scoped to setup. assessed |
 | **E104** | every car floats 20–40 cm above the road; off-road contact is elastic (levitate/bounce) | ✅ **BOTH halves FIXED and gated** — (b) E104-S1 (the −999 off-mesh sentinel), (a) E104-S4 (found, fixed, gated; S2's mechanism was right). *Index row corrected 2026-09-18 — it had read "half (a) still open, needs a capture" for 17 days after S4 closed it.* |
 | **E102** | rear axles point outward/downward; must be horizontal, hub to chassis | **OPEN — two of my own diagnoses withdrawn** (S1: omitted BODY_OFF; S2: conflated components sharing a texture). Established: the assembly and wheels agree (brake disc within 2.8 mm). S4: 65 of 89 triangles are ONE connected mesh (so there is no separable shaft to level), but an isolated **3-triangle `axlelot` sliver** reaches the wheel plane and drops 0.099 m — the best candidate for the PO's "sticks". Needs a capture; three headless approaches are enough. |
@@ -34,9 +35,9 @@ this index was written; that is what it exists to stop.
 | **RACESTART-1** | AI cars drive through a stationary player at the start | **Start is contact-free (S14, 2026-09-30)**: the gate had spawned the field at 90 km/h; with the live standing grid, 0 contacts. **Found + half-fixed:** a field arriving at a STALLED car parked behind it forever (engage trigger outside the follow equilibrium); now the first car passes, the second still stalls at lane 1.56 (S16). |
 | **E90** | Monza and Watkins have almost no collidable barrier objects | **Mostly fixed (S9–S12, 2026-09-30):** oriented + trimmed rail boxes, Monza 189 → 316, Watkins 448 → 583; every box makes contact, 0 false contacts, `inside=0` on all 4 tracks. **Still missing:** 54 / 84 rail cells standing on road-textured triangles (Monza s≈1000–1500, WG s≈500–750 and 2500–3000) — need a look on screen before relaxing the guard. |
 | **E91** | "Tesla brakes" — lift-off decelerates too hard | **Corrected 2026-09-30 (S8): 1.39–1.66×, not 3.44×** — iRacing `Clutch` 1 = engaged and every earlier split was inverted. About half the excess is clutch-in DRAG, not engine braking (S9). **Blocked on the PO:** one high-speed clutch-in + in-gear coast-down to pin CdA/Crr/eb together. |
-| **PERF-3** | frame rate (PO: "30 is OK, gold is a solid 60") | **S1–S4 (2026-09-30):** HEAD runs **55–60 fps cockpit on all 5 tracks**; the mid-race ~316 ms freeze was a first-use JIT compile (grass grip), removed, plus two more precompiled. **Needs a new AppImage** — the shipped one predates all of it. |
+| **PERF-3** | frame rate (PO: "30 is OK, gold is a solid 60") | **S5 (2026-10-01): window hidden until 2 frames drawn — hides a 3.5–3.7 s first-frame compile.** **S1–S4 (2026-09-30):** HEAD runs **55–60 fps cockpit on all 5 tracks**; the mid-race ~316 ms freeze was a first-use JIT compile (grass grip), removed, plus two more precompiled. **Needs a new AppImage** — the shipped one predates all of it. |
 | **E80** | 10 fps at Spa in cockpit view | **LOAD half:** analysis to S4 (244 s, 69 % compilation; sysimage cannot be built here). **RENDER half = `SPA-FPS-1`** (S12–S15: the mirror's two `drawworld` passes are 55 % of the cockpit frame; adaptation on by default). E80-S5 (2026-09-18) measured cockpit 33 fps / chase 56 fps with no AI. assessed |
-| **E81** | floating/misplaced billboards and buildings at the Ring | **OPEN — one real defect found (2026-10-01):** a skewed grey panel rising tens of metres at Ring s≈1350–1500 (`260930/e78/ring1350_skewed_panel.png`); not `walls2`/`tires` (yaw-flip A/B). s≈1600 pit-building backs are correct ("Hinter den Boxen"). |
+| **E81** | floating/misplaced billboards and buildings at the Ring | **S5–S7 (2026-10-01): `JM_SCENE_AT` row pairing fixed; `backgar` eliminated by `JM_PLACE_HIDE` A/B; next = per-pixel pick.** **OPEN — one real defect found (2026-10-01):** a skewed grey panel rising tens of metres at Ring s≈1350–1500 (`260930/e78/ring1350_skewed_panel.png`); not `walls2`/`tires` (yaw-flip A/B). s≈1600 pit-building backs are correct ("Hinter den Boxen"). |
 | **E76** | restore objects deleted after the Ring start/finish | open, lead only. assessed |
 | **E78** | improve all 5 tracks against the gold videos | **S1–S4 (2026-10-01), Ring Hinter den Boxen:** the Continental banners (`bannr_s`, 168 tris) exist and are drawn as geometry; whether they reach the screen is unseen. Found the E81 skewed panel; `JM_SCENE_AT` object listing mislabels rows (fix first). |
 | **E79** | audit every row-of-people object on all 5 tracks | partially served by E101's filter; the 5-track audit is not done. assessed |
@@ -21239,3 +21240,95 @@ AI car; `JM_SHOTS` photographs the player's Lotus only. Needed: a test hook `JM_
 chase camera at AI car *i* (pose from `AIPHYS[i]` / `RaceAI.pose_at`) for the smoke's frame dump, then one capture per
 chassis beside its gold chase still, recording chassis / camera / art set. Start with Eagle.
 **AI-CARGFX: 1 sprint this pass (the retro).**
+
+---
+
+# CYCLE 2026-10-01 (Opus 5.5) — from `260930/NEXT_PLANS.md`, plus MP-GUI-1 (new, PO)
+
+Evidence for this cycle is in `261001/`.
+
+### MP-GUI-1 — NEW (PO 2026-10-01: *"add multiplayer functionality to the julia pyQt GUI"*) — S1 DONE
+The sim has had LAN multiplayer since MP-3/MP-5 (`JM_NET=host|join`, `JM_NET_HOST`, `JM_NET_PORT`,
+host-authoritative AI), but only from the command line. The sim has **no handshake**: two PCs on different tracks, or a
+client asking for fewer AI chassis than the host sends, connect and silently disagree.
+* **Drive tab → "Multiplayer (LAN)" group:** Off / Host a race / Join a race, host address, UDP port (default 47700).
+  Host shows this PC's LAN address(es) to read out to the other player. All three fields persist (`QSettings`).
+* **Launcher lobby** (UDP game port + 1, launcher-to-launcher only, the sim never sees it): while *Host* is selected the
+  launcher answers `JRLOBBY?` with its track / mode / laps / AI cars / AI % as JSON. *Get host's settings* on the
+  joining PC applies them, so both sims start from the same configuration. Three tries at 0.6 s (UDP loss).
+* A *Join* with no address is refused before the joystick reader is released.
+* **Verified** (two launcher processes, offscreen Qt, port 47710): the joiner adopted Monza / Race / 3 laps / 4 AI / 77 %,
+  and its sim environment came out `JM_NET=join JM_NET_HOST=127.0.0.1 JM_NET_PORT=47710`. Empty address → message.
+  Negative control: a host with no launcher listening → "No answer from 127.0.0.2:47721 …".
+  The sim side of the session is unchanged and stays covered by `netai_gate_fast.sh`.
+* **Not done:** a two-PC race driven from the GUI (needs the PO's second machine); the lobby does not start both sims
+  together (each player presses Launch; the host first).
+
+### E107-S9 — REVIEW & RETROSPECTIVE (4 sprints already spent)
+S5–S8 were sound: the decode was proved exact before anything was patched, and the rigid refit put GPL's line on 4 of
+5 tracks. The one open number, Spa 94.0 % against a 95 % bar, was correctly *not* fixed by lowering the bar. The
+binary test was itself the questionable part: a record is the car's **centre**, and the road-only mesh excludes kerbs,
+where a racing line goes at every apex.
+
+### E107-S10 — the graded on-road test: Spa ACCEPTED (5 of 5 tracks on GPL's line)
+`JM_AI_GPLLAT_WHY=1` first: Spa's 281 rejected records are all **within 1.5 m of the road** (p50 0.5, p90 1.0 m),
+none on grass. The nearest textures are mixed (dirt verge, groove, border cement, asphalt), so they don't settle it alone.
+**Change:** keep the 95 % bar, but a record counts as on the road while the **car body overlaps tarmac** (centre within
+the half-width `CARW` 0.95 m of ROADHAT; 24-direction search, 5 cm steps). `JM_AI_GPLROAD_GRADED=0` reverts.
+
+| arm | centre on road | car overlaps road | furthest centre | verdict |
+|---|---|---|---|---|
+| Spa, `rigid` | 94.0 % | **99.7 %** | 1.1 m | **accepted** (was refused) |
+| Monza, `aligned0` (negative control: the known 4.2 m rigid error) | 74.1 % | 83.3 % | ≥ 2 m | **still refused** |
+
+**Open:** Spa's pass rails are lower (pass1 93.2 %, pass2 88.3 % centre-only) and are not gated. Next: plan items 4–6
+(per-rail speeds, `driver.ini` personalities, `aiAdvanceCarOnLine()` vs our tyres), and whether the rigid placement
+plus GPL's edge traces should replace the texture-based re-centring of the ribbon itself. **E107: 2 sprints this pass.**
+
+### E108-S9 — REVIEW & RETROSPECTIVE (blocked)
+Nothing new to measure: shading and finer rounding were both refuted by A/B on 2026-09-30. The item still needs the
+PO's track and station where the road looks faceted. Not re-entered. **E108: 1 sprint (the retro).**
+
+### PERF-3-S5 — the first-frame compile is hidden: the window is revealed after 2 drawn frames
+The window now stays hidden until `JM_SHOW_AFTER` frames (default 2) have been drawn and swapped (`0` = old
+behaviour). The sim prints `window revealed after 2 hidden warm-up frames (N ms)`. **Measured N = 3531–3736 ms**
+(Spa, Monza, Watkins Glen, smoke launches): the first-frame burst is ~3.6 s on a cold launch, not the 280 ms on record.
+That figure came from a trace run; until now this froze a visible window for 3.6 s. The countdown is armed by SPACE
+after the window appears, so the hidden frames cost the player nothing. Every `continue` in the frame loop is inside
+an inner loop, so the reveal cannot be skipped.
+
+### E81-S5..S7 — the listing is fixed; `backgar` eliminated; the panel is not a placed object in the window (ROTATING)
+* **S5 retro:** S1–S4 eliminated four candidates by eye but the instrument mislabelled rows. Fix the instrument first.
+* **S6 — `JM_SCENE_AT` row pairing FIXED.** z ranges lived in a parallel list that was index-paired after only the
+  name list was sorted (by lateral). They're now in the same row. Ring s=1420 ±130, corrected: `bkbill` s1379 lat +28.6
+  −3.3…23.4 m, `backgar` s1385 lat −5.0 0…20.8 m, `tower2` s1497 lat −9.1 −0.2…19.8 m, `ng124` ×2 ≤ 5.8 m.
+* **S7 — `JM_PLACE_HIDE=<names>`** (new probe: drops named placements, prints their transforms). `backgar`
+  = (−1122.5, −2459.66, 617.54, yaw 0, pitch 0, roll 0, scale 1). Hidden vs control at s=1350 chase
+  (`261001/e81/`): **the panel is unchanged, so `backgar` is not it.** The window's track-mesh groups top out with the
+  `ct_*` control tower (≤ 18 m above the road). Its constant-z `terrain-candidate` rows are the tower's floor and roof
+  slabs, not flattened walls.
+* **Note:** this s=1350 chase shot shows the slab on the RIGHT, far ahead. The 260930 shot shows it on the left. Find
+  out why before judging position. **Next:** a per-pixel pick (ray from the shot camera through the panel's pixels,
+  nearest triangle over track mesh, scenery groups and placed objects, with group and texture). Reading lists has now
+  failed three times. **E81: 3 sprints this pass.**
+
+### E78-S5 — REVIEW & RETROSPECTIVE only (not reached this cycle)
+Next stays the same: do the 36 `bannr_s` triangles at Ring s≈1400 reach the screen (face cull / depth fight with the
+wall)? Full-res crop against the gold frame at ~66 s of `260802_nurburgring_cockpit.mp4`. E81's pick tool would answer
+this too: pick the pixels where the banner should be.
+
+### AI-CARGFX-S6 — `JM_AICAM=<i>`: the chase camera follows AI car i; first Eagle A/B, listed by eye
+`JM_AICAM=<grid slot>` (1 Ferrari, 2 Brabham, 3 BRM, 4 Eagle, 5 Cooper) re-aims the GPL-matched chase camera
+(`camera()`, view 1) at that AI car from last frame's pose. Test hook. Capture: Watkins Glen grid, `JM_AI=5 JM_AICAM=4
+JM_SMOKE=1 JM_SMOKE_FRAMES=60`, next to gold `eagle/Screenshot From 2026-06-26 17-54-52.png` (GPL chase-from-behind;
+`17-54-49` is a close rear camera, not a chase). `261001/aicargfx/`. **Differences, by eye, ours vs gold:**
+1. The engine bay is a near-black flat block; gold shows a textured V12 (silver heads, exhaust headers, red-brown oil tank).
+2. Our helmet reads black and the roll hoop is not visible; gold has a blue helmet under a prominent silver hoop.
+3. Our rear suspension draws as a few loose white shards at odd angles; gold has clean silver wishbones, coil-over
+   springs and drive shafts.
+4. Gold's silver rear cross-tube above the gearbox is missing in ours.
+5. Location is not matched (our grid vs gold's corner by the Great Western sign), so lighting is not yet comparable.
+Correction to S5's blocker: a REPLAY recipe already followed AI cars (`rep_focus`, used for the 2026-09-06 axle
+captures, `~/Documents/260906/car_gold/`); `JM_AICAM` adds the same for a live session and uses GPL's chase geometry.
+**Next:** match location (`JM_SHOTS` places the player; add placing the AI car), then theorise per item. Item 1 may be
+the known AIGFX-1 brightness (`JM_AI_AMB`), or a missing texture. **AI-CARGFX: 1 sprint this pass.**

@@ -2,11 +2,15 @@
 # Julia Racer (juliaMotor) — self-contained AppImage: Julia runtime + package depot +
 # the project + the five GPL tracks it can actually load + PyQt6/Qt6 for the launcher.
 set -euo pipefail
-S="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; . "$S/lib_bundle.sh"
+S="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# 2026-10-01: lib_bundle.sh / mkicon.py / appimagetool live beside this script on the build box only.
+# Elsewhere set JR_LIBS_FROM=<an extracted earlier AppDir>: its usr/lib (PyQt6 + Qt6 + bundled deps) and
+# icon are reused instead of re-bundled. JR_PROJ / JR_GPLROOT / JR_APPDIR override the build-box paths.
+[ -f "$S/lib_bundle.sh" ] && . "$S/lib_bundle.sh"
 JLROOT="$HOME/.julia/juliaup/julia-1.12.6+0.x64.linux.gnu"
-PROJ=/home/admin/sgl-julia-racer/THU/rFactor/juliaMotor
-TRACKS=/home/admin/sgl-julia-racer/THU/WP/drive_c/Sierra/GPL/tracks
-APP="$S/JuliaRacer.AppDir"
+PROJ="${JR_PROJ:-/home/admin/sgl-julia-racer/THU/rFactor/juliaMotor}"
+TRACKS="${JR_GPLROOT:-/home/admin/sgl-julia-racer/THU/WP/drive_c/Sierra/GPL}/tracks"
+APP="${JR_APPDIR:-$S/JuliaRacer.AppDir}"
 
 [ -x "$JLROOT/bin/julia" ] || { echo "julia runtime not found at $JLROOT"; exit 1; }
 rm -rf "$APP"
@@ -29,7 +33,7 @@ echo ">> project..."            ; cp -a "$PROJ"                  "$APP/usr/share
 # STARTUP-1 / 2026-09-06 PO crash: the sim reads the GPL CARS (cars/cars67, 443 MB) and SOUND (63 MB)
 # next to the tracks; an older packer bundled them and its AppRun linked them per launch. This
 # script had lost both, so installs pointed at a dead mount and the Lotus load died with ENOENT.
-GPLROOT=/home/admin/sgl-julia-racer/THU/WP/drive_c/Sierra/GPL
+GPLROOT="${JR_GPLROOT:-/home/admin/sgl-julia-racer/THU/WP/drive_c/Sierra/GPL}"
 echo ">> GPL cars (cars67) + sound..."; mkdir -p "$APP/usr/share/julia/cars"
 cp -a "$GPLROOT/cars/cars67" "$APP/usr/share/julia/cars/"
 cp -a "$GPLROOT/sound"       "$APP/usr/share/julia/sound"
@@ -51,6 +55,9 @@ for t in nurburg zandvort watglen monza spa67; do
   [ -d "$TRACKS/$t" ] && cp -a "$TRACKS/$t" "$APP/usr/share/julia/tracks/"
 done
 echo ">> PyQt6 + Qt6..."
+if [ -n "${JR_LIBS_FROM:-}" ]; then
+  cp -a "$JR_LIBS_FROM/usr/lib/." "$APP/usr/lib/"
+else
 cp -a /usr/lib/python3/dist-packages/PyQt6 "$APP/usr/lib/python/" 2>/dev/null || true
 for f in /usr/lib/x86_64-linux-gnu/libQt6*.so.6*; do cp -Ln "$f" "$APP/usr/lib/x86_64-linux-gnu/" 2>/dev/null || true; done
 cp -a /usr/lib/x86_64-linux-gnu/qt6/plugins "$APP/usr/lib/qt6/" 2>/dev/null || true
@@ -58,6 +65,7 @@ cp -a /usr/lib/x86_64-linux-gnu/qt6/plugins "$APP/usr/lib/qt6/" 2>/dev/null || t
 for lib in "$APP/usr/lib/x86_64-linux-gnu"/libQt6Core.so.6 "$APP/usr/lib/x86_64-linux-gnu"/libQt6Gui.so.6; do
   [ -f "$lib" ] && bundle_libs "$lib" "$APP/usr/lib/x86_64-linux-gnu" 64 >/dev/null
 done
+fi
 
 cat > "$APP/AppRun" <<'EOF'
 #!/usr/bin/env bash
@@ -132,7 +140,7 @@ Exec=AppRun
 Icon=juliaracer
 Categories=Game;Simulation;
 EOF
-python3 "$S/mkicon.py" "$APP/juliaracer.png" 8b2f3f
+if [ -f "$S/mkicon.py" ]; then python3 "$S/mkicon.py" "$APP/juliaracer.png" 8b2f3f; else cp "$JR_LIBS_FROM/juliaracer.png" "$APP/"; fi
 ln -sf juliaracer.png "$APP/.DirIcon"
 # PHYSPRE-1 (2026-09-25): the in-house path packages (JuliaMotor, RFactor*, JRPhysics -- the precompiled car
 # physics) record their ABSOLUTE source path in their caches, so caches built in the dev tree are rejected in

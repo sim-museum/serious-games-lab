@@ -1091,6 +1091,16 @@ function gpl_scenery(ztrk, datpack, ribbon)
     let fl = Set(lowercase.(filter(!isempty, split(get(ENV, "JM_YAWFLIP", ""), ","))))
         isempty(fl) || (pls = [(lowercase(String(nm)) in fl ? (nm, (t[1], t[2], t[3], t[4] + pi, t[5], t[6], t[7])) : (nm, t)) for (nm, t) in pls])
     end
+    # E81-S6 probe: JM_PLACE_HIDE=<name,...> drops those placements (A/B: does a suspect vanish from the
+    # frame?) and prints each one's full transform tuple, pitch/roll included. Test only.
+    let hd = Set(lowercase.(filter(!isempty, split(get(ENV, "JM_PLACE_HIDE", ""), ","))))
+        if !isempty(hd)
+            for (nm, t) in pls
+                lowercase(String(nm)) in hd && println("  [place_hide] ", nm, " ", map(x -> round(Float64(x), digits = 3), t))
+            end
+            pls = [(nm, t) for (nm, t) in pls if !(lowercase(String(nm)) in hd)]
+        end
+    end
     # E109-S3: every one of the 67 `half0*`/`half1s` veil placements sits at yaw MINUS road heading =
     # +-90 deg (measured: -90.0, -88.0, +90.0, +93.3, +100.0, -86.0, ...). Data does not come out that
     # uniform by accident, so the suspicion is a 90 deg error in how we read GPL's yaw, not GPL intending
@@ -1154,9 +1164,8 @@ function gpl_scenery(ztrk, datpack, ribbon)
     end
     hat=Render.GPL3DO.Tri[]; groups=Dict{String,Vector{Float32}}(); nskip=0
     ndrop_edge = Ref(0); ndrop_road = Ref(0); nkeep_t = Ref(0)   # E76-S10 per-object drop census
-    scene_at = Tuple{String,Float64,Float64,Int}[]                # E70-S5: what stands near a lapdist
+    scene_at = Tuple{String,Float64,Float64,Int,Float64,Float64}[]  # E70-S5: what stands near a lapdist (+ E81 z range vs road)
     scene_drop = Tuple{String,Float64,Float64,String}[]           # E76-S11: what was placed near it but never rendered, and why
-    scene_z = Tuple{String,Float64,Float64}[]                     # E81: each rendered object's z range relative to the road beside it
     scene_tridrop = Dict{Tuple{String,String},Int}()             # E76-S11: (object, rule) -> triangles dropped inside the window
     snote_at = get(ENV, "JM_SCENE_AT", ""); snote_win = parse(Float64, get(ENV, "JM_SCENE_WIN", "250"))
     # E109-S6: every drop rule reports into the same per-object tally, so a structure losing faces is named
@@ -1278,13 +1287,15 @@ function gpl_scenery(ztrk, datpack, ribbon)
         if get(ENV,"JM_SCENE_AT","") != ""
             _hr = JuliaMotor.hat(ribbon, Float64(M[1,4]), Float64(M[2,4]))
             if _hr.found && abs(_hr.lapdist - parse(Float64, ENV["JM_SCENE_AT"])) < parse(Float64, get(ENV,"JM_SCENE_WIN","250"))
-                push!(scene_at, (nm, _hr.lapdist, _hr.lateral, length(mesh)))
-                # E81: is it FLOATING? world z range of the object's vertices vs the road height beside it
+                # E81: is it FLOATING? world z range of the object's vertices vs the road height beside it.
+                # Kept in the SAME row as the name: a parallel list was index-paired after only one of
+                # the two was sorted, so z ranges were printed against the wrong objects (E81-S5).
                 let zlo = Inf, zhi = -Inf
                     for tr in mesh, q in tr.p
                         wz = Float64(M[3,1]*q[1]+M[3,2]*q[2]+M[3,3]*q[3]+M[3,4]); zlo = min(zlo, wz); zhi = max(zhi, wz)
                     end
-                    push!(scene_z, (nm, round(zlo - _hr.height, digits=1), round(zhi - _hr.height, digits=1)))
+                    push!(scene_at, (nm, _hr.lapdist, _hr.lateral, length(mesh),
+                                     round(zlo - _hr.height, digits=1), round(zhi - _hr.height, digits=1)))
                 end
             end
         end
@@ -1494,10 +1505,9 @@ function gpl_scenery(ztrk, datpack, ribbon)
         sort!(scene_at, by=x->abs(x[3]))
         println("== JM_SCENE_AT ", ENV["JM_SCENE_AT"], " ±250 m: ", length(scene_at), " scenery objects rendered ==")
         println("   name            lapdist   lateral   tris")
-        for (k, r) in enumerate(scene_at[1:(haskey(ENV,"JM_SCENE_WIN") ? end : min(end,22))])
-            zr = k <= length(scene_z) ? scene_z[k] : ("", NaN, NaN)
+        for r in scene_at[1:(haskey(ENV,"JM_SCENE_WIN") ? end : min(end,22))]
             println("   ", rpad(r[1],15), rpad(round(Int,r[2]),10), rpad(round(r[3],digits=1),10), rpad(r[4],7),
-                    "  z-road: ", zr[2], "..", zr[3], " m")
+                    "  z-road: ", r[5], "..", r[6], " m")
         end
         sort!(scene_drop, by=x->abs(x[3]))
         println("== JM_SCENE_AT: ", length(scene_drop), " placements in the window that did NOT reach the renderer ==")
@@ -8249,6 +8259,17 @@ end
 const REPLAY_CAMS  = (:cockpit, :chase, :tv, :f10, :nose, :rsusp)
 const REPLAY_CAM_LABEL = ("COCKPIT", "CHASE (above rear)", "TV / DISTANT",
                           "F10 REAR", "NOSE / FRONT", "RR SUSPENSION")
+# AI-CARGFX S6: JM_AICAM=<i> points the chase camera at AI car i (grid slot i = AISPECS[i]: 1 Ferrari,
+# 2 Brabham, 3 BRM, 4 Eagle, 5 Cooper), so an AI chassis can be photographed beside its GPL chase-from-
+# behind still. Same geometry as the player's GPL-matched chase view (camera(), view 1). Test hook only.
+const AICAM = parse(Int, get(ENV, "JM_AICAM", "0"))
+function aicam_camera(p)
+    v0 = CTL.view; CTL.view = 1
+    r = camera((x = p[1], y = p[2], z = p[3], θ = p[4]))
+    CTL.view = v0
+    r
+end
+
 function replay_camera(mode, x, y, z, θ)
     wx, wy, wz = Float32(x), Float32(y), Float32(-z)        # render world un-mirrors physics z
     fx, fz = Float32(cos(θ)), Float32(-sin(θ))             # render forward (horizontal)
@@ -9460,6 +9481,27 @@ function main()
                             end
                             (1.0 - n_off/m, n_off)
                         end
+                        # E107-S10: the GRADED test. A record is the car's CENTRE; the car is on the road
+                        # while its body still overlaps tarmac, i.e. the centre is within the half-width
+                        # CARW of the road-only mesh (which excludes kerbs, where a racing line goes at
+                        # every apex). Returns (fraction whose car overlaps the road, the largest
+                        # distance found to the road for an off-road centre, capped at 2 m).
+                        function onroad_car_frac(v)
+                            m = min(nrec, length(v)); m == 0 && return (1.0, 0.0)
+                            n_off = 0; dmax = 0.0
+                            for i in 1:m
+                                q = gpl_world(v[i], i)
+                                JuliaMotor.hat3d(ROADHAT, q[1], q[2]; ref = Inf)[3] && continue
+                                d = 2.0
+                                for r in 0.05:0.05:2.0
+                                    if any(a -> JuliaMotor.hat3d(ROADHAT, q[1] + r*cos(a), q[2] + r*sin(a); ref = Inf)[3], 0:pi/12:2pi-0.01)
+                                        d = r; break
+                                    end
+                                end
+                                dmax = max(dmax, d); d > CARW && (n_off += 1)
+                            end
+                            (1.0 - n_off/m, dmax)
+                        end
                         # E107-S3: GPL's own CORRIDOR, minrace.lp/maxrace.lp, mapped through the same
                         # reconciliation as the line. See ai.jl GPLBAND for the measurement that
                         # motivated it (our fixed +-3.8 m is too wide where GPL pinches to 2.87 m and
@@ -9569,6 +9611,15 @@ function main()
                         if ROADHAT !== TERRAIN0
                             _rd = onroad_frac(Float64.(GPLLP.read_lp(lp).dlat))[1]
                             _rdtol = parse(Float64, get(ENV, "JM_AI_GPLROAD_TOL", "0.95"))
+                            if _rd < _rdtol && get(ENV, "JM_AI_GPLROAD_GRADED", "1") != "0"
+                                _rc, _dmx = onroad_car_frac(Float64.(GPLLP.read_lp(lp).dlat))
+                                println("  AI racing LINE graded on-road test: centre on road ", round(100*_rd, digits=1),
+                                        "%, car body overlapping road ", round(100*_rc, digits=1),
+                                        "% (centre within CARW ", CARW, " m), furthest off-road centre ",
+                                        _dmx >= 2.0 ? ">= 2" : round(_dmx, digits=2), " m (bar ", round(100*_rdtol, digits=1),
+                                        "%; JM_AI_GPLROAD_GRADED=0 reverts to the centre-only test)")
+                                _rc >= _rdtol && (_rd = _rc)
+                            end
                             if _rd < _rdtol
                                 _refuse = true
                                 println("  AI racing LINE: GPL's line REFUSED on ", TRACKSEL, " -- only ",
@@ -10194,7 +10245,12 @@ function main()
     println("  (Logitech joystick works natively — push=throttle, pull=brake, roll=steer)\n")
     EngineAudio.start(ENG)   # start audio NOW (after the long track load) — starting it mid-load
                              # let the stream underflow on big tracks (Nürburgring) and go silent
-    (SMOKE && !haskey(ENV, "JM_SMOKE_SHOW")) || GLFW.ShowWindow(win)   # reveal the window now that loading is done (avoids the WM "Not Responding")
+    # PERF-3 S5: the first frames compile (~280 ms burst), so the window stays HIDDEN until JM_SHOW_AFTER
+    # frames have been drawn and swapped; the player never sees the hitch. 0 = reveal now (old behaviour).
+    show_after = parse(Int, get(ENV, "JM_SHOW_AFTER", "2")); win_shown = Ref(false); show_t0 = time()
+    reveal!() = (win_shown[] = true; (SMOKE && !haskey(ENV, "JM_SMOKE_SHOW")) || GLFW.ShowWindow(win))   # loading done (avoids the WM "Not Responding")
+    show_after <= 0 && reveal!()
+    aicam_pose = Ref{Union{Nothing,NTuple{6,Float64}}}(nothing); ai_poses_prev = Ref(NTuple{6,Float64}[])   # JM_AICAM
     # PERF-3: a HIDDEN window is not paced by the compositor (XWayland/NVIDIA: ~58 Hz whatever the work),
     # so a smoke frame-rate figure says nothing about the PO's screen. JM_SMOKE_SHOW=1 maps it for timing runs.
     # E59 multi-shot smoke state: current shot, the frame it was placed on, all-done flag.
@@ -11171,6 +11227,7 @@ function main()
                  (rf = rep_ai_raw[rep_focus[]]; (rf[1], rf[2], rf[3], rf[4]))
             vp, eye = replay_camera(REPLAY_CAMS[rep_cam[]], fp[1], fp[2], fp[3], fp[4])
         end
+        AICAM > 0 && aicam_pose[] !== nothing && ((vp, eye) = aicam_camera(aicam_pose[]))   # AI-CARGFX: last frame's pose
         carModel = Render.translate(cs.x, cs.y, -cs.z) * Render.roty(Float32(cs.θ)) *
                    Render.rotz(Float32(pitch_ter)) * Render.rotx(Float32(roll_ter))   # whole car follows the hill (pitch + cross-slope roll)
         tiltModel = carModel * Render.rotz(Float32(pitch_dyn)) * Render.rotx(Float32(rollv))   # full body tilt (terrain + dynamic)
@@ -11224,6 +11281,7 @@ function main()
         # terrain query it needs, in the (y, ok) form it expects.
         ai_height(x, z) = ground_road(x, z)   # TRACKSMOOTH-3 S3: spline on the tarmac, mesh elsewhere (was hat3d only)
         ai_ground(p) = RaceAI.reground(p, ai_height)
+        AICAM > 0 && (aicam_pose[] = AICAM <= length(ai_poses_prev[]) ? ai_poses_prev[][AICAM] : nothing)
         ai_poses = if REPLAY                                       # E18: AI poses straight from the recording
             NTuple{6,Float64}[(a[1],a[2],a[3],a[4],0.0,0.0) for a in rep_ai_raw]
         elseif AILINE === nothing || phase[] != :race              # AI hidden until the race starts (after qualifying)
@@ -11341,6 +11399,7 @@ function main()
         # momentum-exchange impulse: the player (real vehicle physics) is knocked off line + spun
         # via bumpX!, the AI is shoved aside + spun + scrubbed.  The wheels keep spinning with motion.
         CAR3D && (PLAYER_CDA[] = 1.0)             # E56: default = full drag; the draft below cuts it for next frame's step
+        AICAM > 0 && (ai_poses_prev[] = NTuple{6,Float64}[ntuple(j -> Float64(p[j]), 6) for p in ai_poses])
         if !REPLAY && race_go[] && !rst && !isempty(ai_poses)
             # E56 slipstream for the PLAYER: tuck behind a car on a straight → reduced frontal drag
             # (CdA_scale<1) → you reel them in + slingshot past.  A REAL aero effect integrated by the
@@ -12119,6 +12178,10 @@ function main()
         end
 
         frames += 1
+        if !win_shown[] && frames >= show_after
+            println("  window revealed after ", frames, " hidden warm-up frames (", round(Int, 1000*(time() - show_t0)), " ms)"); flush(stdout)
+            reveal!()
+        end
         # PERF-1 diag: JM_ALLOCSITES=1 samples allocations over frames 300..600 and prints the top sites.
         if ALLOCSITES
             if frames == 300

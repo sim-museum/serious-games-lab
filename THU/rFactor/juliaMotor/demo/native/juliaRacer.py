@@ -20,14 +20,15 @@ import json
 import os
 import re
 import shutil
+import socket
 import sys
 import time
 
-from PyQt6.QtCore import QProcess, QProcessEnvironment, Qt, pyqtSignal
+from PyQt6.QtCore import QProcess, QProcessEnvironment, QSettings, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QPalette
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QFrame, QGridLayout, QGroupBox,
-    QHBoxLayout, QLabel, QMainWindow, QMessageBox, QProgressBar, QPushButton,
+    QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox, QProgressBar, QPushButton,
     QPlainTextEdit, QSizePolicy, QSpinBox, QTabWidget, QVBoxLayout, QWidget,
 )
 
@@ -649,6 +650,7 @@ class DriveTab(QWidget):
         self.d2 = QCheckBox("Simplified 2-D physics (no jumps, lighter; JM_2D)")
         form.addWidget(self.d2, 10, 1)   # 3-D is the default; tick this only to fall back to planar
         root.addLayout(form)
+        root.addWidget(self._build_net_group())
 
         # a race needs opponents and can't run on the skidpad — keep the form coherent as the mode changes
         self.mode.currentIndexChanged.connect(self._mode_changed)
@@ -725,6 +727,177 @@ class DriveTab(QWidget):
         ("Drive:", 100, "ready — window opening"),
     ]
 
+    # -----------------------------------------------------------------------
+    # MP-GUI-1 (PO 2026-10-01: "add multiplayer functionality to the julia pyQt GUI").
+    # The sim has had LAN multiplayer since MP-3/MP-5 -- JM_NET=host|join, JM_NET_HOST, JM_NET_PORT,
+    # host-authoritative AI -- but only from the command line. The sim has NO handshake: two PCs on
+    # different tracks, or a client asking for fewer AI chassis than the host sends, connect and
+    # silently disagree. So the launcher carries a tiny LOBBY on the next UDP port (game port + 1,
+    # launcher-to-launcher only, the sim never sees it): while "Host" is selected this launcher
+    # answers "JRLOBBY?" with its race settings as JSON, and the joining launcher's "Get host's
+    # settings" applies them, so both sims start from the same track / mode / laps / AI count.
+    # -----------------------------------------------------------------------
+    NET_PORT_DEFAULT = 47700
+    LOBBY_ASK = b"JRLOBBY?"
+
+    def _build_net_group(self):
+        self._settings = QSettings("juliaRacer", "launcher")
+        g = QGroupBox("Multiplayer (LAN)")
+        lay = QGridLayout(g)
+        lay.addWidget(QLabel("Session:"), 0, 0)
+        self.net_mode = QComboBox()
+        self.net_mode.addItems(["Off (single player)", "Host a race", "Join a race"])
+        self.net_mode.setToolTip("Host: this PC runs the AI field and sends it to the other player.\n"
+                                 "Join: connect to a host on your network; its AI cars are drawn here.")
+        lay.addWidget(self.net_mode, 0, 1, 1, 2)
+        self.net_host_l = QLabel("Host address:")
+        lay.addWidget(self.net_host_l, 1, 0)
+        self.net_host = QLineEdit(str(self._settings.value("net/host", "")))
+        self.net_host.setPlaceholderText("e.g. 192.168.1.20 (shown on the host's launcher)")
+        lay.addWidget(self.net_host, 1, 1)
+        self.net_fetch = QPushButton("Get host's settings")
+        self.net_fetch.setToolTip("Ask the host's launcher for its track, mode, laps and AI cars and use them here.")
+        self.net_fetch.clicked.connect(self._lobby_fetch)
+        lay.addWidget(self.net_fetch, 1, 2)
+        lay.addWidget(QLabel("Port (UDP):"), 2, 0)
+        self.net_port = QSpinBox(); self.net_port.setRange(1024, 65534)
+        self.net_port.setValue(int(self._settings.value("net/port", self.NET_PORT_DEFAULT)))
+        self.net_port.setToolTip("The race uses this UDP port and the launcher lobby the next one; "
+                                 "allow both through a firewall on the host.")
+        lay.addWidget(self.net_port, 2, 1)
+        self.net_info = QLabel("")
+        self.net_info.setWordWrap(True)
+        self.net_info.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        lay.addWidget(self.net_info, 3, 0, 1, 3)
+        self._lobby_sock = None
+        self._lobby_timer = QTimer(self)
+        self._lobby_timer.timeout.connect(self._lobby_poll)
+        self.net_mode.setCurrentIndex(int(self._settings.value("net/mode", 0)))
+        self.net_mode.currentIndexChanged.connect(self._net_changed)
+        self.net_port.valueChanged.connect(lambda _v: self._net_changed(self.net_mode.currentIndex()))
+        self._net_changed(self.net_mode.currentIndex())
+        return g
+
+    @staticmethod
+    def _lan_addresses():
+        """This PC's LAN address(es) for the host to read out. A UDP connect sends nothing; it only
+        asks the kernel which interface would route, which is the address a peer must use."""
+        out = []
+        for probe in ("192.168.255.255", "10.255.255.255", "172.31.255.255"):
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as t:
+                    t.connect((probe, 9)); a = t.getsockname()[0]
+                if a and not a.startswith("127.") and a not in out:
+                    out.append(a)
+            except OSError:
+                pass
+        return out
+
+    def _lobby_close(self):
+        self._lobby_timer.stop()
+        if self._lobby_sock is not None:
+            self._lobby_sock.close(); self._lobby_sock = None
+
+    def _net_changed(self, idx):
+        join, host = idx == 2, idx == 1
+        for w in (self.net_host_l, self.net_host, self.net_fetch):
+            w.setVisible(join)
+        self.net_port.setEnabled(idx != 0)
+        self._lobby_close()
+        port = self.net_port.value()
+        if host:
+            ips = self._lan_addresses()
+            txt = ("Tell the other player to choose <b>Join a race</b> with address <b>"
+                   + (" or ".join(ips) if ips else "this PC's LAN IP") + f"</b> and port <b>{port}</b>. ")
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.bind(("", port + 1)); s.setblocking(False)
+                self._lobby_sock = s; self._lobby_timer.start(200)
+                txt += "Their launcher can copy your track and race settings with <i>Get host's settings</i>."
+            except OSError as e:
+                txt += f"<span style='color:#c80'>(lobby port {port+1} unavailable: {e}; set the same track, mode, laps and AI cars on both PCs by hand)</span>"
+            txt += " Launch first: the host's AI field starts with the host."
+            self.net_info.setText(txt)
+        elif join:
+            self.net_info.setText("Use the <b>same track, mode, laps and AI cars</b> as the host "
+                                  "(<i>Get host's settings</i> does that). The host steps the AI field; "
+                                  "its cars are drawn here.")
+        else:
+            self.net_info.setText("")
+
+    def _lobby_state(self):
+        return {"jr": 1, "track": self.track.currentIndex(), "mode": self.mode.currentIndex(),
+                "laps": self.laps.value(), "ai": self.ai.value(), "ai_pct": self.ai_pct.value(),
+                "port": self.net_port.value()}
+
+    def _lobby_poll(self):
+        """Host side: answer every lobby query waiting on the socket (non-blocking, 5 Hz)."""
+        s = self._lobby_sock
+        while s is not None:
+            try:
+                data, addr = s.recvfrom(256)
+            except (BlockingIOError, OSError):
+                return
+            if data.strip() == self.LOBBY_ASK:
+                try:
+                    s.sendto(json.dumps(self._lobby_state()).encode(), addr)
+                    self.log.appendPlainText(f"[lobby] sent race settings to {addr[0]}")
+                except OSError:
+                    pass
+
+    def _lobby_apply(self, st):
+        """Join side: adopt the host's settings. Returns a one-line summary."""
+        names = [self.track.itemText(i) for i in range(self.track.count())]
+        self.mode.setCurrentIndex(int(st["mode"]))       # first: the mode handler may move the track
+        self.track.setCurrentIndex(int(st["track"]))
+        self.laps.setValue(int(st["laps"])); self.ai.setValue(int(st["ai"]))
+        self.ai_pct.setValue(int(st["ai_pct"]))          # after the track: _track_changed presets it
+        return (f"{names[int(st['track'])]}, {self.mode.itemText(int(st['mode']))}"
+                + (f", {st['laps']} laps, {st['ai']} AI" if int(st["mode"]) == 1 else ""))
+
+    def _lobby_fetch(self):
+        host = self.net_host.text().strip()
+        if not host:
+            self.net_info.setText("<span style='color:#c80'>Enter the host's address first.</span>"); return
+        port = self.net_port.value() + 1
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.settimeout(0.6)
+                for _ in range(3):                         # UDP: a lost datagram is retried, not fatal
+                    try:
+                        s.sendto(self.LOBBY_ASK, (host, port))
+                        data, _a = s.recvfrom(1024)
+                        st = json.loads(data.decode())
+                        if st.get("jr") == 1:
+                            break
+                    except socket.timeout:
+                        st = None
+                else:
+                    st = None
+        except (OSError, ValueError) as e:
+            self.net_info.setText(f"<span style='color:#c80'>Could not reach {host}: {e}</span>"); return
+        if not st:
+            self.net_info.setText(f"<span style='color:#c80'>No answer from {host}:{port}. Is its launcher "
+                                  "open with <b>Host a race</b> selected, and is the port allowed?</span>"); return
+        if int(st.get("port", self.net_port.value())) != self.net_port.value():
+            self.net_port.setValue(int(st["port"]))
+        self.net_info.setText("Host's settings applied: <b>" + self._lobby_apply(st) + "</b>. Launch when ready.")
+
+    def _net_env(self, qenv):
+        """Set JM_NET* for the sim (launch() has already refused a Join with no address)."""
+        idx = self.net_mode.currentIndex()
+        self._settings.setValue("net/mode", idx)
+        self._settings.setValue("net/port", self.net_port.value())
+        self._settings.setValue("net/host", self.net_host.text().strip())
+        if idx == 0:
+            return
+        qenv.insert("JM_NET_PORT", str(self.net_port.value()))
+        if idx == 1:
+            qenv.insert("JM_NET", "host")
+        else:
+            qenv.insert("JM_NET", "join")
+            qenv.insert("JM_NET_HOST", self.net_host.text().strip())
+
     def _mode_changed(self, idx):
         """Race (idx 1) needs opponents and can't run on the skidpad; Practice is a lone car
         (no Laps / AI cars / AI speed — those rows are hidden)."""
@@ -765,6 +938,9 @@ class DriveTab(QWidget):
     def launch(self):
         if self.proc and self.proc.state() != QProcess.ProcessState.NotRunning:
             return
+        if self.net_mode.currentIndex() == 2 and not self.net_host.text().strip():
+            QMessageBox.warning(self, "Join a race", "Enter the host's address (shown on the host's launcher).")
+            return
         # free the device so the game's GLFW owns joystick #1 cleanly
         self.joy.stop_reader()
         qenv = QProcessEnvironment.systemEnvironment()
@@ -786,6 +962,7 @@ class DriveTab(QWidget):
             qenv.insert("JM_QUAL", "1")
         if self.d2.isChecked():          # opt out of the default full-3D physics back to the planar model
             qenv.insert("JM_2D", "1")
+        self._net_env(qenv)              # MP-GUI-1: host/join a LAN race
         # E14: clear any stale race result so the post-race screen only shows THIS race
         self._result_path = os.path.join(HERE, "last_race_result.txt")
         try:
