@@ -34,6 +34,7 @@ this index was written; that is what it exists to stop.
 | **RACESTART-1** | AI cars drive through a stationary player at the start | **Start is contact-free (S14, 2026-09-30)**: the gate had spawned the field at 90 km/h; with the live standing grid, 0 contacts. **Found + half-fixed:** a field arriving at a STALLED car parked behind it forever (engage trigger outside the follow equilibrium); now the first car passes, the second still stalls at lane 1.56 (S16). |
 | **E90** | Monza and Watkins have almost no collidable barrier objects | **Mostly fixed (S9–S12, 2026-09-30):** oriented + trimmed rail boxes, Monza 189 → 316, Watkins 448 → 583; every box makes contact, 0 false contacts, `inside=0` on all 4 tracks. **Still missing:** 54 / 84 rail cells standing on road-textured triangles (Monza s≈1000–1500, WG s≈500–750 and 2500–3000) — need a look on screen before relaxing the guard. |
 | **E91** | "Tesla brakes" — lift-off decelerates too hard | **Corrected 2026-09-30 (S8): 1.39–1.66×, not 3.44×** — iRacing `Clutch` 1 = engaged and every earlier split was inverted. About half the excess is clutch-in DRAG, not engine braking (S9). **Blocked on the PO:** one high-speed clutch-in + in-gear coast-down to pin CdA/Crr/eb together. |
+| **PERF-3** | frame rate (PO: "30 is OK, gold is a solid 60") | **S1–S4 (2026-09-30):** HEAD runs **55–60 fps cockpit on all 5 tracks**; the mid-race ~316 ms freeze was a first-use JIT compile (grass grip), removed, plus two more precompiled. **Needs a new AppImage** — the shipped one predates all of it. |
 | **E80** | 10 fps at Spa in cockpit view | **LOAD half:** analysis to S4 (244 s, 69 % compilation; sysimage cannot be built here). **RENDER half = `SPA-FPS-1`** (S12–S15: the mirror's two `drawworld` passes are 55 % of the cockpit frame; adaptation on by default). E80-S5 (2026-09-18) measured cockpit 33 fps / chase 56 fps with no AI. assessed |
 | **E81** | floating/misplaced billboards and buildings at the Ring | open; the Ring bypasses the pipeline the other tracks use. assessed |
 | **E76** | restore objects deleted after the Ring start/finish | open, lead only. assessed |
@@ -21136,3 +21137,35 @@ not by another ruler; (3) item 4 only after (1)–(2) and on the rigid placement
 is unstable (S4); generating the road from the `.trk` is now possible on E107's rigid placement but is a big
 build. **Blocked on the PO for one thing:** the track and station (or a screenshot) where the faceting is seen —
 the cockpit view at Watkins Glen's two gentle curves does not show it. **E108: 4 sprints this pass (S5–S8).**
+
+### PERF-3 S1..S4 (2026-09-30) — every track is at 55–60 fps in cockpit view; the remaining "jerk" was a 316 ms mid-race COMPILE, now removed
+
+**S1 — measured, all five tracks, current HEAD,** visible window (`JM_SMOKE_SHOW=1`), cockpit (`JM_VIEW=0`),
+5 AI, autodrive, 1500 frames, `JM_FPSDIAG=300`:
+
+| track | fps per 300-frame window | median frame | worst frame |
+|---|---|---|---|
+| Spa | 58.6 / 57.2 / 59.2 | 16.6 ms | 302 ms |
+| Ring | 59.6 / 60.0 / 55.2 | 16.6 ms | 336 ms |
+| Monza | 59.2 / 56.8 / 59.8 | 16.7 ms | 327 ms |
+| Watkins Glen | 59.0 / 60.0 / 55.7 | 16.6 ms | 319 ms |
+| Zandvoort | 58.8 / 58.2 / 59.8 | 16.7 ms | 182 ms |
+
+The frame RATE is at the 60 Hz vsync on every track — the PO's "30" is the shipped AppImage, which predates
+PERF-1. What was left is one ~300 ms freeze per run, mid-race. `JM_GCLOG=1`: the 300–390 ms GCs are all during
+LOADING; none > 47 ms after the race starts. So not GC.
+
+**S2 — it was the JIT.** `--trace-compile-timing` (Monza): the LAST method compiled in the run is `wmu`, a closure
+inside `main` (per-wheel grass grip), **316 ms** — compiled the first time the car comes within 1.2 m of the road
+edge. Hoisted to a typed top-level `wheel_mu` and called once at load. Monza's worst frame in that window
+**328 → 23 ms**; Watkins Glen's 319 ms hitch gone.
+
+**S3/S4 — the rest of the first-use compiles.** Trace after S2: first collision `DriveRT3D.damage_impact!` 80 ms,
+first `Render.text_draw` 69 ms → `precompile(...)` at load (compiles without running; no state touched); verified
+by a third trace: neither compiles mid-race any more. What still compiles late is the `[fps]` diagnostic's own
+print (`count`/`print_to_string`, ~90 ms) — absent in normal play, so those windows overstate the hitch.
+Gates `wheelmu`, `offroad`, `drive3d` PASS.
+
+**Left:** a ~280 ms first-frame compile burst — it falls inside the 5 s countdown while the car is stationary.
+**For the PO to see any of this, a new AppImage is needed** (the shipped one predates PERF-1, PERF-3 and this).
+**PERF-3: 4 sprints. ROTATING.**

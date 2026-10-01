@@ -8553,6 +8553,20 @@ end
 
 # ---- main loop (in a function — avoids top-level soft scope, runs faster) ----
 tstamp("  [E80] .. main() defined; physics build next")
+# PERF-3 S2 (2026-09-30): per-wheel grass grip, hoisted out of main. As a closure inside main (capturing
+# cs and the heading) it compiled the FIRST time the car came within 1.2 m of the road edge -- a 316 ms
+# freeze mid-race on every track (`--trace-compile-timing`: the last compile of a Monza run, matching the
+# 300-335 ms max frame interval seen on all five). Typed and top-level, and called once below at load.
+@inline function wheel_mu(cx::Float64, cz::Float64, c::Float64, s::Float64, xi::Float64, yi::Float64)
+    hw = JuliaMotor.hat(TRKSURF, cx + xi*c - yi*s, cz + xi*s + yi*c)
+    (hw.found && abs(hw.lateral) > ROAD_HALFW) ? GRASS_MU : 1.0
+end
+wheel_mu(0.0, 0.0, 1.0, 0.0, 1.314, 0.75)          # compile now, behind the loading screen
+# PERF-3 S4: the other first-use compiles left mid-race (trace, Watkins Glen): the first collision (80 ms) and the
+# first text draw (69 ms). precompile() compiles without running, so no physics or GL state is touched.
+precompile(JRPhysics.DriveRT3D.damage_impact!, (Float64, Float64, Float64))
+precompile(Render.text_draw, (UInt32, UInt32, UInt32, Render.Font, Vector{Float32}, Int, Int))
+
 function main()
     # E106-S13b: the physics-facing ground closure. It converts the app's -999 "off the HAT"
     # SENTINEL into NaN, because drive_rt3d guards only `isfinite` and -999 is finite -- a wheel
@@ -10758,11 +10772,9 @@ function main()
                     hc = JuliaMotor.hat(TRKSURF, cs.x, cs.z)
                     if hc.found && abs(hc.lateral) > ROAD_HALFW - 1.2
                         cθg = cos(cs.θ); sθg = sin(cs.θ)
-                        wmu(xi, yi) = (wx = cs.x + xi*cθg - yi*sθg; wz = cs.z + xi*sθg + yi*cθg;
-                                       hw = JuliaMotor.hat(TRKSURF, wx, wz);
-                                       (hw.found && abs(hw.lateral) > ROAD_HALFW) ? GRASS_MU : 1.0)
-                        μFL = wmu( 1.314,  0.75); μFR = wmu( 1.314, -0.75)
-                        μRL = wmu(-1.096,  0.75); μRR = wmu(-1.096, -0.75)
+                        cx_ = Float64(cs.x); cz_ = Float64(cs.z)
+                        μFL = wheel_mu(cx_, cz_, cθg, sθg,  1.314,  0.75); μFR = wheel_mu(cx_, cz_, cθg, sθg,  1.314, -0.75)
+                        μRL = wheel_mu(cx_, cz_, cθg, sθg, -1.096,  0.75); μRR = wheel_mu(cx_, cz_, cθg, sθg, -1.096, -0.75)
                     end
                 end
                 # E94-P4: damage MULTIPLIES into the surface grip rather than replacing it --
