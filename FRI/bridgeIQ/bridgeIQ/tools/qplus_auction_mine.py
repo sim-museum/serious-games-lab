@@ -335,8 +335,10 @@ def main() -> int:
         print(f"{len(paths) - len(kept)} files skipped (not {a.system} or system "
               f"unknown)")
     paths = kept
+    # Q-Plus file system code -> biq's system of the same name.
+    biq_system = get_system("Precision90M" if a.system.startswith("P-") else "SAYC")
     if a.live:
-        rows = live_divergences(paths, get_system("SAYC"))
+        rows = live_divergences(paths, biq_system)
         report_live(rows, a.top)
         if a.jsonl:
             with open(a.jsonl, "w") as fh:
@@ -384,7 +386,7 @@ def main() -> int:
             tabs[p] = t
     print(f"double-dummy tables done ({len(tabs)})", flush=True)
 
-    system = get_system("SAYC")
+    system = biq_system
     agree = 0
     rows = []
     per_rule = defaultdict(lambda: {"n": 0, "lost": 0, "won": 0, "net": 0,

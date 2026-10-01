@@ -30,7 +30,7 @@ import os
 import sys
 from ctypes import c_int, c_char, Structure, POINTER
 from ctypes.util import find_library
-from typing import Dict, List
+from typing import Tuple, Dict, List
 
 
 # ---------- Library load ----------
@@ -320,6 +320,40 @@ class DDSolver:
         for st_i, st in enumerate(strain_map):
             for se_i, se in enumerate(seat_map):
                 out[se][st] = int(table.resTable[st_i][se_i])
+        return out
+
+    def solve_dd_tables_par(self, pbns: List[str], vul_mode: int
+                            ) -> List[Tuple[Dict[str, Dict[str, int]], int]]:
+        """Full double-dummy tables plus the N/S PAR score for many deals that
+        share one vulnerability (libdds mode: 0 none, 1 both, 2 N/S, 3 E/W)."""
+        seat_map = ["N", "E", "S", "W"]
+        strain_map = ["S", "H", "D", "C", "NT"]
+        out = []
+        for i in range(0, len(pbns), _MAXNOOFTABLES // 5 or 1):
+            chunk = pbns[i:i + (_MAXNOOFTABLES // 5 or 1)]
+            deals = ddTableDealsPBN()
+            deals.noOfTables = len(chunk)
+            for k, pbn in enumerate(chunk):
+                deals.deals[k].cards = pbn.encode("utf-8")
+            res = ddTablesRes()
+            par = _allParResults()
+            filt = (c_int * 5)(0, 0, 0, 0, 0)
+            rc = _dds.CalcAllTablesPBN(ctypes.byref(deals), vul_mode, filt,
+                                       ctypes.byref(res), ctypes.byref(par))
+            if rc != 1:
+                raise RuntimeError(
+                    f"CalcAllTablesPBN failed: {get_error_message(rc)}")
+            for k in range(len(chunk)):
+                t = res.results[k]
+                tab = {se: {st: int(t.resTable[st_i][se_i])
+                            for st_i, st in enumerate(strain_map)}
+                       for se_i, se in enumerate(seat_map)}
+                txt = par.presults[k].parScore[0].value.decode()   # "NS 620"
+                try:
+                    ns_par = int(txt.split()[-1])
+                except (ValueError, IndexError):
+                    ns_par = 0
+                out.append((tab, ns_par))
         return out
 
     def solve_dd_tables(self, pbns: List[str],

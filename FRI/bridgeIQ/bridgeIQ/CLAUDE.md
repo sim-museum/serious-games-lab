@@ -1,5 +1,51 @@
 # biq — Claude Code project notes
 
+## STATUS — alerts over Q-NET, Precision GF, wacky audit (2026-09-30, UNCOMMITTED)
+Full write-up: tools/HARNESS_STATUS_2026-09-30.md. Offline only; no live run.
+* Q-NET carries NO alerts: partner's strong 1C / 2C, Jacoby 2NT, splinters,
+  Michaels ... arrived unalerted and the rules (which key on `.alert`) misread
+  them live; the offline A/B kept alerts so it never showed. Fix:
+  `native_bidder._mark_system_alerts` (in decide_bid) re-alerts every call of
+  MY side that biq's own rules would alert there (`_rules_alert`: 400 seeded
+  random hands, majority vote, cached). bidder_teams_ab now strips other
+  seats' alerts by default (`--keep-alerts` = old). bid_sim still gets the
+  WIRE state (its gate was tuned live) and is skipped when partner forced.
+* Precision: 1C-1NT never set GF (auction_context skipped NT before the GF
+  check) -> 1C-1NT-2S-3S passed twice live. Plus 1C-(X)-P-(P)-1S raise, 1C-2D
+  4-card major, 2C-(ovc) 4C LAW, run from 1NT opener's double of 2S.
+* ~30 SAYC rule fixes from the miner + `tools/wacky_audit.py` (W-* cases in
+  test_qplus_match_fixes.py, 113 checks). Sanity: a pass after an OPPONENT's
+  call never drops partner's force (`partner_spoke_last`); never pass
+  partner's cue-bid in an agreed major.
+* wacky audit (894 deals): wacky calls 1.1/100 deals (-81), weak calls
+  3.8/100 (-320, the bigger leak), wacky cards 2/100. Card play loss is
+  diffuse (wrong-suit mid-hand leads; tools/lead_choice_study.py), no rule fix.
+* A/B vs committed bidder (wire view), held-out seed 81, 1200 bds/system:
+  SAYC +0.17, Precision +0.16 IMP/bd (SE 0.05); some new rules pruned after
+  an attribution showed them losing on the robust judge.
+* Card play: tools/play_replay_bench.py replays 2247 real biq decisions from
+  the matches. Fixed: honour "signals" (K from K-T), alpha-mu never collapsed
+  touching cards, budget stop dropped the last cards in suit order (now
+  best-first). 510 -> 455 DD tricks (-11%). Env: BIQ_SIGNAL_SAFE,
+  BIQ_AMU_COLLAPSE, BIQ_AMU_ORDER (all default 1).
+* biq_match.py --version latest|previous|<git ref>|<bidder fingerprint>
+  (--previous/--latest, --list-versions): runs the clients from a git export
+  in tools/runs/versions/<commit>/ so a live A/B half can run while backend/
+  is being edited. Run 18 (previous, SAYC, FRESH64J): -116 = -1.81/bd
+  One closed room per system per A/B set is enough (Q-Plus is deterministic;
+  tools/qss_merge_closed.py scores an open-room-only sheet).
+* LIVE A/B SAYC (runs 18 prev -1.81, 19 latest -1.16): paired +55 IMP
+  (+0.86/bd, SE 0.57; bidding +29, play +26). BUT deck "FRESH64K" was a copy
+  of FRESH64G (seed reuse) = in-sample; ~+47 without directly tuned boards.
+  gen_test_deck.py now refuses decks that repeat any deal; fresh decks
+  FRESH64L (261001), FRESH64M (261002). J/K deleted.
+* All five systems offline: tools/system_matrix.py (25 N/S x E/W tables,
+  DD + par; `report --vs SAYC` = first-divergence attribution). Fixed
+  Precision NAMYATS/2D-doubled/1D-2NT/Bergen, inverted minors (2/1, Prec),
+  French clubs transfer/support X/Ghestem/Truscott RKC/Garbage Stayman,
+  Acol weak-NT upgrade/suit order/big raise, Ogust continuation. Held-out
+  per-system A/B 0 to +0.08 IMP/bd, none negative after two corrections.
+
 ## STATUS — FRESH64I live runs (2026-09-28)
 Run 15 hybrid SAYC -93 / 64 = -1.45/bd (best yet); run 16 rules-only -109 =
 -1.70/bd (best rules score; earlier -2.1..-2.8); run 17 Precision hybrid

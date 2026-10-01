@@ -54,11 +54,29 @@ def load_baseline(path: str):
 HYBRID = set()          # module objects that bid with simulation (hand=...)
 
 
+WIRE = True            # seats see other seats' calls without alerts (Q-NET)
+
+
+def _seen_by(seat, dealer, auction):
+    """The auction as `seat` receives it: over Q-NET the other seats'
+    calls carry no alert flag; only the seat's own calls keep theirs."""
+    if not WIRE:
+        return list(auction)
+    out, s = [], dealer
+    for b in auction:
+        out.append(b if s == seat or not b.alert else
+                   type(b)(level=b.level, suit=b.suit, is_pass=b.is_pass,
+                           is_double=b.is_double, is_redouble=b.is_redouble))
+        s = s.next()
+    return out
+
+
 def bid_auction(hands, dealer, vul, system, ns_mod, ew_mod):
     auction, seat = [], dealer
     for _ in range(60):
         mod = ns_mod if seat.is_ns() else ew_mod
-        st = mod.parse_auction(seat, dealer, list(auction), vulnerability=vul)
+        st = mod.parse_auction(seat, dealer, _seen_by(seat, dealer, auction),
+                               vulnerability=vul)
         if id(mod) in HYBRID:
             auction.append(mod.decide_bid(st, mod.evaluate_hand(hands[seat]),
                                           system, hand=hands[seat]))
@@ -165,9 +183,14 @@ def main():
     ap.add_argument("--new-hybrid", action="store_true",
                     help="NEW bids with the simulation layer (hand=...)")
     ap.add_argument("--start", type=int, default=1)
+    ap.add_argument("--keep-alerts", action="store_true",
+                    help="seats see partner's alerts (old offline behaviour; "
+                         "Q-NET sends none)")
     ap.add_argument("--jsonl", default=None,
                     help="append one JSON line per board (for merging shards)")
     a = ap.parse_args()
+    global WIRE
+    WIRE = not a.keep_alerts
     if a.baseline == "current":
         # Same code, rules only: a second import of the module object.
         import importlib.util as _u

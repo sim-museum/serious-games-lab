@@ -238,6 +238,20 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
         if b.is_pass or b.is_double or b.is_redouble:
             continue
 
+        # Strong artificial 1C: a positive NT answer (1C-1NT 8-13 bal,
+        # 1C-2NT, 1C-3NT) is game forcing too. It must be caught here,
+        # before NT bids are skipped below: 1C-1NT-2S-3S was passed out
+        # with 19 + 9 HCP (Q-Plus Precision match FRESH64H/I, boards 47
+        # and 2).
+        if (not ctx.gf_established
+                and ctx.opening_was_strong_artificial
+                and s == partner_of_opener and s in my_side
+                and b.suit == _NT
+                and len(opener_post_first_bids) == 0
+                and not any(not pb.is_pass for ps, pb in state.bids[:idx]
+                            if ps == s)):
+            ctx.gf_established = True
+
         # Skip artificial / NT for trump detection
         if b.suit is None or b.suit == _NT:
             continue
