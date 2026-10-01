@@ -36,9 +36,9 @@ this index was written; that is what it exists to stop.
 | **E91** | "Tesla brakes" — lift-off decelerates too hard | **Corrected 2026-09-30 (S8): 1.39–1.66×, not 3.44×** — iRacing `Clutch` 1 = engaged and every earlier split was inverted. About half the excess is clutch-in DRAG, not engine braking (S9). **Blocked on the PO:** one high-speed clutch-in + in-gear coast-down to pin CdA/Crr/eb together. |
 | **PERF-3** | frame rate (PO: "30 is OK, gold is a solid 60") | **S1–S4 (2026-09-30):** HEAD runs **55–60 fps cockpit on all 5 tracks**; the mid-race ~316 ms freeze was a first-use JIT compile (grass grip), removed, plus two more precompiled. **Needs a new AppImage** — the shipped one predates all of it. |
 | **E80** | 10 fps at Spa in cockpit view | **LOAD half:** analysis to S4 (244 s, 69 % compilation; sysimage cannot be built here). **RENDER half = `SPA-FPS-1`** (S12–S15: the mirror's two `drawworld` passes are 55 % of the cockpit frame; adaptation on by default). E80-S5 (2026-09-18) measured cockpit 33 fps / chase 56 fps with no AI. assessed |
-| **E81** | floating/misplaced billboards and buildings at the Ring | **S1–S4 (2026-10-01): not reproduced.** Both new candidates (s≈1600 pit-building backs = real "Hinter den Boxen"; s≈1385 slab = the pit wall, matching gold) are correct placement; the visible gap is the **missing Continental banner row** on that wall (E78). Needs a PO screenshot to go further. |
+| **E81** | floating/misplaced billboards and buildings at the Ring | **OPEN — one real defect found (2026-10-01):** a skewed grey panel rising tens of metres at Ring s≈1350–1500 (`260930/e78/ring1350_skewed_panel.png`); not `walls2`/`tires` (yaw-flip A/B). s≈1600 pit-building backs are correct ("Hinter den Boxen"). |
 | **E76** | restore objects deleted after the Ring start/finish | open, lead only. assessed |
-| **E78** | improve all 5 tracks against the gold videos | epic, open. assessed |
+| **E78** | improve all 5 tracks against the gold videos | **S1–S4 (2026-10-01), Ring Hinter den Boxen:** the Continental banners (`bannr_s`, 168 tris) exist and are drawn as geometry; whether they reach the screen is unseen. Found the E81 skewed panel; `JM_SCENE_AT` object listing mislabels rows (fix first). |
 | **E79** | audit every row-of-people object on all 5 tracks | partially served by E101's filter; the 5-track audit is not done. assessed |
 | **E85** | EPIC: multiplayer, the way GPL did it | open, not started. assessed |
 | **E60** | Zandvoort gold-video parity | epic, ongoing. assessed |
@@ -21196,3 +21196,29 @@ named ("GPL: Continental/Bosch/Castrol boards along the pit wall; ours: bare wal
 **E81 status:** two more candidates eliminated with a reference image each. Placement is not reproduced anywhere
 measured. **Needs the PO:** a screenshot or station of a building or billboard that looks wrong; otherwise close
 into E78 (banner rows on the Ring's pit walls are the concrete appearance gap). **E81: 4 sprints. ROTATING.**
+
+### ⚠️ E81 S4 CORRECTION (2026-10-01, same session) — the s≈1385 "slab" is NOT the pit wall in perspective
+
+S4 compared thumbnails. At full resolution (`260930/e78/ring1350_skewed_panel.png`, chase, s=1350) the grey panel's
+FAR end climbs to ~65 px above the horizon line: a wall top above eye level converges DOWN to the horizon, so this is
+skewed geometry tens of metres up — a real "part of a building" defect, unidentified (see E78 S1–S4). E81 is OPEN.
+
+### E78 S1..S4 (2026-10-01) — Ring Hinter den Boxen: the banners exist and render; the skewed panel is real but NOT a placed object (ROTATING)
+
+* **S1 — the missing Continental banner row.** The Ring `.dat` holds `bannr_s.mip`; `nurburg.3do` carries **168
+  `bannr_s` triangles** (and `barrier1` 2). `JM_SCENE_AT=1400`: 36 of them are in the window, on the pit wall line
+  (lat −11.6…−9.3), 620.0–620.5 m, uv u −3.81…0 (a repeated strip). Track textures are `GL_REPEAT` (render.jl:964/995),
+  so a clamped smear is ruled out. Whether they are hidden (culled face / depth fight with the wall) is not yet seen.
+* **S2 — the skewed panel** (above): the window's mesh textures span ≤ 10.6 m vertically (terrain slope) and its
+  billboards are 2.5 m bushes, so it is in neither list; candidates were the two 2-tri placed objects reported
+  11.9 m / 8.7 m above the road: `walls2` (one 320 m wall quad, authored rising 3.3 m) and `tires`.
+* **S3 — `JM_YAWFLIP=<names>`** (new, test-only: +180° on named placements). Flipping both moves the 11.9 m reading
+  to −3.4…2.5 m. ⚠️ **Instrument defect found:** the `JM_SCENE_AT` "scenery objects rendered" listing pairs names /
+  lapdist with the WRONG z-road rows (the 11.9 m reading was `walls2` s=1705 in one run and `tires` s=1668 in the
+  next) — do not trust which object a z-road range belongs to until that is fixed.
+* **S4 — by eye** (`JM_SHOTS=1350:1` with each flipped): the panel is unchanged in all three frames. **It is neither
+  `walls2` nor `tires`.** Next: find it in the track `.3do`/SECPARTS (per-triangle dump of what projects onto that
+  screen region), and fix the listing's row pairing first.
+
+**E78: 4 sprints this pass. ROTATING.** Concrete leads for the next pass: (1) the skewed panel at Ring s≈1350–1500;
+(2) whether the 36 `bannr_s` tris actually reach the screen there.

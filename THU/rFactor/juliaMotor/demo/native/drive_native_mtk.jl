@@ -1087,6 +1087,10 @@ const BRIDGE_TEX = ("bridge", "br_under")   # E109-S6: the Ring's bridge structu
 
 function gpl_scenery(ztrk, datpack, ribbon)
     pls = Render.GPL3DO.gpl_placements(ztrk)
+    # E78-S1 probe: JM_YAWFLIP=<name,...> turns those placements by 180 deg (A/B for a suspected yaw error).
+    let fl = Set(lowercase.(filter(!isempty, split(get(ENV, "JM_YAWFLIP", ""), ","))))
+        isempty(fl) || (pls = [(lowercase(String(nm)) in fl ? (nm, (t[1], t[2], t[3], t[4] + pi, t[5], t[6], t[7])) : (nm, t)) for (nm, t) in pls])
+    end
     # E109-S3: every one of the 67 `half0*`/`half1s` veil placements sits at yaw MINUS road heading =
     # +-90 deg (measured: -90.0, -88.0, +90.0, +93.3, +100.0, -86.0, ...). Data does not come out that
     # uniform by accident, so the suspicion is a 90 deg error in how we read GPL's yaw, not GPL intending
