@@ -31,7 +31,7 @@ this index was written; that is what it exists to stop.
 | **E104** | every car floats 20–40 cm above the road; off-road contact is elastic (levitate/bounce) | ✅ **BOTH halves FIXED and gated** — (b) E104-S1 (the −999 off-mesh sentinel), (a) E104-S4 (found, fixed, gated; S2's mechanism was right). *Index row corrected 2026-09-18 — it had read "half (a) still open, needs a capture" for 17 days after S4 closed it.* |
 | **E102** | rear axles point outward/downward; must be horizontal, hub to chassis | **OPEN — two of my own diagnoses withdrawn** (S1: omitted BODY_OFF; S2: conflated components sharing a texture). Established: the assembly and wheels agree (brake disc within 2.8 mm). S4: 65 of 89 triangles are ONE connected mesh (so there is no separable shaft to level), but an isolated **3-triangle `axlelot` sliver** reaches the wheel plane and drops 0.099 m — the best candidate for the PO's "sticks". Needs a capture; three headless approaches are enough. |
 | **E103** | wheel loss in a collision hyperspaces the car to the start line | **mechanism found + fixed + gated** (E103-S1): the containment seal PLACES the car at its last on-track point, which initialises to spawn. Not yet seen in a real wreck. |
-| **E90** | Monza and Watkins have almost no collidable barrier objects | open; the gate passing IS the symptom. assessed |
+| **E90** | Monza and Watkins have almost no collidable barrier objects | **Mostly fixed (S9–S12, 2026-09-30):** oriented + trimmed rail boxes, Monza 189 → 316, Watkins 448 → 583; every box makes contact, 0 false contacts, `inside=0` on all 4 tracks. **Still missing:** 54 / 84 rail cells standing on road-textured triangles (Monza s≈1000–1500, WG s≈500–750 and 2500–3000) — need a look on screen before relaxing the guard. |
 | **E91** | "Tesla brakes" — lift-off decelerates too hard | **Corrected 2026-09-30 (S8): 1.39–1.66×, not 3.44×** — iRacing `Clutch` 1 = engaged and every earlier split was inverted. About half the excess is clutch-in DRAG, not engine braking (S9). **Blocked on the PO:** one high-speed clutch-in + in-gear coast-down to pin CdA/Crr/eb together. |
 | **E80** | 10 fps at Spa in cockpit view | **LOAD half:** analysis to S4 (244 s, 69 % compilation; sysimage cannot be built here). **RENDER half = `SPA-FPS-1`** (S12–S15: the mirror's two `drawworld` passes are 55 % of the cockpit frame; adaptation on by default). E80-S5 (2026-09-18) measured cockpit 33 fps / chase 56 fps with no AI. assessed |
 | **E81** | floating/misplaced billboards and buildings at the Ring | open; the Ring bypasses the pipeline the other tracks use. assessed |
@@ -20979,3 +20979,39 @@ which would explain why only these sites show it. **Decides it:** one GPL-under-
 s≈21355, or decoding GPL's placement pivot. Not a texel filter — that would cut trees GPL draws.
 
 **E109: 4 sprints this pass (S7–S10). ROTATING.**
+
+### E90-S9..S12 (2026-09-30) — Monza and Watkins Glen measured for the first time: every barrier box is solid, and there are now **67 % / 30 % more** of them (4 sprints — ROTATING)
+
+S8 confirmed one box at Spa by hand; the PO's report named Monza and Watkins Glen, which were never measured
+(S7's "Watkins" run was Zandvoort — the `TRACK=watkins` bug).
+
+**S9 — instrument: `JM_RAILHIT_SELFTEST=1`** asks `solid_hit()` itself at every rail box, approaching from the
+road side and heading into the box (must CONTACT), plus a negative control at points ≥ 8 m from every solid
+(must not). Prints `RAILHIT_RESULT`. ⚠️ First cut probed AT each box's centre with heading 0 and reported 3/189 —
+no contact normal there, so not a test; withdrawn before it was believed.
+
+**S10 — oriented boxes** (`JM_RAIL_OBB=0` reverts). The axis-aligned box of a diagonal rail in an 8 m cell is up
+to 8 × 8 m, covers the road, and was rejected — half of Monza's rail cells had no collision at all. Now: principal
+axis of the rail's vertices in plan, extents by projection, half-thickness ≥ 0.15 m, and a tarmac test over the
+WHOLE footprint (`box_covers_tarmac` checks only the centre of a box < 0.5 m thick).
+**S11 — trim, don't reject:** a cell partly over road keeps each off-road run ≥ 0.8 m as its own box.
+
+| track | boxes: S8 → S10 → **S11** | cells rejected | contact | control contacts | ROADSWEEP inside |
+|---|---|---|---|---|---|
+| Monza | 189 → 258 → **316** | 180 → 111 → 54 | 316/316 | 0/191 | 0 |
+| Watkins Glen | 448 → 540 → **583** | 219 → 127 → 84 | 570/570 (13 unprobed: no ribbon) | 0/291 | 0 |
+| Spa | 161 → 129 | 77 | — | — | 0 (on-road solids 2 → 0) |
+| Ring | — → 185 | 137 | — | — | 0 (`control=blind` pre-existing) |
+
+`edge_barriers` (thin rails a car can only scrape with its flank while on tarmac — not a gate failure by design)
+moves Ring 3 → 8, Spa 8 → 5, Monza/WG 0 → 2: real armco at the asphalt edge.
+
+**S12 — what is still missing** (`JM_RAILBOX_DIAG=1` prints each rejected cell). All 54 + 84 run ALONG the road
+(none > 45° to it, none overhead) at |lat| 3–10 m with road-textured triangles under the whole footprint.
+Clustered: **Monza s≈1000–1500 (29 of 54); Watkins s≈500–750 (33) and 2500–3000 (39).** Either the armco
+stands on paved run-off / pit separation inside the `.trk` width, or the ribbon is laterally off there. The
+guard refusing them is correct until that is known: a wrong guess here is an invisible wall on the road.
+**Next:** a chase-cam shot at those stations (or `JM_ROADBLOCK`-style texture census of the triangles under
+the rejected rails) before relaxing anything.
+
+**E90: 4 sprints this pass (S9–S12). ROTATING.**

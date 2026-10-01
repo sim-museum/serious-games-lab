@@ -6551,6 +6551,14 @@ let objnames=Set{String}()
                             i = j + 1
                         end
                         isempty(cands) ? (nreject += 1) : (ntrim += 1)
+                        if isempty(cands) && get(ENV, "JM_RAILBOX_DIAG", "0") != "0"
+                            hr_ = JuliaMotor.hat(TRKSURF, ox, oz)
+                            rd = hr_.found ? rad2deg(abs(rem(φ - atan(hr_.perp[2], hr_.perp[1]) - pi/2, pi, RoundNearest))) : NaN
+                            println("  [railbox] rejected: s ", hr_.found ? round(Int, hr_.lapdist) : -1, " lat ",
+                                    hr_.found ? round(hr_.lateral, digits=1) : NaN, " len ", round(2hx, digits=1),
+                                    " angle-to-road ", round(rd, digits=0), " y-above-road ",
+                                    hr_.found ? round(e[5] - hr_.height, digits=1) : NaN)
+                        end
                     end
                     nobb += 1
                 else
