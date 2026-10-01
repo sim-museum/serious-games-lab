@@ -1696,6 +1696,39 @@ else
             haskey(ENV,"JM_NORECENTRE") ? (println("  re-centring SKIPPED (JM_NORECENTRE) — E84-S4 A/B"); a) :
             recentre_on_road(a, ROADHAT; passes = (ROADHAT === TERRAIN0 ? 1 : 4), shift = RECENTRE_SHIFT)
     end
+    # E107-S6: is the re-centre shift a DRIFT along the lap (a .trk decode/placement error) or local scatter?
+    # JM_SHIFT_PROFILE=1 prints mean and max |shift| in 20 lap-fraction bins, then exits.
+    if get(ENV, "JM_SHIFT_PROFILE", "0") != "0"
+        let n = length(RECENTRE_SHIFT), nb = 20
+            println("SHIFT_PROFILE track=", TRACKSEL, " nodes=", n, " mean|shift|=", round(sum(abs, RECENTRE_SHIFT)/n, digits=2),
+                    " max|shift|=", round(maximum(abs, RECENTRE_SHIFT), digits=2))
+            for b in 0:nb-1
+                r = (b*n÷nb + 1):((b+1)*n÷nb); v = RECENTRE_SHIFT[r]
+                println("  bin ", lpad(b, 2), "  mean ", lpad(round(sum(v)/length(v), digits=2), 6), "  max|.| ",
+                        lpad(round(maximum(abs, v), digits=2), 5))
+            end
+        end
+        # how much of the shift is a RIGID misplacement? Least-squares similarity (rotation, scale, translation)
+        # from the raw aligned nodes onto the re-centred ones; report the residual after it.
+        let A = ALIGNED0, B = ALIGNED, n = min(length(ALIGNED0), length(ALIGNED))
+            ax = sum(p[1] for p in A[1:n])/n; az = sum(p[2] for p in A[1:n])/n
+            bx = sum(p[1] for p in B[1:n])/n; bz = sum(p[2] for p in B[1:n])/n
+            sxx = 0.0; sxy = 0.0; saa = 0.0
+            for k in 1:n
+                u = A[k][1]-ax; v = A[k][2]-az; p = B[k][1]-bx; q = B[k][2]-bz
+                sxx += u*p + v*q; sxy += u*q - v*p; saa += u^2 + v^2
+            end
+            th = atan(sxy, sxx); sc = hypot(sxx, sxy)/saa
+            res = [hypot(bx + sc*(cos(th)*(A[k][1]-ax) - sin(th)*(A[k][2]-az)) - B[k][1],
+                         bz + sc*(sin(th)*(A[k][1]-ax) + cos(th)*(A[k][2]-az)) - B[k][2]) for k in 1:n]
+            r = sort(res)
+            println("SHIFT_RIGID track=", TRACKSEL, " rot=", round(rad2deg(th), digits=4), " deg scale=", round(sc, digits=6),
+                    " trans=(", round(bx-ax, digits=2), ",", round(bz-az, digits=2), ")  residual p50=", round(r[n÷2], digits=2),
+                    " p90=", round(r[9n÷10], digits=2), " max=", round(r[end], digits=2), "  (before: mean|shift| ",
+                    round(sum(abs, RECENTRE_SHIFT)/length(RECENTRE_SHIFT), digits=2), ")")
+        end
+        flush(stdout); exit(0)
+    end
     const RIBBON0  = GPLTrack.build_surface(ALIGNED, TERRAIN0)
     # GPL Nürburgring places its landmass/scenery as .dat sub-objects via 0x0E nodes;
     # load + place them so the road isn't floating over a void (Zandvoort has none).
@@ -1769,10 +1802,52 @@ else
     # (Watkins p50 0.004 -> 0.032 m, curvature p99 0.0228 -> 0.0480 /m) because it can only move a
     # vertex onto a field that is already under it. The visible faceting is therefore NOT vertical; the
     # remaining lever is the HORIZONTAL split tolerance, JM_ROADCURVE_TOL (see below).
+    # E108-S6 (2026-09-30): GPL authors EVERY road polygon as type 0x820 -- textured, NO vertex normals
+    # (census: 100 % of road tris on all five tracks). The loader falls back to one face normal per
+    # triangle, so the road was FLAT-SHADED: on a cambered or banked curve each 13-18 m chord tilts a
+    # little differently and the lighting steps at every polygon edge -- banding that reads as
+    # "piecewise-linear turns" however finely ROADCURVE subdivides the geometry. Weld road vertices by
+    # position (2 cm), average area-weighted face normals, keep creases > 30 deg (kerb vs road).
+    # Positions are untouched, so the HAT and physics are unaffected. JM_ROAD_SMOOTHN=0 reverts.
+    const ROAD_SMOOTHN = get(ENV, "JM_ROAD_SMOOTHN", "0") != "0"   # S7: no visible effect (A/B < 0.3 % of pixels) -- OFF
+    function smooth_road_normals(m)
+        ROAD_SMOOTHN || return m
+        q(v) = (round(Int, v[1]*50), round(Int, v[2]*50), round(Int, v[3]*50))
+        fn = Dict{Int,NTuple{3,Float64}}(); acc = Dict{NTuple{3,Int},Vector{NTuple{3,Float64}}}()
+        for (i, t) in enumerate(m.tris)
+            ROAD_TEX(lowercase(t.tex)) || continue
+            a = t.p[1]; b = t.p[2]; c = t.p[3]
+            u = (b[1]-a[1], b[2]-a[2], b[3]-a[3]); w = (c[1]-a[1], c[2]-a[2], c[3]-a[3])
+            n = (u[2]*w[3]-u[3]*w[2], u[3]*w[1]-u[1]*w[3], u[1]*w[2]-u[2]*w[1])     # |n| = 2 x area
+            n0 = t.n[1]; (n[1]*n0[1] + n[2]*n0[2] + n[3]*n0[3] < 0) && (n = (-n[1], -n[2], -n[3]))   # face's own side
+            fn[i] = n
+            for v in t.p; push!(get!(acc, q(v), NTuple{3,Float64}[]), n); end
+        end
+        nrm(v) = (l = sqrt(v[1]^2 + v[2]^2 + v[3]^2); l < 1e-12 ? (0.0, 0.0, 1.0) : (v[1]/l, v[2]/l, v[3]/l))
+        cc = cosd(30.0); nsm = 0
+        tris = similar(m.tris)
+        for (i, t) in enumerate(m.tris)
+            if !haskey(fn, i)
+                tris[i] = t; continue
+            end
+            f = nrm(fn[i])
+            ns = ntuple(3) do k
+                s_ = (0.0, 0.0, 0.0)
+                for g in acc[q(t.p[k])]
+                    gn = nrm(g); (gn[1]*f[1] + gn[2]*f[2] + gn[3]*f[3] >= cc) && (s_ = (s_[1]+g[1], s_[2]+g[2], s_[3]+g[3]))
+                end
+                r = nrm(s_); (Float32(r[1]), Float32(r[2]), Float32(r[3]))
+            end
+            nsm += 1
+            tris[i] = Render.GPL3DO.Tri(t.p, ns, t.uv, t.tex, t.col, t.flat, t.ptype)
+        end
+        println("  [roadshade] smooth normals on ", nsm, " road tris (", length(acc), " welded vertices; JM_ROAD_SMOOTHN=0 reverts)")
+        Render.GPL3DO.Mesh3DO(tris, m.textures, m.groups)
+    end
     const TRACKMESH0C = if ROADCURVE_ON
         let P = [(p[1], p[3]) for p in RIBBON0.pos], HS = [p[2] for p in RIBBON0.pos], q = RIBBON0.perp[1], tol = parse(Float64, get(ENV, "JM_ROADCURVE_TOL", "0.05")), sig = parse(Float64, get(ENV, "JM_ROADCURVE_SIG", "2.0"))
             length(P) > 2 && hypot(P[end][1]-P[1][1], P[end][2]-P[1][2]) < 0.5 && (pop!(P); pop!(HS))   # closed loop, no repeated node
-            post(path, m) = abspath(path) == abspath(ZTRK) ? RoadCurve.curve_mesh(drop_overhang(m), P, (q[1], q[3]); tol=tol, sig=sig, heights=HS)[1] : m
+            post(path, m) = abspath(path) == abspath(ZTRK) ? smooth_road_normals(RoadCurve.curve_mesh(drop_overhang(m), P, (q[1], q[3]); tol=tol, sig=sig, heights=HS)[1]) : m
             Render.GPL3DO.POSTPROC[] = post
             mc, st = RoadCurve.curve_mesh(drop_overhang(TRACKMESH0), P, (q[1], q[3]); tol=tol, sig=sig, heights=HS)
             println("  [roadcurve] ON: ", st.tris_in, " -> ", st.tris_out, " tris (", st.curved, " polygons rounded; ",
@@ -1780,7 +1855,7 @@ else
             mc
         end
     else
-        Render.GPL3DO.POSTPROC[] = (path, m) -> abspath(path) == abspath(ZTRK) ? drop_overhang(m) : m
+        Render.GPL3DO.POSTPROC[] = (path, m) -> abspath(path) == abspath(ZTRK) ? smooth_road_normals(drop_overhang(m)) : m
         drop_overhang(TRACKMESH0)
     end
     const TRACKMESH = isempty(SECTRI) ? TRACKMESH0C :
@@ -9306,7 +9381,29 @@ function main()
                         # place GPL's record in the world on ITS OWN reference line, then read the lateral
                         # back in ours. A0 is the aligned .trk centreline; its cumulative arc length gives
                         # the point for record i (records are one per 3 m of GPL's lap).
-                        A0 = ALIGNED0; nA = length(A0)
+                        # E107-S7: WHICH reference line puts GPL's records on the drawn road? JM_GPLREF=
+                        #   aligned0: GPL's .trk centreline as align_centreline placed it (pre-S8 default)
+                        #   rigid (DEFAULT, E107-S8): the same, refit by least squares (rotation+scale+translation) onto the re-centred line
+                        #   recentred: our road-middle line (= applying RECENTRE_SHIFT, E107-S4's proposal)
+                        A0 = let ref = get(ENV, "JM_GPLREF", "rigid")
+                            if ref == "recentred"
+                                ALIGNED
+                            elseif ref == "rigid"
+                                let A = ALIGNED0, B = ALIGNED, n = min(length(ALIGNED0), length(ALIGNED))
+                                    ax = sum(p[1] for p in A[1:n])/n; az = sum(p[2] for p in A[1:n])/n
+                                    bx = sum(p[1] for p in B[1:n])/n; bz = sum(p[2] for p in B[1:n])/n
+                                    sxx = sum((A[k][1]-ax)*(B[k][1]-bx) + (A[k][2]-az)*(B[k][2]-bz) for k in 1:n)
+                                    sxy = sum((A[k][1]-ax)*(B[k][2]-bz) - (A[k][2]-az)*(B[k][1]-bx) for k in 1:n)
+                                    saa = sum((A[k][1]-ax)^2 + (A[k][2]-az)^2 for k in 1:n)
+                                    th = atan(sxy, sxx); sc = hypot(sxx, sxy)/saa
+                                    [(bx + sc*(cos(th)*(p[1]-ax) - sin(th)*(p[2]-az)), bz + sc*(sin(th)*(p[1]-ax) + cos(th)*(p[2]-az))) for p in A]
+                                end
+                            else
+                                ALIGNED0
+                            end
+                        end
+                        println("  AI racing LINE reference (JM_GPLREF): ", get(ENV, "JM_GPLREF", "rigid"))
+                        nA = length(A0)
                         sA = zeros(nA)
                         for k in 2:nA; sA[k] = sA[k-1] + hypot(A0[k][1]-A0[k-1][1], A0[k][2]-A0[k-1][2]); end
                         lenA = sA[end] + hypot(A0[1][1]-A0[end][1], A0[1][2]-A0[end][2])

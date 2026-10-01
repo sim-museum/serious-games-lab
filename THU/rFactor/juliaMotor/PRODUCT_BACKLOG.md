@@ -21,8 +21,8 @@ this index was written; that is what it exists to stop.
 
 | item | what | state |
 |---|---|---|
-| **E107** | **EPIC (PO priority): Julia AI as close as possible to gold-standard GPL AI**, using GPL's `.lp` lines and the AI documentation under `~/sgl/THU` | NEW 2026-09-28. GPL's own `gpl_ai.ini` FOUND and read: its AI slots laterally with a **dlat acceleration spring/damper** over an 8-mode state machine, not the velocity clamp we invented. Sprint 1 = port that. |
-| **E108** | **EPIC (PO priority): tracks as close as possible to gold-standard GPL tracks** — no seams, no piecewise-linear turns, no piecewise-linear white stripes | NEW 2026-09-28. The VERTICAL is already within 0.4–5.7 cm of the .trk (`gplroad_smoke`), so this is a PLAN-VIEW and SHADING problem. Sprint 1 = build a plan-view ruler. |
+| **E107** | **EPIC (PO priority): Julia AI as close as possible to GPL AI** | **S5–S8 (2026-09-30):** the `.trk` decode is exact; our placement had a RIGID error (Monza 4.2 m). Refit (`JM_GPLREF=rigid`, default) puts GPL's own line on the road: **4 of 5 tracks now drive GPL's line + rails** (was 2). Spa at 94.0 % (bar 95). |
+| **E108** | **EPIC (PO priority): tracks as close as possible to GPL** | **S5–S8 (2026-09-30):** flat shading (100 % of road polys lack normals) refuted as the visible cause (A/B < 0.3 % of pixels); finer rounding (4× tris) invisible at WG's gentle curves. **Needs the PO: the track + station where the faceting shows.** |
 | **E109** | Nürburgring tree "curtains" across the road + individual trees intruding | ✅ **curtains FIXED** (S6). **Individual trees MEASURED (S7–S10):** two sites stand ~1 m onto the drawn road — `halftr1s` s≈8350–8475 and `halftr07` s≈21350 — and both are exactly the veil placements at 98–110° to the road (the rest are ±90° and stand 1.7 m clear). Needs a GPL capture at s≈8400/21355 to tell data from our rotation pivot. |
 | **E110** | Watkins Glen start/finish gantry drawn twice | NEW 2026-09-28. Only one placement exists, so it is a second draw path, not a second instance. |
 | **E111** | Spa: missing corner house before the 90° left; bright yellow polygon over the road after it | NEW 2026-09-28. `house12`/`house13` are in neither archive nor disk. |
@@ -21062,3 +21062,77 @@ Also open: the 18 deep contacts in the 25 m/s / 9 m arm — a spawn no driver co
 as a regression cap.
 
 **RACESTART-1: 4 sprints this pass (S13–S16). ROTATING.**
+
+### E107-S5 (2026-09-30) — REVIEW & RETROSPECTIVE before resuming (4 sprints already spent)
+
+S1–S4 ported GPL's dlat spring/damper, wired GPL's corridor, and measured why Monza/Spa/Ring refuse GPL's
+line: records sit 1.5–3 m from the road. S4's proposed fix was to apply `RECENTRE_SHIFT` to GPL's records.
+**Retro:** that treats a symptom. In GPL itself `.trk` centreline + dlat lands on the drawn road, or GPL's
+own AI would drive on grass — so a 2–5 m gap in OUR world means our `.trk` decode or placement is wrong, and
+the same error would poison E108's "generate the road from the `.trk`". Decided: find which, by measurement,
+before patching anything. `JM_SHIFT_PROFILE=1` (new) prints the re-centre shift in 20 lap bins and exits:
+smooth long-wave patterns on every track but Zandvoort (Monza +11.5 → −5 → +12.5 m; Spa +4 then −3; Ring a
+steady −2…−4) — a placement signature, not local scatter.
+
+### E107-S6/S7 (2026-09-30) — the `.trk` decode is exact; the placement was a RIGID error; refit puts GPL's line on the road
+
+* **Decode is right:** the integrated `.trk` walk closes to Monza 0.08 m, Spa 0.00, Zandvoort 0.48, WG 1.18,
+  Ring 7.26 m (over 22.8 km); `race.lp` records × 3.0 m match Σ section length to 0.08–0.19 %; GPL's
+  road-edge traces are symmetric about the reference line (WG ±5.49, Zandvoort ±4.57, Spa ±4.5) — so GPL's
+  reference IS the road middle.
+* **A similarity fit** (rotation, scale, translation) of the raw aligned line onto the re-centred one leaves
+  Monza with a **4.2 m translation, 0.05° rotation, 0.14 % scale** that `align_centreline`'s translation
+  search never removed; the remaining non-rigid 2–3 m is our road-middle estimate (texture-based), not GPL.
+* **`JM_GPLREF`** places GPL's records on `aligned0` (old), `recentred` (S4's plan) or `rigid`:
+
+| track | aligned0 | recentred | **rigid** |
+|---|---|---|---|
+| Monza | 74.1 % refused | 93.3 % refused | **98.1 % accepted** (pass1 98.4, pass2 100) |
+| Ring | 81.5 % refused | — | **96.5 % accepted** |
+| Spa | 68.4 % refused | — | 94.0 % (bar 95) |
+| Watkins Glen | 96.9 % accepted | — | **100.0 %** |
+| Zandvoort | accepted | — | accepted (shift 0.13 m) |
+
+### E107-S8 (2026-09-30) — `rigid` is the DEFAULT (`JM_GPLREF=aligned0` reverts)
+
+GPL's own racing line and passing rails now drive the AI on **4 of 5 tracks** (was 2). Gates `gpldlat`,
+`gplplan`, `gplroad`, `ai_field`, `seam` PASS. **Open:** Spa at 94.0 % — 1 point under the bar; next is the
+graded test S4 proposed (p90 distance-to-road) rather than nudging the binary bar. **Also for E108:** the
+rigid refit is the placement any `.trk`-generated road must start from. **E107: 4 sprints this pass (S5–S8).
+ROTATING.**
+
+### E108-S5 (2026-09-30) — REVIEW & RETROSPECTIVE before resuming (4 sprints already spent)
+
+**What S1–S4 did:** built a plan-view ruler for the road edge and white line, tuned ROADCURVE's guard
+against it, then found (S4) that S3's headline gain was overstated ~20× because it was measured against
+the wrong reference curve. S4's own words: *"this measurement was rebuilt seven times and the verdict
+flipped with each rebuild."*
+
+**What went wrong:** a visual complaint was chased with a metric that was never stable, so every
+sprint spent most of its budget rebuilding the instrument rather than changing what the PO sees.
+
+**What was never tried:** plan item 3, SHADING — cheap and decisive, and able to explain the whole visible
+defect on its own (banding at polygon edges looks faceted however fine the geometry).
+
+**New constraint from E107 (same day):** item 4 (generate the road from the `.trk`) assumes the `.trk` and
+the drawn `.3do` agree. Our placed `.trk` was off by a rigid ~4 m at Monza (E107-S7), and the rest is our
+road-middle estimate. Item 4 must start from the rigid refit, or it builds a road 2–4 m off its own kerbs.
+
+**Approach from here:** (1) check shading; (2) judge by A/B screenshots at named stations for the PO's eye,
+not by another ruler; (3) item 4 only after (1)–(2) and on the rigid placement.
+
+### E108-S6..S8 (2026-09-30) — shading CHECKED and refuted; finer rounding invisible in cockpit view; the defect needs the PO's location (ROTATING)
+
+* **S6 — shading census** (`.3do` of all five tracks): **100 % of road triangles are poly type 0x820 —
+  textured, NO vertex normals** — so the loader face-normals them: the road is flat-shaded per polygon. Added
+  `smooth_road_normals` (weld at 2 cm, area-weighted, creases > 30° kept) behind `JM_ROAD_SMOOTHN`.
+* **S7 — A/B, Watkins Glen cockpit, 4 stations:** lower-half mean |diff| **0.13–0.27 of 256 levels**, 0.2–0.3 %
+  of pixels change > 8 levels. **Flat shading is not the visible defect.** Smoothing left in, default OFF.
+* **S8 — the two named gentle curves** (from the `.trk`: s≈529–759 R 340 m, s≈2461–2857 R 640 m), three arms
+  — `JM_ROADCURVE=0`, shipped `TOL` 0.05 (81 803 tris), `TOL` 0.01 (**335 710 tris, 4.1×**): the cockpit
+  frames are indistinguishable by eye. Composites (rows: off / 0.05 / 0.01): `260930/e108/wgc*_3arm.png`.
+
+**Where E108 stands:** two cheap hypotheses (shading, tolerance) eliminated by direct A/B; the plan-view ruler
+is unstable (S4); generating the road from the `.trk` is now possible on E107's rigid placement but is a big
+build. **Blocked on the PO for one thing:** the track and station (or a screenshot) where the faceting is seen —
+the cockpit view at Watkins Glen's two gentle curves does not show it. **E108: 4 sprints this pass (S5–S8).**
