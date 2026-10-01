@@ -29,6 +29,7 @@ v1 scope: biq DECLARING (controls declarer + dummy). Defence (hidden partner)
 is a later phase; callers fall back to PIMC when biq is not declarer-side.
 """
 from __future__ import annotations
+import os
 import time
 from typing import Dict, List, Optional, Tuple
 from collections import defaultdict
@@ -66,6 +67,36 @@ def _legal(hand: frozenset, lead_suit: Optional[int]) -> List[int]:
         if follow:
             return sorted(follow)
     return sorted(hand)
+
+
+# Search only one card of each run of touching cards (KQJ -> one branch). They
+# score the same in every world, so this only saves time — time the 12 s
+# budget otherwise runs out on, leaving later candidates unevaluated.
+_COLLAPSE = os.environ.get("BIQ_AMU_COLLAPSE", "1") == "1"
+
+
+# Root ordering: score every candidate with a one-trick search first, then run
+# the full-depth search best-first, so a budget stop drops the least promising
+# cards instead of whichever came last in suit order (clubs).
+_ORDER = os.environ.get("BIQ_AMU_ORDER", "1") == "1"
+
+
+def _runs(cards: List[int]) -> Dict[int, List[int]]:
+    """{representative: all cards of its touching run} (rep = lowest card)."""
+    by: Dict[int, List[int]] = {}
+    for c in cards:
+        by.setdefault(c // 13, []).append(c % 13)
+    out: Dict[int, List[int]] = {}
+    for su, ranks in by.items():
+        ranks.sort()
+        i = 0
+        while i < len(ranks):
+            j = i
+            while j + 1 < len(ranks) and ranks[j + 1] == ranks[j] + 1:
+                j += 1
+            out[su * 13 + ranks[j]] = [su * 13 + r for r in ranks[i:j + 1]]
+            i = j + 1
+    return out
 
 
 def _collapse(cards: List[int]) -> List[int]:
@@ -240,7 +271,7 @@ class AlphaMu:
                 elif len(cands) == 1:
                     cards_to_try = [cands[0]]
                 else:
-                    cards_to_try = cands
+                    cards_to_try = _collapse(cands) if _COLLAPSE else cands
                 if len(cards_to_try) == 1:
                     c = cards_to_try[0]
                     for w, _ in group:
@@ -295,7 +326,7 @@ class AlphaMu:
                         whands[w][seat] = whands[w][seat] - {c}
                 else:
                     best_val, best_vals = None, None
-                    for c in cands:
+                    for c in (_collapse(cands) if _COLLAPSE else cands):
                         sub = [(w, {**whands[w], seat: whands[w][seat] - {c}},
                                 wtrick[w] + [(seat, c)]) for w, _ in order]
                         vals = self._continue_trick(sub, seat.next(), leader,
@@ -353,6 +384,9 @@ class AlphaMu:
         cands = _legal(my, lead_suit)
         if len(cands) <= 1:
             return Card.from_code52(cands[0]) if cands else None
+        runs = _runs(cands) if _COLLAPSE else {c: [c] for c in cands}
+        if _COLLAPSE:
+            cands = list(runs)
 
         leader = seat
         trick52: List[int] = []
@@ -366,6 +400,25 @@ class AlphaMu:
         group = [(i, dict(w)) for i, w in enumerate(worlds)]
         scored = []                      # (c52, mean) for every evaluated card
         best_c, best_val = None, None
+        if _ORDER and self.depth > 1 and len(cands) > 2:
+            # Cheap pass: one-trick lookahead + double-dummy leaf, at most a
+            # third of the budget; then search best-first.
+            self._deadline = time.time() + self.time_budget / 3
+            quick = {}
+            try:
+                for c in cands:
+                    partial = []
+                    for i, w in group:
+                        hh = dict(w)
+                        hh[seat] = hh[seat] - {c}
+                        tr = [(Seat((leader.value + k) % 4), cc)
+                              for k, cc in enumerate(trick52)] + [(seat, c)]
+                        partial.append((i, hh, tr))
+                    v = self._continue_trick(partial, seat.next(), leader, 0, 1)
+                    quick[c] = sum(v.values()) / len(v)
+            except _Budget:
+                pass
+            cands = sorted(cands, key=lambda c: -quick.get(c, -1.0))
         self._deadline = time.time() + self.time_budget
         for c in cands:
             # force biq's `seat` card = c, replay the rest of this trick + search
@@ -382,7 +435,9 @@ class AlphaMu:
             except _Budget:
                 import os as _os
                 if _os.environ.get("BIQ_AMU_DEBUG"):
-                    print(f"[amu] budget hit after {len(scored)}/{len(cands)} cards", flush=True)
+                    import sys as _sys
+                    print(f"[amu] budget hit after {len(scored)}/{len(cands)} cards",
+                          file=_sys.stderr, flush=True)
                 break                # out of time — keep the best evaluated so far
             mean = sum(vals.values()) / len(vals)
             scored.append((c, mean))
@@ -394,8 +449,8 @@ class AlphaMu:
         # cost), let the caller pick the one carrying the standard signal.
         if tiebreak is not None and best_val is not None:
             margin = self.signal_margin if self.signal_margin > 0 else 1e-9
-            tied = [Card.from_code52(c) for c, m in scored
-                    if m >= best_val - margin]
+            tied = [Card.from_code52(x) for c, m in scored
+                    if m >= best_val - margin for x in runs.get(c, [c])]
             if len(tied) > 1:
                 pick = tiebreak(tied)
                 if pick is not None:

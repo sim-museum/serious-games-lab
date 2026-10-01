@@ -543,6 +543,7 @@ _SIGNAL_MARGIN = float(os.environ.get("BIQ_SIGNAL_MARGIN", "0.15"))  # trick
 # the convention card among cards it rates within 0.15 tr of best (alpha-mu's
 # near-ties are noise; the signal heuristic is a better arbiter). A/B 3 seeds:
 # trick-neutral-to-positive vs margin 0 (0.786 vs 0.797). 0 = exact ties only.
+_SIGNAL_SAFE = os.environ.get("BIQ_SIGNAL_SAFE", "1") == "1"
 _DDS = None
 
 
@@ -751,8 +752,13 @@ def decide(board: BoardState, seat: Seat,
         # Bypass alpha-mu for this card only. Skipped when signalling is OFF
         # (preference): alpha-mu then picks the card on trick value alone.
         from . import signals as _sigsw
+        # With BIQ_SIGNAL_SAFE the shortcut is only for small spots (8 and
+        # below): a nine, ten or honour can still take or protect a trick,
+        # so those holdings go to the search (ties still broken by signal).
+        spots_only = (not _SIGNAL_SAFE
+                      or all(c.rank.value >= 6 for c in legal))   # 8..2
         if (defending and _sigsw.is_enabled() and lead_suit is not None
-                and legal and legal[0].suit == lead_suit):
+                and legal and legal[0].suit == lead_suit and spots_only):
             wi = _winning_index(trick, trump)
             if not any(_beats(c, trick[wi], lead_suit, trump) for c in legal):
                 from . import signals as _sig

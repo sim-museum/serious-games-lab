@@ -83,10 +83,20 @@ def _winner_seat(trick: List[Card], leader: Seat, trump: Optional[Suit]) -> Seat
     return Seat((leader.value + wi) % 4)
 
 
+# Never signal with an honour or the ten: with no spot to spend, play the
+# lowest card. K-T under declarer's ace used to "signal" with the KING (count:
+# even = high), throwing away a trick; live matches showed 22 such cards.
+_SAFE = os.environ.get("BIQ_SIGNAL_SAFE", "1") == "1"
+
+
 def _hl(cands: List[Card], high: bool) -> Card:
     """Among `cands`, return the high or low SPOT (keep honours back when there
     is a spot to spend). rank.value: 0=A (high) .. 12=2 (low)."""
-    spots = [c for c in cands if c.rank.value > _HONOUR + 1] or list(cands)
+    spots = [c for c in cands if c.rank.value > _HONOUR + 1]
+    if not spots:
+        if _SAFE:
+            return max(cands, key=lambda c: c.rank.value)   # lowest card
+        spots = list(cands)
     spots = sorted(spots, key=lambda c: c.rank.value)   # high card first
     return spots[0] if high else spots[-1]
 
