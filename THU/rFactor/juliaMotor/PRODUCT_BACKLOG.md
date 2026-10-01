@@ -21222,3 +21222,20 @@ skewed geometry tens of metres up — a real "part of a building" defect, uniden
 
 **E78: 4 sprints this pass. ROTATING.** Concrete leads for the next pass: (1) the skewed panel at Ring s≈1350–1500;
 (2) whether the 36 `bannr_s` tris actually reach the screen there.
+
+### AI-CARGFX S5 (2026-10-01) — REVIEW & RETROSPECTIVE before resuming (4 sprints already spent)
+
+**S1–S4:** rods sub-item closed (E106-S25); the oracle located (44 per-chassis GPL close-ups); two bad fixes averted
+(suppressing "parked" rear halves would delete real geometry). **Pattern:** all four sprints went into MECHANISM
+(parked suspension groups) and none into the A/B the item asks for — chassis beside its GPL still.
+**Change of approach:** do the A/B first, by eye, and only then theorise.
+
+**The gold, inventoried (Eagle, 9 stills, 1262×809):** GPL replay cameras — rear-corner wheel close-ups (2), a
+front view, the on-board view, a nose view, **chase-from-behind (2)**, and TV cameras (2). The chase-from-behind
+pair is the one we can match exactly.
+
+**What blocks it (the next sprint's whole job):** julia has no player chassis selector and no camera that follows an
+AI car; `JM_SHOTS` photographs the player's Lotus only. Needed: a test hook `JM_AICAM=<ai index>` that points the
+chase camera at AI car *i* (pose from `AIPHYS[i]` / `RaceAI.pose_at`) for the smoke's frame dump, then one capture per
+chassis beside its gold chase still, recording chassis / camera / art set. Start with Eagle.
+**AI-CARGFX: 1 sprint this pass (the retro).**
