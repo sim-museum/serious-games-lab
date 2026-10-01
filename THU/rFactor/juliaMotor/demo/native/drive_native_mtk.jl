@@ -6506,7 +6506,7 @@ let objnames=Set{String}()
                     ntri += 1
                 end
             end
-            nadded = 0; nreject = 0; nover = 0; nobb = 0
+            nadded = 0; nreject = 0; nover = 0; nobb = 0; ntrim = 0
             for (kc, e) in acc
                 hx = (e[2] - e[1]) / 2; hz = (e[4] - e[3]) / 2
                 (hx < 0.05 && hz < 0.05) && continue        # degenerate sliver: nothing to hit
@@ -6524,51 +6524,62 @@ let objnames=Set{String}()
                     ox = mx + c_*(maximum(u)+minimum(u))/2 - s_*(maximum(w)+minimum(w))/2
                     oz = mz + s_*(maximum(u)+minimum(u))/2 + c_*(maximum(w)+minimum(w))/2
                     hx = max((maximum(u) - minimum(u))/2, 0.15); hz = max((maximum(w) - minimum(w))/2, 0.15); ψb = φ
-                    ontar = false
-                    for lx in range(-hx, hx; length = max(3, ceil(Int, 2hx/0.4) + 1)), lz in (-hz, 0.0, hz)
+                    # E90-S11: TRIM, don't reject. Stations every <= 0.4 m along the rail; a station is on the road if
+                    # any of its three cross-samples is. Each maximal run of off-road stations >= 0.8 m long becomes
+                    # its own box -- collision exactly where the drawn rail is AND the road is not.
+                    ns = max(3, ceil(Int, 2hx/0.4) + 1); ls = range(-hx, hx; length = ns); off = trues(ns)
+                    for (i, lx) in enumerate(ls), lz in (-hz, 0.0, hz)
+                        off[i] || continue
                         qx = ox + c_*lx - s_*lz; qz = oz + s_*lx + c_*lz
                         if JuliaMotor.hat3d(ROADHAT, qx, qz; ref = Inf)[3]
-                            hq = JuliaMotor.hat(TRKSURF, qx, qz); (hq.found && hq.on_track) && (ontar = true; break)
+                            hq = JuliaMotor.hat(TRKSURF, qx, qz); (hq.found && hq.on_track) && (off[i] = false)
                         end
                     end
-                    if ontar
+                    if all(off)
+                        cands = [(ox, oz, hx, hz, ψb)]
+                    else
+                        cands = NTuple{5,Float64}[]; i = 1
+                        while i <= ns
+                            off[i] || (i += 1; continue)
+                            j = i; while j < ns && off[j+1]; j += 1; end
+                            # shrink the run by half a station at each end that borders a road station
+                            l0 = ls[i] + (i > 1 ? step(ls)/2 : 0.0); l1 = ls[j] - (j < ns ? step(ls)/2 : 0.0)
+                            if l1 - l0 >= 0.8
+                                lm = (l0 + l1)/2
+                                push!(cands, (ox + c_*lm, oz + s_*lm, (l1 - l0)/2, hz, ψb))
+                            end
+                            i = j + 1
+                        end
+                        isempty(cands) ? (nreject += 1) : (ntrim += 1)
+                    end
+                    nobb += 1
+                else
+                    cands = [(ox, oz, hx, hz, ψb)]
+                end
+                for (ox, oz, hx, hz, ψb) in cands
+                    if ψb == 0.0 && box_covers_tarmac(ox, oz, hx, hz, 0.0)
                         nreject += 1
                         continue
                     end
-                    nobb += 1
-                end
-                # A BOX THAT COVERS TARMAC IS A TRAP, and this tree has been bitten by that class
-                # four times (E31's hedge-box, ROAD-1, SPA-WALL-1's invisible wall, E71-S18's
-                # origin-vs-footprint test). Rail boxes are built from mesh triangles, so a rail
-                # that crosses the road -- a pit entry, a bridge -- would otherwise wall the track
-                # off. Reuse the same guard the other solids get.
-                if ψb == 0.0 && box_covers_tarmac(ox, oz, hx, hz, 0.0)
-                    nreject += 1
-                    continue
-                end
-                # RAILHIGH-1 (PO 2026-09-25: "neubergring problem where car bounces as if it hit something on
-                # an empty road coming out of the grandstand area"; also a Watkins Glen race ended the same
-                # way). A rail box is 2-D: it ignored the rail's HEIGHT, so the railing of a bridge or
-                # gantry OVER the road -- thin, and so exempt from the tarmac test above -- became a wall
-                # across the road at ground level (the Ring s=1726: a 0.6 x 8 m box on the centreline).
-                # A rail whose bottom is more than JM_RAIL_OVERHEAD m (2.0) above the road under it is
-                # overhead: no collision.
-                let hr = JuliaMotor.hat(TRKSURF, ox, oz), gr = JuliaMotor.hat3d(TERRAIN0, ox, oz; ref = e[5] - 0.5)
-                    groundy = hr.found ? hr.height : (gr[3] ? Float64(gr[1]) : NaN)
-                    if isfinite(groundy) && e[5] - groundy > parse(Float64, get(ENV, "JM_RAIL_OVERHEAD", "2.0"))
-                        nover += 1
-                        get(ENV, "JM_RAILBOX_DIAG", "0") != "0" && println("  [railbox] overhead: (", round(ox, digits=1), ", ", round(oz, digits=1),
-                            ") rail y ", round(e[5], digits=1), "..", round(e[6], digits=1), " road ", round(groundy, digits=1))
-                        continue
+                    ovh = let hr = JuliaMotor.hat(TRKSURF, ox, oz), gr = JuliaMotor.hat3d(TERRAIN0, ox, oz; ref = e[5] - 0.5)
+                        groundy = hr.found ? hr.height : (gr[3] ? Float64(gr[1]) : NaN)
+                        if isfinite(groundy) && e[5] - groundy > parse(Float64, get(ENV, "JM_RAIL_OVERHEAD", "2.0"))
+                            get(ENV, "JM_RAILBOX_DIAG", "0") != "0" && println("  [railbox] overhead: (", round(ox, digits=1), ", ", round(oz, digits=1),
+                                ") rail y ", round(e[5], digits=1), "..", round(e[6], digits=1), " road ", round(groundy, digits=1))
+                            true
+                        else
+                            false
+                        end
                     end
+                    ovh && (nover += 1; continue)
+                    push!(SOLIDS, (ox, oz, max(hx, hz), :wall))
+                    push!(SOLIDNAMES, "railbox")
+                    push!(SOLIDBOX, (hx, hz, ψb))
+                    nadded += 1
                 end
-                push!(SOLIDS, (ox, oz, max(hx, hz), :wall))
-                push!(SOLIDNAMES, "railbox")
-                push!(SOLIDBOX, (hx, hz, ψb))
-                nadded += 1
             end
             println("== JM_RAIL_SOLID: ", ntri, " rail tris -> ", nadded, " collision boxes of <=",
-                    cell, " m (", RAIL_OBB ? "$(nobb) oriented, " : "axis-aligned, ", nreject, " rejected for covering tarmac, ", nover, " overhead); solids ",
+                    cell, " m (", RAIL_OBB ? "$(nobb) oriented cells, $(ntrim) trimmed off the road, " : "axis-aligned, ", nreject, " rejected for covering tarmac, ", nover, " overhead); solids ",
                     length(SOLIDS) - nadded, " -> ", length(SOLIDS))
             flush(stdout)
         end
