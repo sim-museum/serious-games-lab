@@ -72,6 +72,32 @@ def _matches(kind, board, dds, slam_hcp):
     return False
 
 
+def _deal_blocks(path) -> set:
+    """The card diagram of every deal in a BDE file (one string per deal)."""
+    blocks, cur = set(), None
+    for line in Path(path).read_text(errors="replace").splitlines():
+        if line.startswith("Cards"):
+            cur = [line.split(":", 1)[1].strip()]
+        elif cur is not None and line.startswith(" ") and ":" in line:
+            cur.append(line.split(":", 1)[1].strip())
+        elif cur is not None:
+            blocks.add("|".join(cur))
+            cur = None
+    if cur:
+        blocks.add("|".join(cur))
+    return blocks
+
+
+def _seeds_used(directory) -> set:
+    import re as _re
+    seeds = set()
+    for f in Path(directory).glob("*.[bB][dD][eE]"):
+        m = _re.search(r"\(seed (\d+)\)", f.read_text(errors="replace")[:400])
+        if m:
+            seeds.add(m.group(1))
+    return seeds
+
+
 def generate(kind, count, seed, slam_hcp, max_candidates):
     """Return (picked_boards, scanned)."""
     dds = DDSolver()
@@ -104,6 +130,8 @@ def main() -> int:
     ap.add_argument("--slam-hcp", type=int, default=30,
                     help="[slam-eligible] min combined HCP for a side")
     ap.add_argument("--max-candidates", type=int, default=40000)
+    ap.add_argument("--allow-overlap", action="store_true",
+                    help="write even if deals repeat another deck in the directory")
     ap.add_argument("--out", default=None,
                     help="output .BDE path (default: OWN-DEALS/<kind>.BDE)")
     args = ap.parse_args()
@@ -125,9 +153,32 @@ def main() -> int:
         odir = qplus_own_deals_dir()
         out = ((odir / _DEFAULT_NAME[args.kind]) if odir
                else Path(_DEFAULT_NAME[args.kind]))
-    write_multi_deal_bde(
-        picked, out, description=f"biq test deck: {args.kind} (seed {args.seed})",
-        label_prefix=args.kind.split("-")[0][:6].upper())
+    # Never hand out a "fresh" deck that repeats deals from another deck in
+    # the same directory (FRESH64J/K silently duplicated F/G when their seeds
+    # were reused, and a tuned-on deck was taken for a held-out one).
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td) / out.name
+        write_multi_deal_bde(
+            picked, tmp, description=f"biq test deck: {args.kind} (seed {args.seed})",
+            label_prefix=args.kind.split("-")[0][:6].upper())
+        mine = _deal_blocks(tmp)
+        clashes = []
+        for other in sorted(out.parent.glob("*.[bB][dD][eE]")):
+            if other.resolve() == out.resolve():
+                continue
+            shared = mine & _deal_blocks(other)
+            if shared:
+                clashes.append((other.name, len(shared)))
+        if clashes and not args.allow_overlap:
+            for name, n in clashes:
+                print(f"REFUSED: {n} of these deals are already in {name}",
+                      file=sys.stderr)
+            print("Seeds already used in this directory: "
+                  + ", ".join(sorted(_seeds_used(out.parent))), file=sys.stderr)
+            print("Pick another --seed (or pass --allow-overlap).", file=sys.stderr)
+            return 1
+        out.write_bytes(tmp.read_bytes())
     print(f"wrote {len(picked)} {args.kind} deals (scanned {scanned}) -> {out}")
     print(f"In Q-Plus: File ▸ Open Own deals ▸ {out.name}, then run the "
           f"harness. Both A and B draw the same deals from this file.")

@@ -25,6 +25,22 @@ Usage (from FRI/bridgeIQ/bridgeIQ):
     python3 tools/biq_match.py --deals 16 --signalling off
     python3 tools/biq_match.py --launch         # also start Q-Plus first
 
+Which biq plays (A/B of two biq versions on the same deck vs Q-Plus):
+    --version latest     the current code, uncommitted changes included
+                         (the default)
+    --version previous   the version before it: the last commit (HEAD) when
+                         biq's code has uncommitted changes, otherwise the
+                         state before the last commit that changed biq's code
+    --version <git-ref>  any commit / tag / branch
+    --version <fingerprint>  the commit whose bidder has that fingerprint
+                         (the bidder=... value in the client logs)
+    --previous / --latest   shorthands for --version previous / latest
+    --list-versions      show what latest and previous are, and exit
+A non-latest version is exported from git once into tools/runs/versions/
+<commit>/ and the biq clients run from there. Play the same deck twice
+(--version previous, then --version latest) and compare the two score
+sheets; Q-Plus's own room is identical in both runs.
+
 Logs: tools/runs/biq_N.log, biq_S.log (the clients), tools/runs/match.log.
 After the last board: in Q-Plus View > View scoring table > Save and send,
 then  python3 tools/whole_system_analyze.py <that .qss>
@@ -246,9 +262,116 @@ def server_port() -> int | None:
     return None
 
 
+# ------------------------------------------------------------ biq versions
+# The code a biq client runs: its bidder, card play and the client itself.
+BIQ_CODE = ("backend", "tools/biq_qnet_client.py")
+
+
+def _git(*args) -> str:
+    return subprocess.run(["git", *args], cwd=ROOT, capture_output=True,
+                          text=True, check=True).stdout.strip()
+
+
+def _dirty() -> bool:
+    """Does biq's code have uncommitted changes?"""
+    return bool(_git("status", "--porcelain", "--", *BIQ_CODE))
+
+
+def resolve_version(name: str) -> tuple:
+    """(commit or None for the working tree, description) for a --version."""
+    if name == "latest":
+        if _dirty():
+            return None, "latest = working tree (uncommitted changes)"
+        sha = _git("rev-parse", "HEAD")
+        return None, f"latest = working tree = {sha[:10]} ({_git('log', '-1', '--format=%s', sha)})"
+    if name == "previous":
+        if _dirty():
+            sha = _git("rev-parse", "HEAD")
+            why = "last commit (the working tree has uncommitted biq changes)"
+        else:
+            last = _git("log", "-1", "--format=%H", "--", *BIQ_CODE)
+            sha = _git("rev-parse", last + "^")
+            why = f"before the last biq change {last[:10]}"
+        return sha, (f"previous = {sha[:10]} ({_git('log', '-1', '--format=%s', sha)}), "
+                     f"{why}")
+    try:
+        sha = _git("rev-parse", "--verify", "--quiet", name + "^{commit}")
+    except subprocess.CalledProcessError:
+        sha = ""
+    if not sha:
+        sha = commit_for_fingerprint(name)
+        if sha is None:
+            raise ValueError(f"{name!r} is neither a git ref nor the bidder "
+                             f"fingerprint of any commit")
+        return sha, (f"bidder {name} = commit {sha[:10]} "
+                     f"({_git('log', '-1', '--format=%s', sha)})")
+    return sha, f"{name} = {sha[:10]} ({_git('log', '-1', '--format=%s', sha)})"
+
+
+def commit_for_fingerprint(fp: str):
+    """The NEWEST commit whose backend/native_bidder.py has bidder
+    fingerprint `fp` (the sha1 prefix the client logs as bidder=...), or
+    None. The fingerprint covers the bidder file only; later commits that
+    kept that bidder but changed the rest of biq (simulation, card play)
+    are what the logged runs actually played, so the newest one wins."""
+    import hashlib
+    if not re.fullmatch(r"[0-9a-f]{4,40}", fp):
+        return None
+    path = _git("rev-parse", "--show-prefix") + "backend/native_bidder.py"
+    top = _git("rev-parse", "--show-toplevel")
+    fp_of_blob = {}
+    for sha in _git("log", "--format=%H", "--", *BIQ_CODE).split():
+        try:
+            blob_id = _git("rev-parse", f"{sha}:{path}")
+        except subprocess.CalledProcessError:
+            continue
+        if blob_id not in fp_of_blob:
+            data = subprocess.run(["git", "cat-file", "blob", blob_id], cwd=top,
+                                  capture_output=True).stdout
+            fp_of_blob[blob_id] = hashlib.sha1(data).hexdigest()
+        if fp_of_blob[blob_id].startswith(fp):
+            return sha
+    return None
+
+
+def version_dir(sha) -> Path:
+    """Directory to run the biq clients from: ROOT for the working tree,
+    else a cached export of that commit's bridgeIQ tree."""
+    if sha is None:
+        return ROOT
+    out = RUNS / "versions" / sha[:10]
+    if (out / "tools" / "biq_qnet_client.py").is_file():
+        return out
+    prefix = _git("rev-parse", "--show-prefix").rstrip("/")     # FRI/bridgeIQ/bridgeIQ
+    tmp = out.with_name(out.name + ".tmp")
+    subprocess.run(["rm", "-rf", str(tmp)], check=True)
+    tmp.mkdir(parents=True)
+    # <commit>:<path> archives that subtree with paths relative to it. Run
+    # from the top level: from a subdirectory git archives only that subdir.
+    top = _git("rev-parse", "--show-toplevel")
+    arch = subprocess.run(["git", "archive", f"{sha}:{prefix}"], cwd=top,
+                          capture_output=True, check=True).stdout
+    subprocess.run(["tar", "-x", "-C", str(tmp)], input=arch, check=True)
+    if not (tmp / "tools" / "biq_qnet_client.py").is_file():
+        raise RuntimeError(f"{sha[:10]} has no tools/biq_qnet_client.py")
+    subprocess.run(["rm", "-rf", str(out)], check=True)
+    tmp.rename(out)
+    return out
+
+
+def bidder_fingerprint(code_dir: Path) -> str:
+    """Same fingerprint the client writes into its log header."""
+    import hashlib
+    try:
+        return hashlib.sha1((code_dir / "backend" / "native_bidder.py")
+                            .read_bytes()).hexdigest()[:10]
+    except OSError:
+        return "unknown"
+
+
 # ------------------------------------------------------------ biq clients
 def start_clients(port: int, samples: int, signalling: bool,
-                  rules_only: bool = False) -> list:
+                  rules_only: bool = False, code_dir: Path = ROOT) -> list:
     env = dict(os.environ, BIQ_SIGNALLING="1" if signalling else "0")
     if rules_only:
         # Paired comparison: the same deck with every simulation layer off.
@@ -267,7 +390,7 @@ def start_clients(port: int, samples: int, signalling: bool,
             [sys.executable, "tools/biq_qnet_client.py", "--host", "127.0.0.1",
              "--port", str(port), "--seat", seat, "--num-samples", str(samples),
              "--log", str(log), "--auto-system", "--pair", "--nopeek", "--quiet"],
-            cwd=ROOT, env=env, stdout=subprocess.DEVNULL,
+            cwd=code_dir, env=env, stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL, start_new_session=True))
         time.sleep(2)                     # join one at a time
     return procs
@@ -408,8 +531,31 @@ def main() -> int:
                     help="never click Q-Plus's title bar; wait for a human click instead")
     ap.add_argument("--launch", action="store_true",
                     help="start Q-Plus (system wine32, no virtual desktop) first")
+    ap.add_argument("--version", default="latest",
+                    help="biq version to play: latest (current code, default), "
+                         "previous (the one before it), or a git ref")
+    ap.add_argument("--previous", dest="version", action="store_const",
+                    const="previous", help="same as --version previous")
+    ap.add_argument("--latest", dest="version", action="store_const",
+                    const="latest", help="same as --version latest")
+    ap.add_argument("--list-versions", action="store_true",
+                    help="show what latest and previous resolve to, then exit")
     a = ap.parse_args()
     RUNS.mkdir(parents=True, exist_ok=True)
+
+    if a.list_versions:
+        for v in ("latest", "previous"):
+            sha, desc = resolve_version(v)
+            print(f"{desc}\n    bidder fingerprint "
+                  f"{bidder_fingerprint(version_dir(sha))}")
+        return 0
+    try:
+        sha, version_desc = resolve_version(a.version)
+        code_dir = version_dir(sha)
+    except (subprocess.CalledProcessError, ValueError) as e:
+        print(f"Unknown --version {a.version!r}: "
+              f"{getattr(e, 'stderr', '') or e}".strip())
+        return 1
 
     if a.launch:
         subprocess.Popen(["bash", "tools/qplus_dual_instance.sh", "server"], cwd=ROOT,
@@ -420,14 +566,18 @@ def main() -> int:
 
     print("\nSet up Q-Plus by hand: bridge server running (Network > Start bridge server),"
           "\nPlayers N/S = Extern, E/W = Computer, Local seat = East, deck + Match Control."
-          f"\nbiq signalling: {a.signalling}.  Deals: {a.deals}.\n")
+          f"\nbiq signalling: {a.signalling}.  Deals: {a.deals}."
+          f"\nbiq version: {version_desc}.\n")
     input("Press Enter here to connect biq to North and South… ")
     port = server_port()
     if not port:
         say("No bridge server is listening. Start it in Q-Plus (Network > Start bridge server) and rerun.")
         return 1
     say(f"Bridge server on port {port}; connecting biq North and South…")
-    procs = start_clients(port, a.samples, a.signalling == "on", a.rules_only)
+    say(f"biq version: {version_desc}; bidder fingerprint "
+        f"{bidder_fingerprint(code_dir)}; code in {code_dir}")
+    procs = start_clients(port, a.samples, a.signalling == "on", a.rules_only,
+                          code_dir)
     say("biq mode: " + ("RULES ONLY (simulation off)" if a.rules_only
                          else "hybrid (simulation on)"))
 
