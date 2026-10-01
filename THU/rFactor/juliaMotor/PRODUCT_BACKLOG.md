@@ -21296,6 +21296,10 @@ behaviour). The sim prints `window revealed after 2 hidden warm-up frames (N ms)
 That figure came from a trace run; until now this froze a visible window for 3.6 s. The countdown is armed by SPACE
 after the window appears, so the hidden frames cost the player nothing. Every `continue` in the frame loop is inside
 an inner loop, so the reveal cannot be skipped.
+**Full gate suite before the AppImage** (`JuliaMotorMTK/tools/gates.sh`, 21 min): **41 of 43 PASS**, including `gplroad`,
+`gpldlat`, `gplplan`, `ai_field`, `seam`, `netai_host`. The 2 failures are the pre-existing pair: `transmission_smoke`
+(0 `.ibt` captures on this box) and `road_clear_smoke` (Ring: 123 terrain anomaly points; 115 when last recorded on
+09-26; no geometry path changed this cycle).
 
 ### E81-S5..S7 — the listing is fixed; `backgar` eliminated; the panel is not a placed object in the window (ROTATING)
 * **S5 retro:** S1–S4 eliminated four candidates by eye but the instrument mislabelled rows. Fix the instrument first.
@@ -21332,3 +21336,14 @@ Correction to S5's blocker: a REPLAY recipe already followed AI cars (`rep_focus
 captures, `~/Documents/260906/car_gold/`); `JM_AICAM` adds the same for a live session and uses GPL's chase geometry.
 **Next:** match location (`JM_SHOTS` places the player; add placing the AI car), then theorise per item. Item 1 may be
 the known AIGFX-1 brightness (`JM_AI_AMB`), or a missing texture. **AI-CARGFX: 1 sprint this pass.**
+
+### DELIVERY 261001 — `~/Documents/261001/JuliaRacer-x86_64-261001.AppImage` (1.68 GB, sha256 `a8cfcd7e9ba7b002…`, `SHA256SUMS` beside it)
+HEAD at pack time `98b0e99d` (this cycle). It is the first image with PERF-1/PERF-3 (55–60 fps), RAILMIRROR-1 and later fixes, the
+E107 GPL lines, and the multiplayer launcher. Built on this box, which lacks the build box's `lib_bundle.sh`,
+`mkicon.py` and appimagetool: `build_julia.sh` with `JR_PROJ`/`JR_GPLROOT`/`JR_APPDIR` and `JR_LIBS_FROM` = the 260926
+image's extracted `usr/lib` + icon (its AppRun is byte-identical to the script's). Packed as the 260926 type-2 runtime
+(its first 944632 bytes) + `mksquashfs -comp zstd -b 131072 -root-owned`.
+**Verified from its own mounted runtime** (bubblewrap, a scratch dir bound over `~/.local/share/julia-racer`, empty user
+depot): julia resolves to the bundled depot-relative runtime; the bundled launcher builds the Multiplayer group;
+Watkins Glen 5-AI race smoke **exit 0, 152 s, 0 precompiles, 0 errors, user depot untouched**. The PO's existing
+install (stamp 20260926) will refresh its code on first launch.

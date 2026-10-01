@@ -14,7 +14,7 @@ per cycle.
 | item | the ask | why |
 |---|---|---|
 | **MP-GUI-1** | try a two-PC race from the launcher: one PC *Host a race*, the other *Join a race* → *Get host's settings* → Launch (host first) | tested with two launchers on one box; a real LAN and firewall have not been tried |
-| **PERF-3** | run the 261001 AppImage and say whether it holds 60 fps | settles the item; the window now appears ~3.6 s later but without the first-frame freeze |
+| **PERF-3** | run `~/Documents/261001/JuliaRacer-x86_64-261001.AppImage` and say whether it holds 60 fps | settles the item; the window now appears ~3.6 s later but without the first-frame freeze |
 | **E108** | the track and station (or a screenshot) where the road or white line looks faceted | shading and finer rounding both ruled out by A/B |
 | **E81** | a screenshot or station of any building or billboard that looks wrong, besides the Ring panel | one real defect known (Ring s≈1350–1500) |
 | **E91** | one iRacing coast-down on a straight, ~220 → 60 km/h, clutch in, then the same in gear | pins drag and engine braking together |
