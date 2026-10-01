@@ -6468,6 +6468,8 @@ let objnames=Set{String}()
             ntri = 0
             _rbn = (e = get(ENV, "JM_RAILBOX_NEAR", ""); isempty(e) ? nothing : parse.(Float64, split(e, ",")))
             RAIL_ZSIGN = get(ENV, "JM_RAIL_MIRROR_OLD", "0") != "0" ? 1f0 : -1f0
+            RAIL_OBB = get(ENV, "JM_RAIL_OBB", "1") != "0"
+            railpts = Dict{Tuple{Int,Int},Vector{Tuple{Float64,Float64}}}()
             for prt in TRACKMAIN
                 railtex2(prt.tex) || continue
                 v = prt.verts; n = length(v) ÷ 11
@@ -6499,20 +6501,48 @@ let objnames=Set{String}()
                     e[1] = min(e[1], clamp(minimum(xs), lo_x, hi_x)); e[2] = max(e[2], clamp(maximum(xs), lo_x, hi_x))
                     e[3] = min(e[3], clamp(minimum(zs), lo_z, hi_z)); e[4] = max(e[4], clamp(maximum(zs), lo_z, hi_z))
                     e[5] = min(e[5], minimum(ys)); e[6] = max(e[6], maximum(ys))
+                    pv = get!(railpts, k, Tuple{Float64,Float64}[])
+                    for c_ in 1:3; push!(pv, (clamp(Float64(xs[c_]), lo_x, hi_x), clamp(Float64(zs[c_]), lo_z, hi_z))); end
                     ntri += 1
                 end
             end
-            nadded = 0; nreject = 0; nover = 0
-            for (_, e) in acc
+            nadded = 0; nreject = 0; nover = 0; nobb = 0
+            for (kc, e) in acc
                 hx = (e[2] - e[1]) / 2; hz = (e[4] - e[3]) / 2
                 (hx < 0.05 && hz < 0.05) && continue        # degenerate sliver: nothing to hit
-                ox = (e[1] + e[2]) / 2; oz = (e[3] + e[4]) / 2
+                ox = (e[1] + e[2]) / 2; oz = (e[3] + e[4]) / 2; ψb = 0.0
+                # E90-S10: an ORIENTED box along the rail. The axis-aligned box of a DIAGONAL rail in an 8 m cell
+                # is up to 8 x 8 m, covers the road, and is rejected -- which left 180 of Monza's 369 rail cells and
+                # 219 of Watkins Glen's with no collision at all. Principal axis of the rail's own vertices in plan,
+                # extents by projection, half-thickness >= 0.15 m. The tarmac test samples the WHOLE footprint
+                # (box_covers_tarmac checks only the centre of a box < 0.5 m thick). JM_RAIL_OBB=0 reverts.
+                if RAIL_OBB && length(get(railpts, kc, ())) >= 3
+                    pv = railpts[kc]; mx = sum(first, pv)/length(pv); mz = sum(last, pv)/length(pv)
+                    sxx = sum(p -> (p[1]-mx)^2, pv); szz = sum(p -> (p[2]-mz)^2, pv); sxz = sum(p -> (p[1]-mx)*(p[2]-mz), pv)
+                    φ = 0.5*atan(2sxz, sxx - szz); c_ = cos(φ); s_ = sin(φ)
+                    u = [c_*(p[1]-mx) + s_*(p[2]-mz) for p in pv]; w = [-s_*(p[1]-mx) + c_*(p[2]-mz) for p in pv]
+                    ox = mx + c_*(maximum(u)+minimum(u))/2 - s_*(maximum(w)+minimum(w))/2
+                    oz = mz + s_*(maximum(u)+minimum(u))/2 + c_*(maximum(w)+minimum(w))/2
+                    hx = max((maximum(u) - minimum(u))/2, 0.15); hz = max((maximum(w) - minimum(w))/2, 0.15); ψb = φ
+                    ontar = false
+                    for lx in range(-hx, hx; length = max(3, ceil(Int, 2hx/0.4) + 1)), lz in (-hz, 0.0, hz)
+                        qx = ox + c_*lx - s_*lz; qz = oz + s_*lx + c_*lz
+                        if JuliaMotor.hat3d(ROADHAT, qx, qz; ref = Inf)[3]
+                            hq = JuliaMotor.hat(TRKSURF, qx, qz); (hq.found && hq.on_track) && (ontar = true; break)
+                        end
+                    end
+                    if ontar
+                        nreject += 1
+                        continue
+                    end
+                    nobb += 1
+                end
                 # A BOX THAT COVERS TARMAC IS A TRAP, and this tree has been bitten by that class
                 # four times (E31's hedge-box, ROAD-1, SPA-WALL-1's invisible wall, E71-S18's
                 # origin-vs-footprint test). Rail boxes are built from mesh triangles, so a rail
                 # that crosses the road -- a pit entry, a bridge -- would otherwise wall the track
                 # off. Reuse the same guard the other solids get.
-                if box_covers_tarmac(ox, oz, hx, hz, 0.0)
+                if ψb == 0.0 && box_covers_tarmac(ox, oz, hx, hz, 0.0)
                     nreject += 1
                     continue
                 end
@@ -6534,14 +6564,48 @@ let objnames=Set{String}()
                 end
                 push!(SOLIDS, (ox, oz, max(hx, hz), :wall))
                 push!(SOLIDNAMES, "railbox")
-                push!(SOLIDBOX, (hx, hz, 0.0))
+                push!(SOLIDBOX, (hx, hz, ψb))
                 nadded += 1
             end
             println("== JM_RAIL_SOLID: ", ntri, " rail tris -> ", nadded, " collision boxes of <=",
-                    cell, " m (", nreject, " rejected for covering tarmac, ", nover, " overhead); solids ",
+                    cell, " m (", RAIL_OBB ? "$(nobb) oriented, " : "axis-aligned, ", nreject, " rejected for covering tarmac, ", nover, " overhead); solids ",
                     length(SOLIDS) - nadded, " -> ", length(SOLIDS))
             flush(stdout)
         end
+    end
+
+    # E90-S9 (2026-09-30): JM_RAILHIT_SELFTEST=1 -- every rail box asked through solid_hit() itself
+    # (must be CONTACT), plus a negative control at points >= 8 m from every solid (must be NO CONTACT).
+    # S8 confirmed one box at Spa by hand; the PO's report named Monza and Watkins Glen.
+    if get(ENV, "JM_RAILHIT_SELFTEST", "0") != "0"
+        ib = findall(==("railbox"), SOLIDNAMES); hit = 0; ctl = 0; fp = 0
+        nprobe = 0
+        for (j, k) in enumerate(ib)
+            (ox, oz, r, _) = SOLIDS[k]
+            # approach from the ROAD side: step out toward the road to the farthest point where the car's
+            # capsule still touches, then head straight at the box. (A probe AT the box centre has no
+            # contact normal and is not a test -- the first cut of this did that and reported 3/189.)
+            hr = JuliaMotor.hat(TRKSURF, ox, oz)
+            if hr.found
+                sg = hr.lateral >= 0 ? -1.0 : 1.0
+                px = ox; pz = oz
+                for d in 0.2:0.1:6.0
+                    qx = ox + sg*d*hr.perp[1]; qz = oz + sg*d*hr.perp[2]
+                    th_ = atan(oz - qz, ox - qx)
+                    car_gap(qx, qz, th_, k)[1] < 0.0 ? (px = qx; pz = qz) : break
+                end
+                if (px, pz) != (ox, oz)
+                    nprobe += 1
+                    solid_hit(px, pz, atan(oz - pz, ox - px), 80/3.6) === nothing || (hit += 1)
+                end
+            end
+            th = 2pi*j/max(length(ib), 1); px = ox + 20cos(th); pz = oz + 20sin(th)
+            all(s -> hypot(px - s[1], pz - s[2]) - s[3] > 8.0, SOLIDS) || continue
+            ctl += 1; solid_hit(px, pz, th, 80/3.6) === nothing || (fp += 1)
+        end
+        println("RAILHIT_RESULT track=", TRACKSEL, " railboxes=", length(ib), " probed=", nprobe, " contact=", hit,
+                " control_points=", ctl, " control_contacts=", fp, " solids=", length(SOLIDS))
+        flush(stdout); exit(0)
     end
 
     # E90 S4 (2026-09-14): ASK THE COLLISION FUNCTION ITSELF. A census proves boxes exist; only
