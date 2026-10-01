@@ -565,6 +565,7 @@ const GPL_DESIRED_SEP = 14.0      # m, desired_dlong_sep
 # 8 crept back up to 0.92 (too slow to close, the leader's braking zones catch it out). 4.0 sits in
 # the flat part of that curve. A constant, not a knob: the sweep is recorded here so it need not be redone.
 const GPL_CLOSE_TAU   = 4.0
+const ENGAGE_MARGIN   = parse(Float64, get(ENV, "JM_AI_ENGAGE_MARGIN", "1.0"))   # RACESTART-1 S16, m
 const AI_MASS = 560.0; const AI_PMAX = 300_000.0   # ~Lotus 49: 560 kg, ~400 bhp
 const AI_FMAX = 6800.0; const AI_DRAG = 0.42; const AI_BRAKE = 16.0   # traction N, ½ρ·CdA, brake m/s²
 function advance_speed(v, vtarget, dt)
@@ -935,6 +936,8 @@ caps every AI to `rel × player_speed` so the field never runs away from the hum
 # Plain counters, reset by the harness; step_field! only increments them.
 # RACESTART-1: `hardyield` counts frames where the AI's sideways yield off the player exceeded
 # 0.2 m in a single step -- a jolt rather than a swerve. It is racestart_smoke's observable.
+const PLAYER_OVL_LOG = Ref(false)                       # RACESTART-1 S13: probe-only contact-depth log
+const PLAYER_OVL = NTuple{3,Float64}[]                  # (lateral overlap, longitudinal overlap, Δs) per contact
 mutable struct AIStat; engage::Int; release::Int; match::Int; qsnap::Int; sidepush::Int; mishap::Int; hardyield::Int; end
 const AISTAT = AIStat(0, 0, 0, 0, 0, 0, 0)
 # RACESTART-1: lateral yield speed (m/s) when an AI has to get out of the player's way.
@@ -1041,7 +1044,12 @@ function step_field!(cars::Vector{AICar}, line::AILine, dt;
         #  ran 133/133 in 270 s -- 24.6 rail switches per car-lap against the baseline's 1.3. The
         #  original hysteresis stays; gap control changes only WHOM we follow and HOW we close.)
         if car.tlane == 0.0
-            if gap < car.v*1.0 + 14.0 && abs(car.lane - blane) < 2.2
+            # RACESTART-1 S16: the trigger must CONTAIN the follow equilibrium. Speed control parks a car behind
+            # a stopped blocker at gap = GPL_DESIRED_SEP + GPL_CLOSE_TAU*v (vt = (gap - 14)/4), and the old
+            # trigger `gap < v + 14.0` is outside that for every v > 0 -- so a car easing up on a STALLED car
+            # stopped 14 m behind it and never passed (probe: 30 s, 0 frames past). Behind a MOVING car the
+            # equilibrium is gap = 14 < 14 + v, so traffic is unaffected. JM_AI_ENGAGE_MARGIN=0 reverts.
+            if gap < car.v*1.0 + GPL_DESIRED_SEP + ENGAGE_MARGIN && abs(car.lane - blane) < 2.2
                 # AI-AVOID-1 (PO 2026-09-07: "the AI cars are not very good at avoiding collision,
                 # EXCEPT IN WIDE STRAIGHTS"). The side used to be chosen from the blocker alone, and
                 # the resulting target is clamped to +-LANE_MAX afterwards -- so when the racing line
@@ -1162,6 +1170,9 @@ function step_field!(cars::Vector{AICar}, line::AILine, dt;
                 # same step-1-vs-step-3 sampling error S9 had to reconcile, reintroduced here by me
                 # and caught by the control arm failing to reproduce its own baseline.
                 wasOverlap = abs(c.lane - player[2]) < CAR_WID
+                # RACESTART-1 S13: HOW DEEP is each contact? (lateral, longitudinal) bounding-box overlap in m.
+                # Off unless a probe sets PLAYER_OVL_LOG[] -- the live sim never grows this vector.
+                (wasOverlap && PLAYER_OVL_LOG[]) && push!(PLAYER_OVL, (CAR_WID - abs(c.lane - player[2]), CAR_LEN - abs(Δs), Δs))
                 d = (c.lane - player[2]) >= 0 ? 1.0 : -1.0
                 # RACESTART-1 (PO 2026-09-05): "AI cars behind me clip off both my front wheels."
                 # The yield used to be `c.lane += d*1.3` -- 1.3 m in ONE FRAME, a lateral teleport of

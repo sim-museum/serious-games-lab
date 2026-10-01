@@ -16,6 +16,7 @@ function main()
     tmp = tempname()*".trk"; write(tmp, dat["watglen.trk"])
     line = RaceAI.build_line(GPLTrack.trk_centreline(tmp), (x,z) -> 0.0)
     RaceAI.aistat_reset!()
+    RaceAI.PLAYER_OVL_LOG[] = true; empty!(RaceAI.PLAYER_OVL)
     # A five-car standing grid at s = 0. init_cars staggers ~9 m and ALTERNATES lanes, which is the
     # whole point: the car behind the player is in the other grid column, so the blocker scan in
     # step 1 (which needs |player_lane - car.lane| < CAR_WID + 0.6) does not see the player at all.
@@ -31,8 +32,15 @@ function main()
     rel(c) = mod(c.s - ps + line.total/2, line.total) - line.total/2
     behind = [c for c in cars if rel(c) < 0]
     for c in behind; c.lane = plane; c.tlane = plane; end
-    passed = 0; hits = 0
-    for _ in 1:round(Int, 12*60)             # 12 s covers the whole getaway
+    # RACESTART-1 S14: init_cars creates every AI at v = 25 m/s; the live grid (form_grid!) sets v = 0.
+    # JM_RS_V0 sets the field's start speed (m/s).
+    v0 = parse(Float64, get(ENV, "JM_RS_V0", "25.0"))
+    for c in cars; c.v = v0; end
+    # JM_RS_BACK moves the cars behind a further N m back: a field ARRIVING at a stalled car, not spawned on it.
+    back = parse(Float64, get(ENV, "JM_RS_BACK", "0.0"))
+    for c in behind; c.s = mod(c.s - back, line.total); end
+    passed = 0; hits = 0; fr = Ref(0); ntr = Ref(0)
+    for _ in 1:round(Int, parse(Float64, get(ENV, "JM_RS_SECS", "12"))*60)   # 12 s covers the whole getaway
         # v = 0.0: the player is STATIONARY, exactly as described.
         (_, hit) = RaceAI.step_field!(cars, line, 1/60; amax = 8.0, vmax = 74.0,
                                       player = (ps, plane, 0.0))
@@ -42,6 +50,26 @@ function main()
         # the condition is already resolved by the time the caller can look. The instrument has to
         # sit where the event happens, not downstream of the code that erases it.
         hit && (hits += 1)
+        if get(ENV, "JM_RS_TRACE", "0") != "0" && length(RaceAI.PLAYER_OVL) > ntr[]
+            for c in behind
+                println("TRACE f=", fr[], " rel=", round(rel(c), digits=2), " lane=", round(c.lane, digits=2),
+                        " tlane=", round(c.tlane, digits=2), " v=", round(c.v, digits=2))
+            end
+            ntr[] = length(RaceAI.PLAYER_OVL)
+        end
+        fr[] += 1
+    end
+    get(ENV, "JM_RS_FINAL", "0") != "0" && for c in behind
+        println("FINAL rel=", round(rel(c), digits=2), " lane=", round(c.lane, digits=2), " tlane=", round(c.tlane, digits=2),
+                " v=", round(c.v, digits=2))
+    end
+    ov = RaceAI.PLAYER_OVL
+    if !isempty(ov)
+        la = sort(first.(ov)); lo = sort([o[2] for o in ov])
+        q(v, f) = round(v[clamp(round(Int, f*length(v)), 1, length(v))], digits=3)
+        println("OVERLAP n=", length(ov), " lateral_m p50=", q(la, 0.5), " p90=", q(la, 0.9), " max=", round(la[end], digits=3),
+                " longitudinal_m p50=", q(lo, 0.5), " max=", round(lo[end], digits=3),
+                " ai_ahead_of_player=", count(o -> o[3] > 0, ov))
     end
     println("RESULT behind=", length(behind), " passframes=", passed, " hits=", hits,
             " hardyield=", RaceAI.AISTAT.hardyield)

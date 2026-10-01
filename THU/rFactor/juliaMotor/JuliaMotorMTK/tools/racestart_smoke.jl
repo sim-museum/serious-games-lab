@@ -18,8 +18,8 @@
 # show the pass-through, or a green treatment means nothing.
 const D = normpath(joinpath(@__DIR__, "..", "..", "demo", "native"))
 
-run_arm(control::Bool) = begin
-    env = control ? ["JM_AI_YIELD_RATE=1000"] : String[]
+run_arm(control::Bool; extra = String[]) = begin
+    env = vcat(control ? ["JM_AI_YIELD_RATE=1000"] : String[], extra)
     out = read(`env $(env) julia --project=$(D) $(joinpath(D, "racestart_probe.jl"))`, String)
     m = match(r"RESULT behind=(\d+) passframes=(\d+) hits=(\d+) hardyield=(\d+)", out)
     m === nothing && (println(out); error("probe produced no RESULT line"))
@@ -65,5 +65,19 @@ check("treatment: contact stays near the shipped 15",  t.hits <= 60,
 # Going AROUND a parked car is racing, not a defect, so the AI must still get past. A "fix" that
 # deadlocked the field behind a stalled player would pass a contact test and ruin the race.
 check("treatment: the field still gets past",       t.passed > 0,   string(t.passed, " frames"))
+# RACESTART-1 S16. The arms above spawn the field at init_cars' 25 m/s, 9 m behind a parked car -- a
+# collision no braking can avoid (27 m needed). The LIVE grid (form_grid!) stands at v = 0, so that is
+# asserted separately: the start the PO reported must be contact-free and the field must get by.
+g = run_arm(false; extra = ["JM_RS_V0=0"])
+println("  standing grid (v0=0): ", g.passed, " frames past, ", g.hits, " contact frames")
+check("standing grid: no contact",                   g.hits == 0,   string(g.hits, " frames"))
+check("standing grid: the field gets past",          g.passed > 0,  string(g.passed, " frames"))
+# A field ARRIVING at a stalled car parked 14 m behind it forever: speed control settles at
+# gap = 14 + 4v, outside the old engage trigger 14 + v. Control = JM_AI_ENGAGE_MARGIN=0 (must stay stuck).
+st = ["JM_RS_V0=25", "JM_RS_BACK=150", "JM_RS_SECS=30"]
+sc = run_arm(false; extra = vcat(st, ["JM_AI_ENGAGE_MARGIN=0"])); stt = run_arm(false; extra = st)
+println("  stall, field from 150 m: control ", sc.passed, " frames past, treatment ", stt.passed)
+check("premise: stall control never gets past",      sc.passed == 0,  string(sc.passed, " frames"))
+check("stall: the field gets past a stalled car",    stt.passed > 0,  string(stt.passed, " frames"))
 println(fails[] == 0 ? "RACESTART GATE: PASS" : "RACESTART GATE: FAIL ($(fails[]))")
 exit(fails[] == 0 ? 0 : 1)

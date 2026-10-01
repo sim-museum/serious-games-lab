@@ -31,6 +31,7 @@ this index was written; that is what it exists to stop.
 | **E104** | every car floats 20–40 cm above the road; off-road contact is elastic (levitate/bounce) | ✅ **BOTH halves FIXED and gated** — (b) E104-S1 (the −999 off-mesh sentinel), (a) E104-S4 (found, fixed, gated; S2's mechanism was right). *Index row corrected 2026-09-18 — it had read "half (a) still open, needs a capture" for 17 days after S4 closed it.* |
 | **E102** | rear axles point outward/downward; must be horizontal, hub to chassis | **OPEN — two of my own diagnoses withdrawn** (S1: omitted BODY_OFF; S2: conflated components sharing a texture). Established: the assembly and wheels agree (brake disc within 2.8 mm). S4: 65 of 89 triangles are ONE connected mesh (so there is no separable shaft to level), but an isolated **3-triangle `axlelot` sliver** reaches the wheel plane and drops 0.099 m — the best candidate for the PO's "sticks". Needs a capture; three headless approaches are enough. |
 | **E103** | wheel loss in a collision hyperspaces the car to the start line | **mechanism found + fixed + gated** (E103-S1): the containment seal PLACES the car at its last on-track point, which initialises to spawn. Not yet seen in a real wreck. |
+| **RACESTART-1** | AI cars drive through a stationary player at the start | **Start is contact-free (S14, 2026-09-30)**: the gate had spawned the field at 90 km/h; with the live standing grid, 0 contacts. **Found + half-fixed:** a field arriving at a STALLED car parked behind it forever (engage trigger outside the follow equilibrium); now the first car passes, the second still stalls at lane 1.56 (S16). |
 | **E90** | Monza and Watkins have almost no collidable barrier objects | **Mostly fixed (S9–S12, 2026-09-30):** oriented + trimmed rail boxes, Monza 189 → 316, Watkins 448 → 583; every box makes contact, 0 false contacts, `inside=0` on all 4 tracks. **Still missing:** 54 / 84 rail cells standing on road-textured triangles (Monza s≈1000–1500, WG s≈500–750 and 2500–3000) — need a look on screen before relaxing the guard. |
 | **E91** | "Tesla brakes" — lift-off decelerates too hard | **Corrected 2026-09-30 (S8): 1.39–1.66×, not 3.44×** — iRacing `Clutch` 1 = engaged and every earlier split was inverted. About half the excess is clutch-in DRAG, not engine braking (S9). **Blocked on the PO:** one high-speed clutch-in + in-gear coast-down to pin CdA/Crr/eb together. |
 | **E80** | 10 fps at Spa in cockpit view | **LOAD half:** analysis to S4 (244 s, 69 % compilation; sysimage cannot be built here). **RENDER half = `SPA-FPS-1`** (S12–S15: the mirror's two `drawworld` passes are 55 % of the cockpit frame; adaptation on by default). E80-S5 (2026-09-18) measured cockpit 33 fps / chase 56 fps with no AI. assessed |
@@ -21015,3 +21016,49 @@ guard refusing them is correct until that is known: a wrong guess here is an inv
 the rejected rails) before relaxing anything.
 
 **E90: 4 sprints this pass (S9–S12). ROTATING.**
+
+### RACESTART-1 S13..S16 (2026-09-30) — the gate's scenario was a ROLLING field; the live standing start is contact-free; and a real deadlock found and half-fixed: the field parks behind a STALLED car (4 sprints — ROTATING)
+
+**S13 — how deep are the residual contacts?** (S11's caveat: "nobody has watched them".) New probe-only log
+(`RaceAI.PLAYER_OVL_LOG`, never set by the sim) records the bounding-box overlap at each contact:
+
+| arm | contacts | lateral overlap p50 / p90 / max | longitudinal max |
+|---|---|---|---|
+| shipped | 18 (S12: 15) | **0.49 / 1.15 / 1.43 m** | 2.13 m |
+| `JM_AI_CLEAR_MARGIN=0` | 97 (S11: 283) | 0.01 / 0.43 / 1.43 m | 2.13 m |
+
+Not brushes: an AI 1.43 m inside a 1.7 m-wide player, always from behind.
+
+**S14 — and they are a probe artefact.** `JM_RS_TRACE=1`: 0.2 s after "the start" the first AI is at
+**19.4 m/s** (~97 m/s² from rest). `init_cars` creates every AI at **v = 25 m/s** and the probe — whose comment
+says "a five-car standing grid" — never zeroed it. The live grid (`form_grid!`) sets `v = 0`. So since S1 the
+gate has measured a field spawned **9 m behind a parked car at 90 km/h** (27 m needed to stop). New `JM_RS_V0`:
+
+| v0 | shipped | `CLEAR_MARGIN=0` | teleport |
+|---|---|---|---|
+| 25 (old gate) | 18 contacts | 97 | 3 |
+| **0 (the live start)** | **0 contacts, 452 frames past** | 0 | 0 |
+
+**The start the PO reported is contact-free in all three arms**, even with the cars behind forced into the
+player's lane. (RACESTART-2's grid-geometry fix is what the live start needed.)
+
+**S15 — a real defect, found by asking the rolling question properly.** `JM_RS_BACK=<m>` moves the field back so
+it ARRIVES at a stalled car instead of spawning on it. From 150 m, 30 s: **0 contacts, 0 frames past** — both
+cars park ~14 m behind and stay. Cause, by algebra: speed control toward a stopped blocker
+(`vt = (gap − 14)/4`) settles at **gap = 14 + 4v**; the overtake trigger was **gap < v + 14.0** — outside the
+equilibrium for every v > 0, so a car easing up never engages. (Behind a MOVING car the equilibrium is gap = 14 <
+14 + v, so traffic never showed it.) Mid-race: **a stalled player freezes the field behind it.**
+
+**S16 — fix, half of it.** Trigger is now `gap < v + GPL_DESIRED_SEP + ENGAGE_MARGIN` (1 m;
+`JM_AI_ENGAGE_MARGIN=0` reverts), which contains the equilibrium below 0.33 m/s. Stall from 150 m: **0 → 377
+frames past**, control still 0. Gates `racestart`, `ai_field`, `gpldlat`, `lapprog` PASS. `racestart_smoke` now
+also asserts the standing grid (0 contacts, gets past) and the stall (treatment passes, control does not).
+
+⚠️ **Still open — the second car.** Over 60 s it engages (`tlane` 2.4) but stops at lane 1.56, v = 0.0, 14 m back:
+still inside the player-blocker window (|Δlane| < CAR_WID + 0.6 = 2.3 m), which holds its speed at 0, while its
+lateral move apparently needs speed. Same shape as S15 one layer down. Repro:
+`JM_RS_FINAL=1 JM_RS_V0=25 JM_RS_BACK=150 JM_RS_SECS=60 julia --project=demo/native demo/native/racestart_probe.jl`.
+Also open: the 18 deep contacts in the 25 m/s / 9 m arm — a spawn no driver could avoid, kept in the gate only
+as a regression cap.
+
+**RACESTART-1: 4 sprints this pass (S13–S16). ROTATING.**
