@@ -108,7 +108,12 @@ function analyse(path)
                 dec -= G * (dadt / v0)          # remove the slope term
             end
             (dec <= 0 || dec > 15.0) && continue
-            clutch_in = cl !== nothing && cl[k] > 0.5          # 1 = pedal down (disengaged)
+            # E91-S8: iRacing's Clutch channel is 1 = ENGAGED (measured: 99.9 % of full-throttle
+            # accelerating samples read > 0.5), and the sim's export writes 1-clu to match. This
+            # line had it backwards -- every split before S8 swapped the two populations. Partial
+            # clutch is neither population, so it is dropped.
+            cl !== nothing && 0.05 <= cl[k] <= 0.95 && continue
+            clutch_in = cl !== nothing && cl[k] < 0.05          # 0 = disengaged
             g = Int(round(gr[k]))
             if clutch_in
                 push!(inpts, (v0, dec))

@@ -77,7 +77,7 @@ for p in files
     n = min(length(thr),length(brk),length(spd),length(gr))
     for k in 4:(n-4)
         (thr[k] > 0.01 || brk[k] > 0.01 || spd[k] < 8) && continue
-        cl !== nothing && cl[k] > 0.5 && continue                    # clutch OUT only
+        cl !== nothing && cl[k] < 0.95 && continue                   # in gear: iRacing Clutch 1 = ENGAGED (E91-S8; was inverted)
         lat !== nothing && abs(lat[k]) > 2.0 && continue
         stw !== nothing && abs(stw[k]) > 0.10 && continue
         yaw !== nothing && abs(yaw[k]) > 0.05 && continue

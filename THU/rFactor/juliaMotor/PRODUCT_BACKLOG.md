@@ -32,7 +32,7 @@ this index was written; that is what it exists to stop.
 | **E102** | rear axles point outward/downward; must be horizontal, hub to chassis | **OPEN — two of my own diagnoses withdrawn** (S1: omitted BODY_OFF; S2: conflated components sharing a texture). Established: the assembly and wheels agree (brake disc within 2.8 mm). S4: 65 of 89 triangles are ONE connected mesh (so there is no separable shaft to level), but an isolated **3-triangle `axlelot` sliver** reaches the wheel plane and drops 0.099 m — the best candidate for the PO's "sticks". Needs a capture; three headless approaches are enough. |
 | **E103** | wheel loss in a collision hyperspaces the car to the start line | **mechanism found + fixed + gated** (E103-S1): the containment seal PLACES the car at its last on-track point, which initialises to spawn. Not yet seen in a real wreck. |
 | **E90** | Monza and Watkins have almost no collidable barrier objects | open; the gate passing IS the symptom. assessed |
-| **E91** | "Tesla brakes" — lift-off decelerates **3.44×** too hard | PO confirmed right by measurement (S6, against the real gold store; S4's 1.67× used the sim's own telemetry as "reference"). Fix not landed. assessed |
+| **E91** | "Tesla brakes" — lift-off decelerates too hard | **Corrected 2026-09-30 (S8): 1.39–1.66×, not 3.44×** — iRacing `Clutch` 1 = engaged and every earlier split was inverted. About half the excess is clutch-in DRAG, not engine braking (S9). **Blocked on the PO:** one high-speed clutch-in + in-gear coast-down to pin CdA/Crr/eb together. |
 | **E80** | 10 fps at Spa in cockpit view | **LOAD half:** analysis to S4 (244 s, 69 % compilation; sysimage cannot be built here). **RENDER half = `SPA-FPS-1`** (S12–S15: the mirror's two `drawworld` passes are 55 % of the cockpit frame; adaptation on by default). E80-S5 (2026-09-18) measured cockpit 33 fps / chase 56 fps with no AI. assessed |
 | **E81** | floating/misplaced billboards and buildings at the Ring | open; the Ring bypasses the pipeline the other tracks use. assessed |
 | **E76** | restore objects deleted after the Ring start/finish | open, lead only. assessed |
@@ -2880,6 +2880,61 @@ braking from aero + rolling by subtraction with nothing to fit.
 
 **E91: 2 sprints this pass. The item is not "needs more analysis" — it needs 2 minutes of driving,
 and this is now demonstrated rather than claimed.**
+
+### E91-S8 (2026-09-30) — 🔴 **iRacing's `Clutch` channel is 1 = ENGAGED, and every E91 split had it backwards. The 3.44× is withdrawn: the corrected total is 1.39–1.66×.**
+
+**Measured, not looked up:** in the gold store, 2860 full-throttle accelerating samples in gear ≥ 2 read
+`Clutch` median **1.000**, 99.9 % above 0.5. So 1 = engaged (matches the iRacing SDK, and the sim's own
+export writes `1-clu` to match). But `coast_compare.jl` *dropped* `Clutch > 0.5` as "clutch OUT only",
+and `coastdown_probe.jl:111` called `Clutch > 0.5` "pedal down (disengaged)". **Both inverted.**
+
+Consequence: S6's reference column (0.496 / 0.833 / 0.430 / 0.714 / 0.565 / 1.039) is reproduced exactly
+by the **clutch-DISENGAGED** population. The 3.44× compared the sim *in gear* against iRacing *coasting
+with the clutch in* — engine braking on one side only. Every decomposition S1–S7 swapped the two
+populations, which is why no fit ever held (R² 0.06–0.37) and estimates moved 2.5× between sprints.
+
+**Corrected split** (`tools/coast_split.jl`; clean states only — `Clutch` > 0.95 or < 0.05 across the
+whole ±3-sample window, no gear change inside it; sim run at the gold's own measured RPM, not our gearbox):
+
+| gear | km/h | ref in gear | ref clutch in | ref EB | sim in gear | sim clutch in | sim EB | EB sim/ref | total sim/ref |
+|---|---|---|---|---|---|---|---|---|---|
+| 2 | 104 | 1.437 (n 92) | 0.480 (n 123) | 0.958 | 2.380 | 0.836 | 1.544 | 1.61 | **1.66** |
+| 3 | 105 | 1.321 (n 34) | 0.430 (n 359) | 0.891 | 1.833 | 0.848 | 0.985 | 1.11 | **1.39** |
+| 3 | 123 | 1.334 (n 26) | 0.708 (n 58) | 0.626 | 2.206 | 1.073 | 1.133 | 1.81 | **1.65** |
+
+The PO's complaint stands — the sim does decelerate too hard off-throttle — but by ~1.5×, and **roughly
+half the excess is not engine braking at all: it is the clutch-in drag (aero + rolling).**
+
+**Fixed:** both tools now use the measured convention and drop partial clutch.
+
+### E91-S9 (2026-09-30) — the sim's drag is too high, established; how to split it is NOT. **Rotating — blocked on a high-speed coast-down.**
+
+`tools/coast_drag.jl`: clean clutch-in coasts from the gold, shift transients (gear change within ±0.5 s)
+removed, fit `dec = A·v² + R`, bootstrap by **segment** (points inside one coast are autocorrelated).
+849 points, **20 segments**, 30–126 km/h, residual sd 0.34 m/s².
+
+| km/h | ref clutch-in decel (90 % CI) | sim (CdA 0.9, ρ 1.10, Crr 0.02) |
+|---|---|---|
+| 80 | 0.409 (0.378–0.440) | 0.592 |
+| 100 | 0.483 (0.445–0.508) | 0.815 |
+| 120 | 0.573 (0.477–0.626) | 1.088 |
+| 160 | 0.80 (0.55–0.95) — extrapolated | 1.781 |
+
+* **Established:** at 80–120 km/h the sim's clutch-in drag is 1.45–1.9× iRacing's, well outside the CI.
+* **Not established:** the aero/rolling split. CdA = 0.29 m² (90 % CI **0.09–0.42**), Crr 0.028
+  (0.020–0.040). A and R trade off over a speed range this narrow. CdA 0.29 is also physically implausible
+  for a Lotus 49, so it is not a number to ship.
+* **Coupling:** `fit/fit_engine.jl` fitted the torque curve from WOT acceleration *assuming* CdA 0.9. Lowering
+  CdA without refitting torque would raise top speed everywhere; refitting with a CdA the data cannot pin
+  just moves the error. This is a whole-car change (top speed, lap times on all 5 tracks).
+* Engine braking by subtraction (S8 table) is sim/ref 1.1–1.8× on 3 bands — direction clear, magnitude not.
+
+**BLOCKED ON THE PO — the S7 request, now precisely justified.** One iRacing session, ~3 minutes, any long
+straight: (a) ~220 km/h in 5th, **clutch fully in**, coast straight to ~60 km/h; (b) the same **in gear**,
+clutch released. (a) alone pins A and R over 60–220 km/h (the current data stops at 126); (a)−(b) gives
+engine braking with nothing fitted. Then CdA, Crr, torque and `ENGBRAKE` are refit together from the gold.
+
+**E91: 2 sprints this pass (S8, S9). Rotated early — blocked, not out of sprints.**
 
 ### E80-S1 (2026-08-29) — the 725 s was unattributed because **2,364 consecutive lines carried no timestamp**
 
