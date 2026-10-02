@@ -548,9 +548,20 @@ def candidates(state, hand: Hand, system, rule_bid: Bid) -> List[Bid]:
         return (fit >= b.level + 6 or n >= b.level + 3
                 or (fit >= 8 and e.hcp + pmin >= 20 + 2 * (b.level - 3)))
 
+    # A preempter (weak two / 3-level opening) does not bid again on its own
+    # once partner has passed: the simulation re-bid 3H after 2H-P-P-(2S)
+    # and went two down doubled (live run 21, RANDOM-062). Textbook.
+    op = state.opening_bid
+    preempted = (op is not None and state.opener_seat == state.seat
+                 and op.suit not in (None, Suit.NOTRUMP)
+                 and (op.level == 3 or (op.level == 2 and op.suit != Suit.CLUBS))
+                 and all(b.is_pass for b in state.partner_bids))
+
     def add(b: Bid):
         k = _key(b)
         if k in seen or not _legal(nb, b, state):
+            return
+        if preempted and not b.is_pass:
             return
         if not (b.is_pass or b.is_double) and b.level > 5:
             return

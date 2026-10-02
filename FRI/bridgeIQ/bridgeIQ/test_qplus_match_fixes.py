@@ -310,6 +310,15 @@ BIDDING_SYSTEMS = [
      "Precision90M", "N", "None", "2c 2s", "S",
      "T8.AT62.43.KT652", "3C", {"4C"}),
     # All-systems simulation (tools/system_matrix.py), 2026-10-01.
+    # Live A/B on FRESH64M (runs 20-23), 2026-10-02.
+    ("L-P048", "1C-2C positive: 19+ with four clubs asks for keys",
+     "Precision90M", "W", "EW", "p 1c p 2c p", "N", "A.K742.AJ75.AKT3", "2H", {"4N"}),
+    ("L-P013", "1C-1D-2NT: 7 HCP raises to 3NT",
+     "Precision90M", "N", "All", "1c p 1d p 2n p", "S", "95.Q87.A8532.J52", "P", {"3N"}),
+    ("L-P054", "1S-(X): four trumps and 9 HCP raise to 3S (as Q-Plus)",
+     "Precision90M", "E", "EW", "p 1s x", "N", "QJ62.98.K95.KT86", "2S", {"3S"}),
+    ("L-S048", "1D: unbalanced 10 with six clubs bids 2C, not 2NT",
+     "SAYC", "W", "EW", "p 1d p", "S", "KQ5.AT3.6.J98542", "2N", {"2C"}),
     ("M-NAMY", "NAMYATS 4C: partner completes to 4H",
      "Precision90M", "E", "None", "p 4c p", "N", "QJ62.A.QT4.AKJT7", "P", {"4H"}),
     ("M-2DX", "Precision 2D three-suiter doubled: never raise diamonds",

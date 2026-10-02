@@ -313,3 +313,47 @@ Precision -0.16 and Acol -0.31 still trail. Most of Acol's gap is the weak
 continuations were checked and are range-correct), not a rule bug.
 
 Bidder fingerprint after this round: 7f7b72e173 (run 19 was a59d51ddf4).
+
+## Live A/B on the fresh deck FRESH64M (runs 20-23, 2026-10-01/02)
+
+"previous" was run as `--previous` after the commits, which resolved to
+07256329: the OLD bidder (eb54410fe8) with the NEW card play. Both halves
+therefore played the same card engine; this pair measures bidding only.
+
+| Run | System | Version | IMPs | per deal |
+|---|---|---|---|---|
+| 20 | SAYC | previous (old bidder) | -44 | -0.69 (best SAYC score yet) |
+| 21 | SAYC | latest (7f7b72e173), open room only | -73 | -1.14 |
+| 22 | Precision | previous (old bidder) | -166 | -2.59 |
+| 23 | Precision | latest, open room only | -181 | -2.83 |
+
+Paired latest - previous: SAYC -24 (-0.38/deal, SE 0.46, 30 boards
+differ), Precision -14 (-0.22/deal, SE 0.47, 28 differ). Neither
+significant. Same-engine card play differed on 23-25 boards per pair
+(-17 / +17): that is run-to-run noise, the size of one match's swing.
+
+Bidding differences, board by board:
+- New rules: RANDOM-058 weak 2S on KT8643 (-10 in both systems; Q-Plus
+  opened the same 2S, the old version's pass was lucky), RANDOM-054 1S-(X)
+  raise to only 2S after the pruning (-11; Q-Plus and the old rules bid 3S
+  -> restored), RANDOM-055 +8.
+- Hybrid simulation overrides (same simulation code, different rule
+  bidder inside its rollouts): SAYC 038 P over a 4-trump 3H raise (-7),
+  049 2S on 20 HCP (-6), 062 a weak-two opener re-bidding 3H after partner
+  passed (-4), 015 +11; Precision 046 P over X with 5-5 majors (-10).
+- Both versions: 1D-2NT on a 6-card-club singleton hand (SAYC 048,
+  Q-Plus 2C -> 6NT); Precision 1C-2C 19 HCP + 4 clubs stopped in 4C (7C
+  cold); 1C-1D-2NT passed with 7 HCP.
+
+Fixed after this analysis (L-* cases, 127 checks): 1M-(X) 3M with four
+trumps and 7-9; 1D-2C with 5+ clubs and a singleton/void (not 2NT);
+Precision 1C-2m: 19+ with 4-card support asks for keys (also over
+partner's 4m); 1C-1D-2NT raised to 3NT with 4+; bid_sim never lets a
+preempter bid again after partner passed. Offline A/B vs the committed
+bidder (seed 9104): these change 0-8 of 800 biq-vs-biq boards, within
++-0.01 IMP/deal.
+
+All live paired evidence so far for the new bidder: +55 (deck G,
+in-sample), -24 and -14 (deck M, held-out) -> about +0.09/deal over 192
+boards: no detectable live gain yet from the bidding work. The card-play
+work shows in the absolute scores (SAYC -0.69 with the new engine).

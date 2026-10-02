@@ -3282,6 +3282,8 @@ def _convention_followups(state: AuctionState, e: HandEval, system) -> Optional[
             and len(state.my_bids) == 1 and len(state.partner_bids) == 1
             and pl.level == 2 and pl.suit == op.suit
             and not state.opp_overcalled
+            and not (op.suit == Suit.CLUBS
+                     and getattr(system, "strong_open_call", "2C") == "1C")
             and any(k.startswith("A-1MI-inverted-raises") for k in raw)):
         bal = e.is_balanced or e.is_semi_balanced
         if bal:
@@ -3300,6 +3302,31 @@ def _convention_followups(state: AuctionState, e: HandEval, system) -> Optional[
                 return cand
         return bid(3, op.suit, why=f"Inverted raise: 3{op.suit.to_char()}, "
                                    f"unbalanced, no side suit")
+
+    if getattr(system, "strong_open_call", "2C") == "1C" and op.level == 1 \
+            and op.suit == Suit.CLUBS and not state.opp_overcalled:
+        first = state.partner_bids[0] if state.partner_bids else None
+        # 1C-2m (positive, 5+ m): a big fit hand asks for keys at once, and
+        # never passes partner's 4m (22 HCP passed 1C-2C-2H-4C with 7C cold,
+        # live run 23, RANDOM-048).
+        if (state.opener_seat == state.seat and first is not None
+                and first.level == 2 and first.suit in (Suit.CLUBS, Suit.DIAMONDS)
+                and e.suit_lengths.get(first.suit, 0) >= 4 and hcp >= 19):
+            if len(state.my_bids) == 1:
+                return bid(4, Suit.NOTRUMP, alert=True,
+                           why=f"RKC for {first.suit.to_char()}: {hcp} HCP and a fit")
+            if (pl.suit == first.suit and pl.level == 4
+                    and not any(b.level == 4 and b.suit == Suit.NOTRUMP
+                                for b in state.my_bids)):
+                return bid(4, Suit.NOTRUMP, alert=True,
+                           why=f"RKC for {first.suit.to_char()}: {hcp} HCP and a fit")
+        # 1C-1D-2NT (20+ balanced): 4+ HCP raises to game (7 HCP passed,
+        # live run 23 RANDOM-013).
+        if (state.opener_seat == partner and len(state.my_bids) == 1
+                and state.my_bids[0].level == 1 and state.my_bids[0].suit == Suit.DIAMONDS
+                and len(state.partner_bids) == 2 and pl.level == 2
+                and pl.suit == Suit.NOTRUMP and hcp >= 4):
+            return bid(3, Suit.NOTRUMP, why=f"3NT: {hcp} HCP opposite 1C-1D-2NT")
 
     # Truscott 3NT (1M-3NT = 3-card raise): partner's 4NT is keycard ask in
     # the major, not quantitative (French passed it: 4NT -4, bd250).
@@ -4548,6 +4575,13 @@ def _respond_to_minor(state, e: HandEval, system) -> Bid:
                                      f"{mfit}-card support")
     if 6 <= hcp <= 9:
         return bid(1, Suit.NOTRUMP, why="6-9 balanced, no 4cM, no minor fit")
+    # An unbalanced hand shows its long suit instead of a notrump response:
+    # KQ5.AT3.6.J98542 bid 1D-2NT and missed 6NT (live run 20/21 RANDOM-048;
+    # Q-Plus 2C).
+    if (10 <= hcp and (e.singletons or e.voids)
+            and minor == Suit.DIAMONDS and e.suit_lengths[Suit.CLUBS] >= 5
+            and not state.rho_bids):
+        return bid(2, Suit.CLUBS, why="2C: five+ clubs, unbalanced, 10+")
     if 10 <= hcp <= 12:
         return bid(2, Suit.NOTRUMP, why="10-12 invitational")
     if 13 <= hcp <= 15:
@@ -5073,7 +5107,10 @@ def _respond_to_major_competitive(state, e: HandEval, system) -> Bid:
         # Over the double, raise light and preempt with four trumps (LAW):
         # 5432.T6.A863.J53 passed 1S-(X) (FRESH64E RANDOM-036; Q-Plus 2S).
         fit = e.suit_lengths.get(op_suit, 0)
-        if fit >= 4 and 3 <= hcp <= 9 and (e.singletons or e.voids):
+        # 7-9 always (Q-Plus raised 1S-(X)-3S on QJ62.98.K95.KT86, live run
+        # 23, RANDOM-054); lighter only with shortness.
+        if fit >= 4 and ((7 <= hcp <= 9) or (3 <= hcp <= 6
+                                              and (e.singletons or e.voids))):
             return bid(3, op_suit, why=f"Preemptive raise over the double "
                                        f"({fit} trumps, {hcp} HCP)")
         if fit >= 3 and 5 <= hcp <= 9:
