@@ -28,7 +28,7 @@ this index was written; that is what it exists to stop.
 | **E111** | Spa: missing corner house before the 90° left; bright yellow polygon over the road after it | NEW 2026-09-28. `house12`/`house13` are in neither archive nor disk. |
 | **E85** | EPIC: multiplayer, the way GPL did it |  **sprint 1 DONE** (E85-S1): poses cross two processes exactly, both ways, gated. Sprints 2–4 open. |
 | **MP-GUI-1** | multiplayer in the PyQt launcher (PO 2026-10-01) | **S1 DONE (2026-10-01):** Drive-tab Host/Join/address/port + launcher lobby that copies the host's race settings; two-process test passes. Two-PC race from the GUI not yet run. |
-| **GPLWALL-1** | the user's car must never go through any object, GPL's way (PO 2026-10-01) | **S1-S8 DONE (2026-10-01):** GPL's .trk walls decoded and registered to the drawn faces; every other drawn obstacle solid; 0 of 378 crashes through on all five tracks (old system: 16/50 at WG). Gate `gplwall_smoke`. **Open:** GPL's own invisible walls (PO's call), AI cars. |
+| **GPLWALL-1** | the user's car must never go through any object, GPL's way (PO 2026-10-01) | **S1-S8 DONE (2026-10-01):** GPL's .trk walls decoded and registered to the drawn faces; every other drawn obstacle solid; 0 of 378 crashes through on all five tracks (old system: 16/50 at WG). Gate `gplwall_smoke`. **Open:** AI cars. GPL's invisible walls KEPT (PO 2026-10-01). |
 | **E105** | a setup tab exposing modest chassis-setup changes | **values + reset DONE and gated** (E105-S1); the UI shell is the PO's call. NEW 2026-08-31. Relaxes the "no modifiable parameters" constraint, scoped to setup. assessed |
 | **E104** | every car floats 20–40 cm above the road; off-road contact is elastic (levitate/bounce) | ✅ **BOTH halves FIXED and gated** — (b) E104-S1 (the −999 off-mesh sentinel), (a) E104-S4 (found, fixed, gated; S2's mechanism was right). *Index row corrected 2026-09-18 — it had read "half (a) still open, needs a capture" for 17 days after S4 closed it.* |
 | **E102** | rear axles point outward/downward; must be horizontal, hub to chassis | **OPEN — two of my own diagnoses withdrawn** (S1: omitted BODY_OFF; S2: conflated components sharing a texture). Established: the assembly and wheels agree (brake disc within 2.8 mm). S4: 65 of 89 triangles are ONE connected mesh (so there is no separable shaft to level), but an isolated **3-triangle `axlelot` sliver** reaches the wheel plane and drops 0.099 m — the best candidate for the PO's "sticks". Needs a capture; three headless approaches are enough. |
@@ -21436,7 +21436,7 @@ Full suite (`tools/gates.sh`, 27 min): **42 of 44 PASS**, `gplwall_smoke` includ
 pair (`transmission_smoke`: no `.ibt` captures on this box; `road_clear_smoke`: Ring 123 terrain anomalies, unchanged).
 
 ### Open — for the PO
-* **Invisible GPL walls.** Some GPL walls stand where nothing is drawn: open grass at Spa (s~8250 left), the foot of the
+* **PO DECISION 2026-10-01: KEEP the invisible GPL walls** (GPL behaviour). Background: **Invisible GPL walls.** Some GPL walls stand where nothing is drawn: open grass at Spa (s~8250 left), the foot of the
   Ring's grass banks (s~9450 right), a closing wedge in Monza's left runoff. Our `.3do` is GPL's own, so GPL shows
   nothing there either: these are GPL's own invisible boundaries (`JM_GPLWALL_SHOW=1` draws every GPL wall in magenta;
   `261001/gplwall/`). Road-facing invisible share: WG 9 %, Monza 12 %, Spa 28 %, Ring 21 %, Zandvoort 65 % of road-facing wall samples

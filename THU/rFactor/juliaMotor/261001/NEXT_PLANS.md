@@ -20,7 +20,6 @@ per cycle.
 | **E91** | one iRacing coast-down on a straight, ~220 → 60 km/h, clutch in, then the same in gear | pins drag and engine braking together |
 | **E109** | GPL screenshots of the Ring at s≈8400 and s≈21355 | GPL's tree data vs our rotation pivot |
 | **E90** | a look at Monza s≈1000–1500 and Watkins Glen s≈500–750 / 2500–3000 | rails on road-textured triangles |
-| **GPLWALL-1** | keep GPL's own **invisible walls** (open grass at Spa s~8250 L, the foot of the Ring's banks s~9450 R, Monza's left runoff wedge s~225), or soften them? `JM_GPLWALL_SHOW=1` draws every GPL wall in magenta; `261001/gplwall/` | GPL's `.3do` shows nothing there either, so keeping them is GPL behaviour; it is a feel decision |
 | — | push? | commits are local only |
 
 ---
@@ -57,8 +56,7 @@ per cycle.
 ### 6. PERF-3 — after the PO's verdict on the AppImage.
 
 ### 7. GPLWALL-1 — never through any object (S1-S8 done; 0 of 378 crashes through)
-- After the PO's call on invisible walls: either keep, or make UNREGISTERED GPL wall faces (no drawn face within 2 m)
-  soft / bank-like.
+- PO 2026-10-01: GPL's invisible walls are KEPT (GPL behaviour). Nothing to do there.
 - AI cars still use the old contact (the request named the user's car); the planar `JM_2D` path is not covered.
 - Zandvoort registers poorly (23 %): its barriers are hedges and post-and-wire fences (thin posts); register against the
   placed objects as well.
