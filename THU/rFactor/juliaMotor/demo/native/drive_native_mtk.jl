@@ -5317,7 +5317,7 @@ TEXT_HUD && FONT === nothing && println("  [texthud] no font atlas under demo/na
 # makes. Our AI is identified by make (AICHASSIS[id].name), so map make -> the works driver of that
 # make in GPL's roster for DISPLAY only. JM_TEXTHUD_CHASSIS=1 shows the makes instead.
 const TEXTHUD_DRIVER = Dict("Ferrari" => "C Amon", "Brabham" => "J Brabham", "BRM" => "J Stewart",
-                            "Eagle" => "D Gurney", "Cooper" => "J Rindt", "Lotus" => "J Clark", "Honda" => "J Surtees")
+                            "Eagle" => "D Gurney", "Cooper" => "J Bonnier", "Lotus" => "J Clark", "Honda" => "J Surtees")
 lapfmt(t) = t <= 0 ? "--:--.--" : begin
     m = floor(Int, t/60); sr = t - 60m; sec = floor(Int, sr); cc = clamp(floor(Int, (sr - sec)*100), 0, 99)
     string(lpad(m, 2, '0'), ":", lpad(sec, 2, '0'), ".", lpad(cc, 2, '0')) end
@@ -6207,7 +6207,11 @@ let objnames=Set{String}()
     _zandcrowd_off = ZANDV && get(ENV, "JM_KEEP_ZANDCROWD", "0") == "0"
     drop(nm) = (!isempty(_keeptest) && any(p->startswith(nm,p), _keeptest)) ? false :
                (_dropcrowdrows && standcrowd(nm)) || (_zandcrowd_off && standcrowd(nm)) ||
-               (!isempty(_droptest) && any(p->startswith(nm,p), _droptest)) || (!standcrowd(nm) && (
+               (!isempty(_droptest) && any(p->startswith(nm,p), _droptest)) ||
+               # E109/FLOAT-2 (2026-10-02): at the Ring the tree rows are drawn TWICE -- by the scenery groups and again here.
+               # This copy stood on the verge ACROSS the road direction with one end ~5 m up (the dark slab at s~3655, the
+               # "curtain of trees"); the gold run shows no such slab anywhere in that region. JM_RING_TROW_OBJ=1 keeps it.
+               (NURB && startswith(lowercase(nm), "trow") && get(ENV, "JM_RING_TROW_OBJ", "0") == "0") || (!standcrowd(nm) && (
                (startswith(nm,"grass") && !KEEP_GRASS) || (startswith(nm,"herbe") && !KEEP_GRASS) || nm == "infield" ||
                nm == "hotels" ||                                             # E45: Zandvoort backdrop building cluster — a 310 m garbage bbox that never grounds → floats in the sky above the grandstand; the horizon ring + dunes carry the backdrop without it
                startswith(nm,"tent") || startswith(nm,"single") ||
@@ -9033,7 +9037,27 @@ if !SKIDPAD && _ncars > 0
         # fehand, braarms/brasho/brhand/frarm*, drvarms/bmhand/sho128, eagarm(s)/eahand, coparms/
         # copsho/cohand, lotarms/lotsho/lohand) plus the shared arml/armr/arms. Helmet, neck, knees
         # and the body stay. JM_AI_SLEEVES=1 restores them for an A/B.
-        push!(AICARMODELS, Render.load_gpl_car(nm, joinpath(AIBASE,dir), body, aiwheels(w...);
+        # AI-CARGFX-S8 (2026-10-02): load the body through GPL's WRAPPER (`<x>d.3do`: eagd, ferd, brad, brmd, covd), exactly
+        # as the player's Lotus goes through lotd.3DO (E106-S6b). The wrapper binds the texture-slot TABLE that the body's
+        # slot selectors index; loaded bare, those selectors found no table and 80 % of each AI car (Eagle 2432 of 3055
+        # triangles) drew untextured grey/black over the engine. JM_AI_BODY_WRAP=0 reverts to the bare body.
+        # The DRIVER's wrapper first (GPL composes a car as <driver><number>a.3do -> body: it binds that driver's livery,
+        # helmet and face). The gold WG race (260915) fields Amon #3, Brabham #1, Bonnier #11 (Cooper) -- those are used
+        # where our chassis match; then the chassis default <x>d.3do. JM_AI_DRIVERS="ferrari=amo20a,..." overrides.
+        _drv = Dict("ferrari" => "amo3a", "brabham" => "bra1a", "brm" => "ste8a", "eagle" => "gur9a", "coventry" => "bon11a")
+        for kv in split(get(ENV, "JM_AI_DRIVERS", ""), ",", keepempty = false); (k, v) = split(kv, "="); _drv[k] = v; end
+        _wrap = get(ENV, "JM_AI_BODY_WRAP", "1") == "0" ? nothing :
+                let fs = readdir(joinpath(AIBASE, dir)), want = lowercase(get(_drv, dir, "")) * ".3do"
+                    i = findfirst(f -> lowercase(f) == want, fs)
+                    i === nothing && (i = findfirst(f -> occursin(r"^[a-z]+d\.3do$"i, f), fs))
+                    i === nothing ? nothing : fs[i]
+                end
+        _wrap !== nothing && print("[", _wrap, "] ")
+        _bare = body; _wrap !== nothing && (body = _wrap)
+        # AI-CARGFX-S8: poly type 0x81D on the AI bodies is GPL's coarse far-distance stand-in (flat plates); drawn up close
+        # it laid a pale lavender plate over the Eagle's engine. Skipped for the AI only: the player's Lotus cowl IS 0x81D.
+        push!(AICARMODELS, Render.load_gpl_car(nm, joinpath(AIBASE,dir), body, aiwheels(w...); hub3do = _bare,
+                              skip_ptypes = get(ENV, "JM_AI_KEEP_81D", "0") != "0" ? nothing : Set{UInt32}([0x81D]),
                               exclude=("ltraymap","lshad",AI_SLEEVE_EXC...,(haskey(ENV, "JM_AI_EXC_FLAT") ? ("",) : ())...),
                               maxlat=parse(Float32, get(ENV,"JM_AI_MAXLAT", string(CARP_MAXLAT))),
                               body_floor=BODY_FLOOR,
@@ -9325,6 +9349,13 @@ const REPLAY_CAM_LABEL = ("COCKPIT", "CHASE (above rear)", "TV / DISTANT",
 # 2 Brabham, 3 BRM, 4 Eagle, 5 Cooper), so an AI chassis can be photographed beside its GPL chase-from-
 # behind still. Same geometry as the player's GPL-matched chase view (camera(), view 1). Test hook only.
 const AICAM = parse(Int, get(ENV, "JM_AICAM", "0"))
+# AI-CARGFX-S8: JM_AICAM_SEQ="<slot>:<view>,..." cycles the AI camera over (car, view) pairs, AICAM_SEG frames each, and
+# dumps the last frame of each to JM_SHOTS_DIR/aiseq_<n>_<slot>_<view>.ppm (headless). view = gplchase (the player's
+# GPL-matched chase), or a replay camera: chase, tv, f10, nose, rsusp.
+const AICAM_SEQ = [(parse(Int, split(q, ":")[1]), Symbol(split(q, ":")[2])) for q in split(get(ENV, "JM_AICAM_SEQ", ""), ",", keepempty = false)]
+const AICAM_SEG = 25
+const AICAM_R = Ref(isempty(AICAM_SEQ) ? AICAM : AICAM_SEQ[1][1])
+const AIVIEW_R = Ref(isempty(AICAM_SEQ) ? :gplchase : AICAM_SEQ[1][2])
 const AIPOSE_TRACE = parse(Int, get(ENV, "JM_AIPOSE_TRACE", "0"))
 function aicam_camera(p)
     v0 = CTL.view; CTL.view = 1
@@ -12520,7 +12551,8 @@ function main()
                  (rf = rep_ai_raw[rep_focus[]]; (rf[1], rf[2], rf[3], rf[4]))
             vp, eye = replay_camera(REPLAY_CAMS[rep_cam[]], fp[1], fp[2], fp[3], fp[4])
         end
-        AICAM > 0 && aicam_pose[] !== nothing && ((vp, eye) = aicam_camera(aicam_pose[]))   # AI-CARGFX: last frame's pose
+        AICAM_R[] > 0 && aicam_pose[] !== nothing && ((vp, eye) = AIVIEW_R[] === :gplchase ? aicam_camera(aicam_pose[]) :
+                                                       replay_camera(AIVIEW_R[], aicam_pose[][1], aicam_pose[][2], aicam_pose[][3], aicam_pose[][4]))
         carModel = Render.translate(cs.x, cs.y, -cs.z) * Render.roty(Float32(cs.θ)) *
                    Render.rotz(Float32(pitch_ter)) * Render.rotx(Float32(roll_ter))   # whole car follows the hill (pitch + cross-slope roll)
         tiltModel = carModel * Render.rotz(Float32(pitch_dyn)) * Render.rotx(Float32(rollv))   # full body tilt (terrain + dynamic)
@@ -12574,7 +12606,7 @@ function main()
         # terrain query it needs, in the (y, ok) form it expects.
         ai_height(x, z) = ground_road(x, z)   # TRACKSMOOTH-3 S3: spline on the tarmac, mesh elsewhere (was hat3d only)
         ai_ground(p) = RaceAI.reground(p, ai_height)
-        AICAM > 0 && (aicam_pose[] = AICAM <= length(ai_poses_prev[]) ? ai_poses_prev[][AICAM] : nothing)
+        AICAM_R[] > 0 && (aicam_pose[] = AICAM_R[] <= length(ai_poses_prev[]) ? ai_poses_prev[][AICAM_R[]] : nothing)
         ai_poses = if REPLAY                                       # E18: AI poses straight from the recording
             NTuple{6,Float64}[(a[1],a[2],a[3],a[4],0.0,0.0) for a in rep_ai_raw]
         elseif AILINE === nothing || phase[] != :race              # AI hidden until the race starts (after qualifying)
@@ -12695,7 +12727,7 @@ function main()
         if AIJIT_ON && !REPLAY && !isempty(ai_poses)        # AIJIT-1: draw the AI the GPL way (see ai_smooth)
             ai_poses = NTuple{6,Float64}[ai_smooth(k, ai_poses[k], dt > 1e-4 ? dt : 1/60) for k in eachindex(ai_poses)]
         end
-        AICAM > 0 && (ai_poses_prev[] = NTuple{6,Float64}[ntuple(j -> Float64(p[j]), 6) for p in ai_poses])
+        AICAM_R[] > 0 && (ai_poses_prev[] = NTuple{6,Float64}[ntuple(j -> Float64(p[j]), 6) for p in ai_poses])
         # AIJIT-1 probe: JM_AIPOSE_TRACE=<i> prints AI car i's drawn pose every frame (t s lane x y z yaw pitch roll)
         if AIPOSE_TRACE > 0 && AIPOSE_TRACE <= length(ai_poses) && AIPOSE_TRACE <= length(AICARS)
             let p = ai_poses[AIPOSE_TRACE], c = AICARS[AIPOSE_TRACE]
@@ -13462,6 +13494,17 @@ function main()
                     println("  JM_SHOT_AT: dumped ", ts.name); flush(stdout)
                     SHOTS_AT_ARMED[k] = -2
                     all(==(-2), SHOTS_AT_ARMED) && haskey(ENV, "JM_SHOT_AT_EXIT") && break
+                end
+            end
+        end
+        if SMOKE && !isempty(AICAM_SEQ) && frames >= 40
+            seg = (frames - 40) ÷ AICAM_SEG + 1
+            if seg <= length(AICAM_SEQ)
+                (AICAM_R[], AIVIEW_R[]) = AICAM_SEQ[seg]
+                if (frames - 40) % AICAM_SEG == AICAM_SEG - 1
+                    buf=Vector{UInt8}(undef,W*H*3); glReadPixels(0,0,W,H,GL_RGB,GL_UNSIGNED_BYTE,buf)
+                    open(joinpath(SHOTS_DIR, "aiseq_$(seg)_$(AICAM_R[])_$(AIVIEW_R[]).ppm"),"w") do io; write(io,"P6\n$W $H\n255\n")
+                        for y in H:-1:1, x in 1:W; o=((y-1)*W+(x-1))*3; write(io,buf[o+1],buf[o+2],buf[o+3]); end; end
                 end
             end
         end

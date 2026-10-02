@@ -26,20 +26,19 @@ the 2026-10-01/02 session ran several cycles in one context.
 
 ## Next cycle, in order
 
-### 1. AI-CARGFX — GPL's flat-colour polygons (S7 found the cause of the dark engine bay)
-- 80 % of every AI car's triangles are flat-colour polygons drawn one constant grey. Read GPL's per-polygon PALETTE
-  colour for them (gpl3do.jl: where `col` is set for untextured polys), and check the Eagle's nose turns dark blue.
-- Then draw order: flat parts first, textured parts with a small depth bias (GPL paints detail over its backing), A/B
-  against `JM_AI_EXC_FLAT=1` (`261002/aicargfx_eagle_flatpolys_ab.jpg`).
-- Then the other items of S6 (helmet, roll hoop, loose white shards, rear cross-tube), then the other four chassis.
-- The player's Lotus loads through the same extractor: check it for the same flat-polygon colours.
+### 1. AI-CARGFX — rear suspension and details (S8 put every AI car through GPL's driver wrapper)
+- Done 2026-10-02: wrappers (textured engines, liveries, helmets per driver), 0x81D far plates skipped, Cooper = Bonnier.
+- Next: the REAR SUSPENSION against the gold replay (horizontal silver drive shafts, coil springs, cross-tube; ours thin
+  angled sticks at the wheels) -- the E102/E106 articulation history applies; capture with `JM_AICAM_SEQ` (rsusp/chase)
+  beside gold replay frames ~332-338 s (Lotus/Cooper rear) of `260915_gpl_wg_race_gold.mp4`.
+- The small pale patch beside the Eagle's gearbox; our chase camera sits higher than GPL's.
+- PO decision: the gold field is Clark, Hill (Lotus), Bonnier (Cooper), Amon (Ferrari), Brabham -- match the chassis set?
 
 ### 2. E78 — banners against the gold (the banners reach the screen, S6)
 - Full-res crop of the pit wall at Ring s≈1400 against the gold frame at ~66 s of `260802_nurburgring_cockpit.mp4`.
 
-### 3. FLOAT-2 / E109 — long foliage panels on slopes
-- Ring `trow_001` tree-row panels: one end ~5 m off the ground (no pitch in GPL's data). Decide: fit each long foliage
-  panel's pitch to the ground under its ends, or leave as GPL draws it (needs a GPL screenshot of e.g. Ring s≈3650).
+### 3. FLOAT-2 / E109 — DONE 2026-10-02 for the Ring tree rows (the object-pipeline copy was a duplicate; dropped)
+- Check the Ring for other objects drawn by BOTH pipelines (the same double-draw as WG's gantry, E110).
 
 ### 4. GPLWALL-1 follow-ups
 - AI cars still use the old contact; the planar `JM_2D` path is not covered.

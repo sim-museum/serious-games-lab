@@ -1233,7 +1233,7 @@ function _clip_lat(t, maxlat::Float32)
                 t.tex, t.col, t.flat, t.ptype) for i in 2:length(verts)-1]   # a clipped piece keeps the original's shading kind
 end
 
-function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0.72f0,0.74f0,0.76f0), smooth=true, tint=nothing, track=false, mirror=false, exclude_groups=(), include_groups=(), cockpit_clean=false, maxedge=Inf32, uflip=nothing, vflip=nothing, maxlat=Inf32, trim=false, dedup=nothing, drop_green=false, min_component=0, min_component_tex=(), wheel_dress=nothing, cockpit_dress=nothing)
+function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0.72f0,0.74f0,0.76f0), smooth=true, tint=nothing, track=false, mirror=false, exclude_groups=(), include_groups=(), cockpit_clean=false, maxedge=Inf32, uflip=nothing, vflip=nothing, maxlat=Inf32, trim=false, dedup=nothing, drop_green=false, min_component=0, min_component_tex=(), wheel_dress=nothing, cockpit_dress=nothing, skip_ptypes_kw=nothing)
     livery = lowercase(first(splitext(basename(String(path3do)))))   # S7: the wrapper's own texture name (lotd, ferd, ...) = the livery
     # text reads right when the texture mapping preserves handedness: the mirror=true
     # remap (gx,gz,-gy) is a rotation (no flip needed); mirror=false is a reflection
@@ -1302,7 +1302,7 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
     # green with the yellow stripe as their own flat colours (66 textured 0x821 tris form the lower
     # sides); skipping them removed the cowl entirely. The right treatment is FLATPOLY (draw a
     # flat-typed poly in its own colour). The knob stays for A/B only.
-    skip_ptypes = let e = get(ENV, "JM_SKIP_PTYPES", "")
+    skip_ptypes = skip_ptypes_kw !== nothing ? skip_ptypes_kw : let e = get(ENV, "JM_SKIP_PTYPES", "")
         e == "0" || e == "" ? Set{UInt32}() : Set{UInt32}(parse(UInt32, strip(x)) for x in split(e, ","))
     end
     kept = [m.tris[i] for i in eachindex(m.tris) if keep(m.tris[i]) && !(m.groups[i] in exclude_groups) && !(m.tris[i].ptype in skip_ptypes) &&
@@ -2284,7 +2284,7 @@ end
 function load_gpl_car(name, dir, body3do, wheelspec;
                       exclude=("ltraymap","lshad"), maxlat=Inf32, exclude_groups=(),
                       body_floor=0.0f0, wheeltint=(0.12f0,0.12f0,0.13f0),
-                      rear_groups=(), rear_lat=0.66f0, rear_ymin=-0.12f0)
+                      rear_groups=(), rear_lat=0.66f0, rear_ymin=-0.12f0, hub3do=nothing, skip_ptypes=nothing)
     tex   = gpl_texture_index(dir)
     # E106-S25 (PO: "3 out-ward facing metal rods attached to each rear tire"). Proven by shooting
     # the SAME replay frame with the wheel items suppressed (JM_NO_AI_WHEELS=1): a complete, better
@@ -2309,7 +2309,7 @@ function load_gpl_car(name, dir, body3do, wheelspec;
             end
         end
     end
-    parts = extract_gpl_car(joinpath(dir, body3do); exclude=(exclude..., wheeltex...), maxlat=maxlat,
+    parts = extract_gpl_car(joinpath(dir, body3do); exclude=(exclude..., wheeltex...), maxlat=maxlat, skip_ptypes_kw=skip_ptypes,
                             exclude_groups=(exclude_groups..., rear_groups...), drop_green=true)
     # AI-CHAIN-1 S2: the rear-suspension halves, the PLAYER LOTUS's way. Measured (2026-09-06): on
     # Eagle/Brabham/Cooper these groups sit exactly where the Lotus's do (x -2.5..-0.8, |lat|
@@ -2352,7 +2352,7 @@ function load_gpl_car(name, dir, body3do, wheelspec;
     end
     # CARGOLD-1 S2: wheels at the mesh's own hubs unless JM_WHEELS_TABLE=1 keeps the hand table.
     if get(ENV, "JM_WHEELS_TABLE", "0") == "0"
-        hubs = try mesh_wheel_hubs(joinpath(dir, body3do)) catch e; @warn "mesh_wheel_hubs failed" name e; nothing end
+        hubs = try mesh_wheel_hubs(joinpath(dir, hub3do === nothing ? body3do : hub3do)) catch e; @warn "mesh_wheel_hubs failed" name e; nothing end
         if hubs !== nothing
             old = wheelspec
             wheelspec = wheelspec_from_mesh(hubs, wheelspec, off_x, off_z)

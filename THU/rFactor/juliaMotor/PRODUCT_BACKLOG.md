@@ -21563,3 +21563,36 @@ Spa pass1 93.2 % / pass2 88.3 % on the centre-only test; graded (car body overla
 
 ### Not reached / waiting
 MP-GUI-1 and PERF-3 wait on the PO's tests; GPLWALL-1 follow-ups (AI cars, Zandvoort placed-object registration) not started.
+
+---
+
+# PO 2026-10-02: Ring tree rows vs the gold run; AI car graphics vs the WG gold race (260915, replays of every car)
+
+### E109/FLOAT-2 — the Ring's tree-row "slab" is a DUPLICATE from the object pipeline (dropped)
+Gold (`260802_nurburgring_nintendo.mp4`, ~120-206 s, the stretch after the first bridge): no flat slab stands across the
+road anywhere; tree rows run along the road edge as trees. `JM_PICK` on our slab at s~3655: `trow_001` drawn by the OBJECT
+pipeline at lat -4.0 (on the verge, across the road direction, one end ~5 m up) -- and the SAME row is drawn again by the
+scenery groups 20 m further out (lat -11). Dropping the object-pipeline copy (`JM_DROPTEST=trow`) removes the slab and
+leaves hedges both sides like the gold. Default: at the Ring, `trow*` is dropped from the object pipeline
+(`JM_RING_TROW_OBJ=1` keeps it). `261002/ring/trow_object_copy_dropped_s3655.jpg`.
+
+### AI-CARGFX-S8 — every AI car through GPL's DRIVER WRAPPER; the far-distance plate skipped
+* **Cause of the black/grey AI cars:** GPL composes a car as `<driver><number>a.3do` (or the chassis default `<x>d.3do`)
+  -> body: the wrapper binds the texture-SLOT table (livery, helmet, face) that the body's selectors index -- the player's
+  Lotus already goes through `lotd.3DO` (E106-S6b). The AI loaded the BARE body (`eagle.3do`), so its selectors found no
+  table: untextured triangles Eagle 2432 -> 1388 of 3055, Ferrari 1243 -> 632, Brabham 2746 -> 857 with the wrapper; the
+  black block over the Eagle's engine becomes the textured engine, exhausts and roll hoop (`eagle_bare_vs_wrapper.jpg`).
+  Wheel hubs still come from the bare body (`hub3do`), so `[wheels] hubs from the mesh` holds.
+* **Driver wrappers, as in the gold race:** the gold field (replay labels) is Clark #5, Hill #6 (Lotus), Bonnier #11
+  (Cooper), Amon #3 (Ferrari), Brabham #1 (Brabham). Ours: Ferrari `amo3a`, Brabham `bra1a`, Cooper `bon11a` (now RED like
+  the gold Cooper, was the green works car), Eagle `gur9a`, BRM `ste8a`; HUD name Cooper -> J Bonnier.
+  `JM_AI_DRIVERS="ferrari=amo20a,..."` overrides; `JM_AI_BODY_WRAP=0` reverts to the bare body.
+* **Poly type 0x81D on AI bodies** is GPL's coarse far-distance stand-in: it laid a pale lavender plate over the engine
+  (`eagle_81d_plate_ab.jpg`). Skipped for the AI only (the player's Lotus cowl IS 0x81D); `JM_AI_KEEP_81D=1` keeps it.
+* **New capture:** `JM_AICAM_SEQ="<slot>:<view>,..."` cycles the camera over (car, view) pairs and dumps each
+  (views: gplchase, chase, tv, f10, nose, rsusp) -- all five chassis x four views in one run
+  (`261002/aicargfx/all_chassis_4views_wg.jpg`).
+* **Still different from the gold:** (1) the rear suspension -- GPL shows horizontal silver drive shafts, coil springs and
+  a cross-tube; ours thin angled sticks at the wheels (E102/E106 articulation); (2) a small pale patch beside the gearbox;
+  (3) our chase camera sits higher than GPL's. The gold field has two Lotus AI and no BRM/Eagle -- matching the CHASSIS
+  set is a separate PO decision.
