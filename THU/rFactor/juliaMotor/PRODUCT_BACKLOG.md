@@ -28,6 +28,7 @@ this index was written; that is what it exists to stop.
 | **E111** | Spa: missing corner house before the 90° left; bright yellow polygon over the road after it | NEW 2026-09-28. `house12`/`house13` are in neither archive nor disk. |
 | **E85** | EPIC: multiplayer, the way GPL did it |  **sprint 1 DONE** (E85-S1): poses cross two processes exactly, both ways, gated. Sprints 2–4 open. |
 | **MP-GUI-1** | multiplayer in the PyQt launcher (PO 2026-10-01) | **S1 DONE (2026-10-01):** Drive-tab Host/Join/address/port + launcher lobby that copies the host's race settings; two-process test passes. Two-PC race from the GUI not yet run. |
+| **GPLWALL-1** | the user's car must never go through any object, GPL's way (PO 2026-10-01) | **S1-S8 DONE (2026-10-01):** GPL's .trk walls decoded and registered to the drawn faces; every other drawn obstacle solid; 0 of 378 crashes through on all five tracks (old system: 16/50 at WG). Gate `gplwall_smoke`. **Open:** GPL's own invisible walls (PO's call), AI cars. |
 | **E105** | a setup tab exposing modest chassis-setup changes | **values + reset DONE and gated** (E105-S1); the UI shell is the PO's call. NEW 2026-08-31. Relaxes the "no modifiable parameters" constraint, scoped to setup. assessed |
 | **E104** | every car floats 20–40 cm above the road; off-road contact is elastic (levitate/bounce) | ✅ **BOTH halves FIXED and gated** — (b) E104-S1 (the −999 off-mesh sentinel), (a) E104-S4 (found, fixed, gated; S2's mechanism was right). *Index row corrected 2026-09-18 — it had read "half (a) still open, needs a capture" for 17 days after S4 closed it.* |
 | **E102** | rear axles point outward/downward; must be horizontal, hub to chassis | **OPEN — two of my own diagnoses withdrawn** (S1: omitted BODY_OFF; S2: conflated components sharing a texture). Established: the assembly and wheels agree (brake disc within 2.8 mm). S4: 65 of 89 triangles are ONE connected mesh (so there is no separable shaft to level), but an isolated **3-triangle `axlelot` sliver** reaches the wheel plane and drops 0.099 m — the best candidate for the PO's "sticks". Needs a capture; three headless approaches are enough. |
@@ -21347,3 +21348,99 @@ image's extracted `usr/lib` + icon (its AppRun is byte-identical to the script's
 depot): julia resolves to the bundled depot-relative runtime; the bundled launcher builds the Multiplayer group;
 Watkins Glen 5-AI race smoke **exit 0, 152 s, 0 precompiles, 0 errors, user depot untouched**. The PO's existing
 install (stamp 20260926) will refresh its code on first launch.
+
+---
+
+## GPLWALL-1 — NEW (PO 2026-10-01): *"using GPL's methods where possible, ensure that the user's car will never go through any object on any track as if it wasn't there, consistent with the GPL behavior upon collision"*
+
+### GPL's method, decoded (S1)
+GPL's track `.3do` carries **no collision**; it all comes from the `.trk` (GPL track-making notes: "the track.3do file does
+not have collision, this information comes from the trk file"). Our `.trk` decoder skipped a `wallsize` block. Decoded
+(`demo/native/gplwall.jl`): each 52-byte section record points (i32[11] count, i32[12] first index) at a run of 32-byte
+**strip records**, left to right: lateral edge at section start and end (TRK units), a type word (low bits = surface,
+**bit 0x800 = raised**: GPLTrk's "or-in 2048 to give a wall a non-zero height"), and a height. The last record of every
+section is type 10 (the right world edge). Watkins Glen: 47 sections, 591 records, 107 raised strips at 0.76 / 0.91 /
+1.22 m. Across the five tracks: 107 / 193 / 606 / 1729 / 187 raised strips (WG / Monza / Spa / Ring / Zandvoort). Spa's
+176 zero-height 0x800 strips have zero thickness: flat, not walls. A raised strip **blocks** the car when it is
+>= 0.25 m tall (`JM_GPLWALL_HMIN`; the Lotus wheel radius is ~0.31 m).
+
+### Placement (S1-S3)
+The strips sit on GPL's reference line placed by **E107's rigid refit** (now one shared `rigid_refit`). Census of wall
+faces against the drawn near-vertical mesh, both lateral signs: **sign +1 wins on every track** (WG p50 0.64 m vs
+10.6 m), matching `TRK_CAL.sign`. GPL's trk23do generates the drawn walls from these same walls, so each wall face is
+then **registered** to the nearest drawn vertical face within 2 m (11 points per section; edge order preserved):
+faces within 0.25 m of a drawn face WG 21 → 72 %, Monza 30 → 82 %, Spa 4 → 59 %, Ring 9 → 63 %, Zandvoort 4 → 23 %.
+
+### Physics (S2, S4-S7)
+* **Why cars went through:** `contact_force` caps the outward Δv at 8 m/s per frame, so a 60 m/s square hit needs ~3.7 m
+  to stop, and a 0.9 m armco box flips its nearest face at 0.45 m and pushes the car THROUGH.
+* **GPL walls** (`gplwall_contact` / `gplwall_clamp!`): the car is located on GPL's line (section, fraction, lateral)
+  with a continuity hint; the free interval between the walls either side is chosen from the lateral it CAME FROM, so a
+  push never flips; the same contact law (`kind = :wall`) as every solid, so damage / wreck / FFB read a wall hit like
+  any hard hit; after each step the capsule may sit at most 0.3 m (`JM_GPLWALL_PEN`) into a face, with the velocity
+  into it removed and the slide along it kept. Faces whose lateral changes along the track get their **oblique** normal
+  (Monza's closing wedge at s~225 squeezed a car through at 26 m/s with lateral-only normals).
+* **Every other drawn obstacle** (`obs_*`): GPL leaves open areas (Spa's left edge is the world edge up to 346 m out)
+  with drawn fences, hedges, log piles, armco, boards. Every DRAWN near-vertical face at car height becomes a two-sided
+  collision segment: the track's parts AND every drawn object's parts (through its placement matrix), billboards as
+  discs (>= 3 m tall = hard trunk), forest-edge panels as hard segments. Excluded by data: ground textures (mostly
+  horizontal where drawn), faces < 0.25 m tall, faces whose bottom is > 1.2 m up (drive under), and anything on the
+  drawn road (E31). Foliage / hay / hedges are `:soft` (the PO's hedge rule). Long hard faces keep the side the car came
+  from; faces < 2 m (posts, poles) use closest points. Clamped like the walls; both clamps alternate twice.
+* **Wire fences drawn again**: `wiref_s` was excluded from the track on day one ("GPL Zandvoort (no wire fences)",
+  2026-06-15) and never revisited; GPL draws them and its walls stand on those lines. `JM_DRAW_WIREF=0` restores.
+* Teleports (respawn, recover, restart, wreck seal, shot placement) reset the continuity explicitly
+  (`gplw_teleported!`); after one, the obstacle clamp still pushes out from where the car's centre is.
+
+### Bugs found by tracing (each reproduced, fixed, re-measured)
+1. Locator hint never stored: at the Ring start a stretch 20 sections away lies within metres, and a car on sec 5 was
+   judged against sec 25's walls (a 6 m "penetration").
+2. Lateral-only normals in a closing wedge (Monza s~225, `JM_FIXED_DT=0.05` trace): car squeezed through.
+3. A 10 m teleport backstop (now 60 m; real teleports are signalled). The hitch theory behind it was wrong: frame dt is
+   clamped to 0.05 s.
+4. The wreck seal set a car down on a brake-marker board with nothing moving it that frame.
+5. A 0.55 m telegraph pole inside the car's footprint read as 1.6 m deep through the side-of-line rule.
+6. Wall END faces: a wall that begins at a section boundary has a face ACROSS the track. A car running into one at Spa
+   s~13950 was pushed 9 m sideways, through the wall; end faces are now longitudinal boundaries (look-ahead into the
+   next section, the face just entered, and reversing).
+7. A post-step early-out (skip the clamps when nothing is within 2 m) could not see a wall starting at the next section
+   boundary; it now stays off near section ends, and the side memories are refreshed on skipped frames.
+8. Load: the obstacle build took 33 s at Spa (untyped sources: function barrier; bounding-box grid insertion: walk
+   along the segment). Now WG 3.3 s, Monza 2.3 s, Zandvoort 3.5 s, Spa 7.6 s, Ring 6.1 s.
+
+### Measurements — `JM_CRASH` (new): player car from the racing line into each boundary, neutral inputs
+Final sweep (all fixes; `JM_CRASH=auto`, 45 deg, 55 m/s, every 150 m both sides; Spa every 300 m, Ring every 450 m):
+
+| track | scenarios | THROUGH | deepest GPL-wall pen. | deepest drawn-face pen. | invisible-wall contact |
+|---|---|---|---|---|---|
+| Watkins Glen | 50 | **0** | 0.31 m | 0.30 m | 1 |
+| Monza | 76 | **0** | 0.32 m | 0.30 m | 8 |
+| Zandvoort | 56 | **0** | 0.31 m | 0.30 m | 24 |
+| Spa | 94 | **0** | 0.35 m | 0.32 m | 1 |
+| Nürburgring | 102 | **0** | 0.52 m | 0.33 m | 14 |
+
+Grazes (Watkins Glen): 15 deg -> 0 through, 35/50 wrecked (nominal closing 14.2 m/s is over the PO's 12 m/s
+`WRECK_CLOSE`); 5 deg -> 0 through, 22/50 wrecked, against the OLD system's 25/50 wrecked and **10/50 through** in the
+same sweep, with the same closing-speed distribution (p50 19 m/s): with neutral inputs the car turns into the wall or
+slides into a wall end after first contact. No change to the wreck/damage rules.
+
+**Positive control** (`JM_GPLWALL=0`, the old system): Watkins Glen 16 of 50 through, up to 17 m into a wall, cars
+continuing at 37 m/s 60-95 m outside the track.
+**Cost:** 41 us/frame in normal driving (Spa, 600 frames); 0.3-0.8 ms/frame while in contact (crash sweeps,
+Ring highest).
+
+### Gate
+`JuliaMotorMTK/tools/gplwall_smoke.jl` (registered): decoder structure; treatment sweep (0 through, penetration <= 0.35 m:
+the 0.3 m limit + 5 cm for simultaneous wall and obstacle contacts); positive control must see cars go through.
+Full suite (`tools/gates.sh`, 27 min): **42 of 44 PASS**, `gplwall_smoke` included; the 2 failures are the pre-existing
+pair (`transmission_smoke`: no `.ibt` captures on this box; `road_clear_smoke`: Ring 123 terrain anomalies, unchanged).
+
+### Open — for the PO
+* **Invisible GPL walls.** Some GPL walls stand where nothing is drawn: open grass at Spa (s~8250 left), the foot of the
+  Ring's grass banks (s~9450 right), a closing wedge in Monza's left runoff. Our `.3do` is GPL's own, so GPL shows
+  nothing there either: these are GPL's own invisible boundaries (`JM_GPLWALL_SHOW=1` draws every GPL wall in magenta;
+  `261001/gplwall/`). Road-facing invisible share: WG 9 %, Monza 12 %, Spa 28 %, Ring 21 %, Zandvoort 65 % of road-facing wall samples
+have no drawn face, solid or bank within reach (`JM_GPLWALL_INVIS=1`). Kept as GPL behaves; the PO's call whether to soften
+  them.
+* AI cars still use the old contact (the request named the user's car); the planar `JM_2D` path is not covered.
+* Zandvoort's GPL walls register poorly to the drawn mesh (23 %): its barriers are hedges and post-and-wire fences.

@@ -27,6 +27,20 @@ include(joinpath(@__DIR__,"wreck_seal.jl")); using .WreckSeal   # E103: where a 
 include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","ibt.jl"))); using .IBT           # iRacing .ibt telemetry writer
 include("render.jl"); using .Render
 include("gpltrack.jl"); using .GPLTrack
+include("gplwall.jl"); using .GPLWall
+"""E107-S7: refit polyline A (GPL's aligned .trk centreline) onto B (our re-centred line, same indexing) by least
+squares: rotation + uniform scale + translation. The result is GPL's reference line where its .lp records and its
+.trk walls land on the drawn road (E107-S8 default)."""
+function rigid_refit(A, B)
+    n = min(length(A), length(B))
+    ax = sum(p[1] for p in A[1:n])/n; az = sum(p[2] for p in A[1:n])/n
+    bx = sum(p[1] for p in B[1:n])/n; bz = sum(p[2] for p in B[1:n])/n
+    sxx = sum((A[k][1]-ax)*(B[k][1]-bx) + (A[k][2]-az)*(B[k][2]-bz) for k in 1:n)
+    sxy = sum((A[k][1]-ax)*(B[k][2]-bz) - (A[k][2]-az)*(B[k][1]-bx) for k in 1:n)
+    saa = sum((A[k][1]-ax)^2 + (A[k][2]-az)^2 for k in 1:n)
+    th = atan(sxy, sxx); sc = hypot(sxx, sxy)/saa
+    [(bx + sc*(cos(th)*(p[1]-ax) - sin(th)*(p[2]-az)), bz + sc*(sin(th)*(p[1]-ax) + cos(th)*(p[2]-az))) for p in A]
+end
 include("audio.jl"); using .EngineAudio
 include("joycfg.jl"); using .JoyCfg
 include("ffb.jl"); using .FFB
@@ -361,6 +375,7 @@ const CARHALF = 1.4    # car collision half-extent (m)
 # with the vectors passed as ARGUMENTS at 60x the speed).  Declaring the binding types here costs
 # nothing at the call sites -- the `global SOLIDS = ...` rebuilds below still work, they just have
 # to stay this type -- and lets the compiler specialise the scan.
+const OBJ_CPU = Dict{String,Any}()   # GPLWALL-1: object name -> its CPU parts (object frame), for obstacle faces
 const SolidT    = Tuple{Float64,Float64,Float64,Symbol}
 const SolidBoxT = Union{Nothing,NTuple{3,Float64}}
 global SOLIDS::Vector{SolidT}      = SolidT[]
@@ -2601,7 +2616,12 @@ else
         flush(stdout)
     end
     tstamp("geometry extraction begins"); print("extracting geometry… "); flush(stdout)
-    const TRACKMAIN0 = Render.extract_gpl_car(ZTRK; track=true, mirror=true, exclude=("ltraymap","lshad","wiref_s"))
+    # GPLWALL-1 (2026-10-01): the wire catch-fences (`wiref_s`) were left out on day one ("GPL Zandvoort (no wire
+    # fences)", 2026-06-15) and never revisited. GPL draws them, and GPL's .trk walls stand on those fence lines, so
+    # without them the car stops against nothing visible. Drawn again (they also become solid obstacles from here).
+    # JM_DRAW_WIREF=0 restores the old exclusion.
+    const TRACKMAIN0 = Render.extract_gpl_car(ZTRK; track=true, mirror=true,
+                                              exclude = get(ENV, "JM_DRAW_WIREF", "1") == "0" ? ("ltraymap","lshad","wiref_s") : ("ltraymap","lshad"))
     # E68 S10 (PO: "lots of z-fighting on guardrails throughout" Watkins + residuals elsewhere):
     # 13% of Watkins Armco tris and 10% of its fence tris are EXACT coplanar duplicates that the
     # track path never collapsed.  Dedup rail/fence-family parts by quantized centroid+area
@@ -2765,6 +2785,300 @@ else
     # throughout".  (Exact-duplicate dedup was a near-no-op: extraction already collapses those.)
     # Per-part single-sided rendering for the rail family only — sign parts keep both faces (D6).
     const TRACK_RAILCULL = Bool[railfam(p.tex) for p in TRACK]
+end
+# ---- GPLWALL-1 (PO 2026-10-01: "using GPL's methods where possible, ensure that the user's car will never go
+# through any object on any track as if it wasn't there, consistent with the GPL behaviour upon collision") ----
+# GPL's track .3do carries no collision: GPL contains the car with the .trk strip list (gplwall.jl). Here those
+# strips are placed on GPL's reference line exactly as E107 places GPL's racing line (the rigid refit), the car is
+# located in GPL's (section, fraction, lateral) frame each frame, and the free interval between the walls either
+# side is its hard boundary. JM_GPLWALL=0 disables.
+const GPLW_ON   = !SKIDPAD                                       # the frame + data (also used by the JM_CRASH measurement)
+const GPLW_PHYS = GPLW_ON && get(ENV, "JM_GPLWALL", "1") != "0"   # the collision physics (walls + drawn obstacles)
+const GPLWALLS  = GPLW_ON ? GPLWall.read_walls(read(track_file(GPLNAME, ".trk"))) : nothing
+const GPLREF    = GPLW_ON ? rigid_refit(ALIGNED0, ALIGNED) : NTuple{2,Float64}[]
+const GPLREF_SUB = GPLW_ON ? length(GPLREF) ÷ length(GPLWALLS.secs) : 1
+GPLW_ON && length(GPLREF) != GPLREF_SUB*length(GPLWALLS.secs) &&
+    error("GPLWALL-1: reference line has $(length(GPLREF)) points for $(length(GPLWALLS.secs)) .trk sections -- not a whole number per section")
+const GPLW_SGN  = parse(Float64, get(ENV, "JM_GPLWALL_SGN", "1"))   # GPL lateral = SGN x (left-normal offset)
+const GPLW_HMIN = parse(Float64, get(ENV, "JM_GPLWALL_HMIN", "0.25"))  # a raised strip lower than this is climbable
+const GPLW_HINT = Ref(0)
+"""Locate world (x, z) on GPL's reference line: (section, fraction, GPL lateral, unit vector of +GPL lateral, d2).
+Searches +-60 nodes around the last hit (a circuit that passes close to itself must not jump stretches), falling
+back to the whole line when the hint is unset or the nearest node is implausibly far."""
+function gplw_locate(x, z; hint::Int = GPLW_HINT[], update::Bool = false)
+    A = GPLREF; n = length(A)
+    best = Inf; bk = 1; bu = 0.0
+    rng = hint == 0 ? (1:n) : ((hint - 60):(hint + 60))
+    @inbounds for kk in rng
+        k = mod1(kk, n); j = k == n ? 1 : k + 1
+        ax, az = A[k]; tx = A[j][1] - ax; tz = A[j][2] - az; L2 = tx*tx + tz*tz
+        u = L2 > 0 ? clamp(((x - ax)*tx + (z - az)*tz)/L2, 0.0, 1.0) : 0.0
+        dx = x - (ax + u*tx); dz = z - (az + u*tz); d2 = dx*dx + dz*dz
+        d2 < best && (best = d2; bk = k; bu = u)
+    end
+    hint != 0 && best > 400.0^2 && return gplw_locate(x, z; hint = 0, update = update)
+    update && (GPLW_HINT[] = bk)       # CONTINUITY: the Ring's start area has another stretch (sec 25) within metres of
+                                       # sec 5; without the hint every call re-picked the nearest and a car on sec 5 was
+                                       # judged against sec 25's walls (a 6 m "penetration", 2026-10-01 trace)
+    j = bk == n ? 1 : bk + 1
+    tx = A[j][1] - A[bk][1]; tz = A[j][2] - A[bk][2]; tl = max(hypot(tx, tz), 1e-9)
+    lx = -tz/tl; lz = tx/tl                                       # left normal of GPL's line
+    fx = A[bk][1] + bu*tx; fz = A[bk][2] + bu*tz
+    lat = GPLW_SGN*((x - fx)*lx + (z - fz)*lz)
+    sec = (bk - 1) ÷ GPLREF_SUB + 1
+    f = (((bk - 1) % GPLREF_SUB) + bu) / GPLREF_SUB
+    (sec, f, lat, GPLW_SGN*lx, GPLW_SGN*lz, best, bk)
+end
+# GPLWALL-1 S1/S3: REGISTER the walls to what is drawn. GPL's trk23do generates the drawn walls from these same .trk
+# walls, so in our world the drawn face IS where the wall is; what separates them is our placement of GPL's line
+# (census, sign +1: p50 0.5-1.6 m on four tracks). Each blocking wall face, at 11 points per section, moves to the
+# nearest near-vertical track-mesh face (>= GPLW_HMIN tall) within GPLW_REG m along the track normal; with none in
+# reach it stays where GPL put it. GPL keeps the TOPOLOGY (which walls, heights, gaps); the mesh supplies position.
+# JM_GPLWALL_REG=0 disables; JM_GPLWALL_CENSUS=1 prints the before/after match per track and exits.
+const GPLW_REG = parse(Float64, get(ENV, "JM_GPLWALL_REG", "2.0"))
+"plan-view grid of near-vertical track-mesh faces at least `hmin` tall: cell => (ax, az, bx, bz)"
+function gplw_vertical_grid(tris; C = 4.0, hmin = GPLW_HMIN)
+    grid = Dict{Tuple{Int,Int},Vector{NTuple{4,Float64}}}()
+    for t in tris
+        p1, p2, p3 = t.p
+        ux, uy, uz = p2[1]-p1[1], p2[2]-p1[2], p2[3]-p1[3]; vx, vy, vz = p3[1]-p1[1], p3[2]-p1[2], p3[3]-p1[3]
+        cx, cy, cz = uy*vz - uz*vy, uz*vx - ux*vz, ux*vy - uy*vx; nl = sqrt(cx^2 + cy^2 + cz^2)
+        (nl < 1e-9 || abs(cz)/nl > 0.3) && continue                           # near-vertical faces only
+        max(p1[3], p2[3], p3[3]) - min(p1[3], p2[3], p3[3]) < hmin && continue  # a kerb lip is not a wall
+        P = ((p1[1], p1[2]), (p2[1], p2[2]), (p3[1], p3[2]))
+        d(a, b) = hypot(a[1]-b[1], a[2]-b[2])
+        (a, b) = d(P[1], P[2]) >= max(d(P[1], P[3]), d(P[2], P[3])) ? (P[1], P[2]) :
+                 d(P[1], P[3]) >= d(P[2], P[3]) ? (P[1], P[3]) : (P[2], P[3])
+        seg = (Float64(a[1]), Float64(a[2]), Float64(b[1]), Float64(b[2]))
+        for i in floor(Int, min(a[1], b[1])/C):floor(Int, max(a[1], b[1])/C), j in floor(Int, min(a[2], b[2])/C):floor(Int, max(a[2], b[2])/C)
+            push!(get!(grid, (i, j), NTuple{4,Float64}[]), seg)
+        end
+    end
+    grid
+end
+"base point and +lateral unit vector of GPL's line at (section, fraction)"
+function gplw_frame(sec, f)
+    A = GPLREF; n = length(A)
+    t = (sec - 1)*GPLREF_SUB + f*GPLREF_SUB; k = clamp(floor(Int, t) + 1, 1, n); u = t - (k - 1)
+    j = k == n ? 1 : k + 1
+    tx = A[j][1] - A[k][1]; tz = A[j][2] - A[k][2]; tl = max(hypot(tx, tz), 1e-9)
+    (A[k][1] + u*tx, A[k][2] + u*tz, GPLW_SGN*(-tz/tl), GPLW_SGN*(tx/tl))
+end
+"lateral t in [e-w, e+w] nearest e where the line P + n t crosses a drawn vertical face (NaN if none)"
+function gplw_hit(grid, px, pz, nx, nz, e, w; C = 4.0)
+    best = NaN; bd = Inf; seen = Set{NTuple{4,Float64}}()
+    for t in (e - w):C:(e + w + C)
+        x = px + nx*min(t, e + w); z = pz + nz*min(t, e + w)
+        for i in floor(Int, x/C)-1:floor(Int, x/C)+1, j in floor(Int, z/C)-1:floor(Int, z/C)+1, sg in get(grid, (i, j), NTuple{4,Float64}[])
+            sg in seen && continue; push!(seen, sg)
+            (ax, az, bx, bz) = sg; ex = bx - ax; ez = bz - az
+            den = nx*ez - nz*ex; abs(den) < 1e-9 && continue        # parallel to the normal ray
+            tt = ((ax - px)*ez - (az - pz)*ex)/den                   # ray parameter (lateral)
+            ss = ((ax - px)*nz - (az - pz)*nx)/den                   # segment parameter
+            (0.0 <= ss <= 1.0 && e - w <= tt <= e + w) || continue
+            abs(tt - e) < bd && (bd = abs(tt - e); best = tt)
+        end
+    end
+    best
+end
+function gplw_register!(W, grid; w = GPLW_REG)
+    nface = 0; nreg = 0; shifts = Float64[]
+    for (si, v) in enumerate(W.secs)
+        E = W.E[si]; E0 = copy(E)
+        for k in 1:length(v)-1
+            (v[k].wall && v[k].height >= GPLW_HMIN) || continue
+            for kk in (k, k + 1), j in 1:GPLWall.NF+1
+                f = (j - 1)/GPLWall.NF
+                (px, pz, nx, nz) = gplw_frame(si, f)
+                nface += 1
+                t = gplw_hit(grid, px, pz, nx, nz, E0[kk, j], w)
+                isnan(t) && continue
+                E[kk, j] = t; nreg += 1; push!(shifts, t - E0[kk, j])
+            end
+        end
+        # a registration may not reorder edges (a wall cannot end left of where it starts): revert any column that does
+        for j in 1:GPLWall.NF+1
+            all(E[k, j] <= E[k+1, j] + 1e-6 for k in 1:size(E, 1)-1) || (E[:, j] .= E0[:, j])
+        end
+    end
+    (nface, nreg, shifts)
+end
+if GPLW_ON && (get(ENV, "JM_GPLWALL_REG", "2.0") != "0" || get(ENV, "JM_GPLWALL_CENSUS", "0") != "0")
+    let grid = gplw_vertical_grid(TRACKMESH.tris)
+        function census(label)
+            ds = Float64[]
+            for (si, v) in enumerate(GPLWALLS.secs), j in 1:GPLWall.NF+1, k in 1:length(v)-1
+                (v[k].wall && v[k].height >= GPLW_HMIN) || continue
+                f = (j - 1)/GPLWall.NF; (px, pz, nx, nz) = gplw_frame(si, f)
+                for kk in (k, k + 1)
+                    e = GPLWALLS.E[si][kk, j]; t = gplw_hit(grid, px, pz, nx, nz, e, 6.0)
+                    push!(ds, isnan(t) ? Inf : abs(t - e))
+                end
+            end
+            u = sort(ds); m = length(u)
+            println("  [gplwall census] ", TRACKSEL, " ", label, ": ", m, " wall faces; drawn face within 0.25 m ",
+                    round(100*count(<=(0.25), u)/m, digits=1), "%, 1 m ", round(100*count(<=(1.0), u)/m, digits=1),
+                    "%, 2 m ", round(100*count(<=(2.0), u)/m, digits=1), "%; none within 6 m ", round(100*count(isinf, u)/m, digits=1), "%")
+        end
+        CEN = get(ENV, "JM_GPLWALL_CENSUS", "0") != "0"
+        CEN && census("as placed")
+        if get(ENV, "JM_GPLWALL_REG", "2.0") != "0"
+            (nf, nr, sh) = gplw_register!(GPLWALLS, grid)
+            a = sort(abs.(sh))
+            println("  GPLWALL-1: ", TRACKSEL, " walls registered to the drawn faces: ", nr, " of ", nf, " face points (",
+                    round(100*nr/max(nf, 1), digits=1), "%), |shift| p50 ", isempty(a) ? 0 : round(a[end÷2+1], digits=2),
+                    " m, p90 ", isempty(a) ? 0 : round(a[max(1, 9*length(a)÷10)], digits=2), " m")
+            CEN && census("registered")
+        end
+        CEN && exit(0)
+    end
+end
+# JM_GPLWALL_SHOW=1: draw every blocking GPL wall face (after registration) as a magenta ribbon, wall-height tall
+# (0.3..2.5 m), so where GPL's walls stand can be SEEN against the scenery. A debug overlay; nothing collides with it.
+if GPLW_ON && get(ENV, "JM_GPLWALL_SHOW", "0") != "0"
+    let v = Float32[], col = (1f0, 0f0, 1f0)
+        pv(x, y, z) = append!(v, Float32[x, y, -z, 0f0, 1f0, 0f0, col[1], col[2], col[3], 0f0, 0f0])   # render frame
+        gh(x, z) = (h = JuliaMotor.hat3d(TERRAIN, x, z; ref = Inf); h[3] ? Float64(h[1]) : NaN)
+        for (si, w) in enumerate(GPLWALLS.secs), k in 1:length(w)-1
+            (w[k].wall && w[k].height >= GPLW_HMIN) || continue
+            hgt = clamp(w[k].height, 0.3, 2.5)
+            for kk in (k, k + 1), j in 1:GPLWall.NF
+                f0 = (j - 1)/GPLWall.NF; f1 = j/GPLWall.NF
+                (p0x, p0z, n0x, n0z) = gplw_frame(si, f0); (p1x, p1z, n1x, n1z) = gplw_frame(si, f1)
+                e0 = GPLWALLS.E[si][kk, j]; e1 = GPLWALLS.E[si][kk, j + 1]
+                ax = p0x + n0x*e0; az = p0z + n0z*e0; bx = p1x + n1x*e1; bz = p1z + n1z*e1
+                ha = gh(ax, az); hb = gh(bx, bz); (isnan(ha) || isnan(hb)) && continue
+                for (q1, q2, q3) in (((ax, ha, az), (bx, hb, bz), (bx, hb + hgt, bz)), ((ax, ha, az), (bx, hb + hgt, bz), (ax, ha + hgt, az)),
+                                     ((ax, ha, az), (bx, hb + hgt, bz), (bx, hb, bz)), ((ax, ha, az), (ax, ha + hgt, az), (bx, hb + hgt, bz)))
+                    pv(q1...); pv(q2...); pv(q3...)
+                end
+            end
+        end
+        push!(TRACK, Render.TrackPart(v, "", col)); push!(TRACK_RAILCULL, false)
+        println("  GPLWALL-1: JM_GPLWALL_SHOW overlay, ", length(v) ÷ 33, " triangles")
+    end
+end
+# ---- GPLWALL-1 S2: the walls as a hard boundary for the PLAYER car ----
+# Why a separate path from SOLIDS: contact_force caps the outward change of speed at CONTACT_DVMAX (8 m/s) per
+# frame, so a 60 m/s square hit needs ~3.7 m to stop. A 0.9 m armco box flips its nearest face at 0.45 m and
+# pushes the car THROUGH -- "as if it wasn't there". A GPL wall is a boundary in track coordinates: the free
+# interval is chosen from LAST frame's lateral, so the push always points back to the side the car came from,
+# and gplwall_clamp! never lets the capsule sink more than GPLW_PEN into it. The force is the same contact law
+# (kind :wall) every solid uses, so damage, wreck and FFB read a wall hit exactly as any other hard hit.
+const GPLW_PEN  = parse(Float64, get(ENV, "JM_GPLWALL_PEN", "0.3"))   # m: deepest the capsule may go into a wall
+const GPLW_PREV = Ref(NaN)                       # last frame's GPL lateral (NaN = unknown: use the current one)
+const GPLW_LAST = Ref((NaN, NaN))                # last position seen, to detect a teleport (respawn/recover)
+const GPLW_STAT = Ref((hits = 0, clamps = 0, maxpen = 0.0))
+const GPLW_T = Ref((0.0, 0))
+const GPLW_NEAR = Ref(true)    # the pre-step contact pass found a wall or hard obstacle within 2 m (else the clamps are skipped)                     # (seconds in wall+obstacle contact/clamp, frames) -- cost report
+"a TELEPORT (respawn, recover, restart, wreck seal, shot placement): the next contact has no 'side it came from'"
+gplw_teleported!() = (GPLW_PREV[] = NaN; GPLW_HINT[] = 0; GPLW_LAST[] = (NaN, NaN); OBS_PREV[] = (NaN, NaN); nothing)
+"(interval faces, gap to each, normals) for the capsule at (x, z, θ) -- gap < 0 = penetration"
+function gplwall_gaps(x, z, θ)
+    lp = GPLW_LAST[]
+    # teleports are signalled explicitly (gplw_teleported!); the distance test is only a backstop (frame dt is clamped
+    # to 0.05 s, so a car cannot legitimately move 60 m in one frame).
+    (isnan(lp[1]) || hypot(x - lp[1], z - lp[2]) > 60.0) && (GPLW_PREV[] = NaN; GPLW_HINT[] = 0)
+    (sec, f, lat, gx, gz) = gplw_locate(x, z; update = true)
+    GPLW_LAST[] = (x, z)
+    ref = isnan(GPLW_PREV[]) ? lat : GPLW_PREV[]
+    (lo, hi, hlo, hhi) = GPLWall.free_interval(GPLWALLS, sec, f, ref, ref; hmin = GPLW_HMIN)
+    nsec = length(GPLWALLS.secs); L = max(GPLWALLS.seclen[sec], 1.0)
+    tx = GPLW_SGN*gz; tz = -GPLW_SGN*gx                 # unit tangent of GPL's line (direction of increasing s)
+    ext = CARLF*abs(cos(θ)*tx + sin(θ)*tz) + CARW       # the capsule's reach along the track
+    # GPLWALL-1 S8: wall END faces. A wall that starts (or stops) at a section boundary has a face ACROSS the track. With
+    # lateral faces only, a car running at lateral 21.8 into Spa's section 235 -- where a wall begins at 12.8..23 m --
+    # was pushed 9 m sideways onto the road side, through the wall (JM_FIXED_DT=0.05 trace, s~13950). The end face is
+    # a longitudinal boundary: gap along the track, normal along -+t.
+    gend = Inf; nend = (0.0, 0.0)
+    inside = !(lo <= ref <= hi)
+    if inside && f*L < ext + 3.0
+        psec = sec == 1 ? nsec : sec - 1
+        (plo, phi) = GPLWall.free_interval(GPLWALLS, psec, 1.0, ref, ref; hmin = GPLW_HMIN)
+        if plo <= ref <= phi                            # free just behind: the car came through the wall's START face
+            lo, hi = plo, phi                           # keep the lateral limits of where it came from
+            gend = -f*L - ext; nend = (-tx, -tz)
+        end
+    elseif !inside && (1 - f)*L < ext + 3.0             # approaching the next section: does a wall START at this lateral?
+        qsec = sec == nsec ? 1 : sec + 1
+        (qlo, qhi) = GPLWall.free_interval(GPLWALLS, qsec, 0.0, lat, lat; hmin = GPLW_HMIN)
+        (qlo <= lat <= qhi) || (gend = (1 - f)*L - ext; nend = (-tx, -tz))
+    elseif !inside && f*L < ext + 3.0                   # reversing: did a wall END just behind, at this lateral?
+        psec = sec == 1 ? nsec : sec - 1
+        (plo, phi) = GPLWall.free_interval(GPLWALLS, psec, 1.0, lat, lat; hmin = GPLW_HMIN)
+        (plo <= lat <= phi) || (gend = f*L - ext; nend = (tx, tz))
+    end
+    # far from both faces and from any end face: lateral normals are exact enough, skip the slopes
+    reach0 = CARLF + CARW
+    if (lat - lo) - reach0 > 1.5 && (hi - lat) - reach0 > 1.5 && !isfinite(gend)
+        rl = CARLF*abs(cos(θ)*gx + sin(θ)*gz)
+        return (lat, lo, hi, (lat - lo) - rl - CARW, (hi - lat) - rl - CARW, gx, gz, (gx, gz), (-gx, -gz), gend, nend)
+    end
+    # GPLWALL-1 S6: a face whose lateral changes along the track is OBLIQUE, and its normal must say so (Monza's closing
+    # wedge at s~225). Slope from the same interval at f +- 0.02; where the topology changes over that step, 0.
+    δ = 0.02
+    (loa, hia) = GPLWall.free_interval(GPLWALLS, sec, max(f - δ, 0.0), ref, ref; hmin = GPLW_HMIN)
+    (lob, hib) = GPLWall.free_interval(GPLWALLS, sec, min(f + δ, 1.0), ref, ref; hmin = GPLW_HMIN)
+    ds = (min(f + δ, 1.0) - max(f - δ, 0.0))*L
+    slo = (isfinite(loa) && isfinite(lob) && abs(lob - lo) < 2.0 && abs(loa - lo) < 2.0) ? clamp((lob - loa)/ds, -3.0, 3.0) : 0.0
+    shi = (isfinite(hia) && isfinite(hib) && abs(hib - hi) < 2.0 && abs(hia - hi) < 2.0) ? clamp((hib - hia)/ds, -3.0, 3.0) : 0.0
+    klo = sqrt(1 + slo^2); khi = sqrt(1 + shi^2)
+    nlo = ((gx - slo*tx)/klo, (gz - slo*tz)/klo)         # free-side normal of the left face  (grad of lat - lo(s))
+    nhi = ((-gx + shi*tx)/khi, (-gz + shi*tz)/khi)       # free-side normal of the right face (grad of hi(s) - lat)
+    rlo = CARLF*abs(cos(θ)*nlo[1] + sin(θ)*nlo[2]); rhi = CARLF*abs(cos(θ)*nhi[1] + sin(θ)*nhi[2])
+    glo = (lat - lo)/klo - rlo - CARW
+    ghi = (hi - lat)/khi - rhi - CARW
+    (lat, lo, hi, glo, ghi, gx, gz, nlo, nhi, gend, nend)
+end
+function gplwall_contact(x, z, θ, dt)
+    Fx = 0.0; Fy = 0.0; Mz = 0.0; peak = 0.0; closing = 0.0
+    (lat, lo, hi, glo, ghi, gx, gz, nlo, nhi, gend, nend) = gplwall_gaps(x, z, θ)
+    GPLW_NEAR[] = min(glo, ghi, gend) < 2.0
+    GPLW_NEAR[] || ((lo < lat < hi) && (GPLW_PREV[] = lat))   # far from every face: this lateral is a valid "came from"
+    for (g, (nx, nz)) in ((glo, nlo), (ghi, nhi), (gend, nend))   # outward normal = back into the free region
+        g >= 0.0 && continue
+        vn = WVX[]*nx + WVZ[]*nz
+        (fx, fy, mz) = DriveRT3D.contact_force(-g, nx, nz, vn, θ; kind = :wall, dt = dt)
+        Fx += fx; Fy += fy; Mz += mz; peak = max(peak, hypot(fx, fy)); closing = max(closing, -vn)
+    end
+    (Fx, Fy, Mz, peak, peak, closing)
+end
+"After the step: never deeper than GPLW_PEN into any GPL wall face (sides, and the end faces across the track). Moves
+the car back along each face's normal and removes the velocity INTO it, keeping the rest (it stops at the wall and slides
+along it; in a closing wedge both faces take the forward speed and it stops)."
+function gplwall_clamp!(c)
+  local lat, lo, hi
+  for it in 1:3        # a push along a STEEP oblique face also moves the car along the track, where the face sits elsewhere
+    (lat, lo, hi, glo, ghi, gx, gz, nlo, nhi, gend, nend) = gplwall_gaps(c.x, c.z, c.θ)
+    if it == 1 && min(glo, ghi, gend) < 0.0
+        GPLW_STAT[] = (hits = GPLW_STAT[].hits + 1, clamps = GPLW_STAT[].clamps, maxpen = max(GPLW_STAT[].maxpen, -min(glo, ghi, gend)))
+    end
+    min(glo, ghi, gend) >= -GPLW_PEN - 0.01 && break
+    for (g, (nx, nz)) in ((glo, nlo), (ghi, nhi), (gend, nend))
+        g < -GPLW_PEN || continue
+        push = -g - GPLW_PEN
+        (wx, wz) = DriveRT3D.world_velocity(c)
+        vn = wx*nx + wz*nz
+        vn < 0.0 && (wx -= vn*nx; wz -= vn*nz)          # drop the into-wall component only
+        cθ = cos(c.θ); sθ = sin(c.θ)
+        xn = c.x + push*nx; zn = c.z + push*nz
+        c.s_pos(c.integ, [xn, zn]); c.x = xn; c.z = zn
+        c.s_vel(c.integ, [wx*cθ + wz*sθ, -wx*sθ + wz*cθ])
+        GPLW_STAT[] = (hits = GPLW_STAT[].hits, clamps = GPLW_STAT[].clamps + 1, maxpen = GPLW_STAT[].maxpen)
+        lat += (nx*gx + nz*gz)*push                     # lateral after the push
+    end
+  end
+    GPLW_LAST[] = (c.x, c.z)
+    lo < lat < hi && (GPLW_PREV[] = lat)                # continuity: only a lateral inside the free interval
+    nothing
+end
+"world point of GPL (section, fraction, lateral)"
+function gplw_world(sec, f, lat)
+    A = GPLREF; n = length(A)
+    t = (sec - 1)*GPLREF_SUB + f*GPLREF_SUB; k = clamp(floor(Int, t) + 1, 1, n); u = t - (k - 1)
+    j = k == n ? 1 : k + 1
+    tx = A[j][1] - A[k][1]; tz = A[j][2] - A[k][2]; tl = max(hypot(tx, tz), 1e-9)
+    (A[k][1] + u*tx + GPLW_SGN*lat*(-tz/tl), A[k][2] + u*tz + GPLW_SGN*lat*(tx/tl))
 end
 # ---- E7 boundary audit (JM_BOUNDARY_TEST): confirm the terrain HAT BOUNDS the world ----
 # The game holds the car at the last in-world spot whenever it steps off the HAT, so the
@@ -4380,6 +4694,14 @@ const SHOTS = [let f = split(String(spec), ":")
                              length(f) >= 3 ? String(f[3]) : "shot$(i)")
                end for (i, spec) in enumerate(filter(!isempty, split(get(ENV, "JM_SHOTS", ""), ";")))]
 const SHOTS_DIR   = get(ENV, "JM_SHOTS_DIR", "/tmp")
+# GPLWALL-1 S4: JM_CRASH="s:L|R:deg:mps;..." (or "auto:<metres>") drives the player car from the racing line into
+# the left/right boundary at `deg` off the road heading and `mps`, neutral inputs, for JM_CRASH_FRAMES frames, and
+# reports the deepest wall/solid penetration and whether the car ENDED inside the free interval holding GPL's road
+# (a car that went through a wall did not). Smoke-only test hook.
+const CRASH_SPEC   = get(ENV, "JM_CRASH", "")
+const CRASH_FRAMES = parse(Int, get(ENV, "JM_CRASH_FRAMES", "150"))
+const CRASH_ON     = haskey(ENV, "JM_SMOKE") && !isempty(CRASH_SPEC)
+const CRASHES      = NTuple{4,Float64}[]          # (s, side -1 left / +1 right, deg, m/s); filled at loop start
 # RACEEND-1 / AISLEEVE-1 verification hook: JM_SHOT_AT="when:view:name;..." photographs at a TIME
 # instead of a place, so a race in progress or a REPLAY can be captured without teleporting the car.
 # when = seconds of sim time (replay time in a replay) or "finish+<s>" = seconds after the race ends;
@@ -5522,6 +5844,7 @@ let objnames=Set{String}()
                     # parts, so a foliage backdrop grades like the track's grass and a grandstand does not.
                     OBJ_VEG_GRADE && (OBJVEG[lowercase(inst.name)] = Bool[is_foliage_tex(lowercase(pp.tex)) for pp in parts])
                     _tb = time(); objmesh[inst.name] = Render.build_gpl(parts, TEXIDX); _e92.bld[] += time() - _tb
+                    OBJ_CPU[lowercase(inst.name)] = parts      # GPLWALL-1: the drawn object faces become obstacles
                 end
             end
         catch; objmesh[inst.name]=nothing; end
@@ -7423,6 +7746,377 @@ let objnames=Set{String}()
         println("   (", nkept, " crowd rows KEPT after drop())"); flush(stdout)
     end
 end
+# ---- GPLWALL-1 S3: what can the car still drive THROUGH? (JM_GPLWALL_INTERIOR=1 prints and exits) ----
+# Every drawn obstacle the car can reach must stop it. Reachable = inside the free interval that holds GPL's own
+# road (the widest asphalt strip of the section, not lateral 0: Monza's line runs off the road at s~441). An
+# obstacle is a near-vertical track-mesh face >= GPLW_HMIN tall whose bottom is within car height of the ground
+# (a bridge deck overhead is not one), or a drawn trackside object. Covered = some SOLID's boundary within 0.3 m.
+const GPLW_NODEGRID = let g = Dict{Tuple{Int,Int},Vector{Int}}()
+    for (k, p) in enumerate(GPLREF); push!(get!(g, (floor(Int, p[1]/16), floor(Int, p[2]/16)), Int[]), k); end
+    g
+end
+"locate without a hint: nearest GPL node from the node grid (within ~150 m), then the hinted search"
+function gplw_locate_any(x, z)
+    ci = floor(Int, x/16); cj = floor(Int, z/16); best = 0; bd = Inf
+    for r in 0:10
+        for i in ci-r:ci+r, j in cj-r:cj+r
+            (abs(i - ci) == r || abs(j - cj) == r) || continue
+            for k in get(GPLW_NODEGRID, (i, j), Int[])
+                d = (GPLREF[k][1] - x)^2 + (GPLREF[k][2] - z)^2
+                d < bd && (bd = d; best = k)
+            end
+        end
+        best != 0 && r >= 1 && break
+    end
+    best == 0 ? nothing : gplw_locate(x, z; hint = best)
+end
+"the free interval that holds GPL's road at (section, fraction)"
+function gplw_road_interval(sec, f)
+    v = GPLWALLS.secs[sec]; bw = -1.0; mid = 0.0
+    for k in 1:length(v)-1
+        (v[k].typ & 0x7ff) == 1 || continue
+        a = GPLWall.edge(GPLWALLS, sec, k, f); b = GPLWall.edge(GPLWALLS, sec, k + 1, f)
+        b - a > bw && (bw = b - a; mid = (a + b)/2)
+    end
+    GPLWall.free_interval(GPLWALLS, sec, f, mid, mid; hmin = GPLW_HMIN)
+end
+if GPLW_ON && get(ENV, "JM_GPLWALL_INTERIOR", "0") != "0"
+    let tex = Dict{String,Vector{Any}}(), nin = Ref(0), nunc = Ref(0), nsamp = Ref(0)
+        covered(x, z) = any(k -> solid_gap(x, z, k)[1] <= 0.3, eachindex(SOLIDS))
+        function probe(x, z, label)
+            r = gplw_locate_any(x, z); r === nothing && return
+            (sec, f, lat) = r
+            (lo, hi) = gplw_road_interval(sec, f)
+            (lo + 0.5 < lat < hi - 0.5) || return
+            nin[] += 1
+            covered(x, z) && return
+            nunc[] += 1
+            e = get!(tex, label, Any[0, Inf, 0.0, 0]); e[1] += 1
+            d = min(lat - lo, hi - lat); d < e[2] && (e[2] = d; e[4] = sec - 1)
+            e[3] = max(e[3], min(lat - lo, hi - lat))
+        end
+        for t in TRACKMESH.tris
+            p1, p2, p3 = t.p
+            ux, uy, uz = p2[1]-p1[1], p2[2]-p1[2], p2[3]-p1[3]; vx, vy, vz = p3[1]-p1[1], p3[2]-p1[2], p3[3]-p1[3]
+            cx, cy, cz = uy*vz - uz*vy, uz*vx - ux*vz, ux*vy - uy*vx; nl = sqrt(cx^2 + cy^2 + cz^2)
+            (nl < 1e-9 || abs(cz)/nl > 0.3) && continue
+            zlo = min(p1[3], p2[3], p3[3]); max(p1[3], p2[3], p3[3]) - zlo < GPLW_HMIN && continue
+            P = ((p1[1], p1[2]), (p2[1], p2[2]), (p3[1], p3[2]))
+            d(a, b) = hypot(a[1]-b[1], a[2]-b[2])
+            (a, b) = d(P[1], P[2]) >= max(d(P[1], P[3]), d(P[2], P[3])) ? (P[1], P[2]) :
+                     d(P[1], P[3]) >= d(P[2], P[3]) ? (P[1], P[3]) : (P[2], P[3])
+            L = d(a, b); m = max(1, ceil(Int, L/2))
+            for q in 0:m
+                x = a[1] + (b[1] - a[1])*q/m; z = a[2] + (b[2] - a[2])*q/m
+                h = JuliaMotor.hat3d(TERRAIN, x, z; ref = Inf)
+                (h[3] && zlo > h[1] + 1.2) && continue           # overhead (a bridge deck, a banner): drive under it
+                nsamp[] += 1
+                probe(x, z, "mesh:" * lowercase(t.tex))
+            end
+        end
+        for o in OBJECTS
+            probe(Float64(o[4][1]), -Float64(o[4][3]), "obj:" * o[5])
+        end
+        println("  [gplwall interior] ", TRACKSEL, ": ", nsamp[], " mesh samples + ", length(OBJECTS), " objects; inside the road's free interval ",
+                nin[], "; NOT covered by any solid ", nunc[])
+        for (k, e) in sort(collect(tex), by = x -> -x[2][1])[1:min(end, 25)]
+            println("     ", rpad(k, 26), lpad(e[1], 6), "  nearest to a wall face ", round(e[2], digits=1), " m (sec ", e[4],
+                    "), deepest inside ", round(e[3], digits=1), " m")
+        end
+    end
+    exit(0)
+end
+# ---- GPLWALL-1 S5: every other DRAWN obstacle is solid for the player ----
+# GPL's .trk walls leave open areas (Spa's left boundary is the world edge up to 346 m out) that hold drawn fences,
+# hedges, log piles, armco runs and boards; in GPL you drive through those. PO 2026-10-01: never. So each DRAWN
+# near-vertical face (from the parts the renderer draws -- E87: nothing invisible collides) at car height becomes a
+# two-sided collision segment, and each drawn billboard a disc. Excluded, by data rather than by name list:
+#   * ground textures (more than half of the texture's drawn triangles are horizontal): a terrain step is the HAT's job;
+#   * faces lower than GPLW_HMIN, or whose bottom is more than 1.2 m above the ground (drive under: decks, banners);
+#   * anything standing on GPL's own asphalt strip (E31: never a trap on the road).
+# Foliage (is_foliage_tex) and hay/straw are :soft (the PO's hedge rule: plough in, bleed speed, get stuck).
+# A :wall contact keeps the side the car came from (last frame's centre), so a 0.9 m armco or a 2 cm fence can no
+# longer be crossed in one frame or pushed through; obs_clamp! holds penetration to GPLW_PEN. JM_OBSTACLES=0 disables.
+const OBS_ON   = GPLW_ON && get(ENV, "JM_OBSTACLES", "1") != "0"
+const OBS_SEG  = NTuple{5,Float64}[]          # ax, az, bx, bz, r   (r > 0 and a == b: a disc)
+const OBS_KIND = Symbol[]
+const OBS_NAME = String[]
+const OBS_GRID = Dict{Tuple{Int,Int},Vector{Int32}}()
+const OBS_C    = 4.0
+const OBS_PREV = Ref((NaN, NaN))
+const DRAWN_GRID = Dict{Tuple{Int,Int},Vector{NTuple{4,Float64}}}()   # EVERY drawn vertical face (metrics only)
+const OBS_STAT = Ref((hits = 0, clamps = 0, maxpen = 0.0))
+"is (x, z) on GPL's asphalt strip (+-0.3 m) at its own section?"
+function gplw_on_asphalt(x, z)
+    r = gplw_locate_any(x, z); r === nothing && return false
+    (sec, f, lat) = r; v = GPLWALLS.secs[sec]
+    for k in 1:length(v)-1
+        (v[k].typ & 0x7ff) == 1 || continue
+        GPLWall.edge(GPLWALLS, sec, k, f) - 0.3 <= lat <= GPLWall.edge(GPLWALLS, sec, k + 1, f) + 0.3 && return true
+    end
+    false
+end
+# 1 m cells covered by the road's triangles (bounding boxes, dilated one cell): a face whose points miss every cell is
+# certainly off the road, so the exact test runs only near the road (Spa: the build took 33 s without this filter).
+const ROADCELLS = Set{Tuple{Int,Int}}()
+if GPLW_ON
+    for t in TRACKMESH0.tris
+        ROAD_TEX(lowercase(t.tex)) || continue
+        xs = (t.p[1][1], t.p[2][1], t.p[3][1]); zs = (t.p[1][2], t.p[2][2], t.p[3][2])
+        for i in floor(Int, minimum(xs)) - 1:floor(Int, maximum(xs)) + 1, j in floor(Int, minimum(zs)) - 1:floor(Int, maximum(zs)) + 1
+            push!(ROADCELLS, (i, j))
+        end
+    end
+end
+"on the DRAWN road (the road-only HAT, +-0.3 m)? Fast; falls back to GPL's asphalt strip where there is no road-only HAT."
+function obs_on_road(x, z)
+    ROADHAT === TERRAIN0 && return gplw_on_asphalt(x, z)
+    (floor(Int, x), floor(Int, z)) in ROADCELLS || return false
+    for (dx, dz) in ((0.0, 0.0), (0.3, 0.0), (-0.3, 0.0), (0.0, 0.3), (0.0, -0.3))
+        JuliaMotor.hat3d(ROADHAT, x + dx, z + dz; ref = Inf)[3] && return true
+    end
+    false
+end
+"grid cells a segment (plus margin r) passes through -- walked along it, not its bounding box (a 185 m diagonal
+forest face spans ~2000 bbox cells but ~50 along its length)"
+function seg_cells(ax, az, bx, bz, r; C = OBS_C)
+    out = Set{Tuple{Int,Int}}(); L = hypot(bx - ax, bz - az); n = max(1, ceil(Int, L/(C/2)))
+    m = ceil(Int, r/C)
+    for q in 0:n
+        x = ax + (bx - ax)*q/n; z = az + (bz - az)*q/n; ci = floor(Int, x/C); cj = floor(Int, z/C)
+        for i in ci-m:ci+m, j in cj-m:cj+m; push!(out, (i, j)); end
+    end
+    out
+end
+function obs_add!(ax, az, bx, bz, r, kind, name)
+    push!(OBS_SEG, (ax, az, bx, bz, r)); push!(OBS_KIND, kind); push!(OBS_NAME, name); id = Int32(length(OBS_SEG))
+    for c in seg_cells(ax, az, bx, bz, r); push!(get!(OBS_GRID, c, Int32[]), id); end
+end
+"GPLWALL-1: one drawn part's near-vertical faces -> obstacles. A function barrier: the sources vector is untyped, and in
+the caller every vertex/matrix access dispatched dynamically (Spa's build took 33 s)."
+function obs_build_part!(p, M, oname, ground, softname, bump)
+        isempty(p.tex) && return                            # untextured debug overlays (JM_GPLWALL_SHOW)
+        tx = lowercase(p.tex); ground(tx) && (bump(:ground); return)
+        kind = (is_foliage_tex(p.tex) || softname(tx) || softname(oname)) ? :soft : :wall
+        v = p.verts
+        for k in 1:33:length(v)-32
+            P = ntuple(3) do q
+                o = k + 11(q-1); vx = Float64(v[o]); vy = Float64(v[o+1]); vz = Float64(v[o+2])
+                if M !== nothing
+                    (vx, vy, vz) = (M[1,1]*vx + M[1,2]*vy + M[1,3]*vz + M[1,4], M[2,1]*vx + M[2,2]*vy + M[2,3]*vz + M[2,4],
+                                    M[3,1]*vx + M[3,2]*vy + M[3,3]*vz + M[3,4])
+                end
+                (vx, -vz, vy)                                # render (x, up, -z) -> physics (x, z, up)
+            end
+            ux, uy, uz = P[2][1]-P[1][1], P[2][2]-P[1][2], P[2][3]-P[1][3]; wx, wy, wz = P[3][1]-P[1][1], P[3][2]-P[1][2], P[3][3]-P[1][3]
+            cx, cy, cz = uy*wz - uz*wy, uz*wx - ux*wz, ux*wy - uy*wx; nl = sqrt(cx^2 + cy^2 + cz^2)
+            (nl < 1e-9 || abs(cz)/nl > 0.3) && continue                       # near-vertical faces only
+            zlo = min(P[1][3], P[2][3], P[3][3]); zhi = max(P[1][3], P[2][3], P[3][3])
+            zhi - zlo < GPLW_HMIN && (bump(:low); continue)
+            d(a, b) = hypot(a[1]-b[1], a[2]-b[2])
+            (a, b) = d(P[1], P[2]) >= max(d(P[1], P[3]), d(P[2], P[3])) ? (P[1], P[2]) :
+                     d(P[1], P[3]) >= d(P[2], P[3]) ? (P[1], P[3]) : (P[2], P[3])
+            for c in seg_cells(a[1], a[2], b[1], b[2], 0.0); push!(get!(DRAWN_GRID, c, NTuple{4,Float64}[]), (a[1], a[2], b[1], b[2])); end
+            mx = (a[1] + b[1])/2; mz = (a[2] + b[2])/2
+            h = JuliaMotor.hat3d(TERRAIN, mx, mz; ref = Inf)
+            if h[3]
+                zlo > h[1] + 1.2 && (bump(:overhead); continue)
+                zhi < h[1] + GPLW_HMIN && (bump(:buried); continue)
+            end
+            (obs_on_road(a[1], a[2]) || obs_on_road(mx, mz) || obs_on_road(b[1], b[2])) && (bump(:onroad); continue)
+            obs_add!(a[1], a[2], b[1], b[2], 0.0, kind, tx)
+        end
+    end
+if OBS_ON
+    let t0 = time(), horiz = Dict{String,Vector{Int}}(), nskip = Dict{Symbol,Int}()
+        softname(n) = occursin("hay", n) || occursin("straw", n) || occursin("hedge", n) || occursin("hecke", n) ||
+                      occursin("haie", n) || occursin("shrub", n) || occursin("bush", n)
+        # pass 1: which textures are GROUND (mostly horizontal where drawn)
+        for p in TRACK, k in 1:33:length(p.verts)-32
+            v = p.verts
+            ux, uy, uz = v[k+11]-v[k], v[k+12]-v[k+1], v[k+13]-v[k+2]; wx, wy, wz = v[k+22]-v[k], v[k+23]-v[k+1], v[k+24]-v[k+2]
+            cx, cy, cz = uy*wz - uz*wy, uz*wx - ux*wz, ux*wy - uy*wx; nl = sqrt(cx^2 + cy^2 + cz^2)
+            nl < 1e-9 && continue
+            e = get!(horiz, lowercase(p.tex), [0, 0]); e[2] += 1; abs(cy)/nl > 0.7 && (e[1] += 1)   # render up = y
+        end
+        ground(t) = (e = get(horiz, t, [0, 1]); e[1] > 0.5*e[2])
+        bump(k) = (nskip[k] = get(nskip, k, 0) + 1)
+        # every drawn part: the track's own parts (render frame already) and every drawn OBJECT's parts through its model
+        # matrix (OBJECTS[i] = (gpu, M, tree, pos, name); M maps object frame -> render frame)
+        srcs = Any[(p, nothing, "") for p in TRACK]
+        for o in OBJECTS
+            ps = get(OBJ_CPU, lowercase(String(o[5])), nothing)
+            ps === nothing && continue
+            for p in ps; push!(srcs, (p, o[2], o[5])); end
+        end
+        for (p, M, oname) in srcs
+            obs_build_part!(p, M, oname, ground, softname, bump)
+        end
+        nf = length(OBS_SEG)
+        # billboards (trees, people, signs; the sprite carries a GL texture id, not a name): a disc at the foot. A
+        # sprite 3 m or taller is a tree -- a hard trunk; a lower one (bush, spectator, board) is soft.
+        for b in BILLBOARDS
+            (x, z) = (Float64(b[2][1]), -Float64(b[2][3]))
+            obs_on_road(x, z) && (bump(:onroad); continue)
+            tall = b[4] >= 3f0
+            obs_add!(x, z, x, z, tall ? 0.35 : 0.3*Float64(b[3]), tall ? :wall : :soft, "billboard")
+        end
+        # forest-edge panels (STATICTREES): a drawn tree line is a wall of trunks. Plan segment along the panel's axis,
+        # (cos eyaw, sin eyaw) with the stored yaw = -eyaw (the E65 road-crossing test's convention).
+        nfp = 0
+        for (it, pos, w, h, yaw) in STATICTREES
+            h < 1.5f0 && continue
+            cx = Float64(pos[1]); cz = -Float64(pos[3]); ex = cos(-Float64(yaw))*0.5*Float64(w); ez = sin(-Float64(yaw))*0.5*Float64(w)
+            (obs_on_road(cx - ex, cz - ez) || obs_on_road(cx, cz) || obs_on_road(cx + ex, cz + ez)) && (bump(:onroad); continue)
+            obs_add!(cx - ex, cz - ez, cx + ex, cz + ez, 0.0, :wall, "forest")
+            for c in seg_cells(cx - ex, cz - ez, cx + ex, cz + ez, 0.0); push!(get!(DRAWN_GRID, c, NTuple{4,Float64}[]), (cx - ex, cz - ez, cx + ex, cz + ez)); end
+            nfp += 1
+        end
+        nfp > 0 && println("  GPLWALL-1 obstacles: + ", nfp, " forest-edge panels (hard)")
+        println("  GPLWALL-1 obstacles: ", nf, " drawn faces + ", length(OBS_SEG) - nf, " billboards solid for the player (",
+                count(==(:soft), OBS_KIND), " soft); skipped ", nskip, "  [", round(time() - t0, digits = 1), " s]")
+    end
+end
+# GPLWALL-1 S6: the INVISIBLE-WALL inventory (JM_GPLWALL_INVIS=1 prints and exits). Only the two faces that bound the
+# ROAD's free interval matter: those are what a car leaving the road meets. A face is visible when within 1 m there is a
+# drawn vertical face or a solid, or the ground rises >= 0.25 m within 2 m beyond it (a bank GPL models as a raised strip).
+if OBS_ON && get(ENV, "JM_GPLWALL_INVIS", "0") != "0"
+    let rows = Any[], nface = 0, nedge = 0, sacc = cumsum([0.0; GPLWALLS.seclen]), stp = 0.1
+        for (si, v) in enumerate(GPLWALLS.secs), f in stp/2:stp:1.0
+            (lo, hi, hlo, hhi) = gplw_road_interval(si, f)
+            (px, pz, nx, nz) = gplw_frame(si, f)
+            for (e, h, side) in ((lo, hlo, -1.0), (hi, hhi, 1.0))
+                isfinite(e) || continue
+                isinf(h) && (nedge += 1; continue)
+                nface += 1
+                x = px + nx*e; z = pz + nz*e
+                vis = !isnan(gplw_hit(DRAWN_GRID, px, pz, nx, nz, e, 1.0; C = OBS_C)) ||
+                      any(k -> solid_gap(x, z, k)[1] <= 1.0, eachindex(SOLIDS))
+                if !vis
+                    h0 = JuliaMotor.hat3d(TERRAIN, x - side*nx*1.0, z - side*nz*1.0; ref = Inf)
+                    for dd in 0.0:0.5:2.0
+                        hh = JuliaMotor.hat3d(TERRAIN, x + side*nx*dd, z + side*nz*dd; ref = Inf)
+                        (h0[3] && hh[3] && hh[1] - h0[1] >= 0.25) && (vis = true; break)
+                    end
+                end
+                vis || push!(rows, (round(Int, sacc[si] + f*GPLWALLS.seclen[si]), side < 0 ? "L" : "R", round(e, digits = 1), round(h, digits = 2), si - 1))
+            end
+        end
+        m = stp*sum(GPLWALLS.seclen)/length(GPLWALLS.secs)            # ~metres per sample (mean section)
+        println("  [gplwall invis] ", TRACKSEL, ": ", nface, " road-facing wall samples, ", length(rows), " INVISIBLE (",
+                round(100*length(rows)/max(nface, 1), digits = 1), "%, ~", round(Int, length(rows)*m), " m); world-edge samples ", nedge)
+        # group consecutive samples into stretches
+        st = Any[]
+        for r in sort(rows, by = r -> (r[2], r[1]))
+            if !isempty(st) && st[end][2] == r[2] && r[1] - st[end][4] <= 3m
+                st[end] = (st[end][1], st[end][2], st[end][3], r[1], st[end][5], max(st[end][6], r[4]))
+            else
+                push!(st, (r[1], r[2], r[3], r[1], r[5], r[4]))
+            end
+        end
+        for q in sort(st, by = q -> -(q[4] - q[1]))[1:min(end, 15)]
+            println("     s ", q[1], "-", q[4], " ", q[2], "  lat ", q[3], "  h ", q[6], " m  (sec ", q[5], ")")
+        end
+    end
+    exit(0)
+end
+"closest points between segments p1-p2 and q1-q2 (2-D): (distance, point on p, point on q)"
+function seg_seg(p1x, p1z, p2x, p2z, q1x, q1z, q2x, q2z)
+    function pt_seg(px, pz, ax, az, bx, bz)
+        tx = bx - ax; tz = bz - az; L2 = tx*tx + tz*tz
+        u = L2 > 0 ? clamp(((px - ax)*tx + (pz - az)*tz)/L2, 0.0, 1.0) : 0.0
+        cx = ax + u*tx; cz = az + u*tz
+        (hypot(px - cx, pz - cz), cx, cz)
+    end
+    best = (Inf, 0.0, 0.0, 0.0, 0.0)
+    (d, cx, cz) = pt_seg(p1x, p1z, q1x, q1z, q2x, q2z); d < best[1] && (best = (d, p1x, p1z, cx, cz))
+    (d, cx, cz) = pt_seg(p2x, p2z, q1x, q1z, q2x, q2z); d < best[1] && (best = (d, p2x, p2z, cx, cz))
+    (d, cx, cz) = pt_seg(q1x, q1z, p1x, p1z, p2x, p2z); d < best[1] && (best = (d, cx, cz, q1x, q1z))
+    (d, cx, cz) = pt_seg(q2x, q2z, p1x, p1z, p2x, p2z); d < best[1] && (best = (d, cx, cz, q2x, q2z))
+    best
+end
+"gap (<0 = penetration) and outward normal between the car capsule and obstacle i, keeping the side the car came from"
+function obs_gap(i, x, z, θ, px, pz)
+    (ax, az, bx, bz, r) = OBS_SEG[i]
+    c1x = x + CARLF*cos(θ); c1z = z + CARLF*sin(θ); c2x = x - CARLF*cos(θ); c2z = z - CARLF*sin(θ)
+    (d, cx, cz, ox, oz) = seg_seg(c1x, c1z, c2x, c2z, ax, az, bx, bz)
+    tx = bx - ax; tz = bz - az; L = hypot(tx, tz)
+    # the side-of-the-line rule is for LONG faces (walls, fences). A face shorter than the car is wide (a telegraph pole,
+    # a board edge) is a POST: it can sit inside the car's footprint between its centre and one circle, where "which
+    # side of its line" means nothing (a 0.55 m pole read as 1.6 m deep, WG 2026-10-01). Posts use closest points. A post
+    # cannot be tunnelled in one step: the car is >= 1.9 m across and moves <= 1.33 m per frame at 80 m/s.
+    if L >= 2.0 && OBS_KIND[i] === :wall && !isnan(px)
+        nx = -tz/L; nz = tx/L                                # line normal
+        sp = (px - ax)*nx + (pz - az)*nz                     # last frame's side of the line
+        sp = sp >= 0 ? 1.0 : -1.0
+        # is the car within the face's extent? (the projection of either circle centre onto the face)
+        u1 = ((c1x - ax)*tx + (c1z - az)*tz)/L^2; u2 = ((c2x - ax)*tx + (c2z - az)*tz)/L^2
+        if (0.0 <= u1 <= 1.0) || (0.0 <= u2 <= 1.0)
+            s1 = sp*((c1x - ax)*nx + (c1z - az)*nz); s2 = sp*((c2x - ax)*nx + (c2z - az)*nz)
+            sd = min(0.0 <= u1 <= 1.0 ? s1 : Inf, 0.0 <= u2 <= 1.0 ? s2 : Inf)
+            return (sd - CARW - r, sp*nx, sp*nz)             # signed: crossing the line is deep, never "through"
+        end
+    end
+    d < 1e-9 && return (-(CARW + r), cos(θ + pi), sin(θ + pi))
+    ((d - CARW - r), (cx - ox)/d, (cz - oz)/d)
+end
+const OBS_BUF = Int32[]; const OBS_MARK = Int[]; const OBS_STAMP = Ref(0)
+const OBS_EMPTY = Int32[]
+"indices of obstacles near (x, z): a reused buffer, de-duplicated by stamp (no allocation, no linear search)"
+function obs_near(x, z)
+    length(OBS_MARK) < length(OBS_SEG) && resize!(OBS_MARK, length(OBS_SEG)) |> m -> fill!(m, 0)
+    OBS_STAMP[] += 1; st = OBS_STAMP[]; empty!(OBS_BUF)
+    ci = floor(Int, x/OBS_C); cj = floor(Int, z/OBS_C)
+    @inbounds for i in ci-1:ci+1, j in cj-1:cj+1
+        for id in get(OBS_GRID, (i, j), OBS_EMPTY)
+            OBS_MARK[id] == st && continue
+            OBS_MARK[id] = st; push!(OBS_BUF, id)
+        end
+    end
+    OBS_BUF
+end
+function obs_contact(x, z, θ, dt)
+    Fx = 0.0; Fy = 0.0; Mz = 0.0; peak = 0.0; hard = 0.0; closing = 0.0
+    (px, pz) = OBS_PREV[]
+    (isnan(px) || hypot(x - px, z - pz) > 60.0) && (px = NaN; pz = NaN)
+    for i in obs_near(x, z)
+        (g, nx, nz) = obs_gap(i, x, z, θ, px, pz)
+        g < 2.0 && OBS_KIND[i] !== :soft && (GPLW_NEAR[] = true)
+        g >= 0.0 && continue
+        vn = WVX[]*nx + WVZ[]*nz
+        (fx, fy, mz) = DriveRT3D.contact_force(-g, nx, nz, vn, θ; kind = OBS_KIND[i], dt = dt)
+        Fx += fx; Fy += fy; Mz += mz; peak = max(peak, hypot(fx, fy))
+        OBS_KIND[i] === :soft || (hard = max(hard, hypot(fx, fy)); closing = max(closing, -vn))
+    end
+    (Fx, Fy, Mz, peak, hard, closing)
+end
+"after the step: no deeper than GPLW_PEN into a hard obstacle, measured from the side the car came from"
+function obs_clamp!(c)
+    (px, pz) = OBS_PREV[]
+    # after a teleport (respawn, recover, the wreck seal) there is no side it came from: use where its centre is now, and
+    # still push it out -- the seal once set a car down on a brake-marker board and nothing moved it that frame
+    (isnan(px) || hypot(c.x - px, c.z - pz) > 60.0) && ((px, pz) = (c.x, c.z))
+    for _ in 1:3
+        worst = 0.0; wn = (0.0, 0.0)
+        for i in obs_near(c.x, c.z)
+            OBS_KIND[i] === :soft && continue
+            (g, nx, nz) = obs_gap(i, c.x, c.z, c.θ, px, pz)
+            g < 0.0 && (OBS_STAT[] = (hits = OBS_STAT[].hits + 1, clamps = OBS_STAT[].clamps, maxpen = max(OBS_STAT[].maxpen, -g)))
+            -g - GPLW_PEN > worst && (worst = -g - GPLW_PEN; wn = (nx, nz))
+        end
+        worst <= 0.0 && break
+        (nx, nz) = wn
+        (wx, wz) = DriveRT3D.world_velocity(c)
+        vn = wx*nx + wz*nz; vn < 0.0 && (wx -= vn*nx; wz -= vn*nz)
+        cθ = cos(c.θ); sθ = sin(c.θ)
+        xn = c.x + worst*nx; zn = c.z + worst*nz
+        c.s_pos(c.integ, [xn, zn]); c.x = xn; c.z = zn
+        c.s_vel(c.integ, [wx*cθ + wz*sθ, -wx*sθ + wz*cθ])
+        OBS_STAT[] = (hits = OBS_STAT[].hits, clamps = OBS_STAT[].clamps + 1, maxpen = OBS_STAT[].maxpen)
+    end
+    OBS_PREV[] = (c.x, c.z)
+    nothing
+end
 
 println(length(OBJECTS), " trackside objects + ", length(BILLBOARDS), " billboards + ", length(STATICTREES), " forest panels + ", length(SOLIDS), " solid (collidable)"); flush(stdout)
 if get(ENV,"JM_HAT_COUNT","0") != "0"
@@ -8592,6 +9286,13 @@ wheel_mu(0.0, 0.0, 1.0, 0.0, 1.314, 0.75)          # compile now, behind the loa
 # first text draw (69 ms). precompile() compiles without running, so no physics or GL state is touched.
 precompile(JRPhysics.DriveRT3D.damage_impact!, (Float64, Float64, Float64))
 precompile(Render.text_draw, (UInt32, UInt32, UInt32, Render.Font, Vector{Float32}, Int, Int))
+# GPLWALL-1: the first wall hit must not hitch -- a long first-contact frame was read as a teleport (2026-10-01)
+if GPLW_ON
+    precompile(gplwall_contact, (Float64, Float64, Float64, Float64)); precompile(gplwall_gaps, (Float64, Float64, Float64))
+    precompile(obs_contact, (Float64, Float64, Float64, Float64)); precompile(obs_gap, (Int32, Float64, Float64, Float64, Float64, Float64))
+    precompile(seg_seg, ntuple(_ -> Float64, 8)); precompile(GPLWall.free_interval, (GPLWall.Walls, Int, Float64, Float64, Float64))
+    precompile(gplwall_clamp!, (JRPhysics.DriveRT3D.Car3D,)); precompile(obs_clamp!, (JRPhysics.DriveRT3D.Car3D,))
+end
 
 function main()
     # E106-S13b: the physics-facing ground closure. It converts the app's -999 "off the HAT"
@@ -8847,6 +9548,7 @@ function main()
         # BACKWARD hop tripped it -- and that frame rendered the car ~18 m under the embankment:
         # a pale void under a black sky (parity/chase_gate_first_sweep.jpg, 4th panel).
         PLAYER_G[] = NaN
+        GPLW_ON && gplw_teleported!()
         p  = RaceAI.pose_at(CLINE, s0, 0.0)                 # (x, y, z, θ) on the racing line
         DriveRT3D.place3d!(cs, p[1], p[3], p[4]; v = 0.0)
         cs.s_vreset(cs.integ, zeros(14))                    # zero the vertical subsystem (no spawn bounce)
@@ -9429,15 +10131,7 @@ function main()
                             if ref == "recentred"
                                 ALIGNED
                             elseif ref == "rigid"
-                                let A = ALIGNED0, B = ALIGNED, n = min(length(ALIGNED0), length(ALIGNED))
-                                    ax = sum(p[1] for p in A[1:n])/n; az = sum(p[2] for p in A[1:n])/n
-                                    bx = sum(p[1] for p in B[1:n])/n; bz = sum(p[2] for p in B[1:n])/n
-                                    sxx = sum((A[k][1]-ax)*(B[k][1]-bx) + (A[k][2]-az)*(B[k][2]-bz) for k in 1:n)
-                                    sxy = sum((A[k][1]-ax)*(B[k][2]-bz) - (A[k][2]-az)*(B[k][1]-bx) for k in 1:n)
-                                    saa = sum((A[k][1]-ax)^2 + (A[k][2]-az)^2 for k in 1:n)
-                                    th = atan(sxy, sxx); sc = hypot(sxx, sxy)/saa
-                                    [(bx + sc*(cos(th)*(p[1]-ax) - sin(th)*(p[2]-az)), bz + sc*(sin(th)*(p[1]-ax) + cos(th)*(p[2]-az))) for p in A]
-                                end
+                                rigid_refit(ALIGNED0, ALIGNED)
                             else
                                 ALIGNED0
                             end
@@ -10250,6 +10944,20 @@ function main()
     show_after = parse(Int, get(ENV, "JM_SHOW_AFTER", "2")); win_shown = Ref(false); show_t0 = time()
     reveal!() = (win_shown[] = true; (SMOKE && !haskey(ENV, "JM_SMOKE_SHOW")) || GLFW.ShowWindow(win))   # loading done (avoids the WM "Not Responding")
     show_after <= 0 && reveal!()
+    crash_plat = Ref(NaN); crash_thru = Ref(false); crash_invis = Ref(0); crash_ninv = Ref(0)
+    crash_i = Ref(0); crash_t0 = Ref(0); crash_rec = Ref((0.0, 0.0, 0.0)); crash_sum = Ref((0, 0, 0.0, 0.0))
+    if CRASH_ON && CLINE !== nothing && GPLW_ON
+        if startswith(CRASH_SPEC, "auto")
+            stp = parse(Float64, split(CRASH_SPEC, ":")[2]); ang = parse(Float64, get(ENV, "JM_CRASH_ANG", "45"))
+            vv = parse(Float64, get(ENV, "JM_CRASH_V", "55"))
+            for s0 in stp/2:stp:CLINE.total, sd in (-1.0, 1.0); push!(CRASHES, (s0, sd, ang, vv)); end
+        else
+            for sp in split(CRASH_SPEC, ";", keepempty = false)
+                f = split(sp, ":"); push!(CRASHES, (parse(Float64, f[1]), uppercase(f[2]) == "L" ? -1.0 : 1.0, parse(Float64, f[3]), parse(Float64, f[4])))
+            end
+        end
+        println("  JM_CRASH: ", length(CRASHES), " scenarios, ", CRASH_FRAMES, " frames each"); flush(stdout)
+    end
     aicam_pose = Ref{Union{Nothing,NTuple{6,Float64}}}(nothing); ai_poses_prev = Ref(NTuple{6,Float64}[])   # JM_AICAM
     # PERF-3: a HIDDEN window is not paced by the compositor (XWayland/NVIDIA: ~58 Hz whatever the work),
     # so a smoke frame-rate figure says nothing about the PO's screen. JM_SMOKE_SHOW=1 maps it for timing runs.
@@ -10268,7 +10976,8 @@ function main()
         # measurement was impossible -- JM_FPSDIAG's first report never arrived, and any report that
         # did would have been timing the compiler. JM_SMOKE_FRAMES=<n> raises the bound so the
         # frame cost can be measured without taking the PO's display.
-        SMOKE && isempty(SHOTS) && frames >= SMOKE_FRAMES && break
+        SMOKE && isempty(SHOTS) && !CRASH_ON && frames >= SMOKE_FRAMES && break
+        CRASH_ON && crash_i[] > length(CRASHES) && break
         SMOKE && shots_done[] && !isempty(SHOTS) && break
         # OFFROAD-1: an AUTODRIVE run is a MEASUREMENT run, and its measurement -- the driveability
         # verdict -- is printed after this loop. Without an exit the car sits at the finish line
@@ -10286,6 +10995,9 @@ function main()
         dt = FIXED_DT > 0 ? FIXED_DT : clamp(now-last, 0.0, 0.05)
         last = now
         inp, rst, recover, restart = read_input()
+        (rst || restart) && GPLW_ON && gplw_teleported!()
+        CRASH_ON && (inp = JuliaMotor.DriveInput(throttle = 0.0, brake = 0.0, steer = 0.0, clutch = inp.clutch,
+                                                 shift_up = false, shift_down = false, autoshift = true))
         # STARTSEQ-3 (PO 2026-09-07): "don't allow the car to move until a key has been pressed to start the
         # countdown" -- until the countdown is armed the car is held: throttle ignored, brakes on.
         if START_ARM && HOLD_START && !cd_armed[] && phase[] == :race && !race_go[]
@@ -10646,6 +11358,21 @@ function main()
                 if !SKIDPAD && !rst
                     update_world_velocity!(cs, cs.x, cs.z, dt > 1e-4 ? dt : 1/60)   # E96-S2/S6: once per frame, before every contact test
                     (cfx, cfy, cmz, cpk, chard, cclose) = solid_contact(cs.x, cs.z, cs.θ, cs.v, dt > 1e-4 ? dt : 1/60)
+                    if GPLW_PHYS && CAR3D     # GPLWALL-1: GPL's .trk walls + every drawn obstacle, summed with the solids, re-capped
+                        _tgw = time()
+                        (gfx, gfy, gmz, gpk, ghd, gcl) = gplwall_contact(cs.x, cs.z, cs.θ, dt > 1e-4 ? dt : 1/60)
+                        if OBS_ON
+                            (ofx, ofy, omz, opk, ohd, ocl) = obs_contact(cs.x, cs.z, cs.θ, dt > 1e-4 ? dt : 1/60)
+                            gfx += ofx; gfy += ofy; gmz += omz; gpk = max(gpk, opk); ghd = max(ghd, ohd); gcl = max(gcl, ocl)
+                        end
+                        GPLW_T[] = (GPLW_T[][1] + time() - _tgw, GPLW_T[][2] + 1)
+                        if gpk > 0.0
+                            cθ_ = cos(cs.θ); sθ_ = sin(cs.θ)
+                            (cfx, cfy, sc_) = DriveRT3D.cap_total_contact(cfx + gfx, cfy + gfy, WVX[]*cθ_ + WVZ[]*sθ_,
+                                                                         -WVX[]*sθ_ + WVZ[]*cθ_; dt = dt > 1e-4 ? dt : 1/60)
+                            cmz = (cmz + gmz)*sc_; cpk = max(cpk, gpk); chard = max(chard, ghd); cclose = max(cclose, gcl)
+                        end
+                    end
                     # E95: a hard enough hit ends the race. Triggered on the contact PEAK, not on
                     # speed -- what wrecks a car is the impulse it absorbs, and a slow scrape into a
                     # hedge must never latch it. The impact direction is taken from the net contact
@@ -10856,6 +11583,123 @@ function main()
                         clutch=inp.clutch, up=inp.shift_up, dn=inp.shift_down, manual=!inp.autoshift,
                         groundz=groundz_phys)
             DS_SIM[1] += time() - _tps
+            _tgc = time()
+            if GPLW_PHYS && CAR3D && !rst && GPLW_NEAR[]   # GPLWALL-1: never through a GPL wall nor any drawn obstacle. Two alternating rounds:
+                for _ in 1:2                # each clamp can nudge the car a few cm back into what the other just cleared
+                    gplwall_clamp!(cs)
+                    OBS_ON && obs_clamp!(cs)
+                end
+            end
+            # nothing within 2 m before the step (it moves <= 1.33 m): no clamp, but keep the obstacle "came from" fresh --
+            # a stale one would mis-side a fence the car has since driven round the end of
+            (GPLW_PHYS && CAR3D && !rst && !GPLW_NEAR[] && OBS_ON) && (OBS_PREV[] = (cs.x, cs.z))
+            GPLW_PHYS && (GPLW_T[] = (GPLW_T[][1] + time() - _tgc, GPLW_T[][2]))
+            if CRASH_ON && !isempty(CRASHES) && crash_i[] <= length(CRASHES) && frames >= 2
+                if crash_i[] == 0 || frames - crash_t0[] >= CRASH_FRAMES
+                    if crash_i[] > 0                                  # close the running scenario
+                        (s0, sd, ang, vv) = CRASHES[crash_i[]]
+                        r = gplw_locate_any(cs.x, cs.z)
+                        (lo, hi) = r === nothing ? (NaN, NaN) : gplw_road_interval(r[1], r[2])
+                        ok = !crash_thru[]
+                        crash_invis[] > 0 && (crash_ninv[] += 1)
+                        (wp, sp, bp) = crash_rec[]
+                        crash_sum[] = (crash_sum[][1] + 1, crash_sum[][2] + (ok ? 0 : 1), max(crash_sum[][3], wp), max(crash_sum[][4], sp))
+                        println("  [crash] ", crash_i[], "/", length(CRASHES), " s=", round(Int, s0), " ", sd < 0 ? "L" : "R", " ",
+                                round(Int, ang), "deg ", round(Int, vv), " m/s: wall pen max ", round(wp, digits = 2),
+                                " m, drawn-face pen max ", round(sp, digits = 2), " m, old-box pen max ", round(bp, digits = 2), " m, end lat ", r === nothing ? "?" : round(r[3], digits = 2),
+                                " in [", round(lo, digits = 1), ", ", round(hi, digits = 1), "] -> ", ok ? "CONTAINED" : "THROUGH",
+                                WRECKED[] ? "  (wrecked)" : "", "  v_end ", round(cs.v, digits = 1),
+                                crash_invis[] > 0 ? "  INVISIBLE-CONTACT frames $(crash_invis[])" : ""); flush(stdout)
+                    end
+                    crash_i[] += 1
+                    if crash_i[] <= length(CRASHES)
+                        (s0, sd, ang, vv) = CRASHES[crash_i[]]
+                        place_at_s!(s0)
+                        DriveRT3D.damage_reset!(); WRECKED[] = false; WRECK_FROZEN[] = false; empty!(LOOSE_WHEELS); DC[].lastz = 0.0
+                        r = gplw_locate_any(cs.x, cs.z)
+                        if r !== nothing
+                            (_, _, _, gx, gz) = r; a = deg2rad(ang)
+                            dx = cos(cs.θ)*cos(a) + sd*gx*sin(a); dz = sin(cs.θ)*cos(a) + sd*gz*sin(a)
+                            DriveRT3D.place3d!(cs, cs.x, cs.z, atan(dz, dx); v = vv)
+                        end
+                        gplw_teleported!(); OBS_STAT[] = (hits = 0, clamps = 0, maxpen = 0.0)
+                        crash_t0[] = frames; crash_rec[] = (0.0, 0.0, 0.0)
+                        crash_plat[] = NaN; crash_thru[] = false; crash_invis[] = 0
+                    else
+                        println("  [crash] SUMMARY ", TRACKSEL, ": ", crash_sum[][1], " scenarios, THROUGH ", crash_sum[][2],
+                                ", deepest GPL-wall penetration ", round(crash_sum[][3], digits = 2), " m, deepest drawn-face penetration ",
+                                round(crash_sum[][4], digits = 2), " m; scenarios with an INVISIBLE-wall contact ", crash_ninv[],
+                                "; wall+obstacle cost ", round(1e6*GPLW_T[][1]/max(GPLW_T[][2], 1), digits = 1), " us/frame"); flush(stdout)
+                    end
+                else
+                    (_, _, _, glo, ghi, _, _, _, _, gend_) = gplwall_gaps(cs.x, cs.z, cs.θ)
+                    glo = min(glo, gend_)          # an END face counts as wall penetration too (measurement only)
+                    # THROUGH, measured directly: the car's centre inside a blocking wall (beyond the clamp's reach), or in a
+                    # DIFFERENT free interval from last frame's centre at this same station (it crossed a wall between frames).
+                    rr = gplw_locate(cs.x, cs.z)                # the player's continuous locator (hint), not nearest-any
+                    if rr !== nothing
+                        (sc_, fc_, lc_) = rr
+                        Icur = GPLWall.free_interval(GPLWALLS, sc_, fc_, lc_, lc_; hmin = GPLW_HMIN)
+                        inwall = !(Icur[1] <= lc_ <= Icur[2])
+                        crossed = false
+                        if !isnan(crash_plat[])
+                            Iprev = GPLWall.free_interval(GPLWALLS, sc_, fc_, crash_plat[], crash_plat[]; hmin = GPLW_HMIN)
+                            crossed = (Iprev[1] <= crash_plat[] <= Iprev[2]) && !inwall && Iprev[1:2] != Icur[1:2] &&
+                                      abs(crash_plat[] - lc_) < 5.0
+                        end
+                        # a centre past a face by more than the half-width = the body is wholly beyond it. (A car jammed in a
+                        # closing wedge narrower than itself has its centre a little past one face; that is not through.)
+                        (inwall && min(abs(lc_ - Icur[1]), abs(lc_ - Icur[2])) > CARW) && (crash_thru[] = true)
+                        crossed && (crash_thru[] = true)
+                        if get(ENV, "JM_CRASH_TRACE", "0") != "0" && frames - crash_t0[] <= parse(Int, get(ENV, "JM_CRASH_TRACE_N", "90"))
+                            (_, _, _, glo2, ghi2) = gplwall_gaps(cs.x, cs.z, cs.θ)
+                            println("   [ctrace] f", frames - crash_t0[], " x ", round(cs.x, digits = 1), " z ", round(cs.z, digits = 1),
+                                    " sec ", sc_, " f ", round(fc_, digits = 2), " lat ", round(lc_, digits = 2), " I ", round.(Icur[1:2], digits = 2),
+                                    " prev ", round(GPLW_PREV[], digits = 2), " glo ", round(glo2, digits = 2), " ghi ", round(ghi2, digits = 2),
+                                    " v ", round(cs.v, digits = 1), inwall ? " INWALL" : "", crossed ? " CROSSED" : "")
+                        end
+                        crash_plat[] = lc_
+                    end
+                    # INVISIBLE contact: touching a GPL wall with nothing drawn (no hard drawn face, no solid) within 0.5 m
+                    if min(glo, ghi) < 0.0        # touching a GPL wall: is ANY drawn vertical face within 1 m of the car?
+                        near = false
+                        ci = floor(Int, cs.x/OBS_C); cj = floor(Int, cs.z/OBS_C)
+                        for gi in ci-1:ci+1, gj in cj-1:cj+1, (ax, az, bx, bz) in get(DRAWN_GRID, (gi, gj), NTuple{4,Float64}[])
+                            seg_seg(cs.x + CARLF*cos(cs.θ), cs.z + CARLF*sin(cs.θ), cs.x - CARLF*cos(cs.θ), cs.z - CARLF*sin(cs.θ),
+                                    ax, az, bx, bz)[1] < CARW + 1.0 && (near = true; break)
+                        end
+                        near = near || any(k -> car_gap(cs.x, cs.z, cs.θ, k)[1] < 1.0, eachindex(SOLIDS))
+                        if !near     # a drawn BANK: GPL models dunes/earth banks as raised strips; we draw them as slopes
+                            (_, _, _, _, _, gx_, gz_) = gplwall_gaps(cs.x, cs.z, cs.θ)
+                            sgn_ = glo < ghi ? -1.0 : 1.0                    # toward the wall being touched
+                            h0 = JuliaMotor.hat3d(TERRAIN, cs.x, cs.z; ref = Inf)
+                            for dd in 0.5:0.5:(CARW + 2.0)
+                                h = JuliaMotor.hat3d(TERRAIN, cs.x + sgn_*gx_*dd, cs.z + sgn_*gz_*dd; ref = Inf)
+                                (h0[3] && h[3] && h[1] - h0[1] >= 0.25) && (near = true; break)
+                            end
+                        end
+                        near || (crash_invis[] += 1)
+                    end
+                    bpn = 0.0                                   # old SOLIDS (discs/boxes; no positional limit)
+                    for k in eachindex(SOLIDS); bpn = max(bpn, -car_gap(cs.x, cs.z, cs.θ, k)[1]); end
+                    opn = 0.0                                   # DRAWN hard faces, at the rendered (post-clamp) position
+                    if OBS_ON
+                        (ppx, ppz) = OBS_PREV[]; wi = 0
+                        for i in obs_near(cs.x, cs.z)
+                            OBS_KIND[i] === :soft && continue
+                            g_ = -obs_gap(i, cs.x, cs.z, cs.θ, ppx, ppz)[1]
+                            g_ > opn && (opn = g_; wi = i)
+                        end
+                        if wi > 0 && opn > 0.35 && get(ENV, "JM_CRASH_TRACE", "0") != "0"
+                            sg = OBS_SEG[wi]
+                            println("   [otrace] f", frames - crash_t0[], " obstacle ", wi, " ", OBS_NAME[wi], " len ", round(hypot(sg[3]-sg[1], sg[4]-sg[2]), digits = 2),
+                                    " r ", sg[5], " pen ", round(opn, digits = 2), " car (", round(cs.x, digits = 2), ",", round(cs.z, digits = 2), ") θ ",
+                                    round(rad2deg(cs.θ), digits = 1), " seg (", round.(sg[1:4], digits = 2), ")")
+                        end
+                    end
+                    crash_rec[] = (max(crash_rec[][1], -min(glo, ghi)), max(crash_rec[][2], opn), max(crash_rec[][3], bpn))
+                end
+            end
             if !SKIDPAD     # track position + lap timing
             hr = JuliaMotor.hat(TRKSURF, cs.x, cs.z)            # track-relative position (for lapdist/lateral HUD)
             if hr.found
@@ -11004,6 +11848,7 @@ function main()
                         (sealx, sealz) = WreckSeal.seal_target(WRECKED[], cs.x, cs.z,
                                              LASTGX[], LASTGZ[];
                                              seal_back = haskey(ENV, "JM_WRECK_SEAL_BACK"))
+                        GPLW_ON && gplw_teleported!()
                         containX!(cs, sealx, sealz; vdamp=(WRECKED[] ? 0.0 : 0.3), settle=true, groundz=groundz_phys)
                         BND_FX[] = 0.0; BND_FY[] = 0.0; BND_MZ[] = 0.0; BND_PK[] = 0.0; OFFDIST[] = 0.0
                     end
@@ -12337,6 +13182,8 @@ function main()
     ffb !== nothing && FFB.close_ffb(ffb)
     EngineAudio.stop!(ENG)
     GLFW.Terminate()
+    GPLW_PHYS && GPLW_T[][2] > 0 && println("  GPLWALL-1 cost: ", round(1e6*GPLW_T[][1]/GPLW_T[][2], digits = 1),
+                                            " us/frame over ", GPLW_T[][2], " frames (walls + drawn obstacles, contact + clamp)")
     println("bye"); flush(stdout); flush(stderr)
     # HARD exit: skip Julia's atexit handlers.  PortAudio registers one that calls Pa_Terminate, which
     # SEGFAULTS in the ALSA/PipeWire stream teardown ("free(): corrupted unsorted chunks") on this box —

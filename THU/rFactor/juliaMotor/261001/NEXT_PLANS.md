@@ -20,6 +20,7 @@ per cycle.
 | **E91** | one iRacing coast-down on a straight, ~220 → 60 km/h, clutch in, then the same in gear | pins drag and engine braking together |
 | **E109** | GPL screenshots of the Ring at s≈8400 and s≈21355 | GPL's tree data vs our rotation pivot |
 | **E90** | a look at Monza s≈1000–1500 and Watkins Glen s≈500–750 / 2500–3000 | rails on road-textured triangles |
+| **GPLWALL-1** | keep GPL's own **invisible walls** (open grass at Spa s~8250 L, the foot of the Ring's banks s~9450 R, Monza's left runoff wedge s~225), or soften them? `JM_GPLWALL_SHOW=1` draws every GPL wall in magenta; `261001/gplwall/` | GPL's `.3do` shows nothing there either, so keeping them is GPL behaviour; it is a feel decision |
 | — | push? | commits are local only |
 
 ---
@@ -55,6 +56,14 @@ per cycle.
 
 ### 6. PERF-3 — after the PO's verdict on the AppImage.
 
+### 7. GPLWALL-1 — never through any object (S1-S8 done; 0 of 378 crashes through)
+- After the PO's call on invisible walls: either keep, or make UNREGISTERED GPL wall faces (no drawn face within 2 m)
+  soft / bank-like.
+- AI cars still use the old contact (the request named the user's car); the planar `JM_2D` path is not covered.
+- Zandvoort registers poorly (23 %): its barriers are hedges and post-and-wire fences (thin posts); register against the
+  placed objects as well.
+- Cost while in contact 0.3-0.8 ms/frame (Ring): profile `obs_gap` density at the Ring if frame rate suffers.
+
 ---
 
 ## Items from earlier rotations, still open
@@ -72,4 +81,10 @@ per cycle.
 | `JM_SHOW_AFTER=<n>` | hidden warm-up frames before the window appears (default 2; 0 = old behaviour) |
 | `JM_PLACE_HIDE=<names>` | drop named scenery placements and print their transforms (E81) |
 | `JM_AICAM=<slot>` | chase camera on AI car slot 1–5 (Ferrari, Brabham, BRM, Eagle, Cooper) |
+| `JM_GPLWALL=0` | GPLWALL-1 collision physics off (walls + drawn obstacles); `JM_GPLWALL_HMIN`, `_PEN`, `_REG`, `_SGN` tune it |
+| `JM_GPLWALL_SHOW=1` | draw every GPL wall face as a magenta ribbon |
+| `JM_GPLWALL_CENSUS=1`, `JM_GPLWALL_INTERIOR=1`, `JM_GPLWALL_INVIS=1` | wall placement / reachable-obstacle / invisible-wall censuses (print and exit) |
+| `JM_CRASH="s:L|R:deg:mps;..."` or `auto:<m>` | drive the player into the boundaries; `JM_CRASH_ANG`, `JM_CRASH_V`, `JM_CRASH_FRAMES`, `JM_CRASH_TRACE=1` |
+| `JM_DRAW_WIREF=0` | old exclusion of the wire catch-fences |
+| `JM_OBSTACLES=0` | drawn-obstacle collision off (GPL walls stay) |
 | `tools/appimage/build_julia.sh` | now takes `JR_PROJ`, `JR_GPLROOT`, `JR_APPDIR`, `JR_LIBS_FROM` (reuse an extracted AppDir's Qt libs and icon) |
