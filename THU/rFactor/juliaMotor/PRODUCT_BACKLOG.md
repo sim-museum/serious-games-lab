@@ -21444,3 +21444,10 @@ have no drawn face, solid or bank within reach (`JM_GPLWALL_INVIS=1`). Kept as G
   them.
 * AI cars still use the old contact (the request named the user's car); the planar `JM_2D` path is not covered.
 * Zandvoort's GPL walls register poorly to the drawn mesh (23 %): its barriers are hedges and post-and-wire fences.
+
+### DELIVERY 261001b — `~/Documents/261001/JuliaRacer-x86_64-261001b.AppImage` (1.68 GB, sha256 `288ad5694b3d268d…`, `SHA256SUMS` beside it)
+HEAD at pack time `b06dc248`: everything in 261001 plus **GPLWALL-1** (GPL's .trk walls, every drawn obstacle solid for the
+player, wire fences drawn, GPL's invisible walls kept per the PO). Same recipe as 261001. Verified from its own mounted
+runtime (bubblewrap, empty user depot): Watkins Glen 5-AI race smoke exit 0, 155 s, 0 precompiles, 0 errors; the GPL walls
+register (93.4 %) and 11463 drawn faces + 13 billboards load as obstacles inside the image; the launcher's Multiplayer
+group builds. The PO's install refreshes its code on first launch.
