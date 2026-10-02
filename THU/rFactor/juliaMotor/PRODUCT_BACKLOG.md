@@ -21680,3 +21680,5 @@ disables; the startup log lists every run removed (WG 11, Monza 19, Spa 28, Ring
   whole run RMS 1.91 -> 1.72, p99 7.9 -> 6.3.
 * Centreline vs GPL's road centre (`JM_RIBBON_VS_GPL`), all five tracks: p50 offset and p90 wiggle unchanged within
   0.03 m -- the change is local, not a shift of the line anywhere else.
+
+### DELIVERY 261002d — `~/Documents/261002/JuliaRacer-x86_64-261002d.AppImage` (sha256 `9d410708f63a2619…`): AIJIT-3; bwrap install-path smoke clean, 0 precompiles
