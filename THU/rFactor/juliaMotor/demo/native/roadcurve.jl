@@ -116,6 +116,16 @@ function edge_mid(c::Curve, a::V, b::V, tol)
     # open T-junctions along the road edge, exactly where they would be most visible.
     # JM_ROADCURVE_MAXNODE / JM_ROADCURVE_MAXNODE_LAT override.
     abs(du) > (max(abs(a.lat), abs(b.lat)) <= maxnode_lat() ? maxnode() : 12.0) && return nothing
+    # E108-S11 (PO 2026-10-02, Watkins Glen: "coming out of the sweeper the white line on the road is also curved the
+    # wrong way"): at the s~1761 hairpin GPL draws a junction line that CUTS ACROSS the road edge (JM_ROADCURVE=0 shows
+    # it straight). Rounding interpolates in the curve's (along, lateral) frame, which bends any edge that is not
+    # parallel to the road -- the diagonal came out curved along the corner. Only road-parallel edges are rounded now:
+    # an edge more than JM_ROADCURVE_OBLIQUE degrees (default 25) off the road direction is never split, so it stays
+    # straight as GPL drew it. The decision is per EDGE, so the two triangles sharing it always agree (no cracks).
+    let i0 = clamp(floor(Int, a.u), 1, n), j0 = mod1(i0 + 1, n)
+        ds = max(hypot(c.P[j0][1] - c.P[i0][1], c.P[j0][2] - c.P[i0][2]), 1e-3)
+        abs(b.lat - a.lat) > OBLIQUE_TAN[] * abs(du) * ds && return nothing
+    end
     um = mod(a.u + du/2 - 1, n) + 1; lm = (a.lat + b.lat)/2
     m = F(c, um, lm)
     cx = (Float64(a.p[1]) + b.p[1])/2; cy = (Float64(a.p[2]) + b.p[2])/2
@@ -126,6 +136,7 @@ function edge_mid(c::Curve, a::V, b::V, tol)
       um, lm, true)
 end
 
+const OBLIQUE_TAN = Ref(tan(deg2rad(clamp(parse(Float64, get(ENV, "JM_ROADCURVE_OBLIQUE", "25")), 1.0, 89.9))))
 function subdiv!(out, c, a::V, b::V, d::V, tex, col, flat, ptype, tol, depth)
     mab = depth > 0 ? edge_mid(c, a, b, tol) : nothing
     mbd = depth > 0 ? edge_mid(c, b, d, tol) : nothing

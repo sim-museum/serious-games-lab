@@ -823,11 +823,29 @@ set_gpl_speeds!(v) = (GPLV[] = v === nothing ? nothing : Float64.(v); nothing)
 const GPLLAT = Ref{Union{Nothing,NTuple{3,Vector{Float64}}}}(nothing)
 set_gpl_lateral!(race, p1, p2) = (GPLLAT[] = race === nothing ? nothing : (Float64.(race), Float64.(p1), Float64.(p2)); nothing)
 @inline _gidx(line::AILine, s, n) = mod(floor(Int, mod(s, line.total) / 3.0), n) + 1
+# AIJIT-2 (PO 2026-10-02, Watkins Glen: "the AI curve skitter is much reduced, but still occurs at curves"). MEASURED
+# (JM_AIPOSE_TRACE=all): the AI lane was a STAIRCASE -- constant for ~6 frames, then a 2-7 cm jump -- because each GPL
+# record (one per 3 m) was used as-is with no interpolation; the steps are largest where the line moves sideways fastest,
+# i.e. in corners. Also the index was s/3.0 while the speed table already uses the lap FRACTION (AI-PACE-1: on a
+# re-centred line s/3 drifts along the lap). Both fixed: lap-fraction index, Catmull-Rom between records (position and
+# rate continuous). JM_GPLLAT_STEP=1 restores the old nearest-record lookup.
+const GPLLAT_STEP = Ref(get(ENV, "JM_GPLLAT_STEP", "0") != "0")
+@inline function _gfrac(line::AILine, s, n)
+    u = mod(s, line.total) / (line.total / n); i = floor(Int, u)
+    (mod(i, n) + 1, u - i)
+end
+@inline function _gcr(v::Vector{Float64}, s, line::AILine)
+    n = length(v)
+    GPLLAT_STEP[] && return v[_gidx(line, s, n)]
+    (i, t) = _gfrac(line, s, n)
+    p0 = v[mod1(i - 1, n)]; p1 = v[i]; p2 = v[mod1(i + 1, n)]; p3 = v[mod1(i + 2, n)]
+    0.5*((2p1) + (-p0 + p2)*t + (2p0 - 5p1 + 4p2 - p3)*t^2 + (-p0 + 3p1 - 3p2 + p3)*t^3)
+end
 "GPL race-line lateral at s, or `nothing` when no table is loaded."
-gpl_racelane(line::AILine, s) = (g = GPLLAT[]; g === nothing ? nothing : g[1][_gidx(line, s, length(g[1]))])
+gpl_racelane(line::AILine, s) = (g = GPLLAT[]; g === nothing ? nothing : _gcr(g[1], s, line))
 "GPL rail offset from the race line at s for side +1 (left, pass1) / -1 (right, pass2); nothing without a table."
 gpl_rail(line::AILine, s, side) = (g = GPLLAT[]; g === nothing ? nothing :
-    (i = _gidx(line, s, length(g[1])); (side > 0 ? g[2][i] : g[3][i]) - g[1][i]))
+    _gcr(side > 0 ? g[2] : g[3], s, line) - _gcr(g[1], s, line))
 
 # E107-S3 (PO 2026-09-28: use GPL's data wherever possible): GPL ships the CORRIDOR as well as the
 # line -- minrace.lp and maxrace.lp, one record per 3 m like the rest. Our LANE_MAX was a fixed
@@ -867,9 +885,15 @@ gplband_on!(on::Bool) = (GPLBAND_ON[] = on ? 1 : 0; on)
 `margin` is kept clear of each wall so a car sits inside the corridor rather than on its edge."""
 function gpl_band(line::AILine, s; margin = 0.0)
     (gplband_on() && GPLBAND[] !== nothing) || return nothing
-    g = GPLBAND[]; i = _gidx(line, s, length(g[1]))
-    lo = g[1][i] + margin; hi = g[2][i] - margin
-    lo <= hi ? (lo, hi) : ((g[1][i] + g[2][i])/2, (g[1][i] + g[2][i])/2)   # corridor narrower than 2*margin
+    g = GPLBAND[]; n = length(g[1])
+    if GPLLAT_STEP[]
+        i = _gidx(line, s, n); a = g[1][i]; b = g[2][i]
+    else                                                   # AIJIT-2: linear between records, lap-fraction index
+        (i, t) = _gfrac(line, s, n); j = mod1(i + 1, n)
+        a = g[1][i] + (g[1][j] - g[1][i])*t; b = g[2][i] + (g[2][j] - g[2][i])*t
+    end
+    lo = a + margin; hi = b - margin
+    lo <= hi ? (lo, hi) : ((a + b)/2, (a + b)/2)   # corridor narrower than 2*margin
 end
 
 function _vtarget(line::AILine, s, v; amax, vmax, vmin, scale)

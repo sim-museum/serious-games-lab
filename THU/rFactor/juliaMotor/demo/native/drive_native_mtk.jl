@@ -3175,6 +3175,38 @@ const AIJIT_TAU_YAW = parse(Float64, get(ENV, "JM_AIJIT_TAU_YAW", "0.06"))
 const AIJIT_TAU_ATT = parse(Float64, get(ENV, "JM_AIJIT_TAU_ATT", "0.12"))
 const AIJIT_TAU_Y   = parse(Float64, get(ENV, "JM_AIJIT_TAU_Y", "0.03"))
 mutable struct AISmooth; on::Bool; hint::Int; lat::Float64; y::Float64; pit::Float64; rol::Float64; px::Float64; pz::Float64; yaw::Float64; end
+# AIJIT-2: the AI is re-expressed on a FINE copy of GPL's line -- a Catmull-Rom spline through its nodes, 8 points per
+# segment. Located and rebuilt on the same chords (exact round trip), but each chord turns 8x less than GPL's node-to-node
+# chords, whose corners showed as a sideways jerk at every node (WG all-car trace: drawn jerk RMS 3.2 mm/frame^2).
+const AIREF = let A = GPLREF, n = length(A), out = NTuple{2,Float64}[]
+    for i in 1:n, k in 0:7
+        u = k/8; h = A[mod1(i - 1, n)]; a = A[i]; b = A[mod1(i + 1, n)]; c = A[mod1(i + 2, n)]
+        cr(p0, p1, p2, p3) = 0.5*((2p1) + (-p0 + p2)*u + (2p0 - 5p1 + 4p2 - p3)*u^2 + (-p0 + 3p1 - 3p2 + p3)*u^3)
+        push!(out, (cr(h[1], a[1], b[1], c[1]), cr(h[2], a[2], b[2], c[2])))
+    end
+    out
+end
+"locate (x, z) on AIREF near `hint` (0 = whole line): (node, fraction, lateral (GPL sign), +lateral unit x, z)"
+function airef_locate(x, z, hint::Int)
+    A = AIREF; n = length(A); best = Inf; bk = 1; bu = 0.0
+    rng = hint == 0 ? (1:n) : ((hint - 200):(hint + 200))
+    @inbounds for kk in rng
+        k = mod1(kk, n); j = k == n ? 1 : k + 1
+        ax, az = A[k]; tx = A[j][1] - ax; tz = A[j][2] - az; L2 = tx*tx + tz*tz
+        u = L2 > 0 ? clamp(((x - ax)*tx + (z - az)*tz)/L2, 0.0, 1.0) : 0.0
+        dx = x - (ax + u*tx); dz = z - (az + u*tz); d2 = dx*dx + dz*dz
+        d2 < best && (best = d2; bk = k; bu = u)
+    end
+    hint != 0 && best > 400.0^2 && return airef_locate(x, z, 0)
+    j = bk == n ? 1 : bk + 1; tx = A[j][1] - A[bk][1]; tz = A[j][2] - A[bk][2]; tl = max(hypot(tx, tz), 1e-9)
+    lx = GPLW_SGN*(-tz/tl); lz = GPLW_SGN*(tx/tl)
+    (bk, bu, (x - (A[bk][1] + bu*tx))*lx + (z - (A[bk][2] + bu*tz))*lz, lx, lz)
+end
+function airef_world(k, u, lat)
+    A = AIREF; n = length(A); j = k == n ? 1 : k + 1
+    tx = A[j][1] - A[k][1]; tz = A[j][2] - A[k][2]; tl = max(hypot(tx, tz), 1e-9)
+    (A[k][1] + u*tx + GPLW_SGN*lat*(-tz/tl), A[k][2] + u*tz + GPLW_SGN*lat*(tx/tl))
+end
 const AISM = AISmooth[]
 "heading of GPL's line at (section, fraction), from a Catmull-Rom spline through the nodes (continuous: the chords between
 nodes turn at every node, which a heading taken from chords would show as a step)"
@@ -3201,8 +3233,7 @@ function ai_smooth(i, p, dt)
     st = AISM[i]
     (x, y, z, θ, pit, rol) = (Float64(p[1]), Float64(p[2]), Float64(p[3]), Float64(p[4]), Float64(p[5]), Float64(p[6]))
     if st.on && hypot(x - st.px, z - st.pz) > 15.0; st.on = false; end      # teleported (recovery, restart)
-    r = gplw_locate(x, z; hint = st.on ? st.hint : 0)
-    (sec, f, lat) = (r[1], r[2], r[3]); bk = r[7]
+    (bk, fu, lat) = airef_locate(x, z, st.on ? st.hint : 0)
     if !st.on
         st.on = true; st.hint = bk; st.lat = lat; st.y = y; st.pit = pit; st.rol = rol; st.px = x; st.pz = z; st.yaw = θ
         return (x, y, z, θ, pit, rol)
@@ -3211,11 +3242,11 @@ function ai_smooth(i, p, dt)
     a(τ) = 1.0 - exp(-dt/max(τ, 1e-4))
     lat0 = st.lat
     st.lat += (lat - st.lat)*a(AIJIT_TAU_LAT)
-    (wx, wz) = gplw_world(sec, f, st.lat)                     # exact round trip on the same chords the locate used
+    (wx, wz) = airef_world(bk, fu, st.lat)                    # exact round trip on the same chords the locate used
     st.y += (y - st.y)*a(AIJIT_TAU_Y); st.pit += (pit - st.pit)*a(AIJIT_TAU_ATT); st.rol += (rol - st.rol)*a(AIJIT_TAU_ATT)
     dx = wx - st.px; dz = wz - st.pz; dd = hypot(dx, dz)
     if dd > 1e-2                                              # moving: GPL's heading = the line's (spline) heading + the
-        th = gplw_heading_cr(sec, f)                          # angle the lateral is changing at, d(lat)/ds
+        th = let A = AIREF, j = mod1(bk + 1, length(A)); atan(A[j][2] - A[bk][2], A[j][1] - A[bk][1]) end   # fine-line heading
         abs(atan(sin(th - θ), cos(th - θ))) > pi/2 && (th += pi)  # travelling against s
         tgt = th + GPLW_SGN*atan(st.lat - lat0, dd)*(abs(atan(sin(th - θ), cos(th - θ))) > pi/2 ? -1 : 1)
         abs(atan(sin(tgt - θ), cos(tgt - θ))) > 1.2 && (tgt = θ)   # spun / sideways: keep the logic heading
@@ -8408,6 +8439,32 @@ if !SKIDPAD && haskey(ENV, "JM_OBJPROFILE")
     end
     exit(0)
 end
+# E108-S10 probe: JM_RIBBON_VS_GPL=1 -- the road-rounding target (RIBBON0) against GPL's own road centre (registered .trk
+# asphalt strip), every ribbon node: lateral difference, and its wiggle (difference minus its +-25 m running mean).
+if GPLW_ON && haskey(ENV, "JM_RIBBON_VS_GPL")
+    let rows = Tuple{Float64,Float64}[], sacc = 0.0, P = RIBBON0.pos
+        for k in eachindex(P)
+            k > 1 && (sacc += hypot(P[k][1] - P[k-1][1], P[k][3] - P[k-1][3]))
+            r = gplw_locate_any(P[k][1], P[k][3]); r === nothing && continue
+            (sec, f, lat) = r; v = GPLWALLS.secs[sec]; a0 = NaN; b0 = NaN
+            for q in 1:length(v)-1
+                (v[q].typ & 0x7ff) == 1 || continue
+                ea = GPLWall.edge(GPLWALLS, sec, q, f); eb = GPLWall.edge(GPLWALLS, sec, q + 1, f)
+                (isnan(a0) || eb - ea > b0 - a0) && (a0 = ea; b0 = eb)
+            end
+            isnan(a0) || push!(rows, (sacc, lat - (a0 + b0)/2))
+        end
+        d = [r[2] for r in rows]; n = length(d); sv = [r[1] for r in rows]
+        wig = [d[k] - sum(d[max(1, k-8):min(n, k+8)])/length(max(1, k-8):min(n, k+8)) for k in 1:n]
+        println("  [ribbon-vs-gpl] ", TRACKSEL, ": ", n, " nodes; offset p50 ", round(sort(abs.(d))[n÷2], digits = 2), " m; wiggle p90 ",
+                round(sort(abs.(wig))[9n÷10], digits = 2), " max ", round(maximum(abs.(wig)), digits = 2), " m")
+        worst = sortperm(abs.(wig), rev = true)
+        picked = Int[]
+        for k in worst; all(j -> abs(sv[j] - sv[k]) > 60, picked) && push!(picked, k); length(picked) >= 10 && break; end
+        for k in sort(picked); println("     s ", round(Int, sv[k]), "  offset ", round(d[k], digits = 2), "  wiggle ", round(wig[k], digits = 2)); end
+    end
+    exit(0)
+end
 # E109/FLOAT-1 (PO 2026-10-01, Ring: "trees levitate near or above the track"): JM_FLOAT=1 lists every billboard and drawn
 # object within 20 m of the road whose base stands more than 0.5 m above the ground under it, then exits.
 if !SKIDPAD && get(ENV, "JM_FLOAT", "0") != "0"
@@ -9366,7 +9423,7 @@ const AICAM_SEQ = [(parse(Int, split(q, ":")[1]), Symbol(split(q, ":")[2])) for 
 const AICAM_SEG = 25
 const AICAM_R = Ref(isempty(AICAM_SEQ) ? AICAM : AICAM_SEQ[1][1])
 const AIVIEW_R = Ref(isempty(AICAM_SEQ) ? :gplchase : AICAM_SEQ[1][2])
-const AIPOSE_TRACE = parse(Int, get(ENV, "JM_AIPOSE_TRACE", "0"))
+const AIPOSE_TRACE = get(ENV, "JM_AIPOSE_TRACE", "0") == "all" ? -1 : parse(Int, get(ENV, "JM_AIPOSE_TRACE", "0"))
 function aicam_camera(p)
     v0 = CTL.view; CTL.view = 1
     r = camera((x = p[1], y = p[2], z = p[3], θ = p[4]))
@@ -12739,10 +12796,12 @@ function main()
         end
         AICAM_R[] > 0 && (ai_poses_prev[] = NTuple{6,Float64}[ntuple(j -> Float64(p[j]), 6) for p in ai_poses])
         # AIJIT-1 probe: JM_AIPOSE_TRACE=<i> prints AI car i's drawn pose every frame (t s lane x y z yaw pitch roll)
-        if AIPOSE_TRACE > 0 && AIPOSE_TRACE <= length(ai_poses) && AIPOSE_TRACE <= length(AICARS)
-            let p = ai_poses[AIPOSE_TRACE], c = AICARS[AIPOSE_TRACE]
+        if AIPOSE_TRACE != 0
+            for k in (AIPOSE_TRACE > 0 ? (AIPOSE_TRACE:AIPOSE_TRACE) : (1:min(length(ai_poses), length(AICARS))))
+                (k <= length(ai_poses) && k <= length(AICARS)) || continue
+                p = ai_poses[k]; c = AICARS[k]
                 println("   [aipose] ", round(cs.t, digits = 4), " ", round(c.s, digits = 3), " ", round(c.lane, digits = 4), " ",
-                        join((round(Float64(p[j]), digits = 4) for j in 1:6), " "))
+                        join((round(Float64(p[j]), digits = 4) for j in 1:6), " "), " ", k)
             end
         end
         if !REPLAY && race_go[] && !rst && !isempty(ai_poses)

@@ -21613,3 +21613,38 @@ Ferrari/Brabham/BRM/Eagle/Cooper. Captures: `261002/aicargfx/gold_field_2views_w
 ### DELIVERY 261002b — `~/Documents/261002/JuliaRacer-x86_64-261002b.AppImage` (sha256 `b539deac76e9cb6a…`)
 HEAD `8920dac1` (FIELD-1). Verified from its own mounted runtime, empty user depot: Watkins Glen race smoke exit 0, 148 s,
 0 precompiles, 0 errors; AI grid Lotus, Lotus, Cooper, Ferrari, Brabham.
+
+---
+
+## AIJIT-2 / E108-S11 — PO 2026-10-02, Watkins Glen (261002b AppImage): *"The AI curve skitter is much reduced, but still occurs at curves. I notice coming out of the sweeper that the white line on the road is also curved the wrong way there"*
+
+### AI skitter at curves (AIJIT-2)
+Measured with `JM_AIPOSE_TRACE=all` (new: every AI car, car index in the last column), 5 cars, 6000 frames:
+* **Cause 1 — lane staircase.** GPL's lateral tables (race.lp line, pass rails, min/max corridor; one record per
+  3 m) were read nearest-record with no interpolation: the AI lane held for ~6 frames, then jumped 2-7 cm. The
+  steps are biggest where the line moves sideways fastest: in corners. The index was also `s/3.0`; the speed
+  table already uses the lap fraction (AI-PACE-1), which stays aligned on a re-centred line. Now Catmull-Rom between
+  records (corridor: linear), lap-fraction index. `JM_GPLLAT_STEP=1` restores the old lookup.
+* **Cause 2 — chord corners in the drawn pose.** AIJIT-1 rebuilds each AI's drawn position on GPL's line, node to
+  node in chords; each chord corner gave a sideways kick. The drawn pose now uses a Catmull-Rom copy of that line
+  at 8 points per segment (`AIREF`), with the same exact locate/rebuild round trip.
+
+| WG, 5 cars | lateral jerk RMS / p99 / max (mm/frame²) | heading vs travel RMS / max | yaw-rate step p99 | lane 2nd diff RMS |
+|---|---|---|---|---|
+| 261002b | 3.38 / 15.3 / 71 | 0.52° / 5.0° | 11.8 °/s | 20.1 mm |
+| + interpolated tables | 3.20 / 15.3 / 30 | 0.51° / 4.8° | 9.9 °/s | 3.2 mm |
+| + fine drawn line | **1.92 / 7.9 / 26** | **0.40° / 4.8°** | **7.4 °/s** | 3.2 mm |
+
+The one 50 m bin that had most of the large jerks (s 1750, the hairpin, 4 of 5 cars) is gone.
+
+### White line curved the wrong way (E108-S11)
+At the exit of the s~1761 hairpin GPL draws a white line that **cuts across** the road edge toward the run-off
+(gold race footage at the Kendall board, `261002/aijit2/wg_hairpin_gold_vs_ours.jpg`). `JM_ROADCURVE=0` drew it
+straight; road rounding bent it, because it interpolates in the road's (along, lateral) frame and that curves any
+edge that is not parallel to the road. Rounding now splits only road-parallel edges: an edge more than 25° off the
+road direction (`JM_ROADCURVE_OBLIQUE`) is never split. The decision is per edge, so the two triangles sharing an
+edge always agree (no cracks). The road edge lines at the other sweepers (s 150, 1960, 3110) are unchanged in A/B
+shots. Before/after: `261002/aijit2/wg_hairpin_line_before_after.jpg`.
+
+Probe added: `JM_RIBBON_VS_GPL=1` compares the rounding target with GPL's registered asphalt centre (WG: p50
+offset 0.06 m; the outliers are the hairpin/bus-stop junctions where GPL's widest asphalt strip is the run-off).
