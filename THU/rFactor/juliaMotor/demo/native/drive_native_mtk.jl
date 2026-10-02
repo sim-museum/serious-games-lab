@@ -1706,6 +1706,27 @@ else
     # record be placed in the world exactly (point + dlat along the local normal) and then read back in
     # OUR frame through hat(), instead of approximating the re-centring shift by lap fraction.
     const ALIGNED0 = align_centreline(GPLTrack.trk_centreline(track_file(GPLNAME, ".trk")), ROADHAT)
+    # AIJIT-1 (2026-10-01): the re-centre shift is found node by node from the road texture, and nothing made it vary
+    # smoothly: at Watkins Glen s~1520 it notched the line 1.4 m sideways over ~10 m of STRAIGHT, and every AI car
+    # following the rail swerved there (the PO's "jittering back and forth"). A road's middle does not notch, so the shift
+    # vectors get a median (7 nodes: removes notches) then a Gaussian (sigma 1.5 nodes). JM_RECENTRE_SMOOTH=0 disables.
+    function smooth_recentre(a0, a1, shiftv)
+        get(ENV, "JM_RECENTRE_SMOOTH", "1") == "0" && return a1
+        n = min(length(a0), length(a1)); n < 16 && return a1
+        dx = [a1[k][1] - a0[k][1] for k in 1:n]; dz = [a1[k][2] - a0[k][2] for k in 1:n]
+        med(v) = [sort([v[mod1(k + d, n)] for d in -3:3])[4] for k in 1:n]
+        gw = [exp(-0.5*(d/1.5)^2) for d in -4:4]; gw ./= sum(gw)
+        gau(v) = [sum(gw[d + 5]*v[mod1(k + d, n)] for d in -4:4) for k in 1:n]
+        sx = gau(med(dx)); sz = gau(med(dz))
+        out = [(a0[k][1] + sx[k], a0[k][2] + sz[k]) for k in 1:n]
+        worst = maximum(hypot(out[k][1] - a1[k][1], out[k][2] - a1[k][2]) for k in 1:n)
+        for k in 1:min(n, length(shiftv))                     # keep RECENTRE_SHIFT (metres to the LEFT) consistent
+            j = mod1(k + 1, n); tx = a0[j][1] - a0[k][1]; tz = a0[j][2] - a0[k][2]; tl = max(hypot(tx, tz), 1e-9)
+            shiftv[k] = sx[k]*(-tz/tl) + sz[k]*(tx/tl)
+        end
+        println("  re-centre shift smoothed (AIJIT-1): largest node correction ", round(worst, digits = 2), " m")
+        out
+    end
     const ALIGNED  = let a = ALIGNED0
         # D4: pull lane-0 to the road's geometric centre (Zandvoort).  SKIP on Monza — its wide pit
         # straight + pit lane skew the "midpoint" so the recentre over-shifts the racing line toward the
@@ -1723,7 +1744,7 @@ else
         # restores the raw line for every track, which is the revert path.
         haskey(ENV, "JM_NO_RECENTRE") ? a :
             haskey(ENV,"JM_NORECENTRE") ? (println("  re-centring SKIPPED (JM_NORECENTRE) — E84-S4 A/B"); a) :
-            recentre_on_road(a, ROADHAT; passes = (ROADHAT === TERRAIN0 ? 1 : 4), shift = RECENTRE_SHIFT)
+            smooth_recentre(a, recentre_on_road(a, ROADHAT; passes = (ROADHAT === TERRAIN0 ? 1 : 4), shift = RECENTRE_SHIFT), RECENTRE_SHIFT)
     end
     # E107-S6: is the re-centre shift a DRIFT along the lap (a .trk decode/placement error) or local scatter?
     # JM_SHIFT_PROFILE=1 prints mean and max |shift| in 20 lap-fraction bins, then exits.
@@ -2786,6 +2807,25 @@ else
     # Per-part single-sided rendering for the rail family only — sign parts keep both faces (D6).
     const TRACK_RAILCULL = Bool[railfam(p.tex) for p in TRACK]
 end
+# E108 helper: JM_SHARP=<n> prints the n sharpest corners of the road line (3-point radius over +-8 m), lapdist + radius
+if !SKIDPAD && haskey(ENV, "JM_SHARP")
+    let A = ALIGNED, n = length(A), sa = zeros(n), rows = Tuple{Float64,Float64}[]
+        for k in 2:n; sa[k] = sa[k-1] + hypot(A[k][1]-A[k-1][1], A[k][2]-A[k-1][2]); end
+        for k in 1:n
+            i = k; j = k
+            while sa[k] - sa[mod1(i, n)] < 8.0 && i > k - n ÷ 2; i -= 1; end
+            while sa[mod1(j, n)] - sa[k] < 8.0 && j < k + n ÷ 2; j += 1; end
+            (i < 1 || j > n) && continue
+            a_ = A[i]; b_ = A[k]; c_ = A[j]
+            ab = hypot(b_[1]-a_[1], b_[2]-a_[2]); bc = hypot(c_[1]-b_[1], c_[2]-b_[2]); ca = hypot(a_[1]-c_[1], a_[2]-c_[2])
+            ar = abs((b_[1]-a_[1])*(c_[2]-a_[2]) - (b_[2]-a_[2])*(c_[1]-a_[1]))/2
+            ar > 1e-6 && push!(rows, (sa[k], ab*bc*ca/(4ar)))
+        end
+        sort!(rows, by = r -> r[2]); picked = Tuple{Float64,Float64}[]
+        for r in rows; all(p -> abs(p[1] - r[1]) > 150, picked) && push!(picked, r); length(picked) >= parse(Int, ENV["JM_SHARP"]) && break; end
+        println("  [sharp] ", TRACKSEL, " sharpest corners (lapdist, radius m): ", [(round(Int, p[1]), round(p[2], digits = 1)) for p in picked])
+    end
+end
 # ---- GPLWALL-1 (PO 2026-10-01: "using GPL's methods where possible, ensure that the user's car will never go
 # through any object on any track as if it wasn't there, consistent with the GPL behaviour upon collision") ----
 # GPL's track .3do carries no collision: GPL contains the car with the .trk strip list (gplwall.jl). Here those
@@ -2922,6 +2962,53 @@ if GPLW_ON && (get(ENV, "JM_GPLWALL_REG", "2.0") != "0" || get(ENV, "JM_GPLWALL_
         end
         CEN = get(ENV, "JM_GPLWALL_CENSUS", "0") != "0"
         CEN && census("as placed")
+        # GPLWALL-1 S9: register GPL's ROAD first. trk23do generated our drawn road from GPL's asphalt strip, so the two
+        # coincide in GPL; in our world the rigid refit leaves local errors (Ring s~3480-3610: our road 2.6 m left of GPL's,
+        # so GPL's left wall stood on our left lane -- the PO's "solid curtain of trees that blocked the road"). At each
+        # point the drawn road's extent across the track (road-only HAT) gives its centre; the whole strip list moves by
+        # (drawn centre - GPL asphalt centre), smoothed along the lap. JM_GPLWALL_ROADREG=0 disables.
+        if ROADHAT !== TERRAIN0 && get(ENV, "JM_GPLWALL_ROADREG", "1") != "0"
+            NFp = GPLWall.NF + 1; ns = length(GPLWALLS.secs); shift = fill(NaN, ns*NFp)
+            onr(x, z) = JuliaMotor.hat3d(ROADHAT, x, z; ref = Inf)[3]
+            for si in 1:ns, j in 1:NFp
+                f = (j - 1)/GPLWall.NF; v = GPLWALLS.secs[si]
+                a0 = NaN; b0 = NaN
+                for k in 1:length(v)-1
+                    (v[k].typ & 0x7ff) == 1 || continue
+                    ea = GPLWALLS.E[si][k, j]; eb = GPLWALLS.E[si][k+1, j]
+                    (isnan(a0) || eb - ea > b0 - a0) && (a0 = ea; b0 = eb)
+                end
+                isnan(a0) && continue
+                c = (a0 + b0)/2; w = b0 - a0
+                (px, pz, nx, nz) = gplw_frame(si, f)
+                # contiguous runs of drawn road along the normal, c +- 12 m; take the run whose centre is nearest c
+                best = NaN; bd = Inf; run0 = NaN
+                for t in (c - 12.0):0.25:(c + 12.25)
+                    on = t <= c + 12.0 && onr(px + nx*t, pz + nz*t)
+                    if on && isnan(run0)
+                        run0 = t
+                    elseif !on && !isnan(run0)
+                        rc = (run0 + t - 0.25)/2; rw = t - 0.25 - run0
+                        (rw >= 0.5w && abs(rc - c) < bd) && (bd = abs(rc - c); best = rc)
+                        run0 = NaN
+                    end
+                end
+                (!isnan(best) && bd < 6.0) && (shift[(si - 1)*NFp + j] = best - c)
+            end
+            # smooth: median over +-6 samples (~ +-half a section), gaps filled from the neighbours
+            n = length(shift); sm = zeros(n); got = 0
+            for i in 1:n
+                win = [shift[mod1(i + d, n)] for d in -6:6 if !isnan(shift[mod1(i + d, n)])]
+                isempty(win) && continue
+                sm[i] = sort(win)[(length(win) + 1) ÷ 2]; got += 1
+            end
+            for si in 1:ns, j in 1:NFp
+                GPLWALLS.E[si][:, j] .+= sm[(si - 1)*NFp + j]
+            end
+            a_ = sort(abs.(sm))
+            println("  GPLWALL-1: ", TRACKSEL, " GPL road registered to the drawn road at ", got, " of ", n, " points; |shift| p50 ",
+                    round(a_[end ÷ 2 + 1], digits = 2), " m, p90 ", round(a_[max(1, 9n ÷ 10)], digits = 2), " m, max ", round(a_[end], digits = 2), " m")
+        end
         if get(ENV, "JM_GPLWALL_REG", "2.0") != "0"
             (nf, nr, sh) = gplw_register!(GPLWALLS, grid)
             a = sort(abs.(sh))
@@ -3071,6 +3158,72 @@ function gplwall_clamp!(c)
     GPLW_LAST[] = (c.x, c.z)
     lo < lat < hi && (GPLW_PREV[] = lat)                # continuity: only a lateral inside the free interval
     nothing
+end
+# ---- AIJIT-1 (PO 2026-10-01, Watkins Glen: "the AI still responds strongly to these [bumps], jittering back and forth in a
+# way never, ever seen in GPL ... make the AI cars behave the way they do in GPL!") ----
+# MEASURED (JM_AIPOSE_TRACE, WG race, car 3, 40 s): the drawn heading was off the car's own direction of travel by 2.7 deg
+# RMS, 9 deg p99 and +-35 deg at s~1515-1535 -- the drawn POSITION zig-zagged while s and lane were smooth: the AI rail is
+# built from our re-centred road line, whose nodes are nudged one by one. GPL moves its AI on the .trk's own smooth arcs plus
+# a smoothly varying lateral, pointing where it travels. So the drawn pose is re-expressed the same way: located on GPL's
+# line (per-car continuity hint), its lateral low-passed (AIJIT_TAU_LAT), the position rebuilt from GPL's line, the heading
+# taken from the direction of travel (AIJIT_TAU_YAW), and pitch/roll from the terrain low-passed (AIJIT_TAU_ATT) so one
+# bump does not rock the car. Height follows closely (AIJIT_TAU_Y) so the car stays on the road. JM_AIJIT=0 disables.
+const AIJIT_ON      = GPLW_ON && get(ENV, "JM_AIJIT", "1") != "0"
+const AIJIT_TAU_LAT = parse(Float64, get(ENV, "JM_AIJIT_TAU_LAT", "0.25"))
+const AIJIT_TAU_YAW = parse(Float64, get(ENV, "JM_AIJIT_TAU_YAW", "0.06"))
+const AIJIT_TAU_ATT = parse(Float64, get(ENV, "JM_AIJIT_TAU_ATT", "0.12"))
+const AIJIT_TAU_Y   = parse(Float64, get(ENV, "JM_AIJIT_TAU_Y", "0.03"))
+mutable struct AISmooth; on::Bool; hint::Int; lat::Float64; y::Float64; pit::Float64; rol::Float64; px::Float64; pz::Float64; yaw::Float64; end
+const AISM = AISmooth[]
+"heading of GPL's line at (section, fraction), from a Catmull-Rom spline through the nodes (continuous: the chords between
+nodes turn at every node, which a heading taken from chords would show as a step)"
+function gplw_heading_cr(sec, f)
+    A = GPLREF; n = length(A)
+    t = (sec - 1)*GPLREF_SUB + f*GPLREF_SUB; i = clamp(floor(Int, t) + 1, 1, n); u = t - (i - 1)
+    h = mod1(i - 1, n); j = mod1(i + 1, n); k = mod1(i + 2, n)
+    dcr(p0, p1, p2, p3) = 0.5*((-p0 + p2) + 2*(2p0 - 5p1 + 4p2 - p3)*u + 3*(-p0 + 3p1 - 3p2 + p3)*u^2)
+    atan(dcr(A[h][2], A[i][2], A[j][2], A[k][2]), dcr(A[h][1], A[i][1], A[j][1], A[k][1]))
+end
+function gplw_world_cr(sec, f, lat)
+    A = GPLREF; n = length(A)
+    t = (sec - 1)*GPLREF_SUB + f*GPLREF_SUB; i = clamp(floor(Int, t) + 1, 1, n); u = t - (i - 1)
+    h = mod1(i - 1, n); j = mod1(i + 1, n); k = mod1(i + 2, n)
+    cr(p0, p1, p2, p3) = 0.5*((2p1) + (-p0 + p2)*u + (2p0 - 5p1 + 4p2 - p3)*u^2 + (-p0 + 3p1 - 3p2 + p3)*u^3)
+    dcr(p0, p1, p2, p3) = 0.5*((-p0 + p2) + 2*(2p0 - 5p1 + 4p2 - p3)*u + 3*(-p0 + 3p1 - 3p2 + p3)*u^2)
+    bx = cr(A[h][1], A[i][1], A[j][1], A[k][1]); bz = cr(A[h][2], A[i][2], A[j][2], A[k][2])
+    tx = dcr(A[h][1], A[i][1], A[j][1], A[k][1]); tz = dcr(A[h][2], A[i][2], A[j][2], A[k][2]); tl = max(hypot(tx, tz), 1e-9)
+    (bx + GPLW_SGN*lat*(-tz/tl), bz + GPLW_SGN*lat*(tx/tl))
+end
+"smooth one AI car's drawn pose (x, y, z, yaw, pitch, roll) the GPL way; `i` = car index, `dt` = frame step"
+function ai_smooth(i, p, dt)
+    while length(AISM) < i; push!(AISM, AISmooth(false, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)); end
+    st = AISM[i]
+    (x, y, z, θ, pit, rol) = (Float64(p[1]), Float64(p[2]), Float64(p[3]), Float64(p[4]), Float64(p[5]), Float64(p[6]))
+    if st.on && hypot(x - st.px, z - st.pz) > 15.0; st.on = false; end      # teleported (recovery, restart)
+    r = gplw_locate(x, z; hint = st.on ? st.hint : 0)
+    (sec, f, lat) = (r[1], r[2], r[3]); bk = r[7]
+    if !st.on
+        st.on = true; st.hint = bk; st.lat = lat; st.y = y; st.pit = pit; st.rol = rol; st.px = x; st.pz = z; st.yaw = θ
+        return (x, y, z, θ, pit, rol)
+    end
+    st.hint = bk
+    a(τ) = 1.0 - exp(-dt/max(τ, 1e-4))
+    lat0 = st.lat
+    st.lat += (lat - st.lat)*a(AIJIT_TAU_LAT)
+    (wx, wz) = gplw_world(sec, f, st.lat)                     # exact round trip on the same chords the locate used
+    st.y += (y - st.y)*a(AIJIT_TAU_Y); st.pit += (pit - st.pit)*a(AIJIT_TAU_ATT); st.rol += (rol - st.rol)*a(AIJIT_TAU_ATT)
+    dx = wx - st.px; dz = wz - st.pz; dd = hypot(dx, dz)
+    if dd > 1e-2                                              # moving: GPL's heading = the line's (spline) heading + the
+        th = gplw_heading_cr(sec, f)                          # angle the lateral is changing at, d(lat)/ds
+        abs(atan(sin(th - θ), cos(th - θ))) > pi/2 && (th += pi)  # travelling against s
+        tgt = th + GPLW_SGN*atan(st.lat - lat0, dd)*(abs(atan(sin(th - θ), cos(th - θ))) > pi/2 ? -1 : 1)
+        abs(atan(sin(tgt - θ), cos(tgt - θ))) > 1.2 && (tgt = θ)   # spun / sideways: keep the logic heading
+        st.yaw += atan(sin(tgt - st.yaw), cos(tgt - st.yaw))*a(AIJIT_TAU_YAW)
+    else
+        st.yaw += atan(sin(θ - st.yaw), cos(θ - st.yaw))*a(AIJIT_TAU_YAW)
+    end
+    st.px = wx; st.pz = wz
+    (wx, st.y, wz, st.yaw, st.pit, st.rol)
 end
 "world point of GPL (section, fraction, lateral)"
 function gplw_world(sec, f, lat)
@@ -4571,7 +4724,23 @@ if get(ENV,"JM_OUTBOARD_CENSUS","0") != "0"
 end
 
 # ---- GL init (visible window on the user's display) ----
-const W, H = 1440, 810
+# GFX-1 (PO 2026-10-01: "allow graphics options, including full-screen and resolution. Right now the graphics always looks
+# just one step up from 1024x768"): the window was a fixed 1440x810. JM_RES=<w>x<h> sets the render size; JM_FULLSCREEN=1
+# opens on the primary monitor, at its NATIVE mode unless JM_RES says otherwise. JM_MSAA = anti-aliasing samples (8).
+const FULLSCREEN = get(ENV, "JM_FULLSCREEN", "0") != "0"
+const W, H = let r = lowercase(strip(get(ENV, "JM_RES", ""))), m = match(r"^(\d{3,5})x(\d{3,5})$", r)
+    if m !== nothing
+        (parse(Int, m[1]), parse(Int, m[2]))
+    elseif FULLSCREEN || r == "native"
+        GLFW.Init()
+        vm = GLFW.GetVideoMode(GLFW.GetPrimaryMonitor())
+        (Int(vm.width), Int(vm.height))
+    else
+        (1440, 810)
+    end
+end
+const MSAA = clamp(parse(Int, get(ENV, "JM_MSAA", "8")), 0, 16)
+println("  display: ", W, "x", H, FULLSCREEN ? " fullscreen" : " window", ", MSAA ", MSAA)
 # distance culling (squared, render-world units = m): skip far trackside objects/billboards
 # per frame so the big layouts (Spa ~5.7k instances, Monza, Nürburgring) keep their FPS.
 # Sized larger than small circuits (Zandvoort ~1.3 km) so those cull nothing — visible only
@@ -5125,8 +5294,10 @@ GLFW.WindowHint(GLFW.VISIBLE, false)   # stay HIDDEN through the long texture lo
 GLFW.WindowHint(GLFW.CONTEXT_VERSION_MAJOR, 4); GLFW.WindowHint(GLFW.CONTEXT_VERSION_MINOR, 5)  # 4.5 → glClipControl (reversed-Z)
 GLFW.WindowHint(GLFW.OPENGL_PROFILE, GLFW.OPENGL_CORE_PROFILE)
 GLFW.WindowHint(GLFW.OPENGL_FORWARD_COMPAT, true)
-GLFW.WindowHint(GLFW.SAMPLES, 8)                  # 8× MSAA — smooth jaggies + finer alpha-to-coverage (cutout shimmer)
-win = GLFW.CreateWindow(W, H, "Julia Racer — $(uppercasefirst(TRACKSEL)) (loading…)")
+GLFW.WindowHint(GLFW.SAMPLES, MSAA)               # 8× MSAA by default — smooth jaggies + finer alpha-to-coverage (cutout shimmer)
+GLFW.WindowHint(GLFW.RESIZABLE, false)            # GFX-1: the render size is W x H; a resized window would draw into a corner
+win = FULLSCREEN ? GLFW.CreateWindow(W, H, "Julia Racer — $(uppercasefirst(TRACKSEL))", GLFW.GetPrimaryMonitor()) :
+                   GLFW.CreateWindow(W, H, "Julia Racer — $(uppercasefirst(TRACKSEL)) (loading…)")
 GLFW.MakeContextCurrent(win); GLFW.SwapInterval(1)
 glEnable(GL_DEPTH_TEST); glEnable(GL_MULTISAMPLE)
 glEnable(GL_SAMPLE_ALPHA_TO_COVERAGE)                                   # MSAA-smooth the alpha cutout edges (signs/trees/crowd)
@@ -7923,10 +8094,50 @@ function obs_build_part!(p, M, oname, ground, softname, bump)
                 zlo > h[1] + 1.2 && (bump(:overhead); continue)
                 zhi < h[1] + GPLW_HMIN && (bump(:buried); continue)
             end
-            (obs_on_road(a[1], a[2]) || obs_on_road(mx, mz) || obs_on_road(b[1], b[2])) && (bump(:onroad); continue)
+            # on the drawn road anywhere along it (every 1 m: three points let a long wall face clip a road corner, Spa s~14165)
+            Lf = hypot(b[1] - a[1], b[2] - a[2]); mq = max(2, ceil(Int, Lf))
+            any(q -> obs_on_road(a[1] + (b[1] - a[1])*q/mq, a[2] + (b[2] - a[2])*q/mq), 0:mq) && (bump(:onroad); continue)
             obs_add!(a[1], a[2], b[1], b[2], 0.0, kind, tx)
         end
     end
+# FLOAT-1 (PO 2026-10-01, Ring: "trees levitate near or above the track"; JM_FLOAT census: 187 billboards/objects within
+# 20 m of the road stood 0.5-9 m above the ground, a 6 m tree top hanging over the road at s~8872). GPL's trees stand on
+# the ground. Every billboard, forest panel and FOLIAGE object (most of its drawn texture is foliage) whose base floats
+# 0.5..30 m above the ground under it is set down onto it. JM_GROUND_TREES=0 disables.
+if !SKIDPAD && get(ENV, "JM_GROUND_TREES", "1") != "0"
+    let nb = 0, nt = 0, no = 0
+        gnd(x, z) = (h = JuliaMotor.hat3d(TERRAIN, x, z; ref = Inf); h[3] ? Float64(h[1]) : NaN)
+        for i in eachindex(BILLBOARDS)
+            b = BILLBOARDS[i]; g = gnd(Float64(b[2][1]), -Float64(b[2][3])); isnan(g) && continue
+            lift = Float64(b[2][2]) - g
+            (0.5 < lift < 30.0) || continue
+            BILLBOARDS[i] = (b[1], (b[2][1], Float32(g), b[2][3]), b[3], b[4]); nb += 1
+        end
+        for i in eachindex(STATICTREES)
+            b = STATICTREES[i]; g = gnd(Float64(b[2][1]), -Float64(b[2][3])); isnan(g) && continue
+            lift = Float64(b[2][2]) - g
+            (0.5 < lift < 30.0) || continue
+            STATICTREES[i] = (b[1], (b[2][1], Float32(g), b[2][3]), b[3], b[4], b[5]); nt += 1
+        end
+        for i in eachindex(OBJECTS)
+            o = OBJECTS[i]; ps = get(OBJ_CPU, lowercase(String(o[5])), nothing); ps === nothing && continue
+            nf = 0; na = 0
+            for p in ps; c = length(p.verts) ÷ 11; na += c; is_foliage_tex(p.tex) && (nf += c); end
+            nf > 0.5*na || continue
+            M = o[2]; lo = Inf
+            for p in ps, k in 1:11:length(p.verts)-10
+                vx = Float64(p.verts[k]); vy = Float64(p.verts[k+1]); vz = Float64(p.verts[k+2])
+                wx = M[1,1]*vx + M[1,2]*vy + M[1,3]*vz + M[1,4]; wy = M[2,1]*vx + M[2,2]*vy + M[2,3]*vz + M[2,4]
+                wz = M[3,1]*vx + M[3,2]*vy + M[3,3]*vz + M[3,4]
+                g = gnd(wx, -wz); isnan(g) || (lo = min(lo, wy - g))
+            end
+            (isfinite(lo) && 0.5 < lo < 30.0) || continue
+            M2 = Render.translate(0f0, -Float32(lo), 0f0) * M      # M is an immutable SMatrix: compose, don't edit
+            OBJECTS[i] = (o[1], M2, o[3], (o[4][1], o[4][2] - Float32(lo), o[4][3]), o[5]); no += 1
+        end
+        println("  FLOAT-1: set down onto the ground: ", nb, " billboards, ", nt, " forest panels, ", no, " foliage objects (JM_GROUND_TREES=0 disables)")
+    end
+end
 if OBS_ON
     let t0 = time(), horiz = Dict{String,Vector{Int}}(), nskip = Dict{Symbol,Int}()
         softname(n) = occursin("hay", n) || occursin("straw", n) || occursin("hedge", n) || occursin("hecke", n) ||
@@ -8116,6 +8327,80 @@ function obs_clamp!(c)
     end
     OBS_PREV[] = (c.x, c.z)
     nothing
+end
+# E109/FLOAT-1 (PO 2026-10-01, Ring: "trees levitate near or above the track"): JM_FLOAT=1 lists every billboard and drawn
+# object within 20 m of the road whose base stands more than 0.5 m above the ground under it, then exits.
+if !SKIDPAD && get(ENV, "JM_FLOAT", "0") != "0"
+    let rows = Any[]
+        gnd(x, z) = (h = JuliaMotor.hat3d(TERRAIN, x, z; ref = Inf); h[3] ? Float64(h[1]) : NaN)
+        near(x, z) = (hr = JuliaMotor.hat(TRKSURF, x, z); hr.found && abs(hr.lateral) < 20.0 ? (hr.lapdist, hr.lateral) : nothing)
+        for b in BILLBOARDS
+            x = Float64(b[2][1]); z = -Float64(b[2][3]); nr = near(x, z); nr === nothing && continue
+            g = gnd(x, z); isnan(g) && continue
+            lift = Float64(b[2][2]) - g
+            lift > 0.5 && push!(rows, ("billboard h$(round(Int, b[4]))", nr[1], nr[2], lift))
+        end
+        for o in OBJECTS
+            ps = get(OBJ_CPU, lowercase(String(o[5])), nothing); ps === nothing && continue
+            M = o[2]; lo = Inf; px = Float64(o[4][1]); pz = -Float64(o[4][3]); nr = near(px, pz); nr === nothing && continue
+            for p in ps, k in 1:11:length(p.verts)-10
+                vx = Float64(p.verts[k]); vy = Float64(p.verts[k+1]); vz = Float64(p.verts[k+2])
+                wx = M[1,1]*vx + M[1,2]*vy + M[1,3]*vz + M[1,4]; wy = M[2,1]*vx + M[2,2]*vy + M[2,3]*vz + M[2,4]
+                wz = M[3,1]*vx + M[3,2]*vy + M[3,3]*vz + M[3,4]
+                g = gnd(wx, -wz); isnan(g) || (lo = min(lo, wy - g))
+            end
+            isfinite(lo) && lo > 0.5 && push!(rows, (String(o[5]), nr[1], nr[2], lo))
+        end
+        println("  [float] ", TRACKSEL, ": ", length(rows), " billboards/objects within 20 m of the road stand > 0.5 m above the ground")
+        for r in sort(rows, by = r -> -r[4])[1:min(end, 25)]
+            println("     ", rpad(r[1], 16), " s ", round(Int, r[2]), "  lat ", round(r[3], digits = 1), "  base ", round(r[4], digits = 2), " m above ground")
+        end
+    end
+    exit(0)
+end
+# GPLWALL-1 S9: is the ROAD itself ever blocked? (JM_CORRIDOR=1 prints and exits) A car on the racing line, aimed along the
+# road, every 1 m round the lap, at lanes -1.5/0/+1.5 m: any hard obstacle or GPL wall it would touch is a road block.
+# PO 2026-10-01: "a solid curtain of trees that blocked the road" at the Ring -- a drawn curtain that GPLWALL-1 made solid.
+if OBS_ON && get(ENV, "JM_CORRIDOR", "0") != "0"
+    let hits = Dict{String,Vector{Float64}}(), wallhits = Float64[]
+        A = ALIGNED; nA = length(A); sacc = 0.0
+        for k in 1:nA, ln in (-1.5, 0.0, 1.5)
+            j = k == nA ? 1 : k + 1; tx = A[j][1] - A[k][1]; tz = A[j][2] - A[k][2]; tl = max(hypot(tx, tz), 1e-9)
+            ln == -1.5 && k > 1 && (sacc += hypot(A[k][1] - A[k-1][1], A[k][2] - A[k-1][2]))
+            sv = sacc; θ = atan(tz, tx); x = A[k][1] - tz/tl*ln; z = A[k][2] + tx/tl*ln
+            for i in obs_near(x, z)
+                OBS_KIND[i] === :soft && continue
+                g = obs_gap(i, x, z, θ, x, z)[1]
+                g < -0.05 && push!(get!(hits, OBS_NAME[i], Float64[]), sv)
+            end
+            GPLW_PREV[] = NaN; GPLW_LAST[] = (NaN, NaN); GPLW_HINT[] = 0
+            (_, _, _, glo, ghi, _, _, _, _, ge) = gplwall_gaps(x, z, θ)
+            min(glo, ghi) < -0.05 && push!(wallhits, sv)
+            if ln == 0.0 && haskey(ENV, "JM_CORRIDOR_DIAG")
+                (d0, d1) = parse.(Float64, split(ENV["JM_CORRIDOR_DIAG"], ":"))
+                if d0 <= sv <= d1 && round(Int, sv) % parse(Int, get(ENV, "JM_CORRIDOR_STEP", "15")) == 0
+                    (sc, fc, lc) = gplw_locate(x, z; hint = 0)
+                    v = GPLWALLS.secs[sc]
+                    strips = join(["$(round(GPLWall.edge(GPLWALLS, sc, k, fc), digits=1))$(v[k].wall && v[k].height >= GPLW_HMIN ? "W" : (v[k].typ & 0x7ff) == 1 ? "a" : "")" for k in 1:length(v)], " ")
+                    println("   [cdiag] s ", round(Int, sv), " sec ", sc - 1, " f ", round(fc, digits = 2), " our centre at GPL lat ", round(lc, digits = 2),
+                            "  strips: ", strips)
+                end
+            end
+        end
+        function grp(v)
+            out = Tuple{Int,Int}[]
+            for k in sort(unique(round.(Int, v)))
+                (!isempty(out) && k - out[end][2] <= 5) ? (out[end] = (out[end][1], k)) : push!(out, (k, k))
+            end
+            out
+        end
+        println("  [corridor] ", TRACKSEL, ": road blocked by hard obstacles at ", sum(length, values(hits); init = 0), " lane-stations; by GPL walls at ", length(wallhits))
+        for (nm, v) in sort(collect(hits), by = x -> -length(x[2]))[1:min(end, 20)]
+            println("     ", rpad(nm, 14), length(v), "  s ", join(["$(a)-$(b)" for (a, b) in grp(v)][1:min(end, 8)], ", "))
+        end
+        isempty(wallhits) || println("     GPL walls   ", length(wallhits), "  s ", join(["$(a)-$(b)" for (a, b) in grp(wallhits)][1:min(end, 12)], ", "))
+    end
+    exit(0)
 end
 
 println(length(OBJECTS), " trackside objects + ", length(BILLBOARDS), " billboards + ", length(STATICTREES), " forest panels + ", length(SOLIDS), " solid (collidable)"); flush(stdout)
@@ -8957,6 +9242,7 @@ const REPLAY_CAM_LABEL = ("COCKPIT", "CHASE (above rear)", "TV / DISTANT",
 # 2 Brabham, 3 BRM, 4 Eagle, 5 Cooper), so an AI chassis can be photographed beside its GPL chase-from-
 # behind still. Same geometry as the player's GPL-matched chase view (camera(), view 1). Test hook only.
 const AICAM = parse(Int, get(ENV, "JM_AICAM", "0"))
+const AIPOSE_TRACE = parse(Int, get(ENV, "JM_AIPOSE_TRACE", "0"))
 function aicam_camera(p)
     v0 = CTL.view; CTL.view = 1
     r = camera((x = p[1], y = p[2], z = p[3], θ = p[4]))
@@ -12244,7 +12530,17 @@ function main()
         # momentum-exchange impulse: the player (real vehicle physics) is knocked off line + spun
         # via bumpX!, the AI is shoved aside + spun + scrubbed.  The wheels keep spinning with motion.
         CAR3D && (PLAYER_CDA[] = 1.0)             # E56: default = full drag; the draft below cuts it for next frame's step
+        if AIJIT_ON && !REPLAY && !isempty(ai_poses)        # AIJIT-1: draw the AI the GPL way (see ai_smooth)
+            ai_poses = NTuple{6,Float64}[ai_smooth(k, ai_poses[k], dt > 1e-4 ? dt : 1/60) for k in eachindex(ai_poses)]
+        end
         AICAM > 0 && (ai_poses_prev[] = NTuple{6,Float64}[ntuple(j -> Float64(p[j]), 6) for p in ai_poses])
+        # AIJIT-1 probe: JM_AIPOSE_TRACE=<i> prints AI car i's drawn pose every frame (t s lane x y z yaw pitch roll)
+        if AIPOSE_TRACE > 0 && AIPOSE_TRACE <= length(ai_poses) && AIPOSE_TRACE <= length(AICARS)
+            let p = ai_poses[AIPOSE_TRACE], c = AICARS[AIPOSE_TRACE]
+                println("   [aipose] ", round(cs.t, digits = 4), " ", round(c.s, digits = 3), " ", round(c.lane, digits = 4), " ",
+                        join((round(Float64(p[j]), digits = 4) for j in 1:6), " "))
+            end
+        end
         if !REPLAY && race_go[] && !rst && !isempty(ai_poses)
             # E56 slipstream for the PLAYER: tuck behind a car on a straight → reduced frontal drag
             # (CdA_scale<1) → you reel them in + slingshot past.  A REAL aero effect integrated by the

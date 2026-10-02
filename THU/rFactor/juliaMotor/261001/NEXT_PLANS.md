@@ -20,7 +20,8 @@ per cycle.
 | **E91** | one iRacing coast-down on a straight, ~220 → 60 km/h, clutch in, then the same in gear | pins drag and engine braking together |
 | **E109** | GPL screenshots of the Ring at s≈8400 and s≈21355 | GPL's tree data vs our rotation pivot |
 | **E90** | a look at Monza s≈1000–1500 and Watkins Glen s≈500–750 / 2500–3000 | rails on road-textured triangles |
-| — | push? | commits are local only |
+| **E108** | a screenshot or lapdist of a Ring corner whose white line looks angular | the four sharpest corners look smooth at full res (`JM_SHARP`) |
+| **GFX-1** | try Full screen + Native from the launcher | not exercised here (it would take the display) |
 
 ---
 

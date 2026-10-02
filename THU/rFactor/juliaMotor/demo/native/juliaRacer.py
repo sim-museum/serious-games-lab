@@ -650,6 +650,7 @@ class DriveTab(QWidget):
         self.d2 = QCheckBox("Simplified 2-D physics (no jumps, lighter; JM_2D)")
         form.addWidget(self.d2, 10, 1)   # 3-D is the default; tick this only to fall back to planar
         root.addLayout(form)
+        root.addWidget(self._build_gfx_group())
         root.addWidget(self._build_net_group())
 
         # a race needs opponents and can't run on the skidpad — keep the form coherent as the mode changes
@@ -740,8 +741,59 @@ class DriveTab(QWidget):
     NET_PORT_DEFAULT = 47700
     LOBBY_ASK = b"JRLOBBY?"
 
+    # -----------------------------------------------------------------------
+    # GFX-1 (PO 2026-10-01: "allow graphics options, including full-screen and resolution. Right now the graphics
+    # always looks just one step up from 1024x768"). The sim rendered a fixed 1440x810 window; it now takes
+    # JM_RES=<w>x<h>, JM_FULLSCREEN=1 (native mode unless a resolution is given) and JM_MSAA.
+    # -----------------------------------------------------------------------
+    def _build_gfx_group(self):
+        if not hasattr(self, "_settings"):
+            self._settings = QSettings("juliaRacer", "launcher")
+        g = QGroupBox("Graphics")
+        lay = QGridLayout(g)
+        lay.addWidget(QLabel("Resolution:"), 0, 0)
+        self.gfx_res = QComboBox()
+        native = None
+        scr = QApplication.primaryScreen()
+        if scr is not None:
+            sz = scr.size(); dpr = scr.devicePixelRatio()
+            native = (int(round(sz.width() * dpr)), int(round(sz.height() * dpr)))
+        self._res_values = []
+        if native:
+            self._res_values.append("native")         # the sim asks GLFW for the monitor's own mode
+            self.gfx_res.addItem(f"Native ({native[0]} x {native[1]})")
+        for w, h in ((3840, 2160), (2560, 1440), (1920, 1080), (1600, 900), (1440, 810)):
+            if native and (w, h) == native:
+                continue
+            self._res_values.append(f"{w}x{h}")
+            self.gfx_res.addItem(f"{w} x {h}" + ("  (old default)" if (w, h) == (1440, 810) else ""))
+        saved = str(self._settings.value("gfx/res", self._res_values[0]))
+        self.gfx_res.setCurrentIndex(self._res_values.index(saved) if saved in self._res_values else 0)
+        lay.addWidget(self.gfx_res, 0, 1)
+        self.gfx_full = QCheckBox("Full screen")
+        self.gfx_full.setChecked(str(self._settings.value("gfx/full", "true")) == "true")
+        self.gfx_full.setToolTip("Full screen on the primary monitor at the chosen resolution (Native = the monitor's own mode).")
+        lay.addWidget(self.gfx_full, 0, 2)
+        lay.addWidget(QLabel("Anti-aliasing:"), 1, 0)
+        self.gfx_msaa = QComboBox(); self._msaa_values = ["8", "4", "2", "0"]
+        self.gfx_msaa.addItems(["8x MSAA (smoothest)", "4x MSAA", "2x MSAA", "Off (fastest)"])
+        sm = str(self._settings.value("gfx/msaa", "8"))
+        self.gfx_msaa.setCurrentIndex(self._msaa_values.index(sm) if sm in self._msaa_values else 0)
+        lay.addWidget(self.gfx_msaa, 1, 1)
+        return g
+
+    def _gfx_env(self, qenv):
+        res = self._res_values[self.gfx_res.currentIndex()]
+        full = self.gfx_full.isChecked(); msaa = self._msaa_values[self.gfx_msaa.currentIndex()]
+        self._settings.setValue("gfx/res", res); self._settings.setValue("gfx/full", "true" if full else "false")
+        self._settings.setValue("gfx/msaa", msaa)
+        qenv.insert("JM_RES", res); qenv.insert("JM_MSAA", msaa)
+        if full:
+            qenv.insert("JM_FULLSCREEN", "1")
+
     def _build_net_group(self):
-        self._settings = QSettings("juliaRacer", "launcher")
+        if not hasattr(self, "_settings"):
+            self._settings = QSettings("juliaRacer", "launcher")
         g = QGroupBox("Multiplayer (LAN)")
         lay = QGridLayout(g)
         lay.addWidget(QLabel("Session:"), 0, 0)
@@ -963,6 +1015,7 @@ class DriveTab(QWidget):
         if self.d2.isChecked():          # opt out of the default full-3D physics back to the planar model
             qenv.insert("JM_2D", "1")
         self._net_env(qenv)              # MP-GUI-1: host/join a LAN race
+        self._gfx_env(qenv)              # GFX-1: resolution / full screen / anti-aliasing
         # E14: clear any stale race result so the post-race screen only shows THIS race
         self._result_path = os.path.join(HERE, "last_race_result.txt")
         try:

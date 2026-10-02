@@ -21451,3 +21451,66 @@ player, wire fences drawn, GPL's invisible walls kept per the PO). Same recipe a
 runtime (bubblewrap, empty user depot): Watkins Glen 5-AI race smoke exit 0, 155 s, 0 precompiles, 0 errors; the GPL walls
 register (93.4 %) and 11463 drawn faces + 13 billboards load as obstacles inside the image; the launcher's Multiplayer
 group builds. The PO's install refreshes its code on first launch.
+
+---
+
+# PO 2026-10-01 (evening): pushed; AI jitter; Ring white lines, floating trees, a tree curtain; graphics options
+
+### GPLWALL-1 S9 — the Ring "solid curtain of trees that blocked the road" was a GPL wall on our lane: GPL's ROAD now registered first
+`JM_CORRIDOR=1` (new: our road line every 1 m at lanes -1.5/0/+1.5, aimed along the road; any hard obstacle or GPL wall the
+car would touch) found the Ring's road blocked by **GPL walls at s~3460-3680** (the PO's spot, after the first bridge) and
+by nothing drawn. There GPL's asphalt runs -4.0..4.0 with walls at -4.9 and +4.9, and our drawn road sat **2.5-2.7 m left
+of GPL's**. Fix: before the walls, GPL's whole strip list is moved so its asphalt centre lands on the DRAWN road's centre
+(road-only HAT scanned across the track at 11 points per section; median-smoothed along the lap). Shifts p50 / p90 / max:
+WG 0.62 / 1.25 / 1.88 m, Monza 0.38 / 1.75 / 3.0, Spa 1.5 / 2.62 / 4.63, Ring 1.5 / 2.75 / 4.12 (Zandvoort has no road-only
+HAT). Wall faces registered to drawn faces: WG 93 -> 99 %, Monza 88 -> 94 %, Spa 64 -> 87 %, Ring 70 -> 99 %. Corridor: the
+Ring, WG, Zandvoort clear; Spa 3 single stations; Monza 14 at s~420-450 where our road line itself runs down the pit
+lane (an E73 line artefact, not a block on the racing line). Also: a face is "on the road" if ANY point every 1 m along
+it is (three points let a long wall clip a road corner, Spa s~14165). `JM_GPLWALL_ROADREG=0` disables.
+**Crash sweep after:** 0 of 378 through on all five tracks, penetration <= 0.31 m (Zandvoort 0.38 m); scenarios with an
+invisible-wall contact WG 0, Monza 6, Zandvoort 23, Spa 4, **Ring 1 (was 14)**. The tree curtain the PO saw there is
+`TROW_001`, a 15 m single-quad tree-row panel at the road edge standing ACROSS the road direction (the E109 98-110 deg
+placement question); it is foliage (soft) and was never the block. Left as is pending E109's GPL screenshot.
+
+### AIJIT-1 — AI jitter at Watkins Glen ("never, ever seen in GPL ... make the AI cars behave the way they do in GPL!")
+Measured with `JM_AIPOSE_TRACE=<car>` (new): the AI is kinematic (`RaceAI.step_field!`), and its DRAWN position zig-zagged
+while its s and lane were smooth -- heading vs its own direction of travel 2.2 deg RMS, +-35 deg at WG s~1515-1535. Two causes:
+1. **The rail notched.** Our road line's re-centre shift is found node by node from the road texture; at WG s~1520 it put a
+   1.4 m sideways notch in a STRAIGHT. The shift vectors now get a median (7 nodes) + Gaussian (sigma 1.5 nodes) before use
+   (largest correction 1.84 m). `JM_RECENTRE_SMOOTH=0` disables. This line also feeds the player's surface.
+2. **The pose was not GPL's.** GPL moves its AI on the .trk's smooth arcs plus a smooth lateral, pointing where it goes.
+   `ai_smooth`: each car is located on GPL's line (per-car hint), its lateral low-passed (0.25 s), its position rebuilt on
+   the same chords, its heading = GPL line heading (Catmull-Rom tangent) + the angle its lateral changes at, pitch/roll
+   from the terrain low-passed (0.12 s; one bump no longer rocks the car), height followed closely (0.03 s).
+   `JM_AIJIT=0` disables; `JM_AIJIT_TAU_*` tune.
+
+| AI car 3, 40 s race | heading vs travel (RMS / max) | lateral jerk RMS / max | roll / pitch 1-6 Hz |
+|---|---|---|---|
+| WG before | 2.23 / 34.9 deg | 9.8 / 169 | 0.110 / 0.124 deg |
+| WG after | 0.40 / ~8 deg | 2.9 / 30 | ~0.07 / ~0.07 deg |
+| Ring before | 4.51 / 42.5 deg | 41.9 / 468 | 0.111 / 0.110 deg |
+| Ring after | 0.64 / 4.5 deg | 3.3 / 25 | 0.065 / 0.060 deg |
+
+### FLOAT-1 — "trees levitate near or above the track" (Ring)
+`JM_FLOAT=1` (new): 187 billboards/objects within 20 m of the Ring road stood 0.5-9 m above the ground (2 m bushes up to 9 m
+up; `s_tree01` 6 m up, 4.5 m off the road at s~8872). Every billboard, forest panel and foliage object (most of its drawn
+texture foliage) floating 0.5-30 m is now set down onto the ground (Ring: 87 billboards + 122 objects; Spa 15; WG 2).
+Before/after at s~8840: the tree crown hanging over the road is now a whole tree beside it (`261001/float/`).
+`JM_GROUND_TREES=0` disables.
+
+### E108 — "at the Ring, the white trackside lines are still merely piecewise linear at sharp corners"
+NOT reproduced: chase views at the four sharpest corners of the road line (`JM_SHARP=n`, new: s 13354 R15.6 m, 14847,
+3131, 2854) at full resolution show smooth lines; the rounding pass runs (55152 Ring polygons rounded). **Needs the PO:**
+one screenshot or lapdist of a corner where the line is visibly angular.
+
+### GFX-1 — graphics options (PO: "allow graphics options, including full-screen and resolution")
+The render size was a fixed 1440x810. Now `JM_RES=<w>x<h>` (or `native`), `JM_FULLSCREEN=1` (primary monitor; native mode
+unless a resolution is given), `JM_MSAA` (0-16, default 8); the window is not resizable (the render size is fixed per run).
+Launcher: a **Graphics** group on the Drive tab -- Resolution (Native, 3840x2160, 2560x1440, 1920x1080, 1600x900, 1440x810),
+Full screen, Anti-aliasing (8x/4x/2x/off) -- remembered between runs. Verified: a 1920x1080 run renders and dumps at
+1920x1080 with the HUD in place (`261001/gfx_1920x1080_watglen.jpg`). Full-screen itself was not exercised on this box
+(it would take the display).
+
+### Gates
+Full suite 42 of 44 PASS (`gplwall_smoke` included); the pre-existing pair fails as before (`road_clear_smoke`: Ring 119
+terrain anomalies, was 123).
