@@ -21514,3 +21514,8 @@ Full screen, Anti-aliasing (8x/4x/2x/off) -- remembered between runs. Verified: 
 ### Gates
 Full suite 42 of 44 PASS (`gplwall_smoke` included); the pre-existing pair fails as before (`road_clear_smoke`: Ring 119
 terrain anomalies, was 123).
+
+### DELIVERY 261001c — `~/Documents/261001/JuliaRacer-x86_64-261001c.AppImage` (1.68 GB, sha256 `7a374122493d3891…`)
+HEAD `10d64104`: AIJIT-1, GPLWALL-1 S9 (road registration), FLOAT-1, GFX-1 (launcher Graphics group). Verified from its own
+mounted runtime with an empty user depot: Watkins Glen 5-AI race smoke exit 0, 158 s, 0 precompiles, 0 errors; GPL road and
+walls register (98.8 %) and the obstacles load inside the image.
