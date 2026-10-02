@@ -5,6 +5,7 @@
 # So: list every group in every chassis with its triangle count and LATERAL extent, and flag the
 # ones that reach past the wheel plane -- those are the "rods" candidates, per chassis.
 push!(LOAD_PATH, joinpath(@__DIR__))
+using Printf
 include(joinpath(ENV["JM"], "demo", "native", "gpl3do.jl"))
 using .GPL3DO
 const BASE = normpath(joinpath(ENV["JM"],"..","..","WP","drive_c","Sierra","GPL","cars","cars67"))

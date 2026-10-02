@@ -21519,3 +21519,47 @@ terrain anomalies, was 123).
 HEAD `10d64104`: AIJIT-1, GPLWALL-1 S9 (road registration), FLOAT-1, GFX-1 (launcher Graphics group). Verified from its own
 mounted runtime with an empty user depot: Watkins Glen 5-AI race smoke exit 0, 158 s, 0 precompiles, 0 errors; GPL road and
 walls register (98.8 %) and the obstacles load inside the image.
+
+---
+
+# CYCLE 2026-10-02 — from `261001/NEXT_PLANS.md`
+
+### E81-S8/S9 — the skewed Ring panel is `walls2`, and the fix is GPL's placement PITCH (DONE)
+* **S8 — `JM_PICK="x,y;..."`** (new): on a `JM_SHOTS` frame, a ray from the shot camera through each pixel against every
+  drawn triangle (track parts and scenery sections, placed objects through their placement, forest panels, billboards),
+  nearest hits with source / name / texture / lapdist. Control: a road pixel returns Asphalt 3.7 m ahead, lat 0.1.
+  The slab pixel returns **`walls2/base`** 61.5 m away, 8.6 m above the road. S4's yaw-flip A/B could not tell (turning a
+  slanted quad end-for-end barely changes it). `JM_DROPTEST=walls2`: the slab disappears (the scenery-group copy that
+  `JM_PLACE_HIDE` removes is not the drawn one: the Ring's objects go through the object pipeline).
+* **S9 — cause:** both object paths' matrices used YAW only. `walls2` is one 229.6 m quad with vertices only at its ends;
+  as drawn its far end stood 6.1-9.2 m above the ground; with GPL's placement pitch (0.026 rad) applied NEGATED it stands
+  0.1-3.1 m (a 3 m wall on the ground, like its near end). `ObjInst` now reads pitch/roll (record +32/+36) and the object
+  matrix applies `rotz(OBJ_PR[1]*pitch) * rotx(OBJ_PR[2]*roll)`. Signs scored on the Ring over all 288 objects >= 15 m long
+  (`JM_OBJPROFILE=all`): pitch -1 0.70 m mean end height off the ground with `walls2` out of the worst list; pitch +1 0.72 m
+  with `walls2` worst (6.4 m); roll made no measurable difference (almost none have one), so roll stays OFF.
+  **Default `JM_OBJ_PR=-1,0`.** After (`261002/e81_walls2_before_after_s1350.jpg`): the slab is gone; `walls2` is a low
+  grey wall along the pit lane; the control tower's windows show behind it.
+* Still in that frame: a dark spike = `tierg-r2/villone`, a building 1.1 km away on the hillside (not near the road).
+* Also seen: Ring `trow_001` tree-row panels have one end ~5 m off the ground on slopes (GPL gives them no pitch).
+
+### E78-S6 — the Continental banners DO reach the screen
+`JM_PICK` on the pit wall at s~1350: `bannr_s` is the nearest hit at two pixels (72-84 m, ~1 m above the road), behind a
+bush billboard at one. The S1 question is answered; matching against the gold frame stays open.
+
+### AI-CARGFX-S7 — `JM_AIPLACE`; the dark engine bay is GPL's FLAT-COLOUR polygons drawn grey over the textured engine
+* `JM_AIPLACE="<slot>:<s>:<lane>"` (new) stands an AI car at a station (headless, never released); `JM_FINDTEX=<prefix>`
+  (new) lists where a texture is used (WG BOAC boards: s 594 L, 1872 R, 2688 L). The gold still's exact corner is not yet
+  matched (three tries); the dark engine bay is the same at every location.
+* `JM_AITEX=1` (new): **80 % of each AI car's triangles are untextured flat-colour polygons** (Eagle 2432 of 3055), all
+  given one constant grey (0.72, 0.74, 0.76) -- GPL's per-polygon PALETTE colours are not read. Doubling the AI light only
+  turns the engine block dark grey (not lighting). `JM_AI_EXC_FLAT=1` A/B (`261002/aicargfx_eagle_flatpolys_ab.jpg`):
+  without the flat polygons the textured engine and gearbox show underneath, silver like the gold car -- but the nose,
+  body and helmet go too. **Next:** read GPL's flat-polygon palette colours, and draw textured detail over flat backing
+  the way GPL's painter order does (flat parts first, textured with a depth bias).
+
+### E107-S11 — GPL's passing rails pass the graded test
+Spa pass1 93.2 % / pass2 88.3 % on the centre-only test; graded (car body overlaps the road): **pass1 99.6 %, pass2
+97.0 %**; Ring 99.8 % / 100 %. Both rails are sound to use.
+
+### Not reached / waiting
+MP-GUI-1 and PERF-3 wait on the PO's tests; GPLWALL-1 follow-ups (AI cars, Zandvoort placed-object registration) not started.

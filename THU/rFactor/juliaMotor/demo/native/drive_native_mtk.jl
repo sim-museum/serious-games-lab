@@ -375,6 +375,7 @@ const CARHALF = 1.4    # car collision half-extent (m)
 # with the vectors passed as ARGUMENTS at 60x the speed).  Declaring the binding types here costs
 # nothing at the call sites -- the `global SOLIDS = ...` rebuilds below still work, they just have
 # to stay this type -- and lets the compiler specialise the scan.
+const OBJ_PR = Tuple(parse.(Float64, split(get(ENV, "JM_OBJ_PR", "-1,0"), ",")))   # E81-S9 pitch/roll signs (see OBJECTS)
 const OBJ_CPU = Dict{String,Any}()   # GPLWALL-1: object name -> its CPU parts (object frame), for obstacle faces
 const SolidT    = Tuple{Float64,Float64,Float64,Symbol}
 const SolidBoxT = Union{Nothing,NTuple{3,Float64}}
@@ -5899,7 +5900,7 @@ let objnames=Set{String}()
                 push = pushof(i.name); push <= 0.0 && return i
                 lx,ly = nearest(i.x, i.y); dx=i.x-lx; dy=i.y-ly; d=hypot(dx,dy)
                 (d < 1e-3 || d > 18.0) && return i      # only nudge the close copy at the S/F, push outward along the normal
-                GPLTrack.ObjInst(i.name, i.x+dx/d*push, i.y+dy/d*push, i.z, i.yaw, i.scale)
+                GPLTrack.ObjInst(i.name, i.x+dx/d*push, i.y+dy/d*push, i.z, i.yaw, i.scale, i.pitch, i.roll)
             end
         end
     end
@@ -6604,7 +6605,11 @@ let objnames=Set{String}()
                              " placed-object PARTS are foliage -> graded like the track's vegetation ",
                              "(", round(TRACK_BRIGHT*VEG_GAIN, digits=2), "/", round(TRACK_AMB*VEG_GAIN, digits=2),
                              ") instead of the grandstand grade (1.05/0.55); JM_OBJ_VEG=0 reverts")
-    global OBJECTS = [(objmesh[i.name], Render.translate(Float32[i.x, plozfp(i), -i.y]) * Render.roty(Float32(OBJ_YAW_SIGN * objyawsign(i.name) * -i.yaw + objyawfix(i.name))), istree(i.name) && (graze_mesh || !(MONZA || WATGLEN)), (Float32(i.x), plozfp(i), Float32(-i.y)), lowercase(i.name))
+    # E81-S9: GPL's placement PITCH and ROLL were read by neither object path's matrix here -- only yaw. A 230 m wall quad
+    # (Ring `walls2`, pitch 0.026) then stood 6-9 m in the air at its far end: the "skewed grey panel" of E81. Applied as
+    # rotz(OBJ_PR[1]*pitch) * rotx(OBJ_PR[2]*roll) in the object's own frame; JM_OBJ_PR="<sp>,<sr>" sets the signs (0 = off).
+    global OBJECTS = [(objmesh[i.name], Render.translate(Float32[i.x, plozfp(i), -i.y]) * Render.roty(Float32(OBJ_YAW_SIGN * objyawsign(i.name) * -i.yaw + objyawfix(i.name))) *
+                       Render.rotz(Float32(OBJ_PR[1]*i.pitch)) * Render.rotx(Float32(OBJ_PR[2]*i.roll)), istree(i.name) && (graze_mesh || !(MONZA || WATGLEN)), (Float32(i.x), plozfp(i), Float32(-i.y)), lowercase(i.name))
                       for i in insts if get(objmesh,i.name,nothing) !== nothing &&
                           !drop(i.name) && !onroad_crowd(i) && !perp_crowd(i) && !onroad_bldg(i) && !onroad_fp(i) && (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && onground(i)]
     # CULLBOUND-1 (2026-09-25, Monza gold parity): objects were distance- and frustum-culled by their ORIGIN
@@ -8328,6 +8333,77 @@ function obs_clamp!(c)
     OBS_PREV[] = (c.x, c.z)
     nothing
 end
+# JM_FINDTEX=<prefix>: where do drawn objects / track parts use a texture? (lapdist, lateral of each use; then exits)
+if !SKIDPAD && haskey(ENV, "JM_FINDTEX")
+    let pf = lowercase(ENV["JM_FINDTEX"]), rows = Set{Tuple{String,Int,Int}}()
+        for ob in OBJECTS
+            ps = get(OBJ_CPU, lowercase(String(ob[5])), nothing); ps === nothing && continue
+            any(p -> startswith(lowercase(p.tex), pf), ps) || continue
+            hr = JuliaMotor.hat(TRKSURF, Float64(ob[4][1]), -Float64(ob[4][3]))
+            hr.found && push!(rows, (String(ob[5]), round(Int, hr.lapdist), round(Int, hr.lateral)))
+        end
+        for p in TRACK
+            startswith(lowercase(p.tex), pf) || length(p.verts) < 11 || continue
+            startswith(lowercase(p.tex), pf) || continue
+            hr = JuliaMotor.hat(TRKSURF, Float64(p.verts[1]), -Float64(p.verts[3]))
+            hr.found && push!(rows, ("track:" * p.tex, round(Int, hr.lapdist), round(Int, hr.lateral)))
+        end
+        println("  [findtex] ", pf, ": ", sort(collect(rows), by = r -> r[2]))
+    end
+    exit(0)
+end
+# E81-S9 probe: JM_OBJPROFILE=<name> prints, along the object's length (10 bins of its local x), the height of its lowest and
+# highest vertex above the ground, as placed and with the GPL placement pitch +-JM_OBJPROFILE_PITCH (rad) about its origin.
+if !SKIDPAD && haskey(ENV, "JM_OBJPROFILE")
+    if ENV["JM_OBJPROFILE"] == "all"      # score: how far each LONG object's ends sit from the ground, under the current JM_OBJ_PR
+      let tot = 0.0, n = 0, worst = Tuple{Float64,String}[]
+        gnd2(x, z) = (h = JuliaMotor.hat3d(TERRAIN, x, z; ref = Inf); h[3] ? Float64(h[1]) : NaN)
+        for ob in OBJECTS
+            ps = get(OBJ_CPU, lowercase(String(ob[5])), nothing); ps === nothing && continue
+            vs = [(Float64(p.verts[k]), Float64(p.verts[k+1]), Float64(p.verts[k+2])) for p in ps for k in 1:11:length(p.verts)-10]
+            xl = extrema(v[1] for v in vs); xl[2] - xl[1] < 15.0 && continue
+            M = ob[2]; e = 0.0; ne = 0
+            for side in (1, 2)
+                lo = Inf
+                for v in vs
+                    (side == 1 ? v[1] < xl[1] + 0.15*(xl[2] - xl[1]) : v[1] > xl[2] - 0.15*(xl[2] - xl[1])) || continue
+                    wx = M[1,1]*v[1] + M[1,2]*v[2] + M[1,3]*v[3] + M[1,4]; wy = M[2,1]*v[1] + M[2,2]*v[2] + M[2,3]*v[3] + M[2,4]
+                    wz = M[3,1]*v[1] + M[3,2]*v[2] + M[3,3]*v[3] + M[3,4]
+                    g = gnd2(wx, -wz); isnan(g) || (lo = min(lo, wy - g))
+                end
+                isfinite(lo) && (e += abs(lo); ne += 1)
+            end
+            ne == 2 && (tot += e/2; n += 1; push!(worst, (e/2, String(ob[5]))))
+        end
+        sort!(worst, by = w -> -w[1])
+        println("  [objprofile] ", TRACKSEL, " JM_OBJ_PR=", OBJ_PR, ": ", n, " objects >= 15 m long; mean |end height above ground| ",
+                round(tot/max(n, 1), digits = 2), " m; worst ", [(w[2], round(w[1], digits = 1)) for w in worst[1:min(end, 5)]])
+        exit(0)
+      end
+    end
+    let nm = lowercase(ENV["JM_OBJPROFILE"]), pt = parse(Float64, get(ENV, "JM_OBJPROFILE_PITCH", "0.026"))
+        gnd(x, z) = (h = JuliaMotor.hat3d(TERRAIN, x, z; ref = Inf); h[3] ? Float64(h[1]) : NaN)
+        for ob in OBJECTS
+            lowercase(String(ob[5])) == nm || continue
+            ps = OBJ_CPU[nm]; M = ob[2]
+            vs = [(Float64(p.verts[k]), Float64(p.verts[k+1]), Float64(p.verts[k+2])) for p in ps for k in 1:11:length(p.verts)-10]
+            xl = extrema(v[1] for v in vs)
+            for pitch in (0.0, pt, -pt)
+                bins = [Float64[] for _ in 1:10]
+                for v in vs
+                    # pitch about the object's local z axis (nose up along +x), then the placement
+                    lx = v[1]*cos(pitch) - v[2]*sin(pitch); ly = v[1]*sin(pitch) + v[2]*cos(pitch); lz = v[3]
+                    wx = M[1,1]*lx + M[1,2]*ly + M[1,3]*lz + M[1,4]; wy = M[2,1]*lx + M[2,2]*ly + M[2,3]*lz + M[2,4]; wz = M[3,1]*lx + M[3,2]*ly + M[3,3]*lz + M[3,4]
+                    g = gnd(wx, -wz); isnan(g) && continue
+                    b = clamp(floor(Int, 10*(v[1] - xl[1])/max(xl[2] - xl[1], 1e-6)) + 1, 1, 10); push!(bins[b], wy - g)
+                end
+                println("  [objprofile] ", nm, " pitch ", round(pitch, digits = 3), ": local x ", round.(xl, digits = 1), "  height above ground per bin (lo..hi): ",
+                        join([isempty(b) ? "-" : "$(round(minimum(b), digits=1))..$(round(maximum(b), digits=1))" for b in bins], " | "))
+            end
+        end
+    end
+    exit(0)
+end
 # E109/FLOAT-1 (PO 2026-10-01, Ring: "trees levitate near or above the track"): JM_FLOAT=1 lists every billboard and drawn
 # object within 20 m of the road whose base stands more than 0.5 m above the ground under it, then exits.
 if !SKIDPAD && get(ENV, "JM_FLOAT", "0") != "0"
@@ -8958,12 +9034,19 @@ if !SKIDPAD && _ncars > 0
         # copsho/cohand, lotarms/lotsho/lohand) plus the shared arml/armr/arms. Helmet, neck, knees
         # and the body stay. JM_AI_SLEEVES=1 restores them for an A/B.
         push!(AICARMODELS, Render.load_gpl_car(nm, joinpath(AIBASE,dir), body, aiwheels(w...);
-                              exclude=("ltraymap","lshad",AI_SLEEVE_EXC...),
+                              exclude=("ltraymap","lshad",AI_SLEEVE_EXC...,(haskey(ENV, "JM_AI_EXC_FLAT") ? ("",) : ())...),
                               maxlat=parse(Float32, get(ENV,"JM_AI_MAXLAT", string(CARP_MAXLAT))),
                               body_floor=BODY_FLOOR,
                               rear_groups=(AI_REAR_MODE === :pose ? collect(_rg) : Int[]),
                               rear_lat=parse(Float32, get(ENV, "JM_AI_REAR_LAT", "0.66"))))
         println("$(length(AICARMODELS[end].body)) parts")
+        if haskey(ENV, "JM_AITEX")          # AI-CARGFX probe: parts drawn with no texture (flat colour)
+            let b = AICARMODELS[end].body, u = [it for it in b if it.tex == 0]
+                println("    [aitex] ", nm, ": ", length(u), " of ", length(b), " parts UNTEXTURED; their colours ",
+                        unique([round.(it.col, digits = 2) for it in u])[1:min(end, 6)], "; triangles ", sum(it.n for it in u; init = 0) ÷ 3,
+                        " of ", sum(it.n for it in b; init = 0) ÷ 3)
+            end
+        end
         Render.GPL3DO.HIDE_GROUPS[] = Set{Int}()   # never leak the per-chassis hide into later parses
     end
 end
@@ -9580,6 +9663,68 @@ if GPLW_ON
     precompile(gplwall_clamp!, (JRPhysics.DriveRT3D.Car3D,)); precompile(obs_clamp!, (JRPhysics.DriveRT3D.Car3D,))
 end
 
+# E81-S8: JM_PICK="x,y;x,y" -- on every JM_SHOTS frame, cast a ray through each pixel (image coordinates, top-left origin)
+# from the shot's own camera and print the nearest drawn triangles it hits: track parts and scenery sections, placed objects
+# (through their placement), forest panels and billboards. Lists of what stands in a window failed three times (E81
+# S1-S7); this names what is ON a given pixel.
+const PICKS = [Tuple(parse.(Float64, split(q, ","))) for q in split(get(ENV, "JM_PICK", ""), ";", keepempty = false)]
+function mt_hit(o, d, a, b, c)
+    e1 = b .- a; e2 = c .- a
+    pv = (d[2]*e2[3] - d[3]*e2[2], d[3]*e2[1] - d[1]*e2[3], d[1]*e2[2] - d[2]*e2[1])
+    det = e1[1]*pv[1] + e1[2]*pv[2] + e1[3]*pv[3]; abs(det) < 1e-12 && return Inf
+    tv = o .- a; u = (tv[1]*pv[1] + tv[2]*pv[2] + tv[3]*pv[3])/det; (u < 0 || u > 1) && return Inf
+    qv = (tv[2]*e1[3] - tv[3]*e1[2], tv[3]*e1[1] - tv[1]*e1[3], tv[1]*e1[2] - tv[2]*e1[1])
+    v = (d[1]*qv[1] + d[2]*qv[2] + d[3]*qv[3])/det; (v < 0 || u + v > 1) && return Inf
+    t = (e2[1]*qv[1] + e2[2]*qv[2] + e2[3]*qv[3])/det
+    t > 0.05 ? t : Inf
+end
+function pick_report(vp, eye, label)
+    iv = inv(Matrix{Float64}(vp))
+    unp(x, y, z) = (q = iv*[x, y, z, 1.0]; (q[1]/q[4], q[2]/q[4], q[3]/q[4]))
+    for (px, py) in PICKS
+        nx = 2*(px + 0.5)/W - 1; ny = 1 - 2*(py + 0.5)/H
+        a = unp(nx, ny, 1.0); b = unp(nx, ny, 0.5)            # reversed-Z: near plane at 1
+        d = b .- a; d = d ./ sqrt(sum(abs2, d)); o = a
+        hits = Tuple{Float64,String,String}[]
+        tri!(src, nm, P1, P2, P3) = (t = mt_hit(o, d, P1, P2, P3); isfinite(t) && push!(hits, (t, src, nm)))
+        for p in TRACK
+            v = p.verts
+            for k in 1:33:length(v)-32
+                tri!("track", p.tex, (Float64(v[k]), Float64(v[k+1]), Float64(v[k+2])), (Float64(v[k+11]), Float64(v[k+12]), Float64(v[k+13])),
+                     (Float64(v[k+22]), Float64(v[k+23]), Float64(v[k+24])))
+            end
+        end
+        for ob in OBJECTS
+            ps = get(OBJ_CPU, lowercase(String(ob[5])), nothing); ps === nothing && continue
+            M = ob[2]; tf(i, v) = (M[1,1]*v[i] + M[1,2]*v[i+1] + M[1,3]*v[i+2] + M[1,4], M[2,1]*v[i] + M[2,2]*v[i+1] + M[2,3]*v[i+2] + M[2,4],
+                                    M[3,1]*v[i] + M[3,2]*v[i+1] + M[3,3]*v[i+2] + M[3,4])
+            for p in ps, k in 1:33:length(p.verts)-32
+                tri!("object", String(ob[5]) * "/" * p.tex, tf(k, p.verts), tf(k + 11, p.verts), tf(k + 22, p.verts))
+            end
+        end
+        for (it, pos, w, h, yaw) in STATICTREES
+            c_ = cos(Float64(yaw)); s_ = sin(Float64(yaw))
+            cn(lx, ly) = (pos[1] + lx*w*c_, pos[2] + ly*h, pos[3] - lx*w*s_)
+            tri!("forest", "panel", cn(-0.5, 0), cn(0.5, 0), cn(0.5, 1)); tri!("forest", "panel", cn(-0.5, 0), cn(0.5, 1), cn(-0.5, 1))
+        end
+        for (it, pos, w, h) in BILLBOARDS
+            M = copy(Render.billboard_model(pos, w, h, eye))
+            cn(lx, ly) = (M[1,1]*lx + M[1,2]*ly + M[1,4], M[2,1]*lx + M[2,2]*ly + M[2,4], M[3,1]*lx + M[3,2]*ly + M[3,4])
+            tri!("billboard", "h$(round(Int, h))", cn(-0.5, 0), cn(0.5, 0), cn(0.5, 1)); tri!("billboard", "h$(round(Int, h))", cn(-0.5, 0), cn(0.5, 1), cn(-0.5, 1))
+        end
+        sort!(hits, by = h -> h[1])
+        println("  [pick] ", label, " pixel (", round(Int, px), ",", round(Int, py), "): ", isempty(hits) ? "nothing (sky)" : "")
+        seen = Set{String}()
+        for (t, src, nm) in hits
+            key = src * nm; key in seen && continue; push!(seen, key)
+            P = o .+ t .* d; hr = JuliaMotor.hat(TRKSURF, P[1], -P[3])
+            println("     ", rpad(round(t, digits = 1), 7), " m  ", rpad(src, 9), rpad(nm, 28), " world (", round(P[1], digits = 1), ", ", round(-P[3], digits = 1),
+                    ") h ", round(P[2], digits = 1), hr.found ? "  lapdist $(round(Int, hr.lapdist)) lat $(round(hr.lateral, digits = 1))" : "")
+            length(seen) >= 4 && break
+        end
+    end
+    flush(stdout)
+end
 function main()
     # E106-S13b: the physics-facing ground closure. It converts the app's -999 "off the HAT"
     # SENTINEL into NaN, because drive_rt3d guards only `isfinite` and -999 is finite -- a wheel
@@ -10649,6 +10794,12 @@ function main()
                                 println("  AI racing LINE on the ROAD-ONLY mesh: race ", round(100*fr, digits=1),
                                         "% (", nr, " off), pass1 ", round(100*f1, digits=1), "% (", n1,
                                         " off), pass2 ", round(100*f2, digits=1), "% (", n2, " off)")
+                                # E107-S11: the same GRADED test (car body overlaps the road) for the passing rails
+                                let (r1, m1) = onroad_car_frac(g1), (r2, m2) = onroad_car_frac(g2)
+                                    println("  AI passing rails, graded (car body overlaps the road): pass1 ", round(100*r1, digits=1),
+                                            "% (furthest ", round(m1, digits=2), " m), pass2 ", round(100*r2, digits=1), "% (furthest ",
+                                            round(m2, digits=2), " m)")
+                                end
                                 # CONTROL ARM, and it is not optional. A low score for GPL's line means
                                 # nothing until OUR OWN line is scored on the same mesh: if ours scores
                                 # the same, ROADHAT is leaky and both numbers are instrument error. Two
@@ -10754,6 +10905,17 @@ function main()
         end
         println("  → AI pace spread (power/weight, gridded fastest-first): ",
                 join(["$(AISPECS[i][1]) $(round(Int,AICARS[i].pace*100))%" for i in 1:length(AICARS)], ", "))
+    end
+    # AI-CARGFX-S7: JM_AIPLACE="<slot>:<lapdist>:<lane>" stands grid car <slot> at that station before the start (headless
+    # shots: the race never goes green, so it stays there) -- with JM_AICAM=<slot>, a chassis can be photographed at the very
+    # spot its GPL gold still was taken.
+    if haskey(ENV, "JM_AIPLACE") && !isempty(AICARS)
+        let f = split(ENV["JM_AIPLACE"], ":"), k = parse(Int, f[1])
+            if 1 <= k <= length(AICARS)
+                AICARS[k].s = mod(parse(Float64, f[2]), AILINE.total); length(f) >= 3 && (AICARS[k].lane = parse(Float64, f[3]))
+                println("  JM_AIPLACE: AI ", k, " stands at s=", round(AICARS[k].s, digits = 1), " lane ", round(AICARS[k].lane, digits = 2))
+            end
+        end
     end
     AICHASSIS = AICARMODELS[1:length(AICARS)]   # grid slot i → AISPECS[i] (Ferrari, Brabham, …)
     # GC: build the AI as PHYSICS cars (one shared compile) placed on the grid; AICARS stays the
@@ -13310,6 +13472,7 @@ function main()
             open(joinpath(SHOTS_DIR, sh.name * ".ppm"),"w") do io; write(io,"P6\n$W $H\n255\n")
                 for y in H:-1:1, x in 1:W; o=((y-1)*W+(x-1))*3; write(io,buf[o+1],buf[o+2],buf[o+3]); end; end
             println("  JM_SHOTS: dumped ", sh.name, " (", shot_idx[], "/", length(SHOTS), ")"); flush(stdout)
+            isempty(PICKS) || pick_report(vp, eye, sh.name)
             if shot_idx[] < length(SHOTS)
                 shot_idx[] += 1; shot_t0[] = frames + 1
                 nxt = SHOTS[shot_idx[]]; CTL.view = nxt.view; place_at_s!(nxt.s)

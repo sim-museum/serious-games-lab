@@ -152,7 +152,10 @@ struct ObjInst
     x::Float64; y::Float64; z::Float64    # GPL world position (x,y horizontal, z up)
     yaw::Float64      # rotation about vertical (rad)
     scale::Float64
+    pitch::Float64    # E81-S9: GPL placement pitch (rad, record +32) -- read but, until then, never applied
+    roll::Float64     # E81-S9: GPL placement roll (rad, record +36)
 end
+ObjInst(name, x, y, z, yaw, scale) = ObjInst(name, x, y, z, yaw, scale, 0.0, 0.0)
 
 """
     trackside_objects(path3do; objnames) -> Vector{ObjInst}
@@ -198,7 +201,9 @@ function trackside_objects(path3do; objnames::Set{String})
                 # loose sanity only — the 0x0E signature already rejects garbage; bounds sized
                 # for the largest classic layouts (Spa/Monza ~±8 km horizontal, hillsides ~500 m).
                 if all(isfinite,(X,Y,Z,yaw,sc)) && abs(X)<50000 && abs(Y)<50000 && abs(Z)<5000 && 0<sc<1000
-                    push!(out, ObjInst(lowercase(off2name[wn]), X, Y, Z, yaw, sc))
+                    pt = f32(prim+k+32); rl = f32(prim+k+36)
+                    (isfinite(pt) && abs(pt) < 1.6) || (pt = 0.0); (isfinite(rl) && abs(rl) < 1.6) || (rl = 0.0)
+                    push!(out, ObjInst(lowercase(off2name[wn]), X, Y, Z, yaw, sc, pt, rl))
                 end
             end
         end
