@@ -21600,3 +21600,12 @@ leaves hedges both sides like the gold. Default: at the Ring, `trow*` is dropped
 ### DELIVERY 261002 — `~/Documents/261002/JuliaRacer-x86_64-261002.AppImage` (1.68 GB, sha256 `5724e58c86e5b7b1…`)
 HEAD `81ab807b`: E81 pitch fix, AI cars through GPL's driver wrappers, Ring duplicate tree rows dropped. Verified from its
 own mounted runtime with an empty user depot: Watkins Glen 5-AI race smoke exit 0, 166 s, 0 precompiles, 0 errors.
+
+### FIELD-1 — the AI field matches the gold race (PO 2026-10-02: "match the AI field to the gold race")
+Default field = the gold Watkins Glen race (260915 replay labels): **J Clark #5 (Lotus, `CLA5A`), G Hill #6 (Lotus,
+`hil6a`), J Bonnier #11 (Cooper, `bon11a`), C Amon #3 (Ferrari, `amo3a`), J Brabham #1 (Brabham, `bra1a`)**; the player is
+"You" (the gold player is #4 D. 67x, Lotus). `AISPECS` now carries each car's GPL driver wrapper and driver name; the HUD
+and race results name the driver ("J Clark (Lotus)": two Lotuses). Lotus 49 power/mass 400 bhp / 500 kg. The AI Lotus
+keeps poly type 0x81D (its cowl, as on the player's car) and takes its wheels through the tyre wrappers (`lotulf`... via
+`llftire0`...: textured tread and faces; the bare `lotw*` meshes drew black discs). `JM_AI_FIELD=old` restores
+Ferrari/Brabham/BRM/Eagle/Cooper. Captures: `261002/aicargfx/gold_field_2views_wg.jpg`, `ai_lotus_vs_gold.jpg`.

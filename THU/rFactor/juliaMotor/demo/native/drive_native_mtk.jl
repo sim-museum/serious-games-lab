@@ -8982,23 +8982,35 @@ aiwheels(lf,rf,lr,rr) = Tuple{Float32,Float32,Bool,Float32,String}[
     ( 1.05f0, 0.62f0, true,  0.31f0, lf), ( 1.05f0, -0.62f0, true,  0.31f0, rf),
     (-1.15f0, 0.66f0, false, 0.34f0, lr), (-1.15f0, -0.66f0, false, 0.34f0, rr)]
 # (display name, cars67 folder, body .3do, wheel meshes) — order = grid order
-const AISPECS = [
-    ("Ferrari", "ferrari",  "ferrari.3do",  ("f222lf","f222rf","f444lr","f444rr")),
-    ("Brabham", "brabham",  "brabham.3do",  ("brablf","brabrf","brablr","brabrr")),
-    ("BRM",     "brm",      "brm.3do",      ("brm2lf","brm2rf","brm4lr","brm4rr")),
-    ("Eagle",   "eagle",    "eagle.3do",    ("eotwlf","eotwrf","eotwlr","eotwrr")),
-    ("Cooper",  "coventry", "coventry.3do", ("cooplf","cooprf","cooplr","cooprr")),  # GPL Cooper = the coventry chassis
+# (chassis, dir, body, wheels, GPL driver wrapper, driver). FIELD-1 (PO 2026-10-02: "match the AI field to the gold race"):
+# the gold Watkins Glen race (260915, replay labels) fields Clark #5 and Hill #6 (Lotus), Bonnier #11 (Cooper), Amon #3
+# (Ferrari), Brabham #1 (Brabham). That is the default; JM_AI_FIELD=old restores Ferrari/Brabham/BRM/Eagle/Cooper.
+const AISPECS = get(ENV, "JM_AI_FIELD", "gold") == "old" ? [
+    ("Ferrari", "ferrari",  "ferrari.3do",  ("f222lf","f222rf","f444lr","f444rr"), "amo3a",  "C Amon"),
+    ("Brabham", "brabham",  "brabham.3do",  ("brablf","brabrf","brablr","brabrr"), "bra1a",  "J Brabham"),
+    ("BRM",     "brm",      "brm.3do",      ("brm2lf","brm2rf","brm4lr","brm4rr"), "ste8a",  "J Stewart"),
+    ("Eagle",   "eagle",    "eagle.3do",    ("eotwlf","eotwrf","eotwlr","eotwrr"), "gur9a",  "D Gurney"),
+    ("Cooper",  "coventry", "coventry.3do", ("cooplf","cooprf","cooplr","cooprr"), "bon11a", "J Bonnier"),  # GPL Cooper = the coventry chassis
+] : [
+    ("Lotus",   "lotus",    "lotus.3do",    ("lotulf","loturf","lotulr","loturr"), "CLA5A",  "J Clark"),
+    ("Lotus",   "lotus",    "lotus.3do",    ("lotulf","loturf","lotulr","loturr"), "hil6a",  "G Hill"),
+    ("Cooper",  "coventry", "coventry.3do", ("cooplf","cooprf","cooplr","cooprr"), "bon11a", "J Bonnier"),
+    ("Ferrari", "ferrari",  "ferrari.3do",  ("f222lf","f222rf","f444lr","f444rr"), "amo3a",  "C Amon"),
+    ("Brabham", "brabham",  "brabham.3do",  ("brablf","brabrf","brablr","brabrr"), "bra1a",  "J Brabham"),
 ]
+const AIDRIVERS = [sp[6] for sp in AISPECS]
 # B (PO): per-car (power bhp, mass kg) — period GPL '67 specs — so the field spreads by PHYSICS, not a
 # fudge.  Pace ∝ power/weight (tempered: most of a lap is grip-limited, shared, so a big power/weight
 # gap → a smaller laptime gap).  Order matches AISPECS.  The Eagle-Weslake out-paces the heavy BRM H16.
-const AICAR_PHYS = [
-    (390.0, 560.0),   # Ferrari 312        V12
-    (330.0, 525.0),   # Brabham BT24       Repco V8 (light)
-    (400.0, 615.0),   # BRM P115           H16 (heavy)
-    (395.0, 555.0),   # Eagle T1G          Weslake V12
-    (360.0, 600.0),   # Cooper T81         Maserati V12 (heavy)
-]
+const AICAR_PHYS_BY = Dict(
+    "Ferrari" => (390.0, 560.0),   # Ferrari 312        V12
+    "Brabham" => (330.0, 525.0),   # Brabham BT24       Repco V8 (light)
+    "BRM"     => (400.0, 615.0),   # BRM P115           H16 (heavy)
+    "Eagle"   => (395.0, 555.0),   # Eagle T1G          Weslake V12
+    "Cooper"  => (360.0, 600.0),   # Cooper T81         Maserati V12 (heavy)
+    "Lotus"   => (400.0, 500.0),   # Lotus 49           Cosworth DFV (FIELD-1)
+)
+const AICAR_PHYS = [AICAR_PHYS_BY[sp[1]] for sp in AISPECS]   # order matches AISPECS
 const AI_SLEEVE_EXC = get(ENV,"JM_AI_SLEEVES","0") != "0" ? () :
     ("arml","armr","arms","ferarms","fersho","fehand","braarms","brasho","brhand",
      "frarm","frarm2","frarm3","drvarms","bmhand","sho128","eagarm","eagarms","eahand",
@@ -9018,7 +9030,7 @@ const AI_PARKED_SUSP_GROUPS = Dict("eagle" => Set([29108, 39200]), "brabham" => 
 # JM_AI_PARKED_SUSP=1 draws them untreated (the blades) for an A/B.
 const AI_REAR_MODE = get(ENV, "JM_AI_PARKED_SUSP", "0") != "0" ? :raw : (get(ENV, "JM_AI_REAR_HIDE", "0") != "0" ? :hide : :pose)
 if !SKIDPAD && _ncars > 0
-    for (nm, dir, body, w) in AISPECS[1:_ncars]
+    for (nm, dir, body, w, wrapname, _drvname) in AISPECS[1:_ncars]
         print("  loading AI car: $nm … "); flush(stdout)
         # E106-S20 (PO: "at least one AI car has 3 outward-facing metal rods attached to each rear
         # tire"). The AI chassis were loaded at maxlat=0.9 while the PLAYER uses CARP_MAXLAT=0.85 --
@@ -9044,10 +9056,8 @@ if !SKIDPAD && _ncars > 0
         # The DRIVER's wrapper first (GPL composes a car as <driver><number>a.3do -> body: it binds that driver's livery,
         # helmet and face). The gold WG race (260915) fields Amon #3, Brabham #1, Bonnier #11 (Cooper) -- those are used
         # where our chassis match; then the chassis default <x>d.3do. JM_AI_DRIVERS="ferrari=amo20a,..." overrides.
-        _drv = Dict("ferrari" => "amo3a", "brabham" => "bra1a", "brm" => "ste8a", "eagle" => "gur9a", "coventry" => "bon11a")
-        for kv in split(get(ENV, "JM_AI_DRIVERS", ""), ",", keepempty = false); (k, v) = split(kv, "="); _drv[k] = v; end
         _wrap = get(ENV, "JM_AI_BODY_WRAP", "1") == "0" ? nothing :
-                let fs = readdir(joinpath(AIBASE, dir)), want = lowercase(get(_drv, dir, "")) * ".3do"
+                let fs = readdir(joinpath(AIBASE, dir)), want = lowercase(wrapname) * ".3do"
                     i = findfirst(f -> lowercase(f) == want, fs)
                     i === nothing && (i = findfirst(f -> occursin(r"^[a-z]+d\.3do$"i, f), fs))
                     i === nothing ? nothing : fs[i]
@@ -9057,7 +9067,7 @@ if !SKIDPAD && _ncars > 0
         # AI-CARGFX-S8: poly type 0x81D on the AI bodies is GPL's coarse far-distance stand-in (flat plates); drawn up close
         # it laid a pale lavender plate over the Eagle's engine. Skipped for the AI only: the player's Lotus cowl IS 0x81D.
         push!(AICARMODELS, Render.load_gpl_car(nm, joinpath(AIBASE,dir), body, aiwheels(w...); hub3do = _bare,
-                              skip_ptypes = get(ENV, "JM_AI_KEEP_81D", "0") != "0" ? nothing : Set{UInt32}([0x81D]),
+                              skip_ptypes = (get(ENV, "JM_AI_KEEP_81D", "0") != "0" || dir == "lotus") ? nothing : Set{UInt32}([0x81D]),   # the Lotus cowl IS 0x81D
                               exclude=("ltraymap","lshad",AI_SLEEVE_EXC...,(haskey(ENV, "JM_AI_EXC_FLAT") ? ("",) : ())...),
                               maxlat=parse(Float32, get(ENV,"JM_AI_MAXLAT", string(CARP_MAXLAT))),
                               body_floor=BODY_FLOOR,
@@ -9345,7 +9355,7 @@ end
 const REPLAY_CAMS  = (:cockpit, :chase, :tv, :f10, :nose, :rsusp)
 const REPLAY_CAM_LABEL = ("COCKPIT", "CHASE (above rear)", "TV / DISTANT",
                           "F10 REAR", "NOSE / FRONT", "RR SUSPENSION")
-# AI-CARGFX S6: JM_AICAM=<i> points the chase camera at AI car i (grid slot i = AISPECS[i]: 1 Ferrari,
+# AI-CARGFX S6: JM_AICAM=<i> points the chase camera at AI car i (grid slot i = AISPECS[i]; old field: 1 Ferrari,
 # 2 Brabham, 3 BRM, 4 Eagle, 5 Cooper), so an AI chassis can be photographed beside its GPL chase-from-
 # behind still. Same geometry as the player's GPL-matched chase view (camera(), view 1). Test hook only.
 const AICAM = parse(Int, get(ENV, "JM_AICAM", "0"))
@@ -11362,9 +11372,9 @@ function main()
         sort!(entries, by = e -> -e[2])                # most progress = P1
         entries
     end
-    ent_name(id) = id == 0 ? "You" : AICHASSIS[id].name
+    ent_name(id) = id == 0 ? "You" : (id <= length(AIDRIVERS) ? "$(AIDRIVERS[id]) ($(AICHASSIS[id].name))" : AICHASSIS[id].name)   # FIELD-1: two Lotuses
     texthud_name(id) = id == 0 ? "You" : (haskey(ENV, "JM_TEXTHUD_CHASSIS") ? AICHASSIS[id].name :
-                                          get(TEXTHUD_DRIVER, AICHASSIS[id].name, AICHASSIS[id].name))
+                                          (id <= length(AIDRIVERS) ? AIDRIVERS[id] : AICHASSIS[id].name))
     ibt_samples = IBTREC ? Dict{String,Float64}[] : nothing      # iRacing-format telemetry rows
     # E18: record ALL car poses (player + AI) for replay — a flat Float32 buffer, ~15 Hz, written .jmr at exit
     REPLAY_REC = IS_RACE && N_AI > 0 && isempty(REPLAY_FILE) && !haskey(ENV,"JM_NOREPLAY") && (!SMOKE || haskey(ENV,"JM_REPLAY_REC"))

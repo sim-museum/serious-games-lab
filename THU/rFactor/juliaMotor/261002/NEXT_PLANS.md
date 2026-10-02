@@ -32,7 +32,7 @@ the 2026-10-01/02 session ran several cycles in one context.
   angled sticks at the wheels) -- the E102/E106 articulation history applies; capture with `JM_AICAM_SEQ` (rsusp/chase)
   beside gold replay frames ~332-338 s (Lotus/Cooper rear) of `260915_gpl_wg_race_gold.mp4`.
 - The small pale patch beside the Eagle's gearbox; our chase camera sits higher than GPL's.
-- PO decision: the gold field is Clark, Hill (Lotus), Bonnier (Cooper), Amon (Ferrari), Brabham -- match the chassis set?
+- Done 2026-10-02 (FIELD-1): the AI field is the gold race's (Clark, Hill, Bonnier, Amon, Brabham).
 
 ### 2. E78 — banners against the gold (the banners reach the screen, S6)
 - Full-res crop of the pit wall at Ring s≈1400 against the gold frame at ~66 s of `260802_nurburgring_cockpit.mp4`.
