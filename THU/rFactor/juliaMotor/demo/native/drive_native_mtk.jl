@@ -1718,6 +1718,48 @@ else
         med(v) = [sort([v[mod1(k + d, n)] for d in -3:3])[4] for k in 1:n]
         gw = [exp(-0.5*(d/1.5)^2) for d in -4:4]; gw ./= sum(gw)
         gau(v) = [sum(gw[d + 5]*v[mod1(k + d, n)] for d in -4:4) for k in 1:n]
+        # AIJIT-3 / E108-S12 (PO 2026-10-02, WG carousel exit: "where a straight length of road intersects the inside of the
+        # curved main road", the white line does not follow the curve and the AI jerks sideways). The re-centre reads the
+        # drawn asphalt; where a side road joins, the extra asphalt pulls the "centre" into its mouth -- WG s 1765-1796:
+        # +1.0 -> -2.8 -> +1.4 m in 35 m, 12 nodes, too long for the 7-node median. Nodes further than JM_RECENTRE_OUTLIER
+        # (1.0 m) from the +-15-node median trend, in a run of at most 20 nodes, are candidates; a candidate run is
+        # replaced (by interpolating the good nodes either side) only if the TREND centre is on asphalt with 2.5 m of
+        # asphalt either side at every node of the run -- i.e. the main road really is there and the pull was the side
+        # road. Legitimate large shifts (a .trk line stranded off the road) fail that test and are kept.
+        # JM_RECENTRE_OUTLIER=0 disables.
+        let thr = parse(Float64, get(ENV, "JM_RECENTRE_OUTLIER", "1.0")), W = 15,
+            onr(x, z) = JuliaMotor.hat3d(ROADHAT, x, z; ref = Inf)[3]
+            if thr > 0
+                medw(v, k) = sort([v[mod1(k + d, n)] for d in -W:W])[W + 1]
+                tx = [medw(dx, k) for k in 1:n]; tz = [medw(dz, k) for k in 1:n]
+                bad = [hypot(dx[k] - tx[k], dz[k] - tz[k]) > thr for k in 1:n]
+                if any(bad) && !all(bad)
+                    for k0 in 1:n                                   # each run: length limit + road guard
+                        (bad[k0] && !bad[mod1(k0 - 1, n)]) || continue
+                        run = Int[]; k = k0; while bad[mod1(k, n)] && length(run) <= n; push!(run, mod1(k, n)); k += 1; end
+                        ok = length(run) <= 20 && all(run) do q
+                            j = mod1(q + 1, n); ux = a0[j][1] - a0[q][1]; uz = a0[j][2] - a0[q][2]; ul = max(hypot(ux, uz), 1e-9)
+                            nx = -uz/ul; nz = ux/ul; cx = a0[q][1] + tx[q]; cz = a0[q][2] + tz[q]
+                            onr(cx, cz) && onr(cx + 2.5nx, cz + 2.5nz) && onr(cx - 2.5nx, cz - 2.5nz)
+                        end
+                        ok || foreach(q -> bad[q] = false, run)
+                    end
+                end
+                if any(bad) && !all(bad)
+                    for k in 1:n
+                        bad[k] || continue
+                        i = k; while bad[mod1(i, n)]; i -= 1; end
+                        j = k; while bad[mod1(j, n)]; j += 1; end
+                        u = (k - i)/(j - i); i = mod1(i, n); j = mod1(j, n)
+                        dx[k] = dx[i] + (dx[j] - dx[i])*u; dz[k] = dz[i] + (dz[j] - dz[i])*u
+                    end
+                    runs = Int[]; for k in 1:n; bad[k] && !bad[mod1(k - 1, n)] && push!(runs, k); end
+                    acc = zeros(n); for k in 2:n; acc[k] = acc[k-1] + hypot(a0[k][1] - a0[k-1][1], a0[k][2] - a0[k-1][2]); end
+                    println("  re-centre junction pulls removed (AIJIT-3): ", count(bad), " node(s) in ", length(runs),
+                            " run(s) at s ", join((round(Int, acc[k]) for k in runs), ", "), " (JM_RECENTRE_OUTLIER=0 disables)")
+                end
+            end
+        end
         sx = gau(med(dx)); sz = gau(med(dz))
         out = [(a0[k][1] + sx[k], a0[k][2] + sz[k]) for k in 1:n]
         worst = maximum(hypot(out[k][1] - a1[k][1], out[k][2] - a1[k][2]) for k in 1:n)
@@ -1908,6 +1950,24 @@ else
     else
         Render.GPL3DO.POSTPROC[] = (path, m) -> abspath(path) == abspath(ZTRK) ? smooth_road_normals(drop_overhang(m)) : m
         drop_overhang(TRACKMESH0)
+    end
+    # Probe JM_MESHDUMP=<s>,<radius>[,file]: road-mesh triangles (ground plane x,z + texture) within radius of ribbon
+    # station s, as GPL drew them (raw) and after rounding (cur), plus the ribbon nodes -- for top-down plots.
+    if haskey(ENV, "JM_MESHDUMP")
+        let a = split(ENV["JM_MESHDUMP"], ","), s0 = parse(Float64, a[1]), R = parse(Float64, a[2]),
+            fn = length(a) > 2 ? a[3] : "/tmp/jm_meshdump.txt", P = RIBBON0.pos, acc = 0.0, c = P[1]
+            for k in 2:length(P)
+                acc += hypot(P[k][1] - P[k-1][1], P[k][3] - P[k-1][3]); acc >= s0 && (c = P[k]; break)
+            end
+            open(fn, "w") do io
+                for (tag, m) in (("raw", TRACKMESH0), ("cur", TRACKMESH0C)), t in m.tris
+                    any(v -> hypot(v[1] - c[1], v[2] - c[3]) < R, t.p) || continue   # mesh ground plane is (x, y)
+                    println(io, tag, " ", isempty(t.tex) ? "-" : t.tex, " ", join((string(round(v[1], digits = 3), " ", round(v[2], digits = 3)) for v in t.p), " "))
+                end
+                for q in P; hypot(q[1] - c[1], q[3] - c[3]) < R && println(io, "rib ", q[1], " ", q[3]); end
+            end
+            println("  [meshdump] s ", s0, " centre (", round(c[1], digits = 1), ", ", round(c[3], digits = 1), ") -> ", fn)
+        end
     end
     const TRACKMESH = isempty(SECTRI) ? TRACKMESH0C :
         Render.GPL3DO.Mesh3DO([TRACKMESH0C.tris; SECTRI], TRACKMESH0C.textures,
@@ -8441,6 +8501,16 @@ if !SKIDPAD && haskey(ENV, "JM_OBJPROFILE")
 end
 # E108-S10 probe: JM_RIBBON_VS_GPL=1 -- the road-rounding target (RIBBON0) against GPL's own road centre (registered .trk
 # asphalt strip), every ribbon node: lateral difference, and its wiggle (difference minus its +-25 m running mean).
+# Probe JM_SHIFT_DUMP=<file>: the re-centre shift per .trk node (m to the LEFT) with its station along ALIGNED0.
+if haskey(ENV, "JM_SHIFT_DUMP")
+    open(ENV["JM_SHIFT_DUMP"], "w") do io
+        acc = 0.0
+        for k in eachindex(ALIGNED0)
+            k > 1 && (acc += hypot(ALIGNED0[k][1] - ALIGNED0[k-1][1], ALIGNED0[k][2] - ALIGNED0[k-1][2]))
+            println(io, acc, " ", k <= length(RECENTRE_SHIFT) ? RECENTRE_SHIFT[k] : NaN)
+        end
+    end
+end
 if GPLW_ON && haskey(ENV, "JM_RIBBON_VS_GPL")
     let rows = Tuple{Float64,Float64}[], sacc = 0.0, P = RIBBON0.pos
         for k in eachindex(P)

@@ -51,7 +51,7 @@ this index was written; that is what it exists to stop.
 | item | what | why it is not closed |
 |---|---|---|
 | **E83** | vegetation brightness | palette + unlit sprites fixed and seen on screen; a residual ~1.4× gap remains. Must NOT be closed with a grade change. |
-| **E84** | GPL's lateral tables as the AI line | implemented behind `JM_AI_GPLLAT`, **default OFF** — it makes the field run as a train, which may be correct (GPL's fields do queue). Needs a re-drive. |
+| **E84** | GPL's lateral tables as the AI line | **now DEFAULT ON** (`JM_AI_GPLLAT`, since E107 adopted GPL's line + rails on all 5 tracks; AIJIT-2 interpolates them). Left: the PO's verdict whether the field queues like GPL's or trains too much. (corrected 2026-10-02) |
 
 ### ✅ CLOSED (assessed this session or landed by me)
 
@@ -21648,3 +21648,35 @@ shots. Before/after: `261002/aijit2/wg_hairpin_line_before_after.jpg`.
 
 Probe added: `JM_RIBBON_VS_GPL=1` compares the rounding target with GPL's registered asphalt centre (WG: p50
 offset 0.06 m; the outliers are the hairpin/bus-stop junctions where GPL's widest asphalt strip is the run-off).
+
+### DELIVERY 261002c — `~/Documents/261002/JuliaRacer-x86_64-261002c.AppImage` (sha256 `84d5a819489b5956…`), pushed `f074f3a6`
+
+---
+
+## AIJIT-3 / E108-S12 — PO 2026-10-02, WG carousel: *"The inside white border line on the exit to the carousel, where a straight length of road intersects the inside of the curved main road, does not follow the curve of the main road. That's one place the AI cars show a sideways jerk"*
+
+**Where.** The carousel is the long right-hander after the back straight (s~1450-1800, lone grandstand on the right at
+s~1300). At its exit (s~1760, world x 214-243, z -776) the straight connector road joins the inside of the curve; GPL
+draws the inside line across the junction mouth.
+
+**Cause (measured, `JM_SHIFT_DUMP`, `JM_MESHDUMP` top-down plots).** The centreline is re-centred on the drawn asphalt
+node by node. At the junction the connector's asphalt pulls the "centre" into its mouth: the re-centre shift goes
++1.0 -> -2.8 -> +1.4 m over s 1765-1796 (12 nodes), too long for AIJIT-1's 7-node median. The derived centreline
+bulged ~2 m toward the inside there. Two consequences: road rounding (which bends the mesh along that centreline) bowed
+the junction line the wrong way, and every AI car following the centreline swerved through it. The "sharp corners"
+`JM_SHARP` listed at s 1526 (R 17.5 m) and s 1761 (R 20 m) are this same artefact at the two junctions: the road is
+straight / gently curved there.
+
+**Fix.** Before the AIJIT-1 smoothing, each node's shift is compared with a +-15-node median trend. A run of at most 20
+nodes more than 1.0 m off the trend is replaced by interpolating the good nodes either side -- but only if the trend
+centre is on asphalt with 2.5 m of asphalt either side at every node of the run (the main road really is there).
+Legitimate large shifts (a .trk line stranded off the road) fail that guard and are kept. `JM_RECENTRE_OUTLIER=0`
+disables; the startup log lists every run removed (WG 11, Monza 19, Spa 28, Ring 38, Zandvoort 2).
+
+**Measured.**
+* Top-down at the carousel exit (`261002/aijit2/wg_carousel_exit_topdown.png`): the centreline bulge is gone and the
+  junction line no longer bows inward.
+* AI (5 cars, 10000 frames, lateral jerk mm/frame²): carousel exit s 1700-1850 RMS 3.42 -> **2.59**, p99 10.3 -> **7.5**;
+  whole run RMS 1.91 -> 1.72, p99 7.9 -> 6.3.
+* Centreline vs GPL's road centre (`JM_RIBBON_VS_GPL`), all five tracks: p50 offset and p90 wiggle unchanged within
+  0.03 m -- the change is local, not a shift of the line anywhere else.
