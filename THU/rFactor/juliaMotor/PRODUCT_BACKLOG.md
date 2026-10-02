@@ -21609,3 +21609,7 @@ and race results name the driver ("J Clark (Lotus)": two Lotuses). Lotus 49 powe
 keeps poly type 0x81D (its cowl, as on the player's car) and takes its wheels through the tyre wrappers (`lotulf`... via
 `llftire0`...: textured tread and faces; the bare `lotw*` meshes drew black discs). `JM_AI_FIELD=old` restores
 Ferrari/Brabham/BRM/Eagle/Cooper. Captures: `261002/aicargfx/gold_field_2views_wg.jpg`, `ai_lotus_vs_gold.jpg`.
+
+### DELIVERY 261002b — `~/Documents/261002/JuliaRacer-x86_64-261002b.AppImage` (sha256 `b539deac76e9cb6a…`)
+HEAD `8920dac1` (FIELD-1). Verified from its own mounted runtime, empty user depot: Watkins Glen race smoke exit 0, 148 s,
+0 precompiles, 0 errors; AI grid Lotus, Lotus, Cooper, Ferrari, Brabham.
