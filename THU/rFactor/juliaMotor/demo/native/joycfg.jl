@@ -6,7 +6,7 @@
 # Logitech-Extreme-3D-Pro mapping when no config file is present).
 module JoyCfg
 
-export Ctrl, JoyMap, defaultmap, loadmap, savemap, apply, x3dmap, txmap, profile_for, resolve, wheel_half_range_deg, steer_physical
+export Ctrl, JoyMap, defaultmap, loadmap, savemap, apply, x3dmap, txmap, profile_for, resolve, wheel_half_range_deg, steer_physical, shift_ok
 
 struct Ctrl
     axis::Int          # 1-based index into the GLFW axes array; 0 = unused
@@ -101,6 +101,13 @@ function steer_physical(m::JoyMap, js, gain::Float64)
     centre = 0.5*(c.a + c.b); sgn = c.b >= c.a ? 1.0 : -1.0          # a = full-left -> +1, as `apply`
     clamp(-sgn*(Float64(js[c.axis]) - centre)*gain, -1.0, 1.0)
 end
+
+"""MANUAL shift gate (PO 2026-10-03: "let me blip the clutch rather than stomping on it"; a downshift
+"roughly matching revs without using the clutch" must go through). Accepted if the clutch is in now
+(>= 0.4), or was blipped past 0.25 within the last 0.35 s, or the engine is within ±15 % of the rpm the
+new gear needs at this road speed (`tgt_rpm`; a rev-matched clutchless shift)."""
+shift_ok(clu, secs_since_blip, rpm, tgt_rpm) =
+    clu >= 0.4 || secs_since_blip <= 0.35 || (tgt_rpm > 1500 && abs(rpm - tgt_rpm) <= 0.15*tgt_rpm)
 
 @inline function _norm(c::Ctrl, js)
     (c.axis < 1 || js === nothing || c.axis > length(js)) && return 0.0

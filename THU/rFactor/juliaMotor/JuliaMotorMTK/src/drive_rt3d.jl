@@ -969,9 +969,14 @@ accumulator woven into a 900-line frame body, which meant the only way to test t
 rule was to drive the car and watch — and every condition above is a place to get it
 backwards silently.
 """
+# PO 2026-10-03 narrows E98: "Switching to auto is supposed to be for a newbie who doesn't know you have
+# to ride the clutch ... at the start line". So it fires only at a crawl (`speed < vmax`); a stall at speed
+# (rear wheels locked under braking with the clutch out, or a tall gear held too long) never switches the
+# PO's gearbox -- the wheels turn the engine back over as soon as they roll.
 function stall_step(t::Float64, dt::Float64; auto::Bool, wrecked::Bool, rpm::Float64,
-                    clutch::Float64, rpm_floor::Float64=300.0, secs::Float64=0.5)
-    if !auto && !wrecked && rpm < rpm_floor && clutch < 0.4
+                    clutch::Float64, rpm_floor::Float64=300.0, secs::Float64=0.5,
+                    speed::Float64=0.0, vmax::Float64=Inf)
+    if !auto && !wrecked && rpm < rpm_floor && clutch < 0.4 && speed < vmax
         t += (dt > 1e-4 ? dt : 1/60)
         return t >= secs ? (0.0, true) : (t, false)
     end

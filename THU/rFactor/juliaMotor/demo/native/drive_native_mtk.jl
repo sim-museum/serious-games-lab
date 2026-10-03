@@ -9275,6 +9275,9 @@ const JOYTRACE_T = Ref(-1.0)
 # every refused G raised `UndefVarError: CLUTCH_GATE not defined`, killing the session. Writer and
 # reader must be the SAME binding, so it lives at module scope.
 const CLUTCH_GATE = Ref(-1.0)   # seconds left to show the clutch-gate bar after a refused G
+# shift gate (2026-10-03): last time the clutch passed 0.25 (a BLIP), and the car state the rev-match needs,
+# published by the main loop each frame (one frame old when read_input runs -- 17 ms, irrelevant here)
+const CLU_HIST = Ref(-1.0e9); const GEAR_NOW = Ref(0); const RPM_NOW = Ref(0.0); const V_NOW = Ref(0.0)
 
 function read_input()
     thr=brk=str=clu=0.0; up=dn=false
@@ -9311,8 +9314,16 @@ function read_input()
     # (the raw axes show clutch = 0), and the PO then confirmed "I had forgotten to use the clutch —
     # when I use it, manual seems to work". So the original behaviour was right and the change was
     # unnecessary: RESTORED to required-by-default. JM_CLUTCH_REQ=0 drops the requirement.
-    if get(ENV,"JM_CLUTCH_REQ","1") != "0"
-        (!CTL.auto && (upE || dnE) && clu < 0.4) && (upE = false; dnE = false)
+    # PO 2026-10-03: "let me blip the clutch rather than stomping on it", and a downshift "roughly matching
+    # revs without using the clutch" must go through. A shift is accepted if the clutch is in NOW (>= 0.4),
+    # or was BLIPPED past 0.25 within the last 0.35 s, or the engine is within ±15 % of the rpm the new gear
+    # needs at the current road speed (a rev-matched clutchless shift). A refused downshift used to leave
+    # the car in a tall gear until the engine stalled -- and E98 then threw the PO into AUTO.
+    CLU_HIST[] = clu >= 0.25 ? time() : CLU_HIST[]
+    if get(ENV,"JM_CLUTCH_REQ","1") != "0" && !CTL.auto && (upE || dnE)
+        g2 = clamp(GEAR_NOW[] + (upE ? 1 : -1), 1, length(DriveRT3D.GEARS))
+        tgt = GEAR_NOW[] >= 1 ? abs(V_NOW[]) / DriveRT3D.RW_R * DriveRT3D.GEARS[g2] * DriveRT3D.FINAL[] * 60/(2π) : 0.0
+        JoyCfg.shift_ok(clu, time() - CLU_HIST[], RPM_NOW[], tgt) || (upE = false; dnE = false)   # gated in controls_smoke
     end
     kv = key(GLFW.KEY_V); (kv && !CTL.prevV) && (CTL.view = 1-CTL.view); CTL.prevV = kv
     # E93 (PO 2026-08-29): "Make auto easy, I never use it so I don't care. Make manual right.
@@ -11642,6 +11653,7 @@ function main()
         ALLOCPROF > 0 && (ALLOC_MARK[1] = Base.gc_bytes())
         dt = FIXED_DT > 0 ? FIXED_DT : clamp(now-last, 0.0, 0.05)
         last = now
+        GEAR_NOW[] = cs.gear; RPM_NOW[] = cs.rpm; V_NOW[] = cs.v        # for the rev-matched shift gate
         inp, rst, recover, restart = read_input()
         (rst || restart) && GPLW_ON && gplw_teleported!()
         CRASH_ON && (inp = JuliaMotor.DriveInput(throttle = 0.0, brake = 0.0, steer = 0.0, clutch = inp.clutch,
@@ -12071,7 +12083,7 @@ function main()
                     # would drift from the one the gate checks, and the gate would still pass.
                     STALL_T[], _stallfire = DriveRT3D.stall_step(STALL_T[], dt;
                         auto = CTL.auto, wrecked = WRECKED[], rpm = cs.rpm, clutch = CLU_NOW[],
-                        rpm_floor = STALL_RPM, secs = STALL_SECS)
+                        rpm_floor = STALL_RPM, secs = STALL_SECS, speed = abs(cs.v), vmax = 5.0)   # start line only (PO 2026-10-03)
                     if _stallfire
                         CTL.auto = true
                         println("  [gearbox] ENGINE STALLED (", round(Int, cs.rpm),

@@ -75,5 +75,14 @@ end
 check("wheel range: TX name -> 450° half range (sysfs or default)", JoyCfg.wheel_half_range_deg("Thrustmaster Thrustmaster TX Racing Wheel") == 450.0, "")
 check("joystick -> no physical steering", JoyCfg.wheel_half_range_deg("Logitech Logitech Extreme 3D pro") == 0.0, "")
 
+# MANUAL SHIFT GATE (PO 2026-10-03): blip, held clutch, and rev-matched clutchless shifts pass; a
+# clutchless shift with the revs far off is refused (the realism the gate exists for).
+check("clutch held (0.5) -> shift",                  JoyCfg.shift_ok(0.5, 99.0, 5000.0, 7000.0), "")
+check("clutch blipped 0.2 s ago -> shift",           JoyCfg.shift_ok(0.0, 0.2, 5000.0, 7000.0), "")
+check("blip 0.5 s ago, revs off -> REFUSED",         !JoyCfg.shift_ok(0.0, 0.5, 5000.0, 7000.0), "")
+check("no clutch, revs matched (6500 vs 7000) -> shift", JoyCfg.shift_ok(0.0, 99.0, 6500.0, 7000.0), "")
+check("no clutch, revs 30 % off -> REFUSED",         !JoyCfg.shift_ok(0.0, 99.0, 4900.0, 7000.0), "")
+check("no clutch at a crawl (target < 1500) -> REFUSED", !JoyCfg.shift_ok(0.0, 99.0, 1200.0, 1100.0), "")
+
 println(fails[] == 0 ? "CONTROLS GATE: PASS" : "CONTROLS GATE: FAIL ($(fails[]))")
 exit(fails[] == 0 ? 0 : 1)
