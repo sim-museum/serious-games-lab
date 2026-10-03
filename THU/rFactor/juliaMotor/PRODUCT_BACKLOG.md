@@ -21793,3 +21793,5 @@ ablation term (the player and AI use the 3-D car). Tyre temperature cannot be fi
 The steady-state fit is at one speed (86 km/h). The model has no aero, so that is consistent, but it is untested at Ring speeds.
 
 **Gates (final model, E91-S10 + TYRE-1):** 42 of 44 PASS, the same pre-existing pair failing for the same reasons. test_powertrain, test_drive_rt and test_launch pass.
+
+### DELIVERY 261003 — `~/Documents/261003/JuliaRacer-x86_64-261003.AppImage` (sha256 `decc13e98bb3752f…`): E91-S10 + TYRE-1 (physics refit from the 261002 iRacing session, commit a8b2a5c9); bwrap install-path smoke clean (Watkins, 60 frames, 150 s), 0 precompiles
