@@ -22,7 +22,7 @@ src = read(SRC, String)
 i = findfirst("if restart", src)
 i === nothing && error("no `if restart` block in $SRC -- has CTRL+R been removed?")
 # take a generous window; the block is short
-blk = src[first(i):min(length(src), first(i) + 3000)]
+blk = src[first(i):min(length(src), first(i) + 4500)]
 j = findfirst("\n        end\n", blk)
 blk = j === nothing ? blk : blk[1:last(j)]
 
@@ -35,6 +35,7 @@ required = [
     ("car respawned",            "respawnX!"),
     ("damage reset",             "damage_reset!"),
     ("wreck latch cleared",      "WRECKED[] = false"),
+    ("frozen-wreck pin cleared", "WRECK_FROZEN[] = false"),
     ("detached wheels cleared",  "empty!(LOOSE_WHEELS)"),
     ("lap counter",              "cs.laps = 0"),
     ("lap clock",                "lap_t0"),
@@ -49,6 +50,9 @@ required = [
     ("race-go flag",             "race_go[] ="),
     ("countdown",                "cd_t0[]"),
     ("AI field re-gridded",      "init_cars"),
+    # 2026-10-03: init_cars alone is the old ad-hoc stagger (AI beside/behind the player -> rear-ended
+    # at the start after R). The launch grids with form_grid! (every AI AHEAD); so must the restart.
+    ("grid formed AHEAD, as launch", "form_grid!(Inf)"),
     ("AI lap clocks",            "ai_lapt0"),
     ("AI stats",                 "aistat_reset!"),
     ("fuel",                     "fuel[] ="),

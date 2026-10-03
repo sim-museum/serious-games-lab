@@ -11693,6 +11693,11 @@ function main()
                 AICARS .= RaceAI.init_cars(AILINE, length(AICARS); start_s = 30.0)
                 fill!(ai_lapt0, cs.t); fill!(ai_lap_prev, 0); fill!(ai_best, Inf)
                 RaceAI.aistat_reset!()
+                # 2026-10-03 (PO: "rear ended by AI car at start" after R): init_cars is the OLD ad-hoc
+                # stagger that RACESTART-2 replaced at launch -- it left AI beside and behind the player.
+                # Re-form the grid exactly as the launch does (`if !DO_QUAL && HOLD_START` below the
+                # definition of form_grid!): every AI on rows AHEAD of the player.
+                (!DO_QUAL && HOLD_START) && (player_grid[] = form_grid!(Inf))
             end
             FUEL_ON && (fuel[] = burn_lap * fuel_laps)
             println("  [restart] session reset on ", TRACKSEL, " in ",
