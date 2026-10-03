@@ -36,7 +36,15 @@ function DrivenVehicle3D(; name,
         # These two are therefore constants, and the open question is not what they should be tuned
         # to but what the iRacing telemetry SAYS they are — see BENCHMARK_2026-06-24.md and
         # JuliaMotorMTK/tools/ibt_compare.jl.
-        bias = 0.535, Tbrake_max = 4200.0,
+        # BRAKE-1 (2026-10-03, PO: can't settle the car to trail-brake into the carousel): MEASURED from the
+        # 261002 gold's steady straight-line braking. Pedal 0.5-0.7 gives 0.906 g with the FRONT tyres working
+        # harder (rear/front slip 0.61); the sim gave 1.32 g with the REAR working harder (1.59-1.75), so the
+        # rear saturated first and the car stepped out. iRacing's 53.5 % BrakeBias is a PRESSURE split (bigger
+        # front brakes); applied here as a TORQUE split it put only 56 % of the braking force on the front.
+        # Simulated stops fitted to both gold numbers: torque split 0.617 front, 2800 N·m at full pedal (was
+        # 0.535 / 4200 -- the 4200 was raised by feel). Trail-braking from 250 km/h: max sideslip <= 2.6° at
+        # every pedal (was a spin at pedal 0.6-0.8).
+        bias = 0.617, Tbrake_max = 2800.0,
         CdA = CDA_IBT, ρair = 1.10, g = 9.80665,
         throttle0 = 0.0, brake0 = 0.0, steer0 = 0.0, gear0 = 1.72, brush = false,
         # PO: ct (tyre vertical DAMPING) was 300 ≈ 8% of critical for the unsprung mass → the car

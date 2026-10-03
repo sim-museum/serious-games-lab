@@ -12,7 +12,7 @@ function DrivenVehicleRT(; name,
         m = 617.0, Izz = 890.0, a = 1.314, b = 1.096, tf = 1.50, tr = 1.50,
         h = 0.30, front_frac = 0.455,
         Rw_f = 0.30, Rw_r = 0.334, Iw = 1.0, Ieng = 0.10, η = 0.9, final = 4.11,
-        bias = 0.535, Tbrake_max = 4200.0, CdA = CDA_IBT, ρair = 1.10,   # brake torque ↑ (was 3000, felt weak)
+        bias = 0.617, Tbrake_max = 2800.0, CdA = CDA_IBT, ρair = 1.10,   # BRAKE-1: measured from the gold (vehicle_3d.jl)
         throttle0 = 0.0, brake0 = 0.0, steer0 = 0.0, gear0 = 1.72, brush = false,
         front_corner = (Fz_static = 1376.0, ks = 18_250.0, cs = 2500.0,
                         m_s = 120.0, m_u = 20.0, kt = 180_000.0, ct = 300.0),
