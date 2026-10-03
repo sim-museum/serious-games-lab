@@ -635,7 +635,13 @@ class DriveTab(QWidget):
         self.gearbox.setToolTip("Automatic shifts up/down by speed and needs no clutch; Manual = work the clutch (G also toggles in-game).")
         form.addWidget(self.gearbox, 5, 1)
         self.mute = QCheckBox("Mute engine audio (JM_NOSOUND)")
-        form.addWidget(self.mute, 6, 1)
+        # 2026-10-03: an FFB on/off A/B for the PO's "side-to-side rocking that won't settle" -- the
+        # sim car alone settles a steering pulse with no overshoot, so the open question is whether
+        # the wheel's force feedback sustains the ~1 Hz shuttle. JM_NOFFB existed but was unreachable.
+        self.noffb = QCheckBox("Force feedback off (JM_NOFFB)")
+        _row = QHBoxLayout(); _row.addWidget(self.mute); _row.addWidget(self.noffb); _row.addStretch(1)
+        _roww = QWidget(); _roww.setLayout(_row); _row.setContentsMargins(0, 0, 0, 0)
+        form.addWidget(_roww, 6, 1)
         self.ibt = QCheckBox("Record iRacing .ibt telemetry → data/juliaracer/")
         self.ibt.setChecked(True)        # on by default
         form.addWidget(self.ibt, 7, 1)
@@ -1006,6 +1012,8 @@ class DriveTab(QWidget):
         qenv.insert("ZAND_SHIFT", "auto" if self.gearbox.currentIndex() == 0 else "manual")
         if self.mute.isChecked():
             qenv.insert("JM_NOSOUND", "1")
+        if self.noffb.isChecked():
+            qenv.insert("JM_NOFFB", "1")
         if not self.ibt.isChecked():     # telemetry is on by default; this disables it
             qenv.insert("JM_NOIBT", "1")
         if not self.replay.isChecked():  # replay recording is on by default; this disables it
