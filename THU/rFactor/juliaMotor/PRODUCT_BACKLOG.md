@@ -21835,3 +21835,20 @@ held the clutch disengaged, ignored shifts, and kept the detached wheel drawn.
 (here rear μ, and the rear/front Cα split) must be closed by a behaviour the gold *does* show, and checked where the gold never went
 (top speed). `tyreid_261002.jl` now enforces all three constraints.
 
+
+### TYRE-1-R2 / BRAKE-1 / MANUAL-1 (2026-10-03) — driving the PO's Watkins laps (1:25 → 1:18, target < 1:10)
+
+* **TYRE-1-R2 (0a48df57):** rear Cα 30.21 → 34.0. With rear = front the car diverged after a 0.5° blip at 240 km/h on full
+  throttle and spun on a 0.6 g full-throttle exit even after the 3rd→4th upshift (PO: "rocking at high speed" / "wandering in 4th and
+  5th"). Each rear tyre carries ~0.87× its load in drive force at WOT (gold; Cκ ≈ 29 measured = model 28); the brush's combined slip
+  costs it ~25 % of its cornering stiffness. The gold holds WOT straights > 180 km/h (wheel sd 0.7–1.6°, yaw sd 1.0–2.2°/s vs the sim's 2.9° /
+  4.2°/s). Now the blip dies and the exit straightens within 1 s of the shift. `tyreid_261002.jl` requires the WOT blip to decay.
+* **BRAKE-1 (d5105832):** torque split 0.535 → **0.617** front, Tbrake_max 4200 → **2800 N·m**, fitted by simulated stops to the gold:
+  pedal 0.5–0.7 = 0.906 g with rear/front slip 0.61 (sim had 1.32 g, rear working harder, 1.59–1.75). His 1:18 lap stepped 6° sideways under
+  braking into the carousel. Trail braking from 250 km/h now ≤ 2.6° of sideslip at every pedal level (was a spin at 0.6–0.8). iRacing's
+  53.5 % BrakeBias is a pressure split, not a torque split. **Open:** at full pedal the gold locks at 1.3 g while the brush (no
+  sliding-friction drop) stops at ~1.45 g without locking.
+* **MANUAL-1 (1c3a5a42):** shifts accept a clutch blip (≥ 0.25 within 0.35 s) or a rev-matched clutchless shift (±15 %); E98's
+  stall→AUTO fires only below 5 m/s ("auto is for a newbie at the start line"). Gated in controls_smoke / stall_smoke.
+* Also this pass: R restarts the race and re-forms the grid ahead (975c7bfb); wheels steer at the session ratio (6ce228a4); FFB
+  centring per wheel degree + launcher FFB on/off (90e93cd3).
