@@ -21795,3 +21795,5 @@ The steady-state fit is at one speed (86 km/h). The model has no aero, so that i
 **Gates (final model, E91-S10 + TYRE-1):** 42 of 44 PASS, the same pre-existing pair failing for the same reasons. test_powertrain, test_drive_rt and test_launch pass.
 
 ### DELIVERY 261003 — `~/Documents/261003/JuliaRacer-x86_64-261003.AppImage` (sha256 `decc13e98bb3752f…`): E91-S10 + TYRE-1 (physics refit from the 261002 iRacing session, commit a8b2a5c9); bwrap install-path smoke clean (Watkins, 60 frames, 150 s), 0 precompiles
+
+### DELIVERY 261003b — `~/Documents/261003/JuliaRacer-x86_64-261003b.AppImage` (sha256 `0f8b2c6767dc77cb…`): controller AUTODETECT (Thrustmaster TX / Logitech X3D by device name; the 261003 update had deleted joystick.conf, so the TX ran through the X3D map = released throttle read as full brake), AppRun refresh now KEEPS joystick.conf (tested: scratch install, old stamp, conf survives), .ibt export on (gold store under $HOME), AUTO up-shift at the shift light 8900 rpm, Skidpad load crash fixed. bwrap install-path smoke clean (Watkins, 0 precompiles, controller autodetected, .ibt written)
