@@ -113,6 +113,12 @@ if [ -f "$STAMP_SRC" ] && ! cmp -s "$STAMP_SRC" "$STAMP_DST" 2>/dev/null; then
     [ -d "$HERE/usr/share/julia/juliaMotor/$d" ] || continue
     rm -rf "$W/THU/rFactor/juliaMotor/.new_$d"
     if cp -a "$HERE/usr/share/julia/juliaMotor/$d" "$W/THU/rFactor/juliaMotor/.new_$d"; then
+      # 2026-10-03: keep the driver's controller calibration. It lives in demo/native, and swapping the
+      # whole directory silently deleted it -- the sim then read a Thrustmaster TX through the X3D map
+      # (a released throttle = full brake).
+      if [ "$d" = demo ] && [ -f "$W/THU/rFactor/juliaMotor/demo/native/joystick.conf" ]; then
+        cp -a "$W/THU/rFactor/juliaMotor/demo/native/joystick.conf" "$W/THU/rFactor/juliaMotor/.new_demo/native/joystick.conf"
+      fi
       rm -rf "$W/THU/rFactor/juliaMotor/$d"
       mv "$W/THU/rFactor/juliaMotor/.new_$d" "$W/THU/rFactor/juliaMotor/$d"
     else

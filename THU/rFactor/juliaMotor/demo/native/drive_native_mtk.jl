@@ -58,14 +58,16 @@ const FFB_SQ     = parse(Float64, get(ENV, "JM_FFB_SQ",  "0.03"))   # squelch kn
 const FFB_LP     = parse(Float64, get(ENV, "JM_FFB_LP",  "0.05"))   # low-pass time-constant [s] on the FFB force — smooths jostle, keeps it continuous
 const FFB_SPRING = parse(Float64, get(ENV, "JM_FFB_SPRING", "0.55"))# self-centering SPRING ∝ wheel angle — smooth return-to-center so there's NO dead zone
 const _JOYCONF = joinpath(@__DIR__, "joystick.conf")
-const JOYMAP = if isfile(_JOYCONF)
-    JoyCfg.loadmap(_JOYCONF)                                  # honour juliaRacer.py / calibrate.jl (TX clutch pedal, etc.)
-else
-    let m = JoyCfg.defaultmap()                              # no config → old Logitech X3D default
-        JoyCfg.JoyMap(m.steer, m.throttle, m.brake, JoyCfg.Ctrl(4, -1.0, 1.0),   # clutch on the X3D SLIDER (axis 4)
-                      m.up_btn, m.dn_btn, m.clutch_btn, m.deadzone)
-    end
+# joystick.conf (juliaRacer.py / calibrate.jl) > a profile AUTODETECTED from the device name > X3D default.
+# GLFW.Init is idempotent (the window code calls it again later); headless runs without a display fall
+# through to "no controller".
+const JOYNAME = try
+    GLFW.Init(); GLFW.JoystickPresent(GLFW.JOYSTICK_1) ? String(GLFW.GetJoystickName(GLFW.JOYSTICK_1)) : ""
+catch
+    ""
 end
+const JOYMAP, JOYSRC = JoyCfg.resolve(_JOYCONF, JOYNAME)
+println("  controller: ", JOYSRC)
 
 # PO 2026-08-27, standing: "I like the clutch attached to a slider - that way I can ride the
 # clutch. The clutch should be an axis." A joystick.conf written by juliaRacer.py or calibrate.jl
@@ -77,8 +79,7 @@ if JOYMAP.clutch.axis < 1
     @warn """clutch is NOT on an axis (clutch.axis=$(JOYMAP.clutch.axis)) — the PO's standing
              requirement is a SLIDER you can ride. Check $(_JOYCONF); the X3D default is axis 4."""
 else
-    println("  clutch: axis ", JOYMAP.clutch.axis, " (ridable slider)",
-            isfile(_JOYCONF) ? "  <- joystick.conf" : "  <- X3D default")
+    println("  clutch: axis ", JOYMAP.clutch.axis, " (ridable slider)  <- ", JOYSRC)
 end
 
 # ---- track selection (upfront, before the long load) ----
@@ -535,11 +536,17 @@ const REPLAY_FILE = get(ENV, "JM_REPLAY", "")    # E18: if set, PLAY BACK this .
 # in the gold-standard store, which is why every session ended with ".ibt export failed ... (2)".
 # Look there first, so the iRacing reference is actually reachable (PO 2026-08-27: the physics is to
 # be determined by this data). JM_IBTDIR overrides the location, not the physics.
+# 2026-10-03 (PO: "turn .ibt export on, as this is the main debugging tool"): the gold store was looked
+# for only at the BUILD box's /home/admin path, so on the PO's machine (and in every AppImage install)
+# it was never found: .ibt export was off and the gearbox/mass/springs fell back to built-in constants.
+# Look under the running user's home first.
 const IBTDIR = let repo = normpath(joinpath(@__DIR__,"..","..","data","iracing")),
-                   gold = "/home/admin/gold standard/julia racer"
+                   golds = (joinpath(homedir(), "gold standard", "julia racer"), "/home/admin/gold standard/julia racer"),
+                   hasibt(g) = isdir(g) && !isempty(filter(f->endswith(lowercase(f),".ibt"), readdir(g)))
     d = get(ENV, "JM_IBTDIR", "")
-    !isempty(d) ? d : (isdir(gold) && !isempty(filter(f->endswith(lowercase(f),".ibt"), readdir(gold))) ? gold : repo)
+    !isempty(d) ? d : something(findfirst(hasibt, golds) |> i -> i === nothing ? nothing : golds[i], repo)
 end
+println("  iRacing reference (.ibt template, session gearbox/mass): ", IBTDIR)
 # AI-GOLD: derive the AI's lateral-grip anchor from the bundled iRacing telemetry, so the pace
 # model obeys the PO's rule that car physics comes from the .ibt data rather than from a tuned
 # constant. Uses the p99 of |LatAccel| over the longest available lap file: the raw PEAK is useless

@@ -6,7 +6,7 @@
 # Logitech-Extreme-3D-Pro mapping when no config file is present).
 module JoyCfg
 
-export Ctrl, JoyMap, defaultmap, loadmap, savemap, apply
+export Ctrl, JoyMap, defaultmap, loadmap, savemap, apply, x3dmap, txmap, profile_for, resolve
 
 struct Ctrl
     axis::Int          # 1-based index into the GLFW axes array; 0 = unused
@@ -29,6 +29,42 @@ end
 pull), buttons 1/2/3 = up/down/clutch.  `apply` then reduces to the old formulas."
 defaultmap() = JoyMap(Ctrl(1, -1.0, 1.0), Ctrl(2, 0.0, -1.0), Ctrl(2, 0.0, 1.0),
                       Ctrl(0, 0.0, 1.0), 1, 2, 3, 0.06)
+
+# ---- AUTODETECT (PO 2026-10-03: "the code should autodetect the controller type") ----------------
+# Without a joystick.conf the sim used to assume a Logitech Extreme 3D for EVERY controller. On a
+# Thrustmaster TX that is dangerous, not just wrong: X3D reads axis 2 as throttle(push)/brake(pull),
+# and the TX throttle PEDAL rests at +1.0 -- so a released throttle read as FULL BRAKE (1.4-1.5 g to a
+# standstill from 200 km/h, measured from the PO's 2026-10-03 Watkins replay), part throttle mixed
+# brake in, and the X3D clutch slider (axis 4) is the TX BRAKE pedal resting at +1.0 = clutch held in.
+# An AppImage update had deleted the PO's joystick.conf, which is how the fallback was reached.
+# Precedence: joystick.conf (the driver's own calibration) > a profile matched by device NAME > X3D.
+
+"The Logitech Extreme 3D Pro: steer = roll, throttle/brake = push/pull on axis 2, clutch = slider."
+x3dmap() = (m = defaultmap(); JoyMap(m.steer, m.throttle, m.brake, Ctrl(4, -1.0, 1.0),
+                                     m.up_btn, m.dn_btn, m.clutch_btn, m.deadzone))
+
+"""The Thrustmaster TX (hid-tmff2): wheel axis 1, throttle 2, clutch 3, brake 4 -- each pedal rests
+at +1.0 and falls when pressed; paddles: right (button 2) = up, left (button 1) = down. Values are the
+PO's own calibration of this wheel (juliaRacer.py, 2026-06-29)."""
+txmap() = JoyMap(Ctrl(1, -0.99701, 0.99637), Ctrl(2, 1.0, -0.99804), Ctrl(4, 1.0, 0.29814),
+                 Ctrl(3, 0.99609, -0.99609), 2, 1, 0, 0.06)
+
+"""Built-in profile for a GLFW joystick NAME: (label, JoyMap), or nothing if the device is unknown."""
+function profile_for(name::AbstractString)
+    n = lowercase(name)
+    occursin("thrustmaster", n) && occursin("tx", n) && return ("Thrustmaster TX", txmap())
+    occursin("extreme 3d", n) && return ("Logitech Extreme 3D", x3dmap())
+    nothing
+end
+
+"""Resolve the live map: (JoyMap, source) from the config path and the connected device's name."""
+function resolve(conf::AbstractString, name::AbstractString)
+    isfile(conf) && return (loadmap(conf), "joystick.conf")
+    pr = profile_for(name)
+    pr === nothing || return (pr[2], "autodetected " * pr[1] * " (\"" * name * "\")")
+    (x3dmap(), isempty(name) ? "X3D default (no controller found)" :
+               "X3D default -- UNKNOWN controller \"" * name * "\": calibrate it in the launcher")
+end
 
 @inline function _norm(c::Ctrl, js)
     (c.axis < 1 || js === nothing || c.axis > length(js)) && return 0.0

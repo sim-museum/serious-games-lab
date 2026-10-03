@@ -21,15 +21,10 @@ end
 println("PO control-requirements gate")
 
 # The live mapping the sim will actually use, resolved the same way drive_native_mtk.jl resolves it.
-live = if isfile(CONF)
-    JoyCfg.loadmap(CONF)
-else
-    m = JoyCfg.defaultmap()
-    JoyCfg.JoyMap(m.steer, m.throttle, m.brake, JoyCfg.Ctrl(4, -1.0, 1.0),
-                  m.up_btn, m.dn_btn, m.clutch_btn, m.deadzone)
-end
+# (Headless: no device name, so this is joystick.conf if present, else the X3D default.)
+live, src = JoyCfg.resolve(CONF, "")
 check("clutch is on an AXIS, not a button", live.clutch.axis >= 1,
-      string("clutch.axis=", live.clutch.axis, isfile(CONF) ? "  (from joystick.conf)" : "  (X3D default)"))
+      string("clutch.axis=", live.clutch.axis, "  (", src, ")"))
 
 # An axis you can RIDE needs a real travel range: a degenerate a==b would normalise to a constant
 # and behave like an on/off switch while still reporting an axis number.
@@ -46,6 +41,24 @@ end
 bad = JoyCfg.JoyMap(live.steer, live.throttle, live.brake, JoyCfg.Ctrl(0, 0.0, 1.0),
                     live.up_btn, live.dn_btn, live.clutch_btn, live.deadzone)
 check("a clutch.axis=0 map is REJECTED", !(bad.clutch.axis >= 1), "detected as button/unused")
+
+# AUTODETECT (PO 2026-10-03). The TX pedals rest at +1.0. Read through the X3D map that is FULL BRAKE
+# on a released throttle and the clutch held in -- what the PO drove on 2026-10-03 after an update
+# deleted joystick.conf. The TX device name must select the TX profile, and at rest it must give no
+# throttle, no brake and no clutch; full pedals must give full outputs.
+for nm in ("Thrustmaster Thrustmaster TX Racing Wheel", "Thrustmaster TX Racing Wheel")
+    pr = JoyCfg.profile_for(nm)
+    check("\"$nm\" -> TX profile", pr !== nothing && pr[1] == "Thrustmaster TX", string(pr === nothing ? "none" : pr[1]))
+end
+check("Logitech Extreme 3D -> X3D profile", (p = JoyCfg.profile_for("Logitech Logitech Extreme 3D pro"); p !== nothing && p[1] == "Logitech Extreme 3D"), "")
+check("unknown device -> no profile (X3D fallback, warned)", JoyCfg.profile_for("Some Gamepad") === nothing, "")
+rest = Float32[0.0, 1.0, 1.0, 1.0]; floor_ = Float32[0.0, -1.0, -1.0, 0.29814]   # TX axes: wheel, throttle, clutch, brake -- floored
+_, thr, brk, clu, _, _ = JoyCfg.apply(JoyCfg.txmap(), rest, nothing)
+check("TX at rest: throttle 0, brake 0, clutch 0", thr == 0 && brk == 0 && clu < 0.01, "thr=$thr brk=$brk clu=$(round(clu, digits=3))")
+_, thr, brk, clu, _, _ = JoyCfg.apply(JoyCfg.txmap(), floor_, nothing)
+check("TX pedals floored: throttle 1, brake 1, clutch 1", thr > 0.99 && brk > 0.99 && clu > 0.99, "thr=$thr brk=$brk clu=$(round(clu, digits=3))")
+_, thr, brk, clu, _, _ = JoyCfg.apply(JoyCfg.x3dmap(), rest, nothing)
+check("NEGATIVE CONTROL: X3D map on a resting TX = full brake", brk > 0.99 && clu > 0.99, "thr=$thr brk=$brk clu=$clu (the 2026-10-03 bug)")
 
 println(fails[] == 0 ? "CONTROLS GATE: PASS" : "CONTROLS GATE: FAIL ($(fails[]))")
 exit(fails[] == 0 ? 0 : 1)
