@@ -673,7 +673,7 @@ class DriveTab(QWidget):
 
         note = QLabel("First launch compiles & loads assets — the window can take "
                       "~3–4 min to appear. Controls: W/S gas·brake, A/D steer, E/Q shift, "
-                      "C clutch, G auto⇄manual, V view, R respawn, M mute, Esc quit. "
+                      "C clutch, G auto⇄manual, V view, R restart race, M mute, Esc quit. "
                       "Your calibrated wheel/pedals work natively.")
         note.setWordWrap(True)
         note.setStyleSheet("color:#888")

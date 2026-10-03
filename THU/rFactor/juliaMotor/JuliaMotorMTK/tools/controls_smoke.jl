@@ -60,5 +60,20 @@ check("TX pedals floored: throttle 1, brake 1, clutch 1", thr > 0.99 && brk > 0.
 _, thr, brk, clu, _, _ = JoyCfg.apply(JoyCfg.x3dmap(), rest, nothing)
 check("NEGATIVE CONTROL: X3D map on a resting TX = full brake", brk > 0.99 && clu > 0.99, "thr=$thr brk=$brk clu=$clu (the 2026-10-03 bug)")
 
+# PHYSICAL STEERING (PO 2026-10-03 fishtailing): a wheel's road angle = wheel angle / steering ratio,
+# INDEPENDENT of where the calibration's endpoints were captured. 900° TX, 10:1, sim lock 0.30 rad:
+# full lock at 0.30·10 rad = 172° of wheel = raw 172/450 = 0.382; 10% of that raw gives 10% of lock.
+gain = 450.0 / 10.0 / rad2deg(0.30)
+for (lab, m) in (("TX profile (June endpoints ±1.0)", JoyCfg.txmap()),
+                 ("PO's 2026-10-03 calibration (endpoints ±0.22)", JoyCfg.JoyMap(JoyCfg.Ctrl(1, -0.22307, 0.21367),
+                  JoyCfg.txmap().throttle, JoyCfg.txmap().brake, JoyCfg.txmap().clutch, 2, 1, 0, 0.06)))
+    c0 = 0.5*(m.steer.a + m.steer.b)
+    full = JoyCfg.steer_physical(m, Float32[c0 - 0.382, 1, 1, 1], gain)
+    tenth = JoyCfg.steer_physical(m, Float32[c0 - 0.0382, 1, 1, 1], gain)
+    check("$lab: 172° left = full lock, 17° = 10 %", abs(full - 1.0) < 0.01 && abs(tenth - 0.1) < 0.005, "full=$(round(full, digits=3)) tenth=$(round(tenth, digits=3))")
+end
+check("wheel range: TX name -> 450° half range (sysfs or default)", JoyCfg.wheel_half_range_deg("Thrustmaster Thrustmaster TX Racing Wheel") == 450.0, "")
+check("joystick -> no physical steering", JoyCfg.wheel_half_range_deg("Logitech Logitech Extreme 3D pro") == 0.0, "")
+
 println(fails[] == 0 ? "CONTROLS GATE: PASS" : "CONTROLS GATE: FAIL ($(fails[]))")
 exit(fails[] == 0 ? 0 : 1)

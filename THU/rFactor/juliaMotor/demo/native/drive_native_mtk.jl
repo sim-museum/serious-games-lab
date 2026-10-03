@@ -68,6 +68,9 @@ catch
 end
 const JOYMAP, JOYSRC = JoyCfg.resolve(_JOYCONF, JOYNAME)
 println("  controller: ", JOYSRC)
+# physical steering (wheels): set once the session's steering ratio is known (E100 block below)
+const WHEEL_HALF_DEG = JoyCfg.wheel_half_range_deg(JOYNAME)
+const STEER_GAIN = Ref(0.0)        # normalised steer per raw unit; 0 = endpoint calibration (joysticks)
 
 # PO 2026-08-27, standing: "I like the clutch attached to a slider - that way I can ride the
 # clutch. The clutch should be an axis." A joystick.conf written by juliaRacer.py or calibrate.jl
@@ -701,6 +704,19 @@ let
     println("  gearbox: ", DriveRT3D.GEARS, "  final ", DriveRT3D.FINAL[],
             "   <- ", DriveRT3D.transmission_source())
     println("  AUTO up-shift: ", round(Int, DriveRT3D.SHIFT_RPM[]), " rpm (shift light)   <- ", DriveRT3D.SHIFT_SRC[])
+    # physical wheel steering: road angle = wheel angle / the session's steering ratio (see joycfg.jl)
+    let ratio = (isfile(IBTTMPL) ? (try Setup.setup_params(IBT.session_yaml(IBT.ibt_open(IBTTMPL))).steering_ratio catch; NaN end) : NaN),
+        src = isfinite(ratio) ? basename(IBTTMPL) : "built-in 10:1 (Lotus 49 setup) -- NOT from an ibt"
+        isfinite(ratio) && ratio > 1 || (ratio = 10.0)
+        if WHEEL_HALF_DEG > 0
+            STEER_GAIN[] = WHEEL_HALF_DEG / ratio / rad2deg(DriveRT3D.MAXSTEER)
+            println("  steering: wheel ±", round(Int, WHEEL_HALF_DEG), "° / ratio ", ratio, ":1 -> full lock (",
+                    round(rad2deg(DriveRT3D.MAXSTEER), digits = 1), "° road) at ±", round(Int, rad2deg(DriveRT3D.MAXSTEER)*ratio),
+                    "° of wheel   <- ", src)
+        else
+            println("  steering: endpoint calibration (not a wheel with a known rotation range)")
+        end
+    end
     println("  mass:    ", round(DriveRT3D.MASS[], digits=1), " kg  front ",
             round(100*DriveRT3D.FRONT_FRAC[], digits=1), "%")
     # Say where the rates came from, for the same reason the gearbox does: a silent fallback to
@@ -9275,6 +9291,7 @@ function read_input()
     if js !== nothing && !isempty(js)
         bs = GLFW.GetJoystickButtons(GLFW.JOYSTICK_1)
         str, thr, brk, clu, up, dn = JoyCfg.apply(JOYMAP, js, bs)   # configurable mapping (calibrate.jl)
+        STEER_GAIN[] > 0 && (str = JoyCfg.steer_physical(JOYMAP, js, STEER_GAIN[]))   # wheels: angle / ratio
     end
     # keyboard (adds to / overrides stick)
     key(GLFW.KEY_W) && (thr=1.0); key(GLFW.KEY_S) && (brk=1.0)
@@ -9330,9 +9347,14 @@ function read_input()
     # up." CTRL+R, because R and SHIFT+R are already respawn and recover, and losing a good session
     # to a mistyped key would cost more than the reload it saves. Edge-triggered: one restart per
     # press, never a repeat while held.
+    # PO 2026-10-03 SUPERSEDES that choice: '"R" should reset the race'. Plain R (and CTRL+R) now
+    # restart the session; SHIFT+R stays recover-to-track. The old plain-R respawn put a "new" car at
+    # the start but left WRECKED set after a lost wheel -- engine disconnected, shifts ignored, the
+    # detached wheel still drawn -- which is how the PO met it.
     ctrl = key(GLFW.KEY_LEFT_CONTROL) || key(GLFW.KEY_RIGHT_CONTROL)
-    restart = rkey && ctrl && !CTL.prevRestart; CTL.prevRestart = rkey && ctrl
-    rst = (rkey && !shift && !ctrl) || recover
+    rk = rkey && !shift
+    restart = rk && !CTL.prevRestart; CTL.prevRestart = rk
+    rst = recover
     # PO 2026-08-27: "pressing forward on the joystick causes the car to drift backward or stay
     # still; W has no effect" — with brake and steering working. Cause: the X3D SLIDER (axis 4) is
     # mapped to the CLUTCH, so a slider parked at the engaged end holds the clutch fully in. The
@@ -11558,7 +11580,7 @@ function main()
         "# $(TRACKSEL)_racer telemetry — Lotus 49 @ $(TRACKSEL)\n" *
         "# run: ai=$(N_AI_REQ) ai_pct=$(AI_PCT) ai_rel=$(AI_REL) ai_amax=$(AI_AMAX) view=$(_tview) joystick=$(_tjoy)\n" *
         "# t\tlap\tlapdist\tkmh\tthr\tbrk\tsteer\tclu\tgear\trpm\tx\tz\tlat\talong\tontrack\n")
-    println("\n  Drive:  W/S gas·brake   A/D steer   E/Q shift   C clutch   R respawn   ⇧R recover-to-track   ^R restart session   V view   G auto⇄manual   M mute   Esc quit"); flush(stdout)
+    println("\n  Drive:  W/S gas·brake   A/D steer   E/Q shift   C clutch   R restart race   ⇧R recover-to-track   V view   G auto⇄manual   M mute   Esc quit"); flush(stdout)
     println("  AUTO gearbox by default — just press the throttle and go (no clutch needed).  Press G for")
     println("  MANUAL: hold the clutch (C / stick button) to shift E/Q (release it too low and it bogs).")
     println("  Lap times top-left: white = last, green = best.  Telemetry → ./$(TRACKSEL)_racer_*.txt")
@@ -11641,7 +11663,7 @@ function main()
             t_restart = time()
             PLAYER_G[] = NaN; respawnX!(cs; groundz = groundz_phys); DriveRT3D.damage_reset!()
             DC[].lastz = 0.0   # LAPTIME-1: see the respawn below
-            WRECKED[] = false; empty!(LOOSE_WHEELS)      # a detached corner is never redrawn otherwise
+            WRECKED[] = false; WRECK_FROZEN[] = false; empty!(LOOSE_WHEELS)   # a detached corner is never redrawn otherwise
             CLUTCH_GATE[] = -1.0
             # lap + race state
             cs.laps = 0; lap_t0 = cs.t; last_lap = 0.0; best_lap = 0.0; prev_laps = 0
@@ -11969,6 +11991,7 @@ function main()
             cs.heave = 0.0; cs.pitch = 0.0; cs.roll = 0.0; cs.y = cs.zref
         # E94-P4: a respawn is a NEW car, not a repaired one.
         elseif rst; PLAYER_G[] = NaN; respawnX!(cs; groundz=groundz_phys); DriveRT3D.damage_reset!(); DC[].lastz = 0.0
+            WRECKED[] = false; WRECK_FROZEN[] = false; empty!(LOOSE_WHEELS); CLUTCH_GATE[] = -1.0   # ...and not a wreck
             # LAPTIME-1: skip ONE frame of the bounce test after a respawn. The car settles onto the
             # ground at a respawn exactly as it does at spawn -- a legitimate one-frame height step
             # that the settle window (`cs.t > DC_SETTLE_S`) exists to ignore. That window used to
@@ -12515,7 +12538,7 @@ function main()
 
         # ---- iRacing .ibt telemetry sample (one row per frame, ~60 Hz) ----
         if ibt_samples !== nothing && !rst
-            tl = telemetryX(cs); δw = inp.steer * (SKIDPAD ? 0.30 : CAR.max_steer)
+            tl = telemetryX(cs); δw = inp.steer * (CAR3D ? DriveRT3D.MAXSTEER : SKIDPAD ? 0.30 : CAR.max_steer)   # the angle the physics used
             row = Dict{String,Float64}(
                 "SessionTime"=>cs.t, "SessionTick"=>Float64(length(ibt_samples)+1),
                 "IsOnTrack"=>cs.ontrack ? 1.0 : 0.0,
@@ -12704,7 +12727,7 @@ function main()
                    Render.rotz(Float32(pitch_ter)) * Render.rotx(Float32(roll_ter))   # whole car follows the hill (pitch + cross-slope roll)
         tiltModel = carModel * Render.rotz(Float32(pitch_dyn)) * Render.rotx(Float32(rollv))   # full body tilt (terrain + dynamic)
         bodyModel = tiltModel * Render.translate(BODY_OFF)  # body dives/squats + rolls (3-D)
-        δ = Float32(inp.steer * (SKIDPAD ? 0.30 : CAR.max_steer))
+        δ = Float32(inp.steer * (CAR3D ? DriveRT3D.MAXSTEER : SKIDPAD ? 0.30 : CAR.max_steer))
         # WHEELS FLOAT ON THE SUSPENSION (PO): the wheels stay PLANTED on the road (carModel = terrain
         # follow only, NO dynamic dive/squat/roll), while the CHASSIS pitches/rolls/heaves above them
         # (bodyModel = tiltModel).  So under braking the nose dives toward the planted front wheels → the

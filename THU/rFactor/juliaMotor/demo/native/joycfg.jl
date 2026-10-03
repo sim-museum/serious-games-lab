@@ -6,7 +6,7 @@
 # Logitech-Extreme-3D-Pro mapping when no config file is present).
 module JoyCfg
 
-export Ctrl, JoyMap, defaultmap, loadmap, savemap, apply, x3dmap, txmap, profile_for, resolve
+export Ctrl, JoyMap, defaultmap, loadmap, savemap, apply, x3dmap, txmap, profile_for, resolve, wheel_half_range_deg, steer_physical
 
 struct Ctrl
     axis::Int          # 1-based index into the GLFW axes array; 0 = unused
@@ -64,6 +64,42 @@ function resolve(conf::AbstractString, name::AbstractString)
     pr === nothing || return (pr[2], "autodetected " * pr[1] * " (\"" * name * "\")")
     (x3dmap(), isempty(name) ? "X3D default (no controller found)" :
                "X3D default -- UNKNOWN controller \"" * name * "\": calibrate it in the launcher")
+end
+
+# ---- PHYSICAL STEERING for wheels (PO 2026-10-03: "if I push at all, the car starts fishtailing") ---------
+# Endpoint calibration sets a WHEEL's steering ratio by where the driver happens to stop turning: the
+# PO's 2026-10-03 calibration captured "full lock" at raw ±0.22 = ±100° of a 900° TX, i.e. ~5.8:1, while
+# the June one (raw ±1.0) gave ~26:1 -- and iRacing's Lotus 49 is 10:1 (CarSetup SteeringRatio). A wheel
+# reports a real ANGLE, so road angle = wheel angle / the session's steering ratio, exactly as in the car;
+# calibration then only supplies the centre and the direction. Joysticks keep endpoint calibration.
+
+"""Half the wheel's rotation range in degrees (raw ±1), from the kernel's per-device `range` attribute
+(hid-tmff2 et al.), matched on the GLFW name; 450 (= 900°) for a Thrustmaster TX if the attribute is
+absent; 0 when the device is not a wheel (no physical steering)."""
+function wheel_half_range_deg(name::AbstractString)
+    isempty(name) && return 0.0
+    try
+        for d in readdir("/sys/bus/hid/devices"; join = true)
+            f = joinpath(d, "range"); isfile(f) || continue
+            u = read(joinpath(d, "uevent"), String)
+            m = match(r"HID_NAME=(.*)", u)
+            (m !== nothing && strip(m.captures[1]) == strip(name)) || continue
+            r = tryparse(Float64, strip(read(f, String)))
+            r !== nothing && r > 0 && return r/2
+        end
+    catch
+    end
+    n = lowercase(name)
+    occursin("thrustmaster", n) && occursin("tx", n) && return 450.0
+    0.0
+end
+
+"""Physical steering output in [-1,1] (fraction of the sim's full road-wheel lock) for a wheel:
+centre and sign from the map's calibration, gain = (half range °/ steering ratio) / max road angle °."""
+function steer_physical(m::JoyMap, js, gain::Float64)
+    c = m.steer; (c.axis < 1 || js === nothing || c.axis > length(js)) && return 0.0
+    centre = 0.5*(c.a + c.b); sgn = c.b >= c.a ? 1.0 : -1.0          # a = full-left -> +1, as `apply`
+    clamp(-sgn*(Float64(js[c.axis]) - centre)*gain, -1.0, 1.0)
 end
 
 @inline function _norm(c::Ctrl, js)
