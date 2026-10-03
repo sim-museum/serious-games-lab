@@ -9817,7 +9817,9 @@ tstamp("  [E80] .. main() defined; physics build next")
     hw = JuliaMotor.hat(TRKSURF, cx + xi*c - yi*s, cz + xi*s + yi*c)
     (hw.found && abs(hw.lateral) > ROAD_HALFW) ? GRASS_MU : 1.0
 end
-wheel_mu(0.0, 0.0, 1.0, 0.0, 1.314, 0.75)          # compile now, behind the loading screen
+# SKIDPAD has no GPL surface (TRKSURF is defined only for GPL tracks) and never calls wheel_mu -- warming it
+# there threw UndefVarError at load and closed the window on every skidpad launch since PERF-3 (2026-09-30).
+SKIDPAD || wheel_mu(0.0, 0.0, 1.0, 0.0, 1.314, 0.75)   # compile now, behind the loading screen
 # PERF-3 S4: the other first-use compiles left mid-race (trace, Watkins Glen): the first collision (80 ms) and the
 # first text draw (69 ms). precompile() compiles without running, so no physics or GL state is touched.
 precompile(JRPhysics.DriveRT3D.damage_impact!, (Float64, Float64, Float64))
