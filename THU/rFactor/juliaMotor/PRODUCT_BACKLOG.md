@@ -35,7 +35,8 @@ this index was written; that is what it exists to stop.
 | **E103** | wheel loss in a collision hyperspaces the car to the start line | **mechanism found + fixed + gated** (E103-S1): the containment seal PLACES the car at its last on-track point, which initialises to spawn. Not yet seen in a real wreck. |
 | **RACESTART-1** | AI cars drive through a stationary player at the start | **Start is contact-free (S14, 2026-09-30)**: the gate had spawned the field at 90 km/h; with the live standing grid, 0 contacts. **Found + half-fixed:** a field arriving at a STALLED car parked behind it forever (engage trigger outside the follow equilibrium); now the first car passes, the second still stalls at lane 1.56 (S16). |
 | **E90** | Monza and Watkins have almost no collidable barrier objects | **Mostly fixed (S9–S12, 2026-09-30):** oriented + trimmed rail boxes, Monza 189 → 316, Watkins 448 → 583; every box makes contact, 0 false contacts, `inside=0` on all 4 tracks. **Still missing:** 54 / 84 rail cells standing on road-textured triangles (Monza s≈1000–1500, WG s≈500–750 and 2500–3000) — need a look on screen before relaxing the guard. |
-| **E91** | "Tesla brakes" — lift-off decelerates too hard | **Corrected 2026-09-30 (S8): 1.39–1.66×, not 3.44×** — iRacing `Clutch` 1 = engaged and every earlier split was inverted. About half the excess is clutch-in DRAG, not engine braking (S9). **Blocked on the PO:** one high-speed clutch-in + in-gear coast-down to pin CdA/Crr/eb together. |
+| **E91** | "Tesla brakes" — lift-off decelerates too hard | **FIXED 2026-10-03 (S10), awaiting the PO's drive.** The PO's 261002 iRacing session supplied the coast-downs S9 was blocked on. CdA, Crr, engine drag, WOT torque and Rw_r refit together from the gold (`tools/longfit_261002.jl`); off-throttle decel sim/gold **1.86 → 1.00** (clutch in and in gear), WOT 0.93 → 1.00 (`tools/longval_261002.jl`). Lift-off 200→100 km/h: 11.1 s → 20.1 s. |
+| **TYRE-1** | the tyre, fitted to iRacing (PO 2026-10-03: "turn the wheel, and scrub off speed... the tire ablates") | **DONE 2026-10-03, awaiting the PO's drive.** Brush μ/Cα/kμ identified through the player car against the 261002 gold's steady slip-angle curve (score 222 → 9.8); new measured ABLATION drag c_abl·Σ\|Fy·sinα\| matches the gold's cornering scrub (median 1.00). Lift + 1 g turn now adds 64 % to a straight lift's speed loss (was 29 %). |
 | **PERF-3** | frame rate (PO: "30 is OK, gold is a solid 60") | **S5 (2026-10-01): window hidden until 2 frames drawn — hides a 3.5–3.7 s first-frame compile.** **S1–S4 (2026-09-30):** HEAD runs **55–60 fps cockpit on all 5 tracks**; the mid-race ~316 ms freeze was a first-use JIT compile (grass grip), removed, plus two more precompiled. **Needs a new AppImage** — the shipped one predates all of it. |
 | **E80** | 10 fps at Spa in cockpit view | **LOAD half:** analysis to S4 (244 s, 69 % compilation; sysimage cannot be built here). **RENDER half = `SPA-FPS-1`** (S12–S15: the mirror's two `drawworld` passes are 55 % of the cockpit frame; adaptation on by default). E80-S5 (2026-09-18) measured cockpit 33 fps / chase 56 fps with no AI. assessed |
 | **E81** | floating/misplaced billboards and buildings at the Ring | **S5–S7 (2026-10-01): `JM_SCENE_AT` row pairing fixed; `backgar` eliminated by `JM_PLACE_HIDE` A/B; next = per-pixel pick.** **OPEN — one real defect found (2026-10-01):** a skewed grey panel rising tens of metres at Ring s≈1350–1500 (`260930/e78/ring1350_skewed_panel.png`); not `walls2`/`tires` (yaw-flip A/B). s≈1600 pit-building backs are correct ("Hinter den Boxen"). |
@@ -21682,3 +21683,113 @@ disables; the startup log lists every run removed (WG 11, Monza 19, Spa 28, Ring
   0.03 m -- the change is local, not a shift of the line anywhere else.
 
 ### DELIVERY 261002d — `~/Documents/261002/JuliaRacer-x86_64-261002d.AppImage` (sha256 `9d410708f63a2619…`): AIJIT-3; bwrap install-path smoke clean, 0 precompiles
+
+### E91-S10 (2026-10-03) — ⭐ **the longitudinal model is refit from the PO's coast-down session. Off-throttle decel sim/gold 1.86× → 1.00×.**
+
+**Data.** `~/gold standard/julia racer/261002/` (copied from stick `84AF-CC77`, sha256-verified): 8 iRacing `.ibt` from
+2026-10-02, i.e. Nordschleife Touristenfahrten (Döttinger Höhe both ways), Charlotte oval and Centripetal Circuit. It has exactly
+what S3/S7/S9 asked for: 12 straight-line coast-downs, clutch in and in gear, from up to 148 mph, plus full-throttle
+pulls and the PO's own analysis (`ANALYSIS.md`). All 8 are iRacing-written (Voltage ≠ 0). Clutch convention 1 = engaged (S8).
+
+**Method (`JuliaMotorMTK/tools/longfit_261002.jl`).** Every number is solved in the sim's own equation of motion:
+`T·gr·η/Rw_r = (m + m_w + m_e)·u̇ + ½ρCdA·u² + Crr·m·g + m·g·sinθ`, with the model's Iw 1.0, Ie 0.18, η 0.9, so the values
+reproduce the gold when put back. Mass comes per file (CornerWeights), ρ per sample (AirDensity), gearing per file, slope from `Alt`.
+Windows are ±0.25 s and must be clean throughout (steady gear ±0.5 s, |lat| < 0.1 g for coasts, < 0.3 g for WOT, no
+wheelspin > 5 %). The CI bootstraps whole segments.
+
+| term | fitted | evidence | was |
+|---|---|---|---|
+| CdA | **0.480 m²** (90 % CI 0.472–0.484) at ρ 1.10 | 9399 pts, 26 clutch-in coasts, 29–221 km/h, residual sd **0.035 m/s²**; per-track mean residual Ring −0.002, Charlotte +0.009, Centripetal −0.001 | 0.9 |
+| Crr | **0.0139** (0.0132–0.0156) | same fit | 0.026 |
+| engine drag | **(14.24 + 0.00389·rpm)·½(1+tanh((rpm−2353)/351))** N·m | 13993 pts, 39 in-gear coasts; gears 1/2/4/5 agree within ~2 N·m (that also corroborates Ie = 0.18, since gear 1's reflected inertia is 6× gear 5's) | 0.012·rpm |
+| WOT torque | **Tpeak 310 N·m @ 7727 rpm, spread 6742** | 1830 pts, 4th + 5th, 4300–7775 rpm, bin RMS 3.2 N·m; 4th/5th agree within ~1 % | 409 @ 8211, 6000 |
+| Rw_r | **0.334 m** | gear·final·Speed/ω_eng, clutch engaged, no slip: 0.3333–0.3357 in every gear and speed band, whole gold store | 0.33 (hand-set) |
+
+* **The idle fade is measured, not shaped.** Near the 2000 rpm idle the gold's in-gear drag falls to ~0 (bins of
+  100 rpm: 0.1 N·m at 2050, 11 at 2350, 21 at 2750). The governor fuels the engine in gear too. Without it a 5th-gear coast
+  below 90 km/h ran 1.3–2.3× too hard. Below idle the gold dips to −5 N·m (the governor drives); that is not modelled.
+* **The old values were coupled, as S9 warned:** the 409 N·m curve was fitted assuming CdA 0.9, so the car had too much
+  drag hidden by too much torque. That is why WOT matched while every coast was ~1.9× too hard.
+* **Cross-check against the PO's analysis:** CdA 0.44 there (ρ 1.12, m 605, no rotating inertia) × 645/605 × 1.12/1.10 =
+  0.478. The PO's predicted rev-limited 5th-gear top speed (~206 mph) matches the fit's 208 mph on Ring gearing.
+* **Still extrapolated:** torque above 7775 rpm (no gold yet; the PO's ANALYSIS asks for a 3rd-gear pull to the limiter).
+
+**Acceptance (`JuliaMotorMTK/tools/longval_261002.jl`).** This drives the real player car (`DriveRT3D.build_car3d`) on the Ring session's
+gearing and mass through each manoeuvre, then compares total acceleration with the gold band by band. Nothing is decomposed.
+
+| manoeuvre | before (median sim/gold) | after |
+|---|---|---|
+| clutch-in coast, 54–234 km/h (9 bands) | **1.87** | **1.00** (0.94–1.02) |
+| 5th-gear zero-throttle coast, 54–234 km/h (10 bands) | **1.86** (up to 3.5 near idle) | **1.00** (0.97–1.18) |
+| 5th-gear WOT, 162–234 km/h | 0.93 | **1.00** (0.97–1.01) |
+| 4th-gear WOT, 108–126 km/h | 0.86 | 0.95 |
+
+One band is outside ±20 %: the Ring's clutch-in 36–54 km/h (221 pts, gold 0.112 vs sim 0.203). The flat Centripetal
+Circuit's 2015 points at 29–50 km/h fit with mean residual −0.001, so this is a quirk of that Ring stretch, not the model.
+
+**What the PO will feel** (Ring gearing, AUTO): lift-off 200 → 100 km/h with no brake goes from **11.1 s / 449 m to
+20.1 s / 817 m**. Standing start barely changes (0–100 km/h 5.1 → 4.7 s; it is traction-limited). 0–300 km/h takes 28.9 → 22.5 s;
+top speed is now rev-limited in 5th (~335 km/h) rather than drag-limited at ~304.
+
+**Changed:** `powertrain.jl` (CDA_IBT, CRR_IBT, EFRIC_*, torque defaults, ENGBRAKE removed), `vehicle_3d.jl` and
+`vehicle_rt.jl` (use them; Rw_r 0.334), `drive_rt3d.jl`/`drive_rt.jl` (RW_R 0.334), `drive_native_mtk.jl` (AI vmax
+anchor and exported LR/RRspeed use RW_R; the "RW_R cannot be derived" warning corrected). `fit/fit_engine.jl` is marked superseded.
+Unit tests test_powertrain / test_drive_rt / test_launch pass. **Full gate suite on the final model (with TYRE-1): 42 of 44 PASS**; the 2 failures are the pre-existing pair, for their recorded reasons (`transmission_smoke`: 0 `.ibt` in `data/iracing`; `road_clear_smoke`: 112 Ring terrain anomaly points).
+
+### TYRE-1 (2026-10-03) — ⭐ **the tyre is fitted to the iRacing gold, and the cornering "ablation" the PO feels is measured and modelled**
+
+PO 2026-10-03: *"also fit the all-important tire model. Seems to me there are 3 ways to slow down 1. brakes 2. engine braking
+3. turn the wheel, and scrub off speed. (3) seems more evident in iracing than in GPL. Dave Kaemmer was explicit about this:
+tires are not elastic in how they interact with the road surface; the tire ablates. I can feel this in iracing, where that
+ablation absorbs energy noticeably, at least at lower speeds (the first part of the Nürburgring, with its tight turns)."*
+
+**Gold measurements (`tools/tyrefit_261002.jl`, 261002 store, 47 560 steady samples).** Axle slip angles come from the car-frame
+velocity, yaw rate and steering (÷ the setup's steering ratio), and normalised axle grip is |LatAccel|/g. Scrub is the zero-throttle
+speed loss beyond the E91-S10 straight-line road load (and engine drag, in gear). **Charlotte is excluded** from both: on 24°
+banking LatAccel/g overstates the tyre's share of the load, and its slip at a given "g" is about half the Ring's.
+
+1. **The slip curve.** iRacing's tyre is STIFFER at low slip than ours was (front 0.42° at 0.15 g, rear 0.22°) and then
+   flattens into a long front plateau: 6.0° at 1.06 g, 8.1° at 1.14 g. The plateau is where turning the wheel buys
+   slip but little grip.
+2. **The Kaemmer test.** A brush-type tyre can only take energy out through its slip, so its scrub must equal
+   Σ|Fy|·sin|α| / m_eff from the gold's own slip angles. Measured scrub is **1.11× that projection (90 % CI 1.02–1.24,
+   P(≤ 1) = 0.008, 2-s block bootstrap)**. The tyre does ablate: it dissipates more than its lateral force accounts for.
+   But the bulk of the scrub is still slip.
+
+**Identification through the player car (`tools/tyreid_261002.jl`).** This is the E91-S10 rule: fit in the sim's own frame, so load
+transfer, kμ, suspension and the rear's drive force are in the loop. The car runs on the skidpad session's setup at 86 km/h with
+a PI speed hold, the traction aid off and a slow steering ramp in both directions. Its axle slip angles come from the gold's own
+formula. Nelder–Mead over (μf, μr, Cαf, Cαr, kμ):
+
+| | μ (lateral) | Cα /rad | kμ |
+|---|---|---|---|
+| front | 1.36 → **1.220** | 20.5 → **28.97** | 0.08 → **0.081** |
+| rear | 1.40 → **1.148** | 24.0 → **29.57** | 0.08 → **0.081** |
+
+Score 222 → 9.8; both axles are within ~0.2° in every band from 0.15 to 1.14 g. The old μ was set by judgement toward a raw peak,
+and the soft Cα made the car run ~1.4× the gold's slip at mid g. μx and Cκ (braking fit) are unchanged.
+
+**Ablation (`vehicle_3d.jl` `abl`, `brush_tyre.jl` C_ABL = 0.40).** This is a body drag like rolling resistance: `c_abl·Σ|Fy·sinα|`.
+With the fitted tyre and no ablation, the car's clutch-in cornering scrub was 0.84× the gold. c_abl is identified against that
+scrub (`tools/scrubval_261002.jl`): 0.30 → 0.93, **0.40 → 1.00** (bands 0.86–1.18, 0.1–0.7 g), 0.50 → 1.06. That is higher than the
+gold-frame 0.11 because the gold's COASTING samples run ~10–15 % more slip at 0.3–0.5 g than the combined curve the tyre is fitted to,
+so c_abl also carries that slip. This is recorded, not hidden: the slip-curve fit uses all steady driving, while scrub happens in coasts.
+
+⚠️ **Compensating errors, a third time.** The OLD tyre already gave iRacing's scrub (median 1.03) for the wrong reason: excess slip
+stood in for the missing ablation. This is the same shape as CdA/torque in E91-S10.
+
+**What the PO will feel** (Ring setup, lift-off at 120 km/h in 3rd, held 4 s):
+
+| | straight | ~0.55 g turn | ~0.85 g | ~0.97 g | extra from turning at ~1 g |
+|---|---|---|---|---|---|
+| before | −27.2 km/h | −29.5 | −32.6 | −35.0 | +7.8 km/h (+29 %) |
+| after | −16.8 km/h | −19.3 | −23.4 | −27.6 | **+10.8 km/h (+64 %)** |
+
+Engine braking now does less and the steering wheel does more, which is the iRacing balance the PO describes. Max steady
+lateral (held 2 s, 86 km/h) is **1.136 g vs the gold skidpad's 1.185** (was 1.272, over-gripped).
+
+**Not done / open:** μx/Cκ are not refit from these files (no clean straight-line braking pulled yet). The 2-D `vehicle_rt.jl` has no
+ablation term (the player and AI use the 3-D car). Tyre temperature cannot be fitted: iRacing only updates it in the pits (39 °C flat).
+The steady-state fit is at one speed (86 km/h). The model has no aero, so that is consistent, but it is untested at Ring speeds.
+
+**Gates (final model, E91-S10 + TYRE-1):** 42 of 44 PASS, the same pre-existing pair failing for the same reasons. test_powertrain, test_drive_rt and test_launch pass.

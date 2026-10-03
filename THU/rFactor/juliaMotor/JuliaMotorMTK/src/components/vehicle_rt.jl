@@ -11,8 +11,8 @@ using ModelingToolkit: t_nounits as t, D_nounits as D
 function DrivenVehicleRT(; name,
         m = 617.0, Izz = 890.0, a = 1.314, b = 1.096, tf = 1.50, tr = 1.50,
         h = 0.30, front_frac = 0.455,
-        Rw_f = 0.30, Rw_r = 0.33, Iw = 1.0, Ieng = 0.10, η = 0.9, final = 4.11,
-        bias = 0.535, Tbrake_max = 4200.0, CdA = 0.9, ρair = 1.10,   # brake torque ↑ (was 3000, felt weak)
+        Rw_f = 0.30, Rw_r = 0.334, Iw = 1.0, Ieng = 0.10, η = 0.9, final = 4.11,
+        bias = 0.535, Tbrake_max = 4200.0, CdA = CDA_IBT, ρair = 1.10,   # brake torque ↑ (was 3000, felt weak)
         throttle0 = 0.0, brake0 = 0.0, steer0 = 0.0, gear0 = 1.72, brush = false,
         front_corner = (Fz_static = 1376.0, ks = 18_250.0, cs = 2500.0,
                         m_s = 120.0, m_u = 20.0, kt = 180_000.0, ct = 300.0),
@@ -34,8 +34,8 @@ function DrivenVehicleRT(; name,
     gr = gear*final; drag = 0.5*ρair*CdA*u*abs(u)   # u·|u|, NOT u²: drag must OPPOSE velocity at any
     # heading — with u² it always pushed −u, so a car moving backward (post-180° spin) accelerated
     # backward (~0.15 m/s² energy injection = the "sliding outward on a dome" drift). u·|u| is smooth at 0.
-    rr = 0.026*m*9.80665*tanh(u/0.12)               # rolling resistance (opposes motion, smooth through 0)
-    # — Crr 0.02 + a TIGHT 0.12 m/s knee so a clutch-in coast bleeds off and actually STOPS
+    rr = CRR_IBT*m*9.80665*tanh(u/0.12)               # rolling resistance (opposes motion, smooth through 0)
+    # — Crr from the ibt coast-downs (E91-S10, powertrain.jl) + a TIGHT 0.12 m/s knee so a clutch-in coast bleeds off and actually STOPS
     # (the old 0.4 knee left a residual low-speed creep that never quite died).
     spec = ((FL, a,  tf/2, δ, -1, -1, mf, tf, Rw_f, :f),
             (FR, a, -tf/2, δ, +1, -1, mf, tf, Rw_f, :f),

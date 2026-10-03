@@ -24,7 +24,7 @@ const GEARS    = [2.23, 1.72, 1.32, 1.09, 0.916]   # Lotus 49 gearbox (gear 1..5
 gearratio(g::Int) = g <= 0 ? 0.0 : GEARS[g]        # g=0 ⇒ NEUTRAL (ratio 0 ⇒ clutch decoupled, engine idles free)
 const FINAL    = 4.11
 const MAXSTEER = 0.30                               # road-wheel angle at full lock [rad]
-const RW_R     = 0.33
+const RW_R     = 0.334    # E91-S10: measured, gear·final·Speed/ω_engine over the whole gold store (0.3333-0.3357)
 
 # Traction/stability aid (driver aid, NOT a physics change — it shapes the throttle
 # input, like a careful right foot or a period "driving aid").  The 400 bhp DFV can

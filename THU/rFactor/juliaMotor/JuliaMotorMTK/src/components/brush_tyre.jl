@@ -42,8 +42,22 @@ brush_mu(Fz, μ, kμ, Fz0) = μ * clamp(1.0 - kμ * (Fz/Fz0 - 1.0), 0.4, 1.6)
 #   corners at ~1.4 g.  μy is set toward that achievable peak so the car grips like the
 #   real one (the measured low-slip cornering stiffness Cα is preserved); JM_GRIP scales it.
 const _GRIP = parse(Float64, get(ENV, "JM_GRIP", "1.0"))   # global grip trim (feel)
-const BRUSH_FRONT = (μ = 1.36*_GRIP, μx = 1.42*_GRIP, Cα = 20.5, Cκ = 28.0, kμ = 0.08, Fz0 = 1415.0)
-const BRUSH_REAR  = (μ = 1.40*_GRIP, μx = 1.45*_GRIP, Cα = 24.0, Cκ = 28.0, kμ = 0.08, Fz0 = 1670.0)
+# TYRE-1: ABLATION -- cornering energy loss beyond the brush's slip projection, as a fraction of Σ|Fy·sinα|
+# (vehicle_3d.jl `abl`). Identified in the sim's own frame: with the tyre above fixed by the slip-angle fit,
+# 0.40 makes the player car's clutch-in cornering scrub match the gold's (tools/scrubval_261002.jl, median
+# 1.00 over 0.1-0.7 g; 0.30 -> 0.93, 0.50 -> 1.06). The gold-frame kinematic estimate is lower, 0.11 (90 % CI
+# 0.02-0.24): the gold's COASTING samples run ~10-15 % more slip at 0.3-0.5 g than the combined curve the tyre
+# is fitted to, so part of their scrub is slip the fitted tyre does not have, and c_abl carries it.
+const C_ABL = 0.40
+# TYRE-1 (2026-10-03): μ (lateral), Cα and kμ IDENTIFIED THROUGH THE PLAYER CAR against the 261002 gold's
+# steady cornering curve -- median front/rear axle slip angle per 0.1 g, 0.15-1.14 g, Nordschleife +
+# Centripetal (tools/tyreid_261002.jl; Charlotte excluded, its banking inflates LatAccel/g). Score 222 -> 9.8:
+# both axles within ~0.2° everywhere, including the front's 6-8° plateau at 1.06-1.14 g, which is where
+# "turn the wheel and scrub off speed" lives. The old μ 1.36/1.40 was set by judgement toward a raw peak, and
+# the soft Cα 20.5/24 made the car run ~1.4x the gold's slip at mid g -- which happened to give iRacing's scrub
+# only because it stood in for the ablation loss (C_ABL) the model lacked.  μx / Cκ: braking fit, unchanged.
+const BRUSH_FRONT = (μ = 1.220*_GRIP, μx = 1.42*_GRIP, Cα = 28.97, Cκ = 28.0, kμ = 0.081, Fz0 = 1415.0)
+const BRUSH_REAR  = (μ = 1.148*_GRIP, μx = 1.45*_GRIP, Cα = 29.57, Cκ = 28.0, kμ = 0.081, Fz0 = 1670.0)
 
 "Pure-lateral brush force Fy(Fz, α) — for fitting/validation."
 function brush_fy(Fz, α; p = BRUSH_FRONT)

@@ -585,11 +585,10 @@ jm_anchor_from_ibt()
 # measures it -- which is why this works where observing Speed does not (the gold set's only road
 # laps are the Nordschleife, capped at 59-63 m/s by the circuit, not by the car).
 #
-# ⚠ RW_R IS STILL A HAND-SET CONSTANT (0.33 m) and is the only unsourced term in this chain. An
-# attempt to measure it from the ibt failed and the failure is worth recording: LRspeed/RRspeed are
-# LINEAR speeds in m/s, not angular rates, so v/ω came out ~0.98 on every file -- a dimensionless
-# ratio near 1, not a radius. 0.98 m is impossible for a 1967 F1 tyre (~0.33 m), and adopting it
-# would have geared the car three times too tall. Do not "derive" RW_R from those channels.
+# RW_R is MEASURED (E91-S10): Rw = gear·final·Speed / ω_engine, clutch engaged, no wheel slip, over
+# the whole gold store -- 0.3333-0.3357 m in every gear and speed band, so 0.334. (An earlier attempt
+# divided by LRspeed/RRspeed, which are LINEAR speeds in m/s, and got a meaningless ~0.98: do not
+# "derive" it from those channels -- use the engine RPM.)
 function jm_vmax_from_ibt()
     files = try
         sort(filter(f -> endswith(lowercase(f), ".ibt"), readdir(IBTDIR; join = true)); by = filesize, rev = true)
@@ -612,12 +611,12 @@ function jm_vmax_from_ibt()
         @warn "AI vmax anchor: no usable RPM channel -- keeping fallback $(RaceAI.VMAX[])"
         return
     end
-    rw = 0.33                                     # hand-set; see the warning above
+    rw = DriveRT3D.RW_R                           # measured; see above
     v  = rw * rpmlim * 2π/60 / (DriveRT3D.GEARS[end] * DriveRT3D.FINAL[])
     RaceAI.set_vmax_from_drivetrain!(v)
     println("  → AI vmax anchor ", round(RaceAI.VMAX[], digits=1), " m/s (",
             round(Int, 3.6*RaceAI.VMAX[]), " km/h) from rev limit ", round(Int, rpmlim),
-            " rpm in ", src, "  [RW_R=", rw, " m is NOT from the ibt]")
+            " rpm in ", src, "  [RW_R=", rw, " m]")
 end
 jm_vmax_from_ibt()
 
@@ -12518,7 +12517,7 @@ function main()
                 "VelocityX"=>tl.u, "VelocityY"=>tl.v, "VelocityZ"=>0.0,
                 # VertAccel is REAL in 3-D mode (the planar model has no vertical DOF → 1 g stub)
                 "LongAccel"=>tl.ax, "LatAccel"=>tl.ay, "VertAccel"=>(CAR3D ? tl.vacc : 9.80665),
-                "LFspeed"=>tl.ωf*0.30, "RFspeed"=>tl.ωf*0.30, "LRspeed"=>tl.ωr*0.33, "RRspeed"=>tl.ωr*0.33,
+                "LFspeed"=>tl.ωf*0.30, "RFspeed"=>tl.ωf*0.30, "LRspeed"=>tl.ωr*DriveRT3D.RW_R, "RRspeed"=>tl.ωr*DriveRT3D.RW_R,
                 "Alt"=>cs.y)
             if CAR3D                                   # real ride heights + body attitude (Flugplatz benchmark)
                 # E106-S37: export ride height ONLY while the wheels are loaded. Measured

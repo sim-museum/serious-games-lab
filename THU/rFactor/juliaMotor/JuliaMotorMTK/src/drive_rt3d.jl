@@ -260,7 +260,7 @@ function mass_from_corner_weights(cw)
     (tot / 9.81, (cw[:LF] + cw[:RF]) / tot)
 end
 const MAXSTEER = 0.30
-const RW_R = 0.33
+const RW_R = 0.334    # E91-S10: measured, gear·final·Speed/ω_engine over the whole gold store (0.3333-0.3357)
 # E100 S5: STATIC RIDE HEIGHT is session data too, and per corner. The single 0.075 m constant was
 # wrong for both axles and carried NO RAKE: the Nordschleife session sets 82.9 mm front / 105.2 mm
 # rear, and the skidpad is asymmetric as well as raked (86.7 / 92.1 / 102.7 / 108.3). This feeds the

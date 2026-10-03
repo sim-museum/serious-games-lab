@@ -1,3 +1,7 @@
+# ⚠️ SUPERSEDED (E91-S10, 2026-10-03) by tools/longfit_261002.jl. This fit ASSUMED CdA 0.9, which the
+# 2026-10-02 coast-downs measure at 0.48, so it inflated the torque curve to hide the extra drag. Kept
+# for the record; do not re-run it to set powertrain.jl.
+#
 # Fit the engine torque curve from telemetry.
 #
 # In gear at wide-open throttle, straight-line, with no wheelspin, the rear tyre

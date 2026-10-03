@@ -28,7 +28,7 @@ smoothpos(x, ε) = 0.5*(x + sqrt(x^2 + ε^2))
 function DrivenVehicle3D(; name,
         m = 617.0, Izz = 890.0, Ixx = 120.0, Iyy = 850.0,
         a = 1.314, b = 1.096, tf = 1.50, tr = 1.50, h = 0.30, front_frac = 0.455,
-        Rw_f = 0.30, Rw_r = 0.33, Iw = 1.0, η = 0.9, final = 4.11,
+        Rw_f = 0.30, Rw_r = 0.334, Iw = 1.0, η = 0.9, final = 4.11,
         # PO 2026-08-27: "the car physics should be determined entirely by the iracing ibt data,
         # there should be no modifiable parameters." JM_BRAKE_MAX / JM_BRAKE_BIAS were added here
         # earlier the same day and are REMOVED again: a tuning knob is precisely the thing that lets
@@ -37,7 +37,7 @@ function DrivenVehicle3D(; name,
         # to but what the iRacing telemetry SAYS they are — see BENCHMARK_2026-06-24.md and
         # JuliaMotorMTK/tools/ibt_compare.jl.
         bias = 0.535, Tbrake_max = 4200.0,
-        CdA = 0.9, ρair = 1.10, g = 9.80665,
+        CdA = CDA_IBT, ρair = 1.10, g = 9.80665,
         throttle0 = 0.0, brake0 = 0.0, steer0 = 0.0, gear0 = 1.72, brush = false,
         # PO: ct (tyre vertical DAMPING) was 300 ≈ 8% of critical for the unsprung mass → the car
         # "superball-bounced" on landing off a crest.  Raised to ~27% of critical so a jump landing is
@@ -63,7 +63,7 @@ function DrivenVehicle3D(; name,
     RL = brush ? BrushTyre(; name=:RL, BRUSH_REAR...)  : Tyre(; name=:RL, TYRE_SKIDPAD_REAR...)
     RR = brush ? BrushTyre(; name=:RR, BRUSH_REAR...)  : Tyre(; name=:RR, TYRE_SKIDPAD_REAR...)
 
-    ps = @parameters m=m Izz=Izz Ixx=Ixx Iyy=Iyy a=a b=b tf=tf tr=tr h=h mf=mf mr=mr L=L M_s=M_s g=g Rw_f=Rw_f Rw_r=Rw_r Iw=Iw η=η final=final bias=bias Tbrake_max=Tbrake_max CdA=CdA ρair=ρair throttle=throttle0 brake=brake0 δ=steer0 gear=gear0 clutch=0.0 Ie=0.18 c_c=60.0 T_cap=500.0 k_idle=0.5 idle_rpm=2000.0 zrFL=0.0 zrFR=0.0 zrRL=0.0 zrRR=0.0 vrFL=0.0 vrFR=0.0 vrRL=0.0 vrRR=0.0 Fx_ext=0.0 Fy_ext=0.0 Mz_ext=0.0 CdA_scale=1.0
+    ps = @parameters m=m Izz=Izz Ixx=Ixx Iyy=Iyy a=a b=b tf=tf tr=tr h=h mf=mf mr=mr L=L M_s=M_s g=g Rw_f=Rw_f Rw_r=Rw_r Iw=Iw η=η final=final bias=bias Tbrake_max=Tbrake_max CdA=CdA ρair=ρair throttle=throttle0 brake=brake0 δ=steer0 gear=gear0 clutch=0.0 Ie=0.18 c_c=60.0 T_cap=500.0 k_idle=0.5 idle_rpm=2000.0 zrFL=0.0 zrFR=0.0 zrRL=0.0 zrRR=0.0 vrFL=0.0 vrFR=0.0 vrRL=0.0 vrRR=0.0 Fx_ext=0.0 Fy_ext=0.0 Mz_ext=0.0 CdA_scale=1.0 c_abl=C_ABL
     # in-plane + powertrain states
     vplane = @variables u(t)=0.0 v(t)=0.0 r(t)=0.0 ωf(t)=0.0 ωr(t)=0.0 ωe(t)=209.4 ay(t) ax(t) az(t) rpm(t) X(t)=0.0 Y(t)=0.0 ψ(t)=0.0
     # vertical / attitude states (sprung): heave z, pitch th, roll ph + rates
@@ -79,7 +79,7 @@ function DrivenVehicle3D(; name,
     # hedge/haybale = weak spring + strong damper): the game loop computes F = kδ + cδ̇ from penetration
     # and feeds it here, so the impulse is INTEGRATED by the ODE (no ad-hoc bumpX!).
     gr = gear*final; drag = 0.5*ρair*CdA*CdA_scale*u*abs(u)
-    rr = 0.026*m*g*tanh(u/0.12)
+    rr = CRR_IBT*m*g*tanh(u/0.12)                       # E91-S10: CdA/Crr from the ibt coast-downs (powertrain.jl)
     εF = 80.0                                             # contact/clamp rounding scale [N]
 
     #            tyre  xi    yi    steer axle  m_s              m_u              ks/cs/kt/ct          zu     vu     zr     vr     Fz
@@ -88,7 +88,7 @@ function DrivenVehicle3D(; name,
             (RL, -b,  tr/2,  0, :r, rl_corner, zuRL, vuRL, zrRL, vrRL, FzRL),
             (RR, -b, -tr/2,  0, :r, rr_corner, zuRR, vuRR, zrRR, vrRR, FzRR))
 
-    eqs = Equation[]; Fyb=Any[]; Fxb=Any[]; Mz=Any[]; Fx_f=Any[]; Fx_r=Any[]
+    eqs = Equation[]; Fyb=Any[]; Fxb=Any[]; Mz=Any[]; Fx_f=Any[]; Fx_r=Any[]; Pslip=Any[]
     Fsusp=Any[]; xs=Any[]; ys=Any[]
     for (ty, xi, yi, st, axle, cor, zu, vu, zr, vr, Fz) in spec
         Rw  = axle == :f ? Rw_f : Rw_r
@@ -114,8 +114,15 @@ function DrivenVehicle3D(; name,
         fxb = ty.Fx*cos(st) - ty.Fy*sin(st)
         fyb = ty.Fx*sin(st) + ty.Fy*cos(st)
         push!(Fxb, fxb); push!(Fyb, fyb); push!(Mz, ty.Mz)
+        push!(Pslip, sqrt((ty.Fy*sin(α))^2 + 1.0))       # |Fy·sinα| (smooth at 0): the brush's slip projection
         axle == :f ? push!(Fx_f, ty.Fx) : push!(Fx_r, ty.Fx)
     end
+    # TYRE-1 (2026-10-03): ABLATION. The PO, after Kaemmer: the tyre does not interact elastically with the
+    # road, it ablates, and that absorbs energy in a corner. Measured on the 261002 gold: steady cornering
+    # coasts lose MORE speed than the brush's own slip projection Σ|Fy|·sin|α| accounts for (P = 0.008,
+    # tools/tyrefit_261002.jl). The excess is a drag on the body, like rolling resistance, scaling with the
+    # slip work: c_abl·Σ|Fy·sinα|; c_abl (brush_tyre.jl C_ABL) is identified against the gold's scrub.
+    abl = c_abl*(Pslip[1] + Pslip[2] + Pslip[3] + Pslip[4] - 4.0)*tanh(u/0.12)
     ΣFx = Fxb[1]+Fxb[2]+Fxb[3]+Fxb[4];  ΣFy = Fyb[1]+Fyb[2]+Fyb[3]+Fyb[4]
     ΣFs = Fsusp[1]+Fsusp[2]+Fsusp[3]+Fsusp[4]
 
@@ -129,9 +136,9 @@ function DrivenVehicle3D(; name,
     push!(eqs,
         rpm ~ ωe*60/(2π),
         # ---- in-plane body (total mass m; Fz now load-transferred by the suspension) ----
-        ax ~ (ΣFx - drag - rr + Fx_ext)/m,
+        ax ~ (ΣFx - drag - rr - abl + Fx_ext)/m,
         ay ~ (ΣFy + Fy_ext)/m,
-        m*(D(u) - v*r) ~ ΣFx - drag - rr + Fx_ext,
+        m*(D(u) - v*r) ~ ΣFx - drag - rr - abl + Fx_ext,
         m*(D(v) + u*r) ~ ΣFy + Fy_ext,
         Izz*D(r) ~ a*(Fyb[1]+Fyb[2]) - b*(Fyb[3]+Fyb[4])
                    - tf/2*(Fxb[1]-Fxb[2]) - tr/2*(Fxb[3]-Fxb[4]) + Mz[1]+Mz[2]+Mz[3]+Mz[4] + Mz_ext,
