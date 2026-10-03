@@ -20,7 +20,7 @@ for f in ("tyre.jl","powertrain.jl","vehicle_3d.jl")
     include(joinpath(HERE, "components", f))
 end
 
-export Car3D, build_car3d, set_suspension!, wheel_rate, set_ride_height!, step_car3d!, telemetry3d, respawn3d!, contain3d!, extforce3d!, contact_force, cap_total_contact, wheelmu3d!, world_velocity, damage_hit!, damage_impact!, damage_engine!, damage_mu, engine_power, engine_dead, damaged, damage_reset!
+export Car3D, build_car3d, set_shift_rpm!, set_suspension!, wheel_rate, set_ride_height!, step_car3d!, telemetry3d, respawn3d!, contain3d!, extforce3d!, contact_force, cap_total_contact, wheelmu3d!, world_velocity, damage_hit!, damage_impact!, damage_engine!, damage_mu, engine_power, engine_dead, damaged, damage_reset!
 
 # E100: the transmission is SESSION data, not a car constant. The Lotus 49's gears are
 # adjustable and the ibt captures prove it -- Nurburgring runs [2.23,1.72,1.32,1.04,0.846]
@@ -47,6 +47,19 @@ function set_transmission!(gears::AbstractVector, final::Real; source::AbstractS
     final > 0 || error("set_transmission!: non-positive final drive $final")
     GEARS .= float.(gears); FINAL[] = float(final); TRANS_SRC[] = source
     nothing
+end
+
+# 2026-10-03 (PO: "use the shift-light rpm for AUTO"): AUTO up-shifts at the iRacing car's SHIFT
+# LIGHT (DriverInfo DriverCarSLShiftRPM, 8900 on the Lotus 49), session data like the gearbox. The old
+# 5000/5800/7000 up-points were set for the pre-E91-S10 409 N·m engine; with the fitted 310 N·m curve
+# (power still rising to ~9000) they cost 0-250 km/h 16.0 s vs 13.4 s, and E47's 1st/2nd short-shift
+# against wheelspin no longer earns its keep -- peak rear slip on an AUTO launch is LOWER at 8900
+# (0.24 vs 0.33). Fallback = the Lotus 49 session value, labelled as such.
+const SHIFT_RPM = Ref(8900.0)
+const SHIFT_SRC = Ref("built-in (Lotus 49 shift light, 8900 rpm -- NOT read from an ibt this session)")
+function set_shift_rpm!(rpm::Real; source::AbstractString = "unknown")
+    (isfinite(rpm) && 4000 < rpm < 12000) || error("set_shift_rpm!: implausible shift rpm $rpm")
+    SHIFT_RPM[] = float(rpm); SHIFT_SRC[] = source; nothing
 end
 
 """Where the live gearbox came from — print this at startup so a fallback cannot hide."""
@@ -621,16 +634,11 @@ function step_car3d!(c::Car3D, throttle, brake, steer, dt;
     end
     (!isfinite(c.v) || abs(c.v) > 110) && return respawn3d!(c)
     if !manual && c.gear >= 1
-        # auto-shift on engine RPM.  The box is close-ratio with a TALL launch gear (1st pulls
-        # to ~115 km/h at the old 8500 up-point), so on a tight circuit the car sat in 1st almost
-        # the whole lap.  Shift up earlier (7000, still in the DFV power band) so it works UP through
-        # the gears in normal driving, and downshift more readily (4100, off heavy throttle) so it
-        # drops a gear into corners.  Hysteresis gap (7000↔4100) is wide enough that it never hunts.
+        # auto-shift on engine RPM: UP at the session's shift light (SHIFT_RPM, see above), DOWN at 4100
+        # off heavy throttle so it drops a gear into corners. After an up-shift at 8900 the next gear lands
+        # at >= 6800 rpm (1st->2nd 6860, worst case), far above 4100, so it never hunts.
         grpm = (a[4]/RW_R)*GEARS[c.gear]*FINAL[]*60/(2π)
-        # E47: SHORT-SHIFT out of the low gears — the tall 1st/2nd multiply torque so much that holding
-        # them to 7000 spins the wheels up ("almost peel out before it shifts").  Up-shift earlier in 1st/2nd
-        # (5000/5800) so the launch is clean; keep 7000 for 3rd-5th where wheelspin isn't an issue.
-        up_rpm = c.gear == 1 ? 5000 : c.gear == 2 ? 5800 : 7000
+        up_rpm = SHIFT_RPM[]
         if grpm > up_rpm && c.gear < 5;                      c.gear += 1; c.s_gr(c.integ, GEARS[c.gear])
         elseif grpm < 4100 && c.gear > 1 && throttle < 0.85; c.gear -= 1; c.s_gr(c.integ, GEARS[c.gear]); end
     end

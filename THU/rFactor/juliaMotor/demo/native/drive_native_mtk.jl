@@ -668,6 +668,7 @@ let
         try
             pp = Setup.setup_params(IBT.session_yaml(IBT.ibt_open(IBTTMPL)))
             DriveRT3D.set_transmission!(pp.gear_ratios, pp.final_drive; source = basename(IBTTMPL))
+            isfinite(pp.shift_rpm) && DriveRT3D.set_shift_rpm!(pp.shift_rpm; source = basename(IBTTMPL))   # AUTO up-shift = shift light
             # E100 S2: mass and its front share come from the same session's CornerWeights.
             (mm, ff) = DriveRT3D.mass_from_corner_weights(pp.corner_weight_N)
             DriveRT3D.set_mass!(mm, ff; source = basename(IBTTMPL))
@@ -699,6 +700,7 @@ let
     # Always SAY where it came from: a silent fallback to constants is the defect itself.
     println("  gearbox: ", DriveRT3D.GEARS, "  final ", DriveRT3D.FINAL[],
             "   <- ", DriveRT3D.transmission_source())
+    println("  AUTO up-shift: ", round(Int, DriveRT3D.SHIFT_RPM[]), " rpm (shift light)   <- ", DriveRT3D.SHIFT_SRC[])
     println("  mass:    ", round(DriveRT3D.MASS[], digits=1), " kg  front ",
             round(100*DriveRT3D.FRONT_FRAC[], digits=1), "%")
     # Say where the rates came from, for the same reason the gearbox does: a silent fallback to

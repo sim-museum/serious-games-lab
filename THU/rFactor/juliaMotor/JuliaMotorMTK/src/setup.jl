@@ -89,6 +89,7 @@ function setup_params(yaml::AbstractString)
        fuel_L           = g(ch["Rear"], "FuelLevel"),
        idle_rpm   = firstnum(di["DriverCarIdleRPM"]),
        redline_rpm= firstnum(di["DriverCarRedLine"]),
+       shift_rpm  = haskey(di, "DriverCarSLShiftRPM") ? firstnum(di["DriverCarSLShiftRPM"]) : NaN,   # shift light
        n_gears    = firstnum(di["DriverCarGearNumForward"]),
        fuel_kg_per_L = firstnum(di["DriverCarFuelKgPerLtr"]))
 end
