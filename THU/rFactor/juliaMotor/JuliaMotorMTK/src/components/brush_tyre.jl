@@ -59,13 +59,20 @@ const C_ABL = 0.40
 #     between the front's μ and the rear's measured braking grip μx 1.45;
 #   * LINEAR understeer (gold front slip 1.7-2x the rear's at low g): rear Cα >= front Cα. Without it
 #     the fit took rear 27.0 < front 30.2 and the car could not hold a straight line above ~300 km/h.
+#   * HIGH-SPEED POWER STABILITY (PO, Watkins: "rocking at high speed" with FFB, "wandering in 4th and 5th"
+#     without; and coming out of the esses the 3rd->4th upshift no longer straightens the oversteer). On full
+#     throttle each rear tyre carries ~0.87x its load in drive force (gold WOT pulls; Cκ ~29 measured = the
+#     model's 28) and the brush's combined slip costs the rear ~25 % of its cornering stiffness. With rear Cα =
+#     front, a 0.5° blip at 240 km/h WOT diverged and a 0.6 g WOT exit SPUN after the upshift. The gold holds
+#     WOT straights > 180 km/h (wheel sd 0.7-1.6°, yaw sd 1.0-2.2°/s; sim was 2.9° / 4.2°/s). Rear Cα 34.0:
+#     the blip dies (0.19°/s at 2 s), the exit straightens within 1 s of the shift; slip-curve 446 -> 509.
 # The first, unconstrained fit (μ 1.22/1.148, Cα 28.97/29.57) matched the slip curve best (score 18) but
 # SPUN at 125 km/h on a constant 3° steer at zero throttle -- that was shipped in 261003/261003b.
-# This set: slip-curve score 446 (0.15-0.75 g within ~0.1°; at 1.06-1.14 g the front slides deeper and the
+# Rear Cα 30.21 (= front) shipped briefly (261003 drives 14:35-15:xx). This set: slip-curve score 509 (low g within ~0.15°; at 1.06-1.14 g the front slides deeper and the
 # rear less than the gold, i.e. a safer limit), all step steers held, straight at 321 km/h, max steady
 # lateral 1.187 g (gold 1.185). μx / Cκ: braking fit, unchanged. The old μ 1.36/1.40 was set by judgement.
 const BRUSH_FRONT = (μ = 1.277*_GRIP, μx = 1.42*_GRIP, Cα = 30.21, Cκ = 28.0, kμ = 0.082, Fz0 = 1415.0)
-const BRUSH_REAR  = (μ = 1.446*_GRIP, μx = 1.45*_GRIP, Cα = 30.21, Cκ = 28.0, kμ = 0.082, Fz0 = 1670.0)
+const BRUSH_REAR  = (μ = 1.446*_GRIP, μx = 1.45*_GRIP, Cα = 34.0, Cκ = 28.0, kμ = 0.082, Fz0 = 1670.0)
 
 "Pure-lateral brush force Fy(Fz, α) — for fitting/validation."
 function brush_fy(Fz, α; p = BRUSH_FRONT)

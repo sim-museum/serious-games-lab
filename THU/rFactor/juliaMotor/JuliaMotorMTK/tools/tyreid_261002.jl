@@ -89,10 +89,32 @@ function step_beta(V, thr, δd)
     end
     mb
 end
+# HIGH-SPEED POWER STABILITY (2026-10-03, PO: "with ff, I get a rocking at high speed, without ff, I get
+# wandering in 4th and 5th gear"). On full throttle in 4th/5th each rear tyre carries a drive force ~0.87x
+# its load (gold WOT pulls, Cκ ~29 confirms the model's 28), and the brush's combined slip costs the rear
+# ~25 % of its cornering stiffness: with rear Cα = front the car DIVERGED slowly after a 0.5° blip at
+# 240 km/h (yaw still 2.6-2.9°/s at 2-4 s). The gold holds: WOT straights > 180 km/h need wheel sd
+# 0.7-1.6° and show yaw sd 1.0-2.2°/s (sim 2.9° / 4.2°/s). Require the yaw to die away.
+function wot_pulse(V)
+    reinit!(CAR.integ, copy(U0)); g = 5; CAR.gear = g; CAR.s_gr(CAR.integ, DriveRT3D.GEARS[g])
+    ModelingToolkit.setu(SYS, [SYS.u, SYS.v])(CAR.integ, [V, 0.0])
+    CAR.s_we(CAR.integ, V/DriveRT3D.RW_R*DriveRT3D.GEARS[g]*DriveRT3D.FINAL[])
+    for k in 1:60; DriveRT3D.step_car3d!(CAR, 1.0, 0.0, 0.0, 1/60; clutch = 0.0, manual = true); end
+    rs = Float64[]
+    for k in 1:180
+        DriveRT3D.step_car3d!(CAR, 1.0, 0.0, (k <= 12 ? deg2rad(0.5) : 0.0)/DriveRT3D.MAXSTEER, 1/60; clutch = 0.0, manual = true)
+        push!(rs, abs(GET(CAR.integ)[3]))
+    end
+    rs[end] / max(maximum(rs), 1e-6)            # yaw left at 3 s as a fraction of its peak
+end
+const WOT_V = (200/3.6, 240/3.6)
+
 const STEPS_STAB = [(V, thr, δ) for V in (90/3.6, 125/3.6) for thr in (0.0, 0.45) for δ in (3.0, 5.0, 7.0)]
 stability(; verbose = false) = (b = [step_beta(s...) for s in STEPS_STAB];
     verbose && println("   step-steer max |β|: ", join([@sprintf("%.0fkm/h thr%.2f δ%.0f° %.1f°", 3.6s[1], s[2], s[3], x) for (s, x) in zip(STEPS_STAB, b)], ", "));
-    sum(max(0.0, x - 10.0)^2 for x in b))
+    w = [wot_pulse(V) for V in WOT_V];
+    verbose && println("   WOT 0.5° pulse, yaw left at 3 s / peak: ", join([@sprintf("%.0f km/h %.2f", 3.6V, x) for (V, x) in zip(WOT_V, w)], ", "));
+    sum(max(0.0, x - 10.0)^2 for x in b) + sum(max(0.0, x - 0.10)^2 for x in w)*1e4)
 
 function score(T, θ; verbose = false)
     μf, μr, Cf, Cr, kμ = θ
