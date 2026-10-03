@@ -1371,9 +1371,12 @@ class Main(QMainWindow):
         self.drive.launch()
 
     def _tab(self, i):
-        # keep the reader alive while calibrating (tab 2); it's harmless during Drive too,
+        # keep the reader alive while calibrating; it's harmless during Drive too,
         # but DriveTab.launch()/ReplayTab.watch() stop it so the game owns the device cleanly.
-        if i == 2 and self.joy.state() == QProcess.ProcessState.NotRunning:
+        # 2026-10-03: match the WIDGET, not an index. This tested `i == 2` -- the Calibrate tab's index
+        # before "Race Result" was inserted ahead of it -- so after any drive (which stops the reader)
+        # the Calibrate tab never restarted it: frozen bars, dead buttons, a wizard that cannot advance.
+        if self.tabs.widget(i) is self.cal and self.joy.state() == QProcess.ProcessState.NotRunning:
             self.joy.start_reader(1)
 
     def _reload(self):
