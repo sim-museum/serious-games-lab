@@ -36,7 +36,7 @@ this index was written; that is what it exists to stop.
 | **RACESTART-1** | AI cars drive through a stationary player at the start | **Start is contact-free (S14, 2026-09-30)**: the gate had spawned the field at 90 km/h; with the live standing grid, 0 contacts. **Found + half-fixed:** a field arriving at a STALLED car parked behind it forever (engage trigger outside the follow equilibrium); now the first car passes, the second still stalls at lane 1.56 (S16). |
 | **E90** | Monza and Watkins have almost no collidable barrier objects | **Mostly fixed (S9–S12, 2026-09-30):** oriented + trimmed rail boxes, Monza 189 → 316, Watkins 448 → 583; every box makes contact, 0 false contacts, `inside=0` on all 4 tracks. **Still missing:** 54 / 84 rail cells standing on road-textured triangles (Monza s≈1000–1500, WG s≈500–750 and 2500–3000) — need a look on screen before relaxing the guard. |
 | **E91** | "Tesla brakes" — lift-off decelerates too hard | **FIXED 2026-10-03 (S10), awaiting the PO's drive.** The PO's 261002 iRacing session supplied the coast-downs S9 was blocked on. CdA, Crr, engine drag, WOT torque and Rw_r refit together from the gold (`tools/longfit_261002.jl`); off-throttle decel sim/gold **1.86 → 1.00** (clutch in and in gear), WOT 0.93 → 1.00 (`tools/longval_261002.jl`). Lift-off 200→100 km/h: 11.1 s → 20.1 s. |
-| **TYRE-1** | the tyre, fitted to iRacing (PO 2026-10-03: "turn the wheel, and scrub off speed... the tire ablates") | **DONE 2026-10-03, awaiting the PO's drive.** Brush μ/Cα/kμ identified through the player car against the 261002 gold's steady slip-angle curve (score 222 → 9.8); new measured ABLATION drag c_abl·Σ\|Fy·sinα\| matches the gold's cornering scrub (median 1.00). Lift + 1 g turn now adds 64 % to a straight lift's speed loss (was 29 %). |
+| **TYRE-1** | the tyre, fitted to iRacing (PO 2026-10-03: "turn the wheel, and scrub off speed... the tire ablates") | **REVISED 2026-10-03 (TYRE-1-R) after the PO's Watkins race fishtailed.** The first fit (shipped in 261003/261003b) SPUN at 125 km/h on a constant 3° steer at zero throttle: rear μ is unidentified above the gold's 6° of rear slip and the fit took its floor. Now identified under the gold's stability (bounded slide at constant inputs), rear μ in [front μ, rear braking μx], and rear Cα ≥ front Cα (gold linear understeer). μ 1.277/1.446, Cα 30.21/30.21, kμ 0.082; stable, straight at 321 km/h, max steady 1.187 g (gold 1.185), scrub median 0.97. |
 | **PERF-3** | frame rate (PO: "30 is OK, gold is a solid 60") | **S5 (2026-10-01): window hidden until 2 frames drawn — hides a 3.5–3.7 s first-frame compile.** **S1–S4 (2026-09-30):** HEAD runs **55–60 fps cockpit on all 5 tracks**; the mid-race ~316 ms freeze was a first-use JIT compile (grass grip), removed, plus two more precompiled. **Needs a new AppImage** — the shipped one predates all of it. |
 | **E80** | 10 fps at Spa in cockpit view | **LOAD half:** analysis to S4 (244 s, 69 % compilation; sysimage cannot be built here). **RENDER half = `SPA-FPS-1`** (S12–S15: the mirror's two `drawworld` passes are 55 % of the cockpit frame; adaptation on by default). E80-S5 (2026-09-18) measured cockpit 33 fps / chase 56 fps with no AI. assessed |
 | **E81** | floating/misplaced billboards and buildings at the Ring | **S5–S7 (2026-10-01): `JM_SCENE_AT` row pairing fixed; `backgar` eliminated by `JM_PLACE_HIDE` A/B; next = per-pixel pick.** **OPEN — one real defect found (2026-10-01):** a skewed grey panel rising tens of metres at Ring s≈1350–1500 (`260930/e78/ring1350_skewed_panel.png`); not `walls2`/`tires` (yaw-flip A/B). s≈1600 pit-building backs are correct ("Hinter den Boxen"). |
@@ -21797,3 +21797,41 @@ The steady-state fit is at one speed (86 km/h). The model has no aero, so that i
 ### DELIVERY 261003 — `~/Documents/261003/JuliaRacer-x86_64-261003.AppImage` (sha256 `decc13e98bb3752f…`): E91-S10 + TYRE-1 (physics refit from the 261002 iRacing session, commit a8b2a5c9); bwrap install-path smoke clean (Watkins, 60 frames, 150 s), 0 precompiles
 
 ### DELIVERY 261003b — `~/Documents/261003/JuliaRacer-x86_64-261003b.AppImage` (sha256 `0f8b2c6767dc77cb…`): controller AUTODETECT (Thrustmaster TX / Logitech X3D by device name; the 261003 update had deleted joystick.conf, so the TX ran through the X3D map = released throttle read as full brake), AppRun refresh now KEEPS joystick.conf (tested: scratch install, old stamp, conf survives), .ibt export on (gold store under $HOME), AUTO up-shift at the shift light 8900 rpm, Skidpad load crash fixed. bwrap install-path smoke clean (Watkins, 0 precompiles, controller autodetected, .ibt written)
+
+### TYRE-1-R (2026-10-03) — 🔴→✅ **the first tyre fit was unstable at the limit. Re-identified with the gold's stability as a constraint.**
+
+PO 2026-10-03, Watkins race on the TX: *"The iracing lotus has a stable ride. In julia, if I push at all, the car starts
+fishtailing."*
+
+**Measured from the race `.ibt` (13-25-00, 13-30-33).** The slides start the same way each time (t 21, 96, 109 s). At 125–147 km/h
+a ~5° road-wheel input puts the car at 1.1–1.16 g within 0.3 s. Sideslip then grows at part throttle (0.3–0.5) with no wheelspin
+(rear κ 0.02–0.06), and the counter-steer snaps it the other way (yaw −33 → +41°/s). Steering used, road angle p95: sim
+13.9–18.2° vs his iRacing Ring laps 2.3–3.9°. Sideslip p95: 9.7–39° vs 1.0–2.5°.
+
+**Two causes, both fixed.**
+
+1. **The tyre (mine, from TYRE-1 this morning).** Constant-input step steer at 125 km/h, 3rd gear: the TYRE-1 tyre (μ 1.22/1.148,
+   Cα 28.97/29.57) **spun at zero throttle on a 3° steer**; the original tyre settled. The gold's slip curve bounds rear μ only from
+   BELOW: its rear never passes ~6° of slip, because the front saturates first. The fit took the floor (1.148 < front 1.22), so
+   the rear let go first. The steady-ramp acceptance could not show it.
+   * Unconstrained stability refit → rear μ 1.79 (implausible; bought stability). Rejected.
+   * Bounded (rear μ ∈ [front μ, rear μx 1.45]) → μ 1.277/1.446, Cα 30.21/27.04. This passed the step steers but **could not hold a
+     straight line above ~300 km/h under power**: heading 0.011 → 0.5 rad in 4 s with no steering, then spun. The cause was rear Cα <
+     front Cα (linear oversteer). Rear Cα = front makes it straight at 321 km/h; so do the original and the TYRE-1 sets. The gold
+     shows linear UNDERSTEER (front slip 1.7–2× rear at low g), so **rear Cα ≥ front Cα** is now a constraint.
+   * **Shipped:** μ 1.277 / 1.446, Cα 30.21 / 30.21, kμ 0.082, C_ABL 0.40 (re-checked: scrub median 0.97). Slip-curve score 446 (vs
+     18 unconstrained): within ~0.1° from 0.15 to 0.75 g; at 1.06–1.14 g the front slides deeper and the rear less than the gold (a
+     safer limit). Step steers held at 0 and 0.35 throttle (max β 2.8–5.0°); at 0.6 throttle it power-oversteers, as the
+     original tyre did. Max steady lateral **1.187 g (gold 1.185)**. Straight-line coasts and pulls unchanged (all ≈ 1.00).
+2. **Steering gain from calibration endpoints.** His new calibration captured "full lock" at raw ±0.22 = ±100° of a 900° TX (~5.8:1);
+   June's ±1.0 gave ~26:1; iRacing's Lotus is **10:1** (CarSetup SteeringRatio, lock 420°). Wheels now steer by **angle ÷ the
+   session's ratio**, with the angle from the kernel's per-device `range` (900): full lock (17.2° road) at ±172° of wheel. Commit
+   6ce228a4, gated in controls_smoke.
+
+**Also (6ce228a4):** R restarts the race (PO: *"R should reset the race"*). The old respawn left WRECKED set after a lost wheel, which
+held the clutch disengaged, ignored shifts, and kept the detached wheel drawn.
+
+**Lesson.** A fit that matches every band can still produce an unstable car. Any parameter the data bounds from only one side
+(here rear μ, and the rear/front Cα split) must be closed by a behaviour the gold *does* show, and checked where the gold never went
+(top speed). `tyreid_261002.jl` now enforces all three constraints.
+

@@ -49,15 +49,23 @@ const _GRIP = parse(Float64, get(ENV, "JM_GRIP", "1.0"))   # global grip trim (f
 # 0.02-0.24): the gold's COASTING samples run ~10-15 % more slip at 0.3-0.5 g than the combined curve the tyre
 # is fitted to, so part of their scrub is slip the fitted tyre does not have, and c_abl carries it.
 const C_ABL = 0.40
-# TYRE-1 (2026-10-03): μ (lateral), Cα and kμ IDENTIFIED THROUGH THE PLAYER CAR against the 261002 gold's
-# steady cornering curve -- median front/rear axle slip angle per 0.1 g, 0.15-1.14 g, Nordschleife +
-# Centripetal (tools/tyreid_261002.jl; Charlotte excluded, its banking inflates LatAccel/g). Score 222 -> 9.8:
-# both axles within ~0.2° everywhere, including the front's 6-8° plateau at 1.06-1.14 g, which is where
-# "turn the wheel and scrub off speed" lives. The old μ 1.36/1.40 was set by judgement toward a raw peak, and
-# the soft Cα 20.5/24 made the car run ~1.4x the gold's slip at mid g -- which happened to give iRacing's scrub
-# only because it stood in for the ablation loss (C_ABL) the model lacked.  μx / Cκ: braking fit, unchanged.
-const BRUSH_FRONT = (μ = 1.220*_GRIP, μx = 1.42*_GRIP, Cα = 28.97, Cκ = 28.0, kμ = 0.081, Fz0 = 1415.0)
-const BRUSH_REAR  = (μ = 1.148*_GRIP, μx = 1.45*_GRIP, Cα = 29.57, Cκ = 28.0, kμ = 0.081, Fz0 = 1670.0)
+# TYRE-1 (2026-10-03, REVISED same day after the PO's Watkins race: "if I push at all, the car starts
+# fishtailing"). μ (lateral), Cα and kμ identified THROUGH THE PLAYER CAR (tools/tyreid_261002.jl) against
+# the 261002 gold's steady slip-angle curve (median front/rear axle slip per 0.1 g, Nordschleife +
+# Centripetal; Charlotte's banking excluded), SUBJECT TO what the gold also shows:
+#   * the car HOLDS the limit -- steady 1.1-1.19 g windows on half throttle, Ring sideslip max 3.7-11°:
+#     constant-input step steers at 90/125 km/h must stay below 10° of sideslip;
+#   * rear μ is only bounded BELOW by the slip curve (the gold rear never passes ~6° of slip): it is kept
+#     between the front's μ and the rear's measured braking grip μx 1.45;
+#   * LINEAR understeer (gold front slip 1.7-2x the rear's at low g): rear Cα >= front Cα. Without it
+#     the fit took rear 27.0 < front 30.2 and the car could not hold a straight line above ~300 km/h.
+# The first, unconstrained fit (μ 1.22/1.148, Cα 28.97/29.57) matched the slip curve best (score 18) but
+# SPUN at 125 km/h on a constant 3° steer at zero throttle -- that was shipped in 261003/261003b.
+# This set: slip-curve score 446 (0.15-0.75 g within ~0.1°; at 1.06-1.14 g the front slides deeper and the
+# rear less than the gold, i.e. a safer limit), all step steers held, straight at 321 km/h, max steady
+# lateral 1.187 g (gold 1.185). μx / Cκ: braking fit, unchanged. The old μ 1.36/1.40 was set by judgement.
+const BRUSH_FRONT = (μ = 1.277*_GRIP, μx = 1.42*_GRIP, Cα = 30.21, Cκ = 28.0, kμ = 0.082, Fz0 = 1415.0)
+const BRUSH_REAR  = (μ = 1.446*_GRIP, μx = 1.45*_GRIP, Cα = 30.21, Cκ = 28.0, kμ = 0.082, Fz0 = 1670.0)
 
 "Pure-lateral brush force Fy(Fz, α) — for fitting/validation."
 function brush_fy(Fz, α; p = BRUSH_FRONT)
