@@ -21959,3 +21959,36 @@ still many trees, one tree curtain, on/over the road in julia nurburgring - lots
   scenery copies sit at the same lateral. The census flags any origin on the road-only HAT, which evidently reaches past the 4 m
   half-width; not loosened tonight -- the predicate wants a look (origin on tarmac vs car-centre reachable) before the gate is
   re-baselined.
+
+
+## IRTEST-261004 — iRacing test plan for the next gold session (PO 2026-10-04)
+
+PO: *"I'm going to collect more iracing data next, to help get the julia lotus 49 (and nurburgring track - e.g. flugplatz)
+closer to the iracing gold standard. What tests should I run in iracing?"* Plan given to the PO, also saved as
+`~/Documents/261004/iracing_test_plan.txt`. Each test targets an item the 261002 store could not close:
+
+| # | test | closes |
+|---|---|---|
+| 1 | Straight-line braking on the Döttinger Höhe from ~140 mph, pedal held STEADY at ~30/50/70/100 % (2–3 stops each), plus a few deliberate front lock-ups held ~1 s | μx/Cκ never refit (TYRE-1 open); BRAKE-1 open: gold locks at 1.3 g at full pedal, sim stops at ~1.45 g unlocked |
+| 2 | Flugplatz at 4–5 steady speeds × ~3 passes, throttle steady and wheel straight from ~200 m before until settled; same at Pflanzgarten (+ Schwedenkreuz) | `vehicle_3d.jl` ks/cs/kt/ct are hand-set (ct raised by feel for the "superball" landing); no gold for airtime, pitch, landing spike, settling |
+| 3a | Centripetal Circuit steady circles at 3–4 speeds, equal laps each direction | tyre fitted at one speed (86 km/h); ANALYSIS.md's L/R steering difference rests on 7 points |
+| 3b | Step steers at ~80 mph, small angle held 3 s, throttle off/half/cruise, both directions | TYRE-1-R stability constraint, so far only checked against the sim's own step steers |
+| 3c | Power-on exit: steady circle, throttle squeezed slowly to full | power oversteer at ≥ 0.6 throttle is estimated, not fitted |
+| 4 | Full-throttle pulls: 3rd from ~70 mph to the 9,500 limiter, 4th from ~100 mph; a second or two on the limiter | E91-S10: torque above 7775 rpm is extrapolated |
+| 5 | (optional) 2–3 clean flat-out Nordschleife laps | whole-lap sanity check only |
+
+**Setups (PO 2026-10-04: "I didn't change any setups, I just used the default in each case").** Confirmed from the CarSetup
+blocks: iRacing loads a per-track default. 261002's skidpad and Charlotte ran the lopsided oval default (springs LF/RF/LR/RR
+26/28/39/53 N/mm, ride heights 86.7/92.1/102.7/108.3 mm, camber +0.4/−0.5 front and +0.3/−0.5 rear left/right, cross weight
+45.3 %, 4th/5th 1.09/0.916, 75 L). The Ring ran the symmetric road default (30/30/48/48, 83.1/105.1 mm, camber −0.4/−0.5,
+50.0 %, 1.04/0.846, 43.2 L). Consequences: (1) TYRE-1/-R/-R2 were identified on the skidpad's oval setup (`tyreid_261002.jl`
+runs the car on that session's setup), so setup asymmetry may be partly absorbed into the tyre parameters; (2) ANALYSIS.md's
+left/right steering difference (55–62° vs 39–48° at ~1.1 g) is plausibly that asymmetry, not noise; (3) the longitudinal fits
+are unaffected (setup read per file). Next session: the Nordschleife default at every venue, loaded in the garage.
+
+**Session rules given to the PO:** one setup for every test, the Nordschleife default (see above);
+wind 0; same fuel; leave the car after each group; a one-line note per file; optionally `irsdkLog360Hz=1` in app.ini (60 Hz
+gives a landing spike only 2–3 samples). If short on time: 1, 2, then 3b.
+
+**Caveat recorded for the fit:** iRacing's Nordschleife is a scan of the modern track, and its crests were reworked after 1967.
+Test 2 measures the CAR's vertical response, not 1967 elevation; Julia's Ring geometry stays GPL's `.trk`.
