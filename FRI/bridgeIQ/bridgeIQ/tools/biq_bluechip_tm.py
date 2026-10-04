@@ -11,7 +11,7 @@ biq in-process with the same engine as the live Q-Plus runs: hybrid bidding
 search.
 
 Teams match without re-seating anyone: with --rooms 2 every deck board is
-played twice. The closed room deals the same cards rotated one seat
+played twice, open and closed room alternating board by board. The closed room deals the same cards rotated one seat
 clockwise (N's hand to E, dealer and vulnerability rotated with it), so the
 robot that sat East/West in the open room now holds the open room's N/S
 cards and biq holds the E/W cards. IMPs compare the two scores for the
@@ -546,9 +546,12 @@ class TableManager:
                     for n in range(self.a.start, self.a.start + self.a.boards)]
         self.connect_all()
         rooms = ["open", "closed"][: self.a.rooms]
+        # Rooms alternate board by board (open 1, closed 1, open 2, ...) so a
+        # crash in a long unattended run loses at most one board's pair.
         with open(self.out / "results.jsonl", "a") as fh:
-            for room in rooms:
-                for n, dealer, vul, hands in deck:
+            for n, dealer0, vul0, hands0 in deck:
+                for room in rooms:
+                    dealer, vul, hands = dealer0, vul0, hands0
                     if room == "closed":
                         dealer, vul, hands = rotate(dealer, vul, hands)
                     rec = self.play_board(f"{room}-{n}", n, dealer, vul, hands)
@@ -556,8 +559,24 @@ class TableManager:
                     fh.write(json.dumps(rec) + "\n")
                     fh.flush()
                     self.results.append(rec)
+                if len(rooms) == 2:
+                    self.log(f"after board {n}: {self.running()}")
         self.end_session()
         self.report()
+
+    def running(self) -> str:
+        """Running teams total over the boards played in both rooms."""
+        by = {}
+        for r in self.results:
+            by.setdefault(r["board"], {})[r["room"]] = r
+        biq_ns_open = all(s not in self.conns for s in (Seat.NORTH, Seat.SOUTH))
+        tot = n = 0
+        for b in by.values():
+            if "open" in b and "closed" in b:
+                d = diff_to_imps(b["open"]["ns_score"] + b["closed"]["ns_score"])
+                tot += d if biq_ns_open else -d
+                n += 1
+        return f"biq {tot:+d} IMP over {n} boards"
 
     def report(self):
         by = {}

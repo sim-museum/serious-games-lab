@@ -1655,13 +1655,15 @@ def _try_rkc_pipeline(state: 'AuctionState', e: HandEval, system) -> Optional[Bi
     last_partner = state.partner_bids[-1] if state.partner_bids else None
     last_mine = state.my_bids[-1] if state.my_bids else None
 
-    # Pre-flight: an intervening opponent double / overcall reshapes
-    # RKC into DEPO / DOPI; for now we just punt to natural bidding
-    # so we don't mis-fire. RKC handles only the no-interference case.
-    if state.opp_overcalled and state.rho_bids:
-        last_opp = state.rho_bids[-1]
-        if not last_opp.is_pass:
-            return None
+    # Pre-flight: a bid by RHO right over the ask or the answer turns RKC
+    # into DOPI, which we don't play yet: fall back to natural bidding. Interference EARLIER in the auction doesn't matter
+    # (rho_bids keeps RHO's old calls, so 1S-(2H)-3S-(P)-4NT-(P) used to be
+    # passed: WBridge5 data, valid lines 68 and 1653).
+    # A double of the ask or the answer is ignored (responses as usual, so
+    # the asker's reading stays the same); only a bid over it falls back.
+    if state.bids and not (state.bids[-1][1].is_pass
+                           or state.bids[-1][1].is_double):
+        return None
 
     # Case 1: partner just bid 4NT → I respond with keycards.
     if last_partner is not None and _is_rkc_context(state, last_partner):
@@ -2501,10 +2503,21 @@ def _maybe_slam_try(state: AuctionState, eval_: HandEval,
     # Self-sufficient 6+ suit I have SHOWN, no agreed fit: treat my own long
     # strong suit as trump and drive RKC (captures unagreed-fit slams — bd11:
     # 1S opener with AQJT63 + 19 HCP whose partner never raised spades).
+    # With no agreed suit partner answers 4NT for the LAST suit our side bid,
+    # so ask only when that suit is mine; otherwise both sides count keys for
+    # partner's suit and we land in six of it (WBridge5 valid 103: 1S-2C-2S-
+    # 3C-4NT-5S-6C with AQ9832 of spades).
+    side_suits = [b.suit for _s, b in state.bids
+                  if _s in (state.seat, state.seat.partner())
+                  and b.suit in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS,
+                                 Suit.CLUBS)
+                  and not (b.is_pass or b.is_double or b.is_redouble)]
+    last_side_suit = side_suits[-1] if side_suits else None
     if tr is None and combined >= 31:
         for s in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS):
             if (eval_.suit_lengths.get(s, 0) >= 6
                     and eval_.suit_hcp.get(s, 0) >= 5
+                    and s == last_side_suit
                     and any(b.suit == s and not b.is_pass
                             for b in state.my_bids)):
                 cand = bid(4, Suit.NOTRUMP, alert=True,
