@@ -21852,3 +21852,110 @@ held the clutch disengaged, ignored shifts, and kept the detached wheel drawn.
   stall→AUTO fires only below 5 m/s ("auto is for a newbie at the start line"). Gated in controls_smoke / stall_smoke.
 * Also this pass: R restarts the race and re-forms the grid ahead (975c7bfb); wheels steer at the session ratio (6ce228a4); FFB
   centring per wheel degree + launcher FFB on/off (90e93cd3).
+
+
+## PO 2026-10-03 (evening) — Watkins Glen: Wine GPL race and Julia race both completed, compared
+
+PO: *"wine GPL and julia races completed."* **Fastest lap today: 1:18 in Julia and 1:18 in GPL** ("a good sign!").
+
+### AIGPL-1 — make the Julia AI drive like the gold-standard GPL AI (Watkins Glen)
+
+PO: *"Make the julia AI closer to the gold standard GPL AI."* Four differences, each to be measured against a GPL race (gold: the
+260915 WG race replays, or a fresh Wine GPL race at the 0.774 AI coefficient) before and after:
+
+* **(a) Single file.** *"the GPL AI drives single file, not two abreast which blocks passing."* Julia cars run side by side and wall
+  off the road.
+* **(b) Lateral moves at the carousel, the big bend and the hairpin.** *"The GPL AI does not move quickly laterally entering and
+  exiting the carrosel, at the big bend, and the hairpin as Julia AI does."* (Related: AIJIT-1/2/3, which removed the skitter but not
+  the quick line changes.)
+* **(c) Spacing.** *"julia AI tends to clump together more, while GPL AI spreads out."*
+* **(d) Never off the road.** *"julia AI can go off the road briefly at tight turns - something GPL AI never does."*
+
+### FFB-FEEL — PO verdict, no action
+
+PO: *"julia ff generally feels solid and firm, like iracings, though GPL ff is loose, rolls in turns and is fast due to my Wolfgang
+Wagner champion setup. Generally Julia ff is fine, arguably better. Certainly julia handles my brake pedal better than GPL does."*
+Keep the current FFB and brake mapping; do not chase GPL's looser feel.
+
+### Overnight, if there is time (PO: *"If there's time overnight"*)
+
+* **COCKPIT-TACH-1 — the rpm needle and the max-rpm marker on the cockpit rev counter.** PO: *"add the rpm dial and max rpm marker to
+  the cockpit rpm dial in julia."* Match the gold cockpit shots: needle sweep, and the red-line/max-rpm tell-tale.
+* **MIRROR-H-1 — mirrors higher in cockpit view.** PO: *"move the mirrors higher to better match gold standard GPL - right now you
+  can see less than half of the mirrors in julia cockpit view."* Judge against a gold cockpit frame at full resolution, same place
+  (see the 2026-10-01 lesson on thumbnails).
+* **CHASE-AXLE-1 — chase-view axles like GPL's.** PO: *"make the chase view in julia more like in GPL - axles are just shadows in the
+  rear and don't appear present at all in the front."* Read as the state of Julia's chase view: the rear axles/suspension
+  draw only as dark shadow shapes and the front ones are missing, where GPL's chase view shows them. Confirm against gold chase frames
+  (full resolution, same place) before changing geometry; E64-S4/S7/S8 built the articulated rear suspension.
+
+### RING-GOLD-1 — Nürburgring vs the 2026-10-03 GPL race (PO, 23:20)
+
+PO: *"this is the second set of julia vs GPL race videos, this time for the ring: '/home/g/Videos/261003_nurburgring.mp4'
+'/home/g/Videos/261003_ring.mp4' improve the julia nurburgring track by comparison with the gold standard GPL track ... There are
+still many trees, one tree curtain, on/over the road in julia nurburgring - lots to fix!"*
+
+* Videos: `261003_nurburgring.mp4` (1024 s, ends 22:56 = the Julia 1-lap race, 12:35.169) and `261003_ring.mp4` (974 s, ends 23:17
+  = the Wine GPL 1-lap race, 67x, AI coefficient 0.786). Both 1920x1080.
+* Telemetry: the PO's GPL replays (`261003*.rpy` under `~/sgl/THU/WP/drive_c`, WG + Ring) decode with GPL Replay Analyser
+  (`C:\Program Files\GPL Replay Analyser\GPLReplayAnalyser.exe`; "save telemetry to a textfile", and
+  `-expreports -f<rpy> -d<dir>\` for text reports). At 23:25 no 261003 replay existed on disk yet (newest .rpy: April).
+
+### Overnight 2026-10-03 — COCKPIT-TACH-1 / MIRROR-H-1 / CHASE-AXLE-1 (landed, uncommitted)
+
+* **COCKPIT-TACH-1.** The dash was a MIRROR IMAGE of GPL's: `dash7` (art's left half: oil temp + tacho) sat at z[0,+0.287] =
+  the car's right, `ldashr` on the left, so the numerals read "0001 X MPR" and the cluster order was reversed. Root: the car
+  extraction is a reflection of GPL's frame (render.jl `mirror=false`); S9c's v-flip turned the art upright but left it mirrored.
+  The three dash parts are now mirrored across the centreline (`JM_DASH_ZMIRROR=0` reverts); order now matches gold (oil, TACHO,
+  water, switch, fuel, volts). Needles: white rpm + red tell-tale (peak rpm since load/R), pivot found from the dash7 UV of the dial
+  centre (chrome-ring fit u 0.825 v 0.2265, r 0.147 u), scale 113.6 deg + 26.4 deg/1000 rpm read off the art; gold's white needle
+  at nine HUD rpm readings agrees within a few degrees (one HUD/needle desync outlier). `JM_TACH_NEEDLES=0` hides them.
+  **Open:** the tacho sits ~8 cm left of the wheel hub (gold: ~2 cm). The whole car is a reflection of GPL's (gold's hub is left of
+  screen centre, ours right), so a full un-mirror of the car is the real fix; not attempted (hands/pipes/mirrors are tuned on it).
+* **MIRROR-H-1.** `JM_MIRROR_Y` -0.02 -> 0.06: the whole disc and live view clear the green body panel (centre x~98 px of 1280,
+  gold ~105). JM_WIND_ALPHA=0 left the panel in place, so it is body, not windscreen.
+* **CHASE-AXLE-1.** Rear: the synthesized driveshafts wrote UV into the COLOUR slot (floats 7:8; stride is pos/normal/colour/uv), so
+  every vertex sampled axlelot's black corner -- drawn black, shadow cast. Now uv in 10:11 and mapped onto the atlas's driveshaft
+  strip (u 0.70-0.92). Front: built chrome wishbones (upper rocker + two-leg lower, pickups |z| 0.18 to the upright) like the rear
+  shafts (`JM_FSUSP_SYN=0` removes). Chase capture: shafts gearbox->hubs and wishbones nose->wheels, as in the 260802 gold.
+* Replays found (gpl.sh moves them): `~/sgl/THU/afterGameReport/261003_2301_gpl/261003_ring.rpy` and
+  `261003_2149_gpl/261003_wg_win.rpy`. `tools/gpl_rpy_report.sh` (WINEPREFIX=~/sgl/THU/WP) decodes both: Ring 1 lap, PO 12:49.633
+  (P5), Clark 12:09.836 fastest AI; WG PO last->1st on lap 1. The CLI gives reports only; per-tick telemetry needs the GUI's
+  "save telemetry to textfile" (asked the PO 23:45).
+* **RING-GOLD-1 S1 — the trees across the road were the OBJECT YAW SIGN (Ring default now -1).** Located from the PO's video by
+  aligning the Julia telemetry (speed match, rms 0.3 km/h) and the GPL video (HUD speed OCR integrated, anchored by speed-vs-s):
+  worst stretch s 18.6-21.7 km (Döttinger Höhe). Picks named the panels `xk_flat3/4/5/6/c/d` (BUF3-6 / XK_FlatC/D cut-out bush
+  flats). JM_OBJNEAR at s=20846: +1 -> lat -9.8..-0.3 over 3 m of s (across the road); -1 -> lat -5.5..-4.8 over 11 m of s (a row
+  along the edge). Ring-wide drops 208 -> 148, drawn 508 -> 567; S/F tower faces the track with its clock, pit wall parallel --
+  both as the GPL video. Other tracks unchanged (their per-object yaw fixes compensate the same error; a global flip needs
+  re-verifying Zandvoort gstand, WG grandl, Spa gstands). Not yaw: the grey slab near s=18680, a dark curved stalk and a spire in
+  the sky near s=20600, the dark beam at s=21600 -- next.
+* **GPL replay telemetry via the GUI** (PO: "drive the replay analyser GUI yourself"): GPLRA `-loadrpy -n1 -fc:\x.rpy -s1 -dN -lL`,
+  then File > "Save telemetry to text file" > Save. Only XSendEvent CLICKS work (keys are dropped once a menu is up); the Save As
+  dialog takes clicks relative to its own window. Output: 60 Hz `Longitude(=lapdist), Latitude(=lateral), Gear, Rpm, Orientation,
+  Roll, Pitch, Steering, Speed, LongAcc, LatAcc, SlipAngle`. Ring race: d0 PO, d1 Brabham, d2 Amon, d3 Bonnier, d4 Clark, d5 Hill.
+  Script: scratchpad export_lap.sh (copy into tools/ when it is used again).
+* **RING-GOLD-1 S2 — backdrop panoramas (the "tree curtain").** Picks named the dark curved stalk (s=20600), the band of forest
+  hanging over the road (s=21600, the PO's "tree curtain") and a beam at s=22200 as `tierg-*` / villone, a 435 m forest-skyline
+  strip rising to 195 m; the grey slabs near s=17854-18680 are `inhcastl`/`inhcast2` (casl_* = the Nürburg castle on its hill,
+  alpha cut-out; grey = fog at 2 km). Both are perspective tricks for one viewing area, and BOTH were drawn twice: as objects and
+  baked into the track scenery (picks hit `track villone` and `object tierg-r2/villone` at one distance). Fix: the 7 scenery
+  backdrop parts are dropped; the object copies draw only within a radius of their origin, read off the PO's GPL video (strips
+  500 m: seen from Tiergarten/S-F at 155-450 m, not from 620 m/1.3 km; castle 1200 m: shown at ~770 m, not at 2.1 km) and take the
+  edge-on graze fade. Result: s=18680 clear (as GPL), s=20600 shows the castle on its green hill top right (as GPL at s~20846),
+  stalk/curtain/beam gone, S/F unchanged. `JM_BACKDROP=0` reverts; radii `JM_BACKDROP_R_TIERG/_CASTLE`.
+* **RING-GOLD-1 S3 — hillside slabs drawn twice, the second copy two-sided.** At the Ring the scenery carries most objects
+  (track + object picks coincide once the yaw sign is right). The scenery copy is back-face culled; the object copy is two-sided,
+  so `half03` (s=7128, lat -9.9..+6.4, a few m over the road) showed its dark underside. Skipping every geometric duplicate
+  (463/567) lost exactly what JM_LAYERS_OFF=obj loses (S/F grandstand crowd, pit boards, Döttinger Höhe tree rows -- their scenery
+  copies do not reach the screen), so the skip is scoped to `half*` (22 objects). `JM_OBJ_SCENEDUP=0` reverts,
+  `JM_OBJ_SCENEDUP_ALL=1` widens it for the investigation. **Open:** why the scenery copies of those 441 do not display.
+* Housekeeping: smoke runs write .ibt files into the PO's gold store (`data/juliaracer`); 14 from tonight moved to the session
+  scratch. Test runs should set `JM_NOIBT=1` (or JM_IBTDIR). WG telemetry for Graham Hill (slot 5) hangs GPLRA; not exported.
+* **Gates after S1-S3 + the overnight cockpit work:** 42 of 44 PASS; the same pre-existing pair fails. `transmission_smoke` as
+  before (no .ibt captures on this box). `road_clear_smoke` Ring count 119-123 -> **396**: 260 of the points are `xk_flat*` bush
+  panels at |lat| 5.1-6.1 m (median 5.2) -- the roadside hedges of the Döttinger Höhe, now KEPT because with the right yaw their
+  footprint runs along the edge instead of across the road (the old count was low because the wrong yaw got them dropped). Their
+  scenery copies sit at the same lateral. The census flags any origin on the road-only HAT, which evidently reaches past the 4 m
+  half-width; not loosened tonight -- the predicate wants a look (origin on tarmac vs car-centre reachable) before the gate is
+  re-baselined.

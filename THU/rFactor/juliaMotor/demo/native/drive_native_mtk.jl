@@ -2884,8 +2884,17 @@ else
         isempty(v) ? Render.TrackPart[] : [Render.TrackPart(v, tex, big.col)]
     end
     const ROADPARTS = ROADTESS ? roadtess_parts() : Render.TrackPart[]
-    const TRACK = [TRACKMAIN; ROADPARTS; SECPARTS]
-    const SEC_FROM = length(TRACKMAIN) + length(ROADPARTS) + 1        # E68 S9b: trackItems[SEC_FROM:end] = landmass sections
+    # RING-GOLD-1 S2: the Ring's backdrop panoramas (villone forest-skyline strips, casl_* castle cards) are ALSO baked
+    # into the track scenery -- picks hit `track villone` and `object tierg-r2/villone` at the same distance. The object
+    # copies carry the viewing-radius rule (see BACKDROP_ON); the scenery copies would draw them from everywhere, so they go.
+    _bdtrack = NURB && get(ENV, "JM_BACKDROP", "1") != "0"
+    _bdtex(t) = (t = lowercase(t); t == "villone" || startswith(t, "casl"))
+    const _TRACKMAIN_BD = _bdtrack ? filter(p -> !_bdtex(p.tex), TRACKMAIN) : TRACKMAIN
+    const _SECPARTS_BD  = _bdtrack ? filter(p -> !_bdtex(p.tex), SECPARTS)  : SECPARTS
+    _bdtrack && println("  [backdrop] dropped ", length(TRACKMAIN) - length(_TRACKMAIN_BD) + length(SECPARTS) - length(_SECPARTS_BD),
+                        " backdrop part(s) from the track scenery (object copies keep the viewing-radius rule)")
+    const TRACK = [_TRACKMAIN_BD; ROADPARTS; _SECPARTS_BD]
+    const SEC_FROM = length(_TRACKMAIN_BD) + length(ROADPARTS) + 1        # E68 S9b: trackItems[SEC_FROM:end] = landmass sections
     # E68 S10b: rails/fences are modeled as OFFSET front+back faces; GPL culls the back single-
     # sided, we drew both → grazing-angle poke-through = the PO's "z-fighting on guardrails
     # throughout".  (Exact-duplicate dedup was a near-no-op: extraction already collapses those.)
@@ -4082,6 +4091,97 @@ function _dash_vflip!(parts)
     parts
 end
 const _DASH_VFLIPPED = _dash_vflip!(CARPIN)   # mutates CARPIN in place; the const just forces it to run
+# ── COCKPIT-TACH-1 (PO 2026-10-03): the dash was a MIRROR IMAGE of GPL's ─────────────────────────
+# Measured (scratch probe on lotd.3DO, the CARPIN extraction): dash7 -- the art's LEFT half, oil temp +
+# tachometer -- sits at z[0,+0.287], i.e. on the car's RIGHT (z>0 renders right of the screen), with
+# u=0 (the art's left edge) at the outer edge; ldashr, the right half, sits at z[-0.287,0]. The car
+# extraction is a reflection of GPL's frame (render.jl: "mirror=false is a reflection"), and S9c's
+# v-flip turned the numerals upright but left them reading backwards: "0001 X MPR", 12 on the left,
+# and the cluster order reversed (gold: oil, TACHO, water, switch, fuel, volts; ours the other way,
+# tacho second from the right). The panel outline is symmetric (z +-0.287), so mirroring just these
+# three parts across the centreline puts each half's art on its own side, reading the right way,
+# without moving the panel. Winding is reversed so the faces keep their orientation.
+# JM_DASH_ZMIRROR=0 reverts.
+function _dash_zmirror!(parts)
+    if get(ENV,"JM_DASH_ZMIRROR","1") == "0"
+        println("  [dashzmirror] OFF (JM_DASH_ZMIRROR=0)"); return parts
+    end
+    n = 0
+    for p in parts
+        lowercase(p.tex) in _DASH_TEX || continue
+        v = p.verts
+        @inbounds for i in 0:11:length(v)-11; v[i+3] = -v[i+3]; v[i+6] = -v[i+6]; end
+        @inbounds for t in 0:33:length(v)-33, k in 1:11
+            v[t+11+k], v[t+22+k] = v[t+22+k], v[t+11+k]
+        end
+        n += length(v) ÷ 33
+    end
+    println("  [dashzmirror] mirrored ", n, " dash triangles across the centreline")   # zero = did not fire
+    parts
+end
+const _DASH_ZMIRRORED = _dash_zmirror!(CARPIN)
+# The needles. GPL draws two on the tachometer (gold 260802 WG cockpit): a WHITE rpm needle and a RED
+# tell-tale that stays at the highest rpm reached. Their pivot is the dial centre painted in dash7:
+# chrome-ring circle fit on the decoded art, u 0.825 v 0.2265, dial radius 0.147 in u (the same at
+# 256 and 512 px). The scale, read off the art: "1" at 140 deg clockwise from the dial's up, "12" at
+# 430 deg, 26.4 deg per 1000 rpm, 0 rpm at 113.6 deg. Checked against the gold's white needle at nine
+# HUD rpm readings (4196-5899 rpm): median residual -3 deg, one outlier where the HUD and the
+# needle were out of step. The pivot and the dial's up/right directions come from the dash7
+# triangle under that UV, so the needles follow the panel wherever it is placed.
+const TACH_UV = (0.825f0, 0.2265f0); const TACH_RU = 0.147f0
+const TACH_DEG0 = 113.6; const TACH_DEG_PER_K = 26.4
+function _tach_frame(parts)
+    for p in parts
+        lowercase(p.tex) == "dash7" || continue
+        v = p.verts
+        for t in 0:33:length(v)-33
+            P = [Float32[v[t+11k+1], v[t+11k+2], v[t+11k+3]] for k in 0:2]
+            U = [v[t+11k+10] for k in 0:2]; V = [v[t+11k+11] for k in 0:2]
+            d = (U[2]-U[1])*(V[3]-V[1]) - (U[3]-U[1])*(V[2]-V[1]); abs(d) < 1f-9 && continue
+            # barycentric weights of TACH_UV in this triangle's UV space
+            b2 = ((TACH_UV[1]-U[1])*(V[3]-V[1]) - (U[3]-U[1])*(TACH_UV[2]-V[1])) / d
+            b3 = ((U[2]-U[1])*(TACH_UV[2]-V[1]) - (TACH_UV[1]-U[1])*(V[2]-V[1])) / d
+            (b2 >= -1f-4 && b3 >= -1f-4 && b2 + b3 <= 1 + 1f-4) || continue
+            c = P[1] + b2*(P[2]-P[1]) + b3*(P[3]-P[1])
+            # dP/du and dP/dv on this face
+            e1 = P[2]-P[1]; e2 = P[3]-P[1]
+            dPdu = ( e1*(V[3]-V[1]) - e2*(V[2]-V[1])) / d
+            dPdv = (-e1*(U[3]-U[1]) + e2*(U[2]-U[1])) / d
+            right = dPdu * TACH_RU; up = -dPdv * TACH_RU     # art v grows DOWN the picture
+            nrm = normalize(cross(right, up))               # toward the viewer of the art
+            return (c = c, right = right, up = up, n = nrm)
+        end
+    end
+    nothing
+end
+const TACH = _tach_frame(CARPIN)
+TACH === nothing ? println("  [tach] dial centre not found -- needles off") :
+    println("  [tach] dial centre ", round.(TACH.c; digits=3), "  |right| ", round(norm(TACH.right); digits=4),
+            " |up| ", round(norm(TACH.up); digits=4), "  right.up ", round(dot(normalize(TACH.right), normalize(TACH.up)); digits=3))
+# A tapered needle in the dial plane pointing at art angle `deg` (clockwise from up), from a tail
+# behind the pivot to a tip near the numerals (lengths in dial radii), lifted 2 mm toward the eye so it
+# never z-fights the face. Built once pointing up; each frame turns it about the dial axis (TACH.n
+# through the pivot), like the steering wheel. TACH_SGN is the sense of rotaxis that turns up toward
+# right (clockwise as the art is read), measured rather than assumed.
+function _needle_verts(deg, tip, tail, w0, w1, col; lift = 0.002f0)
+    th = deg2rad(deg); dir = sin(th)*TACH.right + cos(th)*TACH.up
+    side = normalize(cross(dir, TACH.n)) * norm(TACH.right)
+    c = TACH.c + lift*TACH.n
+    a = c - tail*dir; b = c + tip*dir
+    q = (a - w0*side, a + w0*side, b + w1*side, b - w1*side)
+    out = Float32[]
+    for i in (1,2,3, 1,3,4)
+        append!(out, q[i]); append!(out, TACH.n); append!(out, col); append!(out, (0f0, 0f0))
+    end
+    out
+end
+const TACH_ON = TACH !== nothing && get(ENV,"JM_TACH_NEEDLES","1") != "0"
+const TACH_SGN = TACH === nothing ? 1f0 :
+    (dot(Vector{Float32}((Render.rotaxis(TACH.n, 0.1) * Float32[TACH.up..., 0])[1:3]), TACH.right) > 0 ? 1f0 : -1f0)
+const TELLTALE = Ref(0.0)    # highest rpm since load / race restart (GPL's red tell-tale)
+tach_deg(rpm) = TACH_DEG0 + TACH_DEG_PER_K * clamp(rpm, 0.0, 12000.0) / 1000
+# per-frame model (car frame) for a needle built pointing up, turned to art angle `deg`
+tach_model(deg) = Render.translate(TACH.c) * Render.rotaxis(TACH.n, TACH_SGN * Float32(deg2rad(deg))) * Render.translate(-TACH.c)
 # The lotd body carries its own MIRROR PODS, which land exactly where the port's live-RTT round
 # mirrors already draw -- so the pods (and only the pods) are cut here, by centroid box in the
 # render frame (x fwd, y up, z lateral). Stride 11 floats/vertex (pos+normal+uv+col).
@@ -4113,9 +4213,38 @@ end
 # the positioner chain. JM_AXLES=0 removes them; JM_AXLE_Y/R tune.
 const AXLE_Y = parse(Float32, get(ENV, "JM_AXLE_Y", "0.02"))
 const AXLE_R = parse(Float32, get(ENV, "JM_AXLE_R", "0.024"))
+# CHASE-AXLE-1 (PO 2026-10-03: "axles are just shadows in the rear"): the shafts were drawn, but
+# black. Two faults in the vertex list: (1) the UV was written into floats 7:8, which is the COLOUR
+# slot -- the stride is pos 1:3, normal 4:6, colour 7:9, uv 10:11 (Render.upload) -- so every
+# vertex sampled uv (1,1), the atlas's black bottom-right corner, while the shadow pass, which
+# ignores texture, still cast the shafts' shadows; (2) the whole 128x128 axlelot ATLAS was wrapped
+# round the cylinder, but only its right-hand column is the driveshaft (chrome tube with a joint at
+# each end, u 0.70-0.92, v 0.02-0.84; decoded and looked at). Now the cylinder wears that strip.
+# JM_AXLE_OLDUV=1 restores the old vertex list for A/B.
+const AXLE_STRIP_U = (0.70f0, 0.92f0)
+function _rod_verts!(v, p0, p1, r, vrange; segs = 10)
+    a = Float32[p1[1]-p0[1], p1[2]-p0[2], p1[3]-p0[3]]; a ./= norm(a)
+    ref = abs(a[2]) < 0.9f0 ? Float32[0,1,0] : Float32[1,0,0]
+    e1 = normalize(cross(a, ref)); e2 = cross(a, e1)
+    for k in 0:segs-1
+        a0 = 2f0*Float32(pi)*k/segs; a1 = 2f0*Float32(pi)*(k+1)/segs
+        n0 = cos(a0)*e1 + sin(a0)*e2; n1 = cos(a1)*e1 + sin(a1)*e2
+        u0 = AXLE_STRIP_U[1] + (AXLE_STRIP_U[2]-AXLE_STRIP_U[1])*k/segs
+        u1 = AXLE_STRIP_U[1] + (AXLE_STRIP_U[2]-AXLE_STRIP_U[1])*(k+1)/segs
+        for (P, N, U, V) in ((p0 + r*n0, n0, u0, vrange[1]), (p1 + r*n0, n0, u0, vrange[2]), (p1 + r*n1, n1, u1, vrange[2]),
+                             (p0 + r*n0, n0, u0, vrange[1]), (p1 + r*n1, n1, u1, vrange[2]), (p0 + r*n1, n1, u1, vrange[1]))
+            append!(v, P); append!(v, N); append!(v, (1f0, 1f0, 1f0)); append!(v, (Float32(U), Float32(V)))
+        end
+    end
+    v
+end
 function _axle_part(zsign, x0::Float32, zhub::Float32)
-    segs = 10
     z0, z1 = zsign*0.16f0, zsign*zhub
+    if get(ENV, "JM_AXLE_OLDUV", "0") == "0"
+        return Render.TrackPart(_rod_verts!(Float32[], Float32[x0, AXLE_Y, z0], Float32[x0, AXLE_Y, z1], AXLE_R, (0.84f0, 0.02f0)),
+                                "axlelot", (1f0,1f0,1f0))
+    end
+    segs = 10
     v = Float32[]
     for k in 0:segs-1
         a0 = 2f0*Float32(pi)*k/segs; a1 = 2f0*Float32(pi)*(k+1)/segs
@@ -4292,7 +4421,12 @@ const _SW_UVFIXED = _sw_uvfix!(SWPARTS)
 # the z separation to push the pair OUT toward the edges (the old scale=0.62 about z=0 pulled them
 # INboard + up — "too high").  Tuned via JM_MIRROR_*.
 const MCEN = (b = Render.parts_bbox(MIRRORP); Float32[(b.xmin+b.xmax)/2, (b.ymin+b.ymax)/2, 0f0])
-const MIRROR_DY   = parse(Float32, get(ENV,"JM_MIRROR_Y","-0.02"))   # LOWER onto the cowl sides (was +0.10 = too high) — fully-visible discs just above the tub edge
+# MIRROR-H-1 (PO 2026-10-03: "move the mirrors higher to better match gold standard GPL - right now you can
+# see less than half of the mirrors"): at -0.02 only the top sliver of each disc cleared the green body
+# panel beside the cockpit (Watkins s=300, 1280x1024). At 0.06 the whole disc and its live view clear it,
+# centred x~98 px of 1280 (gold: ~105). JM_WIND_ALPHA=0 left that panel in place, so it is body, not the
+# windscreen; the gold shows the lower half of its discs through the tinted screen instead.
+const MIRROR_DY   = parse(Float32, get(ENV,"JM_MIRROR_Y","0.06"))   # was -0.02 (MIRROR-H-1); +0.10 was once "too high"
 const MIRROR_DX   = parse(Float32, get(ENV,"JM_MIRROR_X","0.075"))
 const MIRROR_TILT = deg2rad(parse(Float32, get(ENV,"JM_MIRROR_TILT","-25")))   # E48: stand the discs UPRIGHT facing the eye (+22 read as "angled down" — we saw the top faces)
 const MIRROR_SCALE = parse(Float32, get(ENV,"JM_MIRROR_SCALE","0.5"))    # disc SIZE (round-mirror size)
@@ -4763,6 +4897,29 @@ const AXLE_X0, AXLE_ZHUB = let hand = get(ENV,"JM_AXLE_HAND","0") != "0"
 end
 const AXLEP = get(ENV,"JM_AXLES","1") != "0" ?
     [_axle_part(1f0, AXLE_X0, AXLE_ZHUB), _axle_part(-1f0, AXLE_X0, AXLE_ZHUB)] : Render.TrackPart[]
+# CHASE-AXLE-1 (PO 2026-10-03: the front axles "don't appear present at all"). The gold chase view
+# (260802 WG nintendo) shows chrome wishbones from the nose out to each front upright. GPL's own
+# lsusp1/frontlot parts have resisted placement since E75 (FSUSPP above: 4 strips survive the
+# clip, nothing reaches the wheel on screen), so these are BUILT like the rear shafts: per side an
+# upper rocker and a two-leg lower wishbone, chassis pickups at |z| 0.18, outer joints on the
+# upright just inboard of the hub, +-0.08 m about hub height, wearing the same chrome strip (its
+# plain-tube middle, v 0.25-0.65). Hub from WHEELS like AXLE_X0, undoing BODY_OFF.
+# JM_FSUSP_SYN=0 removes them.
+const FSUSP_SYN = get(ENV,"JM_FSUSP_SYN","1") != "0" ? let w = WHEELS[1]
+        xh = Float32(w[1] - BODY_OFF[1]); yh = Float32(w[4] - BODY_OFF[2]); zh = Float32(abs(w[2] - BODY_OFF[3]))
+        zi = 0.18f0; zo = zh - 0.07f0; tube = (0.25f0, 0.65f0)
+        out = Render.TrackPart[]
+        for s in (1f0, -1f0)
+            v = Float32[]
+            _rod_verts!(v, Float32[xh - 0.05f0, yh + 0.10f0, s*zi], Float32[xh, yh + 0.08f0, s*zo], 0.016f0, tube)   # upper rocker
+            _rod_verts!(v, Float32[xh + 0.13f0, yh - 0.07f0, s*zi], Float32[xh, yh - 0.08f0, s*zo], 0.011f0, tube)   # lower, front leg
+            _rod_verts!(v, Float32[xh - 0.15f0, yh - 0.07f0, s*zi], Float32[xh, yh - 0.08f0, s*zo], 0.011f0, tube)   # lower, rear leg
+            push!(out, Render.TrackPart(v, "axlelot", (1f0,1f0,1f0)))
+        end
+        println("  [fsusp-syn] front hub x=", round(xh,digits=3), " y=", round(yh,digits=3), " z=+-", round(zh,digits=3),
+                "  rods to |z| ", round(zo,digits=3))
+        out
+    end : Render.TrackPart[]
 if !isempty(AXLEP)
     let b = Render.parts_bbox(AXLEP)
         println("  [axle] x0=", round(AXLE_X0,digits=3), " hub z=", round(AXLE_ZHUB,digits=3),
@@ -5366,7 +5523,15 @@ const OBJ_YAW_ADD = deg2rad(parse(Float64, get(ENV, "JM_OBJ_YAW_ADD", "0")))
 # OBJPLACE-1 (PO 2026-09-19, WG: "grandstand to the left of start/finish is pointing away from the track" --
 # `grandl`, placement yaw -92.5 deg, drawn with th = -yaw). JM_OBJ_YAW_SIGN=-1 applies the placement yaw with the
 # opposite sign on every placed object, for an A/B capture; objects at yaw ~0 are unaffected either way.
-const OBJ_YAW_SIGN = parse(Float64, get(ENV, "JM_OBJ_YAW_SIGN", "1"))
+# RING-GOLD-1 (PO 2026-10-03: "many trees, one tree curtain, on/over the road in julia nurburgring"): at the Ring
+# the sign IS wrong. JM_OBJNEAR at s=20846: the xk_flat4/5/6 bush panels (BUF4-6 cut-out flats) span lat
+# -9.8..-0.3 over 3 m of s with +1 -- walls standing ACROSS the road to the centreline -- and lat -5.5..-4.8
+# over 11 m of s with -1, i.e. a row along the road edge, as the PO's 261003 GPL race video shows (trees
+# behind the hedges). Ring-wide: footprint-on-road drops 208 -> 148, objects drawn 508 -> 567, and the S/F
+# timing tower turns to face the track with its Continental clock, the pit wall parallel -- both as the GPL
+# video has them. Other tracks keep +1 for now: their per-object fixes (Zandvoort gstand flip, WG grandl
+# +180, Spa gstands +90) compensate the same convention error and must be re-verified before a global flip.
+const OBJ_YAW_SIGN = parse(Float64, get(ENV, "JM_OBJ_YAW_SIGN", TRACKSEL == "nurburgring" ? "-1" : "1"))
 const SEC_TWOSIDED = get(ENV, "JM_SEC_TWOSIDED", "0") != "0"
 const OBJ_USE_RECZ = get(ENV, "JM_OBJ_RECZ", "1") != "0"
 const OBJ_RECZ_TOL = parse(Float64, get(ENV, "JM_OBJ_RECZ_TOL", "0.5"))
@@ -5669,6 +5834,24 @@ const OBJ_VEG_GRADE = get(ENV, "JM_OBJ_VEG", "1") != "0"
 # grandstand grade, which is exactly the PO's yellow hillside. build_gpl emits one Item per part in
 # order, so a Bool per item is enough to grade each part on its own texture.
 const OBJVEG = Dict{String,Vector{Bool}}()
+# RING-GOLD-1 S2 (PO 2026-10-03, Ring: "many trees, one tree curtain, on/over the road"). Picks on the 261003 sites named
+# two distant BACKDROP panoramas, both alpha cut-outs with transparent sky: `tierg-*` (villone = a forest-skyline strip,
+# 435 m long, rising to 195 m, placed at yaw/pitch/roll 0) and `inhcastl`/`inhcast2` (casl_* = the Nurburg castle on its
+# hill, 4-tri cards ~200 m tall). They are perspective tricks for ONE viewing area: from the finish/Tiergarten the
+# villone strip reads as distant hills; from the Dottinger Hohe it is a floating ribbon -- the dark curved stalk at
+# s=20600 and the band of forest hanging over the road at s=21600 (the "tree curtain"). GPL draws an object only from the
+# track sections that list it; we draw by distance, so these were seen from places GPL never shows them. Without the
+# section lists, the stand-in is a radius about the object's origin, read off the PO's GPL video: the strips are seen
+# from 155-450 m (Tiergarten, S/F) and must not be from 620 m (s=21600) or 1.3 km (s=20600); the castle shows at ~770 m
+# (s=20846) and not at 2.1 km (s=18680). JM_BACKDROP_R_TIERG / JM_BACKDROP_R_CASTLE (m). Within range the panorama parts
+# also take the edge-on graze fade (flat panels' rule). Ground carpets inside these objects (`grass`) always draw.
+# JM_BACKDROP=0 reverts.
+const BACKDROP_ON = NURB && get(ENV, "JM_BACKDROP", "1") != "0"
+const BACKDROP_R_TIERG  = parse(Float32, get(ENV, "JM_BACKDROP_R_TIERG",  "500"))
+const BACKDROP_R_CASTLE = parse(Float32, get(ENV, "JM_BACKDROP_R_CASTLE", "1200"))
+isbackdrop(nm) = BACKDROP_ON && (startswith(nm, "tierg") || startswith(nm, "inhcas"))
+backdrop_r(nm) = startswith(nm, "tierg") ? BACKDROP_R_TIERG : BACKDROP_R_CASTLE
+const OBJBACKDROP = Dict{String,Vector{Bool}}()
 const TRACKGAIN = let
     vegtex(t) = is_veg_tex(t) ? VEG_GAIN : 1f0
     g = Float32[]
@@ -6130,6 +6313,7 @@ let objnames=Set{String}()
                     # (the texture's own mean colour is green-dominant), area-weighted over the object's
                     # parts, so a foliage backdrop grades like the track's grass and a grandstand does not.
                     OBJ_VEG_GRADE && (OBJVEG[lowercase(inst.name)] = Bool[is_foliage_tex(lowercase(pp.tex)) for pp in parts])
+                    isbackdrop(lowercase(inst.name)) && (OBJBACKDROP[lowercase(inst.name)] = Bool[lowercase(pp.tex) != "grass" for pp in parts])
                     _tb = time(); objmesh[inst.name] = Render.build_gpl(parts, TEXIDX); _e92.bld[] += time() - _tb
                     OBJ_CPU[lowercase(inst.name)] = parts      # GPLWALL-1: the drawn object faces become obstacles
                 end
@@ -8262,6 +8446,52 @@ if !SKIDPAD && get(ENV, "JM_GROUND_TREES", "1") != "0"
         println("  FLOAT-1: set down onto the ground: ", nb, " billboards, ", nt, " forest panels, ", no, " foliage objects (JM_GROUND_TREES=0 disables)")
     end
 end
+# RING-GOLD-1 S3: at the Ring most placed objects are ALSO baked into the track scenery -- every pick on the 261003
+# sites hit `track halftr01` and `object half03/halftr01` (likewise trowfmt, hillcapm, grass ...) at the same distance.
+# The scenery copy is drawn with GPL's back-face cull; the object copy is drawn two-sided, so from below a hillside
+# slab such as half03 (s=7128, lat -9.9..+6.4, a few metres over the road) shows its dark UNDERSIDE across the road --
+# the "car under a dark slab" of TRACKGOLD-1, which GPL never draws. Turning the object layer off entirely loses the
+# objects that exist only there (S/F grandstands and pit boards, the Dottinger Hohe tree rows), so the duplicates are
+# found geometrically: an object whose triangle centroids (render frame, x/z on a 0.25 m grid, 3x3 neighbourhood --
+# FLOAT-1 may have lowered it) land on scenery centroids for >= 80 % of its faces is not drawn a second time. It stays
+# in OBJECTS for collision and every other consumer. JM_OBJ_SCENEDUP=0 reverts.
+# SCOPE: the hillside slabs (`half*`) only. Applied to every object the test matched 463 of 567 and the picture lost
+# exactly what the objects-off render lost (S/F grandstand crowd, pit boards, the Dottinger Hohe tree rows): their
+# scenery copies match geometrically but do not reach the screen (culled from the viewing side or filtered by texture
+# in the scenery path). JM_OBJ_SCENEDUP_ALL=1 widens it again for that investigation.
+const OBJ_SCENEDUP = falses(length(OBJECTS))
+if NURB && get(ENV, "JM_OBJ_SCENEDUP", "1") != "0"
+    let t0 = time(), cells = Set{Tuple{Int32,Int32}}(), q = 0.25f0, ndup = 0, nfaces = 0
+        for p in TRACK
+            v = p.verts
+            for t in 0:33:length(v)-33
+                push!(cells, (round(Int32, (v[t+1] + v[t+12] + v[t+23]) / 3 / q), round(Int32, (v[t+3] + v[t+14] + v[t+25]) / 3 / q)))
+            end
+        end
+        for (k, o) in enumerate(OBJECTS)
+            (startswith(lowercase(String(o[5])), "half") || get(ENV, "JM_OBJ_SCENEDUP_ALL", "0") != "0") || continue
+            parts = get(OBJ_CPU, lowercase(String(o[5])), nothing); parts === nothing && continue
+            M = o[2]; n = 0; hit = 0
+            for pp in parts
+                v = pp.verts
+                for t in 0:33:length(v)-33
+                    c = M * Float32[(v[t+1] + v[t+12] + v[t+23]) / 3, (v[t+2] + v[t+13] + v[t+24]) / 3, (v[t+3] + v[t+14] + v[t+25]) / 3, 1f0]
+                    cx = round(Int32, c[1] / q); cz = round(Int32, c[3] / q); n += 1
+                    found = false
+                    for dx in -1:1, dz in -1:1
+                        (cx + dx, cz + dz) in cells && (found = true; break)
+                    end
+                    found && (hit += 1)
+                end
+            end
+            if n > 0 && hit >= 0.8 * n
+                OBJ_SCENEDUP[k] = true; ndup += 1; nfaces += n
+            end
+        end
+        println("  [scenedup] ", ndup, " of ", length(OBJECTS), " placed objects (", nfaces, " faces) duplicate the track scenery -- ",
+                "not drawn twice (", round(time() - t0, digits = 1), " s; JM_OBJ_SCENEDUP=0 reverts)")
+    end
+end
 if OBS_ON
     let t0 = time(), horiz = Dict{String,Vector{Int}}(), nskip = Dict{Symbol,Int}()
         softname(n) = occursin("hay", n) || occursin("straw", n) || occursin("hedge", n) || occursin("hecke", n) ||
@@ -8668,7 +8898,14 @@ const carItems = Render.build_gpl(CARP, GPLTEX; tag="carp")   # Lotus body, GPL 
 # three candidates for one four-minute capture. A hit is then bisected with a narrower range.
 pipeItems  = Render.build_gpl(PIPEP, GPLTEX; tag="extra")   # E106-S4: exhausts, drawn lifted (see PIPEP)
 axleItems  = Render.build_gpl(AXLEP, GPLTEX; tag="extra")   # E106-S9: straight synthesized driveshafts
+fsuspSynItems = Render.build_gpl(FSUSP_SYN, GPLTEX; tag="extra")   # CHASE-AXLE-1: built front wishbones
 carItemsIn = isempty(CARPIN) ? Render.Item[] : Render.build_gpl(CARPIN, GPLTEX)  # E106-S5: cockpit-view body
+# COCKPIT-TACH-1: the two tachometer needles (white rpm, red tell-tale), built pointing up, untextured.
+# Shapes from the gold crop: both cross the pivot, tip just short of the numerals, a short tail.
+const TACH_ITEMS = TACH_ON ? map(((tip, tail, w0, w1, col, lift),) -> begin
+        vao, n = Render.upload(_needle_verts(0.0, tip, tail, w0, w1, col; lift = lift)); Render.Item(vao, n, GLuint(0), col)
+    end, ((0.80f0, 0.30f0, 0.040f0, 0.018f0, (0.85f0, 0.06f0, 0.05f0), 0.002f0),     # red tell-tale (under)
+          (0.86f0, 0.32f0, 0.040f0, 0.016f0, (0.96f0, 0.96f0, 0.94f0), 0.0035f0))) : Render.Item[]   # white rpm needle, 1.5 mm above the red (they z-fought when coplanar)
 # PO 2026-08-27: "remove the cockpit gauge panel, hands and sleeves". JM_GAUGE=0 hides the cluster
 # (hands + sleeves are JM_HANDS=0, which already existed).
 # E106-S7 (PO video 2026-09-02): "spurious enlarged dashboard floating over visor blocking the
@@ -11677,6 +11914,7 @@ function main()
             DC[].lastz = 0.0   # LAPTIME-1: see the respawn below
             WRECKED[] = false; WRECK_FROZEN[] = false; empty!(LOOSE_WHEELS)   # a detached corner is never redrawn otherwise
             CLUTCH_GATE[] = -1.0
+            TELLTALE[] = 0.0   # COCKPIT-TACH-1: a restart re-arms the tell-tale
             # lap + race state
             cs.laps = 0; lap_t0 = cs.t; last_lap = 0.0; best_lap = 0.0; prev_laps = 0
             race_done = false; empty!(player_laps)
@@ -13191,6 +13429,7 @@ function main()
             (function (_OBJS, _BND)
             for (oi,(items,mat,grz,opos,onm)) in enumerate(_OBJS)   # trackside objects
                 LAYOFF_OBJ && continue   # (trees graze-fade; uBackFlip stays 1 when un-culled)
+                OBJ_SCENEDUP[oi] && continue   # RING-GOLD-1 S3: the scenery already draws this one (back-face culled)
                 bc, br = oi <= length(_BND) ? _BND[oi] : ((opos[1], opos[2], opos[3]), 80f0)   # CULLBOUND-1: the object's real bounding sphere
                 max(sqrt((eye_[1]-bc[1])^2+(eye_[2]-bc[2])^2+(eye_[3]-bc[3])^2) - br, 0f0)^2 > (flip ? MIR_OBJ_CULL2 : OBJ_CULL2) && continue   # distance cull (mirror gets its own radius, S14)
                 FRUSTUM_CULL && !infrustum(vp_, bc, br) && continue
@@ -13226,10 +13465,14 @@ function main()
                     glEnable(GL_CULL_FACE); glCullFace(_twin === nothing ? (xor(OBJ_FF_CW, flip) ? GL_BACK : GL_FRONT) : (xor(_twin, flip) ? GL_BACK : GL_FRONT))
                     glUniform1i(Render.uloc(prog,"uBackFlip"), 0)
                 end
+                _obd = BACKDROP_ON ? get(OBJBACKDROP, onm, nothing) : nothing
+                _bdfar = _obd !== nothing && hypot(eye_[1] - opos[1], eye_[3] - opos[3]) > backdrop_r(onm)   # out of its viewing area
                 for (_ii, it) in enumerate(items)                                        # SPAYELLOW-1: foliage PARTS take the track's vegetation grade
                     _fol = _ovg !== nothing && _ii <= length(_ovg) && _ovg[_ii]
+                    _bd = _obd !== nothing && _ii <= length(_obd) && _obd[_ii]       # RING-GOLD-1 S2: backdrop panorama part
+                    (_bd && _bdfar) && continue
                     Render.draw(prog, it, vp_, mat; bright = _fol ? TRACK_BRIGHT*VEG_GAIN : ob,
-                                ambfill = _fol ? TRACK_AMB*VEG_GAIN : oa, graze=grz, tint=otint)
+                                ambfill = _fol ? TRACK_AMB*VEG_GAIN : oa, graze=grz || _bd, tint=otint)
                 end   # grandstands/buildings: ambfill kills the "post-Hiroshima carbonized" shadow faces → vibrant GPL look
                 if _sbcull; glDisable(GL_CULL_FACE); glUniform1i(Render.uloc(prog,"uBackFlip"), 1); end
             end
@@ -13365,12 +13608,19 @@ function main()
         let _items = (CTL.view == 0 && !isempty(carItemsIn)) ? carItemsIn : carItems
             for (i,it) in enumerate(_items); _in_car_range(i) || continue; Render.draw(prog, it, vp, bodyModel; bright=1.2, spec=0.08, ambfill=0.78); end
         end   # PO: lift the self-shadowed footwell/tub further out of black (GPL pre-lights the interior evenly)
+        # COCKPIT-TACH-1: tachometer needles over the dash7 dial (cockpit view; the tell-tale holds the peak)
+        TELLTALE[] = max(TELLTALE[], cs.rpm)
+        if CTL.view == 0 && !isempty(TACH_ITEMS)
+            Render.draw(prog, TACH_ITEMS[1], vp, bodyModel * tach_model(tach_deg(TELLTALE[])); unlit=true)
+            Render.draw(prog, TACH_ITEMS[2], vp, bodyModel * tach_model(tach_deg(cs.rpm)); unlit=true)
+        end
         # E106-S4: exhausts at hub height (chrome: a touch of spec so the megaphones catch the sun)
         let pm = bodyModel * Render.translate(0, PIPE_LIFT, 0)
             for it in pipeItems; Render.draw(prog, it, vp, pm; bright=1.15, spec=0.25, ambfill=0.6); end
         end
         # E106-S9: the driveshafts, horizontal from diff to hub
         for it in axleItems; Render.draw(prog, it, vp, bodyModel; bright=1.1, spec=0.3, ambfill=0.55); end
+        for it in fsuspSynItems; Render.draw(prog, it, vp, bodyModel; bright=1.1, spec=0.3, ambfill=0.55); end
         if CTL.view != 0   # the driver figure occludes the cockpit from the in-car eye (E36 black band) → chase only
             if get(ENV,"JM_RSUSP2","0") == "1"   # E75-S8: OFF by default — raw parts are unfolded strips, see e75_exterior.md
                 for it in rsusp2Items; Render.draw(prog, it, vp, bodyModel; bright=1.15, spec=RS_SPEC, ambfill=0.55); end
