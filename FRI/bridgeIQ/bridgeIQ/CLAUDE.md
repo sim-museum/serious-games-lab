@@ -1,5 +1,18 @@
 # biq — Claude Code project notes
 
+## STATUS — learned partner ranges + game check (2026-10-04)
+Full write-up: tools/HARNESS_STATUS_2026-09-30.md, last section. Overnight
+Blue Chip match vs WBridge5: -4.46 IMP/board (bidding -2.0, play -2.5).
+* backend/partner_model.py: partner's HCP / suit lengths at every turn,
+  LEARNED from 300k biq self-play deals (backend/data/biq_partner_profiles
+  .json.gz). Rebuild with tools/biq_profile_build.py after bidder changes
+  that alter what calls mean; test_partner_model.py warns when stale.
+* native_bidder._learned_game_net: rules pass below game -> 4M / 3NT / 5m
+  when my points + partner's learned mean reach 25 / 24 / 29.
+  BIQ_GAME_NET=0 disables.
+* A/B vs previous bidder: +0.14 IMP/deal closer to par on 4000 held-out
+  WBridge5 deals; teams +0.27 / +0.40 per board DD, +0.21 / +0.18 robust.
+
 ## STATUS — alerts over Q-NET, Precision GF, wacky audit (2026-09-30, UNCOMMITTED)
 Full write-up: tools/HARNESS_STATUS_2026-09-30.md. Offline only; no live run.
 * Q-NET carries NO alerts: partner's strong 1C / 2C, Jacoby 2NT, splinters,

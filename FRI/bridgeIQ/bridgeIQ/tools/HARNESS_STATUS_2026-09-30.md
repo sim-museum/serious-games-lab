@@ -577,3 +577,51 @@ one-level response), so later jumps, reverses and accepted invitations never
 raise it. Many of those slams are also DD-only (24-28 HCP). The lever is
 tracking partner's range through the whole auction (Bridge Baron's
 "Auction Interpretation"), then the trigger; plus fixing the two bugs above.
+
+## Overnight match vs WBridge5 and learned partner ranges (2026-10-04)
+Overnight Blue Chip match (tools/runs/bluechip/261003_wb5_overnight, 200
+boards x 2 rooms, no protocol errors): **biq -891 IMP, -4.46/board.**
+Double-dummy split: bidding -397 (game vs partscore -163, doubled
+disasters -117, missed slams -80), card play -494 (WBridge5 declaring took
++0.51 tricks/deal over DD against biq's defence; biq declaring -0.19).
+
+Behavioural mining of WBridge5 (private, ~/bridge_data/experiments/
+wb5_diverge.py on the OpenSpiel set): biq's rules make WBridge5's call 73.5%
+of the time (openings 90%, contested 2nd-round calls 55%). Finishing each
+disagreement both ways with biq's rules: the big leak is PASSING where
+WBridge5 bids game in our own suit (2,713 cases in 10,000 deals, +9,177 IMP
+for the game bid, two thirds of them contested).
+
+The hand-written auction_inference ranges miss biq's own partner's HCP 12-22%
+of the time, so they can't drive game decisions. New:
+* backend/partner_model.py + backend/data/biq_partner_profiles.json.gz: at
+  every turn of 300,000 biq self-play deals (random dealer/vul, wire view),
+  partner's HCP percentiles/mean and suit lengths, keyed by the auction seen
+  from the seat (K1 exact, K2 no passes, K3 our calls + contest level).
+  Rebuild with tools/biq_profile_build.py after bidder edits that change
+  what calls mean (test_partner_model.py warns on a fingerprint mismatch).
+* native_bidder._learned_game_net (in decide_bid, after the sanity wrap):
+  when the rules pass below game, bid 4M with a fit if my TP + partner's
+  mean HCP >= 25, 3NT if HCP + mean >= 24 with their suits stopped, 5m at
+  29. BIQ_GAME_NET=0 disables, BIQ_GNET_MAJOR/NT/MINOR tune.
+* Rule fixes: 1NT-3NT on 9 HCP (was a 2NT invite); opener after a transfer
+  and 3NT bids 4M with three; transfer then a new suit is forcing (opener
+  passed). W5-* cases in test_qplus_match_fixes.py.
+
+Measured vs the committed bidder (rules only):
+| check | result |
+|---|---|
+| 4000 held-out WBridge5 deals, |IMP from par| | 4.795 -> 4.654, +0.141/deal (SE 0.020) |
+| teams A/B seed 9105, 805 bds (DD / robust) | +0.267 / +0.207 per board |
+| teams A/B seed 81, 805 bds (DD / robust), dev table | +0.402 / +0.180 per board |
+| WBridge5 agreement, 3000 held-out deals | 73.3% -> 73.5% |
+(Shipped 300k-deal table; the seed-81 run used the 150k development table.)
+test_bid_sim's "simulation acted" check can fail under heavy machine load
+(the time cap cuts samples); it passes on an idle machine.
+Threshold choice: lower thresholds (major 24-25, 3NT 23) scored closer to
+par on the all-NV WBridge5 deals but worse on the robust teams judge.
+Tried and NOT adopted (measured ~0 or worse): partner's learned 25th
+percentile as the slam-try floor (one phantom 6S, BIQ_SLAM_LEARNED=1 to
+retry), penalty doubles of their 4-level bids, takeout X on 11 HCP with
+shortness, queen-high NV weak twos in majors. Competitive part-score passes
+(the second-largest leak) are left to the live simulation layer for now.

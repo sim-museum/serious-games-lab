@@ -40,6 +40,7 @@ bid for every common situation, anchored in textbook convention."
 Pathological auctions fall back to Pass via the sanity wrapper.
 """
 
+import os
 from dataclasses import dataclass, replace
 from typing import Dict, List, Optional, Tuple
 
@@ -2474,6 +2475,25 @@ def _partner_min_hcp(state: AuctionState) -> int:
     return 0
 
 
+# Off: +0.01 IMP/deal from par on 4000 WBridge5 deals (4 deals changed) but
+# one phantom 6S (-13) in the 805-board teams check, and slam gates must
+# not add phantoms. BIQ_SLAM_LEARNED=1 to experiment.
+SLAM_LEARNED = os.environ.get("BIQ_SLAM_LEARNED", "0") == "1"
+
+
+def _partner_floor_hcp(state: AuctionState) -> int:
+    """Partner's shown minimum: the first-call floor, raised to the 25th
+    percentile of partner's LEARNED range (partner_model) when the later
+    auction showed more. BIQ_SLAM_LEARNED=0 keeps the first-call floor."""
+    floor = _partner_min_hcp(state)
+    if SLAM_LEARNED:
+        from . import partner_model
+        pv = partner_model.partner_view(state)
+        if pv is not None:
+            floor = max(floor, pv["hcp"][1])
+    return floor
+
+
 def _maybe_slam_try(state: AuctionState, eval_: HandEval,
                     system) -> Optional[Bid]:
     """Initiate slam exploration before the role logic signs off in game — the
@@ -2488,7 +2508,7 @@ def _maybe_slam_try(state: AuctionState, eval_: HandEval,
     last_level = state.last_level or 1
     if not (3 <= last_level <= 4):
         return None
-    combined = eval_.hcp + _partner_min_hcp(state)
+    combined = eval_.hcp + _partner_floor_hcp(state)
     ctx = derive_context(state)
     tr = getattr(ctx, "trump", None)
     # Suit slam: AGREED trump fit I also hold, combined >= 31 -> RKC.
@@ -3192,6 +3212,9 @@ def decide_bid(state: AuctionState, eval_: HandEval, system,
     state = _mark_system_alerts(state, system)
     raw = _decide_bid_impl(state, eval_, system)
     out = _sanity_wrap(raw, state, eval_, system)
+    net = _learned_game_net(state, eval_, system, out)
+    if net is not None:
+        out = net
     if hand is not None:
         from .bidding_systems import BiddingSystem, get_system
         sys_obj = system if isinstance(system, BiddingSystem) else get_system(system)
@@ -3208,6 +3231,86 @@ def decide_bid(state: AuctionState, eval_: HandEval, system,
         # refuses it and the table hangs).
         out = passb(why=f"Sanity: illegal {out.explanation or 'call'} -> pass")
     return out
+
+
+# Game check from partner's LEARNED range (backend/partner_model.py): the
+# rule tree passes in many auctions where the partnership holds game values,
+# above all in competition (WBridge5 test set, 2026-10-04: biq passed where
+# WBridge5 bid game in our own suit 2,713 times in 10,000 deals, and biq's
+# rules finishing the auction scored +3.4 IMP per case better with the game
+# bid). WBridge5's help says 27 total points for a major game, 24 HCP for
+# 3NT; we add my TP to partner's MEAN HCP (partner's shape uncounted), and
+# the thresholds were picked on held-out WBridge5 deals (par distance) and a
+# biq-vs-biq teams match (robust judge): major 25, 3NT 24, minor 29. Lower
+# ones scored closer to par but worse in the teams match. Env BIQ_GAME_NET=0
+# disables; BIQ_GNET_MAJOR/NT/MINOR tune. (Penalty doubles of their
+# 4-level bids, which WBridge5 makes, were tried here: no measurable gain.)
+GNET = os.environ.get("BIQ_GAME_NET", "1") == "1"
+GNET_MAJOR = float(os.environ.get("BIQ_GNET_MAJOR", "25"))
+GNET_NT = float(os.environ.get("BIQ_GNET_NT", "24"))
+GNET_MINOR = float(os.environ.get("BIQ_GNET_MINOR", "29"))
+_PM_IDX = {Suit.SPADES: 0, Suit.HEARTS: 1, Suit.DIAMONDS: 2, Suit.CLUBS: 3}
+
+
+def _learned_game_net(state: AuctionState, e: HandEval, system,
+                      out: Bid) -> Optional[Bid]:
+    """When the rules pass below game, bid game if my points plus what
+    partner's calls have shown (learned from biq's own bidding) add up."""
+    if not GNET or not out.is_pass or state.opener_seat is None:
+        return None
+    if _partnership_has_reached_game(state):
+        return None
+    natural = [b for b in state.partner_bids
+               if not (b.is_pass or b.is_double or b.is_redouble)
+               and b.suit is not None]
+    if not natural:
+        return None
+    # Conventions and slam machinery stay with the rules.
+    for b in state.my_bids + state.partner_bids:
+        if b.suit == Suit.NOTRUMP and b.level >= 4:
+            return None
+    p_last = state.partner_bids[-1]
+    if p_last.alert or p_last.is_double or p_last.is_redouble:
+        return None
+    if state.bids and state.bids[-1][1].is_double:
+        return None                       # their double: leave it to the rules
+    from . import partner_model
+    pv = partner_model.partner_view(state)
+    if pv is None:
+        return None
+    pm = pv["hcp_mean"]
+    plen = {s: pv["len_mean"][i] for s, i in _PM_IDX.items()}
+    ours = set(state.suit_bid_by_me) | set(state.suit_bid_by_partner)
+    shape = e.doubletons + 2 * e.singletons + 3 * e.voids
+    opp_suits = set(state.suit_bid_by_opps)
+
+    def tp(m):
+        return e.hcp + (shape if e.suit_lengths.get(m, 0) >= 3 else 0)
+    why = f"partner's calls show ~{pm:.0f} HCP"
+    for m in (Suit.SPADES, Suit.HEARTS):
+        fit = e.suit_lengths.get(m, 0) + plen[m]
+        if m in ours and m not in opp_suits and fit >= 7.8 \
+                and tp(m) + pm >= GNET_MAJOR:
+            cand = bid(4, m, why=f"4{m.to_char()}: game values ({tp(m)} TP, "
+                                 f"{why}) and a {fit:.0f}-card fit")
+            if _is_legal_bid(cand, state):
+                return cand
+    if e.hcp + pm >= GNET_NT and all(_has_stopper(e, s) for s in opp_suits) \
+            and not any(e.suit_lengths.get(m, 0) + plen[m] >= 7.8
+                        and m in ours for m in (Suit.SPADES, Suit.HEARTS)):
+        cand = bid(3, Suit.NOTRUMP, why=f"3NT: game values ({e.hcp} HCP, "
+                                        f"{why})")
+        if _is_legal_bid(cand, state):
+            return cand
+    for m in (Suit.DIAMONDS, Suit.CLUBS):
+        fit = e.suit_lengths.get(m, 0) + plen[m]
+        if m in ours and m not in opp_suits and fit >= 8.8 \
+                and tp(m) + pm >= GNET_MINOR:
+            cand = bid(5, m, why=f"5{m.to_char()}: game values ({tp(m)} TP, "
+                                 f"{why}) and a {fit:.0f}-card fit")
+            if _is_legal_bid(cand, state):
+                return cand
+    return None
 
 
 def _convention_followups(state: AuctionState, e: HandEval, system) -> Optional[Bid]:
@@ -4490,6 +4593,12 @@ def _respond_to_1nt(e: HandEval, system) -> Bid:
                 and not has_5_card_suit):
             return passb(why=f"Pass {hcp} HCP flat vs "
                              f"{system.one_nt_max_hcp}-NT (no source)")
+        # Top of the invitational range: bid the game (WBridge5's "24 HCP
+        # for 3NT"). On its test set 1NT-3NT with 9 HCP and no major beat
+        # biq's 2NT invite by +64 IMP over 33 deals (biq finishing both).
+        if hcp == t["invite_hi"]:
+            return bid(3, Suit.NOTRUMP,
+                       why=f"3NT: {hcp} HCP, top of the invitational range")
         return bid(2, Suit.NOTRUMP,
                    why=f"Invitational {t['invite_lo']}-{t['invite_hi']} HCP")
     if t["game_lo"] <= hcp < t["quant_lo"]:
@@ -6362,6 +6471,21 @@ def _opener_rebid(state, e: HandEval, system: str) -> Bid:
                 if mx or (e.hcp >= nt_max - 2 and tr >= 3):
                     return bid(4, M, why=f"Accept 6-card invite ({e.hcp} HCP)")
                 return passb(why=f"Decline invite ({e.hcp} HCP)")
+            # Transfer then 3NT = choice of games with five; transfer then a
+            # new suit = game forcing. Opener passed both (WBridge5 test set:
+            # 1NT-2D-2H-3NT-4H with three hearts +73 IMP over 23 deals;
+            # 1NT-2D-2H-3C passed with 17 HCP and three hearts).
+            if p_last.level == 3 and p_last.suit == Suit.NOTRUMP:
+                if tr >= 3:
+                    return bid(4, M, why=f"Choice of games: {tr} {M.to_char()}")
+                return passb(why="Choice of games: 3NT")
+            if (p_last.level == 3 and p_last.suit is not None
+                    and p_last.suit not in (M, Suit.NOTRUMP)):
+                if tr >= 3:
+                    return bid(4, M, why=f"Transfer then a new suit (forcing): "
+                                         f"{tr} {M.to_char()}")
+                return bid(3, Suit.NOTRUMP,
+                           why="Transfer then a new suit (forcing): 3NT")
 
     # Weak 2♥/2♠ opener — partner's 2NT inquiry. Use Ogust matrix if
     # the spec flags it, otherwise feature-showing.

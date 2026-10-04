@@ -351,6 +351,16 @@ BIDDING_SYSTEMS = [
     ("W-RKCA", "asker reads 5H over interference: 6S off one key",
      "SAYC", "N", "None", "1s 2h 3s p 4n p 5h p", "N", "AKQT9.K4.KQ5.K72",
      "6S", {"6S"}),
+    # WBridge5 test set (2026-10-04): calls where WBridge5's choice beat
+    # biq's with biq's rules finishing both auctions.
+    ("W5-NT9", "1NT-?: 9 HCP, no major -> 3NT, not a 2NT invite",
+     "SAYC", "N", "None", "1n p", "S", "K83.T97.JT84.AJ7", "2N", {"3N"}),
+    ("W5-XF3N", "1NT-2D-2H-3NT: opener with three hearts bids 4H",
+     "SAYC", "N", "None", "1n p 2d p 2h p 3n p", "N", "AQ5.K93.KJ85.Q74",
+     "P", {"4H"}),
+    ("W5-XF3C", "1NT-2D-2H-3C is forcing: opener never passes",
+     "SAYC", "N", "None", "p p p 1n p 2d p 2h p 3c p", "W",
+     "AT5.QT7.A865.AK8", "P", {"4H"}),
     ("M-NAMY", "NAMYATS 4C: partner completes to 4H",
      "Precision90M", "E", "None", "p 4c p", "N", "QJ62.A.QT4.AKJT7", "P", {"4H"}),
     ("M-2DX", "Precision 2D three-suiter doubled: never raise diamonds",
