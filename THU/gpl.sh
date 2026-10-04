@@ -443,11 +443,21 @@ echo "If the display isn't right, try different rasterizer choices (D3D, OpenGL)
 echo ""
 # Mark game start so afterGameReport only collects files from gameplay, not install
 [[ -n "${SGL_GAME_STARTED_MARKER:-}" ]] && touch "$SGL_GAME_STARTED_MARKER"
+# Thrustmaster TX: its pedals rest at the top of their axes, GPL wants them resting at the bottom, and
+# the brake only travels ~1/3 of its axis. Flip the pedals (and stretch the brake) while GEM+/GPL run,
+# and put them back afterwards (no-op without a TX). Wine also lists the wheel twice (event + js) and
+# GPL opens both and mixes their axis numbers: hide the js copy (the event one carries force feedback).
+wine reg add 'HKCU\Software\Wine\DirectInput\Joysticks' /v 'Thrustmaster Thrustmaster TX Racing Wheel (js)' /t REG_SZ /d disabled /f &>/dev/null
+python3 "$WINEPREFIX/../gplTxWheel.py" set 2>/dev/null
+# Force feedback: the TkG Wine 5.7 dinput reopens the wheel on every interrupted poll(), which erases
+# GPL's force effects seconds into a session. Patch that branch out (checksum-gated, once; see script).
+[[ -n "${WINE:-}" ]] && python3 "$WINEPREFIX/../patchWineDinputFFB.py" "$(dirname "$WINE")/.."
 wine "$WINEPREFIX/drive_c/Program Files/GPLSecrets/GEM+/GEMP2.exe" 2>/dev/null 1>/dev/null
+python3 "$WINEPREFIX/../gplTxWheel.py" restore 2>/dev/null
 
 # Print optional scripts information
 clear
-printf "Grand Prix Legends Optional Scripts:\n\nReal-time telemetry for 55, 66, 67 and 67x mods:\n$PWD/twoMonitorTelemetry.sh\n\nReduce number of laps in a race:\n$PWD/setRaceLaps.py\n\nReduce speed of AI cars:\n$PWD/slowDownGplAiCars.py\n\nUbuntu 24.04 configuration recommendations:\nIf the display isn't right, try different rasterizer choices (D3D, OpenGL) on the initial GEM+ screen\nFor smoother animation, select 60 fps - see\n$PWD/match_AI_to_frame_rate\n\n"
+printf "Grand Prix Legends Optional Scripts:\n\nReal-time telemetry for 55, 66, 67 and 67x mods:\n$PWD/twoMonitorTelemetry.sh\n\nReduce number of laps in a race:\n$PWD/setRaceLaps.py\n\nReduce speed of AI cars:\n$PWD/slowDownGplAiCars.py\n\nThrustmaster TX wheel + 3-lap Watkins Glen race (67x mod, run once):\n$PWD/gplTxSetup.py\n\nUbuntu 24.04 configuration recommendations:\nIf the display isn't right, try different rasterizer choices (D3D, OpenGL) on the initial GEM+ screen\nFor smoother animation, select 60 fps - see\n$PWD/match_AI_to_frame_rate\n\n"
 
 # Exit
 exit 0
