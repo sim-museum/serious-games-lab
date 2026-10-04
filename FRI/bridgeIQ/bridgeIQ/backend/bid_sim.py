@@ -514,6 +514,32 @@ def _legal(nb, b: Bid, state) -> bool:
         return False
 
 
+def _freely_bid_game(state) -> bool:
+    """The opponents' contract is a game (or slam) they bid without being
+    pushed: our side never bid above the 2-level. Textbook: don't double a
+    freely bid game without a sure trump trick stack. The simulation's
+    doubles here lost live (FRESH64O RANDOM-029: X of 1H-1S-2S-4S, made,
+    -13/-14 in runs 26 and 27; RANDOM-032: 1S-(2C)-3S-4S doubled, made, -8);
+    double-dummy defence on sampled layouts flatters the doubler."""
+    ours = (state.seat, state.seat.partner())
+    last_bid = None
+    our_max = 0
+    for s, b in state.bids:
+        if b.is_pass or b.is_double or b.is_redouble or b.suit is None:
+            continue
+        last_bid = (s, b)
+        if s in ours:
+            our_max = max(our_max, b.level)
+    if last_bid is None or last_bid[0] in ours:
+        return False
+    b = last_bid[1]
+    game = (b.level >= 6
+            or (b.suit == Suit.NOTRUMP and b.level >= 3)
+            or (b.suit in (Suit.HEARTS, Suit.SPADES) and b.level >= 4)
+            or (b.suit in (Suit.CLUBS, Suit.DIAMONDS) and b.level >= 5))
+    return game and our_max <= 2
+
+
 def candidates(state, hand: Hand, system, rule_bid: Bid) -> List[Bid]:
     """The rule's call plus natural alternatives the hand can justify.
 
@@ -580,7 +606,8 @@ def candidates(state, hand: Hand, system, rule_bid: Bid) -> List[Bid]:
                        or rule_bid.is_redouble)
     if (last is not None and last[0] not in (state.seat, state.seat.partner())
             and not rule_is_bid
-            and not last[1].is_double and not last[1].is_redouble):
+            and not last[1].is_double and not last[1].is_redouble
+            and not _freely_bid_game(state)):
         add(nb.double(why="Simulation candidate: double"))
     opp_suits = set(state.suit_bid_by_opps)
     try:

@@ -357,3 +357,223 @@ All live paired evidence so far for the new bidder: +55 (deck G,
 in-sample), -24 and -14 (deck M, held-out) -> about +0.09/deal over 192
 boards: no detectable live gain yet from the bidding work. The card-play
 work shows in the absolute scores (SAYC -0.69 with the new engine).
+
+## Live A/B pairs A and B (runs 24-27, 2026-10-02/03), analysed 2026-10-03
+
+Plan: ~/Documents/261002/biq_vs_qplus_AB_matches.md, matches 1-4. Runs 25
+and 27 were open room only, merged with 24 / 26's closed room (closed rooms
+checked identical on all 64 boards). Client logs: run 24 =
+tools/runs/ab/261003_013956_*, 25 = 261003_062729_*, 26 = 261003_110431_*,
+27 = tools/runs/biq_[NS].log.
+
+| Run | Deck | Version | IMPs | per deal |
+|---|---|---|---|---|
+| 24 | FRESH64N | b4d9ccd704 (old bidder, old play) | -120 | -1.88 |
+| 25 | FRESH64N | 07256329 (old bidder, new play) | -149 | -2.33 |
+| 26 | FRESH64O | 07256329 (old bidder eb54410fe8) | -246 | -3.84 |
+| 27 | FRESH64O | 893a540b (bidder ad19db8873) | -191 | -2.98 |
+
+**Pair A, card play new - old: -29 IMP (-0.45/deal), but not from biq.**
+Auctions identical on all 64 boards. biq's DD tricks given away: 55 -> 53
+(declarer, same contract as closed room: 1.00 -> 0.53/deal on 15 deals;
+defender 0.64 -> 0.55). Q-Plus E/W's own DD errors in the open room fell
+43 -> 32: on RANDOM-056/034/059/052 (-21 IMP) biq lost nothing extra and
+Q-Plus simply stopped giving a trick. Third-hand defensive follows lost
+12 tricks vs 6, checked one by one: single-dummy judgement (T from KJT
+when partner underled an ace, 9 from AT9 with Q in dummy), not the
+safe-signal change. Lesson: score card-play A/Bs by biq's DD tricks lost,
+not IMPs; Q-Plus's play noise swamps a 64-board IMP comparison.
+
+**Pair B, bidding latest - old: +55 IMP (+0.86/deal, SE 0.49).** Bidding
++38 on 10 boards, same-engine play +17 on 23 (noise; biq DD lost 55 -> 59).
+Most of the +38 is the hybrid simulation, not new rules: the rule bidder
+inside the rollouts changed, so the overrides changed. Three boards where
+run 26 overrode and run 27 kept the rule call: 019 (P over takeout X,
++14 for the rule), 038 (3C over P, +15), 048 (P over 4C, +8). Real rule
+wins: 018 1S overcall instead of X left in for penalty (+6), 013 (+6).
+Losses: 046 invite 2NT -> 3NT -2 (-5, mostly play), 020 (-3).
+
+**Hybrid simulation overrides.** Same-seed sim is deterministic (runs 24
+and 25 made the same 20 overrides). Overrides that cost big live: 029 S
+doubles 4S (+5.8 claimed; made, -13/-14 in both 26 and 27), 032 S doubles
+4S (made), 055 N passes over the rules' takeout X of 1H (-14, ends in
+2Hxx made). Offline re-score of all 80 overrides on the real deals with
+biq rules finishing the auction: +134 IMP DD; but on 019/038/048 it said
++3/+3/-3 where live said -14/-15/-8. That check models Q-Plus as biq, as
+the sim does, so it cannot settle it. Last clean paired measurement of
+hybrid vs rules was FRESH64H (2026-09-28, +1.20/deal), before the alert
+fix and two rounds of rule changes: re-measure (hybrid vs --rules-only,
+same fresh deck, current code). Penalty doubles of freely bid games
+(029, 032) look like the first thing to restrict.
+
+**Wacky / weak audit (tools/runs/mine/wacky_r24_27.txt).** Wacky calls
+0.8/100 deals (one: 027 3NT over partner's weak 2H with 15 HCP, false
+positive "19-21 shown"; Q-Plus 2NT ask -> 4H), wacky cards 1.6/100, weak
+calls 5.9/100 (-154 IMP). Still made by the current rules (checked with
+decide_bid, no rule fires -> Pass unless noted):
+- N021: 11 HCP, four hearts passes partner's 1NT overcall (Q-Plus 2C, 4H
+  makes) -10/-11.
+- O034: 16 HCP 4-2-5-2 with K962 in their spades passes over 1S (Q-Plus
+  1NT) -11.
+- O002: partner overcalls 3S over 3D, 4D, N with four spades and 12 HCP:
+  the rule picks "3NT advance", illegal after 4D, sanity -> Pass. Should
+  be 4S (Q-Plus 5S making) -13. A real bug.
+- O028: 1NT-2C-2D-3S(Smolen)-3NT, responder with 17 HCP passes (6NT
+  cold, Q-Plus bid it) -13.
+- N026: 12 HCP 4-2-3-4 passes over 1H (Q-Plus X) -6. Borderline after
+  the light-double pruning, but this is a normal opening-strength double.
+- O055 S after 1H-2H-P-P-X-XX with 5 diamonds and AT of hearts passes
+  the redouble (2Hxx made); should run to 3D.
+- O029 S: 15 HCP QJ985 passes over 1H (Q-Plus 2D). Judgement.
+Already fixed in the current rules: N050 opener answers the lebensohl 3D
+cue (3S; the old bidder passed it, -14), O055 N X, O014 S X, N003 S 1S.
+
+Absolute: the gap to Q-Plus is contract choice. Same-contract boards
+cost -4 to -53 per run, different-contract boards -103 to -193.
+
+Running live paired totals for the new bidder, held-out decks only:
+M SAYC -24, M Precision -14, O SAYC +55 -> +17 over 192 boards
+(+0.09/deal, SE ~0.28), and O's +55 rests mostly on sim differences.
+Live card-play new vs old, biq DD tricks lost: deck G declarer 0.76 ->
+0.65 and defender 0.91 -> 0.81 per deal played in that role; deck N 55 ->
+53 tricks over 64 deals. Matches 5/6 (pair C, Precision, FRESH64O) still to
+play.
+
+### Fixed after the runs 24-27 analysis (2026-10-03, uncommitted, bidder 14a5b10d27)
+
+- **1NT overcall "systems on"** (`native_bidder._nt_overcall_systems_on`,
+  hooked before the overcall routing): after OUR direct 1NT overcall the
+  advancer uses the 1NT-opening responses (Stayman, Jacoby / Texas
+  transfers, 2NT invite, 3NT) with 15-18 thresholds; the overcaller
+  answers Stayman (not opener's major), completes transfers (super-accept
+  with four and 17+), accepts 2NT with 17+, places the contract after the
+  second round; over a major opening Stayman asks for the other major
+  only and no transfer goes into their suit. If they bid after our ask,
+  we keep the conventional reading (complete a transfer with 3+, show the
+  other major at the 3-level, else pass). N021.
+- 1NT overcall also with a five-card minor and no singleton (5-4-2-2 /
+  5-3-3-2, no five-card major). O034.
+- Advancing partner's 3-level major overcall: 3+ support
+  and 9+ HCP raise to game; the 3NT advance only when 3NT is legal. O002.
+- After 1NT-2C-...-3NT (Smolen with no fit, or a 2NT invite accepted):
+  responder counts points (+1 per five-card suit with 7+ honour points):
+  33+ with opener's minimum bids 6NT, 31-32 a quantitative 4NT. O028.
+- `bid_sim`: no penalty-double candidate of a game the opponents bid
+  freely (`_freely_bid_game`: their game/slam, our side never above the
+  2-level). The rules' own double is untouched. O029 / O032.
+
+Regression: N-S021 (a-e), O-S034, O-S002, O-S028 in
+test_qplus_match_fixes.py (135 checks pass); test_bid_sim
+`test_no_double_of_freely_bid_game`. test_competitive_fit RANDOM-025 still
+the known pre-existing failure.
+Offline A/B vs the committed bidder (rules only, wire view): SAYC seed 9105
++13, seed 9106 +12, Precision 9105 +13 IMP / 800 boards; 2/1, Acol, French
+(400 boards, seed 9107) -2 / -3 / -2; 5-13 boards differ per run, phantom
+slams and "doubled into a make" identical. Two A/B boards found the
+interference gaps (9105 bd 208, 543) and one the 3S-over-1S Stayman bug
+(9106 bd 448), all fixed before these numbers.
+The sim change is not measured offline (the hybrid A/B is slow); it only
+removes a candidate, in the spot where it lost live.
+
+## Outside data and robots (2026-10-03)
+
+Nothing below is in the repo except the three new tools; the data lives in
+~/bridge_data (no license stated for it, or terms that forbid republishing).
+
+**OpenSpiel WBridge5 dataset** (~/bridge_data/openspiel_wbridge5, 1,178,441
+deals: WBridge5 5.12 at all four seats, SAYC preset, strongest level, North
+deals, nobody vulnerable; its WBRIDGE5.INI is alongside). Decoder and checks:
+`tools/openspiel_wb5.py check|dd|show`. Card = rank*4 + suit (C D H S),
+dealt round-robin from North; call = action - 52.
+- All 1,178,441 deals: no invalid deal, auction or play; no duplicate
+  deal within or across train/valid/test; 6,088 passed out. Same flag mix
+  as the test split (3.1%). Test split (10,000): 39 passed out. SAYC red flags on 3.0% of openings, all style: 1NT with
+  5-4-2-2 (115), 1NT with 18 (35) or 14 (7), strong 2C on 16-17 HCP with
+  playing tricks (53), five-card weak twos in 1st/2nd seat (44). No
+  four-card major openings.
+- `dd`, 2,000 test deals vs par: WBridge5's own table is 3.74 IMP/deal
+  from par, biq's rules at all four seats 4.56 (WBridge5 closer on 767
+  deals, biq on 508). Its declarers take 0.13 tricks/deal more than double
+  dummy (it defends both sides). **Slams: 253 deals have a DD-makeable
+  small slam; WBridge5 bid 146 (99 make, 47 DD-down), biq's rules bid 14
+  (9 make).** Examples (par_test_2000.jsonl): 1585 opener with AKQJT752 of
+  hearts passes partner's 5C; 768 1H-1S-2H-3S with 18 HCP and AKQT76
+  (only invitational) passed; 1809 14 HCP negative double then passes 3C.
+  Slam bidding and strong-hand continuations are the biggest gap this
+  data has shown. Not yet checked with the hybrid simulation on.
+
+**bridge-llm-bench** (~/bridge_data/bridge-llm-bench, MIT stated in the
+README, no LICENSE file). Low quality, do not trust its WBridge5 column:
+its parser decodes OpenSpiel cards as suit*13+rank (they are rank*4+suit)
+and deals players blocks of 13, so its hands are scrambled; 56 of its 150
+positions are identifiable test-split hands under that wrong decoding. Its
+headline "WBridge5 agrees with SAYC engines only 44%" is that bug. Usable
+part: Ben and BBA (EPBot) answers to its 150 hand+auction problems; they
+agree on 129, and biq differs from both on 31
+(~/bridge_data/bridge-llm-bench/biq_vs_ben_bba.csv). The auctions were
+produced by other hands, so read those as quiz problems, not real deals.
+
+**Bridge Baron 12 help** unpacked (WinHelp, no phrase compression) to
+~/bridge_data/bb12_help/baron_help.md with hlp.py/topics.py. Teaching
+features worth copying in biq's own way: Hand Evaluation (HCP, distribution,
+bidding points, quick and playing tricks, each explained), Auction
+Interpretation (ranges, controls, convention name per hand), flowcharts
+followed with the arrow keys, "Announce When Different" (says only that
+your call differs, not what to bid), convention drills with near misses and
+reasons, deal generator by auction, player statistics by contract type,
+replay-the-deal-against-Baron IMP comparison, 650 ACBL/NABC deals scored
+against the human field (scores only, no contracts). Its Standard American
+is dated (16-18 1NT default, 13-15 overcalls), so its tables are not a
+reference for modern SAYC. Online play is DirectPlay, no Blue Chip
+protocol: it cannot be an automated opponent.
+
+**Blue Chip table manager** `tools/biq_bluechip_tm.py` (protocol 18, the
+World Computer Bridge Championship protocol). Robots connect per seat;
+biq plays the others in-process with the live engine (hybrid bidding,
+no-peek card search in a forked child). `--rooms 2` replays the deck
+rotated one seat (closed room) so a robot pair keeps its seats and the
+teams IMPs still compare like with like. `tools/bluechip_test_client.py`
+is a scripted robot; the 2-board loopback (biq N/S vs two scripted
+clients) completed both rooms including a robot declarer playing its
+partner's dummy. WBridge5's binary has the same message strings
+(`Connecting "`, `seated`, `ready for teams`, `ready for Dummy's card to
+trick`, heartbeats) and a Connection dialog (team, server, port, seat,
+Auto). Its Options offer a SAYC preset. First live WBridge5 run
+(tools/runs/bluechip/261003_wb5_smoke, 4 boards x 2 rooms, seed 261003):
+completed unattended once both WBridge5 windows were connected, about a
+minute per board, no protocol errors or illegal calls; biq 0 IMP (-5, -6,
+0, +11). Scoring checked by hand. WBridge5 sends upper-case seat names and
+double spaces ("EAST ready for  WEST's bid"); the regexes accept both.
+
+**Vugraph**: not downloaded. BBO's terms (effective 18 May 2026) need
+written consent for bulk copying; request drafted in
+~/Documents/261003/bbo_vugraph_permission_request.txt.
+
+**Bridge Baron 12 flowcharts decoded** (2026-10-03, private:
+~/bridge_data/bb12_flowcharts, 22 charts, ~1,000 boxes, FINDINGS.md has the
+format and lessons). Huffman-coded text plus a yes/no link table. Main
+lesson for biq: BB starts slam thinking at 32+ combined TOTAL points (31
+with a 7-card major; also in competition; 34+ bids slam directly when 4NT
+is out of reach); `_maybe_slam_try` counts HCP only, uncontested, at the
+3-4 level. Fits the WBridge5 finding that biq's rules bid ~10x fewer slams.
+
+**Slam trigger experiment (2026-10-03, reverted).** Tried Bridge Baron's
+rule in `_maybe_slam_try`: count total points (shape) and start RKC at 32+
+combined (31 with seven trumps), also in competition, plus a direct 6 at
+the five level with 34+. Measured with `openspiel_wb5.py dd --baseline`
+(biq at all four seats vs par) on 2,000 test and 2,000 valid deals:
+- first version: test +3 slams made, -44 IMP vs par; valid +4 phantom
+  slams, +22 IMP worse. Two bugs it exposed (pre-existing, now reachable):
+  after interference partner passes 4NT as natural (valid 68, 1653);
+  self-sufficient-suit RKC continues in the wrong strain (valid 103 6C, 603
+  6S instead of hearts).
+- fixed version (uncontested, TP 32 OR HCP 30, self-sufficient on HCP): 2
+  boards differ in 4,000 (+11, -11). Noise, so reverted; code in
+  ~/bridge_data/experiments/nb_slam_tp_final.py.
+Diagnosis (slamdiag2.py): of 239 DD-makeable slams biq missed on the test
+split, 211 never reach 32+ as "my points + partner's SHOWN minimum" at any
+turn: `_partner_min_hcp` reads only partner's first call (6 for any
+one-level response), so later jumps, reverses and accepted invitations never
+raise it. Many of those slams are also DD-only (24-28 HCP). The lever is
+tracking partner's range through the whole auction (Bridge Baron's
+"Auction Interpretation"), then the trigger; plus fixing the two bugs above.

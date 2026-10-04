@@ -3431,6 +3431,10 @@ def _decide_bid_impl(state: AuctionState, eval_: HandEval, system) -> Bid:
 
     # Opener is an opponent → competitive bidding
     if not is_my_partnership_opener:
+        # Our direct 1NT overcall, opponents silent since: "systems on".
+        so = _nt_overcall_systems_on(state, eval_, system)
+        if so is not None:
+            return so
         # If I've already overcalled, this is my own rebid.
         # Without this guard, the dispatcher routes me back through
         # _overcall (when partner hasn't acted yet) and I cheerfully
@@ -3449,6 +3453,265 @@ def _decide_bid_impl(state: AuctionState, eval_: HandEval, system) -> Bid:
         return _overcall(state, eval_, system)
 
     return passb(why="(unhandled state)")
+
+
+class _NTOvercallRange:
+    """The system seen through a 15-18 1NT overcall: responses are the
+    1NT-opening ones, with thresholds for the overcall's range."""
+    one_nt_min_hcp = 15
+    one_nt_max_hcp = 18
+
+    def __init__(self, system):
+        self._system = system
+
+    def __getattr__(self, name):
+        return getattr(self._system, name)
+
+
+def _nt_overcall_systems_on(state, e: HandEval, system) -> Optional[Bid]:
+    """Stayman and Jacoby transfers after OUR direct 1NT overcall (15-18),
+    as after a 1NT opening ("systems on", SAYC card), while the opponents
+    stay silent. Both seats: the advancer asks / transfers, the overcaller
+    answers and places the contract. None = not this situation.
+
+    Without it the advancer always passed (FRESH64N RANDOM-021: 11 HCP and
+    four hearts passed 1D-1NT; Q-Plus bid 2C-2H-4H, -11 IMP), and the
+    overcaller read 2C/2D/2H as natural suits and 2NT as a raise."""
+    bids = state.bids
+    nonpass = [(i, s, b) for i, (s, b) in enumerate(bids) if not b.is_pass]
+    if len(nonpass) < 2:
+        return None
+    i_op, op_seat, op = nonpass[0]
+    i_nt, ovc, nt = nonpass[1]
+    us = (state.seat, state.seat.partner())
+    if (op_seat in us or ovc not in us or i_nt != i_op + 1
+            or op.is_double or op.level != 1 or op.suit in (None, Suit.NOTRUMP)
+            or nt.is_double or nt.is_redouble
+            or nt.level != 1 or nt.suit != Suit.NOTRUMP):
+        return None
+    ours = []
+    contested = False                    # they bid / doubled after our ask
+    for s, b in bids[i_nt + 1:]:
+        if s not in us:
+            if not b.is_pass:
+                if not ours:
+                    return None          # they competed over 1NT: not ours
+                contested = True
+            continue
+        if b.is_double or b.is_redouble:
+            return None
+        if not b.is_pass:
+            ours.append(b)
+            last_ours_seat = s
+    hcp = e.hcp
+    k = len(ours)
+    major_of = {Suit.DIAMONDS: Suit.HEARTS, Suit.HEARTS: Suit.SPADES}
+
+    def is_(b, lvl, su):
+        return b.level == lvl and b.suit == su
+
+    def legal(b):
+        return b if _is_legal_bid(b, state) else None
+
+    def transfer_target(b):
+        if (b.level == 2 and b.suit in major_of
+                and major_of[b.suit] != op.suit):
+            return major_of[b.suit]
+        return None
+
+    if contested:
+        # They came in after our Stayman / transfer. Keep reading our calls
+        # conventionally (bidder_teams_ab seed 9105 bd 208: 1C-1NT-P-2H(xfer)
+        # -3C, the overcaller "raised hearts" to 3H, 3H -2 instead of 3S).
+        a1 = ours[0]
+        tgt = transfer_target(a1)
+        if state.seat == ovc and k == 1:
+            if tgt is not None:
+                if e.suit_lengths[tgt] >= 3:
+                    lvl = _cheapest_level_over_auction(state, tgt)
+                    if lvl <= 3:
+                        return bid(lvl, tgt, why=f"Complete the transfer over "
+                                                 f"interference: "
+                                                 f"{e.suit_lengths[tgt]} "
+                                                 f"{tgt.to_char()}")
+                return passb(why="Transfer interrupted, no fit: pass")
+            if is_(a1, 2, Suit.CLUBS):
+                for m in (Suit.HEARTS, Suit.SPADES):
+                    if (e.suit_lengths[m] >= 4
+                            and m not in state.suit_bid_by_opps
+                            and _cheapest_level_over_auction(state, m) <= 3):
+                        return bid(_cheapest_level_over_auction(state, m), m,
+                                   why=f"Stayman interrupted: four "
+                                       f"{m.to_char()}")
+                return passb(why="Stayman interrupted, no major: pass")
+            return None
+        if state.seat != ovc and k == 1 and tgt is not None:
+            n = e.suit_lengths[tgt]
+            lvl = _cheapest_level_over_auction(state, tgt)
+            if n >= 6 and hcp >= 10 and lvl <= 4:
+                return bid(4, tgt, why=f"Six {tgt.to_char()}, game values")
+            if n >= 6 and lvl <= 3:
+                return bid(lvl, tgt, why=f"Six {tgt.to_char()}: compete")
+            return passb(why="Transfer interrupted, partner passed")
+        if state.seat != ovc and k == 2 and tgt is not None and ours[1].suit == tgt:
+            if hcp >= 10 or (hcp >= 8 and e.suit_lengths[tgt] >= 6):
+                return legal(bid(4, tgt, why="Game after the completed "
+                                             "transfer over interference"))
+            return passb(why="Transfer completed over interference")
+        if last_ours_seat == state.seat:
+            # I spoke last for our side and partner has passed since: our
+            # conventional sequence is over, and a "natural" reading of
+            # partner's transfer would raise their suit (seed 9105 bd 543:
+            # 1NT-2H-2S-(X)-P-(3H), the overcaller bid 4H).
+            return passb(why="Partner passed after our systems-on sequence")
+        return None
+
+    if state.seat != ovc:                         # ---- advancer
+        if k == 0:
+            r = _respond_to_1nt(e, _NTOvercallRange(system))
+            if r.is_pass or r.suit is None:
+                return r
+            target = None
+            if r.level == 2 and r.suit in major_of:
+                target = major_of[r.suit]            # Jacoby transfer
+            elif r.level == 4 and r.alert and r.suit in major_of:
+                target = major_of[r.suit]            # Texas
+            elif r.level == 2 and r.suit == Suit.SPADES and r.alert:
+                return None                          # minor transfer: not here
+            if target == op.suit:
+                return None                          # transfer into their suit
+            if (is_(r, 2, Suit.CLUBS) and op.suit in (Suit.HEARTS, Suit.SPADES)
+                    and not any(e.suit_lengths[m] >= 4
+                                for m in (Suit.HEARTS, Suit.SPADES)
+                                if m != op.suit)):
+                # My only four-card major is THEIR suit: no Stayman.
+                if hcp >= 10:
+                    return bid(3, Suit.NOTRUMP, why=f"3NT over partner's 1NT "
+                                                    f"overcall ({hcp} HCP)")
+                if hcp >= 8:
+                    return bid(2, Suit.NOTRUMP, why=f"Invite over partner's "
+                                                    f"1NT overcall ({hcp} HCP)")
+                return passb(why="Pass partner's 1NT overcall")
+            return legal(r)
+        a1, o1 = ours[0], (ours[1] if k >= 2 else None)
+        if k == 2:
+            if is_(a1, 2, Suit.CLUBS) and o1.level == 2 and o1.suit in (
+                    Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES):
+                if hcp <= 7:
+                    return passb(why="Stayman after partner's 1NT overcall: "
+                                     "weak, pass")
+                return legal(_stayman_responder_rebid(state, e, o1, system))
+            if (a1.level == 2 and a1.suit in major_of
+                    and major_of[a1.suit] != op.suit and o1.suit == major_of[a1.suit]):
+                m = o1.suit
+                n = e.suit_lengths[m]
+                if o1.level >= 3:
+                    return legal(bid(4, m, why="Game after partner's "
+                                                "super-accept")) if hcp >= 6 \
+                        else passb(why="Super-accept, nothing extra")
+                if hcp <= 7:
+                    return passb(why=f"Transfer completed: sign off in 2{m.to_char()}")
+                if hcp <= 9:
+                    if n >= 6:
+                        return bid(3, m, why=f"Invite: six {m.to_char()} ({hcp} HCP)")
+                    return bid(2, Suit.NOTRUMP,
+                               why=f"Invite: five {m.to_char()} ({hcp} HCP)")
+                if n >= 6:
+                    return bid(4, m, why=f"Game: six {m.to_char()} ({hcp} HCP)")
+                return bid(3, Suit.NOTRUMP,
+                           why=f"Choice of games: five {m.to_char()} ({hcp} HCP)")
+            if a1.level == 4 and o1.level == 4:
+                return passb(why="Texas completed")
+            return None
+        if k == 4:
+            o2 = ours[3]
+            if is_(a1, 2, Suit.CLUBS) and is_(o2, 3, Suit.NOTRUMP):
+                return legal(_stayman_responder_rebid(state, e, o2, system))
+            return passb(why="Partner placed the contract after our "
+                             "systems-on sequence")
+        return None
+
+    # ---- overcaller
+    my_sp, my_hr = e.suit_lengths[Suit.SPADES], e.suit_lengths[Suit.HEARTS]
+    if k == 1:
+        a1 = ours[0]
+        if is_(a1, 2, Suit.CLUBS):
+            # Over a major opening Stayman asks for the OTHER major only.
+            if my_hr >= 4 and op.suit != Suit.HEARTS:
+                return bid(2, Suit.HEARTS, why="Stayman answer: four hearts")
+            if my_sp >= 4 and op.suit != Suit.SPADES:
+                return bid(2, Suit.SPADES, why="Stayman answer: four spades")
+            return bid(2, Suit.DIAMONDS, alert=True,
+                       why="Stayman answer: no four-card major")
+        if a1.level == 2 and a1.suit in major_of and major_of[a1.suit] != op.suit:
+            m = major_of[a1.suit]
+            if e.suit_lengths[m] >= 4 and hcp >= 17:
+                return bid(3, m, why=f"Super-accept: four {m.to_char()}, {hcp} HCP")
+            return bid(2, m, why=f"Complete the transfer to {m.to_char()}")
+        if (a1.level == 4 and a1.suit in major_of and a1.alert
+                and major_of[a1.suit] != op.suit):
+            return legal(bid(4, major_of[a1.suit], why="Complete the Texas transfer"))
+        if is_(a1, 2, Suit.NOTRUMP):
+            if hcp >= 17:
+                return bid(3, Suit.NOTRUMP, why=f"Accept the invitation ({hcp} HCP)")
+            return passb(why=f"Decline the invitation ({hcp} HCP)")
+        if a1.level >= 3 and (a1.suit == Suit.NOTRUMP and a1.level == 3
+                              or a1.level >= 4 and not a1.alert
+                              and a1.suit != Suit.NOTRUMP):
+            return passb(why="Partner placed the contract")
+        return None
+    if k == 3:
+        a1, o1, a2 = ours
+        if is_(a1, 2, Suit.CLUBS):
+            if is_(a2, 2, Suit.NOTRUMP):
+                if is_(o1, 2, Suit.HEARTS) and my_sp >= 4:
+                    return legal(bid(4 if hcp >= 17 else 3, Suit.SPADES,
+                                     why="Stayman: partner's four spades fit mine"))
+                if hcp >= 17:
+                    return bid(3, Suit.NOTRUMP, why=f"Accept the invitation ({hcp} HCP)")
+                return passb(why=f"Decline the invitation ({hcp} HCP)")
+            if is_(a2, 3, Suit.NOTRUMP):
+                if is_(o1, 2, Suit.HEARTS) and my_sp >= 4:
+                    return bid(4, Suit.SPADES, why="Stayman: partner's four spades fit mine")
+                return passb(why="Partner chose 3NT")
+            if a2.level == 3 and o1.suit in (Suit.HEARTS, Suit.SPADES) and a2.suit == o1.suit:
+                if hcp >= 17:
+                    return bid(4, o1.suit, why=f"Accept the raise ({hcp} HCP)")
+                return passb(why=f"Decline the raise ({hcp} HCP)")
+            if (is_(o1, 2, Suit.DIAMONDS) and a2.level == 3
+                    and a2.suit in (Suit.HEARTS, Suit.SPADES)):
+                five = Suit.SPADES if a2.suit == Suit.HEARTS else Suit.HEARTS
+                if e.suit_lengths[five] >= 3:
+                    return bid(4, five, why=f"Smolen: three {five.to_char()}")
+                return bid(3, Suit.NOTRUMP, why="Smolen: no fit")
+            if a2.level >= 4 and not (a2.suit == Suit.NOTRUMP and a2.level == 4):
+                return passb(why="Partner placed the contract")
+            return None
+        if (a1.level == 2 and a1.suit in major_of
+                and major_of[a1.suit] != op.suit and o1.suit == major_of[a1.suit]):
+            m = o1.suit
+            fit = e.suit_lengths[m] >= 3
+            if is_(a2, 2, Suit.NOTRUMP):
+                if fit:
+                    return bid(4 if hcp >= 17 else 3, m,
+                               why=f"Transfer then 2NT: {e.suit_lengths[m]} {m.to_char()}")
+                if hcp >= 17:
+                    return bid(3, Suit.NOTRUMP, why=f"Accept the invitation ({hcp} HCP)")
+                return passb(why=f"Decline the invitation ({hcp} HCP)")
+            if is_(a2, 3, m):
+                if hcp >= 17:
+                    return bid(4, m, why=f"Accept the invitation ({hcp} HCP)")
+                return passb(why=f"Decline the invitation ({hcp} HCP)")
+            if is_(a2, 3, Suit.NOTRUMP):
+                if fit:
+                    return bid(4, m, why=f"Choice of games: {e.suit_lengths[m]} {m.to_char()}")
+                return passb(why="Choice of games: 3NT")
+            if a2.level == 3 and a2.suit in (Suit.CLUBS, Suit.DIAMONDS):
+                return legal(bid(3, Suit.NOTRUMP, why="Transfer then a new suit: 3NT"))
+            if a2.level >= 4 and not (a2.suit == Suit.NOTRUMP and a2.level == 4):
+                return passb(why="Partner placed the contract")
+        return None
+    return None
 
 
 def _michaels_by(state: AuctionState, who: Seat):
@@ -7565,6 +7828,26 @@ def _stayman_responder_rebid(state, e, opener_rebid: Bid,
         if 8 <= hcp <= 9:
             return bid(2, Suit.NOTRUMP, why="No fit, invitational")
         return passb()
+    # Opener's 3NT after my Smolen (no fit for my five-card major) or after
+    # my 2NT invite: the contract is notrump, so slam is a matter of points.
+    # FRESH64O RANDOM-028: KJ52.AKQT9.AT9.J (17 + a strong five-card suit)
+    # passed 1NT-2C-2D-3S-3NT; 6NT was cold and Q-Plus bid it (-13 IMP).
+    if (opener_rebid.level == 3 and opener_rebid.suit == Suit.NOTRUMP
+            and not _slam_already_explored(state)):
+        nt_min = (getattr(system, "one_nt_min_hcp", 15)
+                  if system is not None else 15)
+        pts = hcp + sum(1 for s in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS,
+                                    Suit.CLUBS)
+                        if e.suit_lengths.get(s, 0) >= 5
+                        and e.suit_hcp.get(s, 0) >= 7)
+        if nt_min + pts >= 33:
+            return bid(6, Suit.NOTRUMP,
+                       why=f"6NT: {pts} points opposite {nt_min}+ NT, no fit")
+        if nt_min + pts >= 31:
+            return bid(4, Suit.NOTRUMP, alert=True,
+                       why=f"Quantitative 4NT: {pts} points opposite "
+                           f"{nt_min}+ NT, no fit")
+        return passb(why="Opener's 3NT, no slam values")
     return passb()
 
 
@@ -9129,6 +9412,18 @@ def _overcall(state, e: HandEval, system) -> Bid:
     # 1NT overcall: 15-18 balanced with a stopper in opener's suit.
     if 15 <= hcp <= 18 and e.is_balanced and _has_stopper(e, op.suit):
         return bid(1, Suit.NOTRUMP, why="1NT overcall: 15-18, stopper")
+    # A five-card MINOR and no singleton (5-3-3-2, 5-4-2-2) is still a 1NT
+    # overcall: the minor is too weak / too costly to show at the 2-level
+    # and a takeout double needs support for every unbid suit. FRESH64O
+    # RANDOM-034: K962.Q5.KQJ52.A6 passed 1S (vul 2D needs a better suit);
+    # Q-Plus overcalled 1NT, -11 IMP.
+    long_minor = max(e.suit_lengths[Suit.CLUBS], e.suit_lengths[Suit.DIAMONDS])
+    if (15 <= hcp <= 18 and _has_stopper(e, op.suit)
+            and long_minor == 5 and e.singletons == 0 and e.voids == 0
+            and max(e.suit_lengths[Suit.SPADES], e.suit_lengths[Suit.HEARTS]) <= 4
+            and not state.my_bids):
+        return bid(1, Suit.NOTRUMP,
+                   why=f"1NT overcall: {hcp} HCP, five-card minor, stopper")
 
     # 4th-seat reopening (balancing) takeout double — partner and
     # RHO have passed, the opening bid is the only call. Partner
@@ -10062,6 +10357,17 @@ def _advance_partner_overcall(state, e: HandEval, system) -> Bid:
                        why=f"Unassuming cue-bid: limit raise+ "
                            f"of {suit.to_char()} (10-12 HCP, 3+ support)")
         if fit >= 3:
+            # Partner overcalled a major at the 3-level (over a preempt):
+            # with support and 9+ HCP raise to game. The 3NT advance below
+            # was illegal once they bid 4D over 3S, and the sanity check
+            # turned it into a pass (FRESH64O RANDOM-002: four spades and
+            # 12 HCP passed 3D-3S-4D; Q-Plus bid 5S, made, -13 IMP).
+            if (p_last.level >= 3 and suit in (Suit.HEARTS, Suit.SPADES)
+                    and hcp >= 9
+                    and _cheapest_level_over_auction(state, suit) <= 4):
+                return bid(4, suit, why=f"Raise partner's {p_last.level}"
+                                        f"{suit.to_char()} overcall to game "
+                                        f"({fit} cards, {hcp} HCP)")
             if 6 <= hcp <= 10:
                 return bid(p_last.level + 1, suit, why="Simple raise of overcall")
             # Limit raise only applies to 1- and 2-level overcalls. After
@@ -10072,7 +10378,8 @@ def _advance_partner_overcall(state, e: HandEval, system) -> Bid:
                 return bid(p_last.level + 2, suit, why="Limit raise of overcall")
             if hcp >= 13 and suit in (Suit.HEARTS, Suit.SPADES):
                 return bid(4, suit, why="Game raise of major overcall")
-            if hcp >= 10 and e.is_balanced and p_last.level >= 3:
+            if (hcp >= 10 and e.is_balanced and p_last.level >= 3
+                    and _cheapest_level_over_auction(state, Suit.NOTRUMP) <= 3):
                 return bid(3, Suit.NOTRUMP,
                            why=f"3NT advance after partner's "
                                f"{p_last.level}{suit.to_char()} overcall")

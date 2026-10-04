@@ -94,6 +94,26 @@ def test_candidates_legal():
           " ".join(bid_sim._key(c) for c in cands))
 
 
+def test_no_double_of_freely_bid_game():
+    """The simulation does not offer a penalty double of a game the
+    opponents bid freely (live FRESH64O 029 / 032: doubled, made)."""
+    for seat, dlr, vul, auc, hand in (
+            ("S", "N", "All", "p 1h p 1s p 2s p 4s p p", "AJ8.KQ7.QJ985.T9"),
+            ("S", "W", "EW", "p p 1s 2c 3s p 4s", "3.AT3.KJ5.KQJ873")):
+        st = state_of(seat, dlr, vul, auc)
+        h = hand_from(hand)
+        rule = decide_bid(st, evaluate_hand(h), SAYC)
+        cands = bid_sim.candidates(st, h, SAYC, rule)
+        check(f"no X of a freely bid game: {auc}",
+              bid_sim._freely_bid_game(st)
+              and not any(c.is_double for c in cands),
+              " ".join(bid_sim._key(c) for c in cands))
+    # We competed to the 3-level: their 4S may be a save, X stays possible.
+    st = state_of("S", "S", "None", "1h 1s 3h 4s")
+    check("competitive game is not 'freely bid'",
+          not bid_sim._freely_bid_game(st))
+
+
 def test_scoring():
     s = bid_sim.duplicate_score
     ok = (s(4, Suit.SPADES, 10, True, 0) == 620
@@ -124,6 +144,7 @@ def test_lead_sim_runs():
 if __name__ == "__main__":
     for fn in (test_scoring, test_sampler_reproduces_auction,
                test_conventions_left_to_rules, test_candidates_legal,
+               test_no_double_of_freely_bid_game,
                test_deterministic_and_bounded, test_lead_sim_runs):
         fn()
     print(f"\n{len(FAILS)} failing")
