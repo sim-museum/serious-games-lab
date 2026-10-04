@@ -17,6 +17,9 @@ Lookups back off from exact to coarse, like qplus_model:
 A key needs MIN_N deals behind it to be used. BIQ_PARTNER_PROFILES=<path>
 reads another table (held-out checks, a fresh build before it ships).
 
+There is one table per bidding system (path_for); a system without one
+gets no profiles, so the callers fall back to the rules alone.
+
 The table goes stale when the rules change: rebuild it after bidder edits
 that change what partner's calls mean (the file records the bidder
 fingerprint it was built with; test_partner_model.py warns on a mismatch).
@@ -30,9 +33,20 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
-_PATH = Path(__file__).resolve().parent / "data" / "biq_partner_profiles.json.gz"
+_DATA = Path(__file__).resolve().parent / "data"
+_PATH = _DATA / "biq_partner_profiles.json.gz"          # SAYC
 MIN_N = {"K1": 20, "K2": 30, "K3": 40}
-_TABLE: Optional[dict] = None
+_TABLES: Dict[str, dict] = {}
+
+
+def path_for(system: str) -> Path:
+    """One table per bidding system: the same auction means different hands
+    in SAYC and Precision (1C is 16+ in Precision)."""
+    return _PATH if system == "SAYC" else _DATA / f"biq_partner_profiles_{system}.json.gz"
+
+
+def system_name(system) -> str:
+    return getattr(system, "name", None) or str(system or "SAYC")
 
 
 def call_key(b) -> str:
@@ -91,26 +105,30 @@ def summarize(samples: Sequence[int]) -> dict:
     return out
 
 
-def _table() -> dict:
-    global _TABLE
-    if _TABLE is None:
-        path = os.environ.get("BIQ_PARTNER_PROFILES") or _PATH
+def _table(system: str = "SAYC") -> dict:
+    t = _TABLES.get(system)
+    if t is None:
+        path = os.environ.get("BIQ_PARTNER_PROFILES") or path_for(system)
         try:
             with gzip.open(path, "rt") as fh:
-                _TABLE = json.load(fh)
+                t = json.load(fh)
         except (OSError, ValueError):
-            _TABLE = {"profiles": {}}
-    return _TABLE
+            t = {"profiles": {}}            # no table: callers fall back
+        _TABLES[system] = t
+    return t
 
 
-def set_table(table: dict) -> None:
+def set_table(table: dict, system: str = "SAYC") -> None:
     """Use `table` instead of the shipped file (tests, held-out checks)."""
-    global _TABLE
-    _TABLE = table
+    _TABLES[system] = table
 
 
-def built_with() -> str:
-    return _table().get("bidder", "")
+def reset() -> None:
+    _TABLES.clear()
+
+
+def built_with(system: str = "SAYC") -> str:
+    return _table(system).get("bidder", "")
 
 
 def bidder_fingerprint() -> str:
@@ -118,8 +136,8 @@ def bidder_fingerprint() -> str:
     return hashlib.sha1(p.read_bytes()).hexdigest()[:10]
 
 
-def lookup(ctx: Sequence[str]) -> Optional[dict]:
-    t = _table().get("profiles", {})
+def lookup(ctx: Sequence[str], system: str = "SAYC") -> Optional[dict]:
+    t = _table(system).get("profiles", {})
     for lvl, k in keys(ctx).items():
         p = t.get(f"{lvl} {k}")
         if p is not None and p["n"] >= MIN_N[lvl]:
@@ -127,11 +145,12 @@ def lookup(ctx: Sequence[str]) -> Optional[dict]:
     return None
 
 
-def partner_view(state) -> Optional[dict]:
-    """Partner's learned profile at `state` (an AuctionState), or None."""
+def partner_view(state, system="SAYC") -> Optional[dict]:
+    """Partner's learned profile at `state` (an AuctionState) under
+    `system` (name or BiddingSystem), or None."""
     try:
         calls = [call_key(b) for _s, b in state.bids]
         ctx = context(calls, state.dealer.value, state.seat.value)
     except Exception:
         return None
-    return lookup(ctx)
+    return lookup(ctx, system_name(system))

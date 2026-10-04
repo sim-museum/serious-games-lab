@@ -625,3 +625,23 @@ percentile as the slam-try floor (one phantom 6S, BIQ_SLAM_LEARNED=1 to
 retry), penalty doubles of their 4-level bids, takeout X on 11 HCP with
 shortness, queen-high NV weak twos in majors. Competitive part-score passes
 (the second-largest leak) are left to the live simulation layer for now.
+
+### Q-Plus through the table manager; per-system partner tables (2026-10-04 pm)
+Q-Plus 17.1 has a Blue Chip client behind a hidden menu item: add
+`screen.tablemanager = 1` to Q-Plus's CONFIG/B-INIT.CFB, then Network >
+Connect to table manager, one Q-Plus window per seat (both in the same Wine
+prefix; a cloned prefix is not activated), "Join as computer player", and
+keep both dialogs open. It runs minimized, so matches can run unattended.
+biq_bluechip_tm.py now waits 15 min for a seat and drops a silent or broken
+connection instead of ending the session.
+First match, SAYC both sides, 32 boards x 2 rooms
+(tools/runs/bluechip/261004_qplus): **biq -121 IMP, -3.8/board**; DD split
+bidding -57, play -64 (Q-Plus declaring +0.46 tricks/deal over DD against
+biq's defence, biq declaring -0.04).
+Partner tables are now per system (backend/data/biq_partner_profiles_
+<system>.json.gz; SAYC keeps the old name). The committed version read the
+SAYC table for every system, so Precision's 1C looked like a SAYC 1C. New
+Precision90M table (300k deals); SAYC table re-stamped after checking the
+plumbing change bids identically on 3000 held-out deals. Precision teams A/B
+vs the bidder of 2026-10-03, seed 9105, 805 boards: +0.217/board DD,
++0.111 robust.

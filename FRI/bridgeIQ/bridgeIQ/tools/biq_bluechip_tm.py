@@ -358,8 +358,16 @@ class TableManager:
         while len(self.conns) < len(self.remote_seats):
             sock, addr = ls.accept()
             rc = Remote(sock, f"{addr[0]}:{addr[1]}", self.log)
-            m = rc.expect(r'connecting\s+"?([^"]*?)"?\s+as\s+(north|east|south|west)\s+'
-                          r'using\s+protocol\s+version\s+(\d+)', timeout=60)
+            # Q-Plus connects first and sends its seat only when the user
+            # clicks "Join game": wait, and a dropped or silent connection
+            # must not end the session.
+            try:
+                m = rc.expect(r'connecting\s+"?([^"]*?)"?\s+as\s+(north|east|south|west)\s+'
+                              r'using\s+protocol\s+version\s+(\d+)', timeout=900)
+            except (TimeoutError, ConnectionError, OSError) as ex:
+                self.log(f"dropped {rc.addr}: {ex}")
+                sock.close()
+                continue
             seat = BY_NAME[m.group(2).lower()]
             rc.team = m.group(1).strip() or "robot"
             if seat not in self.remote_seats or seat in self.conns:

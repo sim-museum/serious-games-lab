@@ -7,7 +7,7 @@ the Blue Chip table manager). At every turn, the auction so far is recorded
 from the seat to call, with partner's actual HCP and suit lengths. Profiles
 are kept for situations with enough deals behind them (partner_model.MIN_N).
 
-  python3 tools/biq_profile_build.py --deals 300000 [--seed 1] [--jobs 7]
+  python3 tools/biq_profile_build.py --deals 300000 [--system SAYC] [--seed 1] [--jobs 7]
   python3 tools/biq_profile_build.py --deals 20000 --out /tmp/held.json.gz
 """
 from __future__ import annotations
@@ -48,11 +48,11 @@ def deal_hands(rng):
 
 
 def work(args):
-    seed, n = args
+    seed, n, system_name = args
     from tools.bidder_teams_ab import bid_auction
     from backend import native_bidder as NB
     from backend.bidding_systems import get_system
-    system = get_system("SAYC")
+    system = get_system(system_name)
     rng = random.Random(seed)
     recs = {}
     for _ in range(n):
@@ -80,10 +80,12 @@ def main():
     ap.add_argument("--deals", type=int, default=300000)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--jobs", type=int, default=7)
-    ap.add_argument("--out", default=str(PM._PATH))
+    ap.add_argument("--system", default="SAYC")
+    ap.add_argument("--out", default="")
     a = ap.parse_args()
     chunk = 500
-    tasks = [(a.seed * 1_000_003 + i, min(chunk, a.deals - i * chunk))
+    a.out = a.out or str(PM.path_for(a.system))
+    tasks = [(a.seed * 1_000_003 + i, min(chunk, a.deals - i * chunk), a.system)
              for i in range((a.deals + chunk - 1) // chunk)]
     agg = {}
     t0 = time.time()
@@ -101,7 +103,8 @@ def main():
     for k, arr in agg.items():
         if len(arr) >= PM.MIN_N[k.split()[0]]:
             profiles[k] = PM.summarize(arr)
-    out = {"bidder": PM.bidder_fingerprint(), "deals": a.deals, "seed": a.seed,
+    out = {"bidder": PM.bidder_fingerprint(), "system": a.system,
+           "deals": a.deals, "seed": a.seed,
            "built": time.strftime("%Y-%m-%d"), "profiles": profiles}
     with gzip.open(a.out, "wt") as fh:
         json.dump(out, fh, separators=(",", ":"))

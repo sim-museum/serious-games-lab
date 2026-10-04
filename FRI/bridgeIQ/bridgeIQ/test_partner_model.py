@@ -68,15 +68,25 @@ NB.GNET = True
 PM.set_table({"bidder": "x", "profiles": {}})
 check("no profile -> rules stand", NB._learned_game_net(st, e, sy, NB.passb()) is None)
 
-# The shipped table should match the bidder it ships with (warning only:
+# Tables are per system: a SAYC profile must never answer for Precision.
+PM.set_table({"bidder": "x", "profiles": {"K2 M:1H P:2H": prof}})
+PM.set_table({"bidder": "x", "profiles": {}}, "Precision90M")
+check("per-system tables", PM.lookup(ctx) is not None
+      and PM.lookup(ctx, "Precision90M") is None)
+check("system name from a BiddingSystem",
+      PM.system_name(get_system("Precision90M")) == "Precision90M")
+
+# The shipped tables should match the bidder they ship with (warning only:
 # a stale table still works, it just describes slightly older rules).
-PM._TABLE = None
-built = PM.built_with()
-if built and built != PM.bidder_fingerprint():
-    print(f"[warn] partner profiles built with bidder {built}, current "
-          f"{PM.bidder_fingerprint()}: rebuild with tools/biq_profile_build.py")
-check("shipped table loads", bool(PM._table().get("profiles")),
-      f"{len(PM._table().get('profiles', {}))} profiles")
+PM.reset()
+for name in ("SAYC", "Precision90M"):
+    built = PM.built_with(name)
+    if built and built != PM.bidder_fingerprint():
+        print(f"[warn] {name} partner profiles built with bidder {built}, "
+              f"current {PM.bidder_fingerprint()}: rebuild with "
+              f"tools/biq_profile_build.py --system {name}")
+    n = len(PM._table(name).get("profiles", {}))
+    check(f"shipped {name} table loads", n > 0, f"{n} profiles")
 
 print(f"\n{fails} failing")
 sys.exit(1 if fails else 0)

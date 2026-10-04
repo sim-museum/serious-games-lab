@@ -2481,14 +2481,14 @@ def _partner_min_hcp(state: AuctionState) -> int:
 SLAM_LEARNED = os.environ.get("BIQ_SLAM_LEARNED", "0") == "1"
 
 
-def _partner_floor_hcp(state: AuctionState) -> int:
+def _partner_floor_hcp(state: AuctionState, system=None) -> int:
     """Partner's shown minimum: the first-call floor, raised to the 25th
     percentile of partner's LEARNED range (partner_model) when the later
     auction showed more. BIQ_SLAM_LEARNED=0 keeps the first-call floor."""
     floor = _partner_min_hcp(state)
     if SLAM_LEARNED:
         from . import partner_model
-        pv = partner_model.partner_view(state)
+        pv = partner_model.partner_view(state, system)
         if pv is not None:
             floor = max(floor, pv["hcp"][1])
     return floor
@@ -2508,7 +2508,7 @@ def _maybe_slam_try(state: AuctionState, eval_: HandEval,
     last_level = state.last_level or 1
     if not (3 <= last_level <= 4):
         return None
-    combined = eval_.hcp + _partner_floor_hcp(state)
+    combined = eval_.hcp + _partner_floor_hcp(state, system)
     ctx = derive_context(state)
     tr = getattr(ctx, "trump", None)
     # Suit slam: AGREED trump fit I also hold, combined >= 31 -> RKC.
@@ -3275,7 +3275,7 @@ def _learned_game_net(state: AuctionState, e: HandEval, system,
     if state.bids and state.bids[-1][1].is_double:
         return None                       # their double: leave it to the rules
     from . import partner_model
-    pv = partner_model.partner_view(state)
+    pv = partner_model.partner_view(state, system)
     if pv is None:
         return None
     pm = pv["hcp_mean"]
