@@ -7,9 +7,10 @@ Connect to Server Dialog for LAN play — pokerIQ-style two-phase flow:
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox, QStackedWidget,
-    QLabel, QLineEdit, QSpinBox, QPushButton, QProgressBar, QWidget,
+    QLabel, QLineEdit, QSpinBox, QPushButton, QProgressBar, QWidget, QListWidget, QListWidgetItem,
 )
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer
+from network import squeak
 
 from backend.models import Seat
 from .dialog_style import apply_dialog_style
@@ -37,6 +38,23 @@ class ConnectServerDialog(QDialog):
         self._my_seat: Seat = None
         self._setup_ui()
 
+    def _squeak_refresh(self):
+        self.squeak_list.clear()
+        tables = squeak.list_tables()
+        for t in tables:
+            seats = "%d" % t.get("players", 0) + ("/%d" % t["max_players"] if t.get("max_players") else "")
+            item = QListWidgetItem("%s  \u2014  %s:%d  (%s)" % (t.get("title", "table"), t["host"], t["port"], seats))
+            item.setData(Qt.ItemDataRole.UserRole, (t["host"], int(t["port"])))
+            self.squeak_list.addItem(item)
+        if not tables:
+            self.squeak_list.addItem("(no open tables on squeak right now)")
+
+    def _squeak_pick(self, item, _prev=None):
+        hp = item.data(Qt.ItemDataRole.UserRole) if item else None
+        if hp:
+            self.host_edit.setText(hp[0])
+            self.port_spin.setValue(hp[1])
+
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         self._stack = QStackedWidget()
@@ -50,6 +68,19 @@ class ConnectServerDialog(QDialog):
     def _build_form_page(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
+
+        if squeak.configured():
+            sq_group = QGroupBox("Tables on squeak")
+            sq_layout = QVBoxLayout(sq_group)
+            self.squeak_list = QListWidget()
+            self.squeak_list.setToolTip("Open tables listed on your squeak matchmaker -- pick one to fill in its address")
+            self.squeak_list.currentItemChanged.connect(self._squeak_pick)
+            sq_layout.addWidget(self.squeak_list)
+            refresh = QPushButton("Refresh")
+            refresh.clicked.connect(self._squeak_refresh)
+            sq_layout.addWidget(refresh)
+            layout.addWidget(sq_group)
+            QTimer.singleShot(0, self._squeak_refresh)
 
         settings_group = QGroupBox("Connection Settings")
         settings_layout = QGridLayout(settings_group)

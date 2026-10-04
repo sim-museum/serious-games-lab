@@ -10,6 +10,7 @@ from typing import Optional, List
 
 from .server import BridgeServer
 from .client import BridgeClient
+from .squeak import Announcer
 from .protocol import (
     NetworkMessage, MessageType, NetworkRole,
     make_deal_start, make_bid_made, make_card_played,
@@ -221,6 +222,9 @@ class NetworkGameController(QObject):
             self._my_seat = seat
             self._partner_seat = seat.partner()
             self._my_name = name
+            # squeak: list the table on the player's matchmaker while it is open (withdrawn in disconnect)
+            self._squeak = Announcer()
+            self._squeak.start(port, "%s's bridge table" % name, name=name, max_players=4, version=APP_VERSION)
             return True
 
         self._server = None
@@ -389,6 +393,9 @@ class NetworkGameController(QObject):
     def disconnect(self):
         """Disconnect from network game."""
         if self._server is not None:
+            if getattr(self, "_squeak", None):
+                self._squeak.stop()          # withdraw the table from the squeak matchmaker
+                self._squeak = None
             self._server.stop()
             self._server = None
 
