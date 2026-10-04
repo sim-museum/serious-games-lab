@@ -4,7 +4,7 @@ from typing import Optional, Dict
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QSpinBox, QGroupBox, QRadioButton, QButtonGroup,
-    QMessageBox, QFrame, QGridLayout, QWidget
+    QMessageBox, QFrame, QGridLayout, QWidget, QListWidget, QListWidgetItem
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QFont
@@ -12,6 +12,7 @@ from PyQt6.QtGui import QFont
 from .protocol import DEFAULT_PORT, MAX_NAME_LEN
 from .server import PokerServer
 from .client import PokerClient
+from . import squeak
 
 
 def _validate_short_name(name: str) -> Optional[str]:
@@ -176,6 +177,8 @@ class HostGameDialog(QDialog):
                                    app_version=APP_VERSION)
 
         if self.server.start(port):
+            # squeak: list the table on the player's matchmaker while it is open (withdrawn in PokerServer.stop)
+            self.server.squeak.start(port, table_name, name=host_name, max_players=num_seats, version=APP_VERSION)
             self.status_label.setText(f"Server running on port {port}")
             self.status_label.setStyleSheet("color: green;")
             self.start_btn.setEnabled(False)
@@ -210,6 +213,20 @@ class JoinGameDialog(QDialog):
         layout = QVBoxLayout(self)
 
         # Connection settings
+        if squeak.configured():
+            sq_group = QGroupBox("Tables on squeak")
+            sq_layout = QVBoxLayout()
+            self.squeak_list = QListWidget()
+            self.squeak_list.setToolTip("Open tables listed on your squeak matchmaker -- pick one to fill in its address")
+            self.squeak_list.currentItemChanged.connect(self._squeak_pick)
+            sq_layout.addWidget(self.squeak_list)
+            refresh = QPushButton("Refresh")
+            refresh.clicked.connect(self._squeak_refresh)
+            sq_layout.addWidget(refresh)
+            sq_group.setLayout(sq_layout)
+            layout.addWidget(sq_group)
+            QTimer.singleShot(0, self._squeak_refresh)
+
         conn_group = QGroupBox("Connection")
         conn_layout = QGridLayout()
 
@@ -246,6 +263,24 @@ class JoinGameDialog(QDialog):
         btn_layout.addWidget(self.connect_btn)
         btn_layout.addWidget(self.cancel_btn)
         layout.addLayout(btn_layout)
+
+    def _squeak_refresh(self):
+        self.squeak_list.clear()
+        tables = squeak.list_tables()
+        for t in tables:
+            seats = "%d" % t.get("players", 0) + ("/%d" % t["max_players"] if t.get("max_players") else "")
+            who = (" · " + t["name"]) if t.get("name") else ""
+            item = QListWidgetItem("%s%s  —  %s:%d  (%s)" % (t.get("title", "table"), who, t["host"], t["port"], seats))
+            item.setData(Qt.ItemDataRole.UserRole, (t["host"], int(t["port"])))
+            self.squeak_list.addItem(item)
+        if not tables:
+            self.squeak_list.addItem("(no open tables on squeak right now)")
+
+    def _squeak_pick(self, item, _prev=None):
+        hp = item.data(Qt.ItemDataRole.UserRole) if item else None
+        if hp:
+            self.host_edit.setText(hp[0])
+            self.port_spin.setValue(hp[1])
 
     def _connect(self):
         """Connect to the poker server."""
