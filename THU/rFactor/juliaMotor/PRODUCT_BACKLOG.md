@@ -22090,3 +22090,36 @@ screen"*. E.g. "Karussell (Carousel)", "Hohe Acht (High Eight)", "Döttinger Hö
 Hairpin)"; names with no translation (proper names such as "Tarzan", "Burnenville") stay as they are. Source the
 translations as a table beside `demo/native/track_sections.jl`'s names; check the font32 atlas covers the result
 (Latin-1) and the line still fits the timing band at 1280 px.
+
+## AIGPL-2 — Julia AI rewritten on GPL's own algorithm (PO 2026-10-04, late: "Make julia AI cars the top priority")
+
+PO: *"Make them use the algorithm GPL AI cars use, or close to it ... GPL AI cars never lurch sideways, or ... turn
+sideways and lurch upward when they pass the tall tower-like building ... or leave the road surface ... The julia AI car
+code needs to be rewritten. Start by reverse engineering how GPL does AI cars."* Then: *"Rather than put a bandaid on the
+lurching, find the root cause."*
+
+**Reverse engineering:** `doc/GPL_AI_REVERSE_ENGINEERING.md` (gpl.exe decompiled with Ghidra; addresses, parameters,
+replay measurements). **Root cause of the lurching:** GPL's AI trajectory never touches track geometry -- the car tracks
+an authored line in (dlong, dlat) with a spring/damper fed the line's own lateral velocity and acceleration, and is
+placed on GPL's exact constant-curvature .trk arcs. RaceAI offset lanes along a piecewise-linear centreline (the normal
+jumps at every node), pulled lateral velocity to zero, added per-car lane bias and +-2.4 m rails, and grounded cars on
+the scenery mesh (the tower). The first GPLAI draft repeated the geometry mistake with a fitted spline that loops at
+short .trk sections (R = 0.0 m at WG 1523/2858) -- replaced by the exact arc walk.
+
+**Shipped (default; `JM_AI_MODEL=rail` restores RaceAI):** `demo/native/gplai.jl`, measured by `gplai_probe.jl`:
+
+| | GPL replays (2026-10-03) | GPLAI headless | old rail AI (in sim, WG) |
+|---|---|---|---|
+| \|dlat - race line\| p50 / p90 | 0.08 / 0.26-0.60 m | WG 0.03 / 0.13, Ring 0.08 / 0.23 | lanes + bias by design |
+| one-frame lateral-speed step p99 / max | 0.18-0.22 / 0.6-1.9 m/s | 0.25 / 0.6-0.8 | drawn: max 1.05 (GPLAI drawn: 0.27) |
+| vertical-speed step max (drawn, WG) | -- | 0.12 m/s (Ring 0.34) | 0.84 m/s |
+| race line on our drawn road (WG) | -- | 100 % of records | -- |
+
+Single file behind a car at racing pace (GPL's auto_blocker 85 % rule), passes past a slow car or the designated passee
+on a straight, into a free lateral position, then holds the line. Passing probe (paces 0.88..1.00 reversed): the order
+sorts itself in 3-4 laps.
+
+**Open (measured, not hidden):** light contacts remain in heavy passing (11 contact ticks in 5 laps x 5 cars) and when
+the field meets a STALLED human car (2-62 ticks per run, worst at WG s=3600 in the tight section before the line);
+not yet decoded: TRYING TO OUTBRAKE, pit stops, CRASHING (GPL hands the car to physics), driver personality scalings,
+the waypoint flag bits (no-pass zones), the slip-curve table (linear here). Needs the PO's drive.
