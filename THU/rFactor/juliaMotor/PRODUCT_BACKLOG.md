@@ -22420,3 +22420,9 @@ patches (Spa `gstands` +90, Zandvoort `gstand` flip, WG `grandl` +180) "compensa
   flip only under +1. `JM_OBJ_YAW_SIGN`, `JM_GSTAND_YAW`, `JM_OBJ_YAW_FLIP` override. Gates `gplwall_smoke` (all five
   tracks), `solid_box_smoke`, `people_smoke` PASS.
 * **Open:** WG (`grandl` +180) and Monza — no footprint signal; next, the same patch-removed A/B on screen.
+* **S3/S4 (2026-10-05) — WG and Monza: −1 too; now GLOBAL.** WG with −1 and `grandl` +180 removed: the start area unchanged
+  on screen (`wg_ab.jpg`). Monza with −1: identical except the Parabolica "100" distance board, whose chevron turns from
+  pointing at the track to pointing AWAY from it — the gold's boards point away (`260802_monza_nintendo` t 2:07, the "400";
+  `gold_100.jpg` vs `jr_100.png`). **Shipped: `OBJ_YAW_SIGN = −1` on every track;** `gstands` +90, the `gstand` flip and
+  `grandl` +180 apply only under a forced +1 (the Ring's flip list unchanged). Gates `gplwall_smoke`, `solid_box_smoke`,
+  `people_smoke` PASS. YAWSIGN-1 DONE.
