@@ -45,6 +45,7 @@ include("audio.jl"); using .EngineAudio
 include("joycfg.jl"); using .JoyCfg
 include("ffb.jl"); using .FFB
 include("ai.jl"); using .RaceAI           # rail-following race opponents (JM_AI)
+include("gplai.jl"); using .GPLAI         # AIGPL-2: the AI driven by GPL's own algorithm (doc/GPL_AI_REVERSE_ENGINEERING.md)
 # Force-feedback tuning (env-overridable). SIGN=-1 ⇒ force opposes the front lateral
 # force, so the wheel self-centres (measured: steer-left gives +front_lat).
 const FFB_ON     = !haskey(ENV, "JM_NOFFB")
@@ -288,6 +289,9 @@ const POLE = get(ENV, "JM_POLE", "0") != "0"
 # recovery snap-forward producing the "inchworm" teleport, and clustering on the player so it
 # bogged (E39).  Kinematic AI track the line cleanly and don't contact the player on the grid.
 const AI_PHYSICS = haskey(ENV, "JM_AI_PHYSICS")
+# AIGPL-2 (PO 2026-10-04: "Make them use the algorithm GPL AI cars use ... The julia AI car code needs to be
+# rewritten"). DEFAULT: GPLAI (gplai.jl). JM_AI_MODEL=rail restores the RaceAI rail field as the control arm.
+const GPLAI_ON = !AI_PHYSICS && get(ENV, "JM_AI_MODEL", "gpl") == "gpl"
 # Physics-AI pace is set ONCE here via ENGINE POWER (throttle cap), NOT a per-frame rubber-band:
 # the AI race at a fixed pace they can't exceed (and can wash out if hot), so a fast human gets
 # legitimately ahead.  1.0 = full DFV power (GPL-fast); lower detunes them.  JM_AI_POWER tunes it.
@@ -11607,6 +11611,84 @@ function main()
                 "s → target ", round(AI_TGT,digits=1), "s; rail ", round(AI_T0,digits=1),
                 "s, scale ", round(AI_SCALE,digits=2), ")")
     end
+    # ---- AIGPL-2: the GPL AI. Its frame is GPL's own: the .trk section arcs walked exactly, placed in our world by
+    # the same similarity transform E107 fitted (GPL centreline -> rigid refit onto the road), its lines the
+    # track's .lp files, its height the .trk surface (trk_road) -- never the scenery mesh.
+    GPLAI_T = nothing; GPLAI_SC = 1.0; GPLAI_F = Ref{Any}(nothing); GPLAI_PH = Ref(0); GPLAI_PD = Ref((0.0, 0.0))
+    if GPLAI_ON && AILINE !== nothing && TRK_CAL.on && all(f -> isfile(joinpath(ZD, f * ".lp")), ("race", "minrace", "maxrace", "pass1", "pass2"))
+        try
+            lines = Dict(k => GPLAI.read_line(joinpath(ZD, f * ".lp")) for (k, f) in
+                         ((GPLAI.RACE, "race"), (GPLAI.MINR, "minrace"), (GPLAI.MAXR, "maxrace"), (GPLAI.PASS1, "pass1"), (GPLAI.PASS2, "pass2")))
+            trkb = read(track_file(GPLNAME, ".trk"))
+            secs = GPLAI.trk_sections(trkb)
+            r0 = GPLAI.Ref(secs...)
+            num = 0.0                                      # +dlat is the side GPL's race line takes at the apexes
+            glap = 3.0*length(lines[GPLAI.RACE].d)        # GPL dlong (records x 3 m); the arc chain maps onto it in proportion
+            for x in 0:3.0:glap-3
+                k = GPLAI.curv(r0, x*r0.lap/glap); abs(k) > 1/150 && (num += sign(k)*GPLAI.dlat(lines[GPLAI.RACE], x))
+            end
+            raw = GPLTrack.trk_centreline(track_file(GPLNAME, ".trk"))
+            A0  = rigid_refit(ALIGNED0, ALIGNED)
+            ref = GPLAI.fit_transform(r0, raw, A0; sgn = num >= 0 ? 1.0 : -1.0)
+            adj = 1.0; vcap = 2.41*36.0; sepc = 1.0
+            ini = joinpath(ZD, "track.ini")
+            if isfile(ini)
+                for l in eachline(ini)
+                    m = match(r"^\s*dlong_speed_adj_coeff\s*=\s*([0-9.]+)", l); m !== nothing && (adj = parse(Float64, m[1]))
+                    m = match(r"^\s*dlong_speed_maximum\s*=\s*([0-9.]+)", l);   m !== nothing && (vcap = parse(Float64, m[1])*36.0)
+                    m = match(r"^\s*track_dlong_sep_coeff\s*=\s*([0-9.]+)", l); m !== nothing && (sepc = parse(Float64, m[1]))
+                end
+            end
+            P = GPLAI.params(RaceAI.gpl_ai(); sep_coeff = sepc, adj = adj, vcap = vcap)
+            # height: the .trk road surface under the car (TRACKSMOOTH-3's calibrated spline), whatever is drawn there
+            function gh(s, d, x, z)
+                hr = JuliaMotor.hat(TRKSURF, x, z)
+                hr.found && return trk_road(hr.lapdist, hr.lateral)
+                h = mesh_ground(x, z); h[1]
+            end
+            GPLAI_T = GPLAI.Track(lines, ref, glap, P, gh)
+            gs = GPLAI.grip_scale(GPLAI_T)
+            # natural lap at that pace (one car, headless): sets the pace knob against AI_TGT like AI_T0 does for the rail field
+            c1 = GPLAI.Car(GPLAI_T, 1, 10.0, GPLAI.dlat(lines[GPLAI.RACE], 10.0); v = 30.0)
+            f1 = GPLAI.Field(GPLAI_T, [c1]); t0 = -1.0; tk = 0
+            while tk < 36*400
+                GPLAI.tick!(f1, nothing, gs, Inf); tk += 1
+                (c1.lap == 1 && t0 < 0) && (t0 = tk/36)
+                c1.lap == 2 && break
+            end
+            tnat = t0 > 0 ? tk/36 - t0 : NaN
+            GPLAI_SC = isfinite(tnat) ? gs*clamp(tnat/max(AI_TGT, 1.0), 0.4, 1.0) : gs
+            # does GPL's race line, placed by this frame, lie on OUR drawn road? (measured, not assumed)
+            non = 0; ntot = 0
+            for x in 0:6.0:glap-1
+                w = GPLAI.tworld(GPLAI_T, x, GPLAI.dlat(lines[GPLAI.RACE], x)); ntot += 1
+                JuliaMotor.hat3d(ROADHAT, w[1], w[2]; ref = Inf)[3] && (non += 1)
+            end
+            println("  → AI model: GPL (AIGPL-2). lap ", round(glap, digits = 1), " m (arcs ", round(ref.lap, digits = 1), "), +dlat ",
+                    ref.sgn > 0 ? "left" : "right", ", grip scale ", round(gs, digits = 3), ", natural lap ", round(tnat, digits = 1),
+                    " s, pace scale ", round(GPLAI_SC, digits = 3), " (target ", round(AI_TGT, digits = 1), " s); race line on our road ",
+                    round(100*non/max(ntot, 1), digits = 1), " %")
+        catch e
+            println("  → AI model: GPL unavailable (", sprint(showerror, e), ") -- the rail field runs instead")
+            GPLAI_T = nothing
+        end
+    end
+    "the GPL field, built from AICARS (grid order, pace) the first time it is needed after a (re)start"
+    function gplai_field!()
+        f = GPLAI_F[]
+        if f === nothing || length(f.cars) != length(AICARS)
+            cars = GPLAI.Car[]
+            for (i, c) in enumerate(AICARS)
+                p = RaceAI.pose_at(AILINE, c.s, c.lane)
+                (s, d, _) = GPLAI.tlocate(GPLAI_T, p[1], p[3])
+                gc = GPLAI.Car(GPLAI_T, i, s, d; v = 0.0, pace = c.pace)
+                gc.react = round(Int, GPLAI_T.P.start_hiatus) + rand(0:12)
+                push!(cars, gc)
+            end
+            f = GPLAI.Field(GPLAI_T, cars); GPLAI_F[] = f
+        end
+        f
+    end
     # JM_AI_TEST: drive the physics field on the REAL loaded track (no player) → laps/spins, exit.
     if AI_PHYSICS && haskey(ENV, "JM_AI_TEST") && !isempty(AIPHYS)
         for (i,pc) in enumerate(AIPHYS); p = RaceAI.pose_at(AILINE, AICARS[i].s, AICARS[i].lane); AIplace!(pc, p[1], p[3], p[4]; v=12.0); end
@@ -12050,6 +12132,7 @@ function main()
                 # Re-form the grid exactly as the launch does (`if !DO_QUAL && HOLD_START` below the
                 # definition of form_grid!): every AI on rows AHEAD of the player.
                 (!DO_QUAL && HOLD_START) && (player_grid[] = form_grid!(Inf))
+                GPLAI_F[] = nothing                                       # AIGPL-2: rebuilt from the new grid
             end
             FUEL_ON && (fuel[] = burn_lap * fuel_laps)
             println("  [restart] session reset on ", TRACKSEL, " in ",
@@ -13144,6 +13227,7 @@ function main()
         elseif !race_go[] || (AI_HEADSTART > 0 && ai_release[] >= 0.0 && cs.t < ai_release[])
             # standing on the grid -- not yet launched, or held by the PO's head start
             AI_PHYSICS ? [(b=aibankP(pc); (pc.x, groundz(pc.x, pc.z), pc.z, pc.θ, b[1], b[2])) for pc in AIPHYS] :
+            GPLAI_T !== nothing ? NTuple{6,Float64}[c.pose for c in gplai_field!().cars] :
                          [(p=RaceAI.pose_at(AILINE, c.s, c.lane); b=aibankK(p); ai_ground((p[1],p[2],p[3],p[4],b[1],b[2]))) for c in AICARS]
         elseif AI_PHYSICS
             # GC HYBRID: project each physics car onto the line → update the brain → the controller
@@ -13223,6 +13307,24 @@ function main()
                 AIbump!(pb,  imp*nx,  imp*nz, clamp( imp*0.04, -0.6, 0.6))
             end
             [(b=aibankP(pc); (pc.x, isfinite(pc.y) ? pc.y : groundz(pc.x, pc.z), pc.z, pc.θ, b[1], b[2])) for pc in AIPHYS]   # pc.y = 3-D height → AI visibly jump/heave; pitch/roll → list + roll
+        elseif GPLAI_T !== nothing
+            # AIGPL-2: the field steps in GPL's frame at GPL's 36 Hz; the human is a car in the same frame
+            f = gplai_field!()
+            (ps, pdl, GPLAI_PH[]) = GPLAI.tlocate(GPLAI_T, cs.x, cs.z, GPLAI_PH[])
+            pdv = ddt > 1e-4 ? (pdl - GPLAI_PD[][2])/ddt : 0.0
+            abs(ps - GPLAI_PD[][1]) > 30 && (pdv = 0.0)
+            GPLAI_PD[] = (ps, pdl)
+            poses, hit = GPLAI.step!(f, ddt; player = (ps, pdl, clamp(pdv, -15.0, 15.0), cs.v), scale = GPLAI_SC,
+                                     vrel = isfinite(AI_REL) ? max(cs.v*AI_REL, 6.0) : Inf)
+            ai_hit[] = hit
+            for (i, gc) in enumerate(f.cars)                      # keep the race bookkeeping (laps, order, HUD) in our frame
+                i > length(AICARS) && break
+                prevs = AICARS[i].s
+                s, lat = RaceAI.project(AILINE, poses[i][1], poses[i][3]; hint = prevs)
+                AICARS[i].s = s; AICARS[i].lane = lat; AICARS[i].v = gc.v
+                (prevs > AILINE.total*0.7 && s < AILINE.total*0.3) && (AICARS[i].lap += 1)
+            end
+            poses
         else
             pp = RaceAI.project(AILINE, cs.x, cs.z)                # the human as a racecraft object (s, lateral, speed)
             poses, hit = RaceAI.step_field!(AICARS, AILINE, ddt; scale = AI_SCALE, player = (pp[1], pp[2], cs.v), rel = AI_REL)
@@ -13254,7 +13356,7 @@ function main()
         # momentum-exchange impulse: the player (real vehicle physics) is knocked off line + spun
         # via bumpX!, the AI is shoved aside + spun + scrubbed.  The wheels keep spinning with motion.
         CAR3D && (PLAYER_CDA[] = 1.0)             # E56: default = full drag; the draft below cuts it for next frame's step
-        if AIJIT_ON && !REPLAY && !isempty(ai_poses)        # AIJIT-1: draw the AI the GPL way (see ai_smooth)
+        if AIJIT_ON && !REPLAY && !isempty(ai_poses) && GPLAI_T === nothing   # AIJIT-1 (rail field only; GPLAI poses are GPL's own)
             ai_poses = NTuple{6,Float64}[ai_smooth(k, ai_poses[k], dt > 1e-4 ? dt : 1/60) for k in eachindex(ai_poses)]
         end
         AICAM_R[] > 0 && (ai_poses_prev[] = NTuple{6,Float64}[ntuple(j -> Float64(p[j]), 6) for p in ai_poses])

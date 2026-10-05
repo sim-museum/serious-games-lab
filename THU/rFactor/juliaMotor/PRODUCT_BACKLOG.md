@@ -22082,3 +22082,11 @@ Result vs the gold WG cockpit: hub left of screen centre, tach ~2 cm left of the
 gear-lever gate on the right; "Firestone", "RPM X 1000", "LOTUS" all read correctly. **Mirrors:** each disc now samples its own
 side's camera — on the reflected car each mirror had been showing the OTHER side (render +z is the car's right). `JM_CAR_UNMIRROR=0`
 restores everything.
+
+### TRACKSEG-2 — English translation after non-English section names (PO 2026-10-04, late)
+PO: *"when a track section name is not in English, and when it has an English translation, include the English
+translation in parentheses after track section name when displaying it unobtrusively at the top of the julia racer 3D
+screen"*. E.g. "Karussell (Carousel)", "Hohe Acht (High Eight)", "Döttinger Höhe (Dötting Heights)", "Südkehre (South
+Hairpin)"; names with no translation (proper names such as "Tarzan", "Burnenville") stay as they are. Source the
+translations as a table beside `demo/native/track_sections.jl`'s names; check the font32 atlas covers the result
+(Latin-1) and the line still fits the timing band at 1280 px.
