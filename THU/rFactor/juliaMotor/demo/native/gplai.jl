@@ -265,6 +265,7 @@ mutable struct Car
     fromline::Int
     hold::Int                                # ticks before the car may return to the race line
     passctr::Int                             # ticks spent wanting to pass the car ahead
+    passctr2::Int                            # ... on the long-term map
     passee::Int                              # id of the designated passee (GPL +0x4ef), 0 = none
     passee_t::Int                            # ticks since it last held me up
     squeezed::Bool
@@ -279,12 +280,13 @@ mutable struct Car
     prev::NTuple{6,Float64}                  # ... and the tick before (for drawing between ticks)
     hint::Int
     contact::Int                             # ticks since the last contact (debug/statistics)
+    why::Symbol                              # what made the last line change (debug)
 end
 function Car(T::Track, id, s, d; v = 0.0, pace = 1.0)
     lo, hi = corridor(T, s); d = clamp(d, min(lo + 0.2, 0.5*(lo + hi)), max(hi - 0.2, 0.5*(lo + hi)))   # placed inside the corridor
     c = Car(id, mod(s, T.lap), v, d, 0.0, 0.0, 0, RACE, d - dlat(L(T, RACE), s), 0, 1.0, 0.0, d, 0.0, RACE,
-            0, 0, 0, 0, false, 99.0, 0.0, 0.0, 0.0, 0.0, T.P.ride - 9.80665/T.P.alt_k1, 0.0, 0.0, 0.0, pace, 0,
-            ntuple(_ -> 0.0, 6), ntuple(_ -> 0.0, 6), 0, 9999)
+            0, 0, 0, 0, 0, false, 99.0, 0.0, 0.0, 0.0, 0.0, T.P.ride - 9.80665/T.P.alt_k1, 0.0, 0.0, 0.0, pace, 0,
+            ntuple(_ -> 0.0, 6), ntuple(_ -> 0.0, 6), 0, 9999, :none)
     x, z, th = tworld(T, c.s, c.d); c.yaw = th + (T.ref.sgn < 0 ? 0.0 : 0.0)
     c.yroad = T.height(c.s, c.d, x, z)
     c.pose = _pose(T, c); c.prev = c.pose
@@ -315,7 +317,8 @@ function goal(T::Track, c::Car, F::Fuzzy)
 end
 
 "join the nearest of RACE/PASS1/PASS2 at dlat `want` through a line transition (GPL 0x4477c0 + 0x4451d0)"
-function join!(T::Track, c::Car, want; at = c.s, abrupt = false)
+function join!(T::Track, c::Car, want; at = c.s, abrupt = false, why = :join)
+    c.why = why
     best = RACE; bo = want - dlat(L(T, RACE), at)            # RACE first: a pass line wins only if strictly nearer
     for k in (PASS1, PASS2)
         o = want - dlat(L(T, k), at); abs(o) < abs(bo) - 1e-6 && (best = k; bo = o)
@@ -362,7 +365,9 @@ function look(T::Track, c::Car, others, τ, F::Fuzzy)
         else
             o[2] + o[3]*t
         end
-        w = P.dlat_sep + (isp ? 0.33 : 0.0)
+        # lateral room it needs (GPL 0x4481d0): the full separation at speed, shrinking to 1.90 m for a slow car,
+        # +0.33 m for the human (whose line the AI cannot predict)
+        w = (o[4] < 0.6204*36 ? max(1.9035, o[4]/(0.6204*36)*P.dlat_sep) : P.dlat_sep) + (isp ? 0.33 : 0.0)
         a = min(pd, 0.5*(pd + o[2])); b = max(pd, 0.5*(pd + o[2]))  # the short map also covers where it is now
         if gap <= CAR_LEN                                       # alongside (now or within the look-ahead): occupies lateral space, is not followed
             push!(out, (min(a, o[2]) - w, max(b, o[2]) + w, -99.0, gap, Float64(k), 2.0))
@@ -416,9 +421,9 @@ function straight_ahead(T::Track, s, dist)
 end
 """pull out past blocker entry `bi`: the nearest free position beside its interval, inside the corridor; join the
 nearest authored line there and hold it (0x446ef0 + 0x4477c0 + 0x447a60). true if a move was made."""
-function try_pass!(T::Track, c::Car, m, bi, need, lo, hi, t, rng, tpass)
+function try_pass!(T::Track, c::Car, m, bi, need, lo, hi, t, rng, tpass, sb = c.s + c.v*t)
     k = findfirst(e -> Int(e[5]) == bi && e[6] == 1.0, m); k === nothing && return false
-    lo2, hi2 = corridor(T, c.s + c.v*t); lo = max(lo, lo2); hi = min(hi, hi2)   # valid both here and where it is joined
+    lo2, hi2 = corridor(T, sb); lo = max(lo, lo2); hi = min(hi, hi2)   # valid both here and beside the blocker
     e = m[k]; cand = Float64[]
     for x in (e[1] - 0.2, e[2] + 0.2)
         lo + 0.3 <= x <= hi - 0.3 || continue
@@ -426,10 +431,54 @@ function try_pass!(T::Track, c::Car, m, bi, need, lo, hi, t, rng, tpass)
         bb = blocked_at(m, x); (bb === nothing || bb[1] >= need) && push!(cand, x)
     end
     isempty(cand) && return false
-    join!(T, c, cand[argmin(abs.(cand .- c.d))]; at = c.s + c.v*t)
+    # the line offset is taken where the blocker IS (the clearance matters there), not at my look-ahead point --
+    # on a long look-ahead (3 s) the line can be metres elsewhere by then and line+offset would miss the gap
+    gb = mod(sb - c.s, T.lap); at = c.s + clamp(gb, 0.0, c.v*t)
+    join!(T, c, cand[argmin(abs.(cand .- c.d))]; at = at, why = :pass)
     c.hold = max(36, round(Int, tpass*1.5)) + rand(rng, 0:35)
     c.passctr = 0
     true
+end
+
+"""GPL's avoidance (0x4468f0) on one look-ahead map: :acted (moved to pass), :blocked (stay in line behind the
+blocker -- the following law holds the car), :free (nothing in my lane). `map` 1 = short term, 2 = long term."""
+function avoid!(T::Track, c::Car, others, m, τ, map, rng, scale)
+    P = T.P; F = P.follow; t = τ*TICK
+    lo, hi = corridor(T, c.s)
+    need = a_engine(P, c.v)
+    # GPL 0xba0: a blocker projected further than my own travel over the look-ahead is no blocker; a car inside the
+    # separation distance always counts (else a car that has STOPPED behind a stopped car never sees it again)
+    reach = max(c.v*t, F.sep*P.sep_coeff + 6.0)
+    g, gv, _ = goal(T, c, F)
+    pd = clamp(g + gv*t, lo, hi)                          # where I will be
+    b = blocked_at(m, pd)
+    (b !== nothing && b[1] < need && b[2] < reach) || return :free
+    o = others[Int(b[3])]
+    faster = c.v > o[4] || o[4] < 2.0                    # a (nearly) stopped car is always passable (low-speed override)
+    ratio = o[4] / max(min(lspeed(L(T, RACE), o[1])*P.adj, P.vcap)*scale, 1.0)   # its pace against the line's
+    slowB = ratio < P.auto_blocker || o[4] < 5.0
+    gap = mod(o[1] - c.s + T.lap/2, T.lap) - T.lap/2
+    vfree = min(lspeed(L(T, c.line), c.s)*P.adj, P.vcap)*c.pace*scale
+    if map == 1 && vfree > o[4] + 0.5 && o[8] > 0.5     # it holds me up: it becomes my designated passee
+        c.passee = Int(o[8]); c.passee_t = 0
+    end
+    # straightaway pass (long-term map): the passee, on a straight, while it holds me back
+    if map == 2 && c.passee != 0 && Int(o[8]) == c.passee && straight_ahead(T, c.s, 150.0) &&
+       (c.alim < 0.995*need || c.v - o[4] > P.sw_close) && gap < (2.0 - min(ratio, 1.0))*P.sw_sep + 2.0
+        try_pass!(T, c, m, Int(b[3]), need, lo, hi, t, rng, 1.5*36.0, o[1]) && return :acted
+    end
+    ctr = map == 1 ? c.passctr : c.passctr2
+    if !faster || !slowB
+        ctr = max(ctr - 1, 0)                            # stay in line; the following law holds me back
+    else
+        ctr += 1
+        tpass = max(gap, 1.0)/max(c.v - o[4], o[4] < 2.0 ? 3.0 : 0.3) * 36 * F.avoid * 4
+        if ctr > tpass && try_pass!(T, c, m, Int(b[3]), need, lo, hi, t, rng, tpass, o[1])
+            c.passctr = 0; c.passctr2 = 0; return :acted
+        end
+    end
+    map == 1 ? (c.passctr = ctr) : (c.passctr2 = ctr)
+    :blocked
 end
 
 """GPL's BASIC RACING think step (0x442f60) for one car. `others` as in `look`; returns nothing.
@@ -442,37 +491,13 @@ function think!(T::Track, c::Car, others, rng, scale = 1.0)
     m = look(T, c, others, τs, F)
     lo, hi = corridor(T, c.s)
     need = a_engine(P, c.v)
-    reach = c.v*t                                        # GPL 0xba0: a blocker further than this is no blocker
-    g, gv, _ = goal(T, c, F)
-    pd = clamp(g + gv*t, lo, hi)                          # where I will be
-    b = blocked_at(m, pd)
-    if b !== nothing && b[1] < need && b[2] < reach
-        o = others[Int(b[3])]
-        faster = c.v > o[4]
-        ratio = o[4] / max(min(lspeed(L(T, RACE), o[1])*P.adj, P.vcap)*scale, 1.0)   # its pace against the line's
-        slowB = ratio < P.auto_blocker || o[4] < 5.0
-        gap = mod(o[1] - c.s + T.lap/2, T.lap) - T.lap/2
-        vfree = min(lspeed(L(T, c.line), c.s)*P.adj, P.vcap)*c.pace*scale
-        if vfree > o[4] + 0.5 && o[8] > 0.5               # it holds me up: it becomes my designated passee
-            c.passee != Int(o[8]) && (c.passee = Int(o[8]))
-            c.passee_t = 0
-        end
-        # straightaway pass (0x4468f0, long-term map): the passee, on a straight, while it holds me back
-        if c.passee != 0 && Int(o[8]) == c.passee && straight_ahead(T, c.s, 150.0) &&
-           (c.alim < 0.995*need || c.v - o[4] > P.sw_close) && gap < (2.0 - min(ratio, 1.0))*P.sw_sep + 2.0
-            ml = c.v > 0.6204*36 ? look(T, c, others, F.lt, F) : m
-            try_pass!(T, c, ml, Int(b[3]), need, lo, hi, t, rng, 1.5*36.0) && return nothing
-        end
-        if !faster || !slowB
-            c.passctr = max(c.passctr - 1, 0)            # stay in line; the following law holds me back
-        else
-            c.passctr += 1
-            tpass = max(gap, 1.0)/max(c.v - o[4], 0.3) * 36 * F.avoid * 4
-            c.passctr > tpass && try_pass!(T, c, m, Int(b[3]), need, lo, hi, t, rng, tpass) && return nothing
-        end
-    else
+    reach = max(c.v*t, F.sep*P.sep_coeff + 6.0)
+    r = avoid!(T, c, others, m, τs, 1, rng, scale)
+    r == :acted && return nothing
+    if r == :free
         c.passctr = max(c.passctr - 1, 0)
         c.passee_t += 1; c.passee_t > 108 && (c.passee = 0)
+        g, gv, _ = goal(T, c, F); pd = clamp(g + gv*t, lo, hi)
         # side by side (0x445e50): a car overlapping me along the track, converging on my lateral -> move away
         for (k, o) in enumerate(others)
             gap = mod(o[1] - c.s + T.lap/2, T.lap) - T.lap/2
@@ -484,7 +509,7 @@ function think!(T::Track, c::Car, others, rng, scale = 1.0)
             lo2, hi2 = corridor(T, c.s + c.v*t)
             want = clamp(od + side*(P.dlat_sep - 0.3), max(lo, lo2) + 0.3, min(hi, hi2) - 0.3)
             if abs(want - od) >= P.dlat_sep - 0.9
-                join!(T, c, want; at = c.s + c.v*t, abrupt = (o[3] - c.dv)*side > 0.05*36)
+                join!(T, c, want; at = c.s + c.v*t, abrupt = (o[3] - c.dv)*side > 0.05*36, why = :side)
                 c.hold = max(c.hold, round(Int, τs))
             else
                 c.squeezed = true                         # no room: give way (being_squeezed_speed_coeff)
@@ -494,14 +519,18 @@ function think!(T::Track, c::Car, others, rng, scale = 1.0)
     end
     # out of the corridor: back toward the pass line on my side (0x4472e0 with PASS1/PASS2)
     if !(lo - GLASS <= c.d <= hi + GLASS) && c.mode == 0
-        join!(T, c, clamp(c.d, lo + 0.5, hi - 0.5)); return nothing
+        join!(T, c, clamp(c.d, lo + 0.5, hi - 0.5); why = :corridor); return nothing
     end
     # hold expired and not on the race line: approach it as far as the map allows (0x4472e0 with RACE)
     if c.hold <= 0 && (c.line != RACE || abs(c.offset) > 1e-3) && c.mode == 0
         target = dlat(L(T, RACE), c.s + c.v*t)
         lo2, hi2 = corridor(T, c.s + c.v*t)
         x = free_toward(m, target, c.d, need, reach, max(lo, lo2), min(hi, hi2))
-        x !== nothing && join!(T, c, x; at = c.s + c.v*t)
+        x !== nothing && join!(T, c, x; at = c.s + c.v*t, why = :approach)
+    end
+    # long-term avoidance (0x4468f0 with map 1, above long_term_check_min_speed): the 3 s look-ahead
+    if c.v > 0.6204*36 && c.mode == 0
+        avoid!(T, c, others, look(T, c, others, F.lt, F), F.lt, 2, rng, scale)
     end
     nothing
 end
@@ -655,9 +684,7 @@ function tick!(f::Field, player, scale, vrel)
         g, gv, _ = goal(T, c, F)
         lo, hi = corridor(T, c.s)
         b = blocked_at(m, clamp(g + gv*t, lo, hi))
-        bnow = blocked_at(m, c.d)
-        al = b === nothing ? 99.0 : b[1]
-        bnow !== nothing && (al = min(al, bnow[1]))
+        al = b === nothing ? 99.0 : b[1]                 # GPL 0x4467f0: the cell at my PROJECTED lateral only
         advance!(T, c, al, scale, vrel)
     end
     # contact (should be rare): push apart laterally and match speeds, never teleport
@@ -667,7 +694,10 @@ function tick!(f::Field, player, scale, vrel)
         (abs(ds) < CAR_LEN && abs(ca.d - cb.d) < CAR_W) || continue
         f.stats[:contact] = get(f.stats, :contact, 0) + 1
         sgn = ca.d >= cb.d ? 1.0 : -1.0
-        ca.dv += sgn*0.8; cb.dv -= sgn*0.8
+        cl = (cb.dv - ca.dv)*sgn                          # closing rate across the track (> 0: converging)
+        if cl > 0                                         # take the converging rate out, shared -- no bounce, no jump
+            ca.dv += sgn*cl/2; cb.dv -= sgn*cl/2
+        end
         if ds > 0; cb.v = min(cb.v, ca.v); else; ca.v = min(ca.v, cb.v); end
         ca.contact = 0; cb.contact = 0
     end
@@ -676,7 +706,8 @@ function tick!(f::Field, player, scale, vrel)
             ds = mod(c.s - player[1] + T.lap/2, T.lap) - T.lap/2
             (abs(ds) < CAR_LEN && abs(c.d - player[2]) < CAR_W) || continue
             hit = true; f.stats[:player_contact] = get(f.stats, :player_contact, 0) + 1
-            c.dv += (c.d >= player[2] ? 1.0 : -1.0)*0.8
+            sg = c.d >= player[2] ? 1.0 : -1.0
+            cl = (player[3] - c.dv)*sg; cl > 0 && (c.dv += sg*cl)      # the AI yields the converging rate
             ds < 0 && (c.v = min(c.v, player[4]))
         end
     end

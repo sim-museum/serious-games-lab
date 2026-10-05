@@ -60,6 +60,9 @@ cars = [GPLAI.Car(T, i, mod(-9.0*i, T.lap), (isodd(i) ? -1.3 : 1.3) + GPLAI.dlat
                   pace = paces[i]) for i in 1:N]
 for c in cars; c.react = round(Int, T.P.start_hiatus) + rand(0:9); end
 F = GPLAI.Field(T, cars)
+# JM_GPLAI_PLAYER="s:dlat_offset_from_race:v" -- a human car held at a fixed station and speed (e.g. stalled)
+const PLAYER = haskey(ENV, "JM_GPLAI_PLAYER") ? (f = parse.(Float64, split(ENV["JM_GPLAI_PLAYER"], ":"));
+               (f[1], GPLAI.dlat(GPLAI.L(T, GPLAI.RACE), f[1]) + f[2], 0.0, f[3])) : nothing
 const GS = GPLAI.grip_scale(T); @printf("grip scale %.3f\n", GS)
 # ---- run at 60 fps like the sim, record per tick
 dt = 1/60
@@ -69,7 +72,7 @@ t = 0.0
 while minimum(c.lap + c.s/T.lap for c in cars) < LAPS && t < 60*60
     global t
     lapb = [c.lap for c in cars]
-    GPLAI.step!(F, dt; scale = GS)
+    GPLAI.step!(F, dt; scale = GS, player = PLAYER)
     t += dt
     for (i, c) in enumerate(cars)
         push!(rec[i], (t, c.lap*T.lap + c.s, c.d, c.dv, c.da, c.v))
@@ -108,6 +111,7 @@ jv = Float64[]
 for i in 1:N, k in 2:length(rec[i])
     rec[i][k][6] > 20 && push!(jv, abs(rec[i][k][4] - rec[i][k-1][4]))
 end
+PLAYER === nothing || @printf("player contacts (ticks): %d\n", get(F.stats, :player_contact, 0))
 @printf("one-frame (60 Hz) change of lateral speed: p99 %.3f p999 %.3f max %.3f m/s (GPL replays: 0.18-0.22 / 0.30-0.65 / 0.6-1.9); contacts %d\n",
         quantile(jv, 0.99), quantile(jv, 0.999), maximum(jv), get(F.stats, :contact, 0))
 for i in 1:N
