@@ -18,15 +18,18 @@ const GAME_ID = "juliaracer"
 function matchmaker_configured()
     haskey(ENV, "SGW_OFF") && return false
     isempty(get(ENV, "SGW_URL", "")) || return true
-    p = joinpath(homedir(), ".config", "sgweek", "url")
-    isfile(p) && !isempty(strip(readline(p)))
+    for p in (joinpath(homedir(), ".config", "sgw", "url"),
+              joinpath(homedir(), ".config", "sgweek", "url"))   # second: read-only fallback, setups before 2026-10-05
+        isfile(p) && return !isempty(strip(readline(p)))
+    end
+    false
 end
 
-"""The sgw command: \$SGW_BIN, the AppImage's own, ~/sgweek/sgw.py, ~/serious-games-week/sgw.py, or `sgw` on PATH."""
+"""The sgw command: \$SGW_BIN, the AppImage's own, ~/serious-games-week/sgw.py, or `sgw` on PATH."""
 function sgw_cmd()
     cands = String[get(ENV, "SGW_BIN", "")]
     haskey(ENV, "APPDIR") && push!(cands, joinpath(ENV["APPDIR"], "usr", "bin", "sgw"))
-    push!(cands, joinpath(homedir(), "sgweek", "sgw.py"), joinpath(homedir(), "serious-games-week", "sgw.py"))
+    push!(cands, joinpath(homedir(), "serious-games-week", "sgw.py"))
     for c in cands
         isempty(c) || !isfile(c) || return endswith(c, ".py") ? `python3 $c` : `$c`
     end
