@@ -32,6 +32,10 @@ def get_app_version() -> str:
     and joining guests can verify they're on the same revision. Tries the
     repo's git short hash first; falls back to the modification time of
     pokerIQ.py if git isn't available."""
+    # Backlog 28: the same string the Serious Games Week matchmaker matches on (set by the launcher or AppImage),
+    # so a join typed in by address is held to the same rule as one found through the matchmaker.
+    if os.environ.get("SGW_BUILD"):
+        return os.environ["SGW_BUILD"].strip()
     import subprocess
     here = os.path.dirname(os.path.abspath(__file__))
     try:
