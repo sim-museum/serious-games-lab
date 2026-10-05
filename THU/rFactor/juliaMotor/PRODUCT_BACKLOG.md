@@ -22123,3 +22123,11 @@ sorts itself in 3-4 laps.
 the field meets a STALLED human car (2-62 ticks per run, worst at WG s=3600 in the tight section before the line);
 not yet decoded: TRYING TO OUTBRAKE, pit stops, CRASHING (GPL hands the car to physics), driver personality scalings,
 the waypoint flag bits (no-pass zones), the slip-curve table (linear here). Needs the PO's drive.
+
+### RINGBANNER-1 — remove the Continental banner before Hohe Acht (PO 2026-10-04, late)
+PO: *"remove the continental banner near high eight at the ring. It's causing a bump artifact and adds little."*
+Supersedes the build_hat post rule proposed for RINGBUMP-1: the bump is the banner's support post baked into the
+track mesh (memory jr-ringbump-banner-post: lapdist ~1594.7, lat -4, and 1602.7 lat -5 -- frame to be reconciled
+with today's section boards). Remove the banner AND its posts from both the drawn track and the ground HAT; verify
+by driving the car through the spot (no vertical spike) and a render at the spot (no floating remnant).
+(TRACKSEG-2, the English translations of section names, is already logged above.)
