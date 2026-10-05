@@ -22325,3 +22325,12 @@ gone. Still short of the gold: no halfshafts/uprights (the player draws CHASE-AX
   acne check across tracks before any default changes.
 * Gates: `ai_parked_susp_smoke`, `ai_field_smoke`, `wheel_hubs_smoke`, `netplay_smoke`, `netplay_dr_smoke`,
   `netplay_dr2_smoke`, `netai_smoke` PASS.
+
+### HOCHEICHEN-BB (Ring billboards "set back on the left in the forest near high oaks", PO 2026-10-05) — S1: not located; SHELVED for the PO's location
+* Real-world Hocheichen lies between Hatzenbach and Quiddelbacher Höhe; GPL has no board for it, so our s≈2700–3900
+  (Hatzenbach 2571 … Flugplatz 3984). Chase views at s 2700/2950/3200/3450/3700/3900 and cockpit views at 3000–3750
+  (`261005/hoch/`): no advertising board stands back in the forest. GPL gold for the same stretch (261003 race, t 2:50–4:08):
+  none either. `JM_SCENE_AT=3200 JM_SCENE_WIN=800`: every "billboard" in that window is a TREE sprite (`stree*`); the sign
+  art is `bb7` (lat −9…−5), `s_face1/2` (lat −16…−19) and **`billb2` at s=3690 drawn TWICE — one copy at road level, one
+  6–10 m BELOW the road** (a lead, not yet the PO's defect).
+* Needs: the place — the section name on screen when the boards are in view, or a screenshot. **AWAITING THE PO.**
