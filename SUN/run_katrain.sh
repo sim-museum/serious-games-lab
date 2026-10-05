@@ -23,6 +23,18 @@ if ! venv_has_katrain; then
 fi
 
 source "$SCRIPT_DIR/katrain_venv/bin/activate"
+# A venv made before 2026-10-05 holds upstream KaTrain 1.17.1; replace it once with the sim-museum fork, which adds
+# network play through the Serious Games Week matchmaker.
+if ! python3 -c "import katrain.core.serious_games_week" 2>/dev/null; then
+    echo "Installing the sim-museum KaTrain fork (network play)..."
+    pip install -q websocket-client certifi pysgf && \
+    pip install -q --no-deps --force-reinstall "git+https://github.com/sim-museum/katrain.git@main" || \
+        echo "Warning: the KaTrain fork could not be installed; network play is unavailable this time."
+fi
+# Backlog 26: the matchmaker only matches copies built from the same commit; sgw sends $SGW_BUILD.
+if [ -z "${SGW_BUILD:-}" ]; then
+    SGW_BUILD="$(python3 -c 'import json, importlib.metadata as m; print(json.loads(m.distribution("KaTrain").read_text("direct_url.json"))["vcs_info"]["commit_id"][:12])' 2>/dev/null)" && export SGW_BUILD
+fi
 
 # Ensure KaTrain config exists. KaTrain only writes config.json when the GUI
 # launches, so seed it from the package default on first run; later launches
