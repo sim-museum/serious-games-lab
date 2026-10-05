@@ -689,7 +689,7 @@ let
             let sp = pp.spring_rate_Npmm
                 if all(k -> haskey(sp, k) && isfinite(sp[k]) && sp[k] > 0, (:LF,:RF,:LR,:RR))
                     DriveRT3D.set_suspension!(DriveRT3D.wheel_rate(sp[:LF]), DriveRT3D.wheel_rate(sp[:RF]),
-                                              DriveRT3D.wheel_rate(sp[:LR]), DriveRT3D.wheel_rate(sp[:RR]);
+                                              DriveRT3D.wheel_rate(sp[:LR]; rear = true), DriveRT3D.wheel_rate(sp[:RR]; rear = true);
                                               source = basename(IBTTMPL))
                 end
             end
@@ -4040,6 +4040,20 @@ if get(ENV,"JM_NOSE_GRILLEFIX","1") != "0" && !isempty(CARPIN)
         println("  [noseuv] CARPIN grille-fix: ", nfix, " facet(s) across ", nparts, " part(s)")
     end
 end
+# CARHAND-1 (PO 2026-10-04: "the julia cockpit is mirror image compared to the gold standard GPL cockpit; fix
+# that"). The whole car, not just the dash, is extracted through a REFLECTION of GPL's frame (render.jl: car
+# parts use (gx, gz, +gy), the track the rotation (gx, gz, -gy)), so the wheel hub sat right of the screen
+# centre where GPL's is left, the tacho 8 cm left of the hub (GPL ~2 cm) and the gear lever on the wrong side.
+# Rather than re-extract and re-tune every hand-placed car part, the car is reflected back ONCE, in its model
+# matrix (bodyModel, wheelmat, loosemat): everything placed in the car frame -- hands, mirrors, needles, pipes,
+# suspension -- follows. What it does not fix by itself, fixed where it happens: the dash patch below is then
+# the second reflection (off by default), visual rotations about lateral-ish axes reverse (front-wheel steer and
+# the steering wheel: HSIGN), Render.draw flips glFrontFace for a negative-determinant model (the two-sided
+# shader keys off gl_FrontFacing), and the mirror glass keeps sampling the same camera on the same screen side.
+# JM_CAR_UNMIRROR=0 restores the reflected car (and the dash patch).
+const CAR_UNMIRROR = get(ENV, "JM_CAR_UNMIRROR", "1") != "0"
+const CARHAND = CAR_UNMIRROR ? Render.scalexyz(1f0, 1f0, -1f0) : Render.scalexyz(1f0, 1f0, 1f0)
+const HSIGN = CAR_UNMIRROR ? -1.0 : 1.0
 # ── CARGOLD-1 S9c: THE DASH IS UPSIDE DOWN BECAUSE ITS V RUNS THE WRONG WAY ────────────────────
 # PO 2026-09-07: "Dashboard is upside down".  E74 through S9b chased this on GAUGEP -- the separate
 # dash7a BILLBOARD -- and could not move it, because since E106-S7 `gaugeItems` is EMPTY whenever
@@ -4083,7 +4097,7 @@ function _dash_vflip!(parts)
             end
         end
     end
-    if get(ENV,"JM_DASH_VFLIP","1") == "0"
+    if get(ENV,"JM_DASH_VFLIP", CAR_UNMIRROR ? "0" : "1") == "0"   # CARHAND-1: native UVs need no flip
         println("  [dashvflip] OFF (JM_DASH_VFLIP=0)"); return parts
     end
     n = 0
@@ -4121,7 +4135,7 @@ const _DASH_VFLIPPED = _dash_vflip!(CARPIN)   # mutates CARPIN in place; the con
 # without moving the panel. Winding is reversed so the faces keep their orientation.
 # JM_DASH_ZMIRROR=0 reverts.
 function _dash_zmirror!(parts)
-    if get(ENV,"JM_DASH_ZMIRROR","1") == "0"
+    if get(ENV,"JM_DASH_ZMIRROR", CAR_UNMIRROR ? "0" : "1") == "0"
         println("  [dashzmirror] OFF (JM_DASH_ZMIRROR=0)"); return parts
     end
     n = 0
@@ -4166,7 +4180,11 @@ function _tach_frame(parts)
             dPdu = ( e1*(V[3]-V[1]) - e2*(V[2]-V[1])) / d
             dPdv = (-e1*(U[3]-U[1]) + e2*(U[2]-U[1])) / d
             right = dPdu * TACH_RU; up = -dPdv * TACH_RU     # art v grows DOWN the picture
-            nrm = normalize(cross(right, up))               # toward the viewer of the art
+            nrm = normalize(cross(right, up))               # toward the viewer of the art ...
+            # CARHAND-1: ... only while the art reads unmirrored in THIS frame. On the un-mirrored car the dash
+            # is the raw (mirror-reading) extraction and right x up points into the panel, which hid the
+            # needles behind the face; orient the normal toward the driver's eye (rig frame, as the mirror glass).
+            dot(nrm, Float32[0.46, 0.40, 0] - c) < 0 && (nrm = -nrm)
             return (c = c, right = right, up = up, n = nrm)
         end
     end
@@ -4415,7 +4433,7 @@ const SWPARTS, SWCENTER, SWAXIS = Render.extract_gpl_steering(LOT3DO)   # steeri
 # back upright. JM_SW_UVFIX=0 (with JM_SW_ROT=180) restores the old look for A/B.
 const _SW_UVFIX_TEX = ("sterlot",)
 function _sw_uvfix!(parts)
-    if get(ENV,"JM_SW_UVFIX","1") == "0"
+    if get(ENV,"JM_SW_UVFIX", CAR_UNMIRROR ? "0" : "1") == "0"   # CARHAND-1: native UVs need no rotation
         println("  [swuv] OFF (JM_SW_UVFIX=0)"); return parts
     end
     n = 0
@@ -5611,6 +5629,16 @@ const TEXT_HUD = !haskey(ENV, "JM_NO_TEXT_HUD")
 textprog = Render.text_program(); (textvao, textvbo) = Render.hud_buffers()
 FONT = TEXT_HUD ? Render.load_font(joinpath(@__DIR__, "assets"), 18) : nothing
 TEXT_HUD && FONT === nothing && println("  [texthud] no font atlas under demo/native/assets -- text overlay off (run JuliaMotorMTK/tools/make_font_atlas.py)")
+# TRACKSEG-1 (PO 2026-10-04): GPL's Nürburgring names each section of the lap on trackside boards (Flugplatz,
+# Schwedenkreuz, Hohe Acht ...). Every track gets the same as a board-like plate at the top centre of the 3-D
+# view for SEGNAME_SECS seconds on entering a section. Names and positions: track_sections.jl.
+# JM_SEGNAME_SECS=0 turns it off.
+include(joinpath(@__DIR__, "track_sections.jl"))
+const SEGNAME_SECS = parse(Float64, get(ENV, "JM_SEGNAME_SECS", "3.0"))
+const SEGFONT = FONT === nothing ? nothing : something(Render.load_font(joinpath(@__DIR__, "assets"), 40), FONT)
+const SECTIONS = isdefined(Main, :LAPLEN) ? track_sections(TRACKSEL, LAPLEN) : Tuple{Float64,String}[]
+const SEG = Ref((0, "", -1.0e9))                   # (current section index, banner text, banner start time)
+isempty(SECTIONS) || println("  [trackseg] ", length(SECTIONS), " named sections for ", TRACKSEL)
 # S2: the gold's table shows GPL's 1967 DRIVERS (Clark, Hill, Brabham, Amon, Bonnier), not chassis
 # makes. Our AI is identified by make (AICHASSIS[id].name), so map make -> the works driver of that
 # make in GPL's roster for DISPLAY only. JM_TEXTHUD_CHASSIS=1 shows the makes instead.
@@ -9006,7 +9034,12 @@ function mirror_glass_quads(parts, tex)
         ns = Float32(sign(eyerig[na] - c[na])); ns == 0 && (ns = -1f0)   # face the glass toward the eye
         hu = e[ua]/2 * MIRROR_GLASS_FRAC; hv = e[va]/2 * MIRROR_GLASS_FRAC
         nrm = Float32[0,0,0]; nrm[na] = ns
-        u0, u1 = side < 0 ? (0f0, 0.5f0) : (0.5f0, 1f0)    # left disc ← left half of the rear view
+        # CARHAND-1: this mapping is the PHYSICAL one only on the un-mirrored car. Render +z is the car's RIGHT (the wheel hub
+        # sits at z +0.032 and drew right of centre), so FBO half (0, 0.5) is the RIGHT camera (side +1 below). On the old
+        # reflected car the screen-LEFT disc was mesh z < 0 and sampled the right camera -- each mirror showed the other
+        # side's view, plausible only because the car is symmetric. Reflected back, the screen-left disc is mesh z > 0 and
+        # samples (0.5, 1), the LEFT camera; the reflection's left-right flip keeps the car's own body at the inner edge.
+        u0, u1 = side < 0 ? (0f0, 0.5f0) : (0.5f0, 1f0)
         q = Float32[]
         corner(mu, mv) = begin
             p = copy(c); p[na] += ns*(e[na]/2 + 0.004f0)
@@ -13002,7 +13035,7 @@ function main()
         carModel = Render.translate(cs.x, cs.y, -cs.z) * Render.roty(Float32(cs.θ)) *
                    Render.rotz(Float32(pitch_ter)) * Render.rotx(Float32(roll_ter))   # whole car follows the hill (pitch + cross-slope roll)
         tiltModel = carModel * Render.rotz(Float32(pitch_dyn)) * Render.rotx(Float32(rollv))   # full body tilt (terrain + dynamic)
-        bodyModel = tiltModel * Render.translate(BODY_OFF)  # body dives/squats + rolls (3-D)
+        bodyModel = tiltModel * Render.translate(BODY_OFF) * CARHAND  # body dives/squats + rolls (3-D); CARHAND-1: GPL's handedness
         δ = Float32(inp.steer * (CAR3D ? DriveRT3D.MAXSTEER : SKIDPAD ? 0.30 : CAR.max_steer))
         # WHEELS FLOAT ON THE SUSPENSION (PO): the wheels stay PLANTED on the road (carModel = terrain
         # follow only, NO dynamic dive/squat/roll), while the CHASSIS pitches/rolls/heaves above them
@@ -13010,11 +13043,11 @@ function main()
         # front wheels appear to RISE relative to the cockpit; squat on power → they drop; roll right →
         # the body leans onto the planted right wheel (it rises) and lifts off the left (it drops).  The
         # wheels stay UPRIGHT/level (they never get the body lean) — they're not bolted to the chassis.
-        wheelmat(wx,wz,steer,r) = carModel * Render.translate(wx, r, wz) *
-                     (steer ? Render.roty(δ) : Render.ident()) * Render.rotz(Float32(spin))
+        wheelmat(wx,wz,steer,r) = carModel * CARHAND * Render.translate(wx, r, wz) *
+                     (steer ? Render.roty(Float32(HSIGN)*δ) : Render.ident()) * Render.rotz(Float32(spin))
         # E95: a torn-off wheel is in the WORLD, not on the car -- so it gets its own transform
         # rather than carModel's. Render axes are (x, up, -z), matching the trackside placement.
-        loosemat(lx,ly,lz,sp) = Render.translate(lx, ly, -lz) * Render.rotz(Float32(sp))
+        loosemat(lx,ly,lz,sp) = Render.translate(lx, ly, -lz) * Render.rotz(Float32(sp)) * CARHAND
         # advance + place the AI field (rail-followers on the centreline)
         ai_hit = Ref(false); ddt = dt > 1e-4 ? dt : 1/60
         # an AI car's body orientation = its physics pitch (already settles to the fore/aft slope) +
@@ -13265,8 +13298,8 @@ function main()
         # PERF-1: one fused matrix per call (was 4 matrices + 3 products), and the body matrix is computed once
         # per car per pass below (it was recomputed for every body PART) -- the top allocation site.
         aiCar(p)  = Render.pose_matrix(p[1], p[2], -p[3], p[4], p[5], p[6])   # body follows the hill (pitch + cross-slope/collision roll)
-        aiBody(p, cm) = Render.pose_matrix(p[1], p[2], -p[3], p[4], p[5], p[6], cm.body_off[1], cm.body_off[2], cm.body_off[3])
-        aiWheel(p,wx,wz,r) = Render.pose_matrix(p[1], p[2], -p[3], p[4], p[5], p[6], wx, r, wz) * Render.rotz(Float32(spin))
+        aiBody(p, cm) = Render.pose_matrix(p[1], p[2], -p[3], p[4], p[5], p[6], cm.body_off[1], cm.body_off[2], cm.body_off[3]) * CARHAND   # CARHAND-1
+        aiWheel(p,wx,wz,r) = Render.pose_matrix(p[1], p[2], -p[3], p[4], p[5], p[6], wx, r, wz) * CARHAND * Render.rotz(Float32(spin))
         # ── E85-S5: exchange poses with the peer, and place its cars ON THE GROUND ───────────────
         if NETLINK !== nothing
             # ⚠️ YIELD FIRST. The socket reader is an `@async` task (netplay.jl keeps one long-lived
@@ -13576,7 +13609,7 @@ function main()
             # two scene DRAWS or the FBO/state hop itself, which decides what S16 can attack.
             if MIRROR_HALVES > 0
             # E64 S10: one camera PER DISC at the mirror's own cowl position (left half of the FBO =
-            # left/z+ mirror), so each glass sees backward-outward like the gold — tail at the inner
+            # RIGHT/z+ camera -- render +z is the car's right; CARHAND-1), so each glass sees backward-outward like the gold — tail at the inner
             # edge only, road dominating.  The glass quads' per-half UV split is unchanged.
             for (x0, side) in (_mir_half == 0 ? ((0, 1),) : _mir_half == 1 ? ((MIRW÷2, -1),) :
                                MIRROR_HALVES == 1 ? ((0, 1),) : ((0, 1), (MIRW÷2, -1)))
@@ -13697,7 +13730,7 @@ function main()
         # CARGOLD-1 S9 (PO 2026-09-07: "Steering wheel is also installed upside down"): the gold's three spokes
         # are a Y (two up, one down to the hub); ours had the single spoke UP. A half turn about the column
         # (JM_SW_ROT, degrees, default 180) puts the wheel as the gold has it; the steering input adds to it.
-        swModel = bodyModel * Render.translate(SWCENTER) * Render.rotaxis(SWAXIS, Float32(inp.steer*2.5 + SW_ROT)) * Render.translate(-SWCENTER[1], -SWCENTER[2], -SWCENTER[3])
+        swModel = bodyModel * Render.translate(SWCENTER) * Render.rotaxis(SWAXIS, Float32(HSIGN*inp.steer*2.5 + SW_ROT)) * Render.translate(-SWCENTER[1], -SWCENTER[2], -SWCENTER[3])
         for it in swItems; Render.draw(prog, it, vp, swModel; bright=1.2, ambfill=0.34); end
         # E64 S2 (Z-CK4): gloved hands + forearms, cockpit view only (the chase driver figure has its
         # own DRIVER_TEX arms).  Hands turn with the wheel, forearms stay put — GPL-era articulation.
@@ -13775,6 +13808,20 @@ function main()
                 end
             end
             Render.text_draw(textprog, textvao, textvbo, FONT, tv, W, H)
+            # TRACKSEG-1: the section board, under the timing band at the top centre.
+            if !isempty(SECTIONS) && SEGNAME_SECS > 0
+                SEG[] = section_update(SECTIONS, cs.lapdist, LAPLEN, cs.t, SEG[]...)
+                if cs.t - SEG[][3] < SEGNAME_SECS
+                    msg = SEG[][2]; tw = Render.text_width(SEGFONT, msg); pad = 16.0
+                    bw = tw + 2pad; bh = SEGFONT.lineh + 10.0; bx = (W - bw)/2; by = nrows*FONT.lineh + 24.0
+                    sv = Float32[]
+                    Render.hquad!(sv, bx - 3, by - 3, bw + 6, bh + 6, (0.05, 0.05, 0.05))     # black rim, as on GPL's boards
+                    Render.hquad!(sv, bx, by, bw, bh, (0.93, 0.93, 0.90))
+                    Render.hud_draw(hudprog, hudvao, hudvbo, sv, W, H)
+                    st = Float32[]; Render.text!(st, SEGFONT, bx + pad, by + 4, msg, (0.05, 0.05, 0.05))
+                    Render.text_draw(textprog, textvao, textvbo, SEGFONT, st, W, H)
+                end
+            end
             # RACEEND-1 (PO 2026-09-19, WG race: "there should be a graphical signal when the race is
             # over"). Until now the finish was a small line in the standings box and the window title.
             # Now: a chequered strip across the frame under the HUD band and a large centred banner,

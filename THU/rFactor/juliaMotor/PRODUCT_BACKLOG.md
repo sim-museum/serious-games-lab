@@ -21992,3 +21992,93 @@ gives a landing spike only 2–3 samples). If short on time: 1, 2, then 3b.
 
 **Caveat recorded for the fit:** iRacing's Nordschleife is a scan of the modern track, and its crests were reworked after 1967.
 Test 2 measures the CAR's vertical response, not 1967 elevation; Julia's Ring geometry stays GPL's `.trk`.
+
+
+## PO 2026-10-04 (evening) — three requests
+
+PO: *"update the julia racer physics model using the iracing gold standard .ibt files in the 261004 directory on the USB stick.
+Also: in GPL, nurunberg has trackside signs labeling which section of the track, e.g. flugplatz, swedencriz, hoch oct, you are
+on. Create a similar effect by printing out the name of the track segment, at top center of the julia 3D view, for a few seconds
+when you enter it, e.g. esses, carossel, big bend at watkins glen. Also - the julia cockpit is mirror image compared to the gold
+standard GPL cockpit; fix that."*
+
+The 261004 session (17 `.ibt`, 360 Hz, setup `261004_nurburgring`, test log in `iracing_setup_2026-10-04.txt`) was copied to
+`~/gold standard/julia racer/261004/`. Every fit below is identified THROUGH THE PLAYER CAR (the E91-S10 rule) and has an
+acceptance tool; the stability suite (`tools/stability_check.jl`: step steers 90/125 km/h, WOT blips 200/240, straight WOT
+pull, trail braking from 250) passes on the final model.
+
+### IRFIT-261004 TORQUE (test 4) — measured to 8,900 rpm
+`tools/torquefit_261004.jl`. The 3rd/4th-gear pulls run 4–13 % rear wheelspin, which `longfit_261002` rejected (> 5 %), so its
+torque stopped at 7,775 rpm and the parabola was extrapolated (299 N·m at 9,000). With the engine and wheels accelerating at the
+MEASURED rpm slope, slipping samples count: 7,013 WOT samples, gears 3–5. Torque peaks at **312 N·m @ 7,100 rpm and falls to
+~280 by 8,800**; 3rd/4th/5th agree within ~2 %. `engine_torque` now uses the measured table (12 knots, a sum of ramps so MTK
+compiles it). Acceptance `tools/torqueval_261004.jl`: 4th gear 0.96–1.03 of the gold to 9,000 rpm, 3rd 0.95–0.99;
+`longval_261002` median 1.007 (coasts and 4th/5th pulls unchanged).
+
+### IRFIT-261004 BRAKE-2 (test 1) — the car now locks, and stays locked, like iRacing
+Gold (wheel speeds read 1.000 × Speed free-rolling, so κ is direct): line pressure is linear in pedal (65.4 / 56.9 bar at full
+= the 53.5 % bias); full pedal holds 1.27–1.40 g of tyre force at κ −0.14…−0.22; once all four lock the car slides at
+**~1.0 g at every speed** and stays locked until the pedal comes up. The brush held its peak at any slip (braked at ~1.45 g,
+never locked). New tyre physics: a **sliding drop** past full sliding, `rs + (1−rs)·exp(−((ξ−1)₊/ws)²)` (`brush_slide`, ws 1.5) —
+exactly 1 up to ξ = 1, so adhesion and peak are unchanged. `tools/brakefit_261004.jl` (20 pedal × speed bins + the locked
+slide, through the car, in the gold's gear): **Tbrake 2956 N·m, front split 0.585, Cκ 23.7/23.2, μx 1.438/1.498, rs 0.629**.
+Locked slide sim 0.969/1.004/1.050 g vs gold 0.957/1.001/1.046; forced lock held 97 % of the stop. Open: at pedal 0.6–0.85
+the gold's slip rises faster than the brush's (−0.07…−0.21 vs −0.05…−0.09), and full pedal above 200 km/h is 1.68 g vs 1.45
+(those gold samples are short stabs). The softer rear Cκ needed the traction aid's threshold scaled with it (0.06 → 0.072, same
+fraction of the limit): at 0.06 it cut 3rd-gear WOT to 0.84–0.93 of the gold.
+
+### IRFIT-261004 (test 3) — the tyre across speed: consistent, lateral NOT refit
+`tools/tyrecmp_261004.jl`: on the symmetric setup at 100–160 km/h the gold reproduces 261002's slip curve within ~0.1–0.2° up to
+0.9 g; above that the front runs less slip at speed (3.6–4.9° vs 4.4–6.1° at 86 km/h). With the new longitudinal side, the
+lateral fit's stable-branch score is 474 (was 352). `tyreid_261002.jl` now scores the STABLE branch only (samples up to the peak
+g — the sliding drop otherwise lets washing-out samples swamp lower bands). Its re-identification (μ 1.264/1.358, Cα 24.25/26.38,
+kμ 0.103, score 85) is **REJECTED**: it sits on the stability limits (125 km/h step steer 10.2°, WOT blip 0.10) — rear Cα was
+raised to 34 for the PO's high-speed wandering (TYRE-1-R2). `tools/tyrespeed_261004.jl`: at 130 km/h the shipped tyre runs
+~20–25 % LESS slip than the gold in every band (peak 1.25 g vs ~1.2). Confounded by that session's 207 kPa right tyres. Open.
+
+### IRFIT-261004 SUSP-1 (test 2) — rear motion ratio measured; dampers stay
+`tools/suspfit_261004.jl`, a road-independent identity at 360 Hz: Σ suspension force = M_s·VertAccel, regressed on shock
+deflection/velocity (204,842 straight samples, R² 0.91). Front 22.9 N/mm per shock-mm = 30 N/mm × MR 0.76 (the old MR² 0.6083
+⇒ 0.78: the method passes its own check); **rear 31.1 = 48 × MR 0.648** (CI 0.61–0.69); ride heights agree independently
+(front MR 0.78–0.81, rear 0.69–0.70). Rear wheel rate 29.2 → **20.2 kN/m** (`MR2_R`, `wheel_rate(...; rear = true)`). The 3-D car
+has no anti-roll bars, so a rear **roll-only coupling** (`karb`) keeps each axle's roll stiffness exactly as before — heave and
+pitch change, the cornering balance does not. The regressed dampers (front 4017/2855, rear 1654/788 N·s/m per shock; stable
+across odd/even files) are **not adopted**: over the gold's own crest they double the airtime error (0.17 → 0.31 s). A
+pitch-acceleration term was tried and rejected (collinear; it drove front K to 13.8 against the spring's 23.4).
+
+### VFRAME-1 — the car feels crests (and dips)
+`tools/crestval_261004.jl` re-drives every gold Flugplatz pass (own throttle/brake/gear vs distance) over the gold's road
+(14-08 slow pass: 360 Hz VertAccel double-integrated, anchored to Alt — iRacing quantises Alt to ~0.1 m — minus ride height).
+It showed the sim never left the ground at ANY speed: the vertical states are relative to `zref`, which follows the grade by
+feed-forward, so a crest's deceleration of the frame was never felt, and on take-off the frame froze and the car lost the
+upward velocity it carried off the climb. **Fix** (`step_car3d!`): every change of frame velocity is handed to the body and
+wheels as the opposite change of relative velocity (a pure change of frame — absolute velocity continuous, no force); the
+frame keeps tracking the road in the air (a coasting frame drifted 12 m off GPL's Flugplatz and tripped the heave guard — 690 g);
+the tyre damper sees road velocity relative to the frame; spawn/reset adopts the road's velocity (else a car spawned at speed
+on a grade read 21 g). Gold crest, 7 non-spin passes: airtime error **0.67 s → 0.17 s**, landing g within 0.21 g. GPL's own
+Flugplatz (`tools/gplcrest_261004.jl`, `.trk` spline, flat out): legacy frame never light; now airborne **0.64 s @ 160 km/h,
+0.85 s @ 200, 1.02 s @ 230**, landing ~3.2 g (gold modern crest: 0.81–0.86 s @ 200). `JM_VFRAME=legacy` reverts.
+⚠️ This changes every elevation change on every track (dips load the car, crests unload it) — the PO should feel the Ring and Spa.
+
+### TRACKSEG-1 — section names at the top centre of the 3-D view
+`demo/native/track_sections.jl`; a GPL-board-like plate (white, black rim, bold 40 px DejaVu, Latin-1 atlas) under the timing
+band for 3 s on entering a section (`JM_SEGNAME_SECS`, 0 = off); 3 m hysteresis; nothing at spawn.
+* **Nürburgring:** GPL's OWN 23 Papyrus section boards (`s_flug`, `s_schwed`, `s_hohe` … in `nurburg.dat`, text read off their
+  textures) projected onto the sim's ribbon (`tools/section_signs.jl`) — e.g. Karussell board 13,846 m, the 220° left at 13,852;
+  plus Start und Ziel, Südkehre, Nordkehre from the arcs.
+* **Watkins Glen, Monza, Spa, Zandvoort:** the names on the BAPOM maps GPL ships with each track (`tracks/<t>/map-<t>.pdf`; GPL's
+  own WG event screen shows the same labels), placed on the `.trk` corners (`tools/track_corners.jl`). WG: Esses, Front Straight,
+  **Carousel** (BAPOM "The Loop" — the PO's name), Back Straight, The Speed Trap, Big Bend, The "90".
+* Verified in renders: "Carousel" (WG), "Karussell", "Südkehre", "Döttinger Höhe" (Ring).
+
+### CARHAND-1 — the car in GPL's handedness (cockpit no longer a mirror image)
+Root (`render.jl`): car parts were extracted through a REFLECTION of GPL's frame, (gx, gz, +gy), the track through the rotation
+(gx, gz, −gy); only the dash had been patched back (COCKPIT-TACH-1). Now the car is reflected back once in its model matrix
+(`CARHAND` in bodyModel / wheelmat / loosemat, and the AI cars), so everything placed in the car frame follows. Consequences
+handled: car UVs are GPL's native ones (no compensating V flip; the dash V-flip, dash z-mirror and steering-wheel UV patches are
+off by default); front-wheel steer and steering-wheel rotation signs (`HSIGN`); `Render.draw`/`draw_depth` flip glFrontFace for
+a negative-determinant model (two-sided shader keys off gl_FrontFacing); the tach needle's lift normal now faces the eye.
+Result vs the gold WG cockpit: hub left of screen centre, tach ~2 cm left of the hub, dash order oil–TACHO–water–switch–fuel–volts,
+gear-lever gate on the right; "Firestone", "RPM X 1000", "LOTUS" all read correctly. **Mirrors:** each disc now samples its own
+side's camera — on the reflected car each mirror had been showing the OTHER side (render +z is the car's right). `JM_CAR_UNMIRROR=0`
+restores everything.

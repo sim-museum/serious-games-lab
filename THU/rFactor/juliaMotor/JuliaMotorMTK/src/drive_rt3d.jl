@@ -102,8 +102,16 @@ end
 # to the raw ibt numbers, which would have stiffened the car by 64% while looking like the
 # removal of a hardcoded parameter. The factor is real physics, so it is named here rather than
 # left to be rediscovered.
-const MR2 = 0.6083                       # (motion ratio)^2, wheel rate = spring rate x MR2
-const KS  = Ref((18_250.0, 18_250.0, 29_200.0, 29_200.0))    # FL, FR, RL, RR wheel rates [N/m]
+const MR2 = 0.6083                       # (motion ratio)^2, wheel rate = spring rate x MR2 (FRONT; was every corner)
+# IRFIT-261004 SUSP-1 (2026-10-04): the REAR motion ratio is lower. Measured on the PO's 261004 Ring session at
+# 360 Hz (tools/suspfit_261004.jl: the four suspension forces carry the sprung mass, regressed on the shock
+# deflections/velocities, 204 842 straight samples, R² 0.91): per-shock-mm force front 22.9 N/mm = 30 N/mm x
+# MR 0.76 (this MR2's 0.78 -- the method passes its own check), rear 31.1 N/mm = 48 x MR 0.648 (90 % CI 0.61-0.69).
+# The ride-height channels agree independently (rideHeight vs shockDefl: front MR 0.78-0.81, rear 0.69-0.70).
+# So the Ring's 48 N/mm rear spring is a 20.2 kN/m wheel rate, not 29.2: the rear was 45 % too stiff in heave
+# and pitch -- the crest behaviour. Roll is kept (see ARB_R).
+const MR2_R = (31.1/48)^2                # 0.4198
+const KS  = Ref((18_250.0, 18_250.0, 20_150.0, 20_150.0))    # FL, FR, RL, RR wheel rates [N/m]
 const KS_SRC = Ref("built-in fallback (Nurburgring setup -- NOT from an ibt)")
 
 """    set_suspension!(fl, fr, rl, rr; source) -> nothing
@@ -121,7 +129,7 @@ function set_suspension!(fl::Real, fr::Real, rl::Real, rr::Real; source::Abstrac
 end
 
 """Wheel rate [N/m] from an ibt SpringRate [N/mm]. One place for the unit and motion-ratio change."""
-wheel_rate(spring_N_per_mm::Real) = float(spring_N_per_mm) * 1000.0 * MR2
+wheel_rate(spring_N_per_mm::Real; rear::Bool = false) = float(spring_N_per_mm) * 1000.0 * (rear ? MR2_R : MR2)
 
 """
     wrecks(closing, bnd_peak, speed; close_ms, bnd_peak_max, vmin_ms) -> Bool
@@ -296,7 +304,10 @@ function set_ride_height!(fl::Real, fr::Real, rl::Real, rr::Real; source::Abstra
     nothing
 end
 const TC_ON   = !haskey(ENV, "JM_NOTC")            # traction aid (see drive_rt.jl) — keeps the rear below its slip limit
-const TC_SLIP = parse(Float64, get(ENV, "JM_TC_SLIP", "0.06"))
+# IRFIT-261004: 0.06 -> 0.072 with the braking fit's softer rear Cκ (28 -> 23.2): the same drive force now takes ~20 %
+# more slip, and at 0.06 the aid cut 3rd-gear WOT to 0.84-0.93 of the gold's pulls (which run 8-13 % slip on full
+# power, iRacing has no aid); scaled by 28/23.2 it keeps the same fraction of the tyre's limit -- 0.95-0.99 of the gold.
+const TC_SLIP = parse(Float64, get(ENV, "JM_TC_SLIP", "0.072"))
 const TC_VLO  = parse(Float64, get(ENV, "JM_TC_VLO", "25.0"))   # speed gate: off below, full above (peel-out lives at low speed)
 # STABILITY-1 S3 (2026-09-15): an ALTERNATIVE gate, opt-in, for the PO to compare against the speed
 # gate rather than have a default flipped under them. S2 measured the speed gate disabling the aid in
@@ -371,9 +382,20 @@ function _musetters(sys)
 end
 
 """One corner spec at wheel rate `ks`, keeping every other value at the axle's shipped default."""
+# IRFIT-261004 SUSP-1: DAMPERS stay hand-set (2500 / 3000). tools/suspfit_261004.jl also regresses bump/rebound damping
+# (per shock: front 4017/2855, rear 1654/788 N·s/m, stable across odd/even files), and the vehicle model takes them
+# (corner fields cb/cr), but the acceptance test rejects them: over the gold's own Flugplatz crest
+# (tools/crestval_261004.jl, 7 non-spin passes) they double the airtime error, 0.17 -> 0.31 s (landing g 0.21 -> 0.16 g),
+# while the measured springs alone are neutral-to-better (0.174 -> 0.167 s). The identity has no bump stops, packers or
+# tyre dynamics in it, and the damping is where those would land.
+# ARB_R: the 3-D car has no anti-roll bars (iRacing's setup has both, front 0.375" and rear 0.6875"/5 arms, not
+# identified here). The rear's roll stiffness the TYRE-1-R handling was identified with came from the old motion
+# ratio, so a rear roll-only coupling keeps exactly that: per side ks + 2·karb = spring x MR2, as before. Heave and
+# pitch take the measured rate; the cornering balance is unchanged.
+_karb_r(ks) = 0.5 * float(ks) * (MR2/MR2_R - 1.0)
 _corner(axle::Symbol, ks::Real) = axle === :f ?
-    (ks = float(ks), cs = 2500.0, m_s = 120.0, m_u = 20.0, kt = 180_000.0, ct = 1000.0) :
-    (ks = float(ks), cs = 3000.0, m_s = 148.0, m_u = 20.0, kt = 200_000.0, ct = 1100.0)
+    (ks = float(ks), cs = 2500.0, karb = 0.0, m_s = 120.0, m_u = 20.0, kt = 180_000.0, ct = 1000.0) :
+    (ks = float(ks), cs = 3000.0, karb = _karb_r(ks), m_s = 148.0, m_u = 20.0, kt = 200_000.0, ct = 1100.0)
 
 function build_car3d(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0, y0 = 0.0,
                      brush = !haskey(ENV, "JM_MAGIC"), dt = 1/300)
@@ -407,6 +429,7 @@ function build_car3d(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0, y0 = 0.0,
     reinit!(c.integ); c.gear = 0; c.s_gr(c.integ, 0.0)
     a = getall(c.integ); c.x = a[1]; c.z = a[2]; c.θ = a[3]; c.v = sqrt(a[4]^2 + a[5]^2); c.rpm = a[6]
     c.zref = y0; c.zr_prev = ntuple(_->0.0, 4)        # spawn on the ground (zr≈0) — no spurious first-step road velocity
+    delete!(_VREF, c)                                  # VFRAME-1: the first real step adopts the road's velocity
     c
 end
 
@@ -443,12 +466,21 @@ function build_cars3d(poses; brush = !haskey(ENV, "JM_MAGIC"), dt = 1/300)
         for _ in 1:3; step_car3d!(c, 0.3, 0.0, 0.0, 1/60; clutch=0.5, manual=true); end
         reinit!(c.integ); c.gear=0; c.s_gr(c.integ, 0.0)
         a=getall(c.integ); c.x=a[1]; c.z=a[2]; c.θ=a[3]; c.v=sqrt(a[4]^2+a[5]^2); c.rpm=a[6]
-        c.zref=0.0; c.zr_prev=ntuple(_->0.0,4)
+        c.zref=0.0; c.zr_prev=ntuple(_->0.0,4); delete!(_VREF, c)
         push!(cars, c)
     end
     cars
 end
 
+# VFRAME-1 (see step_car3d!): the vertical reference frame's velocity per car, and the body/wheel vertical-velocity
+# states it hands frame changes to.
+const VFRAME_INERTIAL = lowercase(get(ENV, "JM_VFRAME", "inertial")) != "legacy"
+const _VREF = IdDict{Any,Float64}()
+const _VSTATE = IdDict{Any,Any}()
+_vstate(c) = get!(_VSTATE, c.sys) do
+    vs = [c.sys.w, c.sys.vuFL, c.sys.vuFR, c.sys.vuRL, c.sys.vuRR]
+    (ModelingToolkit.getsym(c.sys, vs), ModelingToolkit.setu(c.sys, vs))
+end
 "Advance the 3-D car by dt.  Inputs as DriveRT.step_car!.  `groundz(x,z)->h`
 gives terrain elevation (used to drive the suspension under each wheel)."
 function step_car3d!(c::Car3D, throttle, brake, steer, dt;
@@ -529,9 +561,34 @@ function step_car3d!(c::Car3D, throttle, brake, steer, dt;
         # ground reference: while LOADED, follow the GRADE (feed-forward vr_cg) + a correction so
         # the suspension sits at static on any slope (a fast climb no longer reads as a slam); when
         # AIRBORNE, FREEZE it so the body falls relative to it and the car clears a brow / lands.
+        if VFRAME_INERTIAL
+            # IRFIT-261004 VFRAME-1: the vertical states are RELATIVE to zref, so every change of zref's velocity
+            # is a frame acceleration the body must feel. Before this it never did: over a crest the grade eases,
+            # zref decelerates, and the body was carried down with it (no unloading at any speed); on take-off zref
+            # froze and the car lost the upward velocity it carried off the climb. Now a change of frame velocity is
+            # handed to the body and wheels as the opposite change of RELATIVE velocity (their absolute velocity is
+            # continuous -- a pure frame change, no force), the frame keeps tracking the road in the air, and
+            # the tyre damper sees the road's velocity relative to the frame. Measured against the gold's
+            # Flugplatz passes: tools/crestval_261004.jl. JM_VFRAME=legacy restores the old frame.
+            # The frame tracks the terrain in the AIR too: its motion is now physically neutral, so there is no reason to
+            # let it coast -- a coasting frame drifted 12 m off the road over GPL's Flugplatz, tripped the 12 m heave
+            # guard and dropped the car onto the road at 690 g. Tracking it keeps the heave = height above the road.
+            vref = isfinite(terr_cg) ? vr_cg + clamp(terr_cg - c.zref, -1.5, 1.5)*10.0 : get(_VREF, c, 0.0)
+            # after a build/spawn/reset the car starts moving WITH the road: adopt the frame velocity, hand nothing over
+            # (handing it over made a car spawned at 200 km/h on a 5 % grade read 21 g on its first frames)
+            vref0 = get(_VREF, c, vref)
+            if vref != vref0
+                gs = _vstate(c)
+                gs[2](c.integ, gs[1](c.integ) .+ (vref0 - vref)); OrdinaryDiffEq.SciMLBase.u_modified!(c.integ, true)
+            end
+            _VREF[c] = vref; c.zref += vref*subdt
+            zr = ntuple(i -> terr[i] - c.zref, 4)
+            for i in 1:4; c.s_zr[i](c.integ, zr[i]); c.s_vr[i](c.integ, vr[i] - vref); end
+        else
         (grounded && isfinite(terr_cg)) && (c.zref += vr_cg*subdt + clamp(terr_cg - c.zref, -1.5, 1.5)*10.0*subdt)
         zr = ntuple(i -> terr[i] - c.zref, 4)
         for i in 1:4; c.s_zr[i](c.integ, zr[i]); c.s_vr[i](c.integ, vr[i]); end
+        end
         c.zr_prev = zr
         step!(c.integ, subdt, true)
         a = c.getall(c.integ)
@@ -582,7 +639,7 @@ function step_car3d!(c::Car3D, throttle, brake, steer, dt;
     if !(isfinite(c.pitch) && isfinite(c.roll) && isfinite(c.heave)) || abs(c.heave) > 12.0 ||
        (!airborne && (abs(c.pitch) > 0.7 || abs(c.roll) > 0.7)) ||
        (airborne && (abs(c.pitch) > 12.0 || abs(c.roll) > 12.0))
-        c.s_vreset(c.integ, zeros(14))
+        c.s_vreset(c.integ, zeros(14)); delete!(_VREF, c)
         c.heave = 0.0; c.pitch = 0.0; c.roll = 0.0; c.vacc = 9.80665
     end
     if c.rpm < 350.0 && (clamp(clutch, 0, 1) > 0.5 || c.gear == 0)
@@ -666,7 +723,7 @@ function contain3d!(c::Car3D, xnew, znew; vdamp = 0.45, settle = false, groundz 
     c.s_vel(c.integ, [a[4]*vdamp, a[5]*vdamp])
     c.x = xnew; c.z = znew; c.v = sqrt((a[4]*vdamp)^2 + (a[5]*vdamp)^2)
     if settle
-        c.s_vreset(c.integ, zeros(14))
+        c.s_vreset(c.integ, zeros(14)); delete!(_VREF, c)
         c.heave = 0.0; c.pitch = 0.0; c.roll = 0.0; c.vacc = 9.80665
         if groundz !== nothing
             h = groundz(xnew, znew); isfinite(h) && (c.zref = Float64(h))
@@ -690,7 +747,7 @@ function respawn3d!(c::Car3D; groundz = nothing)
     # LAPTIME-1: bank the elapsed time BEFORE reinit! throws the integrator's clock away.
     c.toff += c.integ.t
     reinit!(c.integ); c.gear = g0; c.s_gr(c.integ, gearratio(g0))
-    c.s_vreset(c.integ, zeros(14))                 # zero the vertical subsystem → spawn settled (no "superball" bounce)
+    c.s_vreset(c.integ, zeros(14)); delete!(_VREF, c)  # zero the vertical subsystem → spawn settled (no "superball" bounce)
     a = c.getall(c.integ); c.x = a[1]; c.z = a[2]; c.θ = a[3]; c.v = a[4]; c.rpm = a[6]
     c.heave = 0.0; c.pitch = 0.0; c.roll = 0.0; c.vacc = 9.80665
     # re-anchor the ground reference to the terrain UNDER the respawn point — otherwise zref keeps the

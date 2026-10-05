@@ -35,10 +35,14 @@ using ModelingToolkit: t_nounits as t, D_nounits as D
 #               shaped: approaching the 2000 rpm idle the gold's drag falls to ~0 (its idle governor
 #               fuels the engine in gear too) -- without it a 5th-gear coast below 90 km/h ran
 #               1.3-2.3x too hard. (Gold dips to −5 N·m below idle, i.e. the governor drives; not modelled.)
-#   WOT torque  (1830 pts, 4th + 5th, 4300-7775 rpm)          Tpeak 310 N·m @ 7727 rpm, spread 6742,
-#               bin RMS 3.2 N·m; 4th and 5th agree within ~1 %. ABOVE 7775 rpm IS EXTRAPOLATED
-#               (no gold yet) -- the fit gives ~287 kW (385 hp) at 9500 and a rev-limited 335 km/h
-#               in 5th on Ring gearing, which the PO's analysis predicted (~206 mph).
+#   WOT torque  IRFIT-261004 (2026-10-04): now MEASURED to 8,900 rpm from the PO's 261004 3rd/4th-gear
+#               pulls (test 4) plus every earlier capture -- 7013 pts, gears 3-5, tools/torquefit_261004.jl.
+#               The pulls run 4-13 % rear wheelspin, which longfit_261002 rejected (> 5 %); here the engine
+#               and wheels accelerate at the MEASURED rpm slope, so slipping samples count. The torque PEAKS
+#               at ~312 N·m @ 7,100 rpm and FALLS to ~280 by 8,800 -- the E91-S10 parabola (310 @ 7727,
+#               fitted below 7,775) extrapolated 299 N·m at 9,000, ~7 % too strong at the top. 3rd, 4th and
+#               5th agree within ~2 % (3rd reads high, i.e. Ie 0.18 is slightly low; not refitted).
+#               Below 3,700 rpm and above 8,900 rpm the table holds its end slope.
 const CDA_IBT = 0.480                 # m², at the model's ρair 1.10 (the Ring session's AirDensity 1.099)
 const CRR_IBT = 0.0139
 const EFRIC_T0 = 14.24                # N·m   engine drag at zero throttle: (T0 + k·rpm) (friction-MEP form) ...
@@ -46,10 +50,24 @@ const EFRIC_K  = 0.00389              # N·m/rpm
 const EFRIC_R0 = 2353.0               # rpm   ... × ½(1 + tanh((rpm − R0)/W)), the fade toward idle
 const EFRIC_W  = 351.0                # rpm
 
-function engine_torque(rpm, throttle; Tpeak = 310.0, rpm_peak = 7727.0,
-                       spread = 6742.0, redline = 9500.0, T0 = EFRIC_T0, k = EFRIC_K,
-                       r0 = EFRIC_R0, w = EFRIC_W, Tmin_frac = 0.2)
-    wot = Tpeak * max(Tmin_frac, 1 - ((rpm - rpm_peak)/spread)^2)   # WOT (net) torque
+# (rpm, N·m) knots: median WOT crank torque per 250-rpm band of the gold, sim frame (torquefit_261004.jl)
+const WOT_KNOTS = ((3500.0, 235.5), (4400.0, 236.5), (4900.0, 255.0), (5400.0, 273.5), (5900.0, 288.5),
+                   (6400.0, 302.5), (6850.0, 311.0), (7150.0, 312.0), (7650.0, 307.5), (8100.0, 300.5),
+                   (8650.0, 284.5), (8900.0, 278.5))
+"Measured WOT crank torque: the knots joined by straight lines, as Σ ramps (symbolic-safe: max only)."
+function wot_torque(rpm)
+    k = WOT_KNOTS
+    T = k[1][2] + 0.0*rpm; s0 = 0.0                     # flat below the first knot
+    for i in 1:length(k)-1
+        s = (k[i+1][2] - k[i][2]) / (k[i+1][1] - k[i][1])
+        T += (s - s0)*max(0.0, rpm - k[i][1]); s0 = s
+    end
+    T
+end
+
+function engine_torque(rpm, throttle; redline = 9500.0, T0 = EFRIC_T0, k = EFRIC_K,
+                       r0 = EFRIC_R0, w = EFRIC_W)
+    wot = max(0.0, wot_torque(rpm))                                 # WOT (net) torque, measured
     cut = 0.5*(1 - tanh((rpm - redline)/200.0))                     # smooth redline fuel cut
     fric = (T0 + k*rpm) * 0.5*(1 + tanh((rpm - r0)/w))              # zero-throttle drag, fading at idle
     throttle*wot*cut - (1 - throttle)*fric                          # blend WOT ↔ engine drag

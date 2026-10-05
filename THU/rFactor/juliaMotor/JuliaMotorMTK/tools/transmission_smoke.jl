@@ -79,7 +79,7 @@ let springs = Dict{String,NTuple{4,Float64}}()
         p3 = Setup.setup_params(IBT.session_yaml(IBT.ibt_open(f)))
         sp = p3.spring_rate_Npmm
         all(k -> haskey(sp, k) && isfinite(sp[k]), (:LF,:RF,:LR,:RR)) || continue
-        springs[basename(f)] = Tuple(DriveRT3D.wheel_rate(sp[k]) for k in (:LF,:RF,:LR,:RR))
+        springs[basename(f)] = Tuple(DriveRT3D.wheel_rate(sp[k]; rear = k in (:LR,:RR)) for k in (:LF,:RF,:LR,:RR))
     end
     check("ibt carries a SpringRate for all four corners", !isempty(springs),
           string(length(springs), " session(s)"))
@@ -101,8 +101,9 @@ let springs = Dict{String,NTuple{4,Float64}}()
     # stiffened the car 64% while looking like the removal of a hardcoded parameter.
     check("wheel_rate reproduces the shipped front constant",
           round(DriveRT3D.wheel_rate(30.0)) == 18_249, string(round(DriveRT3D.wheel_rate(30.0))))
-    check("wheel_rate reproduces the shipped rear constant",
-          round(DriveRT3D.wheel_rate(48.0)) == 29_198, string(round(DriveRT3D.wheel_rate(48.0))))
+    # IRFIT-261004 SUSP-1: the rear has its own, MEASURED motion ratio (tools/suspfit_261004.jl): 48 N/mm -> 20 150 N/m.
+    check("wheel_rate reproduces the shipped rear constant (rear motion ratio)",
+          round(DriveRT3D.wheel_rate(48.0; rear = true)) == 20_150, string(round(DriveRT3D.wheel_rate(48.0; rear = true))))
 end
 
 # 3c. E100 S5: STATIC RIDE HEIGHT, per corner. The old single 0.075 m constant was wrong for both

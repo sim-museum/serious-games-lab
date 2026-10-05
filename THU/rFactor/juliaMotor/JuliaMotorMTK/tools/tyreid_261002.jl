@@ -64,6 +64,10 @@ function sim_curve(; δmax = 0.25, tr = 30.0, dir = 1.0)
         αf = δ - atan(v + A_CG*r, u); αr = -atan(v - B_CG*r, u)
         push!(pts, (s*ay/G, rad2deg(s*αf), rad2deg(s*αr))); maxay = max(maxay, s*ay/G)
     end
+    # IRFIT-261004: score the STABLE branch only -- samples up to the peak lateral g. The gold's steady
+    # 2-s windows never contain a car washing out past its limit; once the tyre has a sliding drop (BRAKE-2,
+    # rs < 1) the ramp's post-peak samples fall back into lower g bands with runaway front slip and swamp them.
+    isempty(pts) || (pts = pts[1:argmax(first.(pts))])
     out = Dict{Float64,Tuple{Float64,Float64}}()
     for g in BANDS
         ii = [p for p in pts if g <= p[1] < g + 0.1]; length(ii) < 10 && continue

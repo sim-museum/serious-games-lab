@@ -25,6 +25,13 @@
 "Brush saturation 1−(1−ξ)³ — the adhesion→sliding force fraction (parabolic pressure)."
 brush_sat(ξ) = ξ < 1.0 ? ξ*(3.0 - ξ*(3.0 - ξ)) : 1.0
 
+"""IRFIT-261004 BRAKE-2: SLIDING friction below static. Once the whole patch slides (ξ > 1) the friction
+falls from the peak toward `rs`·peak as the slide deepens: rs + (1 − rs)·exp(−((ξ − 1)₊/ws)²). Exactly 1
+up to ξ = 1 and flat just past it (Gaussian onset), so the adhesion curve and the peak are unchanged;
+a LOCKED wheel (κ = −1, ξ ≈ Cκ/3μ ≈ 5) gets rs. Without it the brush held its peak at any slip, so the
+car braked at ~1.45 g and never locked, where the gold locks at full pedal and then slides at ~1.0 g."""
+brush_slide(ξ, rs, ws) = rs + (1.0 - rs)*exp(-(max(ξ - 1.0, 0.0)/ws)^2)
+
 "Load-sensitive friction coefficient μ(Fz).  The load factor is CLAMPED to [0.4,1.6]:
 friction varies with load but can never reach 0 or go negative (which would make the
 brush's μ-division blow up on a load transient) — physical AND numerically safe."
@@ -71,21 +78,26 @@ const C_ABL = 0.40
 # Rear Cα 30.21 (= front) shipped briefly (261003 drives 14:35-15:xx). This set: slip-curve score 509 (low g within ~0.15°; at 1.06-1.14 g the front slides deeper and the
 # rear less than the gold, i.e. a safer limit), all step steers held, straight at 321 km/h, max steady
 # lateral 1.187 g (gold 1.185). μx / Cκ: braking fit, unchanged. The old μ 1.36/1.40 was set by judgement.
-const BRUSH_FRONT = (μ = 1.277*_GRIP, μx = 1.42*_GRIP, Cα = 30.21, Cκ = 28.0, kμ = 0.082, Fz0 = 1415.0)
-const BRUSH_REAR  = (μ = 1.446*_GRIP, μx = 1.45*_GRIP, Cα = 34.0, Cκ = 28.0, kμ = 0.082, Fz0 = 1670.0)
+# IRFIT-261004 BRAKE-2 (2026-10-04): μx, Cκ and the sliding fraction rs identified through the player car against the
+# PO's 261004 steady-pedal stops and lock-ups at the Döttinger Höhe (tools/brakefit_261004.jl): 20 pedal x speed
+# bins (deceleration + front/rear κ) and the locked slide (gold 0.957/1.001/1.046 g at 50-216 km/h, sim
+# 0.969/1.003/1.050; a lock now STAYS locked at full pedal, 96 % of the stop, as iRacing's does). Was μx 1.42/1.45,
+# Cκ 28/28 (not fitted to braking), no sliding drop -- the car braked at ~1.45 g and never locked.
+const BRUSH_FRONT = (μ = 1.277*_GRIP, μx = 1.438*_GRIP, Cα = 30.21, Cκ = 23.7, kμ = 0.082, Fz0 = 1415.0, rs = 0.629, ws = 1.5)
+const BRUSH_REAR  = (μ = 1.446*_GRIP, μx = 1.498*_GRIP, Cα = 34.0, Cκ = 23.2, kμ = 0.082, Fz0 = 1670.0, rs = 0.629, ws = 1.5)
 
 "Pure-lateral brush force Fy(Fz, α) — for fitting/validation."
 function brush_fy(Fz, α; p = BRUSH_FRONT)
     μ = brush_mu(Fz, p.μ, p.kμ, p.Fz0)
     ξ = p.Cα*abs(sin(α)) / (3.0*μ)
-    sign(α) * μ*Fz * brush_sat(ξ)
+    sign(α) * μ*Fz * brush_sat(ξ) * brush_slide(ξ, p.rs, p.ws)
 end
 
 "Pure-longitudinal brush force Fx(Fz, κ) — uses the LONGITUDINAL friction μx."
 function brush_fx(Fz, κ; p = BRUSH_FRONT)
     μ = brush_mu(Fz, p.μx, p.kμ, p.Fz0)
     ξ = p.Cκ*abs(κ) / (3.0*μ)
-    sign(κ) * μ*Fz * brush_sat(ξ)
+    sign(κ) * μ*Fz * brush_sat(ξ) * brush_slide(ξ, p.rs, p.ws)
 end
 
 """Combined brush force (Fx, Fy).  The deflection vector is (Cκ·κ, Cα·sinα); the
@@ -100,6 +112,6 @@ function brush_forces(Fz, α, κ; p = BRUSH_FRONT)
     # and this form has NO 1/0 at zero slip (the force → 0 there, cleanly).
     ξx = p.Cκ*κ / (3.0*μx);  ξy = p.Cα*sin(α) / (3.0*μy)
     ξ  = sqrt(ξx^2 + ξy^2 + 1e-9)              # floor INSIDE the sqrt → the autodiff Jacobian
-    s  = brush_sat(ξ)                          # is finite at zero slip (sqrt(0)' = 0/0 = NaN otherwise)
+    s  = brush_sat(ξ) * brush_slide(ξ, p.rs, p.ws)   # is finite at zero slip (sqrt(0)' = 0/0 = NaN otherwise)
     (μx*Fz*s*ξx/ξ, μy*Fz*s*ξy/ξ)              # along the deflection dir; magnitude on the friction ellipse
 end

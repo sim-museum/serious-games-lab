@@ -8,6 +8,8 @@ baked here with PIL and shipped as two small files the sim reads with plain `rea
   font<px>.a8   raw 8-bit coverage, W*H bytes, row-major, top row first
   font<px>.txt  "W H lineheight ascent" then one line per glyph: "code x y w h xoff yoff adv"
 Usage: make_font_atlas.py [px=18] [ttf]
+TRACKSEG-1 (2026-10-04): Latin-1 (160-255) is baked too, for the section names (Südkehre, Döttinger Höhe, La
+Carrière); the banner uses a second, bold atlas: make_font_atlas.py 40 .../DejaVuSans-Bold.ttf
 """
 import sys, os
 from PIL import Image, ImageDraw, ImageFont
@@ -18,7 +20,7 @@ font = ImageFont.truetype(ttf, px)
 asc, desc = font.getmetrics(); lineh = asc + desc
 W = 512; x = y = 0; rowh = 0; glyphs = []
 img = Image.new("L", (W, 512), 0); draw = ImageDraw.Draw(img)
-for code in range(32, 127):
+for code in list(range(32, 127)) + list(range(160, 256)):
     ch = chr(code)
     l, t, r, b = font.getbbox(ch)            # ink box relative to the origin (top-left, ascent line at y=asc? no: PIL origin is top)
     w, h = max(1, r - l), max(1, b - t)

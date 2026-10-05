@@ -662,9 +662,16 @@ function shadow_pass(drawfn, depthprog, fbo, lightVP; size=SHADOW_SIZE)
     drawfn(depthprog)
     glDisable(GL_POLYGON_OFFSET_FILL); glBindFramebuffer(GL_FRAMEBUFFER,0)
 end
+# CARHAND-1: a model with a negative determinant (the car, reflected into GPL's handedness) reverses every
+# triangle's winding. Draw it with glFrontFace flipped for that call only, so culling and the shader's
+# gl_FrontFacing see the faces as they were authored.
+negdet(m) = (m[1,1]*(m[2,2]*m[3,3] - m[2,3]*m[3,2]) - m[1,2]*(m[2,1]*m[3,3] - m[2,3]*m[3,1]) +
+             m[1,3]*(m[2,1]*m[3,2] - m[2,2]*m[3,1])) < 0
 function draw_depth(depthprog, item, model)
     glUniformMatrix4fv(uloc(depthprog,"uModel"),1,GL_FALSE, umat(model))   # PERF-1: no copy
+    flip = negdet(model); flip && glFrontFace(GL_CW)
     glBindVertexArray(item.vao); glDrawArrays(GL_TRIANGLES,0,item.n)
+    flip && glFrontFace(GL_CCW)
     NDRAW[] += 1; NTRI[] += item.n ÷ 3
 end
 """Bind the shadow map + light matrix for the main pass (shadow on texture unit 1)."""
@@ -1238,8 +1245,10 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
     # text reads right when the texture mapping preserves handedness: the mirror=true
     # remap (gx,gz,-gy) is a rotation (no flip needed); mirror=false is a reflection
     # (needs V flipped to compensate).  So uflip=false, vflip=!mirror.
+    # CARHAND-1: with JM_CAR_UNMIRROR (default) the app reflects a car back into GPL's handedness in its model
+    # matrix, so a car's UVs must be GPL's own, exactly as the track's: no compensating V flip for car meshes.
     uflip === nothing && (uflip = false)
-    vflip === nothing && (vflip = !mirror)
+    vflip === nothing && (vflip = !mirror && (track || !CAR_NATIVE_UV))
     # JM_VFLIP / JM_UFLIP override the derived convention, so "is our V convention right"
     # is answerable by A/B instead of argument. E106-S41 established the engine texture is
     # correct GPL artwork and is an ATLAS, so a wrong V would show the wiring loom where a
@@ -1660,6 +1669,7 @@ const PLANAR_SIDE_UV = let v = parse.(Float32, split(get(ENV,"JM_PLANAR_SIDE_UV"
 const PLANAR_U0 = parse(Float32, get(ENV, "JM_PLANAR_U0", "0.37"))
 const PLANAR_UW = parse(Float32, get(ENV, "JM_PLANAR_UW", "0.184"))
 const STEER_TEX = ("sterlot","lotster","lsterlog")
+const CAR_NATIVE_UV = get(ENV, "JM_CAR_UNMIRROR", "1") != "0"   # CARHAND-1 (drive_native_mtk.jl): car UVs as GPL authored them
 """Extract the steering wheel as its own parts + pivot (centre, column axis) in the
 rig frame (X fwd, Y up, Z left), so the app can rotate it with steering input."""
 function extract_gpl_steering(path3do)
@@ -1679,8 +1689,8 @@ function extract_gpl_steering(path3do)
             # Un-flipping V alone put the leaf upright (matching gold) but left the lettering
             # mirrored left-to-right, so the badge is transposed in BOTH axes, not one: flip U too.
             badge = (t.tex == "lsterlog" && !haskey(ENV,"JM_BADGE_VFLIP"))
-            uf = badge ? 1f0-uv[1] : uv[1]
-            vf = badge ? uv[2]     : 1f0-uv[2]
+            uf = (badge && !CAR_NATIVE_UV) ? 1f0-uv[1] : uv[1]          # CARHAND-1: native UVs on the un-mirrored car
+            vf = (badge || CAR_NATIVE_UV)  ? uv[2]     : 1f0-uv[2]
             append!(v, (p[1],p[3],p[2], nn[1],nn[3],nn[2], 0.7f0,0.72f0,0.74f0, uf, vf))
             cx+=p[1]; cy+=p[3]; cz+=p[2]; nx+=nn[1]; ny+=nn[3]; nz+=nn[2]; n+=1
         end
@@ -2437,7 +2447,9 @@ function draw(prog, item::Item, vp, model; bright::Real=1.0, spec::Real=0.0, amb
     else
         glUniform1i(uloc(prog,"uHasTex"),0)
     end
+    flip = negdet(model); flip && glFrontFace(GL_CW)    # CARHAND-1 (see negdet)
     glBindVertexArray(item.vao); glDrawArrays(GL_TRIANGLES,0,item.n)
+    flip && glFrontFace(GL_CCW)
     NDRAW[] += 1; NTRI[] += item.n ÷ 3
     depthbias && glDisable(GLenum(0x8037))
 end

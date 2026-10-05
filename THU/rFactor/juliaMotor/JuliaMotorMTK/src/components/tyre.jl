@@ -17,11 +17,12 @@ include("brush_tyre.jl") # PHYSICS-BASED brush: brush_forces + BRUSH_FRONT/REAR 
 # brush law F = μ·Fz·(1−(1−ξ)³) (smooth/branchless via min for the symbolic graph),
 # with PHYSICAL parameters (μ, Cα, Cκ, kμ) — no Magic-Formula Cy/Ey, no grip fudge.
 function BrushTyre(; name, μ = BRUSH_FRONT.μ, μx = BRUSH_FRONT.μx, Cα = BRUSH_FRONT.Cα,
-                   Cκ = BRUSH_FRONT.Cκ, kμ = BRUSH_FRONT.kμ, Fz0 = BRUSH_FRONT.Fz0, t0 = 0.035, μscale = 1.0)
+                   Cκ = BRUSH_FRONT.Cκ, kμ = BRUSH_FRONT.kμ, Fz0 = BRUSH_FRONT.Fz0, t0 = 0.035, μscale = 1.0,
+                   rs = BRUSH_FRONT.rs, ws = BRUSH_FRONT.ws)
     # E56: μscale is a per-wheel SURFACE friction multiplier (1 = tarmac; <1 = grass/verge).  Driving it
     # from the game makes "off the racing line" a REAL per-tyre grip loss the model integrates — a wheel
     # dropping onto the grass loses grip and pulls the car — not a bumpX! drag/yaw state hack.
-    ps = @parameters μ=μ μx=μx Cα=Cα Cκ=Cκ kμ=kμ Fz0=Fz0 t0=t0 μscale=μscale
+    ps = @parameters μ=μ μx=μx Cα=Cα Cκ=Cκ kμ=kμ Fz0=Fz0 t0=t0 μscale=μscale rs=rs ws=ws
     vars = @variables Fz(t) α(t) κ(t) Fy(t) Fx(t) Mz(t) μye(t) μxe(t) ξx(t) ξy(t) ξ(t) sat(t)
     eqs = [
         μye  ~ μscale * μ  * clamp(1.0 - kμ*(Fz/Fz0 - 1.0), 0.4, 1.6),  # lateral friction (load-sensitive, clamped >0)
@@ -29,7 +30,7 @@ function BrushTyre(; name, μ = BRUSH_FRONT.μ, μx = BRUSH_FRONT.μx, Cα = BRU
         ξx   ~ Cκ*κ      / (3.0*μxe),                  # per-axis NORMALIZED slip (1 = friction limit)
         ξy   ~ Cα*sin(α) / (3.0*μye),                  # — the ellipse lives here, no 1/0 at zero slip
         ξ    ~ sqrt(ξx^2 + ξy^2 + 1e-9),               # floor INSIDE the sqrt → autodiff Jacobian finite at
-        sat  ~ 1.0 - (1.0 - min(ξ, 1.0))^3,            #   zero slip (sqrt(0)' = 0/0 = NaN breaks the solver)
+        sat  ~ (1.0 - (1.0 - min(ξ, 1.0))^3) * brush_slide(ξ, rs, ws),   # zero slip (sqrt(0)' = 0/0 = NaN breaks the solver)
         Fx   ~ μxe*Fz * sat * ξx/ξ,                    # along the deflection dir; magnitude on the ellipse
         Fy   ~ μye*Fz * sat * ξy/ξ,
         Mz   ~ -t0 * (1.0 - min(ξ, 1.0)) * Fy,         # pneumatic trail collapses as the patch slides

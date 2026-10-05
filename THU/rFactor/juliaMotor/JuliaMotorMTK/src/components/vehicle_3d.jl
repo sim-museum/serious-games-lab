@@ -44,7 +44,9 @@ function DrivenVehicle3D(; name,
         # Simulated stops fitted to both gold numbers: torque split 0.617 front, 2800 N·m at full pedal (was
         # 0.535 / 4200 -- the 4200 was raised by feel). Trail-braking from 250 km/h: max sideslip <= 2.6° at
         # every pedal (was a spin at pedal 0.6-0.8).
-        bias = 0.617, Tbrake_max = 2800.0,
+        # IRFIT-261004 BRAKE-2 (2026-10-04): refit with the tyre's longitudinal side and its sliding drop against
+        # the 261004 steady-pedal stops (tools/brakefit_261004.jl): split 0.617 -> 0.585, 2800 -> 2956 N·m.
+        bias = 0.585, Tbrake_max = 2956.0,
         CdA = CDA_IBT, ρair = 1.10, g = 9.80665,
         throttle0 = 0.0, brake0 = 0.0, steer0 = 0.0, gear0 = 1.72, brush = false,
         # PO: ct (tyre vertical DAMPING) was 300 ≈ 8% of critical for the unsprung mass → the car
@@ -98,7 +100,13 @@ function DrivenVehicle3D(; name,
 
     eqs = Equation[]; Fyb=Any[]; Fxb=Any[]; Mz=Any[]; Fx_f=Any[]; Fx_r=Any[]; Pslip=Any[]
     Fsusp=Any[]; xs=Any[]; ys=Any[]
-    for (ty, xi, yi, st, axle, cor, zu, vu, zr, vr, Fz) in spec
+    # IRFIT-261004 SUSP-1: suspension compression per corner (wheel up relative to its body mount), for the
+    # anti-roll coupling between the two corners of an axle (karb, roll-only: zero in heave and pitch).
+    comp = [s[7] - (z + s[2]*th + s[3]*ph) for s in spec]
+    karb(c) = hasproperty(c, :karb) ? c.karb : 0.0
+    for (idx, (ty, xi, yi, st, axle, cor, zu, vu, zr, vr, Fz)) in enumerate(spec)
+        pidx = isodd(idx) ? idx + 1 : idx - 1                 # the other corner of this axle
+        kab = 0.5*(karb(cor) + karb(spec[pidx][6]))
         Rw  = axle == :f ? Rw_f : Rw_r
         ωax = axle == :f ? ωf : ωr
         m_s_i = cor.m_s; m_u_i = cor.m_u
@@ -107,8 +115,11 @@ function DrivenVehicle3D(; name,
         # sprung-mount vertical motion at this corner (small-angle): up = +
         z_mount = z + xi*th + yi*ph
         v_mount = w + xi*q  + yi*pp
-        # suspension force (up on sprung, down on unsprung), preloaded, can't pull
-        Fs = smoothpos(P_s + cor.ks*(zu - z_mount) + cor.cs*(vu - v_mount), εF)
+        # suspension force (up on sprung, down on unsprung), preloaded, can't pull. SUSP-1: bump/rebound damping
+        # (measured) when the corner spec carries them, blended smoothly through zero velocity; + anti-roll coupling.
+        vrel = vu - v_mount
+        cdmp = hasproperty(cor, :cb) ? cor.cr + (cor.cb - cor.cr)*0.5*(1 + tanh(vrel/0.01)) : cor.cs
+        Fs = smoothpos(P_s + cor.ks*(zu - z_mount) + cdmp*vrel + kab*(comp[idx] - comp[pidx]), εF)
         # tyre vertical load from ground contact (zr road input), can't pull
         push!(eqs, Fz ~ smoothpos(Fz_static + cor.kt*(zr - zu) + cor.ct*(vr - vu), εF))
         # unsprung vertical dynamics
