@@ -22249,3 +22249,20 @@ castle cards and panoramas (grey = fog at 2 km); this is what remains. Nothing n
   object's set of segments from the tree. The object pipeline is per-instance (skip). The scenery copies are merged per
   texture, so either split by visibility window or (the backdrop precedent) drop the scenery copy of objects whose window is
   narrower than our draw radius and keep the object copy under the rule. A/B at s=7860 and a sweep; watch FPS.
+
+### GREY-1 S4 (2026-10-05) — GPL's per-segment visibility implemented for the OBJECT pipeline (`JM_GPLVIS=1`, default OFF) (4 sprints — ROTATING)
+* `GPLTrack.segment_visibility(path3do)`: finds the segment group (the root child whose children are `group(8)`s with a `0x10`
+  in slot 8), walks each of the 894 segment trees and marks every `0x0E` record it reaches → `vis[node]::BitVector`.
+  3108 records are reached; `wehr-r1b` = 55 segments, s 7987–9199 (= `tools/gpl_segvis.jl`). `ObjInst` gains `node`
+  (the record's PRIM offset), `OBJNODE` runs parallel to `OBJECTS`, `OBJVIS` holds each drawn object's window.
+* Draw loop: the camera's segment from the EYE's lap distance (× 1.004 = GPL dlong per our lap metre; segments without a
+  lap table excluded); an object whose window excludes it is skipped. Mirror passes use their own eye.
+* **A/B on screen** (`261005/grey/gplvis_ab_s7860_ctrl_vis_s8100.png`; `JM_PLACE_HIDE=wehr-r1b` hides the scenery copy):
+  s=7860 control = the pyramid; **`JM_GPLVIS=1` = gone**, the forested valley behind it as in the gold; s=8100 (inside the
+  window) unchanged. (`JM_PICK` casts against every object, drawn or not, so it still names the cap — not a defect.)
+* **Why default OFF:** (1) all 567 drawn Ring objects carry a window, so this culls the whole object pipeline by GPL's rule
+  — it needs a lap-long sweep against the gold before it ships; (2) the SCENERY copies (`SECPARTS`, merged per texture) are
+  not under the rule yet, and they draw most of the Ring's objects (RING-GOLD-1 S3). Without them the pyramid stays.
+* **Next (revisit):** put `SECPARTS` under the rule — split the merged parts by visibility window (quantised lap windows,
+  watch draw calls/FPS), or drop the scenery copy of each object that the object pipeline draws (the backdrop precedent);
+  then a lap sweep, GPLVIS on vs off vs gold, and FPS.

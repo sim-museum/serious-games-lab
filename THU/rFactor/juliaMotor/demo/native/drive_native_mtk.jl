@@ -6031,7 +6031,7 @@ end
 # trackside objects than current julia ring". gpl_scenery() still supplies the landmass and the
 # .dat sprite stubs. JM_RING_OBJECTS=0 restores the old empty Ring.
 if SKIDPAD || (NURB && get(ENV, "JM_RING_OBJECTS", "1") == "0")
-    global OBJECTS = Any[]
+    global OBJECTS = Any[]; global OBJNODE = Int[]
     global BILLBOARDS = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32}[]
     global STATICTREES = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32,Float32}[]
     global SOLIDS = Tuple{Float64,Float64,Float64,Symbol}[]   # no collidable trackside objects on skidpad / Nürburgring (scenery baked in) — without this solid_hit()/solid_contact() throws UndefVarError on the first collision check
@@ -6314,7 +6314,7 @@ let objnames=Set{String}()
                 push = pushof(i.name); push <= 0.0 && return i
                 lx,ly = nearest(i.x, i.y); dx=i.x-lx; dy=i.y-ly; d=hypot(dx,dy)
                 (d < 1e-3 || d > 18.0) && return i      # only nudge the close copy at the S/F, push outward along the normal
-                GPLTrack.ObjInst(i.name, i.x+dx/d*push, i.y+dy/d*push, i.z, i.yaw, i.scale, i.pitch, i.roll)
+                GPLTrack.ObjInst(i.name, i.x+dx/d*push, i.y+dy/d*push, i.z, i.yaw, i.scale, i.pitch, i.roll, i.node)
             end
         end
     end
@@ -7040,10 +7040,13 @@ let objnames=Set{String}()
             Render.build_gpl(filter(p -> !(lowercase(p.tex) in RINGBANNER_TEX), ps), TEXIDX)
         end
     end
+    objkeep(i) = get(objmesh,i.name,nothing) !== nothing &&
+                 !drop(i.name) && !onroad_crowd(i) && !perp_crowd(i) && !onroad_bldg(i) && !onroad_fp(i) && (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && onground(i)
     global OBJECTS = [(objitems(i), Render.translate(Float32[i.x, plozfp(i), -i.y]) * Render.roty(Float32(OBJ_YAW_SIGN * objyawsign(i.name) * -i.yaw + objyawfix(i.name))) *
                        Render.rotz(Float32(OBJ_PR[1]*i.pitch)) * Render.rotx(Float32(OBJ_PR[2]*i.roll)), istree(i.name) && (graze_mesh || !(MONZA || WATGLEN)), (Float32(i.x), plozfp(i), Float32(-i.y)), lowercase(i.name))
-                      for i in insts if get(objmesh,i.name,nothing) !== nothing &&
-                          !drop(i.name) && !onroad_crowd(i) && !perp_crowd(i) && !onroad_bldg(i) && !onroad_fp(i) && (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && onground(i)]
+                      for i in insts if objkeep(i)]
+    # GREY-1: GPL's per-segment visibility for each drawn object (JM_GPLVIS=1, the Ring). OBJNODE runs parallel to OBJECTS.
+    global OBJNODE = [i.node for i in insts if objkeep(i)]
     # CULLBOUND-1 (2026-09-25, Monza gold parity): objects were distance- and frustum-culled by their ORIGIN
     # with a fixed 80 m sphere, but Monza's forest walls run up to 185 m from their origin (trees01, trees50
     # 372 m). A wall whose origin fell behind the camera vanished while most of it lay ahead, leaving the
@@ -8589,6 +8592,21 @@ end
 # scenery copies match geometrically but do not reach the screen (culled from the viewing side or filtered by texture
 # in the scenery path). JM_OBJ_SCENEDUP_ALL=1 widens it again for that investigation.
 const OBJ_SCENEDUP = falses(length(OBJECTS))
+# GREY-1 S4 (2026-10-05): GPL's per-segment visibility (tools/gpl_segvis.jl). GPL draws an object only while the camera is
+# in a segment whose tree reaches it; we drew every object inside a radius, so a forest cap belonging to Wehrseifen
+# (wehr-r1b/hillcapm, camera window s 7987-9199) stood as a dark pyramid over Metzgesfeld (s=7860). JM_GPLVIS=1 (A/B).
+const GPLVIS = NURB && get(ENV, "JM_GPLVIS", "0") == "1"
+const GPLVIS_SEGS, GPLVIS_VIS = GPLVIS ? GPLTrack.segment_visibility(ZTRK) : (Float64[], Dict{Int,BitVector}())
+const OBJVIS = Union{Nothing,BitVector}[GPLVIS ? get(GPLVIS_VIS, n, nothing) : nothing for n in OBJNODE]
+const _GV_ORD = filter(k -> isfinite(GPLVIS_SEGS[k]), sortperm(GPLVIS_SEGS)); const _GV_S = GPLVIS_SEGS[_GV_ORD]   # segments with a lap table
+const _GV_R = length(_GV_S) > 2 ? (_GV_S[end] + (_GV_S[end] - _GV_S[end-1])) / LAPLEN : 1.0    # GPL dlong per our lap metre
+function gplvis_seg(ex, ez)     # the camera's GPL segment from the eye position (render coords), 0 = unknown (draw all)
+    (GPLVIS && !isempty(_GV_S)) || return 0
+    hr = JuliaMotor.hat(TRKSURF, Float64(ex), -Float64(ez)); hr.found || return 0
+    _GV_ORD[clamp(searchsortedlast(_GV_S, hr.lapdist * _GV_R), 1, length(_GV_S))]
+end
+GPLVIS && println("  [gplvis] ", length(GPLVIS_SEGS), " segment trees; ", count(!isnothing, OBJVIS), " of ", length(OBJVIS),
+                  " drawn objects carry a GPL window (the rest draw everywhere); dlong/lapdist ", round(_GV_R, digits = 4))
 if NURB && get(ENV, "JM_OBJ_SCENEDUP", "1") != "0"
     let t0 = time(), cells = Set{Tuple{Int32,Int32}}(), q = 0.25f0, ndup = 0, nfaces = 0
         for p in TRACK
@@ -13691,8 +13709,10 @@ function main()
             # PERF-1: function barrier -- OBJECTS/OBJBOUND are untyped globals, so the loop body boxed every value
             # (a top allocation site). Passing them in lets the loop compile for their concrete types.
             (function (_OBJS, _BND)
+            _cseg = gplvis_seg(eye_[1], eye_[3])
             for (oi,(items,mat,grz,opos,onm)) in enumerate(_OBJS)   # trackside objects
                 LAYOFF_OBJ && continue   # (trees graze-fade; uBackFlip stays 1 when un-culled)
+                (_cseg > 0 && oi <= length(OBJVIS) && OBJVIS[oi] !== nothing && !OBJVIS[oi][_cseg]) && continue   # GREY-1: GPL's window
                 OBJ_SCENEDUP[oi] && continue   # RING-GOLD-1 S3: the scenery already draws this one (back-face culled)
                 bc, br = oi <= length(_BND) ? _BND[oi] : ((opos[1], opos[2], opos[3]), 80f0)   # CULLBOUND-1: the object's real bounding sphere
                 max(sqrt((eye_[1]-bc[1])^2+(eye_[2]-bc[2])^2+(eye_[3]-bc[3])^2) - br, 0f0)^2 > (flip ? MIR_OBJ_CULL2 : OBJ_CULL2) && continue   # distance cull (mirror gets its own radius, S14)

@@ -154,8 +154,77 @@ struct ObjInst
     scale::Float64
     pitch::Float64    # E81-S9: GPL placement pitch (rad, record +32) -- read but, until then, never applied
     roll::Float64     # E81-S9: GPL placement roll (rad, record +36)
+    node::Int         # GREY-1: the record's offset in PRIM (the 0x0E node), -1 = unknown; keys segment_visibility
 end
-ObjInst(name, x, y, z, yaw, scale) = ObjInst(name, x, y, z, yaw, scale, 0.0, 0.0)
+ObjInst(name, x, y, z, yaw, scale) = ObjInst(name, x, y, z, yaw, scale, 0.0, 0.0, -1)
+ObjInst(name, x, y, z, yaw, scale, pitch, roll) = ObjInst(name, x, y, z, yaw, scale, pitch, roll, -1)
+
+"""
+    segment_visibility(path3do) -> (segs, vis)
+
+GREY-1 (2026-10-05): GPL draws a track object only while the CAMERA is in a segment whose tree reaches it.
+`nurburg.3do`'s root group holds a group of segment trees; each tree is a group(8): slots 1..7 = BSP planes /
+cells (0x0F, whose object lists are (x,y,z,positioner) and which chain to coarser copies), slot 8 = a 0x10
+table of four lap positions (TRK units). Returns `segs` = each segment's start lap position [m, GPL dlong],
+and `vis[node]` = BitVector over segments for every 0x0E record reached. `tools/gpl_segvis.jl` is the probe.
+"""
+function segment_visibility(path3do)
+    b = read(path3do)
+    u32(o) = (o < 0 || o+4 > length(b)) ? UInt32(0) : UInt32(b[o+1]) | UInt32(b[o+2])<<8 | UInt32(b[o+3])<<16 | UInt32(b[o+4])<<24
+    i32(o) = reinterpret(Int32, u32(o))
+    prim = 0; primsz = 0; o = 12
+    while o + 12 <= length(b)
+        t = String(b[o+1:o+4]); sz = Int(u32(o+8)); d = o + 12
+        t == "MIRP" && (prim = d; primsz = sz)
+        o = d + sz; o += (4 - o % 4) % 4
+    end
+    prim == 0 && return (Float64[], Dict{Int,BitVector}())
+    # the segment group: the root group's child that is a group of group(8)s with a 0x10 in slot 8
+    isseg(g) = u32(prim+g) == 0x04 && u32(prim+g+4) == 8 && u32(prim + Int(i32(prim+g+36))) == 0x10
+    root = Int(u32(prim)); segroot = -1
+    if u32(prim+root) == 0x04
+        for k in 1:Int(u32(prim+root+4))
+            c = Int(i32(prim+root+4+4k)); (c >= 0 && u32(prim+c) == 0x04) || continue
+            n = Int(u32(prim+c+4)); n > 16 || continue
+            ns = count(j -> (g = Int(i32(prim+c+4+4j)); g >= 0 && isseg(g)), 1:min(n, 64))
+            ns >= 32 && (segroot = c; break)
+        end
+    end
+    segroot < 0 && return (Float64[], Dict{Int,BitVector}())
+    nseg = Int(u32(prim+segroot+4))
+    segtrees = [Int(i32(prim+segroot+4+4k)) for k in 1:nseg]
+    segs = [isseg(g) ? i32(prim + Int(i32(prim+g+36)) + 8) / 19685.03937 : NaN for g in segtrees]
+    vis = Dict{Int,BitVector}()
+    children(off) = begin
+        p = prim + off; t = u32(p); out = Int[]
+        if t == 0x04
+            n = Int(u32(p+4)); 0 < n < 5000 && for k in 1:n; push!(out, Int(i32(p+4+4k))); end
+        elseif t == 0x05; push!(out, Int(i32(p+4)))
+        elseif 0x06 <= t <= 0x0B
+            for k in 1:(t == 0x06 ? 1 : t in (0x07, 0x0B) ? 2 : t == 0x08 ? 4 : 3); push!(out, Int(i32(p+8+4(k-1)))); end
+        elseif t in (0x0D, 0x13, 0x16); push!(out, Int(i32(p+32)))
+        elseif t == 0x19; push!(out, Int(i32(p+36)))
+        elseif t == 0x11
+            n = Int(u32(p+16)); 0 < n < 4096 && for k in 1:n; push!(out, Int(i32(p+24+8(k-1)))); end
+        elseif t == 0x0F
+            nd = Int(i32(p+36)); nd >= 0 && push!(out, nd)
+            n = Int(u32(p+60)); 0 < n < 4096 && for k in 1:n; push!(out, Int(i32(p+64+16(k-1)+12))); end
+        end
+        filter(c -> 0 <= c < primsz, out)
+    end
+    for (k, g) in enumerate(segtrees)
+        seen = Set{Int}(); st = Int[g]
+        while !isempty(st)
+            off = pop!(st); off in seen && continue; push!(seen, off)
+            if u32(prim+off) == 0x0E
+                get!(() -> falses(nseg), vis, off)[k] = true
+                continue                                  # the object's own subtree is its mesh
+            end
+            append!(st, children(off))
+        end
+    end
+    (segs, vis)
+end
 
 """
     trackside_objects(path3do; objnames) -> Vector{ObjInst}
@@ -203,7 +272,7 @@ function trackside_objects(path3do; objnames::Set{String})
                 if all(isfinite,(X,Y,Z,yaw,sc)) && abs(X)<50000 && abs(Y)<50000 && abs(Z)<5000 && 0<sc<1000
                     pt = f32(prim+k+32); rl = f32(prim+k+36)
                     (isfinite(pt) && abs(pt) < 1.6) || (pt = 0.0); (isfinite(rl) && abs(rl) < 1.6) || (rl = 0.0)
-                    push!(out, ObjInst(lowercase(off2name[wn]), X, Y, Z, yaw, sc, pt, rl))
+                    push!(out, ObjInst(lowercase(off2name[wn]), X, Y, Z, yaw, sc, pt, rl, k))
                 end
             end
         end
