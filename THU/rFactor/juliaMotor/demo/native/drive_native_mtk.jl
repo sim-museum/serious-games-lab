@@ -5621,7 +5621,14 @@ const SOLID_EXCL_HW = parse(Float64, get(ENV, "JM_SOLID_EXCL_HW", "4.0"))
 # straight at yaw 0 (its roof read as a forest curtain over the road, its face as the PO's dead end);
 # A/B captures/spa_gs90_s14100.png (along the left of the straight, facing the track -- the gold) vs
 # spa_gs-90 (over the road). Spa gets 90 deg; Watkins keeps its tuned 0. JM_GSTAND_YAW overrides.
-const GSTAND_YAW = deg2rad(parse(Float64, get(ENV, "JM_GSTAND_YAW", TRACKSEL == "spa" ? "90" : "0")))
+# YAWSIGN-1 (2026-10-05): the same convention holds at SPA and ZANDVOORT. Spa, +1 vs -1 (no gstands patch): objects dropped for
+# a footprint on the road 110 -> 18, drawn 1448 -> 1465, and on screen the pit straight comes right -- pits (Englebert, Shell,
+# Fina) along the right, the grandstand parallel on the left, and the huge yellow slab over the road at s=14100 gone.
+# Zandvoort -1 without the `gstand` flip is pixel-identical to +1 with it: the flip was compensating this. WG and Monza
+# (no footprint signal either way) keep +1 until measured on screen. JM_OBJ_YAW_SIGN overrides.
+const _YAWNEG = TRACKSEL in ("nurburgring", "spa", "zandvoort")
+const OBJ_YAW_SIGN = parse(Float64, get(ENV, "JM_OBJ_YAW_SIGN", _YAWNEG ? "-1" : "1"))
+const GSTAND_YAW = deg2rad(parse(Float64, get(ENV, "JM_GSTAND_YAW", (TRACKSEL == "spa" && OBJ_YAW_SIGN > 0) ? "90" : "0")))   # YAWSIGN-1: the +90 compensated the sign
 # TRACKGOLD-1 S4 probe: JM_OBJ_YAW_ADD=<deg> adds a heading to EVERY placed object (last01, an in-place
 # terrain bank with 8 m of descent along its 320 m, floats at its far end as if it ran the wrong way).
 const OBJ_YAW_ADD = deg2rad(parse(Float64, get(ENV, "JM_OBJ_YAW_ADD", "0")))
@@ -5636,7 +5643,6 @@ const OBJ_YAW_ADD = deg2rad(parse(Float64, get(ENV, "JM_OBJ_YAW_ADD", "0")))
 # timing tower turns to face the track with its Continental clock, the pit wall parallel -- both as the GPL
 # video has them. Other tracks keep +1 for now: their per-object fixes (Zandvoort gstand flip, WG grandl
 # +180, Spa gstands +90) compensate the same convention error and must be re-verified before a global flip.
-const OBJ_YAW_SIGN = parse(Float64, get(ENV, "JM_OBJ_YAW_SIGN", TRACKSEL == "nurburgring" ? "-1" : "1"))
 const SEC_TWOSIDED = get(ENV, "JM_SEC_TWOSIDED", "0") != "0"
 const OBJ_USE_RECZ = get(ENV, "JM_OBJ_RECZ", "1") != "0"
 const OBJ_RECZ_TOL = parse(Float64, get(ENV, "JM_OBJ_RECZ_TOL", "0.5"))
@@ -5665,7 +5671,7 @@ objyawfix(nm) = (startswith(lowercase(nm), "gstand") ? GSTAND_YAW : lowercase(nm
 # been compensated object by object. Flipping it globally would move the Ring's 2,188 yawed placements
 # that the PO has accepted by eye, so that stays a separate, capture-based experiment; this fixes the
 # object the PO reported, by the measurement above. JM_OBJ_YAW_FLIP="" empties the list.
-const OBJ_YAW_FLIP = Set(split(lowercase(get(ENV, "JM_OBJ_YAW_FLIP", "gstand")), ","; keepempty = false))
+const OBJ_YAW_FLIP = Set(split(lowercase(get(ENV, "JM_OBJ_YAW_FLIP", (TRACKSEL == "zandvoort" && OBJ_YAW_SIGN < 0) ? "" : "gstand")), ","; keepempty = false))   # YAWSIGN-1
 objyawsign(nm) = lowercase(nm) in OBJ_YAW_FLIP ? -1.0 : 1.0
 # TRACKGOLD-1 S4 probe (2026-09-06): the Ring's in-place veils (wehr-l2/l3, last01, hohe-lg3: placement yaw 0,
 # geometry authored around, not at, the origin) land across the road. If the object meshes' Z mirror does

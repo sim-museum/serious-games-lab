@@ -22405,3 +22405,18 @@ and person names (Hatzenbach, Burnenville, Malmedy, Ascari, Lesmos, Hunzerug …
 `JM_SEGNAME_EN=0` shows the bare names. Render check (`JM_SEGNAME_FORCE`, the two longest joined: "Döttinger Höhe (Dötting
 Heights) / Antoniusbuche (St Anthony's Beech)"): fits the band at 1440 px, umlauts and apostrophe from the Latin-1 atlas
 (`261005/trackseg2/longest_labels_render.png`).
+
+### YAWSIGN-1 (2026-10-05) — the object yaw convention is −1 at Spa and Zandvoort too; their per-name patches were compensating it
+Retrospective: RING-GOLD-1 found the object yaw sign wrong at the Ring (−1) and left the other tracks at +1 because three per-name
+patches (Spa `gstands` +90, Zandvoort `gstand` flip, WG `grandl` +180) "compensate the same convention error".
+* **S1 — footprint census** (`JM_OBJDIAG`, +1 vs −1): Spa objects dropped for a footprint on the road **110 → 18**, drawn
+  1448 → 1465; Zandvoort 36 → 35; WG and Monza 0 → 0 (no signal either way).
+* **S2 — on screen, the patches REMOVED under −1** (`261005/yawsign/spa_zv_default_vs_neg.jpg`, left = shipped, right = −1):
+  Spa s=14050/14100 — the pit straight comes right: pits (Englebert, Shell, Fina) along the right, the grandstand parallel
+  on the left, the clock tower; the shipped build had the pits missing and **a huge yellow slab over the road in cockpit
+  view** (very likely E111b / SPAYELLOW-1's "bright yellow polygon over the road"). Zandvoort s=4100/80 — −1 without the
+  `gstand` flip is pixel-identical to +1 with it.
+* **Shipped:** `OBJ_YAW_SIGN` −1 for the Ring, Spa and Zandvoort; Spa's `gstands` +90 only under +1; Zandvoort's `gstand`
+  flip only under +1. `JM_OBJ_YAW_SIGN`, `JM_GSTAND_YAW`, `JM_OBJ_YAW_FLIP` override. Gates `gplwall_smoke` (all five
+  tracks), `solid_box_smoke`, `people_smoke` PASS.
+* **Open:** WG (`grandl` +180) and Monza — no footprint signal; next, the same patch-removed A/B on screen.
