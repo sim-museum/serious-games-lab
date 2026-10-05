@@ -5861,24 +5861,33 @@ println("  [cull] PERF-3: track part radii p50 ", round(sort(last.(TRACKBOUND))[
         round(maximum(last.(TRACKBOUND); init=0f0), digits=1), " m over ", length(TRACKBOUND), " parts")
 # PERF-3: the AI draws as typed functions -- inside the frame loop `ai_poses` (a different type per branch)
 # and `spin` are boxed closure captures, so every pose matrix came back as a heap object.
-# CARGOLD-2 S3 (2026-10-05): CARHAND-1 put the AI cars into GPL's handedness in `aiBody`/`aiWheel`, but since PERF-3 the AI
-# FIELD is drawn here, and these never got CARHAND: every AI car was still the mirror image -- its side read "SUTOJ MAƎT".
-ai_body_mat(p, cm) = Render.pose_matrix(p[1], p[2], -p[3], p[4], p[5], p[6], cm.body_off[1], cm.body_off[2], cm.body_off[3]) * AI_HAND
-ai_wheel_mat(p, wx, wz, r, spin) = Render.pose_matrix(p[1], p[2], -p[3], p[4], p[5], p[6], wx, r, wz) * AI_HAND * Render.rotz(Float32(spin))
-ai_car_mat(p) = Render.pose_matrix(p[1], p[2], -p[3], p[4], p[5], p[6])
+# CARGOLD-2 S3/S4 (2026-10-05): CARHAND-1 put the AI cars into GPL's handedness in `aiBody`/`aiWheel`, but since PERF-3 the
+# AI FIELD is drawn here, and these never got CARHAND: every AI car was still the mirror image ("SUTOJ MAƎT"). The
+# reflection must be about the chassis' own WHEEL CENTRELINE, not z=0: the AI meshes are not centred (the Lotus's wheel
+# line sits at z -0.105 in the pose frame), so reflecting about z=0 slid the body 0.21 m off its wheels (S4, measured on
+# the rear view). Body, hubs and built shafts all go through the same per-chassis reflection.
+const _AI_HANDS = Dict{String,Any}()
+ai_hand(cm) = get!(_AI_HANDS, cm.name) do
+    zh = Float32(sum(w[2] for w in cm.wheelspec) / max(length(cm.wheelspec), 1))
+    Render.translate(0f0, 0f0, zh) * AI_HAND * Render.translate(0f0, 0f0, -zh)
+end
+ai_pose(p) = Render.pose_matrix(p[1], p[2], -p[3], p[4], p[5], p[6])
+ai_body_mat(p, cm) = ai_pose(p) * ai_hand(cm) * Render.translate(cm.body_off[1], cm.body_off[2], cm.body_off[3])
+ai_wheel_mat(p, cm, wx, wz, r, spin) = ai_pose(p) * ai_hand(cm) * Render.translate(wx, r, wz) * Render.rotz(Float32(spin))
+ai_car_mat(p, cm) = ai_pose(p) * ai_hand(cm)   # the hub frame (AI_AXLES are built from wheelspec)
 function draw_ai_depth!(dp, poses, chassis, spin)
     for (p, cm) in zip(poses, chassis)
         bm = ai_body_mat(p, cm); for it in cm.body; Render.draw_depth(dp, it, bm); end
-        for it in get(AI_AXLES, cm.name, AI_NOAXLE); Render.draw_depth(dp, it, ai_car_mat(p)); end
-        for (wx,wz,_,r,nm) in cm.wheelspec, it in cm.wheels[nm]; Render.draw_depth(dp, it, ai_wheel_mat(p, wx, wz, r, spin)); end
+        for it in get(AI_AXLES, cm.name, AI_NOAXLE); Render.draw_depth(dp, it, ai_car_mat(p, cm)); end
+        for (wx,wz,_,r,nm) in cm.wheelspec, it in cm.wheels[nm]; Render.draw_depth(dp, it, ai_wheel_mat(p, cm, wx, wz, r, spin)); end
     end
 end
 function draw_ai_main!(prog, vp, poses, chassis, spin, nowheels::Bool)
     for (p, cm) in zip(poses, chassis)
         bm = ai_body_mat(p, cm); for it in cm.body; Render.draw(prog, it, vp, bm; bright=AI_BRIGHT, spec=0.10, ambfill=AI_AMB); end
-        for it in get(AI_AXLES, cm.name, AI_NOAXLE); Render.draw(prog, it, vp, ai_car_mat(p); bright=1.1, spec=0.3, ambfill=0.55); end
+        for it in get(AI_AXLES, cm.name, AI_NOAXLE); Render.draw(prog, it, vp, ai_car_mat(p, cm); bright=1.1, spec=0.3, ambfill=0.55); end
         nowheels && continue
-        for (wx,wz,_,r,nm) in cm.wheelspec, it in cm.wheels[nm]; Render.draw(prog, it, vp, ai_wheel_mat(p, wx, wz, r, spin)); end
+        for (wx,wz,_,r,nm) in cm.wheelspec, it in cm.wheels[nm]; Render.draw(prog, it, vp, ai_wheel_mat(p, cm, wx, wz, r, spin)); end
     end
 end
 # ortho light box: clip is linear, so a sphere is outside when its centre is > 1 + r/half-extent out on any axis
@@ -9648,9 +9657,10 @@ if get(ENV, "JM_AI_AXLES", "1") != "0"
     for cm in AICARMODELS
         haskey(AI_PARKED_SUSP_GROUPS, lowercase(cm.name)) || continue      # the chassis whose parked rear halves are hidden
         parts = Render.TrackPart[]
+        zh = Float32(sum(w[2] for w in cm.wheelspec) / length(cm.wheelspec))   # the wheel centreline = the gearbox's (S4)
         for (wx, wz, front, r, _) in cm.wheelspec
             front && continue
-            zs = sign(wz); zi = 0.16f0*zs; zo = wz - zs*0.05f0
+            zs = sign(wz - zh); zi = zh + 0.16f0*zs; zo = wz - zs*0.05f0
             push!(parts, Render.TrackPart(_rod_verts!(Float32[], Float32[wx, r + AXLE_Y, zi], Float32[wx, r + AXLE_Y, zo], AXLE_R, (0.84f0, 0.02f0)),
                                           "axlelot", (1f0, 1f0, 1f0)))
         end
@@ -13563,8 +13573,8 @@ function main()
         # PERF-1: one fused matrix per call (was 4 matrices + 3 products), and the body matrix is computed once
         # per car per pass below (it was recomputed for every body PART) -- the top allocation site.
         aiCar(p)  = Render.pose_matrix(p[1], p[2], -p[3], p[4], p[5], p[6])   # body follows the hill (pitch + cross-slope/collision roll)
-        aiBody(p, cm) = Render.pose_matrix(p[1], p[2], -p[3], p[4], p[5], p[6], cm.body_off[1], cm.body_off[2], cm.body_off[3]) * CARHAND   # CARHAND-1
-        aiWheel(p,wx,wz,r) = Render.pose_matrix(p[1], p[2], -p[3], p[4], p[5], p[6], wx, r, wz) * CARHAND * Render.rotz(Float32(spin))
+        aiBody(p, cm) = ai_body_mat(p, cm)   # CARHAND-1, about the chassis' wheel centreline (CARGOLD-2 S4)
+        aiWheel(p,cm,wx,wz,r) = ai_wheel_mat(p, cm, wx, wz, r, spin)   # CARGOLD-2 S4
         # ── E85-S5: exchange poses with the peer, and place its cars ON THE GROUND ───────────────
         if NETLINK !== nothing
             # ⚠️ YIELD FIRST. The socket reader is an `@async` task (netplay.jl keeps one long-lived
@@ -13824,7 +13834,7 @@ function main()
                 for (nid, p) in NETPOSES[]          # MP-5: the host's AI ids pick their own chassis
                     cm = AICARMODELS[NetPlay.chassis_slot(nid, length(AICARMODELS))]
                     let _bm = aiBody(p, cm); for it in cm.body; Render.draw(prog, it, vp_, _bm; bright=AI_BRIGHT, spec=0.10, ambfill=AI_AMB); end; end
-                    for (wx,wz,_,r,nm) in cm.wheelspec, it in cm.wheels[nm]; Render.draw(prog, it, vp_, aiWheel(p,wx,wz,r)); end
+                    for (wx,wz,_,r,nm) in cm.wheelspec, it in cm.wheels[nm]; Render.draw(prog, it, vp_, aiWheel(p,cm,wx,wz,r)); end
                 end
             end
         end

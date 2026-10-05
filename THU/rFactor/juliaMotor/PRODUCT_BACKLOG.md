@@ -22308,3 +22308,20 @@ gone. Still short of the gold: no halfshafts/uprights (the player draws CHASE-AX
   (`ai_cooper_blades_vs_shafts.png`). `ai_lotus_rear_hidden_vs_shafts.png`: horizontal shafts like the gold's.
 * Gates: `ai_parked_susp_smoke` (its two source checks asserted the old POSE default — updated to the new default and
   knobs; every behavioural check unchanged), `ai_field_smoke`, `wheel_hubs_smoke`, `susp_pose_smoke` PASS.
+
+### CARGOLD-2 S4 (2026-10-05) — the AI reflection is about each chassis' WHEEL CENTRELINE; the float is the shadow (4 sprints — ROTATING)
+* S3 reflected the AI body about z=0 but placed the hubs unreflected. The AI meshes are not centred: the Lotus's wheel line
+  sits at z −0.105 in the pose frame (`hubs from the mesh ... now (1.09,0.66) (1.09,-0.87)`). Reflecting the hub positions
+  about z=0 as well slid the body further off (`ai_reflection_z0_vs_centreline.png`). Now ONE per-chassis reflection
+  about the wheel centreline (`ai_hand(cm)`) carries body, hubs and the built shafts (whose inner ends sit at the
+  centreline ±0.16). The network cars (`aiBody`/`aiWheel`) use the same matrices. `ai_lotus_cooper_rear_final.png`:
+  centred gearbox, symmetric shafts, Lotus and Cooper; `ai_lotus_side_final.png`: "5 TEAM LOTUS / CLARK / Firestone".
+* **The float (PO's "10 cm") is the SHADOW, not the car:** wheel gap ~0 (S1), but each tyre's shadow starts BEHIND its contact
+  patch, where the gold's begins at it. The shadow box (E104-S5: depth 120 m → floor bias 0.22 m, sloped to 0.42 m; R 70 m
+  on 2048 px → ~7 cm texels) loses the bottom ~20 cm of the tyre. A/B `JM_SHADOW_DEPTH=60 JM_SHADOW_R=40`
+  (`ai_shadow_depth120R70_vs_60R40.png`): finer (the shafts cast distinct shadows) but the gap is still there — the bias
+  alone is not it. **Next (revisit):** the slope-scaled bias (0.0035·(1−N·L)) on the near-vertical tyre faces, a normal-
+  offset instead of depth bias, or GPL's own approach (per-car blob/projected shadow under each tyre); and the flat-ground
+  acne check across tracks before any default changes.
+* Gates: `ai_parked_susp_smoke`, `ai_field_smoke`, `wheel_hubs_smoke`, `netplay_smoke`, `netplay_dr_smoke`,
+  `netplay_dr2_smoke`, `netai_smoke` PASS.
