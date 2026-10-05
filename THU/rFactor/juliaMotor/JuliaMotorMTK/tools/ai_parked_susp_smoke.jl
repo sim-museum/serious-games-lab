@@ -23,8 +23,13 @@ for (chassis, file, ids) in (("eagle", "eagle/eagle.3do", Set([29108, 39200])), 
 end
 SRC = read(joinpath(@__DIR__, "..", "..", "demo", "native", "drive_native_mtk.jl"), String)
 pass(occursin("AI_PARKED_SUSP_GROUPS = Dict(\"eagle\" => Set([29108, 39200]), \"brabham\" => Set([32916, 48284]), \"cooper\" => Set([30048, 41624]))", SRC), "loader hides Eagle/Brabham/Cooper blade groups (BRM/Ferrari untouched)", "source check")
-pass(occursin("rear_groups=(AI_REAR_MODE === :pose ? collect(_rg) : Int[])", SRC), "S2: the groups are POSED (clipped at the hub plane) by default", "source check")
-pass(occursin("AI_REAR_MODE === :hide ? _rg : Set{Int}()", SRC) && occursin("JM_AI_REAR_HIDE", SRC), "JM_AI_REAR_HIDE=1 falls back to hiding, JM_AI_PARKED_SUSP=1 to raw", "source check")
+# CARGOLD-2 S3 (2026-10-05): posing at the hub plane drew the parked halves as diagonal blades beside the rear tyres (Lotus,
+# Cooper); the default is now HIDE plus BUILT driveshafts per chassis (AI_AXLES), JM_AI_REAR_POSE=1 restores the pose.
+pass(occursin("_amode = (AI_REAR_MODE === :pose && get(ENV, \"JM_AI_REAR_POSE\", \"0\") == \"0\") ? :hide : AI_REAR_MODE", SRC) &&
+     occursin("rear_groups=(_amode === :pose ? collect(_rg) : Int[])", SRC) &&
+     occursin("haskey(AI_PARKED_SUSP_GROUPS, lowercase(cm.name)) || continue", SRC),
+     "S3: the groups are HIDDEN and replaced by built driveshafts by default (JM_AI_REAR_POSE=1 = pose)", "source check")
+pass(occursin("_amode === :hide ? _rg : Set{Int}()", SRC) && occursin("JM_AI_REAR_HIDE", SRC), "JM_AI_REAR_HIDE=1 falls back to hiding, JM_AI_PARKED_SUSP=1 to raw", "source check")
 pass(occursin("Render.GPL3DO.HIDE_GROUPS[] = Set{Int}()   # never leak", SRC), "the hide set is reset after the AI loop", "source check")
 println(fails == 0 ? "AI-PARKED-SUSP GATE: PASS" : "AI-PARKED-SUSP GATE: FAIL ($fails)")
 exit(fails == 0 ? 0 : 1)

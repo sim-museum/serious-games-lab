@@ -5861,17 +5861,22 @@ println("  [cull] PERF-3: track part radii p50 ", round(sort(last.(TRACKBOUND))[
         round(maximum(last.(TRACKBOUND); init=0f0), digits=1), " m over ", length(TRACKBOUND), " parts")
 # PERF-3: the AI draws as typed functions -- inside the frame loop `ai_poses` (a different type per branch)
 # and `spin` are boxed closure captures, so every pose matrix came back as a heap object.
-ai_body_mat(p, cm) = Render.pose_matrix(p[1], p[2], -p[3], p[4], p[5], p[6], cm.body_off[1], cm.body_off[2], cm.body_off[3])
-ai_wheel_mat(p, wx, wz, r, spin) = Render.pose_matrix(p[1], p[2], -p[3], p[4], p[5], p[6], wx, r, wz) * Render.rotz(Float32(spin))
+# CARGOLD-2 S3 (2026-10-05): CARHAND-1 put the AI cars into GPL's handedness in `aiBody`/`aiWheel`, but since PERF-3 the AI
+# FIELD is drawn here, and these never got CARHAND: every AI car was still the mirror image -- its side read "SUTOJ MAƎT".
+ai_body_mat(p, cm) = Render.pose_matrix(p[1], p[2], -p[3], p[4], p[5], p[6], cm.body_off[1], cm.body_off[2], cm.body_off[3]) * AI_HAND
+ai_wheel_mat(p, wx, wz, r, spin) = Render.pose_matrix(p[1], p[2], -p[3], p[4], p[5], p[6], wx, r, wz) * AI_HAND * Render.rotz(Float32(spin))
+ai_car_mat(p) = Render.pose_matrix(p[1], p[2], -p[3], p[4], p[5], p[6])
 function draw_ai_depth!(dp, poses, chassis, spin)
     for (p, cm) in zip(poses, chassis)
         bm = ai_body_mat(p, cm); for it in cm.body; Render.draw_depth(dp, it, bm); end
+        for it in get(AI_AXLES, cm.name, AI_NOAXLE); Render.draw_depth(dp, it, ai_car_mat(p)); end
         for (wx,wz,_,r,nm) in cm.wheelspec, it in cm.wheels[nm]; Render.draw_depth(dp, it, ai_wheel_mat(p, wx, wz, r, spin)); end
     end
 end
 function draw_ai_main!(prog, vp, poses, chassis, spin, nowheels::Bool)
     for (p, cm) in zip(poses, chassis)
         bm = ai_body_mat(p, cm); for it in cm.body; Render.draw(prog, it, vp, bm; bright=AI_BRIGHT, spec=0.10, ambfill=AI_AMB); end
+        for it in get(AI_AXLES, cm.name, AI_NOAXLE); Render.draw(prog, it, vp, ai_car_mat(p); bright=1.1, spec=0.3, ambfill=0.55); end
         nowheels && continue
         for (wx,wz,_,r,nm) in cm.wheelspec, it in cm.wheels[nm]; Render.draw(prog, it, vp, ai_wheel_mat(p, wx, wz, r, spin)); end
     end
@@ -9587,7 +9592,9 @@ if !SKIDPAD && _ncars > 0
         _rg = get(AI_PARKED_SUSP_GROUPS, lowercase(nm), Set{Int}())
         # CARGOLD-2 S2: the Lotus is HIDDEN, not posed -- posing at the hub plane turned its plates into diagonal blades
         # beside the tyres. The player Lotus also drops these groups and draws its own rear assembly (CHASE-AXLE-1).
-        _amode = (lowercase(nm) == "lotus" && AI_REAR_MODE === :pose) ? :hide : AI_REAR_MODE
+        # CARGOLD-2 S3: the same blades showed beside the Cooper's rear tyres, so EVERY chassis with parked halves is hidden
+        # and gets built driveshafts (AI_AXLES). JM_AI_REAR_POSE=1 restores the AI-CHAIN-1 pose for an A/B.
+        _amode = (AI_REAR_MODE === :pose && get(ENV, "JM_AI_REAR_POSE", "0") == "0") ? :hide : AI_REAR_MODE
         Render.GPL3DO.HIDE_GROUPS[] = _amode === :hide ? _rg : Set{Int}()
         # AISLEEVE-1 (PO 2026-09-19, WG race replay: "all AI cars have misplaced driver's sleeves that
         # render as 'rabbit ears' at the front of each cockpit. Remove all these sleeve objects from
@@ -9630,6 +9637,26 @@ if !SKIDPAD && _ncars > 0
         end
         Render.GPL3DO.HIDE_GROUPS[] = Set{Int}()   # never leak the per-chassis hide into later parses
     end
+end
+# CARGOLD-2 S3: the AI Lotus's parked rear halves are hidden (S2), so -- like the player (CHASE-AXLE-1) -- it gets BUILT
+# driveshafts: gearbox (|z| 0.16) to each rear hub, at hub height, GPL's axlelot strip. In the AI pose frame a wheel's hub
+# is (wx, r, wz) (ai_wheel_mat). JM_AI_AXLES=0 removes them; JM_AI_HAND=0 draws the AI cars mirrored as before (A/B).
+const AI_HAND = get(ENV, "JM_AI_HAND", "1") == "0" ? Render.scalexyz(1f0, 1f0, 1f0) : CARHAND
+const AI_NOAXLE = Render.Item[]
+const AI_AXLES = Dict{String,Vector{Render.Item}}()
+if get(ENV, "JM_AI_AXLES", "1") != "0"
+    for cm in AICARMODELS
+        haskey(AI_PARKED_SUSP_GROUPS, lowercase(cm.name)) || continue      # the chassis whose parked rear halves are hidden
+        parts = Render.TrackPart[]
+        for (wx, wz, front, r, _) in cm.wheelspec
+            front && continue
+            zs = sign(wz); zi = 0.16f0*zs; zo = wz - zs*0.05f0
+            push!(parts, Render.TrackPart(_rod_verts!(Float32[], Float32[wx, r + AXLE_Y, zi], Float32[wx, r + AXLE_Y, zo], AXLE_R, (0.84f0, 0.02f0)),
+                                          "axlelot", (1f0, 1f0, 1f0)))
+        end
+        isempty(parts) || (AI_AXLES[cm.name] = Render.build_gpl(parts, GPLTEX; tag="extra"))
+    end
+    isempty(AI_AXLES) || println("  [ai axles] built driveshafts for: ", join(keys(AI_AXLES), ", "))
 end
 const PROJ = Render.perspective_revz(deg2rad(62f0), Float32(W/H), 0.35f0, 3000f0)  # reversed-Z: near-uniform depth precision → kills distant z-fight (signs on fences)
 tstamp("  [E80] AI car models done / projection")

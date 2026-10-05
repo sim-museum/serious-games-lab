@@ -22294,3 +22294,17 @@ origin: a chrome plate standing inside each rear tyre. Tried the existing POSE t
 turned into diagonal blades beside the tyres (`ai_lotus_rear_before_after_POSE_rejected.png`) — rejected. **Shipped: the
 Lotus's parked rear halves are HIDDEN** (as the player drops them); `ai_lotus_rear_before_after_hide.png`: the plates are
 gone. Still short of the gold: no halfshafts/uprights (the player draws CHASE-AXLE-1's chrome driveshafts) — S3.
+
+### CARGOLD-2 S3 (2026-10-05) — the AI field was STILL a mirror image; built driveshafts for every chassis with parked halves
+* **Handedness:** CARHAND-1 (2026-10-04) put `CARHAND` into `aiBody`/`aiWheel`, but since PERF-3 the AI FIELD is drawn by
+  `draw_ai_main!`/`draw_ai_depth!` through `ai_body_mat`/`ai_wheel_mat`, which never got it — only the network cars did.
+  Every AI car was the mirror image: its side read "SUTOJ MAƎT", the number reversed, the inner wheel face outward, and the
+  shadow pass drew the same mirrored car. Now `* AI_HAND` (= CARHAND; `JM_AI_HAND=0` = the old draw).
+  `ai_lotus_side_mirrored_vs_carhand.png`: "5 TEAM LOTUS" reads correctly, the spinner faces out.
+* **Driveshafts:** each AI chassis with parked rear halves (Lotus ×2, Cooper; Eagle/Brabham when fielded) has them HIDDEN
+  and gets BUILT shafts, the CHASE-AXLE-1 way: gearbox (|z| 0.16) to each rear hub at hub height, GPL's `axlelot` strip,
+  in the car's pose frame from its own `wheelspec` (`AI_AXLES`, `JM_AI_AXLES=0` removes). The AI-CHAIN-1 pose
+  (`JM_AI_REAR_POSE=1`) drew the Cooper's halves as diagonal blades beside the rear tyres too
+  (`ai_cooper_blades_vs_shafts.png`). `ai_lotus_rear_hidden_vs_shafts.png`: horizontal shafts like the gold's.
+* Gates: `ai_parked_susp_smoke` (its two source checks asserted the old POSE default — updated to the new default and
+  knobs; every behavioural check unchanged), `ai_field_smoke`, `wheel_hubs_smoke`, `susp_pose_smoke` PASS.
