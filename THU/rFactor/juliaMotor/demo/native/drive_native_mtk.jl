@@ -833,26 +833,26 @@ const NET_ERRS = Float64[]
 const NET_DTS  = Float64[]
 # E85-S5: open the net link here -- after the world/car exist, before the game loop.
 include(joinpath(@__DIR__,"netplay.jl")); using .NetPlay
-# SQUEAK-JULIA-1 (2026-10-04): a host is listed on the player's squeak matchmaker while it runs; a joiner with no
-# JM_NET_HOST (or JM_NET_HOST=squeak) joins the first race squeak lists. Inert unless a matchmaker is configured.
-include(joinpath(@__DIR__,"squeak.jl")); using .Squeak
+# SGW-JULIA-1 (2026-10-04): a host is listed on the player's Serious Games Week matchmaker while it runs; a joiner with no
+# JM_NET_HOST (or JM_NET_HOST=matchmaker) joins the first race the matchmaker lists. Inert unless a matchmaker is configured.
+include(joinpath(@__DIR__,"serious_games_week.jl")); using .SeriousGamesWeek
 const NETLINK = if NETMODE == "host"
         println("  net:     HOSTING on udp/", NET_PORT, " as car ", NET_ID); flush(stdout)
         l = NetPlay.netopen(port = NET_PORT)
-        squeak_announce(NET_PORT, get(ENV, "JM_NET_TITLE", "Julia Racer at " * uppercasefirst(TRACKSEL));
+        matchmaker_announce(NET_PORT, get(ENV, "JM_NET_TITLE", "Julia Racer at " * uppercasefirst(TRACKSEL));
                         name = get(ENV, "SGW_NAME", get(ENV, "USER", "")), max_players = Int(AI_ID0) - 1)
         l
     elseif NETMODE == "join"
         jhost, jport = NET_HOST, NET_PORT
-        if get(ENV, "JM_NET_HOST", "squeak") == "squeak"
-            races = squeak_races()
+        if get(ENV, "JM_NET_HOST", "matchmaker") == "matchmaker"
+            races = matchmaker_races()
             if isempty(races)
                 jhost = "127.0.0.1"
-                println("  squeak:  ", squeak_configured() ? "no races listed" : "no matchmaker configured",
+                println("  matchmaker:  ", matchmaker_configured() ? "no races listed" : "no matchmaker configured",
                         "; joining ", jhost, ":", jport)
             else
                 jhost, jport = races[1][1], races[1][2]
-                println("  squeak:  joining \"", races[1][4], "\" (", length(races), " race(s) listed)")
+                println("  matchmaker:  joining \"", races[1][4], "\" (", length(races), " race(s) listed)")
             end
         end
         println("  net:     JOINING ", jhost, ":", jport, " as car ", NET_ID); flush(stdout)
