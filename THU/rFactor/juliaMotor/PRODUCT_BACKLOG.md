@@ -22286,3 +22286,11 @@ Ours: `JM_SHOTS` player chase + `JM_AICAM_SEQ="1:gplchase,2:gplchase,1:rsusp"` (
   the geometry; the AI livery/decal UVs evidently still carry the old compensating flip.
 * **Next:** S2 name the plates (`JM_PICK` on an AI frame; E82's lead: GPL PARKS dynamically-placed suspension parts at
   y=+20 and `posmat` clamps that to 0, i.e. draws them at the car origin); S3 AI contact shadow; S4 AI livery handedness.
+
+### CARGOLD-2 S2 (2026-10-05) — the plates were the AI LOTUS's parked rear halves; hidden (the plates are gone)
+FIELD-1 put two Lotus 49s in the AI field (Clark `CLA5A`, Hill `hil6a`) and `AI_PARKED_SUSP_GROUPS` had no `lotus` entry, so
+groups 27288/39792 — the rear-suspension halves GPL parks and the PLAYER excludes and re-poses — drew at the clamped car
+origin: a chrome plate standing inside each rear tyre. Tried the existing POSE treatment (clip at the hub plane): the plates
+turned into diagonal blades beside the tyres (`ai_lotus_rear_before_after_POSE_rejected.png`) — rejected. **Shipped: the
+Lotus's parked rear halves are HIDDEN** (as the player drops them); `ai_lotus_rear_before_after_hide.png`: the plates are
+gone. Still short of the gold: no halfshafts/uprights (the player draws CHASE-AXLE-1's chrome driveshafts) — S3.

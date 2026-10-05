@@ -9565,6 +9565,10 @@ _ncars = max(N_AI, NETMODE == "" ? 0 : 1, NETMODE == "join" ? N_AI_REQ : 0)   # 
 # id; the untextured groups change nothing). Same interim treatment; same "not parity" caveat.
 # BRM 26116/35320 and Ferrari: hiding changes nothing visible, so they keep everything.
 const AI_PARKED_SUSP_GROUPS = Dict("eagle" => Set([29108, 39200]), "brabham" => Set([32916, 48284]), "cooper" => Set([30048, 41624]))   # Cooper: its rear halves too (A/B)
+# CARGOLD-2 S2 (2026-10-05): FIELD-1 put two LOTUS 49s in the AI field (Clark, Hill) and the Lotus had no entry, so its parked
+# rear halves 27288/39792 (the groups the PLAYER excludes and re-poses) drew at the clamped car origin: the PO's "metal parts
+# still embedded in rear tires". The AI's loaded name is "Lotus"; "coventry" is the Cooper's directory, matched by name.
+AI_PARKED_SUSP_GROUPS["lotus"] = Set([27288, 39792])
 # AI-CHAIN-1 S2: those same groups are now POSED the Lotus way (clipped at the hub plane) rather
 # than hidden -- see Render.load_gpl_car(rear_groups=...). JM_AI_REAR_HIDE=1 falls back to hiding,
 # JM_AI_PARKED_SUSP=1 draws them untreated (the blades) for an A/B.
@@ -9581,7 +9585,10 @@ if !SKIDPAD && _ncars > 0
         # Cooper. Use the player's clip; JM_AI_MAXLAT overrides for A/B.
         # AI-CARGFX S5 (interim): drop the parked rear-suspension groups that render as flat blades.
         _rg = get(AI_PARKED_SUSP_GROUPS, lowercase(nm), Set{Int}())
-        Render.GPL3DO.HIDE_GROUPS[] = AI_REAR_MODE === :hide ? _rg : Set{Int}()
+        # CARGOLD-2 S2: the Lotus is HIDDEN, not posed -- posing at the hub plane turned its plates into diagonal blades
+        # beside the tyres. The player Lotus also drops these groups and draws its own rear assembly (CHASE-AXLE-1).
+        _amode = (lowercase(nm) == "lotus" && AI_REAR_MODE === :pose) ? :hide : AI_REAR_MODE
+        Render.GPL3DO.HIDE_GROUPS[] = _amode === :hide ? _rg : Set{Int}()
         # AISLEEVE-1 (PO 2026-09-19, WG race replay: "all AI cars have misplaced driver's sleeves that
         # render as 'rabbit ears' at the front of each cockpit. Remove all these sleeve objects from
         # the AI cars"). The player Lotus already drops its driver arms/sleeves/hands (DRIVER_TEX +
@@ -9611,7 +9618,7 @@ if !SKIDPAD && _ncars > 0
                               exclude=("ltraymap","lshad",AI_SLEEVE_EXC...,(haskey(ENV, "JM_AI_EXC_FLAT") ? ("",) : ())...),
                               maxlat=parse(Float32, get(ENV,"JM_AI_MAXLAT", string(CARP_MAXLAT))),
                               body_floor=BODY_FLOOR,
-                              rear_groups=(AI_REAR_MODE === :pose ? collect(_rg) : Int[]),
+                              rear_groups=(_amode === :pose ? collect(_rg) : Int[]),
                               rear_lat=parse(Float32, get(ENV, "JM_AI_REAR_LAT", "0.66"))))
         println("$(length(AICARMODELS[end].body)) parts")
         if haskey(ENV, "JM_AITEX")          # AI-CARGFX probe: parts drawn with no texture (flat colour)
