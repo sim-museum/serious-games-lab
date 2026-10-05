@@ -22443,3 +22443,12 @@ way in, so its crowns hung over the road.
 * **Still there:** at s≈21300 tall dark walls lean in on both sides — a different family (tree-row / hedge panels, `trow*`,
   `xk_flat*`), next on this item.
 * Gates `solid_box_smoke`, `contact_smoke`, `stacked_contact_smoke`, `gplwall_smoke` PASS.
+* **S16 (2026-10-05):** the s≈21300 walls are `anton-l/trowfmb` (lat 8.9) and `anton-r/trowfmt` (lat −20.7), Antoniusbuche
+  tree rows, drawn by scenery AND object copy. Their GPL windows (`gpl_segvis`): `anton-l` from segments 21113, 21288, 21463
+  only; `anton-r` the same plus 21563–21607. ⚠️ **Caveat on the model:** isolated single segments (and every veil = one
+  segment) would make GPL pop objects in and out every few segments, which GPL does not visibly do — the walker follows the
+  segment trees and cell object lists but NOT the cells' `(plane#, neighbour)×4` links, so the true windows are probably
+  wider. On screen the veil rule shows no popping on the approach (`approach_21150_21320_no_pop.jpg`, s 21150…21320), so
+  it stays shipped; decoding the neighbour links is the next step before `JM_GPLVIS=1` (all objects) can ship.
+  The tall walls themselves stand where GPL's tree rows stand (the gold at t≈13:50 has tall trees close to the road) — not
+  pursued further this cycle.
