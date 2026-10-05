@@ -123,6 +123,12 @@ const TRACKSEL = let t = choose_track()
 end
 const SKIDPAD  = TRACKSEL == "skidpad"
 const NURB     = TRACKSEL == "nurburgring"
+# RINGBANNER-1 (PO 2026-10-04: "remove the continental banner near high eight at the ring. It's causing a bump artifact
+# and adds little"). The banner is the `pitrim` rim of the pit building behind the pits (s 1300-1800, right side), drawn
+# both as track scenery and as the placed object `ng124`; it leaves both, and the ground model. JM_RINGBANNER=1 keeps it.
+const RINGBANNER_DROP = get(ENV, "JM_RINGBANNER", "0") == "0"
+const RINGBANNER_TEX  = Set(lowercase.(split(get(ENV, "JM_RINGBANNER_TEX", "pitrim"), ",")))   # pixel pick (JM_PICK) at s=1592 names `pitrim`
+ringbanner_zone(found, lapdist, lateral) = NURB && RINGBANNER_DROP && found && 1300.0 < lapdist < 1800.0 && lateral < -2.0
 const MONZA    = TRACKSEL == "monza"
 const WATGLEN  = TRACKSEL == "watglen"
 const ZANDV    = TRACKSEL == "zandvoort"
@@ -1451,6 +1457,7 @@ function gpl_scenery(ztrk, datpack, ribbon)
             ux=w[2][1]-w[1][1]; uy=w[2][2]-w[1][2]; uz=w[2][3]-w[1][3]
             vx=w[3][1]-w[1][1]; vy=w[3][2]-w[1][2]; vz=w[3][3]-w[1][3]
             nz=ux*vy-uy*vx; nl=sqrt((uy*vz-uz*vy)^2+(uz*vx-ux*vz)^2+nz^2)
+            (lowercase(tr.tex) in RINGBANNER_TEX && ringbanner_zone(hr.found, hr.lapdist, hr.lateral)) && continue   # RINGBANNER-1
             (nl > 1f-6 && abs(nz)/nl > 0.4f0) && push!(hat, Render.GPL3DO.Tri(w, nn, tr.uv, tr.tex, tr.col, tr.flat, tr.ptype))
             # E109-S5: the Ring's `half*` tree veils (E109-S1/S2) are tall near-vertical panels standing
             # ACROSS the road. The centroid rule above misses them: a 10 m panel's centroid is > 3 m up.
@@ -6981,7 +6988,20 @@ let objnames=Set{String}()
     # E81-S9: GPL's placement PITCH and ROLL were read by neither object path's matrix here -- only yaw. A 230 m wall quad
     # (Ring `walls2`, pitch 0.026) then stood 6-9 m in the air at its far end: the "skewed grey panel" of E81. Applied as
     # rotz(OBJ_PR[1]*pitch) * rotx(OBJ_PR[2]*roll) in the object's own frame; JM_OBJ_PR="<sp>,<sr>" sets the signs (0 = off).
-    global OBJECTS = [(objmesh[i.name], Render.translate(Float32[i.x, plozfp(i), -i.y]) * Render.roty(Float32(OBJ_YAW_SIGN * objyawsign(i.name) * -i.yaw + objyawfix(i.name))) *
+    # RINGBANNER-1: placements in the zone get their mesh rebuilt without the banner texture(s)
+    _rbmesh = Dict{String,Any}()
+    function objitems(i)
+        RINGBANNER_DROP && NURB || return objmesh[i.name]
+        h = JuliaMotor.hat(TRKSURF, Float64(i.x), Float64(i.y))
+        ringbanner_zone(h.found, h.lapdist, h.lateral) || return objmesh[i.name]
+        ps = get(objverts, lowercase(i.name), get(objverts, i.name, nothing))
+        (ps === nothing || !any(p -> lowercase(p.tex) in RINGBANNER_TEX, ps)) && return objmesh[i.name]
+        get!(_rbmesh, i.name) do
+            println("  [ringbanner] ", i.name, ": drawn without ", join(RINGBANNER_TEX, ","))
+            Render.build_gpl(filter(p -> !(lowercase(p.tex) in RINGBANNER_TEX), ps), TEXIDX)
+        end
+    end
+    global OBJECTS = [(objitems(i), Render.translate(Float32[i.x, plozfp(i), -i.y]) * Render.roty(Float32(OBJ_YAW_SIGN * objyawsign(i.name) * -i.yaw + objyawfix(i.name))) *
                        Render.rotz(Float32(OBJ_PR[1]*i.pitch)) * Render.rotx(Float32(OBJ_PR[2]*i.roll)), istree(i.name) && (graze_mesh || !(MONZA || WATGLEN)), (Float32(i.x), plozfp(i), Float32(-i.y)), lowercase(i.name))
                       for i in insts if get(objmesh,i.name,nothing) !== nothing &&
                           !drop(i.name) && !onroad_crowd(i) && !perp_crowd(i) && !onroad_bldg(i) && !onroad_fp(i) && (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && onground(i)]
