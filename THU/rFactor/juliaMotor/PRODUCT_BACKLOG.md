@@ -22205,3 +22205,8 @@ a car's height. Canopy over the road is invisible to it by design.
   on the wrong side of its origin. Ring OBJECTS already needed yaw −1 (RING-GOLD-1) and pitch −1 (E81-S9). A/B the
   scenery yaw sign for the veils by name (not globally: terrain sections and the ±90° veils must be checked too), in
   `JM_ASPHALT_HMIN=3` and against the gold frame at t≈834 s.
+
+### AIGPL-2 — PO verdict (2026-10-05): *"The AI cars worked perfectly in the WG race! Congrats!"*
+Driven on HEAD `3afa6f9f` (the GPL-algorithm AI, default since `7d35cf60`/`6db08ca0`) at Watkins Glen. AIGPL-1's four
+WG differences (single file, no quick lateral moves, spread, never off the road) are accepted there; E84's "queues like
+GPL's or trains" question is answered at WG. The other four tracks have not been raced by the PO yet.
