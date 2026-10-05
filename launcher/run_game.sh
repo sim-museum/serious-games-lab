@@ -33,8 +33,20 @@ apply_rowan_fixes() {
     fi
 }
 
+# Backlog 26 (2026-10-05): the Serious Games Week matchmaker only matches two copies built from the same commit. The
+# sgw client sends $SGW_BUILD with every announce and list; for a game run from this checkout it is the repository's
+# commit, plus "-dirty" when that game's Python sources differ from it (game logs and settings do not count).
+sgw_build_for() {
+    [ -n "${SGW_BUILD:-}" ] && return
+    local b
+    b=$(git -C "$REPO_ROOT" rev-parse --short=12 HEAD 2>/dev/null) || return
+    git -C "$REPO_ROOT" diff --quiet HEAD -- ":(glob)$1/**/*.py" 2>/dev/null || b="$b-dirty"
+    export SGW_BUILD="$b"
+}
+
 case "$GAME_NAME" in
     bridge)
+        sgw_build_for FRI/bridgeIQ
         cd "$REPO_ROOT/FRI/bridgeIQ" && source venv/bin/activate && python3 main.py "$@"
         ;;
     claudemath)
@@ -53,6 +65,7 @@ case "$GAME_NAME" in
         exec "$REPO_ROOT/SUN/run_katrain.sh" "$@"
         ;;
     poker)
+        sgw_build_for MON/pokerIQ
         cd "$REPO_ROOT/MON/pokerIQ" && source venv/bin/activate && python3 main.py "$@"
         ;;
     freefalcon)
