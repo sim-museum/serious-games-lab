@@ -5661,6 +5661,7 @@ const SEGNAME_SECS = parse(Float64, get(ENV, "JM_SEGNAME_SECS", "3.0"))
 const SEGFONT = FONT === nothing ? nothing : something(Render.load_font(joinpath(@__DIR__, "assets"), 32), FONT)
 const SECTIONS = isdefined(Main, :LAPLEN) ? track_sections(TRACKSEL, LAPLEN) : Tuple{Float64,String}[]
 const SEG = Ref((0, "", -1.0e9))                   # (current section index, banner text, banner start time)
+const SEGNAME_FORCE = get(ENV, "JM_SEGNAME_FORCE", "")   # render checks: show this text all the time
 isempty(SECTIONS) || println("  [trackseg] ", length(SECTIONS), " named sections for ", TRACKSEL)
 # S2: the gold's table shows GPL's 1967 DRIVERS (Clark, Hill, Brabham, Amon, Bonnier), not chassis
 # makes. Our AI is identified by make (AICHASSIS[id].name), so map make -> the works driver of that
@@ -13966,8 +13967,8 @@ function main()
             # (but larger font) as the other text above the 3D window" -- the band's own light grey, a larger regular face.
             if !isempty(SECTIONS) && SEGNAME_SECS > 0
                 SEG[] = section_update(SECTIONS, cs.lapdist, LAPLEN, cs.t, SEG[]...)
-                if cs.t - SEG[][3] < SEGNAME_SECS
-                    msg = SEG[][2]; tw = Render.text_width(SEGFONT, msg)
+                if cs.t - SEG[][3] < SEGNAME_SECS || !isempty(SEGNAME_FORCE)
+                    msg = isempty(SEGNAME_FORCE) ? SEG[][2] : SEGNAME_FORCE; tw = Render.text_width(SEGFONT, msg)
                     bandh = nrows*FONT.lineh + 12.0
                     st = Float32[]; Render.text!(st, SEGFONT, (W - tw)/2, max(2.0, (bandh - SEGFONT.lineh)/2), msg, (0.95, 0.95, 0.95))
                     Render.text_draw(textprog, textvao, textvbo, SEGFONT, st, W, H)
