@@ -22334,3 +22334,13 @@ gone. Still short of the gold: no halfshafts/uprights (the player draws CHASE-AX
   art is `bb7` (lat −9…−5), `s_face1/2` (lat −16…−19) and **`billb2` at s=3690 drawn TWICE — one copy at road level, one
   6–10 m BELOW the road** (a lead, not yet the PO's defect).
 * Needs: the place — the section name on screen when the boards are in view, or a screenshot. **AWAITING THE PO.**
+
+### RACESTART-1 — retrospective + S17 (2026-10-05): CLOSED, superseded by AIGPL-2
+The open defect (S16: the field parks behind a STALLED car; the second car stalls at lane 1.56) was measured on the RAIL
+AI (`RaceAI`), which AIGPL-2 replaced as the default on 2026-10-04 (`JM_AI_MODEL=rail` restores it). The new AI has GPL's
+own stalled-car rule (pass a crawling car at once; AIGPL-2 commit `6db08ca0`). Re-run in RACESTART-1's geometry on the new
+AI — `JM_GPLAI_PLAYER="3733.0:<off>:0" julia gplai_probe.jl watglen 4 1`: a STALLED player 3rd of 5 on the standing grid
+(AI at −9/−18 ahead of it, −27/−36 behind), offsets −2.4 / 0 / +2.4 m from the race line: **player contacts 0, AI contacts 0,
+all four AI complete the lap** in every arm (lateral-speed steps p99 ≤ 0.11 m/s). The PO raced the new AI at WG today:
+"worked perfectly". Note: `racestart_smoke` still exercises the RAIL AI (`racestart_probe.jl` uses RaceAI) — it now
+guards the fallback, not the default.
