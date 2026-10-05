@@ -30,6 +30,10 @@ def get_app_version() -> str:
     """Build identifier for the current bridgeIQ revision so the host
     and joining guests can verify they're on the same code. Uses git
     rev-parse first; falls back to the modification time of this file."""
+    # Backlog 28: the same string the Serious Games Week matchmaker matches on (set by the launcher or AppImage),
+    # so a join typed in by address is held to the same rule as one found through the matchmaker.
+    if os.environ.get("SGW_BUILD"):
+        return os.environ["SGW_BUILD"].strip()
     here = os.path.dirname(os.path.abspath(__file__))
     try:
         result = subprocess.run(
