@@ -22366,3 +22366,23 @@ stands inside it.
 * **For the PO:** after today's WG race on HEAD, is the start/finish still "drawn twice" — and which two: the KENDALL
   banner + the DUNLOP tower, or the two poles? Next sprint: `JM_PICK` on the poles at s=3740 and a gold chase frame at the
   line (the PO's lap-2 crossing, t≈4:36 + one lap).
+
+### E111 — retrospective + S3/S4 (2026-10-05): sprite trees were drawn 2.5 m tall on EVERY track — their height lives in a PRIM sprite node
+* Retrospective: S1 proved every placement at the corner has a mesh or stub; S2 built `JM_OBJDIAG_AT`; both stopped at "needs
+  to be seen". **S3 — seen:** the gold (`260802_spa_cockpit.mp4` t≈1:11, the approach to Les Combes, s≈1800) has a row of
+  tall pines along the RIGHT; ours has none (`spa_s1800_gold_before_after.png`, top vs middle). The window's placements:
+  `stree22` ×14, `stree23` ×9, `stree24` ×12 on that side — all mesh-less SPRITE stubs. `JM_OBJDIAG` billboards:
+  `stree22 24.0×12.0` but `stree23/24` and `stree5/6/7` **2.5×0.0** — the "no height marker → marshal" default.
+* **S4 — the cause:** `stree22`'s stub carries its size in its vertices; `stree23/24/5/6/7` have ONE vertex at the origin and
+  carry it in a PRIM **sprite node, type 3: `[3, 0, −1, 0, height f32, 65536]`** (stree23 22 m, stree24 23 m, stree5/6/7
+  13/12/11 m). `Render.billboard_stub` read vertices only. Now it reads that node when the vertices give no height.
+  After (`spa_s1800_gold_before_after.png`, bottom): the pine row stands on the right, as in the gold.
+* **Scope (every track):** stubs that gain their authored height — Spa 133 (`81` 26 m, `bu*`, boards …), Ring 40 (`baum01`
+  15, `busch02` 12.5, `deadtree` 10 …), Monza 11 (`treed*`/`treel*` 21 m, `light` 16), WG 4 (`treesrb1-3` 14–20 m),
+  Zandvoort 2 (`flagger` 1.7). GPL's own numbers; every one was 2.5 m before. The PO should look at all five tracks.
+* Gates: `parse_smoke`, `people_smoke`, `solid_box_smoke`, `contact_smoke`, `stacked_contact_smoke`, `offroad_smoke`,
+  `mipcolor_smoke` PASS.
+* **E111's own two defects:** (a) the missing HOUSE — the gold frame at s≈1800 shows pines, not a house, so the PO's landmark
+  may be these trees or a house behind them; the PO to re-check on the new build. (b) the YELLOW polygon over the road after
+  the corner: not seen in our s=2100/2150 frames; the fields there are a saturated yellow against the gold's pale ones (a
+  lead). ROTATING (4 sprints).

@@ -1926,10 +1926,10 @@ function billboard_stub(path)
     b = read(path)
     u32(o)=(o<0||o+4>length(b)) ? UInt32(0) : UInt32(b[o+1])|(UInt32(b[o+2])<<8)|(UInt32(b[o+3])<<16)|(UInt32(b[o+4])<<24)
     f32(o)=reinterpret(Float32,u32(o)); tg(o)=String(b[o+1:o+4])
-    xyz=strn=0; nv=0; strnsz=0; o=12
+    xyz=strn=0; nv=0; strnsz=0; prim=0; primsz=0; o=12
     while o+12<=length(b)
         t=tg(o); sz=Int(u32(o+8)); d=o+12
-        t=="SZYX" && (xyz=d; nv=sz÷16); t=="NRTS" && (strn=d; strnsz=sz)
+        t=="SZYX" && (xyz=d; nv=sz÷16); t=="NRTS" && (strn=d; strnsz=sz); t=="MIRP" && (prim=d; primsz=sz)
         o=d+sz; o+=(4-o%4)%4
     end
     zmn=Inf32; zmx=-Inf32; xmn=Inf32; xmx=-Inf32; ymn=Inf32; ymx=-Inf32
@@ -1939,7 +1939,19 @@ function billboard_stub(path)
     end
     zext = nv>0 ? zmx-zmn : 0f0
     hext = nv>1 ? max(xmx-xmn, ymx-ymn) : 0f0
-    height = zext > 0.5f0 ? zext : 2.5f0          # no height marker → human/marshal default
+    # E111 (2026-10-05): a stub with ONE vertex carries its size in a PRIM SPRITE node, type 3:
+    # [3, 0, -1, 0, height(f32), 65536] (Spa's stree23 22 m, stree24 23 m, stree5/6/7 11-13 m). Read only from the
+    # vertices, every such tree fell to the 2.5 m marshal default -- the pine rows before Spa's Les Combes were drawn
+    # 2.5 m tall, i.e. missing.
+    sprh = 0f0
+    if zext <= 0.5f0 && prim > 0
+        for q in prim:4:prim+primsz-24
+            if u32(q) == 3 && u32(q+8) == 0xFFFFFFFF
+                hh = f32(q+16); (isfinite(hh) && 0.5f0 < hh < 200f0) && (sprh = hh; break)
+            end
+        end
+    end
+    height = zext > 0.5f0 ? zext : sprh > 0f0 ? sprh : 2.5f0          # no height marker → human/marshal default
     width  = hext > 0.5f0 ? hext : 0f0             # 0 → derive from texture aspect
     # E65 S2: the stub's AUTHORED HORIZONTAL AXIS.  Monza's trees01-23 strips are all placed with
     # rot=(0,0,0) — their orientation lives in the VERTICES, which this reader used to discard, so
