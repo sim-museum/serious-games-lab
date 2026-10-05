@@ -1,16 +1,16 @@
-"""squeak (Serious Games Week) matchmaker integration for bridgeIQ.
+"""Serious Games Week matchmaker integration for pokerIQ.
 
-squeak is an iGOR-style lobby the PLAYER chooses: `sgw url http://<matchmaker>:8090` (or $SGW_URL). bridgeIQ talks to it
-through the `sgw` client (github.com/sim-museum/squeak), never directly, the same way MiG Alley, Battle of Britain and
+Serious Games Week is an iGOR-style lobby the PLAYER chooses: `sgw url http://<matchmaker>:8090` (or $SGW_URL). pokerIQ talks to it
+through the `sgw` client (github.com/sim-museum/serious-games-week), never directly, the same way MiG Alley, Battle of Britain and
 FreeFalcon do:
 
-  hosting -> `sgw announce --game bridgeiq ...` runs for as long as the table is open; its stdin is a pipe we hold, so
-             the listing is withdrawn when the table closes or bridgeIQ exits. Bridge is Friday's game: on any other day
+  hosting -> `sgw announce --game pokeriq ...` runs for as long as the table is open; its stdin is a pipe we hold, so
+             the listing is withdrawn when the table closes or pokerIQ exits. Poker is Monday's game: on any other day
              the matchmaker refuses the listing (the table still runs for players who know the address), and
              `last_message` says why.
-  joining -> `sgw list --game bridgeiq --json` gives the open tables for the join dialog.
+  joining -> `sgw list --game pokeriq --json` gives the open tables for the join dialog.
 
-Everything here is inert unless a matchmaker is configured. SQUEAK_OFF=1 disables it.
+Everything here is inert unless a matchmaker is configured. SGW_OFF=1 disables it.
 """
 import json
 import os
@@ -19,11 +19,11 @@ import subprocess
 import sys
 import threading
 
-GAME_ID = "bridgeiq"
+GAME_ID = "pokeriq"
 
 
 def configured():
-    if os.environ.get("SQUEAK_OFF"):
+    if os.environ.get("SGW_OFF"):
         return False
     if os.environ.get("SGW_URL"):
         return True
@@ -35,11 +35,11 @@ def configured():
 
 
 def find_sgw():
-    """The sgw command line: $SGW_BIN, the AppImage's own, ~/sgweek/sgw.py, ~/squeak/sgw.py, or `sgw` on PATH."""
+    """The sgw command line: $SGW_BIN, the AppImage's own, ~/sgweek/sgw.py, ~/serious-games-week/sgw.py, or `sgw` on PATH."""
     cands = [os.environ.get("SGW_BIN")]
     if os.environ.get("APPDIR"):
         cands.append(os.path.join(os.environ["APPDIR"], "usr", "bin", "sgw"))
-    cands += [os.path.expanduser("~/sgweek/sgw.py"), os.path.expanduser("~/squeak/sgw.py")]
+    cands += [os.path.expanduser("~/sgweek/sgw.py"), os.path.expanduser("~/serious-games-week/sgw.py")]
     for c in cands:
         if c and os.path.isfile(c):
             return [sys.executable, c] if c.endswith(".py") else [c]
@@ -59,9 +59,9 @@ class Announcer:
             return False
         cmd = find_sgw()
         if not cmd:
-            self.last_message = "squeak: no sgw client found"
+            self.last_message = "Serious Games Week: no sgw client found"
             return False
-        args = cmd + ["announce", "--game", GAME_ID, "--port", str(int(port)), "--title", title or "Bridge table",
+        args = cmd + ["announce", "--game", GAME_ID, "--port", str(int(port)), "--title", title or "Poker Table",
                       "--max", str(int(max_players or 0))]
         if name:
             args += ["--name", name]
@@ -71,7 +71,7 @@ class Announcer:
             self.proc = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                          stderr=subprocess.STDOUT, text=True)
         except OSError as e:
-            self.last_message = "squeak: %s" % e
+            self.last_message = "Serious Games Week: %s" % e
             return False
         threading.Thread(target=self._read, daemon=True).start()
         return True
@@ -81,7 +81,7 @@ class Announcer:
             line = line.strip()
             if line:
                 self.last_message = line
-                print("[squeak] " + line, flush=True)
+                print("[sgw] " + line, flush=True)
 
     def stop(self):
         if not self.proc:
@@ -95,7 +95,7 @@ class Announcer:
 
 
 def list_tables(timeout=5):
-    """Open bridgeIQ tables on the matchmaker: [{host, port, title, name, players, max_players, ...}], or []."""
+    """Open pokerIQ tables on the matchmaker: [{host, port, title, name, players, max_players, ...}], or []."""
     if not configured():
         return []
     cmd = find_sgw()

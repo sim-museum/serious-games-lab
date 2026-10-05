@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QLabel, QLineEdit, QSpinBox, QPushButton, QProgressBar, QWidget, QListWidget, QListWidgetItem,
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
-from network import squeak
+from network import serious_games_week
 
 from backend.models import Seat
 from .dialog_style import apply_dialog_style
@@ -38,18 +38,18 @@ class ConnectServerDialog(QDialog):
         self._my_seat: Seat = None
         self._setup_ui()
 
-    def _squeak_refresh(self):
-        self.squeak_list.clear()
-        tables = squeak.list_tables()
+    def _matchmaker_refresh(self):
+        self.matchmaker_list.clear()
+        tables = serious_games_week.list_tables()
         for t in tables:
             seats = "%d" % t.get("players", 0) + ("/%d" % t["max_players"] if t.get("max_players") else "")
             item = QListWidgetItem("%s  \u2014  %s:%d  (%s)" % (t.get("title", "table"), t["host"], t["port"], seats))
             item.setData(Qt.ItemDataRole.UserRole, (t["host"], int(t["port"])))
-            self.squeak_list.addItem(item)
+            self.matchmaker_list.addItem(item)
         if not tables:
-            self.squeak_list.addItem("(no open tables on squeak right now)")
+            self.matchmaker_list.addItem("(no open tables on Serious Games Week right now)")
 
-    def _squeak_pick(self, item, _prev=None):
+    def _matchmaker_pick(self, item, _prev=None):
         hp = item.data(Qt.ItemDataRole.UserRole) if item else None
         if hp:
             self.host_edit.setText(hp[0])
@@ -69,18 +69,18 @@ class ConnectServerDialog(QDialog):
         page = QWidget()
         layout = QVBoxLayout(page)
 
-        if squeak.configured():
-            sq_group = QGroupBox("Tables on squeak")
+        if serious_games_week.configured():
+            sq_group = QGroupBox("Tables on Serious Games Week")
             sq_layout = QVBoxLayout(sq_group)
-            self.squeak_list = QListWidget()
-            self.squeak_list.setToolTip("Open tables listed on your squeak matchmaker -- pick one to fill in its address")
-            self.squeak_list.currentItemChanged.connect(self._squeak_pick)
-            sq_layout.addWidget(self.squeak_list)
+            self.matchmaker_list = QListWidget()
+            self.matchmaker_list.setToolTip("Open tables listed on your Serious Games Week matchmaker -- pick one to fill in its address")
+            self.matchmaker_list.currentItemChanged.connect(self._matchmaker_pick)
+            sq_layout.addWidget(self.matchmaker_list)
             refresh = QPushButton("Refresh")
-            refresh.clicked.connect(self._squeak_refresh)
+            refresh.clicked.connect(self._matchmaker_refresh)
             sq_layout.addWidget(refresh)
             layout.addWidget(sq_group)
-            QTimer.singleShot(0, self._squeak_refresh)
+            QTimer.singleShot(0, self._matchmaker_refresh)
 
         settings_group = QGroupBox("Connection Settings")
         settings_layout = QGridLayout(settings_group)

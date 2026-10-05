@@ -12,7 +12,7 @@ from PyQt6.QtGui import QFont
 from .protocol import DEFAULT_PORT, MAX_NAME_LEN
 from .server import PokerServer
 from .client import PokerClient
-from . import squeak
+from . import serious_games_week
 
 
 def _validate_short_name(name: str) -> Optional[str]:
@@ -177,8 +177,8 @@ class HostGameDialog(QDialog):
                                    app_version=APP_VERSION)
 
         if self.server.start(port):
-            # squeak: list the table on the player's matchmaker while it is open (withdrawn in PokerServer.stop)
-            self.server.squeak.start(port, table_name, name=host_name, max_players=num_seats, version=APP_VERSION)
+            # Serious Games Week: list the table on the player's matchmaker while it is open (withdrawn in PokerServer.stop)
+            self.server.matchmaker.start(port, table_name, name=host_name, max_players=num_seats, version=APP_VERSION)
             self.status_label.setText(f"Server running on port {port}")
             self.status_label.setStyleSheet("color: green;")
             self.start_btn.setEnabled(False)
@@ -213,19 +213,19 @@ class JoinGameDialog(QDialog):
         layout = QVBoxLayout(self)
 
         # Connection settings
-        if squeak.configured():
-            sq_group = QGroupBox("Tables on squeak")
+        if serious_games_week.configured():
+            sq_group = QGroupBox("Tables on Serious Games Week")
             sq_layout = QVBoxLayout()
-            self.squeak_list = QListWidget()
-            self.squeak_list.setToolTip("Open tables listed on your squeak matchmaker -- pick one to fill in its address")
-            self.squeak_list.currentItemChanged.connect(self._squeak_pick)
-            sq_layout.addWidget(self.squeak_list)
+            self.matchmaker_list = QListWidget()
+            self.matchmaker_list.setToolTip("Open tables listed on your Serious Games Week matchmaker -- pick one to fill in its address")
+            self.matchmaker_list.currentItemChanged.connect(self._matchmaker_pick)
+            sq_layout.addWidget(self.matchmaker_list)
             refresh = QPushButton("Refresh")
-            refresh.clicked.connect(self._squeak_refresh)
+            refresh.clicked.connect(self._matchmaker_refresh)
             sq_layout.addWidget(refresh)
             sq_group.setLayout(sq_layout)
             layout.addWidget(sq_group)
-            QTimer.singleShot(0, self._squeak_refresh)
+            QTimer.singleShot(0, self._matchmaker_refresh)
 
         conn_group = QGroupBox("Connection")
         conn_layout = QGridLayout()
@@ -264,19 +264,19 @@ class JoinGameDialog(QDialog):
         btn_layout.addWidget(self.cancel_btn)
         layout.addLayout(btn_layout)
 
-    def _squeak_refresh(self):
-        self.squeak_list.clear()
-        tables = squeak.list_tables()
+    def _matchmaker_refresh(self):
+        self.matchmaker_list.clear()
+        tables = serious_games_week.list_tables()
         for t in tables:
             seats = "%d" % t.get("players", 0) + ("/%d" % t["max_players"] if t.get("max_players") else "")
             who = (" · " + t["name"]) if t.get("name") else ""
             item = QListWidgetItem("%s%s  —  %s:%d  (%s)" % (t.get("title", "table"), who, t["host"], t["port"], seats))
             item.setData(Qt.ItemDataRole.UserRole, (t["host"], int(t["port"])))
-            self.squeak_list.addItem(item)
+            self.matchmaker_list.addItem(item)
         if not tables:
-            self.squeak_list.addItem("(no open tables on squeak right now)")
+            self.matchmaker_list.addItem("(no open tables on Serious Games Week right now)")
 
-    def _squeak_pick(self, item, _prev=None):
+    def _matchmaker_pick(self, item, _prev=None):
         hp = item.data(Qt.ItemDataRole.UserRole) if item else None
         if hp:
             self.host_edit.setText(hp[0])
