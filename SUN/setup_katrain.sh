@@ -86,8 +86,10 @@ pip install --upgrade pip
 # with --no-deps to bypass its Kivy>=2.3.1 requirement. Install KaTrain's other
 # dependencies explicitly since --no-deps skips them.
 pip install 'Kivy==2.3.0' 'kivymd==0.104.1'
-pip install chardet docutils ffpyplayer screeninfo urllib3
-pip install --no-deps 'KaTrain==1.17.1'
+pip install chardet docutils ffpyplayer screeninfo urllib3 websocket-client certifi pysgf
+# The sim-museum fork of KaTrain (1.20.0 + two-player network Go through the Serious Games Week matchmaker), not
+# upstream: github.com/sim-museum/katrain. --no-deps keeps Kivy at 2.3.0 (2.3.1+ freezes on move).
+pip install --no-deps "git+https://github.com/sim-museum/katrain.git@main"
 
 # Create KaTrain config if it doesn't exist yet (first install).
 # KaTrain only writes ~/.katrain/config.json when the GUI launches, so seed
