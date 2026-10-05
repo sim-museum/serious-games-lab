@@ -1,7 +1,16 @@
 # biq — Claude Code project notes
 
+## STATUS — slam bidding, mostly Precision (2026-10-04 evening)
+Full write-up: tools/HARNESS_STATUS_2026-09-30.md, last section.
+* Precision strong-club auctions now reach slam: 1C-1NT/3NT ranges, 1C-3NT,
+  quantitative 4NT accepted on the right range, system-aware slam floors,
+  partner's rebid suit as a fit for RKC. BIQ_SLAM_* switches disable parts.
+* Precision: +0.050 IMP/deal closer to par (slams 54 -> 73 of 508, phantoms
+  41 -> 37); teams +0.11/board. SAYC +0.011. Partner tables rebuilt.
+
 ## STATUS — learned partner ranges + game check (2026-10-04)
-Full write-up: tools/HARNESS_STATUS_2026-09-30.md, last section. Overnight
+Full write-up: tools/HARNESS_STATUS_2026-09-30.md, "Overnight match vs
+WBridge5 and learned partner ranges". Overnight
 Blue Chip match vs WBridge5: -4.46 IMP/board (bidding -2.0, play -2.5).
 * backend/partner_model.py: partner's HCP / suit lengths at every turn,
   LEARNED from 300k biq self-play deals (backend/data/biq_partner_profiles

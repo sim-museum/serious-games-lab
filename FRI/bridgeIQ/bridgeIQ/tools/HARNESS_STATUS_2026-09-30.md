@@ -645,3 +645,47 @@ Precision90M table (300k deals); SAYC table re-stamped after checking the
 plumbing change bids identically on 3000 held-out deals. Precision teams A/B
 vs the bidder of 2026-10-03, seed 9105, 805 boards: +0.217/board DD,
 +0.111 robust.
+
+### Slam bidding, mostly Precision (2026-10-04 evening)
+The Precision session vs Q-Plus (first 67 boards: -247 IMP) lost -162 in
+the bidding, -61 of it on 5 slam boards (Q-Plus bid 7C / 6S / 6C / 6H on
+hands where biq stopped in game). On 4000 held-out WBridge5 deals bid by
+Precision biq, slam was par on 508 and biq bid 54 of them (5671 IMP lost
+there, 1.4 of the 4.7 IMP/deal par gap); at 31+ combined HCP slam is par
+83-100% of the time and biq reached 25 of 94.
+Causes and fixes (native_bidder.py; BIQ_SLAM_* switches turn each off):
+* 1C-1NT-3NT: responder's "To-play" 3NT was illegal over partner's 3NT and
+  the sanity wrapper passed. Now `_nt_slam_after_partner_nt`: 6NT when
+  partner's learned 25th percentile gives 33, quantitative 4NT when the
+  mean gives 32.
+* `_my_nt_range` knew no Precision: responder's 1NT positive was judged as
+  the 14-16 opening, so every 1C-1NT-4NT was declined. Now 8-13 / 14-16 /
+  17+ for 1NT / 2NT / 3NT positives, 16-19 / 20-24 / 19-21 for opener.
+* 1C-3NT (17+ balanced) was passed below 22 HCP: now 6NT (7NT at 37).
+* 1C-1NT: 20-22 balanced 4NT, 23+ 6NT (was 3NT with 19+ of any shape);
+  19+ unbalanced with a long minor bids 3m; responder raises to 4m with
+  three; opener asks for keys with 19+.
+* A positive answer to 1C never passes below game ("no clear rebid" now
+  goes to _safe_forced_bid).
+* Slam-try floors are system-aware (`_opening_min_hcp` had Precision 2C
+  as 20+, 1C as 12; positives as 6). Precision also uses partner's learned
+  25th percentile (BIQ_SLAM_LEARNED; SAYC stays off).
+* `_maybe_slam_try`: partner's rebid suit with 8+ cards between us counts
+  as a fit (RKC at 30), at the 2-level with a 4-4 fit; 6NT direct when the
+  floor alone gives 34.
+* 1M-?: 16+ balanced makes a 2/1 in the longer minor instead of 3NT
+  ("13-15 balanced"), also in SAYC.
+* RKC: after asking for PARTNER's suit, the asker no longer switches to
+  its own six-card suit; 0/3 and 1/4 answers check partner's learned HCP.
+Measured vs the committed bidder (rules only):
+| check | result |
+|---|---|
+| Precision, 4000 WBridge5 deals, |IMP from par| | 4.710 -> 4.660, +0.050/deal (SE 0.019) |
+| slams reached on 508 slam-par deals / phantom slams | 54 -> 73 / 41 -> 37 |
+| Precision teams A/B seed 2611, 805 bds | +0.109/board DD (SE 0.060), +0.099 robust |
+| SAYC, 4000 deals | +0.011/deal (SE 0.007), 9 deals differ |
+Both partner tables rebuilt with the new bidder (300k deals each).
+S-* cases in test_qplus_match_fixes.py (150 checks).
+Still open: the strong hand's slam tries after partner's 3NT in a suit
+auction (1C-1NT-2H-3NT with 21), 5-level decisions after a GF raise, and
+SAYC, which reaches even fewer slams (29 of 508).

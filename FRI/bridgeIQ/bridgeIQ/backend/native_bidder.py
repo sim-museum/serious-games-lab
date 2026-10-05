@@ -1078,7 +1078,7 @@ def _parse_rkc_response(response: 'Bid', variant: str) -> Tuple[Optional[int], O
 
 
 def _resolve_rkc_keys(e: HandEval, state: 'AuctionState', resp: 'Bid',
-                      variant: str) -> Tuple[int, Optional[bool]]:
+                      variant: str, system=None) -> Tuple[int, Optional[bool]]:
     """Disambiguate 0/3 and 1/4 by hand strength.
 
     The asker sees partner's response and needs to decide whether the
@@ -1122,6 +1122,24 @@ def _resolve_rkc_keys(e: HandEval, state: 'AuctionState', resp: 'Bid',
         if (b.suit == Suit.NOTRUMP and b.level >= 2) or b.level >= 3:
             high_signal = True
             break
+    # The high answer needs the HCP for it (three keys >= 11, four >= 15):
+    # partner's learned range before my 4NT rules it out when even its
+    # 90th percentile is short (964: 1C-1S-2D-4S-4NT-5C, nine HCP and six
+    # spades read as three keys and 6S went off two aces).
+    if high_signal and system is not None and SLAM_RKC_LEARNED:
+        from . import partner_model as PM
+        ask = next((i for i, (s_, b) in enumerate(state.bids)
+                    if s_ == state.seat and b.level == 4
+                    and b.suit == Suit.NOTRUMP), None)
+        if ask is not None:
+            try:
+                ctx = PM.context([PM.call_key(b) for _s, b in state.bids[:ask]],
+                                 state.dealer.value, state.seat.value)
+                pv = PM.lookup(ctx, PM.system_name(system))
+            except Exception:
+                pv = None
+            if pv is not None and pv["hcp"][4] < {0: 11, 1: 15}.get(keys_lo, 99):
+                return (keys_lo, has_q)
     if high_signal:
         return (keys_lo + 3, has_q)
     # Partner passed first or only made the minimum positive — keep low.
@@ -1153,14 +1171,18 @@ def _asker_after_rkc(state: 'AuctionState', e: HandEval, system) -> Bid:
     # asked on AKQxxx of spades and signed off in 6D). Partner answered for
     # their assumed trump, so their count may include a king that is not a
     # keycard here: discount one and never go past the small slam.
-    if derive_context(state).trump is None:
+    my_ask = next((b for b in reversed(state.my_bids)
+                   if b.level == 4 and b.suit == Suit.NOTRUMP), None)
+    asked_for_partner = bool(my_ask is not None and my_ask.explanation
+                             and "RKC: partner's" in my_ask.explanation)
+    if derive_context(state).trump is None and not asked_for_partner:
         own = next((s for s in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS,
                                 Suit.CLUBS)
                     if e.suit_lengths.get(s, 0) >= 6
                     and e.suit_hcp.get(s, 0) >= 7
                     and s in state.suit_bid_by_me), None)
         if own is not None and own != trump:
-            pk0, _pq0 = _resolve_rkc_keys(e, state, partner_resp, variant)
+            pk0, _pq0 = _resolve_rkc_keys(e, state, partner_resp, variant, system)
             tot = _keycard_count(e, own, system) + max(0, pk0 - 1)
             if tot >= 4 or (tot == 3 and _has_trump_queen(e, own)):
                 cand = bid(6, own, why=f"Slam in my self-sufficient "
@@ -1173,7 +1195,7 @@ def _asker_after_rkc(state: 'AuctionState', e: HandEval, system) -> Bid:
             if _is_legal_bid(cand, state):
                 return cand
 
-    pk, pq = _resolve_rkc_keys(e, state, partner_resp, variant)
+    pk, pq = _resolve_rkc_keys(e, state, partner_resp, variant, system)
     my_keys = _keycard_count(e, trump, system)
     # Hard arithmetic: only 5 keycards exist. If the 0/3 or 1/4 ambiguity was
     # resolved HIGH but my own keys make the total exceed 5, the high reading is
@@ -1462,6 +1484,24 @@ def _my_nt_range(state: 'AuctionState', system) -> Tuple[int, int]:
     last_nt = nts[-1]
     opened = (state.opening_bid is not None
               and state.opener_seat == state.seat)
+    # Precision strong club: responder's 1NT/2NT/3NT positives are 8-13 /
+    # 14-16 / 17+, opener's NT rebids 16-19 / 20-24 / 19-21 (1C-1NT-4NT
+    # used to be declined with 11 "of 14-16").
+    op = state.opening_bid
+    if (SLAM_PREC_1C and system is not None and _strong_club(system)
+            and op is not None and op.level == 1 and op.suit == Suit.CLUBS
+            and state.opener_seat in (state.seat, state.seat.partner())):
+        if not opened and mine[0] is last_nt:
+            return {1: (8, 13), 2: (14, 16)}.get(last_nt.level, (17, 19))
+        if opened:
+            neg = bool(state.partner_bids) and (
+                state.partner_bids[0].level == 1
+                and state.partner_bids[0].suit == Suit.DIAMONDS)
+            if last_nt.level == 1:
+                return 16, 19
+            if last_nt.level == 2:
+                return (20, 24) if neg else (16, 19)
+            return 19, 21
     if mine[0].suit == Suit.NOTRUMP or not opened:
         if last_nt.level >= 2 and mine[0].suit == Suit.NOTRUMP:
             return two_min, two_max
@@ -2430,9 +2470,27 @@ def _slam_already_explored(state: AuctionState) -> bool:
     return False
 
 
-def _opening_min_hcp(b: Bid) -> int:
+def _strong_club(system) -> bool:
+    return getattr(system, "strong_open_call", "2C") == "1C"
+
+
+# System-aware first-call floors (Precision 1C = 16+, its 2C = 11+, a
+# positive answer to 1C = 8+). BIQ_SLAM_SYS_FLOOR=0 restores the SAYC floors.
+SLAM_SYS_FLOOR = os.environ.get("BIQ_SLAM_SYS_FLOOR", "1") == "1"
+
+
+def _opening_min_hcp(b: Bid, system=None) -> int:
     if b.suit is None:
         return 0
+    if system is not None and SLAM_SYS_FLOOR and _strong_club(system):
+        if b.level == 1 and b.suit == Suit.CLUBS:
+            return getattr(system, "strong_open_min_hcp", 16)
+        if b.level == 1 and b.suit == Suit.NOTRUMP:
+            return system.one_nt_min_hcp
+        if b.level == 1 or (b.level == 2 and b.suit in (Suit.CLUBS,
+                                                        Suit.DIAMONDS)):
+            return 11
+        return 5
     if b.level == 1:
         return 15 if b.suit == Suit.NOTRUMP else 12
     if b.level == 2 and b.suit in (Suit.NOTRUMP, Suit.CLUBS):
@@ -2440,10 +2498,13 @@ def _opening_min_hcp(b: Bid) -> int:
     return 5                              # weak two / three-level preempt
 
 
-def _response_min_hcp(b: Bid, opening: Optional[Bid]) -> int:
+def _response_min_hcp(b: Bid, opening: Optional[Bid], system=None) -> int:
     """Partner's FIRST response to MY opening (conservative floor)."""
     if b.suit is None or opening is None:
         return 6
+    if (system is not None and SLAM_SYS_FLOOR and _strong_club(system)
+            and opening.level == 1 and opening.suit == Suit.CLUBS):
+        return 0 if (b.level == 1 and b.suit == Suit.DIAMONDS) else 8
     # 2-over-1 GF: non-jump 2-level new lower-ranking suit over a 1-of-suit open.
     if (opening.level == 1 and opening.suit != Suit.NOTRUMP
             and b.level == 2 and b.suit not in (Suit.NOTRUMP, opening.suit)
@@ -2459,7 +2520,7 @@ def _response_min_hcp(b: Bid, opening: Optional[Bid]) -> int:
     return 6                              # 1-level / single raise / 1NT — floor
 
 
-def _partner_min_hcp(state: AuctionState) -> int:
+def _partner_min_hcp(state: AuctionState, system=None) -> int:
     """Conservative estimate of partner's SHOWN minimum HCP — a floor, used only
     to GATE slam exploration (under-estimating just misses a slam; over-
     estimating bids a phantom, which is worse, so we stay conservative)."""
@@ -2470,27 +2531,39 @@ def _partner_min_hcp(state: AuctionState) -> int:
     for b in state.partner_bids:
         if b.is_pass or b.is_double or b.is_redouble or b.suit is None:
             continue
-        return (_opening_min_hcp(b) if partner_opened
-                else _response_min_hcp(b, state.opening_bid))
+        return (_opening_min_hcp(b, system) if partner_opened
+                else _response_min_hcp(b, state.opening_bid, system))
     return 0
 
 
-# Off: +0.01 IMP/deal from par on 4000 WBridge5 deals (4 deals changed) but
-# one phantom 6S (-13) in the 805-board teams check, and slam gates must
-# not add phantoms. BIQ_SLAM_LEARNED=1 to experiment.
-SLAM_LEARNED = os.environ.get("BIQ_SLAM_LEARNED", "0") == "1"
+# SAYC: off. +0.01 IMP/deal from par on 4000 WBridge5 deals (4 deals
+# changed) but one phantom 6S (-13) in the 805-board teams check, and slam
+# gates must not add phantoms. BIQ_SLAM_LEARNED=1 (25th percentile) or
+# "mean" (mean - 1) to experiment.
+SLAM_LEARNED = os.environ.get("BIQ_SLAM_LEARNED", "")      # "" = per system
+SLAM_CONTESTED = os.environ.get("BIQ_SLAM_CONTESTED", "0") == "1"
+SLAM_IMPLIED = os.environ.get("BIQ_SLAM_IMPLIED", "1") == "1"
+SLAM_IMPLIED_L2 = os.environ.get("BIQ_SLAM_IMPLIED_L2", "1") == "1"
+SLAM_IMPLIED_MIN = int(os.environ.get("BIQ_SLAM_IMPLIED_MIN", "30"))
+SLAM_STRONG_RESP = os.environ.get("BIQ_SLAM_STRONG_RESP", "1") == "1"
+SLAM_PREC_1C = os.environ.get("BIQ_SLAM_PREC_1C", "1") == "1"
+SLAM_RKC_LEARNED = os.environ.get("BIQ_SLAM_RKC_LEARNED", "1") == "1"
 
 
 def _partner_floor_hcp(state: AuctionState, system=None) -> int:
     """Partner's shown minimum: the first-call floor, raised to the 25th
     percentile of partner's LEARNED range (partner_model) when the later
     auction showed more. BIQ_SLAM_LEARNED=0 keeps the first-call floor."""
-    floor = _partner_min_hcp(state)
-    if SLAM_LEARNED:
+    floor = _partner_min_hcp(state, system)
+    mode = SLAM_LEARNED or ("1" if system is not None
+                            and _strong_club(system) else "0")
+    if mode != "0":
         from . import partner_model
         pv = partner_model.partner_view(state, system)
         if pv is not None:
-            floor = max(floor, pv["hcp"][1])
+            est = (pv["hcp_mean"] - 1 if mode == "mean"
+                   else pv["hcp"][1])
+            floor = max(floor, int(est))
     return floor
 
 
@@ -2500,13 +2573,13 @@ def _maybe_slam_try(state: AuctionState, eval_: HandEval,
     −385 MISSED-SLAM leak (biq reaches game then parks). Gated on a real
     COMBINED-value floor (my HCP + partner's shown minimum) so it fires only in
     the true slam zone, not on a strong hand opposite a minimum partner."""
-    if any(not b.is_pass for b in
-           (list(state.rho_bids) + list(state.lho_bids))):
+    if not SLAM_CONTESTED and any(not b.is_pass for b in
+                                  (list(state.rho_bids) + list(state.lho_bids))):
         return None                       # uncontested only
     if eval_.hcp < 14 or _slam_already_explored(state):
         return None                       # the driving hand needs values
     last_level = state.last_level or 1
-    if not (3 <= last_level <= 4):
+    if not ((3 if not SLAM_IMPLIED_L2 else 2) <= last_level <= 4):
         return None
     combined = eval_.hcp + _partner_floor_hcp(state, system)
     ctx = derive_context(state)
@@ -2514,7 +2587,8 @@ def _maybe_slam_try(state: AuctionState, eval_: HandEval,
     # Suit slam: AGREED trump fit I also hold, combined >= 31 -> RKC.
     if (tr is not None and tr.suit in (Suit.SPADES, Suit.HEARTS,
                                        Suit.DIAMONDS, Suit.CLUBS)
-            and eval_.suit_lengths.get(tr.suit, 0) >= 3 and combined >= 30):
+            and eval_.suit_lengths.get(tr.suit, 0) >= 3 and combined >= 30
+            and last_level >= 3):
         cand = bid(4, Suit.NOTRUMP, alert=True,
                    why=f"RKC: agreed {tr.suit.to_char()} fit, ~{combined}+ "
                        f"combined HCP")
@@ -2533,7 +2607,27 @@ def _maybe_slam_try(state: AuctionState, eval_: HandEval,
                                  Suit.CLUBS)
                   and not (b.is_pass or b.is_double or b.is_redouble)]
     last_side_suit = side_suits[-1] if side_suits else None
-    if tr is None and combined >= 31:
+    # Partner's rebid suit (no raise yet) with eight cards between us: the
+    # last suit our side bid, so partner answers keycards for it (1791:
+    # 1H-2C-2H-2NT-3H, 21 HCP with AJ2 bid 4H; 6H was cold).
+    if (SLAM_IMPLIED and tr is None and combined >= SLAM_IMPLIED_MIN
+            and last_side_suit is not None
+            and last_side_suit in state.suit_bid_by_partner
+            and last_side_suit not in state.suit_bid_by_me):
+        from . import partner_model
+        pv = partner_model.partner_view(state, system)
+        i = (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS,
+             Suit.CLUBS).index(last_side_suit)
+        plen = pv["len"][i][1] if pv is not None else 5
+        mine = eval_.suit_lengths.get(last_side_suit, 0)
+        if (mine >= 2 and mine + plen >= 8 and (mine >= 3 or plen >= 6)
+                and (last_level >= 3 or (mine >= 4 and plen >= 4))):
+            cand = bid(4, Suit.NOTRUMP, alert=True,
+                       why=f"RKC: partner's {last_side_suit.to_char()} "
+                           f"({plen}+ opposite {mine}), ~{combined}+ HCP")
+            if _is_legal_bid(cand, state):
+                return cand
+    if tr is None and combined >= 31 and last_level >= 3:
         for s in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS):
             if (eval_.suit_lengths.get(s, 0) >= 6
                     and eval_.suit_hcp.get(s, 0) >= 5
@@ -2547,12 +2641,59 @@ def _maybe_slam_try(state: AuctionState, eval_: HandEval,
                     return cand
     # NT slam: no fit but balanced and combined >= 33 -> quantitative 4NT.
     if (tr is None and (eval_.is_balanced or eval_.is_semi_balanced)
-            and combined >= 33):
+            and combined >= 33 and last_level >= 3):
+        if combined >= 34 and last_level == 3:
+            cand = bid(6, Suit.NOTRUMP,
+                       why=f"6NT: balanced, {combined}+ combined HCP")
+            if _is_legal_bid(cand, state):
+                return cand
         cand = bid(4, Suit.NOTRUMP, alert=True,
                    why=f"Quantitative 4NT: balanced, ~{combined}+ combined HCP")
         if _is_legal_bid(cand, state):
             return cand
     return None
+
+
+SLAM_NT_REBID = os.environ.get("BIQ_SLAM_NT_REBID", "1") == "1"
+
+
+def _nt_slam_after_partner_nt(state: AuctionState, e: HandEval,
+                              system) -> Optional[Bid]:
+    """Partner's 2NT/3NT rebid showed a balanced range: 6NT when even its
+    25th percentile gives 33, quantitative 4NT when its mean gives 32.
+    Partner's range comes from the learned table; a Precision 1C-...-3NT
+    opener without a profile is 19-21."""
+    if not SLAM_NT_REBID or system is None:
+        return None
+    if not (e.is_balanced or e.is_semi_balanced) or _slam_already_explored(state):
+        return None
+    if any(not b.is_pass for b in (list(state.rho_bids) + list(state.lho_bids))):
+        return None
+    from . import partner_model
+    pv = partner_model.partner_view(state, system)
+    p_last = state.partner_bids[-1] if state.partner_bids else None
+    if pv is not None:
+        lo, mean = pv["hcp"][1], pv["hcp_mean"]
+    elif (_strong_club(system) and state.opening_bid is not None
+          and state.opener_seat == state.seat.partner()
+          and state.opening_bid.level == 1
+          and state.opening_bid.suit == Suit.CLUBS
+          and p_last is not None and p_last.level == 3
+          and p_last.suit == Suit.NOTRUMP):
+        lo, mean = 19, 20
+    else:
+        return None
+    if e.hcp + lo >= 33:
+        cand = bid(6, Suit.NOTRUMP,
+                   why=f"Slam: {e.hcp} opposite partner's NT rebid "
+                       f"({lo}+, combined {e.hcp + lo}+)")
+    elif e.hcp + mean >= 32:
+        cand = bid(4, Suit.NOTRUMP, alert=True,
+                   why=f"Quantitative 4NT: {e.hcp} opposite partner's NT "
+                       f"rebid (~{mean:.0f}), bid 6NT with a maximum")
+    else:
+        return None
+    return cand if _is_legal_bid(cand, state) else None
 
 
 def _safe_forced_bid(state: AuctionState, eval_: HandEval,
@@ -5470,6 +5611,16 @@ def _respond_to_major(state, e: HandEval, system) -> Bid:
         if major == Suit.SPADES and e.suit_lengths[Suit.HEARTS] >= 5:
             return bid(2, Suit.HEARTS, alert=True, why="2-over-1 GF")
         # Forcing 1NT not used in 2/1; jump to 3NT or 2NT GF
+        # 16+ balanced: 2/1 in the longer minor (three cards will do) and
+        # look for slam; 3NT showed 13-15 and opener passed it with 21+ in
+        # the pair (WBridge5 valid 710: 19 HCP with three spades, 1S-3NT).
+        if (e.is_balanced and hcp >= 16 and SLAM_STRONG_RESP
+                and not (state.rho_bids and not state.rho_bids[-1].is_pass)):
+            s = (Suit.CLUBS if e.suit_lengths[Suit.CLUBS]
+                 >= e.suit_lengths[Suit.DIAMONDS] else Suit.DIAMONDS)
+            return bid(2, s, alert=True,
+                       why=f"2-over-1 game forcing ({hcp} balanced, "
+                           f"slam interest)")
         if e.is_balanced:
             return bid(3, Suit.NOTRUMP, why="13-15 balanced, no fit")
         return bid(2, Suit.NOTRUMP, alert=True, why="Jacoby 2NT? No support — fallback")
@@ -5660,13 +5811,29 @@ def _precision_1c_rebid(state, e: HandEval, p_last: Bid, system=None) -> Bid:
 
     # Positive 1NT response (8-13 balanced)
     if p_last.level == 1 and p_last.suit == Suit.NOTRUMP:
-        if hcp >= 22 and e.is_balanced:
+        # 20-22 opposite 8-13: 28-35, so invite (partner accepts with 11+);
+        # 23+ is 31+ and drives. 3NT with 20-21 left slams the 8-13 hand
+        # could not judge (WBridge5 valid 1016, 1917).
+        if SLAM_PREC_1C and e.is_balanced and hcp >= 23:
+            return bid(6, Suit.NOTRUMP,
+                       why=f"Precision 1C-1NT: {hcp} opposite 8-13, slam")
+        if e.is_balanced and hcp >= (20 if SLAM_PREC_1C else 22):
             return bid(4, Suit.NOTRUMP, alert=True,
                        why="Precision 1C-1NT: quantitative slam invite")
         if e.suit_lengths[Suit.SPADES] >= 5:
             return bid(2, Suit.SPADES, why="Precision 1C-1NT: 5+ spades")
         if e.suit_lengths[Suit.HEARTS] >= 5:
             return bid(2, Suit.HEARTS, why="Precision 1C-1NT: 5+ hearts")
+        # Long minor in an unbalanced hand: show it, game forcing, so a
+        # fit can lead to slam (valid 1365: A.J.AKQ972.KQJT5 rebid 3NT).
+        if SLAM_PREC_1C and not e.is_balanced and hcp >= 19:
+            for m in (Suit.DIAMONDS, Suit.CLUBS):
+                if e.suit_lengths[m] >= 6 or (
+                        e.suit_lengths[m] >= 5 and e.suit_lengths[
+                            Suit.CLUBS if m == Suit.DIAMONDS
+                            else Suit.DIAMONDS] >= 5):
+                    return bid(3, m, why=f"Precision 1C-1NT: natural "
+                                         f"{m.to_char()}, 19+ unbalanced")
         if hcp >= 19:
             return bid(3, Suit.NOTRUMP, why="Precision 1C-1NT: 19+ balanced")
         return bid(2, Suit.NOTRUMP, why="Precision 1C-1NT: invitational")
@@ -5722,6 +5889,20 @@ def _precision_1c_rebid(state, e: HandEval, p_last: Bid, system=None) -> Bid:
                    why=f"Precision 1C-2{minor.to_char()}: "
                        f"no major, no 4-card fit (NT description)")
 
+    # 1C-1NT-3m-4m: partner raised my long minor. Keycards with 19+.
+    if (SLAM_PREC_1C and p_last.level == 4
+            and p_last.suit in (Suit.CLUBS, Suit.DIAMONDS)
+            and len(state.my_bids) == 2 and state.my_bids[1].level == 3
+            and state.my_bids[1].suit == p_last.suit
+            and state.partner_bids[0].level == 1
+            and state.partner_bids[0].suit == Suit.NOTRUMP
+            and not _slam_already_explored(state)):
+        if hcp >= 19:
+            return bid(4, Suit.NOTRUMP, alert=True,
+                       why=f"RKC for {p_last.suit.to_char()}: partner "
+                           f"raised, {hcp} HCP")
+        return bid(5, p_last.suit, why="Precision: minor-suit game")
+
     # Was partner's response made AFTER an opp's intervention? If so,
     # the meaning of 2NT / 3NT shifts: in competitive auctions partner
     # bids 2NT = 8-11 balanced + stopper, 3NT = 12+ balanced + stopper.
@@ -5775,6 +5956,13 @@ def _precision_1c_rebid(state, e: HandEval, p_last: Bid, system=None) -> Bid:
                 why="Precision 1C-(intervention)-3NT: partner's "
                     "competitive 12+ balanced — game reached, no "
                     "slam push without extras")
+        if SLAM_PREC_1C:
+            # Partner's 3NT is 17+ balanced: 16+17 is already 33.
+            if hcp + 17 >= 37:
+                return bid(7, Suit.NOTRUMP,
+                           why=f"Precision 1C-3NT: {hcp}+17 = grand slam")
+            return bid(6, Suit.NOTRUMP,
+                       why=f"Precision 1C-3NT: {hcp}+17 = slam values")
         if hcp >= 22:
             return bid(6, Suit.NOTRUMP,
                        why="Precision 1C-3NT: 22+17 = slam values")
@@ -5818,6 +6006,18 @@ def _precision_1c_rebid(state, e: HandEval, p_last: Bid, system=None) -> Bid:
             return bid(3, Suit.HEARTS,
                        why="Kokish: real hearts, minimum (16-17)")
 
+    # A positive answer to 1C forced to game: never pass below it.
+    if (SLAM_PREC_1C and state.partner_bids
+            and not (state.partner_bids[0].level == 1
+                     and state.partner_bids[0].suit == Suit.DIAMONDS)
+            and not state.partner_bids[0].is_pass
+            and not state.partner_bids[0].is_double
+            and state.last_non_pass is not None
+            and state.last_non_pass[0] == state.seat.partner()
+            and not _partnership_has_reached_game(state)):
+        fb = _safe_forced_bid(state, e, system)
+        if fb is not None:
+            return fb
     return passb(why="Precision 1C: no clear rebid")
 
 
@@ -7594,6 +7794,25 @@ def _responder_rebid(state, e: HandEval, system) -> Bid:
             # Stayman: opener rebid 2D/2H/2S
             return _stayman_responder_rebid(state, e, p_last, system)
 
+    # Precision 1C-1NT-3m: opener's natural long minor, game forcing.
+    # Raise with three-card support so opener can ask for keycards.
+    if (SLAM_PREC_1C and _strong_club(system)
+            and op.level == 1 and op.suit == Suit.CLUBS
+            and len(state.my_bids) == 1 and state.my_bids[0].level == 1
+            and state.my_bids[0].suit == Suit.NOTRUMP
+            and len(state.partner_bids) == 2
+            and p_last.level == 3
+            and p_last.suit in (Suit.CLUBS, Suit.DIAMONDS)
+            and not any(not b.is_pass for b in
+                        list(state.rho_bids) + list(state.lho_bids))):
+        if e.suit_lengths.get(p_last.suit, 0) >= 3:
+            return bid(4, p_last.suit,
+                       why=f"Precision 1C-1NT-3{p_last.suit.to_char()}: "
+                           f"three-card support, forcing")
+        return bid(3, Suit.NOTRUMP,
+                   why=f"Precision 1C-1NT-3{p_last.suit.to_char()}: "
+                       f"no fit, 3NT")
+
     # Kokish 2♠ relay: after Precision 1♣-1♦-2♥ with Kokish in force,
     # responder MUST bid 2♠ regardless of own hand. Opener's next bid
     # clarifies whether 2♥ was real hearts or 22-23 balanced.
@@ -7755,7 +7974,7 @@ def _game_values_net(state: AuctionState, e: HandEval, system) -> Optional[Bid]:
         return None
     if _partnership_has_reached_game(state):
         return None
-    partner_min = _partner_min_hcp(state)
+    partner_min = _partner_min_hcp(state, system)
     if partner_min < 10 and state.opener_seat == state.seat.partner():
         return None                           # partner preempted / weak two
     lens = _partner_suit_lengths(state, system)
@@ -8278,9 +8497,14 @@ def _generic_responder_rebid(state, e, opener_rebid, system=None):
 
     # Opener jumped to 2NT / 3NT — pass or escalate
     if opener_rebid.level >= 2 and opener_rebid.suit == Suit.NOTRUMP:
-        if hcp >= 8:
+        sl = _nt_slam_after_partner_nt(state, e, system)
+        if sl is not None:
+            return sl
+        # 3NT over partner's own 3NT is illegal and the sanity wrapper
+        # turned it into a pass: 1C-1NT-3NT with 13 opposite 19+.
+        if hcp >= 8 and opener_rebid.level == 2:
             return bid(3, Suit.NOTRUMP, why="To-play")
-        return passb()
+        return passb(why="Partner's NT rebid: game reached, no slam")
 
     # Opener re-bid their OWN suit at the 3-level after I raised it
     # (1H-2H-3H, or 1H-2H-(2S)-3H). Uncontested it is a game try: accept
@@ -8967,7 +9191,7 @@ def _generic_responder_rebid(state, e, opener_rebid, system=None):
         # Game / slam values opposite an opening: a jump rebid of my suit is
         # only invitational, so drive instead (RUN2-053: 21 HCP with AKQxxx
         # bid 3S and opener passed; 6S was cold).
-        combined = hcp + _partner_min_hcp(state)
+        combined = hcp + _partner_min_hcp(state, system)
         if (combined >= 31 and e.suit_hcp.get(my_suit, 0) >= 7
                 and not _slam_already_explored(state)):
             cand = bid(4, Suit.NOTRUMP, alert=True,
