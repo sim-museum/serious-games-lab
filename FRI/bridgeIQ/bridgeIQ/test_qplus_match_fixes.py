@@ -423,6 +423,25 @@ BIDDING_SYSTEMS = [
     ("S-1S19", "1S-?: 19 balanced bids 2/1, not 3NT (13-15)",
      "SAYC", "N", "None", "p 1s p", "W", "A32.AKJ8.K32.A93", "3N",
      {"2C", "2D"}),
+    # Mined from the Precision run vs Q-Plus (2026-10-04, 129 boards).
+    ("P-74", "1NT-P-2C(Stayman): no Landy, 6-5 majors overcall 2S",
+     "Precision90M", "E", "All", "1n p 2c", "N",
+     "AQJT64.Q9732.85.", "3C", {"2S", "P"}),
+    ("P-129", "1D-(1H)-?: 2 HCP does not free-bid 1S",
+     "Precision90M", "N", "None", "1d 1h", "S", "65432.J2.83.JT74",
+     "1S", {"P"}),
+    ("P-38", "third seat: QJT53.A43.84.K64 opens 1S",
+     "Precision90M", "S", "NS", "p p", "N", "QJT53.A43.84.K64", "P",
+     {"1S"}),
+    ("P-16", "1H-1NT-2H: 12 HCP with QJ invites",
+     "Precision90M", "N", "None", "1h p 1n p 2h p", "S",
+     "K5.QJ.QT63.AT864", "P", {"3H", "4H"}),
+    ("P-8", "1C-1D-2NT (20-24): six clubs and 6 HCP bid 3NT",
+     "Precision90M", "N", "None", "1c p 1d p 2n p", "S",
+     "32.JT72.7.KQ9653", "P", {"3N"}),
+    ("P-91", "1D-(1S)-X-(2S): 13 HCP and three hearts bid 3H, not 4H",
+     "Precision90M", "N", "None", "1d 1s x 2s", "N", "7.K72.AQ732.AT74",
+     "4H", {"3H", "3D", "P"}),
 ]
 
 

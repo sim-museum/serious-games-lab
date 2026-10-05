@@ -45,6 +45,7 @@ BUDGET = float(os.environ.get("BIQ_BID_SIM_BUDGET", "6.0"))
 MARGIN = float(os.environ.get("BIQ_BID_SIM_MARGIN", "0.8"))
 MIN_SAMPLES = 12
 T_MIN = float(os.environ.get("BIQ_BID_SIM_TMIN", "2.0"))
+KEEP_ACTION = os.environ.get("BIQ_SIM_KEEP_ACTION", "1") == "1"
 
 
 def set_enabled(on: bool) -> None:
@@ -596,7 +597,19 @@ def candidates(state, hand: Hand, system, rule_bid: Bid) -> List[Bid]:
         seen.add(k)
         out.append(b)
 
-    add(nb.passb(why="Simulation candidate: pass"))
+    # Passing partner's takeout double turns it into penalties, and passing
+    # instead of a natural overcall gives up the auction: double-dummy
+    # defence makes both look better than they play. In the Precision run
+    # vs Q-Plus (2026-10-04) the simulation's passes over the rules'
+    # takeout-double advances came on boards that lost 78 IMP in 8, over
+    # natural overcalls 41 IMP in 13. BIQ_SIM_KEEP_ACTION=0 restores.
+    rwhy = (rule_bid.explanation or "").lower()
+    keep_action = (KEEP_ACTION and not rule_bid.is_pass
+                   and ("advance takeout" in rwhy
+                        or ("overcall" in rwhy and "raise" not in rwhy
+                            and "rebid" not in rwhy)))
+    if not keep_action:
+        add(nb.passb(why="Simulation candidate: pass"))
     last = state.last_non_pass
     # A penalty double only as an alternative to PASSING. Replacing the rules'
     # own bid with a double (doubling their 4-level save instead of bidding
@@ -782,6 +795,29 @@ def _pbn(hands: Dict[Seat, List[int]]) -> str:
 # ---------------------------------------------------------------- card play
 
 _SAYC = None
+
+
+# The system the card-play sampler checks hidden hands' calls against. It
+# was always SAYC, so in Precision matches every strong 1C / 11-15 2C /
+# 14-16 1NT "mismatched" every sampled hand and the auction filter was noise.
+# Set by the table manager / Q-NET client; BIQ_PLAY_SYSTEM overrides.
+_PLAY_SYSTEM = None
+
+
+def set_play_system(name: Optional[str]) -> None:
+    global _PLAY_SYSTEM
+    name = os.environ.get("BIQ_PLAY_SYSTEM") or name
+    if not name:
+        _PLAY_SYSTEM = None
+        return
+    from .bidding_systems import get_system
+    _PLAY_SYSTEM = get_system(name)
+
+
+def play_system():
+    if _PLAY_SYSTEM is None and os.environ.get("BIQ_PLAY_SYSTEM"):
+        set_play_system(None)
+    return _PLAY_SYSTEM
 
 
 def auction_mismatch(dealer: Seat, vul: Vulnerability, auction: List[Bid],

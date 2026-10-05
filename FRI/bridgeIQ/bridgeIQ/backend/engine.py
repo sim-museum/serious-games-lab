@@ -156,6 +156,11 @@ class BridgeEngine:
         each `get_bid` call. We just record the name.
         """
         self.current_system = system_name
+        try:                                  # card-play sampler's auction model
+            from . import bid_sim
+            bid_sim.set_play_system(system_name)
+        except Exception:
+            pass
         if self.verbose:
             print(f"Bidding system set to: {system_name}")
         return True

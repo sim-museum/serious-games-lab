@@ -689,3 +689,40 @@ S-* cases in test_qplus_match_fixes.py (150 checks).
 Still open: the strong hand's slam tries after partner's 3NT in a suit
 auction (1C-1NT-2H-3NT with 21), 5-level decisions after a GF raise, and
 SAYC, which reaches even fewer slams (29 of 508).
+
+### Mined from the Precision run vs Q-Plus, first 129 boards (2026-10-04 night)
+Run 261004_qplus_prec (old bidder): -426 IMP over 129 boards; DD split
+bidding -227, play -199. Per-card double-dummy losses (scratchpad
+cardloss.py): biq declaring 0.77 tricks/board below DD, Q-Plus 0.42 (biq's
+dummy leads and third-hand plays 3-4x Q-Plus's rate); defending 0.88 vs
+0.81. So DECLARER play is the larger play gap, not defence.
+Fixes, all switchable:
+* `_legalize`: never bump an alerted (artificial) call (Landy 2C became 3C
+  with a club void after RHO's Stayman: 5CX -2300), nor a 1NT I already bid
+  (1NT rebid re-fired, 2NTX -800). Landy only while the 1NT opener's
+  partner is silent. BIQ_LEGALIZE_STRICT.
+* 1-level free bid over their overcall needs 6 HCP (was 2).
+* Precision third seat opens a good five-card major with 10 HCP; fourth
+  seat Rule of 15. BIQ_LIGHT_OPEN.
+* 1M-1NT-2M: 11-12 with two trumps invites, 13+ bids game.
+  BIQ_INVITE_1M1N2M.
+* Precision 1C-1D-2NT (20-24): 3NT with 4+ HCP. BIQ_NT_1C1D2N.
+* 1m-(1M)-X-(2M): the extras jump to game on three trumps needs 16 HCP.
+* bid_sim: no pass alternative to the rules' natural overcall or takeout-
+  double advance (the boards where it passed lost 41 IMP in 13 and 78 in 8;
+  DD defence flatters penalties). BIQ_SIM_KEEP_ACTION.
+* Card play: the sampler checked hidden hands' calls against SAYC in every
+  system (bid_sim.set_play_system now gets the match system from the table
+  manager / engine), and it now deals first the suit lengths natural calls
+  promised (weak two 6, 1M 5, overcall 5, ...; BIQ_PLAY_MINLEN), which random
+  oversampling could not find (board 80: dummy ducked a singleton lead).
+Tried and NOT adopted: 1C-1D-1M on a 5-3-3-2 (lost on WBridge5 deals;
+BIQ_MAJOR_1C1D=1), no 2NT bump of a takeout-double advance.
+Measured vs the slam commit (rules only):
+| check | result |
+|---|---|
+| Precision, 4000 WBridge5 deals | +0.011/deal (SE 0.011), 128 differ |
+| SAYC, 4000 WBridge5 deals | +0.015/deal (SE 0.010), 96 differ |
+| Precision teams A/B seed 2612, 805 bds | +0.027 DD (SE 0.032), +0.099 robust |
+| card decisions replayed (576), old vs new sampler | 115 vs 114 tricks lost: neutral |
+The bid_sim change cannot be measured offline (the live run will).

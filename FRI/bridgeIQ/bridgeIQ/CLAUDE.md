@@ -1,7 +1,16 @@
 # biq — Claude Code project notes
 
+## STATUS — fixes mined from the Precision run vs Q-Plus (2026-10-04 night)
+Full write-up: tools/HARNESS_STATUS_2026-09-30.md, last section. Legalizer
+no longer bumps artificial / repeated calls, Landy gate, light 3rd-seat
+majors, 1M-1NT-2M invites, simulation keeps the rules' overcalls and
+takeout-double advances, card-play sampler uses the match system and the
+suit lengths natural calls promised. Offline ~+0.01 IMP/deal; card play
+neutral. Biggest play gap: biq's DECLARER play (0.77 vs 0.42 tricks/board).
+
 ## STATUS — slam bidding, mostly Precision (2026-10-04 evening)
-Full write-up: tools/HARNESS_STATUS_2026-09-30.md, last section.
+Full write-up: tools/HARNESS_STATUS_2026-09-30.md, "Slam bidding, mostly
+Precision".
 * Precision strong-club auctions now reach slam: 1C-1NT/3NT ranges, 1C-3NT,
   quantitative 4NT accepted on the right range, system-aware slam floors,
   partner's rebid suit as a fit for RKC. BIQ_SLAM_* switches disable parts.

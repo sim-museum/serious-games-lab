@@ -332,6 +332,8 @@ class TableManager:
         self.remote_seats = [BY_NAME[{"N": "north", "E": "east", "S": "south", "W": "west"}[x.strip().upper()[0]]]
                              for x in a.remote.split(",") if x.strip()]
         self.system = get_system(a.system)
+        from backend import bid_sim
+        bid_sim.set_play_system(a.system)    # card-play sampler reads our system
         self.out = Path(a.out or (_HERE / "runs" / "bluechip" /
                                   _dt.datetime.now().strftime("%y%m%d_%H%M%S")))
         self.out.mkdir(parents=True, exist_ok=True)
