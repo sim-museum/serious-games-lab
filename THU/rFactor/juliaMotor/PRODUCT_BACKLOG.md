@@ -22353,3 +22353,16 @@ heaviest passing): **outside the corridor 0.00 % on all five tracks** (WG, Zandv
 ticks 5 / 6 / 14 / 0 / 17 (AIGPL-2's open note). An AI car cannot reach a wall or an object behind it. The guarantee holds
 for objects OUTSIDE GPL's corridor — the road census (`road_clear_smoke`, still to be validated: item 2) is what says none
 stands inside it.
+
+### E110 — retrospective + S3/S4 (2026-10-05): the start-box exclusion is NOT it; ROTATING with a question for the PO
+* Retrospective: S2 parked E110 on "needs to be SEEN" (no GL then); E111-S2 later showed the GL wall is intermittent. S2's A/B
+  was run. **S3:** `JM_STARTBOX_KEEP=0/1` at s=3640 (cockpit) and 3700 (chase): identical frames — the stripped `sfbox`
+  beam is not what reads as a second gantry (`261005/e110/e110_ab.jpg`, gold 261003 WG grid frame t=4:24 beside it: the
+  DUNLOP starter's tower on the LEFT of the grid, people on its platform).
+* **S4:** chase views s=3450…90 (`jr_sf.jpg`): at s=3660 a KENDALL banner spans the road ahead; at s=3740 the DUNLOP tower
+  stands between two tall dark POLES flanking the road (a span without its beam?). The gold's lap-1 cockpit (t≈3:24) also
+  shows KENDALL near the line, so the banner alone may be GPL's. (The gold chase window chosen, t 5:36–6:00, was the back
+  straight — the S/F comparison in chase view is still owed.)
+* **For the PO:** after today's WG race on HEAD, is the start/finish still "drawn twice" — and which two: the KENDALL
+  banner + the DUNLOP tower, or the two poles? Next sprint: `JM_PICK` on the poles at s=3740 and a gold chase frame at the
+  line (the PO's lap-2 crossing, t≈4:36 + one lap).
