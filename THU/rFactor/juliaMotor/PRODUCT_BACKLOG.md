@@ -22344,3 +22344,12 @@ AI — `JM_GPLAI_PLAYER="3733.0:<off>:0" julia gplai_probe.jl watglen 4 1`: a ST
 all four AI complete the lap** in every arm (lateral-speed steps p99 ≤ 0.11 m/s). The PO raced the new AI at WG today:
 "worked perfectly". Note: `racestart_smoke` still exercises the RAIL AI (`racestart_probe.jl` uses RaceAI) — it now
 guards the fallback, not the default.
+
+### GPLWALL-1 (AI cars) — retrospective + S10 (2026-10-05): CLOSED by AIGPL-2's corridor
+The open half ("AI cars through objects") predates AIGPL-2. The new AI never drives free: it tracks GPL's line inside GPL's
+own corridor (`minrace`/`maxrace`, the surface GPL's walls bound; goal kept 0.3 m inside) and GPL hands only a CRASHING
+car to physics. Measured — `JM_GPLAI_PACE="0.88,0.91,0.94,0.97,1.0" julia gplai_probe.jl <t> 5 2` (reversed pace = the
+heaviest passing): **outside the corridor 0.00 % on all five tracks** (WG, Zandvoort, Monza, Spa, Ring); car-car contact
+ticks 5 / 6 / 14 / 0 / 17 (AIGPL-2's open note). An AI car cannot reach a wall or an object behind it. The guarantee holds
+for objects OUTSIDE GPL's corridor — the road census (`road_clear_smoke`, still to be validated: item 2) is what says none
+stands inside it.
