@@ -61,8 +61,8 @@ class PokerServer(QObject):
         self.app_version = (app_version or '').strip()
 
         self._server = QTcpServer(self)
-        from .squeak import Announcer
-        self.squeak = Announcer()   # squeak matchmaker listing; started by the host dialog
+        from .serious_games_week import Announcer
+        self.matchmaker = Announcer()   # Serious Games Week matchmaker listing; started by the host dialog
         self._clients: Dict[str, ClientConnection] = {}
         self._seats: Dict[int, Optional[str]] = {i: None for i in range(num_seats)}  # seat -> client_id
         # Reserve the host's seat with a special marker
@@ -94,7 +94,7 @@ class PokerServer(QObject):
 
     def stop(self):
         """Stop the server and disconnect all clients."""
-        self.squeak.stop()          # withdraw the table from the squeak matchmaker
+        self.matchmaker.stop()          # withdraw the table from the Serious Games Week matchmaker
         self._heartbeat_timer.stop()
 
         # Disconnect all clients

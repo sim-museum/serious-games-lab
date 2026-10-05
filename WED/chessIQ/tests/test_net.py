@@ -1,4 +1,4 @@
-"""chessIQ network play: two real windows in one process, talking over localhost TCP (offscreen Qt, no squeak).
+"""chessIQ network play: two real windows in one process, talking over localhost TCP (offscreen Qt, no matchmaker).
 QT_QPA_PLATFORM=offscreen python3 -m unittest -v tests.test_net   (from WED/chessIQ)"""
 import os
 import sys
@@ -6,7 +6,7 @@ import time
 import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-os.environ["SQUEAK_OFF"] = "1"
+os.environ["SGW_OFF"] = "1"
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 

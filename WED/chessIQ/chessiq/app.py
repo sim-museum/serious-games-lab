@@ -1,5 +1,5 @@
 """chessIQ main window: Kramnik chess (no castling, capture anything) against the computer, hotseat, computer vs
-computer, or another player over the network -- found through squeak, the Serious Games Week matchmaker."""
+computer, or another player over the network -- found through the Serious Games Week matchmaker."""
 import os
 import random
 import sys
@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (QApplication, QComboBox, QDialog, QDialogButtonBox,
 
 from . import VERSION
 from . import engine as E
-from . import squeak
+from . import serious_games_week
 from .game import AI_NAME, MAX_DEPTH, THINK_S, Game, load_pgn
 from .net import DEFAULT_PORT, Link
 
@@ -153,8 +153,8 @@ class HostDialog(QDialog):
         f.addRow("Your name:", self.name)
         f.addRow("Port (TCP):", self.port)
         f.addRow("You play:", self.colour)
-        note = QLabel("Your game is listed on squeak while you wait." if squeak.configured() else
-                      "No squeak matchmaker is set up (sgw url ...): give your opponent this computer's address.")
+        note = QLabel("Your game is listed on Serious Games Week while you wait." if serious_games_week.configured() else
+                      "No Serious Games Week matchmaker is set up (sgw url ...): give your opponent this computer's address.")
         note.setWordWrap(True)
         f.addRow(note)
         bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
@@ -168,8 +168,8 @@ class JoinDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Join a network game")
         v = QVBoxLayout(self)
-        if squeak.configured():
-            g = QGroupBox("Games on squeak")
+        if serious_games_week.configured():
+            g = QGroupBox("Games on Serious Games Week")
             gl = QVBoxLayout(g)
             self.games = QListWidget()
             self.games.currentItemChanged.connect(self._pick)
@@ -194,18 +194,18 @@ class JoinDialog(QDialog):
         bb.accepted.connect(self.accept)
         bb.rejected.connect(self.reject)
         v.addWidget(bb)
-        if squeak.configured():
+        if serious_games_week.configured():
             QTimer.singleShot(0, self.refresh)
 
     def refresh(self):
         self.games.clear()
-        found = squeak.list_tables()
+        found = serious_games_week.list_tables()
         for t in found:
             it = QListWidgetItem("%s  —  %s:%d" % (t.get("title") or "chessIQ game", t["host"], t["port"]))
             it.setData(Qt.ItemDataRole.UserRole, (t["host"], int(t["port"])))
             self.games.addItem(it)
         if not found:
-            self.games.addItem("(no open games on squeak right now)")
+            self.games.addItem("(no open games on Serious Games Week right now)")
         else:
             self.games.setCurrentRow(0)
 
@@ -623,13 +623,13 @@ class MainWindow(QMainWindow):
         self.orient = colour
         self._announce()
         self.note = "Hosting on TCP %d — waiting for an opponent%s." % (
-            link.port, " (listed on squeak)" if self.announcer and self.announcer.proc else "")
+            link.port, " (listed on Serious Games Week)" if self.announcer and self.announcer.proc else "")
         self.render()
         return True
 
     def _announce(self):
         if self.announcer is None:
-            self.announcer = squeak.Announcer()
+            self.announcer = serious_games_week.Announcer()
         self.announcer.start(self.link.port, "%s's chessIQ game" % self.my_name, name=self.my_name, max_players=2,
                              version=VERSION)
 
