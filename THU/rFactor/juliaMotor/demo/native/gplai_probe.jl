@@ -53,13 +53,15 @@ function build(tr = TR)
 end
 
 T = build()
+Random.seed!(parse(Int, get(ENV, "JM_GPLAI_SEED", "1")))
 if !haskey(ENV, "JM_GPLAI_BUILDONLY")
 paces = haskey(ENV, "JM_GPLAI_PACE") ? parse.(Float64, split(ENV["JM_GPLAI_PACE"], ",")) :
         [1.0, 0.985, 0.975, 0.965, 0.955, 0.945, 0.935][1:N]
-cars = [GPLAI.Car(T, i, mod(-9.0*i, T.lap), (isodd(i) ? -1.3 : 1.3) + GPLAI.dlat(GPLAI.L(T, GPLAI.RACE), mod(-9.0*i, T.lap));
+cars = [GPLAI.Car(T, i, mod(-9.0*i, T.lap), (isodd(i) ? -2.4 : 2.4);
                   pace = paces[i]) for i in 1:N]
 for c in cars; c.react = round(Int, T.P.start_hiatus) + rand(0:9); end
 F = GPLAI.Field(T, cars)
+const DBGN = Ref(0)
 # JM_GPLAI_PLAYER="s:dlat_offset_from_race:v" -- a human car held at a fixed station and speed (e.g. stalled)
 const PLAYER = haskey(ENV, "JM_GPLAI_PLAYER") ? (f = parse.(Float64, split(ENV["JM_GPLAI_PLAYER"], ":"));
                (f[1], GPLAI.dlat(GPLAI.L(T, GPLAI.RACE), f[1]) + f[2], 0.0, f[3])) : nothing
@@ -72,7 +74,16 @@ t = 0.0
 while minimum(c.lap + c.s/T.lap for c in cars) < LAPS && t < 60*60
     global t
     lapb = [c.lap for c in cars]
+    pdv = [c.dv for c in cars]; nc0 = get(F.stats, :contact, 0)
     GPLAI.step!(F, dt; scale = GS, player = PLAYER)
+    if haskey(ENV, "JM_GPLAI_DEBUG") && (get(F.stats, :contact, 0) > nc0 || any(abs(cars[i].dv - pdv[i]) > 1.5 for i in 1:N)) && DBGN[] < 60
+        DBGN[] += 1
+        println("DBG t ", round(t, digits = 2), get(F.stats, :contact, 0) > nc0 ? " CONTACT" : " JOLT")
+        for c in cars
+            lo, hi = GPLAI.corridor(T, c.s)
+            @printf("   #%d s %7.1f v %4.1f d %5.2f dv %6.2f (was %6.2f) L%d o%5.2f m%d h%d %s [%.2f %.2f]\n", c.id, c.s, c.v, c.d, c.dv, pdv[c.id], c.line, c.offset, c.mode, c.hold, c.why, lo, hi)
+        end
+    end
     t += dt
     for (i, c) in enumerate(cars)
         push!(rec[i], (t, c.lap*T.lap + c.s, c.d, c.dv, c.da, c.v))
