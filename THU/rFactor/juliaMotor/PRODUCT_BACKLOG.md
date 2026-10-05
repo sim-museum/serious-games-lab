@@ -22386,3 +22386,13 @@ stands inside it.
   may be these trees or a house behind them; the PO to re-check on the new build. (b) the YELLOW polygon over the road after
   the corner: not seen in our s=2100/2150 frames; the fields there are a saturated yellow against the gold's pale ones (a
   lead). ROTATING (4 sprints).
+
+### E90 — retrospective + S13 (2026-10-05): CLOSED — GPL's walls contain the car where the 138 rejected rail cells stand
+Retrospective: S12 left 54 (Monza) + 84 (WG) rail cells without collision boxes, refused by the guard because road-textured
+triangles lie under them, and asked for a look before relaxing it. Since then GPLWALL-1 (2026-10-01) made GPL's own `.trk`
+walls the containment, registered to the drawn faces. So the question became: does anything get THROUGH at those cells?
+**S13:** `JM_CRASH` aimed at the three clusters, both sides, 45°, 55 m/s — Monza s 1000…1500 (12 scenarios), WG s 500…750
+and 2500…3000 (22): **THROUGH 0**, deepest GPL-wall penetration 0.31 m, drawn-face 0.30 m, **invisible-wall contacts 0**.
+The rail boxes there are redundant; the guard stays (it can only prevent an invisible wall on the road). Noted: WG s=500 L
+ends at lat −20.4 against a [−7.0, 5.6] range printed for its START station and is rated CONTAINED (the car slid along
+the wall into the wider pit area) — the harness's lateral check is per start station.
