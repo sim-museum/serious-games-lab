@@ -46,6 +46,7 @@ this index was written; that is what it exists to stop.
 | **E85** | EPIC: multiplayer, the way GPL did it | open, not started. assessed |
 | **E60** | Zandvoort gold-video parity | epic, ongoing. assessed |
 | **E64** | cockpit/chase parity | epic, ongoing (E82/E83 are its children). assessed |
+| **CARGOLD-2** | compare the cars (player + AI) to the gold standard (PO 2026-10-05) | NEW. Cars floating ~10 cm above the road; metal parts still embedded in the rear tyres; anything else where the gold's car differs from Julia's. Queued after the Ring grey polygons. |
 
 ### 🟡 AWAITING THE PO — implemented, needs your eye
 
@@ -22210,3 +22211,17 @@ a car's height. Canopy over the road is invisible to it by design.
 Driven on HEAD `3afa6f9f` (the GPL-algorithm AI, default since `7d35cf60`/`6db08ca0`) at Watkins Glen. AIGPL-1's four
 WG differences (single file, no quick lateral moves, spread, never off the road) are accepted there; E84's "queues like
 GPL's or trains" question is answered at WG. The other four tracks have not been raced by the PO yet.
+
+## CARGOLD-2 — the cars against the gold standard (PO 2026-10-05)
+PO: *"compare cars to gold standard, look out for cars floating 10 cm above the road surface, metal parts still embedded in
+rear tires, anything else where gold differs from current julia in terms of car appearance"*.
+* **(a) Float:** cars ~10 cm above the road surface. E104 fixed a 20–40 cm float and the missing contact shadow (S1–S5); this
+  is a residual, or a different cause (AI cars on GPLAI placement vs the player on physics; the new VFRAME-1 frame).
+  Check the player and the AI cars separately.
+* **(b) Metal in the rear tyres:** parts of the rear suspension/driveshaft/exhaust drawn inside the rear tyres
+  (E82/E102/CHASE-AXLE-1 moved these; CARHAND-1 reflected the car since).
+* **(c) Everything else** about the car's appearance where the gold differs: livery, wheels, driver, cockpit dress, scale,
+  ride height, the AI cars' engine bays (AI-CARGFX).
+* Method: the gold store (GPL race videos 260915 WG, 261003 Ring/WG; the E104-S4 close-up captures) against `JM_SHOTS` /
+  `JM_AICAM` frames **at full resolution, same place** (memory: judge geometry at full res). Measure the gap (contact
+  patch to road) in the renderer's own space before changing anything.
