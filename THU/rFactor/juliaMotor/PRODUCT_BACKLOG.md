@@ -22464,3 +22464,14 @@ followed). So: the same narrow route. Four Ring objects carry a `hillcap*` fores
   `JM_GPLVIS_VEIL=0` reverts both families.
 * On screen (`261005/grey/hillcap_rule_default.jpg`): s=7860 Metzgesfeld — no pyramid, open fields and the forested valley as
   in the gold; s=8100 / 6930 / 10600 clean. Gates `solid_box_smoke`, `gplwall_smoke` PASS.
+
+### E111 — cycle 2 retrospective + S5 (2026-10-05): both halves likely changed by today's fixes; AWAITING the PO's look
+Two of today's fixes touched exactly E111's ground: the sprite heights (S4: Spa's pine rows were 2.5 m) and YAWSIGN-1 (Spa's
+objects were turned the wrong way; the shipped build had a huge YELLOW SLAB over the road at the pit straight, s≈14100).
+* HEAD at the corner (`spa_corner_head_after_fixes.jpg`, cockpit s 1700…2300 + 150): pines on both sides into Les Combes,
+  the descent past the hay fields and the valley — as the gold (t≈1:03–1:24); **no yellow polygon over the road** anywhere
+  in these frames; the start straight's billboards upright.
+* The house: the gold at s≈1800 shows pines, not a house. The gold's next landmark is the Burnenville hamlet (t≈1:38–1:48:
+  a stone farmhouse on the left at the road, houses right) — ours at s 2900–3250 has houses either side
+  (`gold_house.jpg` vs `jr_house.jpg`); matching individual houses needs a tighter s↔t alignment than this sprint had.
+* **For the PO:** on the new build, is the corner house still missing (and which corner), and is the yellow polygon gone?
