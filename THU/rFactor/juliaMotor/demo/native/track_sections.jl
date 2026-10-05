@@ -86,13 +86,34 @@ const TRACK_SECTIONS = Dict(
         (3506.0, "Huzaren Vlak")]),
 )
 
+# TRACKSEG-2 (PO 2026-10-04: "when a track section name is not in English, and when it has an English translation, include
+# the English translation in parentheses after track section name"). Generic words only; place and person names (Hatzenbach,
+# Burnenville, Ascari, Tarzan ...) have none and stay as they are. JM_SEGNAME_EN=0 shows the bare names.
+const SECTION_EN = Dict(
+    # Nürburgring (German)
+    "Start und Ziel" => "Start and Finish", "Südkehre" => "South Hairpin", "Nordkehre" => "North Hairpin",
+    "Flugplatz" => "Airfield", "Schwedenkreuz" => "Swedish Cross", "Fuchsröhre" => "Foxhole",
+    "Adenauer Forst" => "Adenau Forest", "Ex-Mühle" => "Ex-Mill", "Bergwerk" => "Mine", "Kesselchen" => "Little Cauldron",
+    "Klostertal" => "Monastery Valley", "Karussell" => "Carousel", "Hohe Acht" => "High Eight", "Brünnchen" => "Little Well",
+    "Pflanzgarten" => "Plant Garden", "Schwalbenschwanz" => "Swallow's Tail", "Döttinger Höhe" => "Dötting Heights",
+    "Antoniusbuche" => "St Anthony's Beech", "Tiergarten" => "Animal Park",
+    # Monza (Italian)
+    "Curva Grande" => "Big Curve", "Rettifilo Centrale" => "Central Straight", "Parabolica" => "Parabolic",
+    # Spa (French)
+    "L'Eau Rouge" => "Red Water", "La Carrière" => "The Quarry", "La Source" => "The Spring",
+    # Zandvoort (Dutch)
+    "Tarzanbocht" => "Tarzan Bend", "Gerlachbocht" => "Gerlach Bend", "Hugenholtzbocht" => "Hugenholtz Bend",
+    "Hondenvlak" => "Dogs' Flat", "Tunnel Oost" => "Tunnel East", "Panoramabocht" => "Panorama Bend",
+    "Huzaren Vlak" => "Hussars' Flat")
+section_label(n) = (get(ENV, "JM_SEGNAME_EN", "1") != "0" && haskey(SECTION_EN, n)) ? string(n, " (", SECTION_EN[n], ")") : n
+
 """Section boundaries for `track`, scaled onto a ribbon of length `laplen`: a sorted Vector{Tuple{Float64,String}}
 (empty if the track has none)."""
 function track_sections(track::AbstractString, laplen::Real)
     t = get(TRACK_SECTIONS, track, nothing)
     t === nothing && return Tuple{Float64,String}[]
     k = laplen / t.lap
-    sort!([(s*k, n) for (s, n) in t.secs]; by = first)
+    sort!([(s*k, section_label(n)) for (s, n) in t.secs]; by = first)
 end
 
 "Index of the section containing lap distance `s` (the last boundary at or before it; wraps to the last section)."

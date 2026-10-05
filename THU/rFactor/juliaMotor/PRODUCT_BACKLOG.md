@@ -22396,3 +22396,12 @@ and 2500…3000 (22): **THROUGH 0**, deepest GPL-wall penetration 0.31 m, drawn-
 The rail boxes there are redundant; the guard stays (it can only prevent an invisible wall on the road). Noted: WG s=500 L
 ends at lat −20.4 against a [−7.0, 5.6] range printed for its START station and is rated CONTAINED (the car slid along
 the wall into the wider pit area) — the harness's lateral check is per start station.
+
+### TRACKSEG-2 (2026-10-05): DONE — English translations after non-English section names
+`SECTION_EN` beside the names in `demo/native/track_sections.jl`; `section_label` appends " (English)" where a generic
+translation exists — Karussell (Carousel), Hohe Acht (High Eight), Döttinger Höhe (Dötting Heights), Südkehre (South
+Hairpin), L'Eau Rouge (Red Water), La Source (The Spring), Tarzanbocht (Tarzan Bend), Curva Grande (Big Curve) …; place
+and person names (Hatzenbach, Burnenville, Malmedy, Ascari, Lesmos, Hunzerug …) stay bare; Watkins Glen is English already.
+`JM_SEGNAME_EN=0` shows the bare names. Render check (`JM_SEGNAME_FORCE`, the two longest joined: "Döttinger Höhe (Dötting
+Heights) / Antoniusbuche (St Anthony's Beech)"): fits the band at 1440 px, umlauts and apostrophe from the Latin-1 atlas
+(`261005/trackseg2/longest_labels_render.png`).
