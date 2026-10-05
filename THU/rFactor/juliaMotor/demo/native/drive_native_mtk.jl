@@ -1153,6 +1153,7 @@ end
 
 const BRIDGE_TEX = ("bridge", "br_under")   # E109-S6: the Ring's bridge structure textures
 
+const SCEN_PRSTAT = Ref(0)   # E109: scenery placement matrices built with a non-zero pitch or roll
 function gpl_scenery(ztrk, datpack, ribbon)
     pls = Render.GPL3DO.gpl_placements(ztrk)
     # E78-S1 probe: JM_YAWFLIP=<name,...> turns those placements by 180 deg (A/B for a suspected yaw error).
@@ -1177,15 +1178,21 @@ function gpl_scenery(ztrk, datpack, ribbon)
     # the Ring's scenery is not a fix, and a knob that helps the veils while wrecking everything else would
     # show up as a rise in JM_ROADBLOCK's partial count.
     scen_yaw = deg2rad(parse(Float64, get(ENV, "JM_SCENERY_YAW_ADD", "0")))
+    SCEN_EULER_INT = get(ENV, "JM_SCEN_EULER", "ext") == "int"
+    SCEN_PR = parse.(Float64, split(get(ENV, "JM_SCEN_PR", "1,1"), ","))
     function placemat(t)
         d=(t[1],t[2],t[3]); m=(t[4]+scen_yaw,t[5],t[6]); s = t[7] <= 0 ? 1.0 : t[7]
         # GPL placement Euler angles: the 1st is YAW about UP (GPL comp-3), not roll about
         # the long axis — applied as yaw, terrain sections orient to the track and towers/
         # signs stay upright (just turned); applied as roll they all tilt over.  2nd = pitch
         # (comp-2), 3rd = roll (comp-1); rare in scenery.
+        # E109 (2026-10-05) A/B: JM_SCEN_EULER=int composes yaw -> pitch about the TURNED lateral axis -> roll (Ryaw*Rpit*Rrol);
+        # the default (ext) pitches about the WORLD axis, so a yawed, pitched panel leans sideways. JM_SCEN_PR = pitch,roll signs.
+        m = (m[1], SCEN_PR[1]*m[2], SCEN_PR[2]*m[3])
         ca,sa=cos(m[1]),sin(m[1]); cb,sb=cos(m[2]),sin(m[2]); cc,sc=cos(m[3]),sin(m[3])
         Ryaw=[ca -sa 0; sa ca 0; 0 0 1.0]; Rpit=[cb 0 sb; 0 1.0 0; -sb 0 cb]; Rrol=[1.0 0 0; 0 cc -sc; 0 sc cc]
-        R=(Rrol*Rpit*Ryaw).*s
+        R=(SCEN_EULER_INT ? Ryaw*Rpit*Rrol : Rrol*Rpit*Ryaw).*s
+        SCEN_PRSTAT[] += (abs(m[2]) > 1e-4 || abs(m[3]) > 1e-4)
         [R[1,1] R[1,2] R[1,3] d[1]; R[2,1] R[2,2] R[2,3] d[2]; R[3,1] R[3,2] R[3,3] d[3]; 0 0 0 1.0]
     end
     cache=Dict{String,Any}(); tmp=tempdir()
@@ -1624,7 +1631,7 @@ function gpl_scenery(ztrk, datpack, ribbon)
                     if hasproperty(t, :uv)   # E81: UV span tells mesh-tiling from sampler-tiling
                         for q in t.uv; push!(get!(uvr, lt, Float64[]), Float64(q[1]), Float64(q[2])); end
                         if lt in split(lowercase(get(ENV, "JM_SCENE_TEX", "\0")), ",")   # per-triangle dump for chosen textures
-                            println("      [", lt, "] ", join([string("(", round(Float64(t.p[i][1]), digits=1), ",", round(Float64(t.p[i][2]), digits=1), ",", round(Float64(t.p[i][3]), digits=1), ") uv=(", round(Float64(t.uv[i][1]), digits=2), ",", round(Float64(t.uv[i][2]), digits=2), ")") for i in 1:3], "  "))
+                            println("      [", lt, "] ", join([string("(", round(Float64(t.p[i][1]), digits=1), ",", round(Float64(t.p[i][2]), digits=1), ",", round(Float64(t.p[i][3]), digits=1), ") lat=", (hv = JuliaMotor.hat(ribbon, Float64(t.p[i][1]), Float64(t.p[i][2])); hv.found ? round(hv.lateral, digits=1) : NaN), " uv=(", round(Float64(t.uv[i][1]), digits=2), ",", round(Float64(t.uv[i][2]), digits=2), ")") for i in 1:3], "  "))
                         end
                     end
                 end
@@ -1883,6 +1890,7 @@ else
         print("scenery… "); flush(stdout)
         dp = Render.GPLDat.parse_dat(joinpath(ZD, "nurburg.dat"))
         SECTRI, SECPARTS, RINGSPRITES = gpl_scenery(ZTRK, dp, RIBBON0)
+        println("  [scenery] placement matrices with pitch/roll: ", SCEN_PRSTAT[], "  (JM_SCEN_EULER=", get(ENV, "JM_SCEN_EULER", "ext"), ", JM_SCEN_PR=", get(ENV, "JM_SCEN_PR", "1,1"), ")")
         print(length(SECPARTS), " groups / ", length(SECTRI), " tris / ",
               length(RINGSPRITES), " sprites… ")
     end
@@ -2563,7 +2571,10 @@ else
         # the centreline (0.3-3 m up, any ground beneath) -- the veil's clear gap -- against the drawn road.
         asp_gpat = lowercase(get(ENV, "JM_ASPHALT_GAP", ""))
         gapd = Dict{Int,Vector{Float64}}()                     # bin => [inner +lat, inner -lat]
-        overroad(x, y, z) = ((h, _, f) = JuliaMotor.hat3d(ROADHAT, x, y; ref = z); f && 0.3 <= z - h <= 3.0)
+        # E109 (2026-10-05): the band is settable -- the PO's "trees HANGING over the road" is canopy ABOVE 3 m, which the
+        # default band (a car's height) cannot see. JM_ASPHALT_HMIN=3 JM_ASPHALT_HMAX=25 counts overhanging canopy only.
+        asp_h0 = parse(Float64, get(ENV, "JM_ASPHALT_HMIN", "0.3")); asp_h1 = parse(Float64, get(ENV, "JM_ASPHALT_HMAX", "3.0"))
+        overroad(x, y, z) = ((h, _, f) = JuliaMotor.hat3d(ROADHAT, x, y; ref = z); f && asp_h0 <= z - h <= asp_h1)
         if isdefined(Main, :SECPARTS) && SECPARTS !== nothing
             rb_tex[] === nothing && (rb_tex[] = Render.gpl_texture_index(ZD))
             for prt in SECPARTS
@@ -2608,7 +2619,7 @@ else
                 for f in -1:0.25:1
                     x = Float64(sp.x) + f*half*hr.perp[1]; y = -Float64(sp.z) + f*half*hr.perp[2]
                     (h, _, fd) = JuliaMotor.hat3d(ROADHAT, x, y; ref = Float64(sp.y) + 0.5)
-                    (fd && Float64(sp.y) - h <= 3.0 && Float64(sp.y) + Float64(sp.h) - h >= 0.3) || continue
+                    (fd && Float64(sp.y) - h <= asp_h1 && Float64(sp.y) + Float64(sp.h) - h >= asp_h0) || continue
                     l_ = hr.lateral + f*half; abs(l_) < abs(best) && (best = l_)
                 end
                 isfinite(best) && push!(get!(asp, floor(Int, hr.lapdist/rb_bin), Tuple{Float64,String}[]),

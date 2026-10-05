@@ -22174,3 +22174,34 @@ with the road below: 57 m/s). **Trade-off kept:** at lat −5 only — the outer
 Ring load). The 37 that ran before it all PASS — `transmission_smoke` included (it now reads the gold store) and the ground
 gates `hat_hole`, `reground`, `offroad`, `step_guard`, `racestart`. NOT run: `road_clear_smoke`, `telemetry_rpm`,
 `wheel_hubs`, `seam`, `gplroad`, `gpldlat`, `gplplan`. Not restarted unattended (host rule: re-run only when the PO asks).
+
+### Item 2 — road_clear_smoke validation: SHELVED (host memory)
+The only run this cycle was inside the gate suite, and the host stopped it for low system memory during `road_clear_smoke`
+(parent julia + child Ring load). Not re-run unattended. Needs the PO's go-ahead for one exclusive run.
+
+### E109 — retrospective (cycle 2026-10-05)
+The 09-30 measurements (S7–S10: two veil sites ~1 m onto the road) predate RING-GOLD-1's yaw flip, so they were re-taken.
+More important: the PO's words are *"some trees **hanging** over the road"*, and the asphalt census only looks 0.3–3 m up —
+a car's height. Canopy over the road is invisible to it by design.
+
+### E109-S11..S14 (2026-10-05) — the veils' CROWNS hang over the road; the cause is the quad's lateral placement (4 sprints — ROTATING)
+* **S11 — re-measured on HEAD (low band):** unchanged by RING-GOLD-1. `halftr1s` s≈8350–8475 1.1–1.2 m onto the road,
+  `halftr07` s≈21350 0.97 m; no curtains (`curtain_bins=0`).
+* **S12 — new `JM_ASPHALT_HMIN/HMAX`** (default 0.3/3.0). Canopy band 3–25 m: **59 tree rows**, every one a `halftr*` veil,
+  opaque texels to within 0.05–2 m of the centreline at s≈5535–5720, 6735–7125, 8350–8645, 15065–15105, 16235–16505,
+  21310–21465.
+* **S13 — Euler order REFUTED for this:** `JM_SCEN_EULER=int` (yaw → pitch about the turned axis → roll) and `JM_SCEN_PR`
+  (pitch/roll signs) added as A/B switches, defaults unchanged. 704 scenery placements carry pitch/roll; the veil rows are
+  identical under `int`, so the veils carry none.
+* **S14 — eyes and geometry.** Renders (`JM_SHOTS`, chase) at s=21330/21400/21440: a dark green ROOF across the top of the
+  frame; s=6930 and 8380: ragged foliage hanging down over the road. The PO's 261003 GPL race (`261003_ring.mp4`, the
+  Antoniusbuche bridge at t≈834 s): open sky over the road, the forest wall standing along the edges.
+  `261005/e109/`. The textures (`halftr07/05/1s/01`): a tree with its trunk side opaque on the RIGHT, its crown leaning
+  left, the left third transparent (opaque by column third: 0.02 / 0.41 / 0.87 for `halftr07`). `JM_SCENE_TEX` now prints
+  each vertex's lateral. **In our world each `halftr07` quad at s≈21400 is 8 × 18.3 m, near-square to the road, u=0 at
+  lat −1.9 and u=1 at lat +5.7** — so the crown spans lat ≈0.6–5.7 at 3–21 m: over the right lane. GPL's rule (S6: the
+  on-asphalt part samples only the transparent third) needs the quad ~5–8 m further out.
+* **Next (sprint 1 on revisit):** the placement's local offset is rotated about the origin, so a yaw-sign error puts the quad
+  on the wrong side of its origin. Ring OBJECTS already needed yaw −1 (RING-GOLD-1) and pitch −1 (E81-S9). A/B the
+  scenery yaw sign for the veils by name (not globally: terrain sections and the ±90° veils must be checked too), in
+  `JM_ASPHALT_HMIN=3` and against the gold frame at t≈834 s.
