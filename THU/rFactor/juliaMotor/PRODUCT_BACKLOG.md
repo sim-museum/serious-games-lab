@@ -22426,3 +22426,20 @@ patches (Spa `gstands` +90, Zandvoort `gstand` flip, WG `grandl` +180) "compensa
   `gold_100.jpg` vs `jr_100.png`). **Shipped: `OBJ_YAW_SIGN = −1` on every track;** `gstands` +90, the `gstand` flip and
   `grandl` +180 apply only under a forced +1 (the Ring's flip list unchanged). Gates `gplwall_smoke`, `solid_box_smoke`,
   `people_smoke` PASS. YAWSIGN-1 DONE.
+
+### E109 — cycle 2 retrospective + S15 (2026-10-05): the veils are GPL's forest-AHEAD impostors, drawn from ONE segment — now under GPL's rule (default)
+Retrospective: S11–S14 measured the veil crowns over the road and suspected the quad's placement. GREY-1 then decoded GPL's
+per-segment visibility. Swapping to the object copy alone cannot help (RING-GOLD-1 S3 skips it only where it COINCIDES with
+the scenery copy). **The decisive fact (`GPLTrack.segment_visibility`): every one of the 67 Ring veils is reached from exactly
+ONE segment, ~25 m long** (all `half07` at s≈21310–21465 from the segment at 21288; `half1s` at 8408/8506/8649/8678 …). GPL
+draws a veil only while the camera is there — as the wall of forest ahead — and stops as the car arrives; we drew it all the
+way in, so its crowns hung over the road.
+* **Shipped (`JM_GPLVIS_VEIL=0` reverts):** at the Ring the `half*` placements leave the scenery (`gpl_scenery` drops them)
+  and are drawn by the object pipeline under GPL's window (`OBJVIS` for `isveil` names; RING-GOLD-1's duplicate skip no
+  longer applies to them). `JM_GPLVIS=1` still extends the rule to all 567 objects (A/B, GREY-1).
+* **Measured:** the canopy census (`JM_ASPHALT_HMIN=3 HMAX=25`) — veil rows over the road **59 → 0**, deep bins 41 → 11.
+  On screen (`veils_under_gpl_window_default.jpg`): Adenauer Forst (s=6930) and Kallenhard (s=8380) show the forest walls
+  along the road and open sky, as the gold; Metzgesfeld unchanged.
+* **Still there:** at s≈21300 tall dark walls lean in on both sides — a different family (tree-row / hedge panels, `trow*`,
+  `xk_flat*`), next on this item.
+* Gates `solid_box_smoke`, `contact_smoke`, `stacked_contact_smoke`, `gplwall_smoke` PASS.

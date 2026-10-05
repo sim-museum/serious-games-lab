@@ -1162,10 +1162,14 @@ function gpl_scenery(ztrk, datpack, ribbon)
     end
     # E81-S6 probe: JM_PLACE_HIDE=<name,...> drops those placements (A/B: does a suspect vanish from the
     # frame?) and prints each one's full transform tuple, pitch/roll included. Test only.
-    let hd = Set(lowercase.(filter(!isempty, split(get(ENV, "JM_PLACE_HIDE", ""), ","))))
+    # E109-S15 (2026-10-05): the veils (`half*`) leave the scenery and are drawn by the object pipeline under GPL's
+    # per-segment visibility (each is reached from ONE segment, ~25 m before it: GPL shows them as the forest ahead and
+    # stops drawing them as the car arrives -- we drew them overhead). JM_GPLVIS_VEIL=0 restores the scenery copies.
+    _veilhide = get(ENV, "JM_GPLVIS_VEIL", "1") != "0" ? ["half01","half02","half03","half04","half05","half06","half07","half08","half09","half1s"] : String[]
+    let hd = Set(vcat(lowercase.(filter(!isempty, split(get(ENV, "JM_PLACE_HIDE", ""), ","))), _veilhide))
         if !isempty(hd)
             for (nm, t) in pls
-                lowercase(String(nm)) in hd && println("  [place_hide] ", nm, " ", map(x -> round(Float64(x), digits = 3), t))
+                (lowercase(String(nm)) in hd && !(lowercase(String(nm)) in _veilhide)) && println("  [place_hide] ", nm, " ", map(x -> round(Float64(x), digits = 3), t))
             end
             pls = [(nm, t) for (nm, t) in pls if !(lowercase(String(nm)) in hd)]
         end
@@ -8618,9 +8622,12 @@ const OBJ_SCENEDUP = falses(length(OBJECTS))
 # GREY-1 S4 (2026-10-05): GPL's per-segment visibility (tools/gpl_segvis.jl). GPL draws an object only while the camera is
 # in a segment whose tree reaches it; we drew every object inside a radius, so a forest cap belonging to Wehrseifen
 # (wehr-r1b/hillcapm, camera window s 7987-9199) stood as a dark pyramid over Metzgesfeld (s=7860). JM_GPLVIS=1 (A/B).
-const GPLVIS = NURB && get(ENV, "JM_GPLVIS", "0") == "1"
+const GPLVIS_ALL = NURB && get(ENV, "JM_GPLVIS", "0") == "1"
+const GPLVIS_VEIL = NURB && get(ENV, "JM_GPLVIS_VEIL", "1") != "0"     # E109-S15: the veils only, by default
+const GPLVIS = GPLVIS_ALL || GPLVIS_VEIL
+isveil(nm) = (n = lowercase(nm); startswith(n, "half") && length(n) == 6)
 const GPLVIS_SEGS, GPLVIS_VIS = GPLVIS ? GPLTrack.segment_visibility(ZTRK) : (Float64[], Dict{Int,BitVector}())
-const OBJVIS = Union{Nothing,BitVector}[GPLVIS ? get(GPLVIS_VIS, n, nothing) : nothing for n in OBJNODE]
+const OBJVIS = Union{Nothing,BitVector}[(GPLVIS_ALL || (GPLVIS_VEIL && isveil(OBJECTS[k][5]))) ? get(GPLVIS_VIS, OBJNODE[k], nothing) : nothing for k in eachindex(OBJNODE)]
 const _GV_ORD = filter(k -> isfinite(GPLVIS_SEGS[k]), sortperm(GPLVIS_SEGS)); const _GV_S = GPLVIS_SEGS[_GV_ORD]   # segments with a lap table
 const _GV_R = length(_GV_S) > 2 ? (_GV_S[end] + (_GV_S[end] - _GV_S[end-1])) / LAPLEN : 1.0    # GPL dlong per our lap metre
 function gplvis_seg(ex, ez)     # the camera's GPL segment from the eye position (render coords), 0 = unknown (draw all)
@@ -13766,7 +13773,7 @@ function main()
             for (oi,(items,mat,grz,opos,onm)) in enumerate(_OBJS)   # trackside objects
                 LAYOFF_OBJ && continue   # (trees graze-fade; uBackFlip stays 1 when un-culled)
                 (_cseg > 0 && oi <= length(OBJVIS) && OBJVIS[oi] !== nothing && !OBJVIS[oi][_cseg]) && continue   # GREY-1: GPL's window
-                OBJ_SCENEDUP[oi] && continue   # RING-GOLD-1 S3: the scenery already draws this one (back-face culled)
+                (OBJ_SCENEDUP[oi] && !(oi <= length(OBJVIS) && OBJVIS[oi] !== nothing)) && continue   # RING-GOLD-1 S3 (E109-S15: not the veils -- their scenery copy is hidden)
                 bc, br = oi <= length(_BND) ? _BND[oi] : ((opos[1], opos[2], opos[3]), 80f0)   # CULLBOUND-1: the object's real bounding sphere
                 max(sqrt((eye_[1]-bc[1])^2+(eye_[2]-bc[2])^2+(eye_[3]-bc[3])^2) - br, 0f0)^2 > (flip ? MIR_OBJ_CULL2 : OBJ_CULL2) && continue   # distance cull (mirror gets its own radius, S14)
                 FRUSTUM_CULL && !infrustum(vp_, bc, br) && continue
