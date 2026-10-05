@@ -22225,3 +22225,27 @@ rear tires, anything else where gold differs from current julia in terms of car 
 * Method: the gold store (GPL race videos 260915 WG, 261003 Ring/WG; the E104-S4 close-up captures) against `JM_SHOTS` /
   `JM_AICAM` frames **at full resolution, same place** (memory: judge geometry at full res). Measure the gap (contact
   patch to road) in the renderer's own space before changing anything.
+
+### GREY-1 (Ring grey polygons, E81 family) — retrospective
+PO 2026-10-05 02:11 (after RING-GOLD-1): *"some huge grey polygons in the distance"*. RING-GOLD-1 S2 had already removed the
+castle cards and panoramas (grey = fog at 2 km); this is what remains. Nothing named it, so S1 surveys.
+
+### GREY-1 S1–S3 (2026-10-05) — the grey pyramid is `hillcapm`, and GPL would not draw it from where we see it
+* **S1 — survey** (`JM_SHOTS`, chase, 9 long-sightline stations; `261005/grey/jr_survey_9views.jpg`): one huge dark polygon,
+  at **s=7860 Metzgesfeld** — a steep forest-textured pyramid rising above the hill line on the right
+  (`jr_hillcapm_s7860.png`). Also seen: a floating fragment in the sky at s=20800 (`billboardh2`, lat 12.8, 29 m away —
+  a FLOAT item, not this one); a dark square on the road at s≈14650.
+* **S2 — named + gold:** `JM_PICK` → `hillcapm` on object **`wehr-r1b`** at 320 m, drawn TWICE (scenery `track hillcapm` and
+  `object wehr-r1b/hillcapm` at the same 321.1 m — both pipelines agree on the geometry, and it has no pitch). The texture is
+  a dark forest canopy (fine). The PO's GPL race at Metzgesfeld (t≈6:02–6:26, `gold_261003_ring_330-430s.jpg`): open
+  fields, forest only on the far horizon, **no cone**.
+* **S3 — GPL's rule decoded** (`tools/gpl_segvis.jl`): `nurburg.3do` root → a group of **894 segment trees**; each is a
+  `group(8)` whose slots 1..7 hold BSP/cell copies and whose **slot 8 is a `0x10` table of four LAP POSITIONS** (TRK units /
+  19685.04 = m; segment 341 = 9198.9–9210.2 m) — not distance thresholds as S6 guessed. Cells (`0x0F`) list their objects
+  (`(x,y,z,positioner)×n`) and chain to coarser copies (`nextdetail`). **`wehr-r1b` is reached from 55 of 894 segment
+  trees, camera s 7987–9199.** GPL draws an object only while the camera is in a segment whose tree reaches it; we draw
+  everything inside a radius. At s=7860 GPL does not draw the cap.
+* **Next (S4):** implement the per-segment visibility (`JM_GPLVIS`) — the camera's segment from its lap distance; each
+  object's set of segments from the tree. The object pipeline is per-instance (skip). The scenery copies are merged per
+  texture, so either split by visibility window or (the backdrop precedent) drop the scenery copy of objects whose window is
+  narrower than our draw radius and keep the object copy under the rule. A/B at s=7860 and a sweep; watch FPS.
