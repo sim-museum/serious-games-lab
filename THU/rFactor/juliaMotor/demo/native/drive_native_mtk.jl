@@ -4466,11 +4466,11 @@ const MCEN = (b = Render.parts_bbox(MIRRORP); Float32[(b.xmin+b.xmax)/2, (b.ymin
 # panel beside the cockpit (Watkins s=300, 1280x1024). At 0.06 the whole disc and its live view clear it,
 # centred x~98 px of 1280 (gold: ~105). JM_WIND_ALPHA=0 left that panel in place, so it is body, not the
 # windscreen; the gold shows the lower half of its discs through the tinted screen instead.
-const MIRROR_DY   = parse(Float32, get(ENV,"JM_MIRROR_Y","0.06"))   # was -0.02 (MIRROR-H-1); +0.10 was once "too high"
+const MIRROR_DY   = parse(Float32, get(ENV,"JM_MIRROR_Y","0.022"))  # MIRROR-GOLD-1 (2026-10-05): fitted to gold_wg_200 with SCALE 1.10, SPREAD 1.07 (disc centres 8%/91% x, 61% y)
 const MIRROR_DX   = parse(Float32, get(ENV,"JM_MIRROR_X","0.075"))
 const MIRROR_TILT = deg2rad(parse(Float32, get(ENV,"JM_MIRROR_TILT","-25")))   # E48: stand the discs UPRIGHT facing the eye (+22 read as "angled down" — we saw the top faces)
-const MIRROR_SCALE = parse(Float32, get(ENV,"JM_MIRROR_SCALE","0.5"))    # disc SIZE (round-mirror size)
-const MIRROR_SPREAD = parse(Float32, get(ENV,"JM_MIRROR_SPREAD","1.7"))   # lateral separation multiplier — push the pair out to the screen edges
+const MIRROR_SCALE = parse(Float32, get(ENV,"JM_MIRROR_SCALE","1.10"))    # disc SIZE (round-mirror size)
+const MIRROR_SPREAD = parse(Float32, get(ENV,"JM_MIRROR_SPREAD","1.07"))   # lateral separation multiplier — push the pair out to the screen edges
 # E106-S10 (PO, Zandvoort video: "make visor more transluscent"). The opaque 1.0 came from an
 # earlier PO call that the tan scuttle must not read as glassy; 0.55 keeps it clearly a scuttle
 # while letting the road show through the screen area as the PO now wants.
