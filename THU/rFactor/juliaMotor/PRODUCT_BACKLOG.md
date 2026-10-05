@@ -22266,3 +22266,23 @@ castle cards and panoramas (grey = fog at 2 km); this is what remains. Nothing n
 * **Next (revisit):** put `SECPARTS` under the rule — split the merged parts by visibility window (quantised lap windows,
   watch draw calls/FPS), or drop the scenery copy of each object that the object pipeline draws (the backdrop precedent);
   then a lap sweep, GPLVIS on vs off vs gold, and FPS.
+
+### CARGOLD-2 — retrospective
+E104 is the precedent: the "float" was measured planted (wheel gap 0.0) and turned out to be a CUE — no contact shadow
+(S4), then a 0.72 m shadow bias (S5). So measure the physics gap AND look at the cue. New since E104: AIGPL-2 places AI
+cars on GPL's `.trk` arcs; AI-CARGFX-S8 builds every AI car through GPL's driver wrapper; CARHAND-1 un-mirrored the car.
+(`~/Videos/display1-20261005-085850.mp4` from this morning is the PO launching GPL at Spa, not a Julia run.)
+
+### CARGOLD-2 S1 (2026-10-05) — the AI cars are the defect: chrome plates in the rear tyres, no contact shadow, mirrored side text
+Gold: the PO's 261003 Wine GPL WG race (`261003_wg_wine_gpl_win.mp4`, chase view from t≈4:36; frames 276 s / 324 s).
+Ours: `JM_SHOTS` player chase + `JM_AICAM_SEQ="1:gplchase,2:gplchase,1:rsusp"` (JM_AI=3), WG. `261005/cargold2/`.
+* **Physics gap is ~0:** `JM_WHEELGAP` player 0.002–0.011 m, AI −0.013…+0.008 m. Any float is visual.
+* **AI car rear vs gold, same view (`gold_wg324_vs_ai1_rear.png`):** the gold shows horizontal silver halfshafts from the
+  gearbox to the hubs, the hub/upright inside each wheel, a top cross-bar wheel to wheel, downturned exhausts. **Ours: no
+  halfshafts; a vertical CHROME PLATE stands inside each rear tyre** — the PO's "metal parts still embedded in rear tires".
+  The player's chase view has CHASE-AXLE-1's shafts; the AI cars (driver-wrapper path) never got them.
+* **Float cue:** under the AI car the road is as bright as beside it; the gold is dark under and right of each tyre.
+* **Mirrored livery on the AI car** (rsusp view): the side reads "SUTOJ MAƎT", the number reversed — CARHAND-1 reflected
+  the geometry; the AI livery/decal UVs evidently still carry the old compensating flip.
+* **Next:** S2 name the plates (`JM_PICK` on an AI frame; E82's lead: GPL PARKS dynamically-placed suspension parts at
+  y=+20 and `posmat` clamps that to 0, i.e. draws them at the car origin); S3 AI contact shadow; S4 AI livery handedness.
