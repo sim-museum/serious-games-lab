@@ -14,6 +14,14 @@ poll), filter every output at the source, iterate in throwaway scripts, keep com
 and start a fresh session per backlog item. A 6-hour unbroken session on 2026-09-28 cost ~26 % of a
 weekly token budget.
 
+## AppImage rule (PO 2026-10-04) — MUST
+**Every AppImage must run stand-alone on a fresh Ubuntu install.** No dependency on external files -- nothing under
+`~/sgl` (the GPL install, Wine prefix, gold-standard store), `~/sgl-jr`, `~/.julia`, `~/gold standard` or any other
+path on this PC. Assume the target PC has nothing installed beyond what Ubuntu's standard repositories provide: every
+asset (GPL track/car data the game reads, textures, sounds, .ibt-derived constants, fonts, gpl_ai.ini values, .lp
+lines) and every runtime (Julia, packages, sysimage, Qt, GL libs not in the base system) is inside the image. Verify by
+running the built image in a clean environment (e.g. a fresh Ubuntu container or VM with no ~/sgl), not on this box.
+
 ## Run it
 ```
 cd demo/native
