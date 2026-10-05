@@ -22131,3 +22131,46 @@ track mesh (memory jr-ringbump-banner-post: lapdist ~1594.7, lat -4, and 1602.7 
 with today's section boards). Remove the banner AND its posts from both the drawn track and the ground HAT; verify
 by driving the car through the spot (no vertical spike) and a render at the spot (no floating remnant).
 (TRACKSEG-2, the English translations of section names, is already logged above.)
+
+# CYCLE 2026-10-05 — PO: "run scrum on these open/unblocked backlog items, start with retrospective ... at most 4 sprints on the item"
+
+Queue: RINGBUMP-1, road_clear_smoke validation, Ring trees over road (E109), Ring grey polygons/E81 (+ `hillcapm` s≈7892),
+Ring billboards near Hocheichen, RACESTART-1, GPLWALL-1 AI cars, E110, E111, E90 rail cells; then TRACKSEG-2, yaw sign.
+
+### RINGBUMP-1 — retrospective
+* **Is s≈1594 even the right place?** The PO's late note said "near high eight", and the section board for Hohe Acht is at
+  s=14,765. Checked: GPL's own `.trk` puts the Ring's highest point at **s=1940 (627.2 m)**, so "just before the highest
+  point" (2026-09-26) is s≈1594. The PO uses the real-world fact (Hohe Acht = highest point); GPL's track is not that
+  tall there. The PO's exact words (2026-10-05 02:11): *"the nasty bump I encounter every time I go under the continental
+  banner just before high eight"*. Cross-checked against the data: all 168 `bannr_s` (Continental) triangles in `nurburg.3do`
+  sit at altitude 618.3–620.9 m, which the road reaches only at s≈1400–1700 (619.5 at s=1594); before the Hohe Acht board
+  it runs at 555–607 m. There is no Continental banner near GPL's Hohe Acht, and the banners stand 1–2 m above the
+  pit-wall road, not across it. The location stands.
+* RINGBANNER-1 (`3e605927`) removed the banner but not the bump. An uncommitted ground guard (mesh above the road = a
+  ledge) was left behind; it had never been measured off the reported spot.
+
+### RINGBUMP-1 S1–S4 (2026-10-05) — the pits' ledge is out of the ground; both guards are needed, and continuous
+Instrument: `JM_HATPROBE="drv:<lats>:40"` (whole lap, 1/60 s, vertical-velocity step), new `JM_HATPROBE_AT=<s,...>` (worst
+step within ±10 m of each station) and `JM_HATPROBE_ARMS=SL,S,L,-` (guard subsets in ONE Ring load, ~10 min instead of 10
+per arm). Guards: `JM_GROUND_GUARDS` (S = stencil: a smoothing neighbour on another surface fades out over 0.10–0.30 m;
+L = ledge: mesh 0.3–0.6 m above the `.trk` road with a road layer under it fades to that layer). `JM_GROUND_ABOVE_OK=1` = both off.
+
+| max step, m/s | control | S only | L only | **S+L (shipped)** |
+|---|---|---|---|---|
+| lat −4, s 1594/1602 (the PO's bump) | 46.5 | — | — | **1.2** |
+| lat −5, s 1594/1602 | 79.8 | 388 | 78.9 | **1.6** |
+| lat −5, s 1460 | 39.1 | 383 | 24.9 | **2.2** |
+| lat −4 … +4, whole lap | 46.5 | | | **≤ 3.0** |
+| lat ±5, whole lap | 79.8 | | | **27.1** |
+| lat −5, s 9745 / 22452 | 3.1 / 2.7 | 15.3 / 13.1 | 3.1 / 2.7 | **15.3 / 13.1** ⚠ |
+
+Refuted on the way (each one Ring load): a hard stencil cut-off (a switch); the ledge guard fading to the `.trk` spline
+(spline confidence is 0 at s=1594 lat −5: 61.7 m/s); probing "under" with `hat3d`'s fall-back to the topmost surface
+(a switch between layers); fading only UPWARD neighbours (fixes s=9745, but at s=1594 the car's centre can be ON the ledge
+with the road below: 57 m/s). **Trade-off kept:** at lat −5 only — the outermost 0.4 m of the spline's road (`TRK_ROAD_LAT`
+5.4) — s=9745 (Breidscheid) and s≈22450 rise from ~3 to 13–15 m/s, while the same sites at lat +5 fall (31→18, 18.5→13).
+**Open:** those two edge sites; they are mesh creases at the road edge in both arms. Needs the PO's drive at the pits.
+**Gates (2026-10-05):** the suite was stopped by the host for low system memory inside `road_clear_smoke` (parent + child
+Ring load). The 37 that ran before it all PASS — `transmission_smoke` included (it now reads the gold store) and the ground
+gates `hat_hole`, `reground`, `offroad`, `step_guard`, `racestart`. NOT run: `road_clear_smoke`, `telemetry_rpm`,
+`wheel_hubs`, `seam`, `gplroad`, `gpldlat`, `gplplan`. Not restarted unattended (host rule: re-run only when the PO asks).

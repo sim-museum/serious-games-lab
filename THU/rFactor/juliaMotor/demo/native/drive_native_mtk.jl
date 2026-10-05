@@ -2187,6 +2187,11 @@ else
     # ramp the same way. A sample that misses the HAT (hole, world edge) keeps the raw centre value, so
     # the edge/hole logic above is unchanged. JM_MESH_SMOOTH=0 disables.
     const MESH_SMOOTH = parse(Float64, get(ENV, "JM_MESH_SMOOTH", "1.0"))   # stencil radius [m]
+    # RINGBUMP-1: two guards on the mesh ground, separately switchable (the probe sweeps them in one load).
+    # JM_GROUND_ABOVE_OK=1 turns both off (the control arm); JM_GROUND_GUARDS picks a subset: S = stencil, L = ledge.
+    const _GG = get(ENV, "JM_GROUND_ABOVE_OK", "0") == "1" ? "" : get(ENV, "JM_GROUND_GUARDS", "SL")
+    const STENCIL_GUARD = Ref('S' in _GG)    # a stencil neighbour on another surface fades out of the average
+    const LEDGE_GUARD = Ref('L' in _GG)      # mesh well above the road with a road layer under it: the layer under
     # `ref` = a height the ROAD is known to be near (the spline), or Inf when nothing is known. hat3d
     # returns the topmost surface at or below `ref`, so passing the spline + 3 m keeps a BANNER, BRIDGE
     # or GANTRY deck over the road out of the ground query -- the SINK-1 correction builder already did
@@ -2200,17 +2205,23 @@ else
     # that nothing about the road changes when no deck is present, and the query is the one the car
     # drives on. A guard with a known failure to prevent, no measured cost and no measured effect is
     # kept; it is not evidence for anything.
-    function mesh_ground(x, z, ref = Inf)
+    function mesh_ground(x, z, ref = Inf; fallback = true)
         h0 = JuliaMotor.hat3d(TERRAIN, x, z; ref=ref)
-        if !h0[3] && ref != Inf                 # nothing under the reference: fall back to the topmost
+        if !h0[3] && ref != Inf && fallback     # nothing under the reference: fall back to the topmost
             h0 = JuliaMotor.hat3d(TERRAIN, x, z; ref=Inf)
         end
         (h0[3] && MESH_SMOOTH > 0.0) || return (Float64(h0[1]), h0[3])
-        acc = Float64(h0[1]); n = 1
+        acc = Float64(h0[1]); n = 1.0
         for (dx, dz) in ((MESH_SMOOTH, 0.0), (-MESH_SMOOTH, 0.0), (0.0, MESH_SMOOTH), (0.0, -MESH_SMOOTH))
             h = JuliaMotor.hat3d(TERRAIN, x + dx, z + dz; ref=ref)
-            h[3] || return (Float64(h0[1]), true)
-            acc += Float64(h[1]); n += 1
+            # RINGBUMP-1: a neighbour with no surface under `ref` drops out of the average (was: abandon the smoothing,
+            # a switch between the smoothed and the raw height).
+            h[3] || (STENCIL_GUARD[] ? continue : return (Float64(h0[1]), true))
+            # RINGBUMP-1 (2026-10-05): the stencil smooths ONE surface. A neighbour on another (a sill or ledge beside the
+            # Ring's road edge at s=1594-1602) is not ground under the car, so it fades out of the average between 0.10 and
+            # 0.30 m of disagreement. A hard cut-off was a switch: 0.24 m jumps (15 m/s steps) at Ring s=9745 / 22452.
+            wn = STENCIL_GUARD[] ? clamp((0.30 - abs(Float64(h[1]) - Float64(h0[1]))) / 0.20, 0.0, 1.0) : 1.0   # |dh|: at s=1594 lat -5 the CENTRE can be on the ledge (upward-only: 57 m/s)
+            acc += wn*Float64(h[1]); n += wn
         end
         (acc/n, true)
     end
@@ -2226,6 +2237,17 @@ else
                     # tarmac, and it is now also the CHEAP case -- one HAT query saved per call)
                     w >= 0.999 && return (ht, true)
                     hm, ok = mesh_ground(x, z, ht + 3.0)   # the road under a banner, not the banner
+                    # RINGBUMP-1 (2026-10-05): inside the road's lateral range, mesh well ABOVE the .trk road is another
+                    # surface -- the pit building's ledge 1 m from the Ring's road edge at s=1594/1602 lifted the ground
+                    # 0.4-1.4 m (47-80 m/s vertical steps): the PO's bump "under the Continental banner". Use the road.
+                    if ok && LEDGE_GUARD[] && hm - ht > 0.3               # faded in over 0.3-0.6 m (no switch)
+                        # only where a road layer really lies UNDER the high surface (the pits' ledge). With nothing
+                        # under it the high surface IS the road: fading to the spline at the Breidscheid bridge
+                        # (s~9745) and s~22450 turned 3 m/s steps into 11-15.
+                        g = clamp((hm - ht - 0.3) / 0.3, 0.0, 1.0)
+                        hm2, ok2 = mesh_ground(x, z, ht + 0.3; fallback = false)
+                        (ok2 && hm2 > ht - 1.5) && (hm = (1 - g)*hm + g*hm2)
+                    end
                     return (ok ? w*ht + (1-w)*hm : ht, true)
                 end
             end
@@ -4813,7 +4835,9 @@ if get(ENV,"JM_HATPROBE","") != ""
         # RINGBUMP-1: a bump the PO feels is felt ON THEIR LINE, not on the centreline, and one
         # Nurburgring parse costs ~10 minutes -- so drive a LIST of lateral offsets in the one load.
         _f = split(spec, ":"); _latl = parse.(Float64, split(_f[2], ",")); _v = parse(Float64, _f[3])
-        for _lat in _latl
+        _arms = split(get(ENV, "JM_HATPROBE_ARMS", "keep"), ",")     # RINGBUMP-1: guard subsets, e.g. "SL,S,L,-"
+        for _arm in _arms, _lat in _latl
+        _arm == "keep" || (STENCIL_GUARD[] = 'S' in _arm; LEDGE_GUARD[] = 'L' in _arm)
         _dt = 1/60; _np = length(TRKSURF.pos); _ld = TRKSURF.lapdist
         _cr(p0,p1,p2,p3,t) = 0.5*(2p1 + (-p0+p2)*t + (2p0-5p1+4p2-p3)*t^2 + (-p0+3p1-3p2+p3)*t^3)
         _crd(p0,p1,p2,p3,t) = 0.5*((-p0+p2) + 2t*(2p0-5p1+4p2-p3) + 3t*t*(-p0+3p1-3p2+p3))
@@ -4836,7 +4860,7 @@ if get(ENV,"JM_HATPROBE","") != ""
         _st2 = [abs(_w[i+1]-_w[i]) for i in 1:length(_w)-1]
         _qq(v, p) = (u = sort(copy(v)); u[clamp(ceil(Int, p*length(u)), 1, length(u))])
         _wi = argmax(_st2)
-        println("== JM_HATPROBE drv lat=", _lat, " v=", _v, " frame=", get(ENV, "JM_HAT_POLYLINE", "0") == "0" ? "C1 curve" : "POLYLINE (control)",
+        println("== JM_HATPROBE drv arm=", _arm, " lat=", _lat, " v=", _v, " frame=", get(ENV, "JM_HAT_POLYLINE", "0") == "0" ? "C1 curve" : "POLYLINE (control)",
                 " -- vertical-velocity step per 1/60 s frame [m/s]:")
         println("   p50 ", round(_qq(_st2, 0.5), digits=4), "  p90 ", round(_qq(_st2, 0.9), digits=4),
                 "  p99 ", round(_qq(_st2, 0.99), digits=4), "  max ", round(maximum(_st2), digits=4),
@@ -4852,6 +4876,10 @@ if get(ENV,"JM_HATPROBE","") != ""
                         " m/s   h ", round(_hh[_k], digits=3), " -> ", round(_hh[_k+1], digits=3), " -> ", round(_hh[_k+2], digits=3),
                         "   spline confidence ", round(trk_conf(_sl[_k], _lat), digits=3))
             end
+        end
+        for _sa in parse.(Float64, filter(!isempty, split(get(ENV, "JM_HATPROBE_AT", ""), ",")))   # worst step within 10 m of each
+            _ix = [i for i in eachindex(_st2) if abs(_sl[i] - _sa) <= 10.0]
+            isempty(_ix) || println("     at s=", _sa, " +-10: max step ", round(maximum(_st2[_ix]), digits=2), " m/s")
         end
         end
         flush(stdout)
