@@ -22452,3 +22452,15 @@ way in, so its crowns hung over the road.
   it stays shipped; decoding the neighbour links is the next step before `JM_GPLVIS=1` (all objects) can ship.
   The tall walls themselves stand where GPL's tree rows stand (the gold at t≈13:50 has tall trees close to the road) — not
   pursued further this cycle.
+
+### GREY-1 — cycle 2 retrospective + S5 (2026-10-05): the hill caps go under GPL's rule too (default) — the pyramid is gone
+Retrospective: S4 proved the rule on the pyramid but left `JM_GPLVIS` off because it would cull all 567 objects on an
+unproven model; E109-S15/S16 then shipped it for one family (the veils) and found the model's caveat (neighbour links not
+followed). So: the same narrow route. Four Ring objects carry a `hillcap*` forest cap (`adena-r2`, `bergw-r1`, `breid-ra`,
+`wehr-r1b`; byte search of `nurburg.dat`). Their GPL windows are long and contiguous with short gaps: `wehr-r1b` 7987–8678 +
+8743–9199, `bergw-r1` 10504–11718, `adena-r2` 9670–11209, `breid-ra` 9859–10998 (gaps 60–140 m).
+* **Shipped:** the four join the veils (`_veilhide` / `isveil`): scenery copy dropped, object copy drawn under its window;
+  gaps ≤ `JM_GPLVIS_GAP` (200 m) are BRIDGED (the walker's gaps, not GPL's — drawn literally they would pop the cap).
+  `JM_GPLVIS_VEIL=0` reverts both families.
+* On screen (`261005/grey/hillcap_rule_default.jpg`): s=7860 Metzgesfeld — no pyramid, open fields and the forested valley as
+  in the gold; s=8100 / 6930 / 10600 clean. Gates `solid_box_smoke`, `gplwall_smoke` PASS.

@@ -1165,7 +1165,10 @@ function gpl_scenery(ztrk, datpack, ribbon)
     # E109-S15 (2026-10-05): the veils (`half*`) leave the scenery and are drawn by the object pipeline under GPL's
     # per-segment visibility (each is reached from ONE segment, ~25 m before it: GPL shows them as the forest ahead and
     # stops drawing them as the car arrives -- we drew them overhead). JM_GPLVIS_VEIL=0 restores the scenery copies.
-    _veilhide = get(ENV, "JM_GPLVIS_VEIL", "1") != "0" ? ["half01","half02","half03","half04","half05","half06","half07","half08","half09","half1s"] : String[]
+    # GREY-1 S5: the four hill-cap objects (forest caps on hilltops, `hillcap*`) go the same way -- `wehr-r1b`'s cap stood as a
+    # dark pyramid over Metzgesfeld, 1 km outside the stretch GPL draws it from.
+    _veilhide = get(ENV, "JM_GPLVIS_VEIL", "1") != "0" ? ["half01","half02","half03","half04","half05","half06","half07","half08","half09","half1s",
+                                                          "adena-r2","bergw-r1","breid-ra","wehr-r1b"] : String[]
     let hd = Set(vcat(lowercase.(filter(!isempty, split(get(ENV, "JM_PLACE_HIDE", ""), ","))), _veilhide))
         if !isempty(hd)
             for (nm, t) in pls
@@ -8625,10 +8628,27 @@ const OBJ_SCENEDUP = falses(length(OBJECTS))
 const GPLVIS_ALL = NURB && get(ENV, "JM_GPLVIS", "0") == "1"
 const GPLVIS_VEIL = NURB && get(ENV, "JM_GPLVIS_VEIL", "1") != "0"     # E109-S15: the veils only, by default
 const GPLVIS = GPLVIS_ALL || GPLVIS_VEIL
-isveil(nm) = (n = lowercase(nm); startswith(n, "half") && length(n) == 6)
+isveil(nm) = (n = lowercase(nm); (startswith(n, "half") && length(n) == 6) || n in ("adena-r2", "bergw-r1", "breid-ra", "wehr-r1b"))
 const GPLVIS_SEGS, GPLVIS_VIS = GPLVIS ? GPLTrack.segment_visibility(ZTRK) : (Float64[], Dict{Int,BitVector}())
-const OBJVIS = Union{Nothing,BitVector}[(GPLVIS_ALL || (GPLVIS_VEIL && isveil(OBJECTS[k][5]))) ? get(GPLVIS_VIS, OBJNODE[k], nothing) : nothing for k in eachindex(OBJNODE)]
 const _GV_ORD = filter(k -> isfinite(GPLVIS_SEGS[k]), sortperm(GPLVIS_SEGS)); const _GV_S = GPLVIS_SEGS[_GV_ORD]   # segments with a lap table
+# GREY-1 S5: a window's gaps under JM_GPLVIS_GAP m (default 200) are bridged. The walker does not follow the cells'
+# neighbour links, so short gaps (60-140 m in the hill caps' windows) are taken as the model's, not GPL's -- drawn
+# literally they would pop the object out and back in.
+const GPLVIS_GAP = parse(Float64, get(ENV, "JM_GPLVIS_GAP", "200"))
+function _gv_bridge(v::BitVector)
+    w = copy(v); last_s = NaN; last_i = 0
+    for k in _GV_ORD
+        v[k] || continue
+        sk = GPLVIS_SEGS[k]
+        if last_i > 0 && sk - last_s <= GPLVIS_GAP
+            for j in _GV_ORD; (last_s < GPLVIS_SEGS[j] < sk) && (w[j] = true); end
+        end
+        last_s = sk; last_i = k
+    end
+    w
+end
+const OBJVIS = Union{Nothing,BitVector}[(GPLVIS_ALL || (GPLVIS_VEIL && isveil(OBJECTS[k][5]))) ?
+                                         (v = get(GPLVIS_VIS, OBJNODE[k], nothing); v === nothing ? nothing : _gv_bridge(v)) : nothing for k in eachindex(OBJNODE)]
 const _GV_R = length(_GV_S) > 2 ? (_GV_S[end] + (_GV_S[end] - _GV_S[end-1])) / LAPLEN : 1.0    # GPL dlong per our lap metre
 function gplvis_seg(ex, ez)     # the camera's GPL segment from the eye position (render coords), 0 = unknown (draw all)
     (GPLVIS && !isempty(_GV_S)) || return 0
