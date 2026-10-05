@@ -83,3 +83,24 @@ class NetTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BuildTest(unittest.TestCase):
+    """Backlog 28: a guest from a different build is refused, and both sides are told why."""
+    def test_different_build_is_refused(self):
+        host, guest = MainWindow(), MainWindow()
+        try:
+            self.assertTrue(host.start_hosting("Ann", PORT + 1, "w"))
+            host.link.build = "aaaa11112222"
+            told = []
+            guest.start_joining("Bob", "127.0.0.1", PORT + 1)
+            guest.link.build = "bbbb33334444"
+            guest.link.closed.connect(told.append)
+            self.assertTrue(pump(lambda: told, 5.0))
+            self.assertIn("aaaa11112222", told[0])
+            self.assertIn("bbbb33334444", told[0])
+            self.assertNotEqual(guest.game.mode, "net")
+        finally:
+            for w in (guest, host):
+                w.close()
+            pump(lambda: False, 0.3)
