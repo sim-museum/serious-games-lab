@@ -27,19 +27,21 @@ def configured():
         return False
     if os.environ.get("SGW_URL"):
         return True
-    try:
-        with open(os.path.expanduser("~/.config/sgweek/url")) as f:
-            return bool(f.readline().strip())
-    except OSError:
-        return False
+    for path in ("~/.config/sgw/url", "~/.config/sgweek/url"):   # second: read-only fallback, setups before 2026-10-05
+        try:
+            with open(os.path.expanduser(path)) as f:
+                return bool(f.readline().strip())
+        except OSError:
+            continue
+    return False
 
 
 def find_sgw():
-    """The sgw command line: $SGW_BIN, the AppImage's own, ~/sgweek/sgw.py, ~/serious-games-week/sgw.py, or `sgw` on PATH."""
+    """The sgw command line: $SGW_BIN, the AppImage's own, ~/serious-games-week/sgw.py, or `sgw` on PATH."""
     cands = [os.environ.get("SGW_BIN")]
     if os.environ.get("APPDIR"):
         cands.append(os.path.join(os.environ["APPDIR"], "usr", "bin", "sgw"))
-    cands += [os.path.expanduser("~/sgweek/sgw.py"), os.path.expanduser("~/serious-games-week/sgw.py")]
+    cands += [os.path.expanduser("~/serious-games-week/sgw.py")]
     for c in cands:
         if c and os.path.isfile(c):
             return [sys.executable, c] if c.endswith(".py") else [c]
