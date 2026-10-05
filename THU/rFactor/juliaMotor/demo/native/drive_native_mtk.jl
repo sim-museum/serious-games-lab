@@ -4477,8 +4477,27 @@ const WIND_ALPHA   = parse(Float32, get(ENV,"JM_WIND_ALPHA","0.55"))      # PO: 
 # gold's matte tan, not a bright plank (verified vs 260801 cockpit gold).  JM_WIND_B/A tune.
 const WIND_B = parse(Float32, get(ENV,"JM_WIND_B","0.45"))
 const WIND_A = parse(Float32, get(ENV,"JM_WIND_A","0.45"))
+# MIRROR-GOLD-1 (PO 2026-10-04: "fix cockpit mirror location/orientation compared to gold standard"): SPREAD was a
+# non-uniform SCALE of z, so besides pushing the pair apart it stretched each disc sideways by the same factor -- the
+# discs drew as 2:1 flat ellipses whatever the tilt, where the gold's are round and face the driver. Each disc is now
+# MOVED out (its vertices shifted so its centre sits SPREAD x as far from the centreline) and the scale is uniform.
+# The live-glass quads are built from these same vertices, so they follow. Placement re-fitted to the gold WG cockpit
+# (260915 race video, same spot as JM_SHOTS 1560): discs ~8 % in from each edge, centred at the front tyres' mid height.
+let spread = MIRROR_SPREAD
+    for side in (-1, 1)
+        zs = Float32[]
+        for p in MIRRORP, i in 1:11:length(p.verts)-10
+            sign(p.verts[i+2]) == side && push!(zs, p.verts[i+2])
+        end
+        isempty(zs) && continue
+        dz = (sum(zs)/length(zs)) * (spread - 1f0)
+        for p in MIRRORP, i in 1:11:length(p.verts)-10
+            sign(p.verts[i+2]) == side && (p.verts[i+2] += dz)
+        end
+    end
+end
 const MIRRORMAT = Render.translate(Float32[MIRROR_DX,MIRROR_DY,0]) *
-                  Render.translate(MCEN) * Render.rotz(MIRROR_TILT) * Render.scalexyz(MIRROR_SCALE,MIRROR_SCALE,MIRROR_SCALE*MIRROR_SPREAD) * Render.translate(-MCEN)
+                  Render.translate(MCEN) * Render.rotz(MIRROR_TILT) * Render.scalexyz(MIRROR_SCALE,MIRROR_SCALE,MIRROR_SCALE) * Render.translate(-MCEN)
 println(length(TRACK), " track parts + ", length(CARP), " Lotus body parts")
 const BODY_OFF = Float32[-0.55, 0.30, 0.0]     # centre body on X, lift onto the wheels
 # Visual suspension-travel gain: amplifies the chassis dive/squat/roll the wheels FLOAT against, so the
@@ -5630,12 +5649,12 @@ textprog = Render.text_program(); (textvao, textvbo) = Render.hud_buffers()
 FONT = TEXT_HUD ? Render.load_font(joinpath(@__DIR__, "assets"), 18) : nothing
 TEXT_HUD && FONT === nothing && println("  [texthud] no font atlas under demo/native/assets -- text overlay off (run JuliaMotorMTK/tools/make_font_atlas.py)")
 # TRACKSEG-1 (PO 2026-10-04): GPL's Nürburgring names each section of the lap on trackside boards (Flugplatz,
-# Schwedenkreuz, Hohe Acht ...). Every track gets the same as a board-like plate at the top centre of the 3-D
-# view for SEGNAME_SECS seconds on entering a section. Names and positions: track_sections.jl.
+# Schwedenkreuz, Hohe Acht ...). Every track gets the same: the name, centred in the timing band above the 3-D
+# view, for SEGNAME_SECS seconds on entering a section. Names and positions: track_sections.jl.
 # JM_SEGNAME_SECS=0 turns it off.
 include(joinpath(@__DIR__, "track_sections.jl"))
 const SEGNAME_SECS = parse(Float64, get(ENV, "JM_SEGNAME_SECS", "3.0"))
-const SEGFONT = FONT === nothing ? nothing : something(Render.load_font(joinpath(@__DIR__, "assets"), 40), FONT)
+const SEGFONT = FONT === nothing ? nothing : something(Render.load_font(joinpath(@__DIR__, "assets"), 32), FONT)
 const SECTIONS = isdefined(Main, :LAPLEN) ? track_sections(TRACKSEL, LAPLEN) : Tuple{Float64,String}[]
 const SEG = Ref((0, "", -1.0e9))                   # (current section index, banner text, banner start time)
 isempty(SECTIONS) || println("  [trackseg] ", length(SECTIONS), " named sections for ", TRACKSEL)
@@ -10676,13 +10695,45 @@ function main()
         # judges the transformed local AABB (onroad_fp), so the census must too; the origin test flagged
         # 166 Ring objects whose origin sits on the asphalt EDGE (|lat| 4.0-4.9) with every vertex beyond it.
         # Footprint = the instance's local (x,z) corners rotated by its yaw (as JM_FOOTPRINT does).
+        # ROAD-1 S7 (2026-10-04): a mesh counts only where its footprint stands >= SWEEP_DEPTH INSIDE the tarmac
+        # (tarmac at the point and SWEEP_DEPTH away in all four directions). Any tarmac at all flagged GPL's own verge
+        # panels standing on the outermost asphalt (the Ring's xk_flat bush panels at lat 5-7, ~260 of the 396 points
+        # once RING-GOLD-1 turned them to run along the road) -- objects the renderer's onroad_fp keeps (> 4.1 m),
+        # so the two instruments disagreed. The footprint is sampled along every edge between its points too, so
+        # a panel whose corners sit off the road but whose span crosses it is still caught. JM_SWEEP_DEPTH=0 = old.
+        SWEEP_DEPTH = parse(Float64, get(ENV, "JM_SWEEP_DEPTH", "1.0"))
+        tarmac_deep(x, z) = tarmac_at(x, z) && (SWEEP_DEPTH <= 0 ||
+            all(((dx, dz),) -> tarmac_at(x + dx, z + dz), ((SWEEP_DEPTH, 0.0), (-SWEEP_DEPTH, 0.0), (0.0, SWEEP_DEPTH), (0.0, -SWEEP_DEPTH))))
         mesh_on_tarmac(nm, ox, oz) = begin
             vs = get(OBJ_LVERTS, nm, nothing)
-            (vs === nothing || isempty(vs)) && return tarmac_at(ox, oz)
+            (vs === nothing || isempty(vs)) && return tarmac_deep(ox, oz)
             th = get(OBJ_YAW, (round(Float64(ox), digits=2), round(Float64(oz), digits=2)), 0.0); c_, s_ = cos(th), sin(th)
-            any(((lx, lz),) -> tarmac_at(Float64(ox) + lx*c_ + lz*s_, Float64(oz) - (-lx*s_ + lz*c_)), vs)
+            w(lx, lz) = (Float64(ox) + lx*c_ + lz*s_, Float64(oz) - (-lx*s_ + lz*c_))
+            pts = [w(lx, lz) for (lx, lz) in vs]
+            if length(pts) <= 16                                   # spans between footprint points, every ~1 m
+                for i in 1:length(pts), j in i+1:length(pts)
+                    (a, b) = (pts[i], pts[j]); n = ceil(Int, hypot(b[1]-a[1], b[2]-a[2]))
+                    for k in 1:n-1; push!(pts, (a[1] + (b[1]-a[1])*k/n, a[2] + (b[2]-a[2])*k/n)); end
+                end
+            end
+            any(p -> tarmac_deep(p[1], p[2]), pts)
         end
-        kept_solid = [(nm,ox,oz,olat(ox,oz),objdy(ox,oz,oy),live_r(ox,oz)) for (nm,ox,oz,oy,kind,issolid) in OBJINSTS if issolid && live_r(ox,oz) > 0]
+        # ROAD-1 S7: SOLIDS judged as the PHYSICS has them -- every live entry of SOLIDS, its real shape (box or disc,
+        # solid_gap), any tarmac point inside it. Reading them from OBJINSTS by placement origin read every box as a
+        # disc (the Ring's shrub_s2: a 7.2 m wall-box along the verge at lat 5.8 counted as a 1.5 m disc reaching
+        # the road) and silently skipped every box re-centred off its origin (live_r = -1).
+        solid_on_tarmac(k) = begin
+            (ox, oz, r, _) = SOLIDS[k]; b = k <= length(SOLIDBOX) ? SOLIDBOX[k] : nothing
+            R = (b === nothing ? r : hypot(b[1], b[2])) + 0.1; n = max(2, ceil(Int, 4R))
+            for ix in -n:n, iz in -n:n
+                px_ = ox + R*ix/n; pz_ = oz + R*iz/n
+                solid_gap(px_, pz_, k)[1] < 0 && tarmac_at(px_, pz_) && return true
+            end
+            false
+        end
+        kept_solid = [(k <= length(SOLIDNAMES) ? SOLIDNAMES[k] : "solid$k", SOLIDS[k][1], SOLIDS[k][2], olat(SOLIDS[k][1], SOLIDS[k][2]),
+                       0.0, SOLIDS[k][3], k) for k in eachindex(SOLIDS) if SOLIDS[k][3] > 0]
+        solid_hit = Dict(k => (use_tarmac ? solid_on_tarmac(k) : abs(lat) < ROAD_HALFW) for (nm,ox,oz,lat,dy,r,k) in kept_solid)
         n_inert = count(((nm,ox,oz,oy,kind,issolid),) -> issolid && live_r(ox,oz) <= 0, OBJINSTS)
         println("  census frame: ", use_tarmac ? "tarmac (ROADHAT + on_track)" : "corridor |lat| < ROAD_HALFW-1",
                 "  live solids=", length(kept_solid), "  inert by clearance=", n_inert)
@@ -10700,8 +10751,8 @@ function main()
             top[3] || push!(flags, "OFF-HAT(hole)")
             (top[3] && prevtop[3] && abs(top[1]-prevtop[1]) > 3.0) && push!(flags, "WALL/CLIFF Δh=$(round(top[1]-prevtop[1],digits=1))m")
             (!hr.found || abs(hr.lateral) > ROAD_HALFW) && push!(flags, "FALSE-GRASS lat=$(hr.found ? round(hr.lateral,digits=1) : "MISS")")
-            sobs = ["$nm(lat=$lat,dy=$dy,r=$(round(r,digits=1)))" for (nm,ox,oz,lat,dy,r) in kept_solid if hypot(ox-px, oz-pz) < ROAD_HALFW + r && dy < OBJ_MAX_DY &&
-                    (use_tarmac ? solid_reaches(ox, oz, r) : abs(lat) < ROAD_HALFW)]
+            sobs = ["$nm(lat=$lat,r=$(round(r,digits=1)))" for (nm,ox,oz,lat,dy,r,k) in kept_solid
+                    if hypot(ox-px, oz-pz) < ROAD_HALFW + r + 8.0 && solid_hit[k]]
             mobs = ["$nm(lat=$lat,dy=$dy)" for (nm,ox,oz,lat,dy) in kept_mesh if hypot(ox-px, oz-pz) < ROAD_HALFW && dy < OBJ_MAX_DY && (use_tarmac ? mesh_on_tarmac(nm, ox, oz) : abs(lat) < BLOCK_LAT)]
             bobs = ["$nm(lat=$lat,dy=$dy)" for (nm,ox,oz,lat,dy) in kept_bb   if hypot(ox-px, oz-pz) < ROAD_HALFW && dy < OBJ_MAX_DY && (use_tarmac ? tarmac_at(ox, oz) : abs(lat) < BLOCK_LAT)]
             isempty(sobs) || push!(flags, "SOLID-ON-ROAD(collidable!): " * join(unique(sobs)[1:min(end,4)], ","))
@@ -13808,17 +13859,15 @@ function main()
                 end
             end
             Render.text_draw(textprog, textvao, textvbo, FONT, tv, W, H)
-            # TRACKSEG-1: the section board, under the timing band at the top centre.
+            # TRACKSEG-1: the section name, centred in the black timing band above the 3-D view. PO 2026-10-04 (2):
+            # "less obtrusive ... higher vertically ... no colored text window behind the words, about the same contrast
+            # (but larger font) as the other text above the 3D window" -- the band's own light grey, a larger regular face.
             if !isempty(SECTIONS) && SEGNAME_SECS > 0
                 SEG[] = section_update(SECTIONS, cs.lapdist, LAPLEN, cs.t, SEG[]...)
                 if cs.t - SEG[][3] < SEGNAME_SECS
-                    msg = SEG[][2]; tw = Render.text_width(SEGFONT, msg); pad = 16.0
-                    bw = tw + 2pad; bh = SEGFONT.lineh + 10.0; bx = (W - bw)/2; by = nrows*FONT.lineh + 24.0
-                    sv = Float32[]
-                    Render.hquad!(sv, bx - 3, by - 3, bw + 6, bh + 6, (0.05, 0.05, 0.05))     # black rim, as on GPL's boards
-                    Render.hquad!(sv, bx, by, bw, bh, (0.93, 0.93, 0.90))
-                    Render.hud_draw(hudprog, hudvao, hudvbo, sv, W, H)
-                    st = Float32[]; Render.text!(st, SEGFONT, bx + pad, by + 4, msg, (0.05, 0.05, 0.05))
+                    msg = SEG[][2]; tw = Render.text_width(SEGFONT, msg)
+                    bandh = nrows*FONT.lineh + 12.0
+                    st = Float32[]; Render.text!(st, SEGFONT, (W - tw)/2, max(2.0, (bandh - SEGFONT.lineh)/2), msg, (0.95, 0.95, 0.95))
                     Render.text_draw(textprog, textvao, textvbo, SEGFONT, st, W, H)
                 end
             end

@@ -11,7 +11,10 @@ include(joinpath(S, "ibt.jl"));       using .IBT
 include(joinpath(S, "setup.jl"));     using .Setup
 include(joinpath(S, "drive_rt3d.jl")); using .DriveRT3D
 
-const STORE = let gold = "/home/admin/gold standard/julia racer",
+# The PO's gold store, in THIS user's home (it was hard-coded to the build box's /home/admin, so on any other
+# machine the gate fell back to the empty data/iracing and failed every check with "0 file(s)" -- 2026-10-04).
+# JM_IBT_STORE overrides; the repo copy is the last resort.
+const STORE = let gold = get(ENV, "JM_IBT_STORE", expanduser("~/gold standard/julia racer")),
                   repo = normpath(joinpath(@__DIR__, "..", "..", "data", "iracing"))
     isdir(gold) ? gold : repo
 end

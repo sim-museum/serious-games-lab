@@ -9,7 +9,7 @@ baked here with PIL and shipped as two small files the sim reads with plain `rea
   font<px>.txt  "W H lineheight ascent" then one line per glyph: "code x y w h xoff yoff adv"
 Usage: make_font_atlas.py [px=18] [ttf]
 TRACKSEG-1 (2026-10-04): Latin-1 (160-255) is baked too, for the section names (Südkehre, Döttinger Höhe, La
-Carrière); the banner uses a second, bold atlas: make_font_atlas.py 40 .../DejaVuSans-Bold.ttf
+Carrière); the section name uses a second, larger atlas: make_font_atlas.py 32
 """
 import sys, os
 from PIL import Image, ImageDraw, ImageFont
