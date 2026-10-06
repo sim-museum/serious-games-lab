@@ -233,3 +233,18 @@ straight into the patched lc0 and Nibbler without TensorFlow.
   Elo limiter separates levels far more steeply than any linear correction. Strength needs a different mechanism:
   the first topic for CM's next retrospective (options include a per-level node cap with MultiPV sampling, or
   Maia-style human networks under the Kramnik lc0).
+- **NN-3 (10-06): the pipeline is done; the data is being generated** (four processes, toward about a million
+  positions).
+  - `tools/gen_training_data.py`: Fairy-Stockfish Kramnik self-play from grandmaster book lines plus random moves.
+    Each position gets a soft policy target from MultiPV-8 at 10,000 nodes; games end by mate or by the draw rules,
+    or are adjudicated by resignation.
+  - `lc0 kramnik-convert`, an lc0 mode in the patch: replays each game with lc0's own Kramnik board and writes lc0
+    V6 training chunks with lc0's own encoder (classical 112 planes, `fen_only`) and lc0's own policy index.
+  - Check, on 50 games (3,745 positions): every record decodes, and for every position the number of legal moves
+    equals chessIQ's, the policy sums to 1, and the side to move and the result sign are right.
+- **NN-4 (10-06): the network format is proven; training waits for the data.**
+  - `nn/lc0net.py` is a PyTorch Leela network (SE-ResNet with lc0's classical heads, WDL) that saves in lc0's
+    format (LINEAR16, batch norm folded) and reads V6 records.
+  - Check: lc0 and PyTorch compute the same network. On 312 positions, lc0's per-move policy (VerboseMoveStats,
+    temperature 1) and root W−L/D differ from PyTorch's by at most 0.067 percentage points and 0.0026. A different
+    PyTorch network against the same file differs by 17.8 points (`nn/verify_export.py`).
