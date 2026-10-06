@@ -22,19 +22,21 @@ if [ -z "$NET" ]; then
 fi
 [ -f "$NET" ] || { echo "No network found ($NET)" >&2; exit 1; }
 
+LC0="$ENG/lc0-kramnik"; BACKEND=blas
+if [ -x "$ENG/lc0-kramnik-gpu" ]; then LC0="$ENG/lc0-kramnik-gpu"; BACKEND=cuda-fp16; fi   # build_lc0_gpu.sh: ~100x faster
 mkdir -p "$CONF/Nibbler"
-python3 - "$CONF/Nibbler" "$ENG/lc0-kramnik" "$NET" "$(nproc)" <<'PYEOF'
+python3 - "$CONF/Nibbler" "$LC0" "$NET" "$(nproc)" "$BACKEND" <<'PYEOF'
 import json, os, sys
-d, eng, net, cpus = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4])
+d, eng, net, cpus, backend = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4]), sys.argv[5]
 cfg_path, eng_path = os.path.join(d, "config.json"), os.path.join(d, "engines.json")
 cfg = json.load(open(cfg_path)) if os.path.exists(cfg_path) else {}
 cfg["path"] = eng                                             # always the Kramnik lc0
 json.dump(cfg, open(cfg_path, "w"), indent=1)
 engines = json.load(open(eng_path)) if os.path.exists(eng_path) else {}
 e = engines.setdefault(eng, {"args": [], "options": {}, "search_nodes": None, "search_nodes_special": 10000})
-e["options"].update({"WeightsFile": net, "Backend": "blas", "Threads": max(1, cpus - 1)})
+e["options"].update({"WeightsFile": net, "Backend": backend, "Threads": max(1, cpus - 1) if backend == "blas" else 2})
 json.dump(engines, open(eng_path, "w"), indent=1)
-print("network:", os.path.basename(net))
+print("network:", os.path.basename(net), "| backend:", backend)
 PYEOF
 
 cd "$ENG/nibbler-kramnik"

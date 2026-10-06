@@ -6,3 +6,8 @@ lc0-kramnik
 build_lc0.log
 nibbler-kramnik/
 nets/
+cuda-env/
+cuda/
+lc0-kramnik-cuda
+lc0-kramnik-gpu
+build_lc0_gpu.log

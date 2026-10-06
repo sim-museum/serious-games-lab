@@ -110,7 +110,9 @@ class PersonalityEngine:
 
 
 # ---- Leela (lc0) opponents: the Kramnik lc0 with a network (EPIC NN, sprint NN-6) ---------------------------------
-LC0 = os.environ.get("CHESSIQ_LC0", os.path.join(ROOT, "engine", "lc0-kramnik"))
+LC0_GPU = os.path.join(ROOT, "engine", "lc0-kramnik-gpu")          # engine/build_lc0_gpu.sh (NN-9): ~100x faster
+LC0 = os.environ.get("CHESSIQ_LC0") or (LC0_GPU if os.access(LC0_GPU, os.X_OK) else os.path.join(ROOT, "engine", "lc0-kramnik"))
+LC0_BACKEND = "cuda-fp16" if LC0 == LC0_GPU else "blas"
 NETS = os.path.join(ROOT, "engine", "nets")
 
 
@@ -126,7 +128,7 @@ class LeelaEngine(PersonalityEngine):
         self.p = personality
         self.rand = random.Random(seed)
         self.lock = threading.Lock()
-        args = [LC0, "--weights=" + personality.net, "--backend=blas", "--threads=2"]
+        args = [LC0, "--weights=" + personality.net, "--backend=" + LC0_BACKEND, "--threads=2"]
         self.proc = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                      text=True, bufsize=1)
         self._send("uci"); self._wait("uciok")
