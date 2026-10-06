@@ -143,3 +143,14 @@ them from the player's own installation when present, and otherwise ships a rost
     (`tools/clock_selfplay.py`): 62 moves each, and both clocks equal base + increments − measured time to within
     15 ms; the engines ended with 11 and 13 s left. In the app, off-screen: a rated game whose player's flag fell
     ended "White ran out of time — Black wins", 0-1, and recorded the rated loss.
+- **CM-6 (10-06): the opening helper is done; the full-game check is pending** (it runs after the calibration games,
+  so the two do not share the CPU).
+  - `tools/build_book.py` rebuilds the book from all 25,072 grandmaster games, each cut at its first castling move
+    (every game is legal Kramnik chess until then). The book now has 56,920 positions (it had 4,903 from 635 games),
+    and every move parsed. The start-position shares (e4 44.7%, d4 37.4%) match `grandmasterOpeningMove.sh`'s own
+    example.
+  - The computer picks book moves in proportion to the grandmasters' choices (20,000 draws: e4 44.8%, d4 37.6%) and
+    still avoids last game's choice.
+  - The new panel lists the grandmasters' moves with their shares, follows review, and shows in rated games.
+  - Not used: Chessmaster's per-personality opening books (`*.OBK`, a format still to decode). Every personality
+    opens from the grandmaster book.

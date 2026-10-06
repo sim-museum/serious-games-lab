@@ -285,6 +285,13 @@ class MainWindow(QMainWindow):
         self.clock_label = QLabel()
         self.clock_label.setStyleSheet("font-family: monospace; font-size: 13pt")
         side.addWidget(self.clock_label)
+        # CM-6: the opening helper -- what the grandmasters played in this position (also in rated games, as in
+        # Chessmaster, whose coach may show opening moves during ranked play)
+        self.openings = QLabel()
+        self.openings.setWordWrap(True)
+        self.openings.setTextFormat(Qt.TextFormat.RichText)
+        self.openings.setStyleSheet("font-size: 9pt")
+        side.addWidget(self.openings)
         self.tick = QTimer(self)
         self.tick.timeout.connect(self._on_tick)
         self.tick.start(200)
@@ -937,6 +944,15 @@ class MainWindow(QMainWindow):
         bw.update()
         self.status.setText(self._status_html(thinking))
         self._render_moves(ply)
+        stats = g.book_stats(ply)
+        if stats:
+            total = sum(n for _, n, _ in stats)
+            top = [x for x in stats if x[2] >= 1.0][:6] or stats[:3]
+            shown = " · ".join("<b>%s</b> %.0f%%" % (m, pct) for m, _, pct in top)
+            more = " · %d rarer" % (len(stats) - len(top)) if len(stats) > len(top) else ""
+            self.openings.setText("Grandmasters here (%d game%s): %s%s" % (total, "s" if total != 1 else "", shown, more))
+        else:
+            self.openings.setText("<span style='color:gray'>Out of the grandmaster book.</span>" if ply else "")
         self.offer_btn.setEnabled(not g.over)
         self.resign_btn.setEnabled(not g.over)
         if g.over and self.rated is not None and not self.rated["recorded"]:
