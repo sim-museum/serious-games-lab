@@ -35,7 +35,9 @@ class PersonalityEngine:
         self._send("setoption name UCI_Variant value kramnik")
         for k, v in personality.engine_options().items():
             self._send("setoption name %s value %s" % (k, v))
-        self.multipv = 500 if personality.randomness >= 100 else 4 if personality.randomness > 0 else 1
+        self.rnd_level = personality.total_randomness() if hasattr(personality, "total_randomness") else personality.randomness
+        self.nodes = personality.search_nodes() if hasattr(personality, "search_nodes") else 0
+        self.multipv = 500 if self.rnd_level >= 100 else 4 if self.rnd_level > 0 else 1
         self._send("setoption name MultiPV value %d" % self.multipv)
         self._send("isready"); self._wait("readyok")
 
@@ -67,7 +69,9 @@ class PersonalityEngine:
             go = "go"
             if self.p.max_depth and self.p.max_depth < 99:
                 go += " depth %d" % self.p.max_depth
-            if clock:
+            if self.nodes:                  # the measured strength ladder (CM-8): a fixed node count per rating
+                go += " nodes %d" % self.nodes
+            elif clock:
                 go += " wtime %d btime %d winc %d binc %d" % (clock["wtime"], clock["btime"], clock["winc"], clock["binc"])
             elif movetime_ms:
                 go += " movetime %d" % movetime_ms
@@ -87,7 +91,7 @@ class PersonalityEngine:
                 return None           # the engine was closed under us (a new game or opponent): nothing to play
         if best in ("(none)", "0000"):
             return None
-        r = self.p.randomness
+        r = self.rnd_level
         if r >= 100 and lines:
             return self.rand.choice([mv for _, mv in lines.values()])
         if r > 0 and len(lines) > 1 and self.rand.random() < r / 200:

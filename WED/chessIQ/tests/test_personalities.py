@@ -57,13 +57,13 @@ class Options(unittest.TestCase):
         self.assertTrue(all(v == 100 for k, v in o.items() if k.endswith(" Own") or k.endswith(" Opp")))
         self.assertEqual((o["CM Contempt"], o["CM Attack"], o["UCI_LimitStrength"]), (0, 0, "false"))
 
-    def test_rating_limits_strength(self):
-        o = P.Personality("W", 300).engine_options()
-        self.assertEqual((o["UCI_LimitStrength"], o["UCI_Elo"]), ("true", P.engine_elo(300)))
-        self.assertEqual(P.Personality("Z", 1).engine_options()["UCI_Elo"], 631)   # compressed, above the floor of 500
-        self.assertEqual(P.Personality("M", 1500).engine_options()["UCI_Elo"], 1500)  # the anchor maps to itself
-        self.assertEqual(P.Personality("M", 1900).engine_options()["UCI_Elo"], P.engine_elo(1900))
-        self.assertLess(P.engine_elo(1900) - P.engine_elo(1500), 400)              # compressed (CM-3)
+    def test_rating_sets_nodes_on_the_ladder(self):
+        self.assertEqual(P.Personality("W", 300).engine_options()["UCI_LimitStrength"], "false")
+        self.assertEqual(P.level_for(1163), (16, 0))                               # the floor
+        n, extra = P.level_for(300)
+        self.assertEqual(n, 16); self.assertGreater(extra, 0)                       # below it: randomness
+        self.assertLess(P.level_for(1600)[0], P.level_for(2000)[0])                 # stronger = more nodes
+        self.assertEqual(P.Personality("E", 2850).search_nodes(), 0)                # full strength on the clock
 
     def test_material_as_percent(self):
         p = P.Personality("K", 2000, material={**{x: (P.BASE[x], P.BASE[x]) for x in P.PIECES}, "Knight": (45, 30)})

@@ -362,3 +362,19 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
   - Check, off-screen: closed after `e4 e5`, so adjourned with the rating untouched; relaunch resumed it (moves and
     White's 603 s restored); resigning changed the rating once (1400 → 1126), stored the PGN and cleared the
     adjourned game.
+- **CM-8 (10-06): done.** Strength is now set by search nodes on a measured ladder, not by the engine's Elo limiter.
+  - The ladder: 26 matches of 40 games between Fairy-Stockfish node levels from 16 to 65,536, fitted jointly. It
+    gives about 195 Elo per doubling of nodes, with a floor below about 45 nodes (`docs/calibration/`).
+  - Kramnik chess spreads strength wide: 16 to 65,536 nodes is about 2,140 Elo, which is why the limiter looked so
+    steep.
+  - Anchor: Maia 1500 placed itself at the same ladder point against 64, 181 and 512 nodes (Elo 324, 336, 353), and
+    that point is rating 1500.
+  - Resulting levels: 16 nodes 1,163; 128 nodes 1,493; 1,024 nodes 1,983; 4,096 nodes 2,497; 8,192 nodes 2,702.
+    Below the 16-node floor, a personality strays from the best move more often (provisional: not yet measured).
+- **CM-9 (10-06): done.** Personalities play at `level_for(rating)` with their style knobs on top.
+  - Check, through chessIQ's own engine class (`tools/personality_match.py`): 2000 vs 1600 scored 95% (Elo expects
+    91%; measured +512 ± 247), and 1700 vs 1500 scored 71% (expects 76%; +158 ± 119). Both are within interval.
+    Before the ladder this was 12–0.
+- **CM-12 (10-06), part 1: the opponent picker.** A "Choose…" dialog lists all 198 opponents, filters by type
+  (Chessmaster, chessIQ's own, neural networks) and rating range, searches name or style ("attacker": 23), and
+  shows the biography (read from the player's own Chessmaster files).
