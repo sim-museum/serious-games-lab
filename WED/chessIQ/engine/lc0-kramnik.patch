@@ -196,10 +196,10 @@ index f6d90c0..3b9689d 100644
      } else {
 diff --git a/src/tools/kramnik_convert.cc b/src/tools/kramnik_convert.cc
 new file mode 100644
-index 0000000..2ed2e79
+index 0000000..ef2a5a7
 --- /dev/null
 +++ b/src/tools/kramnik_convert.cc
-@@ -0,0 +1,133 @@
+@@ -0,0 +1,148 @@
 +/*
 +  chessIQ EPIC NN (2026-10-06): convert Kramnik Fairy-Stockfish self-play games into lc0 V6 training chunks,
 +  using lc0's own board (built with -DLC0_KRAMNIK), encoder and policy index -- so the inputs and policy targets
@@ -209,11 +209,13 @@ index 0000000..2ed2e79
 +
 +  Input, one game per block:
 +    G <result: 1 white wins, 0 draw, -1 black wins>
-+    M <uci move> <k> [<uci> <probability>] x k      one line per ply; k = 0 means "no policy target here"
++    M <uci move> <eval> <k> [<uci> <probability>] x k   one line per ply; k = 0 means "no policy target here";
++                                                         eval = the engine's centipawns for the side to move, or x
 +    E
 +  Format: INPUT_CLASSICAL_112_PLANE, history fill "fen_only" (lc0's default), no castling (Kramnik chess).
 +*/
 +
++#include <algorithm>
 +#include <cmath>
 +#include <cstdlib>
 +#include <fstream>
@@ -237,6 +239,8 @@ index 0000000..2ed2e79
 +
 +struct Ply {
 +  std::string played;
++  bool has_eval = false;
++  float q = 0;   // engine evaluation as an expected score in [-1, 1], side to move
 +  std::vector<std::pair<std::string, float>> policy;
 +};
 +
@@ -283,6 +287,12 @@ index 0000000..2ed2e79
 +        d.result_d = 0;
 +      }
 +      d.plies_left = static_cast<float>(n - i);
++      if (ply.has_eval) {        // the engine's view of this position: a value target to blend with the result
++        d.best_q = d.root_q = ply.q;
++        d.best_d = d.root_d = 0;
++      } else {
++        d.best_d = -1;           // marks "no engine evaluation" (a real draw probability is never negative)
++      }
 +      d.played_idx = MoveToNNIndex(played, transform);
 +      d.best_idx = best_idx;
 +      d.visits = 10000;
@@ -316,7 +326,12 @@ index 0000000..2ed2e79
 +    } else if (tag == "M") {
 +      Ply p;
 +      int k = 0;
-+      s >> p.played >> k;
++      std::string ev;
++      s >> p.played >> ev >> k;
++      if (ev != "x") {          // lc0's centipawn <-> expected-score conversion: cp = 90 tan(1.5637541897 q)
++        p.has_eval = true;
++        p.q = std::max(-1.0f, std::min(1.0f, std::atan(std::stof(ev) / 90.0f) / 1.5637541897f));
++      }
 +      for (int j = 0; j < k; ++j) {
 +        std::string u;
 +        float pr;

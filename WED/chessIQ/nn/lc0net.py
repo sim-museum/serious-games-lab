@@ -4,9 +4,11 @@ Structure = lc0's NETWORK_SE_WITH_HEADFORMAT with the classical heads, ReLU thro
   input  3x3 conv 112 -> C (+BN)
   tower  B residual blocks: 3x3 conv (+BN) ReLU, 3x3 conv (+BN), squeeze-excitation (avg pool -> FC C/ratio ReLU
          -> FC 2C: sigmoid gate on the first C, bias on the second C), + skip, ReLU
-  policy 1x1 conv C -> 32 (+BN) ReLU, FC 32*64 -> 1858 (lc0's move index order: POLICY_CLASSICAL)
+  policy classical: 1x1 conv C -> 32 (+BN) ReLU, FC 32*64 -> 1858 (lc0's move index order: POLICY_CLASSICAL)
+         conv:      3x3 conv C -> C (+BN) ReLU, 3x3 conv C -> 80 (+bias), lc0's fixed map of 73x64 -> 1858
+                    (POLICY_CONVOLUTION, as in Leela's own networks -- load_lc0() reads those for fine-tuning)
   value  1x1 conv C -> 32 (+BN) ReLU, FC 32*64 -> 128 ReLU, FC 128 -> 3 (win/draw/loss: VALUE_WDL)
-Batch norm is folded into the convolutions on export; lc0 then uses the weights and biases as given.
+Batch norm is stored alongside each convolution, as in lc0's own networks; lc0 folds it at load time.
 Inputs: lc0's INPUT_CLASSICAL_112_PLANE, square index a1=0 .. h8=63 as row*8+file on an 8x8 grid.
 """
 import gzip
@@ -61,21 +63,36 @@ class Block(nn.Module):
         return self.se(self.c2(F.relu(self.c1(x))), x)
 
 
+CONV_MAP = np.load(os.path.join(os.path.dirname(os.path.abspath(__file__)), "conv_policy_map.npy"))   # 73*64 -> idx
+
+
 class LeelaNet(nn.Module):
-    def __init__(self, blocks=6, channels=64, se_ratio=4):
+    def __init__(self, blocks=6, channels=64, se_ratio=4, policy="classical"):
         super().__init__()
-        self.blocks, self.channels, self.se_ratio = blocks, channels, se_ratio
+        self.blocks, self.channels, self.se_ratio, self.policy = blocks, channels, se_ratio, policy
         self.input = ConvBN(112, channels, 3)
         self.tower = nn.Sequential(*[Block(channels, se_ratio) for _ in range(blocks)])
-        self.pol_conv = ConvBN(channels, 32, 1)
-        self.pol_fc = nn.Linear(32 * 64, 1858)
+        if policy == "conv":
+            self.pol1 = ConvBN(channels, channels, 3)
+            self.pol2 = nn.Conv2d(channels, 80, 3, padding=1, bias=True)
+            src = np.zeros(1858, dtype=np.int64)
+            for i, j in enumerate(CONV_MAP):
+                if j >= 0:
+                    src[j] = i
+            self.register_buffer("pol_src", torch.from_numpy(src), persistent=False)
+        else:
+            self.pol_conv = ConvBN(channels, 32, 1)
+            self.pol_fc = nn.Linear(32 * 64, 1858)
         self.val_conv = ConvBN(channels, 32, 1)
         self.val_fc1 = nn.Linear(32 * 64, 128)
         self.val_fc2 = nn.Linear(128, 3)
 
     def forward(self, x):
         x = self.tower(F.relu(self.input(x)))
-        p = self.pol_fc(F.relu(self.pol_conv(x)).flatten(1))
+        if self.policy == "conv":
+            p = self.pol2(F.relu(self.pol1(x))).flatten(1)[:, self.pol_src]
+        else:
+            p = self.pol_fc(F.relu(self.pol_conv(x)).flatten(1))
         v = self.val_fc2(F.relu(self.val_fc1(F.relu(self.val_conv(x)).flatten(1))))
         return p, v                                   # policy logits (1858), WDL logits (win, draw, loss)
 
@@ -91,9 +108,16 @@ def _layer(layer, t):
 
 
 def _conv(block, convbn):
-    w, b = convbn.folded()
-    _layer(block.weights, w)
-    _layer(block.biases, b)
+    """Store the conv and its batch norm separately, as lc0's own networks do; lc0 folds them at load time in full
+    precision. (Folding first and then quantizing to 16 bits coarsened whole layers when one channel's variance was
+    tiny: a round trip of LD2 drifted by 1.3 percentage points of policy.)"""
+    bn = convbn.bn
+    _layer(block.weights, convbn.conv.weight)
+    _layer(block.biases, torch.zeros_like(bn.running_mean))
+    _layer(block.bn_means, bn.running_mean)
+    _layer(block.bn_stddivs, bn.running_var)          # lc0's "stddivs" are variances (it adds eps and takes sqrt)
+    _layer(block.bn_gammas, bn.weight)
+    _layer(block.bn_betas, bn.bias)
 
 
 def save_lc0(net, path):
@@ -107,7 +131,7 @@ def save_lc0(net, path):
     nf.input = pb.NetworkFormat.INPUT_CLASSICAL_112_PLANE
     nf.output = pb.NetworkFormat.OUTPUT_WDL
     nf.network = pb.NetworkFormat.NETWORK_SE_WITH_HEADFORMAT
-    nf.policy = pb.NetworkFormat.POLICY_CLASSICAL
+    nf.policy = pb.NetworkFormat.POLICY_CONVOLUTION if net.policy == "conv" else pb.NetworkFormat.POLICY_CLASSICAL
     nf.value = pb.NetworkFormat.VALUE_WDL
     nf.moves_left = pb.NetworkFormat.MOVES_LEFT_NONE
     nf.default_activation = pb.NetworkFormat.DEFAULT_ACTIVATION_RELU
@@ -119,13 +143,82 @@ def save_lc0(net, path):
         _conv(r.conv2, blk.c2)
         _layer(r.se.w1, blk.se.fc1.weight); _layer(r.se.b1, blk.se.fc1.bias)
         _layer(r.se.w2, blk.se.fc2.weight); _layer(r.se.b2, blk.se.fc2.bias)
-    _conv(w.policy, net.pol_conv)
-    _layer(w.ip_pol_w, net.pol_fc.weight); _layer(w.ip_pol_b, net.pol_fc.bias)
+    if net.policy == "conv":
+        _conv(w.policy1, net.pol1)
+        _layer(w.policy.weights, net.pol2.weight); _layer(w.policy.biases, net.pol2.bias)
+    else:
+        _conv(w.policy, net.pol_conv)
+        _layer(w.ip_pol_w, net.pol_fc.weight); _layer(w.ip_pol_b, net.pol_fc.bias)
     _conv(w.value, net.val_conv)
     _layer(w.ip1_val_w, net.val_fc1.weight); _layer(w.ip1_val_b, net.val_fc1.bias)
     _layer(w.ip2_val_w, net.val_fc2.weight); _layer(w.ip2_val_b, net.val_fc2.bias)
     with gzip.open(path, "wb") as f:
         f.write(n.SerializeToString())
+
+
+def _dq(layer):
+    """lc0 LINEAR16 layer -> float32 numpy (value = min + q / 65535 * (max - min))."""
+    q = np.frombuffer(layer.params, dtype="<u2").astype(np.float64)
+    return (layer.min_val + q / 65535.0 * (layer.max_val - layer.min_val)).astype(np.float32)
+
+
+def _set_convbn(cb, block, shape):
+    """Load an lc0 ConvBlock into a ConvBN: lc0 computes gamma * (conv + bias - mean) / sqrt(var + eps) + beta."""
+    cb.conv.weight.data = torch.from_numpy(_dq(block.weights).reshape(shape))
+    c = shape[0]
+    bias = _dq(block.biases) if block.biases.params else np.zeros(c, np.float32)
+    if block.bn_means.params:
+        mean, var = _dq(block.bn_means), _dq(block.bn_stddivs)
+        gamma = _dq(block.bn_gammas) if block.bn_gammas.params else np.ones(c, np.float32)
+        beta = _dq(block.bn_betas) if block.bn_betas.params else np.zeros(c, np.float32)
+    else:                         # no batch norm: plain conv + bias
+        mean, var, gamma, beta = np.zeros(c, np.float32), np.full(c, 1 - cb.bn.eps, np.float32), \
+            np.ones(c, np.float32), np.zeros(c, np.float32)
+    cb.bn.running_mean.data = torch.from_numpy(mean - bias)
+    cb.bn.running_var.data = torch.from_numpy(var)
+    cb.bn.weight.data = torch.from_numpy(gamma)
+    cb.bn.bias.data = torch.from_numpy(beta)
+
+
+def load_lc0(path):
+    """A Leela network (classical input, SE tower, convolutional policy, WDL value) as a LeelaNet."""
+    import net_pb2 as pb
+    n = pb.Net()
+    with gzip.open(path, "rb") as f:
+        n.ParseFromString(f.read())
+    nf, w = n.format.network_format, n.weights
+    if nf.input != pb.NetworkFormat.INPUT_CLASSICAL_112_PLANE or nf.value != pb.NetworkFormat.VALUE_WDL \
+            or nf.policy != pb.NetworkFormat.POLICY_CONVOLUTION or len(w.residual) == 0 or not w.residual[0].se.w1.params:
+        raise ValueError("needs classical input, an SE tower, convolutional policy and WDL value: " + path)
+    blocks = len(w.residual)
+    c = len(_dq(w.input.biases)) if w.input.biases.params else len(_dq(w.input.bn_means))
+    se_ch = len(_dq(w.residual[0].se.b1))
+    net = LeelaNet(blocks, c, c // se_ch, policy="conv")
+    _set_convbn(net.input, w.input, (c, 112, 3, 3))
+    for blk, r in zip(net.tower, w.residual):
+        _set_convbn(blk.c1, r.conv1, (c, c, 3, 3))
+        _set_convbn(blk.c2, r.conv2, (c, c, 3, 3))
+        blk.se.fc1.weight.data = torch.from_numpy(_dq(r.se.w1).reshape(se_ch, c))
+        blk.se.fc1.bias.data = torch.from_numpy(_dq(r.se.b1))
+        blk.se.fc2.weight.data = torch.from_numpy(_dq(r.se.w2).reshape(2 * c, se_ch))
+        blk.se.fc2.bias.data = torch.from_numpy(_dq(r.se.b2))
+    _set_convbn(net.pol1, w.policy1, (c, c, 3, 3))
+    pw = _dq(w.policy.weights).reshape(80, c, 3, 3)
+    pbias = _dq(w.policy.biases) if w.policy.biases.params else np.zeros(80, np.float32)
+    if w.policy.bn_means.params:               # fold a batch norm on the final policy conv, if any
+        g = (_dq(w.policy.bn_gammas) if w.policy.bn_gammas.params else 1) / np.sqrt(_dq(w.policy.bn_stddivs) + 1e-5)
+        pw, pbias = pw * g[:, None, None, None], (pbias - _dq(w.policy.bn_means)) * g + \
+            (_dq(w.policy.bn_betas) if w.policy.bn_betas.params else 0)
+    net.pol2.weight.data, net.pol2.bias.data = torch.from_numpy(pw.astype(np.float32)), torch.from_numpy(pbias.astype(np.float32))
+    vc = len(_dq(w.value.biases)) if w.value.biases.params else len(_dq(w.value.bn_means))
+    if vc != 32:
+        raise ValueError("value head has %d filters (expected 32)" % vc)
+    _set_convbn(net.val_conv, w.value, (32, c, 1, 1))
+    net.val_fc1.weight.data = torch.from_numpy(_dq(w.ip1_val_w).reshape(128, 2048))
+    net.val_fc1.bias.data = torch.from_numpy(_dq(w.ip1_val_b))
+    net.val_fc2.weight.data = torch.from_numpy(_dq(w.ip2_val_w).reshape(3, 128))
+    net.val_fc2.bias.data = torch.from_numpy(_dq(w.ip2_val_b))
+    return net.eval()
 
 
 # ---- V6 training records -> tensors ----------------------------------------------------------------------------------
