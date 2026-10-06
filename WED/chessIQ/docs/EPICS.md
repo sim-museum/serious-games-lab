@@ -490,3 +490,25 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
   - **Check: generation 1 vs LD2, 93.5/160 (58.4%), +59 Elo, 95% interval +6 to +116** (40 games seed 11: 24.5;
     120 games seed 23: 69.0). Delivered as `engine/nets/kramnik-sp1.pb.gz`, now the default in `kramnikNibbler.sh`
     and chessIQ's Leela opponent.
+- **NN-11 (10-06): done, no measurable gain.** Generation 2: 3,000 self-play games from generation 1 (282,368 plies,
+  0 illegal), trained from generation 1 on generations 1 and 2 together (527,105 positions), same recipe.
+  **Generation 2 vs generation 1: 82/160 (51%), +9 ± 54 Elo.**
+  - The +59 of generation 1 most likely came from adapting a standard-chess network to Kramnik chess. Later loop
+    steps are small, as in lc0's own runs (a few Elo per network). Confirming +20 needs about 1,000 games a check.
+  - Generation 1 stays the delivered network.
+- **NN-12 (10-06): delivery confirmed.** From a fresh HOME, `kramnikNibbler.sh` runs generation 1 on the GPU (900k
+  nodes in 23 s). On the self-capture test position it prefers `Rg4` (99.1%) to Fairy-Stockfish's self-capture
+  `Rxe4`. That fits a stronger network finding a better move, but it is not proof.
+
+## EPIC NN, retrospective 3 (2026-10-06, end of NN-7..NN-12)
+- **Delivered:** lc0 on the GPU without a system CUDA toolkit (about 100 times faster); Nibbler with its own settings
+  and the strongest measured network; a checked self-play pipeline; `kramnik-sp1`, +59 Elo (95% +6 to +116) over
+  the best standard-chess starting point.
+- **Lessons:**
+  1. Held-out loss measures imitation, not strength. Every claim in this block came from a match.
+  2. Check the teacher first. LD2 already beat the Fairy-Stockfish teacher by +319, so distillation could only hurt.
+  3. Value targets from search values with the draw probability, not game results.
+  4. Size matches to the effect: 40 games resolve about ±110 Elo, 160 games about ±55.
+- **Next block (NN-13..):** run the loop unattended for many generations, with gating by 400-game matches (about 25
+  minutes each). Either a 15x192 network distilled from generation 1's self-play, or a larger window with a smaller
+  learning rate. Measure every promoted network against LD2, so gains add up visibly.
