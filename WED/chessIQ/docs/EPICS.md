@@ -572,3 +572,12 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
     - 600 vs 300 (gap 300): +246 ± 86, 80% (expects 85%).
   - Tests: the rate is monotone with no cliff (steps under 0.05 per 25 points), a random mover at the bottom, and
     random picks always legal and varied.
+- **CM-15 (10-06): done. Opponents think on their clock.**
+  - Strength stays set by nodes. After the search, the app waits up to a player-like time (`think_time` in
+    `app.py`): the remaining time over the moves still to play (at least 12), plus three quarters of the increment,
+    varied between 0.4x and 1.6x. It never exceeds 8% of what is left. Untimed games: 0.8–3 s. A new game cancels
+    the wait.
+  - Check, a full rated 10+3 game in the app against Tasha: she used **499 s over 34 moves (about 15 s a move)**
+    and finished with 203 s, never near a flag. Before this change: about 2 s for the whole game.
+  - Also fixed: the opponent messages said "He declines…" and "his move", although many personalities are women.
+    They now use the opponent's name ("Tasha declines your draw offer", "Tasha to move").

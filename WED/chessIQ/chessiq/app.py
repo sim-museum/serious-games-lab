@@ -2,6 +2,7 @@
 computer, or another player over the network -- found through the Serious Games Week matchmaker."""
 import os
 import random
+import time
 import sys
 
 from PyQt6.QtCore import QRectF, QSettings, Qt, QThread, QTimer, pyqtSignal
@@ -121,6 +122,18 @@ class BoardWidget(QWidget):
                     p.drawText(rect.adjusted(0, 0, -3, -2), Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignRight,
                                "abcdefgh"[c])
         p.end()
+
+
+def think_time(clk, turn, ply, u):
+    """Seconds a personality spends on a move (CM-15). Strength is set by search nodes, so this is only the pause a
+    player would take: on a clock, its remaining time over the moves still to play plus most of the increment, varied
+    by u in [0, 1) between 0.4x and 1.6x, and never more than 8% of what is left; untimed, 0.8-3 s."""
+    if not clk:
+        return 0.8 + 2.2 * u
+    rem = clk["wtime" if turn == "w" else "btime"] / 1000.0
+    inc = clk["winc" if turn == "w" else "binc"] / 1000.0
+    to_go = max(12, 35 - ply // 4)
+    return max(0.4, min((rem / to_go + 0.75 * inc) * (0.4 + 1.2 * u), 0.08 * rem))
 
 
 class ThinkThread(QThread):
@@ -418,7 +431,7 @@ class MainWindow(QMainWindow):
         side.addLayout(row)
         self.offer_bar = QFrame()
         ob = QHBoxLayout(self.offer_bar)
-        self.offer_label = QLabel("He offers a draw.")
+        self.offer_label = QLabel("Your opponent offers a draw.")
         acc = QPushButton("Accept")
         acc.clicked.connect(self.accept_draw)
         dec = QPushButton("Decline")
@@ -481,6 +494,10 @@ class MainWindow(QMainWindow):
         if last in names:
             return names.index(last)
         return min(range(len(self.people)), key=lambda i: abs(self.people[i].rating - 1500)) if self.people else 0
+
+    def _opp_name(self):
+        """The name of the opponent actually playing this game (the picker may already show the next one)."""
+        return self.engine.p.name if self.engine is not None else "The computer"
 
     def _opponent(self):
         name = self.who.currentData()
@@ -761,7 +778,7 @@ class MainWindow(QMainWindow):
                     return
                 self.do_move(bm)
                 if declines:
-                    self.note = "He declines your draw offer — far too early."
+                    self.note = "%s declines your draw offer — far too early." % self._opp_name()
                     self.render()
             QTimer.singleShot(300 + int(random.random() * 400), play)
             return
@@ -770,8 +787,13 @@ class MainWindow(QMainWindow):
             moves, eng, legal = [E.sqname(h["m"].frm) + E.sqname(h["m"].to) + (h["m"].promo or "") for h in g.history], \
                 self.engine, g.legal()
 
+            target = think_time(clk, turn, len(moves), random.random())
+
             def think():                    # the chosen personality (EPIC CM)
+                t0 = time.monotonic()
                 u = eng.choose(moves, clock=clk) if clk else eng.choose(moves, movetime_ms=int(THINK_S * 1000))
+                while time.monotonic() - t0 < target and self.token == tok:   # CM-15: think like a player
+                    time.sleep(0.05)
                 return next((m for m in legal if E.sqname(m.frm) + E.sqname(m.to) + (m.promo or "") == u), None)
         else:
             board, turn_, ep, banned = g.board[:], g.turn, g.ep, g.banned_keys()
@@ -801,14 +823,14 @@ class MainWindow(QMainWindow):
                 return
             self.do_move(m)
             if not g.over:
-                self.note = "He declines your draw offer — play on."
+                self.note = "%s declines your draw offer — play on." % self._opp_name()
                 self.render()
             return
         offer = g.ai_offers_draw(m)
         self.do_move(m)
         if offer and not g.over:
             g.offers = {"count": g.offers["count"] + 1, "last_ply": len(g.history)}
-            self.offer_label.setText("He offers a draw.")
+            self.offer_label.setText("%s offers a draw." % self._opp_name())
             self.offer_bar.show()
 
     def undo(self):
@@ -862,7 +884,7 @@ class MainWindow(QMainWindow):
             self.note = "Too soon to offer again."
         else:
             g.p_offer = {"pending": True, "last_ply": len(g.history)}
-            self.note = "Draw offered — make your move; he will answer with his."
+            self.note = "Draw offered — make your move; %s will answer with theirs." % self._opp_name()
         self.render()
 
     def accept_draw(self):
@@ -936,7 +958,7 @@ class MainWindow(QMainWindow):
         if bad:
             QMessageBox.warning(self, "Load PGN", "Loaded %d move(s); could not interpret \"%s\". The rest was "
                                 "skipped." % (len(g.history), bad))
-        self.maybe_ai()                 # unfinished game and it's his move: he plays on
+        self.maybe_ai()                 # unfinished game and it's the computer's move: it plays on
 
     # ---------------- network ----------------
     def host_dialog(self):
@@ -1154,7 +1176,7 @@ class MainWindow(QMainWindow):
         chk = " <span style='color:#e06666'>(in check)</span>" if g.in_check() else ""
         who = ""
         if g.mode == "ai":
-            who = " — your move" if g.turn == g.human else (" — thinking…" if thinking else " — his move")
+            who = " — your move" if g.turn == g.human else (" — thinking…" if thinking else " — %s to move" % self._opp_name())
         elif g.mode == "self":
             who = " — thinking…" if thinking else ""
         elif g.mode == "net" and self.link is not None:
