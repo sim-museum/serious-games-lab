@@ -154,3 +154,54 @@ them from the player's own installation when present, and otherwise ships a rost
   - The new panel lists the grandmasters' moves with their shares, follows review, and shows in rated games.
   - Not used: Chessmaster's per-personality opening books (`*.OBK`, a format still to decode). Every personality
     opens from the grandmaster book.
+
+## EPIC NN, retrospective 1 (2026-10-06, before sprints NN-1..NN-6)
+
+### What exists
+- lc0 0.28.2 (built 2022; the source is in `WED/INSTALL/lc0`), Nibbler 2.4.6 and 2.5.3, the tinygyal-8 network,
+  Maia 1100–1900 (human-like networks), and other weights.
+- From EPIC CM: a correct and fast Kramnik engine (the patched Fairy-Stockfish), a perft gold standard, a book of
+  56,920 grandmaster positions legal in Kramnik chess, and self-play harnesses.
+- Hardware: one GTX 1660 Super (6 GB) and 4 CPU cores. No PyTorch or TensorFlow is installed.
+
+### The hard facts
+- **lc0 knows only chess rules.** Its move generator must learn self-capture and lose castling, or it cannot even
+  search a Kramnik position. Its policy head indexes moves by from/to geometry, so self-captures are already
+  representable, and the input planes need no change (every Kramnik position is a chess position).
+- **Nibbler checks moves with its own JavaScript chess rules.** It would reject or mangle a self-capture in a
+  principal variation, so it needs the same two rule changes.
+- **Leela-style self-play from zero is out of reach here.** Leela's own networks took many GPUs over months; one
+  GTX 1660 manages perhaps a few hundred thousand small-network games a week.
+
+### Approaches considered
+1. **Pure self-play reinforcement learning (AlphaZero).** The faithful method, but too slow from zero on one GPU.
+2. **Supervised distillation, then self-play.** Generate millions of positions with the Kramnik Fairy-Stockfish:
+   its move choices (MultiPV spread as the policy target) and game results or evaluations as the value target,
+   starting from the grandmaster book and random openings for variety. Train a small Leela network on that, then
+   improve it with self-play using the patched lc0. This is how strong lc0 networks are often bootstrapped, and it
+   fits the hardware.
+3. **An NNUE network for Fairy-Stockfish.** Practical for strength, but it is not "something like lc0" and Nibbler
+   gets nothing new. Kept as a later option.
+
+**Chosen:** 2. Train with PyTorch in a private environment and write lc0's own weights format, so the result loads
+straight into the patched lc0 and Nibbler without TensorFlow.
+
+### Sprints NN-1..NN-6 (goal, check, stop)
+- **NN-1. lc0 plays Kramnik chess.** Patch lc0's move generator (self-capture, no castling) behind a variant switch.
+  - Check: perft equals the gold on the same six positions as CM-1, with standard chess unchanged when the switch
+    is off.
+  - Check: existing networks play legal Kramnik games.
+- **NN-2. Nibbler shows Kramnik chess.** Make the same rule change in Nibbler's move legality, behind a setting.
+  - Check: a self-capture can be played on the board, and an engine principal variation containing one displays.
+- **NN-3. Training data.** A generator using Fairy-Stockfish self-play from book and random openings, writing
+  positions with policy and value targets.
+  - Check: one million positions, with a spot check that they replay legally and that their targets are sane.
+- **NN-4. Training.** A PyTorch Leela network (small: about 6 blocks of 64 filters) trained on that data and saved
+  in lc0's format.
+  - Check: the patched lc0 loads it, and its policy agrees with Fairy-Stockfish's best move well above chance on
+    held-out positions.
+- **NN-5. Strength.** Matches of the patched lc0 with the trained network against Fairy-Stockfish at fixed Elo
+  settings, and analysis in Nibbler.
+  - Check: an Elo estimate, and a Nibbler session showing the network's evaluations and a self-capture line.
+- **NN-6. Self-play improvement loop**, and the network as an opponent in chessIQ (a "Leela" personality).
+  - Check: one self-play generation that measurably improves on NN-4's network.
