@@ -1,0 +1,138 @@
+diff --git a/src/movegen.cpp b/src/movegen.cpp
+index a7b6a9f..56efc41 100644
+--- a/src/movegen.cpp
++++ b/src/movegen.cpp
+@@ -149,7 +149,7 @@ namespace {
+ 
+     const Bitboard pawns      = pos.pieces(Us, PAWN);
+     const Bitboard movable    = pos.board_bb(Us, PAWN) & ~pos.pieces();
+-    const Bitboard capturable = pos.board_bb(Us, PAWN) &  pos.pieces(Them);
++    const Bitboard capturable = pos.board_bb(Us, PAWN) & (pos.pieces(Them) | pos.self_capture_targets(Us));
+ 
+     target = Type == EVASIONS ? target : AllSquares;
+ 
+@@ -306,7 +306,7 @@ namespace {
+         PieceType promPt = pos.promoted_piece_type(Pt);
+         Bitboard b2 = promPt && (!pos.promotion_limit(promPt) || pos.promotion_limit(promPt) > pos.count(Us, promPt)) ? b1 : Bitboard(0);
+         Bitboard b3 = pos.piece_demotion() && pos.is_promoted(from) ? b1 : Bitboard(0);
+-        Bitboard pawnPromotions = (pos.promotion_pawn_types(Us) & Pt) ? (b & (Type == EVASIONS ? target : ~pos.pieces(Us)) & promotion_zone) : Bitboard(0);
++        Bitboard pawnPromotions = (pos.promotion_pawn_types(Us) & Pt) ? (b & (Type == EVASIONS ? target : ~pos.pieces(Us) | pos.self_capture_targets(Us)) & promotion_zone) : Bitboard(0);
+         Bitboard epSquares = (pos.en_passant_types(Us) & Pt) ? (attacks & ~quiets & pos.ep_squares() & ~pos.pieces()) : Bitboard(0);
+ 
+         // target squares considering pawn promotions
+@@ -385,8 +385,8 @@ namespace {
+     if (Type != EVASIONS || !more_than_one(pos.checkers() & ~pos.non_sliding_riders()))
+     {
+         target = Type == EVASIONS     ?  between_bb(ksq, lsb(pos.checkers()))
+-               : Type == NON_EVASIONS ? ~pos.pieces( Us)
+-               : Type == CAPTURES     ?  pos.pieces(~Us)
++               : Type == NON_EVASIONS ? ~pos.pieces( Us) | pos.self_capture_targets(Us)
++               : Type == CAPTURES     ?  pos.pieces(~Us) | pos.self_capture_targets(Us)
+                                       : ~pos.pieces(   ); // QUIETS || QUIET_CHECKS
+ 
+         if (Type == EVASIONS)
+@@ -456,7 +456,7 @@ namespace {
+     if (pos.count<KING>(Us) && (!Checks || pos.blockers_for_king(~Us) & ksq))
+     {
+         Bitboard b = (  (pos.attacks_from(Us, KING, ksq) & pos.pieces())
+-                      | (pos.moves_from(Us, KING, ksq) & ~pos.pieces())) & (Type == EVASIONS ? ~pos.pieces(Us) : target);
++                      | (pos.moves_from(Us, KING, ksq) & ~pos.pieces())) & (Type == EVASIONS ? ~pos.pieces(Us) | pos.self_capture_targets(Us) : target);
+         while (b)
+             moveList = make_move_and_gating<NORMAL>(pos, moveList, Us, ksq, pop_lsb(b));
+ 
+diff --git a/src/parser.cpp b/src/parser.cpp
+index 96f3504..6166340 100644
+--- a/src/parser.cpp
++++ b/src/parser.cpp
+@@ -435,6 +435,7 @@ Variant* VariantParser<DoCheck>::parse(Variant* v) {
+     parse_attribute("enPassantTypesWhite", v->enPassantTypes[WHITE], v->pieceToChar);
+     parse_attribute("enPassantTypesBlack", v->enPassantTypes[BLACK], v->pieceToChar);
+     parse_attribute("castling", v->castling);
++    parse_attribute("selfCapture", v->selfCapture);
+     parse_attribute("castlingDroppedPiece", v->castlingDroppedPiece);
+     parse_attribute("castlingKingsideFile", v->castlingKingsideFile);
+     parse_attribute("castlingQueensideFile", v->castlingQueensideFile);
+diff --git a/src/position.cpp b/src/position.cpp
+index 2b5ae3a..9460e73 100644
+--- a/src/position.cpp
++++ b/src/position.cpp
+@@ -1371,7 +1371,7 @@ bool Position::pseudo_legal(const Move m) const {
+       return false;
+ 
+   // The destination square cannot be occupied by a friendly piece
+-  if (pieces(us) & to)
++  if ((pieces(us) & to) && !(self_capture_targets(us) & to))
+       return false;
+ 
+   // Handle the special case of a pawn move
+@@ -1382,7 +1382,7 @@ bool Position::pseudo_legal(const Move m) const {
+       if (mandatory_pawn_promotion() && (promotion_zone(us) & to) && !sittuyin_promotion())
+           return false;
+ 
+-      if (   !(pawn_attacks_bb(us, from) & pieces(~us) & to)     // Not a capture
++      if (   !(pawn_attacks_bb(us, from) & (pieces(~us) | self_capture_targets(us)) & to)     // Not a capture
+           && !((from + pawn_push(us) == to) && !(pieces() & to)) // Not a single push
+           && !(   (from + 2 * pawn_push(us) == to)               // Not a double push
+                && (double_step_region(us) & from)
+@@ -1629,7 +1629,7 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
+       if (type_of(captured) == PAWN)
+           st->pawnKey ^= Zobrist::psq[captured][capsq];
+       else
+-          st->nonPawnMaterial[them] -= PieceValue[MG][captured];
++          st->nonPawnMaterial[color_of(captured)] -= PieceValue[MG][captured];   // a self-capture costs the mover
+ 
+       if (Eval::useNNUE)
+       {
+@@ -2499,6 +2499,10 @@ bool Position::see_ge(Move m, Value threshold) const {
+       || count<CLOBBER_PIECE>() == count<ALL_PIECES>())
+       return VALUE_ZERO >= threshold;
+ 
++  // Self-capture (Kramnik chess): the mover gives up the captured piece; approximate the exchange by that loss alone.
++  if (piece_on(to) && color_of(piece_on(to)) == sideToMove)
++      return -PieceValue[MG][piece_on(to)] >= threshold;
++
+   int swap = PieceValue[MG][piece_on(to)] - threshold;
+   if (swap < 0)
+       return false;
+diff --git a/src/position.h b/src/position.h
+index 685c079..e4a3c18 100644
+--- a/src/position.h
++++ b/src/position.h
+@@ -146,6 +146,8 @@ public:
+   Bitboard double_step_region(Color c) const;
+   Bitboard triple_step_region(Color c) const;
+   bool castling_enabled() const;
++  bool self_capture() const;
++  Bitboard self_capture_targets(Color c) const;
+   bool castling_dropped_piece() const;
+   File castling_kingside_file() const;
+   File castling_queenside_file() const;
+@@ -538,6 +540,16 @@ inline bool Position::castling_enabled() const {
+   return var->castling;
+ }
+ 
++inline bool Position::self_capture() const {
++  assert(var != nullptr);
++  return var->selfCapture;
++}
++
++// Own pieces that side c may capture: everything but its king (Kramnik chess), or nothing.
++inline Bitboard Position::self_capture_targets(Color c) const {
++  return var->selfCapture ? pieces(c) & ~pieces(c, KING) : Bitboard(0);
++}
++
+ inline bool Position::castling_dropped_piece() const {
+   assert(var != nullptr);
+   return var->castlingDroppedPiece;
+diff --git a/src/variant.h b/src/variant.h
+index 0e6d44c..5850008 100644
+--- a/src/variant.h
++++ b/src/variant.h
+@@ -74,6 +74,7 @@ struct Variant {
+   Bitboard enPassantRegion[COLOR_NB] = {AllSquares, AllSquares};
+   PieceSet enPassantTypes[COLOR_NB] = {piece_set(PAWN), piece_set(PAWN)};
+   bool castling = true;
++  bool selfCapture = false;   // Kramnik chess: a piece may capture its own pieces (never its own king)
+   bool castlingDroppedPiece = false;
+   File castlingKingsideFile = FILE_G;
+   File castlingQueensideFile = FILE_C;
