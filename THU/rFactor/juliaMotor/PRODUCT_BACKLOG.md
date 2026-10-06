@@ -22711,6 +22711,27 @@ followed). So: the same narrow route. Four Ring objects carry a `hillcap*` fores
 * On screen (`261005/grey/hillcap_rule_default.jpg`): s=7860 Metzgesfeld — no pyramid, open fields and the forested valley as
   in the gold; s=8100 / 6930 / 10600 clean. Gates `solid_box_smoke`, `gplwall_smoke` PASS.
 
+### GPLVIS-1 S1 (2026-10-06) — GPL's cell records decoded from gpl.exe: the per-segment windows were right; the "neighbour" caveat is resolved
+**Retrospective.** E109-S16 kept `JM_GPLVIS=1` (all objects under GPL's per-segment rule) OFF on one doubt: the walker follows
+the segment trees but NOT each cell's `(plane#, neighbour)×4` links, so the true windows "are probably wider". That is a
+question for gpl.exe, not for the screen. Read from the decompile (`~/tools/gplre/gpl/decomp_named.c`):
+* The cell (`0x0F`) case of BOTH draw interpreters (switch 0x488051; the depth-sorted path at 0x4cade2): the node is
+  `(n + 4) × 16` bytes (node-size function FUN_004cf1b0: `return (param_1[0xf] + 4) * 0x10`) -- a 64-byte header, then n entries
+  (x, y, z, object). Header: +4/+12/+20/+28 = four PLANE indices, loaded as user clip planes 1/2/4/8 (`FUN_004c5560(bit,
+  plane, negate)`, two negated) -- the cell draws its objects CLIPPED to its slab; +8/+16/+24/+32 = the NEIGHBOUR cell
+  across each plane (or −1) -- **read by no draw path** (they are adjacency, e.g. for locating a point); +40 = the child
+  node the draw visits first; +44/+48 = callback arg/fn; +52/+56 = runtime sort count / RB-tree root (objects drawn back to
+  front by distance); +60 = n.
+* The walker followed **+36**, which no draw path reads. In the Ring's cells +36 = +40 in 7,168 and +40 = −1 (no child
+  drawn) in 7,924. Now `segment_visibility` follows +40 (`JM_GPLVIS_CHILD36=1` restores the old walk). Effect: 8,032 →
+  8,017 object×segment pairs (15 over-reached pairs gone); `wehr-r1b` (s 7987–9199, one run), `anton-l` (21113–21463),
+  the `half07` veils (one segment, 21288) unchanged. `tools/gpl_segvis.jl` gains `CELLCHILD=36|40|both` and run listings.
+* **So the windows are what GPL draws.** Objects average 2.6 segments (~60–75 m of camera travel): GPL's placed objects
+  are near detail; the far scenery is the section geometry, not placements. The one-segment veils are GPL's design
+  (forest-ahead impostors), not a walker gap.
+**Next (S2):** the lap-long sweep `JM_GPLVIS=1` vs default vs the gold video, at stations covering every object family,
+plus FPS; if it matches, default ON. The scenery copies (`SECPARTS`) are still outside the rule (GREY-1 S4 note).
+
 ### E111 — cycle 2 retrospective + S5 (2026-10-05): both halves likely changed by today's fixes; AWAITING the PO's look
 Two of today's fixes touched exactly E111's ground: the sprite heights (S4: Spa's pine rows were 2.5 m) and YAWSIGN-1 (Spa's
 objects were turned the wrong way; the shipped build had a huge YELLOW SLAB over the road at the pit straight, s≈14100).

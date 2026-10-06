@@ -45,9 +45,13 @@ while !isempty(stack)
         ninfo[off] = "ext:" * get(stroff, Int(u32(p+4)), "?")
         u32(p+12) == 19 && edge(off, t, 1, Int(i32(p+12+32)))
     elseif t == 0x0F
-        nd = Int(i32(p+36)); n = Int(u32(p+60))
-        ninfo[off] = "cell(n=$n, nextdetail=$nd)"
-        nd >= 0 && edge(off, t, 0, nd)
+        # GPLVIS-1 (2026-10-06): gpl.exe's two draw interpreters (0x488051 / 0x4cade2) draw a cell's child at +40
+        # (param_1[10]) and never read +36. CELLCHILD=36 (the GREY-1 walk), 40 (gpl.exe's), both.
+        cc = get(ENV, "CELLCHILD", "36")
+        nd = Int(i32(p+36)); nd40 = Int(i32(p+40)); n = Int(u32(p+60))
+        ninfo[off] = "cell(n=$n, +36=$nd, +40=$nd40)"
+        cc in ("36", "both") && nd >= 0 && edge(off, t, 0, nd)
+        cc in ("40", "both") && nd40 >= 0 && edge(off, t, -1, nd40)
         0 < n < 4096 && for k in 1:n; edge(off, t, k, Int(i32(p+64+16(k-1)+12))); end
     elseif t == 0x10
         n = Int(u32(p+4)); ninfo[off] = "table(n=$n): " * string([f32(p+8+4k) for k in 0:min(n,6)-1]) * " / " * string([i32(p+8+4k) for k in 0:min(n,6)-1])
@@ -81,4 +85,7 @@ for tg in targets
     ss = sort([segs_s[k] for k in r if haskey(segs_s, k)])
     println("== ", ninfo[tg], " @", tg, ": reached from ", length(r), " of ", length(segs), " segment trees; camera s range: ",
             isempty(ss) ? "-" : string(round(ss[1]), " .. ", round(ss[end])), "   segments ", r[1:min(end,12)])
+    # contiguity: runs of consecutive segments
+    runs = Tuple{Int,Int}[]; for k in r; (!isempty(runs) && runs[end][2] == k - 1) ? (runs[end] = (runs[end][1], k)) : push!(runs, (k, k)); end
+    println("   runs: ", length(runs), "  ", join([string(round(get(segs_s, a, NaN)), "-", round(get(segs_s, b2, NaN))) for (a, b2) in runs[1:min(end, 10)]], ", "))
 end

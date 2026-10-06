@@ -168,6 +168,7 @@ cells (0x0F, whose object lists are (x,y,z,positioner) and which chain to coarse
 table of four lap positions (TRK units). Returns `segs` = each segment's start lap position [m, GPL dlong],
 and `vis[node]` = BitVector over segments for every 0x0E record reached. `tools/gpl_segvis.jl` is the probe.
 """
+const CELL_CHILD36 = get(ENV, "JM_GPLVIS_CHILD36", "0") == "1"
 function segment_visibility(path3do)
     b = read(path3do)
     u32(o) = (o < 0 || o+4 > length(b)) ? UInt32(0) : UInt32(b[o+1]) | UInt32(b[o+2])<<8 | UInt32(b[o+3])<<16 | UInt32(b[o+4])<<24
@@ -207,7 +208,11 @@ function segment_visibility(path3do)
         elseif t == 0x11
             n = Int(u32(p+16)); 0 < n < 4096 && for k in 1:n; push!(out, Int(i32(p+24+8(k-1)))); end
         elseif t == 0x0F
-            nd = Int(i32(p+36)); nd >= 0 && push!(out, nd)
+            # GPLVIS-1 (2026-10-06): gpl.exe's draw interpreters (0x488051, 0x4cade2) draw a cell's child at +40 and never
+            # read +36 (equal to +40 in 7,168 Ring cells; +40 = -1 in 7,924, where GPL draws no child). +4..+32 are four
+            # (plane index, neighbour cell) pairs: the planes CLIP the cell's objects (0x4c5560), the neighbour links are
+            # not on the draw path. JM_GPLVIS_CHILD36=1 restores the GREY-1 walk (+36).
+            nd = Int(i32(p + (CELL_CHILD36 ? 36 : 40))); nd >= 0 && push!(out, nd)
             n = Int(u32(p+60)); 0 < n < 4096 && for k in 1:n; push!(out, Int(i32(p+64+16(k-1)+12))); end
         end
         filter(c -> 0 <= c < primsz, out)
