@@ -22162,6 +22162,44 @@ gently accelerating (+0.02…+0.09 g). And the "symmetric" WW excess is not symm
 - WW's right-hand extra slip (both axles) is still unexplained; candidates left: load sensitivity × WW's different roll
   stiffness split (the bars' split is d⁴-assumed because the brush could not see it -- a more load-sensitive tyre would).
 
+### TYRE-2 S1 (2026-10-06) — the setup car's tyre refitted through the car: the gold's extra slip is lower cornering stiffness
+**Retrospective / big picture.** Three open symptoms looked like one cause: the sim slips ~20 % less than iRacing near the limit,
+its inside rear spins where iRacing's does not (CAMBER-1 S2), and the bars' front/rear split was invisible to the tyre. The
+plain brush makes slip stiffness exactly ∝ load; real (and MF-type) tyres are load-sensitive. So: add the stiffness load
+exponent and refit through the car, with camber, the LSD and the bars now in it.
+**Model:** `BrushTyre` `ns` (BRUSH_NS): CFα, CFκ ∝ Fz^ns via (Fz/Fz0)^(ns−1), clamped load ratio 0.2–3; ns = 1 is exactly the
+previous brush.
+**Fit** (`tools/tyre2fit_261005.jl`, Nelder-Mead, 40 iterations): θ = upright μ front/rear, Cα front/rear, ns. Score = RMS of
+the ABSOLUTE axle slips over every skidpad cell (three setups, both directions -- the 152/207 kPa split averages out --
+each at its own speed, g and longitudinal acceleration) + the camber A/B + holding 1.10 g both ways + 10 × the stability
+suite (step steers, WOT blips). Bounds as TYRE-1.
+| | μ f/r | Cα f/r | ns | abs slip | A/B | 1.10 g | stability |
+|---|---|---|---|---|---|---|---|
+| CAMBER-1 S1 tyre | 1.36 / 1.446 | 30.21 / 34.0 | 1 | 0.695° | 0.528° | held | 0 |
+| **TYRE-2 (`TYRE2`)** | **1.347 / 1.494** | **26.17 / 27.77** | 1 | **0.320°** | 0.541° | held | 0 |
+- **ns came back 0.989**: the load exponent is not what the gold wants; it stays 1 (the parameter stays, for later fits).
+  The gold's extra mid-range slip is LOWER CORNERING STIFFNESS. Rear μ sits on its bound (the rear's braking μx).
+- Default car cells now within ~0.1–0.3° (e.g. 0.95 g: sim 3.48/2.62 vs gold 3.74/2.56 right, 3.53/2.59 vs 3.42/2.63 left).
+- Applies to cars built from a session setup (camber on), i.e. every in-game car; upright cars / the 2-D model keep TYRE-1.
+**Checks:**
+- stability_check (JM_STAB_IBT) both setups: penalty 0. Default straight WOT pull: heading drift −0.14 rad over 30 s (was
+  −0.04), sideslip ≤ 0.17° -- a slow pull from the car's small asymmetries on a softer tyre, not a divergence. Trail
+  braking pedal 0.4: default 6.0°, WW 8.4°.
+- 261002 slip curve (tyreid, independent): every band to 1.06 g within ~0.1–0.3° both ways; the 1.14 g band is not reached
+  turning LEFT on the 24 m/s ramp (1.09 g; right reaches it, 7.64° vs gold 8.07°), which costs a flat 25·√n = 477 of
+  the 568 score (443 before). That band's samples are 261002's oval-camber car, not this one.
+- Max steady g at 44 m/s (rate-limited settle): default 1.13 / 1.15, WW 1.12 / 1.19 (left / right); gold WW ≈ 1.13 both ways.
+- crestval default 0.168 s / 0.21 g, WW 0.110 s / 0.21 g (unchanged); carsetup_smoke PASS.
+**Harness fix found on the way:** the settle controllers in camberfit (`sim_cell`) and wwtrans (`sim_event`) wound the
+steering on at ~0.4 rad/s regardless of speed. At 160 km/h that overshot to 1.17 g and SPUN the car before any test
+began -- the two WW 1.15 g "lift-off spins" in B4 were this. Now rate-limited (0.03 rad/s, gain ∝ 1/V²); the two
+events hold (β 4.1 / 3.6° vs gold 4.9 / 4.2°). wwtrans also replays each event in its OWN direction (it ran all left).
+**Open:**
+- B3 power-on: the default car still holds where the gold lets go at full throttle (3 of 4 squeezes); WW lets go as gold.
+- B4 lift-off: sim yaw/path ≈ 1.0 (follows its path), gold 1.2–1.4 (tucks in) -- the lift-off oversteer is too weak.
+- The inside rear under light power (gold ρ ≈ 0.5, sim locked) -- unchanged by ns.
+- Both transient gaps are the tyre's COMBINED slip / the rear under longitudinal load: next physics sprint.
+
 
 ## PO 2026-10-04 (evening) — three requests
 
@@ -22493,6 +22531,21 @@ gone. Still short of the gold: no halfshafts/uprights (the player draws CHASE-AX
   acne check across tracks before any default changes.
 * Gates: `ai_parked_susp_smoke`, `ai_field_smoke`, `wheel_hubs_smoke`, `netplay_smoke`, `netplay_dr_smoke`,
   `netplay_dr2_smoke`, `netai_smoke` PASS.
+
+### CARGOLD-2 S5 (2026-10-06) — the tyres' shadows now start at the contact patch (normal-offset shadow lookup)
+**Retrospective.** S4 showed the depth RANGE was not it (depth 60 / R 40 kept the gap). Untested: the polygon offset, and
+the receiver bias as a distance. Geometry says the bias: `bias = max(0.0035·(1−N·L), 0.0018)` is light-space depth, i.e.
+0.22 m along the light in the 120 m box -- any occluder within that of the road casts nothing, so the bottom ~15 cm of
+each tyre threw no shadow and the shadow began a hand's width from the tyre.
+* `JM_SHADOW_POFS` (the depth pass's glPolygonOffset, default 2.5,4.0) -- A/B 2.5,4 / 0.5,1 / 0,1 at WG: no material change
+  (`261006/shadow/rsusp_contact_crop_ab.png`). Kept, as an env, defined properly this time (S5's first try crashed on it).
+* **Normal-offset lookup** (render.jl FSRC `shadow()`): the lookup point moves along the surface normal by uShadowNofs·(1−N·L)
+  and the depth bias is scaled by uShadowBiasK. **Shipped 0.07 m (one texel: 140 m / 2048) and ×0.15 (floor 0.03 m).**
+  WG AI close-up (`rsusp_contact_nofs_ab.png`): each tyre's shadow now starts AT its contact patch. Acne check -- same views,
+  shipped vs new, Monza / Spa / Zandvoort / Ring (`acne_*_ab.png`) and the player's cockpit + chase at WG
+  (`player_*_ab.png`): no striping on road, grass or bodywork; at Zandvoort (high sun behind) the shipped frame had NO tyre
+  shadow at all and the new one has one under each tyre. `JM_SHADOW_NOFS=0 JM_SHADOW_BIASK=1` restores the old shading.
+* **For the PO:** does the car still look like it floats ~10 cm? (The physics gap was always ~0.)
 
 ### HOCHEICHEN-BB (Ring billboards "set back on the left in the forest near high oaks", PO 2026-10-05) — S1: not located; SHELVED for the PO's location
 * Real-world Hocheichen lies between Hatzenbach and Quiddelbacher Höhe; GPL has no board for it, so our s≈2700–3900
