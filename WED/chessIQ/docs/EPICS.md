@@ -429,3 +429,11 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
 - **NN-11. Self-play proof of concept:** lc0 self-play under Kramnik rules writing V6 directly, mixed into
   training. Check: the pipeline runs end to end; the improvement is measured, whatever its sign.
 - **NN-12. Retrospective and the strongest network delivered** to chessIQ and Nibbler.
+- **Fairy-Stockfish broad check (10-06, at the PO's request).** Upstream Fairy-Stockfish cannot express "capture
+  anything", and adding it in general would be a major rewrite. chessIQ uses a narrow patch for 8x8 chess only
+  (CM-1). To test it beyond the six perft positions, `tests/test_fsf_moves.py` compares its root moves (`go perft
+  1`) with chessIQ's legal moves at every ply of 12 random self-capture-rich games.
+  - Result: all **1,305 positions agree, 33,612 moves each**. The control, the same engine with self-capture off,
+    differs in all 1,305.
+  - Caveat: this checks the rules, not strength. Search heuristics written for ordinary chess (exchange evaluation,
+    capture ordering) may underrate self-capture tactics.
