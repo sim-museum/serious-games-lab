@@ -6,8 +6,8 @@ import sys
 
 from PyQt6.QtCore import QRectF, QSettings, Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QColor, QFont, QPainter, QPen
-from PyQt6.QtWidgets import (QApplication, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QFrame,
-                             QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
+from PyQt6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QFrame,
+                             QGridLayout, QGroupBox, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget, QListWidgetItem,
                              QMainWindow, QMessageBox, QPlainTextEdit, QPushButton, QSpinBox, QTextBrowser,
                              QVBoxLayout, QWidget)
 
@@ -15,7 +15,7 @@ from . import VERSION
 from . import engine as E
 from . import serious_games_week
 from .game import AI_NAME, MAX_DEPTH, THINK_S, Game, load_pgn
-from . import personalities, uci_engine
+from . import personalities, rating, uci_engine
 from .net import DEFAULT_PORT, Link
 
 LIGHT, DARK = QColor("#f0d9b5"), QColor("#b58863")
@@ -223,6 +223,8 @@ class MainWindow(QMainWindow):
         self.token = 0                  # bumps cancel any thinking or pending book move
         self.threads = []
         self.engine = None                  # the chosen personality's engine process (EPIC CM)
+        self.profile = rating.Profile.load()  # your rating (CM-4); None until your first rated game
+        self.rated = None                   # the rated game in progress: {opponent, rating, colour, recorded}
         self.note = ""
         self.link = None
         self.announcer = None
@@ -267,6 +269,11 @@ class MainWindow(QMainWindow):
         self.who.setCurrentIndex(self._default_opponent())
         grid.addWidget(QLabel("Computer"), 2, 0)
         grid.addWidget(self.who, 2, 1)
+        self.rated_box = QCheckBox("Rated game (no take-backs; your rating changes)")
+        self.rated_box.setChecked(QSettings("sim-museum", "chessIQ").value("rated", "false") == "true")
+        self.rated_box.toggled.connect(lambda on: (QSettings("sim-museum", "chessIQ").setValue("rated", "true" if on else "false"),
+                                                   self._show_opponent()))
+        grid.addWidget(self.rated_box, 3, 0, 1, 2)
         self.blurb = QLabel()
         self.blurb.setWordWrap(True)
         self.blurb.setStyleSheet("color: gray; font-size: 9pt")
@@ -374,7 +381,16 @@ class MainWindow(QMainWindow):
             self.blurb.setText("chessIQ's own engine at full strength. Build the personality engine "
                                "(engine/build_engine.sh) to choose opponents by rating and style.")
             return
-        self.blurb.setText("%s, rated %d. %s" % (p.name, p.rating, p.style + "." if p.style else ""))
+        text = "%s, rated %d. %s" % (p.name, p.rating, p.style + "." if p.style else "")
+        if getattr(self, "rated_box", None) is not None and self.rated_box.isChecked():
+            if self.profile is None:
+                text += "<br>Your first rated game: you will be asked about your experience for a starting rating."
+            else:
+                loss, draw, win = self.profile.preview(p.rating)
+                text += ("<br>Your rating %d%s. This game: loss %+d, draw %+d, win %+d."
+                         % (self.profile.rating, " (provisional, %d of %d games)" % (self.profile.games, rating.PROVISIONAL)
+                            if self.profile.provisional else "", loss, draw, win))
+        self.blurb.setText(text)
         self.who.setToolTip(p.bio or p.style)
         QSettings("sim-museum", "chessIQ").setValue("opponent", p.name)
 
@@ -393,7 +409,39 @@ class MainWindow(QMainWindow):
             self.engine.stop()
             self.engine.new_game()
 
+    def _rated_in_progress(self):
+        r = self.rated
+        return r is not None and not r["recorded"] and not self.game.over and self.game.history
+
+    def _record_rated(self, score, why=""):
+        r = self.rated
+        if r is None or r["recorded"] or self.profile is None:
+            return
+        r["recorded"] = True
+        d = self.profile.record(r["opponent"], r["rating"], score, r["colour"], len(self.game.history))
+        self.note = "Rated%s: your rating %+d → %d." % (" (" + why + ")" if why else "", d, self.profile.rating)
+        self._show_opponent()
+
+    def _ensure_profile(self):
+        if self.profile is not None:
+            return True
+        labels = [l for l, _ in rating.LEVELS]
+        choice, ok = QInputDialog.getItem(self, "Your first rated game",
+                                          "Chessmaster-style ratings start from an estimate. How much chess do you play?",
+                                          labels, 2, False)
+        if not ok:
+            return False
+        self.profile = rating.Profile(player_name(), dict(rating.LEVELS)[choice])
+        self.profile.save()
+        return True
+
     def new_game(self):
+        if self._rated_in_progress():
+            if QMessageBox.question(self, "Abandon the rated game?",
+                                    "Starting a new game now counts as a loss in the rated game.") \
+                    != QMessageBox.StandardButton.Yes:
+                return
+            self._record_rated(0, "abandoned")
         if self.link is not None:
             if not self.link.is_host or self.link.sock is None:
                 return                      # in a network game only the host starts games, once a guest is here
@@ -405,6 +453,11 @@ class MainWindow(QMainWindow):
         self.review = None
         self._start_engine()
         self.game = Game(self.mode.currentData(), self.side.currentData())
+        self.rated = None
+        p = self._opponent()
+        if self.rated_box.isChecked() and self.game.mode == "ai" and p is not None and self._ensure_profile():
+            self.rated = {"opponent": p.name, "rating": p.rating, "colour": self.game.human, "recorded": False}
+            self._show_opponent()
         self.orient = "w" if self.game.mode == "self" else self.game.human
         self.boardw.selected, self.boardw.targets = None, []
         self.note = ""
@@ -528,6 +581,10 @@ class MainWindow(QMainWindow):
 
     def undo(self):
         if self.link is not None or not self.game.history:
+            return
+        if self._rated_in_progress():
+            self.note = "No take-backs in a rated game."
+            self.render()
             return
         self.token += 1
         self.review = None
@@ -798,6 +855,8 @@ class MainWindow(QMainWindow):
             self.announcer.stop()
         if self.link:
             self.link.close()
+        if self._rated_in_progress():
+            self._record_rated(0, "abandoned")      # Chessmaster adjourns; chessIQ does not, so leaving is a loss
         if self.engine is not None:
             self.engine.stop()
         for th in list(self.threads):
@@ -823,6 +882,11 @@ class MainWindow(QMainWindow):
         self._render_moves(ply)
         self.offer_btn.setEnabled(not g.over)
         self.resign_btn.setEnabled(not g.over)
+        if g.over and self.rated is not None and not self.rated["recorded"]:
+            w = g.over.get("winner")
+            self._record_rated(0.5 if w is None else 1.0 if w == self.rated["colour"] else 0.0)
+            self.status.setText(self._status_html(thinking))
+        self.undo_btn.setEnabled(not self._rated_in_progress())
 
     def _status_html(self, thinking):
         g = self.game
