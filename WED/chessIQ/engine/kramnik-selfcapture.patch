@@ -251,7 +251,7 @@ index 685c079..e4a3c18 100644
    assert(var != nullptr);
    return var->castlingDroppedPiece;
 diff --git a/src/search.cpp b/src/search.cpp
-index 651f6bd..1397c5f 100644
+index 651f6bd..3c4cc90 100644
 --- a/src/search.cpp
 +++ b/src/search.cpp
 @@ -37,6 +37,8 @@
@@ -326,16 +326,29 @@ index 651f6bd..1397c5f 100644
    Time.init(rootPos, Limits, us, rootPos.game_ply());
    TT.new_search();
  
-@@ -666,7 +706,7 @@ namespace {
-         && alpha < VALUE_DRAW
+@@ -663,10 +703,10 @@ namespace {
+     // if the opponent had an alternative move earlier to this position.
+     if (   !rootNode
+         && pos.rule50_count() >= 3
+-        && alpha < VALUE_DRAW
++        && alpha < value_draw(pos.this_thread(), pos.side_to_move())
          && pos.has_game_cycle(ss->ply))
      {
 -        alpha = value_draw(pos.this_thread());
-+        alpha = value_draw(pos.this_thread(), pos.side_to_move());
++        alpha = value_draw(pos.this_thread(), pos.side_to_move());   // CM-16: the contempt-aware draw; only ever raises alpha
          if (alpha >= beta)
              return alpha;
      }
-@@ -722,7 +762,7 @@ namespace {
+@@ -715,14 +755,14 @@ namespace {
+     if (!rootNode)
+     {
+         Value variantResult;
+-        if (pos.is_game_end(variantResult, ss->ply))
+-            return variantResult;
++        if (pos.is_game_end(variantResult, ss->ply))   // CM-16: a repetition or 50-move draw carries the contempt too
++            return variantResult == VALUE_DRAW ? value_draw(pos.this_thread(), pos.side_to_move()) : variantResult;
+ 
+         // Step 2. Check for aborted search and immediate draw
          if (   Threads.stop.load(std::memory_order_relaxed)
              || ss->ply >= MAX_PLY)
              return (ss->ply >= MAX_PLY && !ss->inCheck) ? evaluate(pos)
@@ -353,6 +366,15 @@ index 651f6bd..1397c5f 100644
  
          // Can ttValue be used as a better position evaluation?
          if (    ttValue != VALUE_NONE
+@@ -1548,7 +1588,7 @@ moves_loop: // When in check, search starts from here
+ 
+     Value gameResult;
+     if (pos.is_game_end(gameResult, ss->ply))
+-        return gameResult;
++        return gameResult == VALUE_DRAW ? value_draw(pos.this_thread(), pos.side_to_move()) : gameResult;
+ 
+     // Check for maximum ply reached
+     if (ss->ply >= MAX_PLY)
 diff --git a/src/ucioption.cpp b/src/ucioption.cpp
 index 0326e04..847425b 100644
 --- a/src/ucioption.cpp
