@@ -15,7 +15,7 @@ from . import VERSION
 from . import engine as E
 from . import serious_games_week
 from .game import AI_NAME, MAX_DEPTH, THINK_S, Game, load_pgn
-from . import clock as clocks, personalities, rating, uci_engine
+from . import clock as clocks, cmbook, personalities, rating, uci_engine
 from .net import DEFAULT_PORT, Link
 
 LIGHT, DARK = QColor("#f0d9b5"), QColor("#b58863")
@@ -457,6 +457,20 @@ class MainWindow(QMainWindow):
         pieces = [p[1] for p in self.game.board if p and p[0] == colour and p[1] != "k"]
         return not pieces or (len(pieces) == 1 and pieces[0] in "nb")
 
+    def _opponent_book(self):
+        """The chosen Chessmaster personality's own opening book, cut at castling (cached), or None."""
+        p = self._opponent()
+        if p is None or p.source != "Chessmaster" or not p.book:
+            return None
+        cache = self.__dict__.setdefault("_books", {})
+        if p.book not in cache:
+            path = cmbook.find_book(personalities.chessmaster_dir() or "", p.book)
+            try:
+                cache[p.book] = cmbook.read_obk(path) if path else None
+            except (OSError, ValueError):
+                cache[p.book] = None
+        return cache[p.book]
+
     def _rated_in_progress(self):
         r = self.rated
         return r is not None and not r["recorded"] and not self.game.over and self.game.history
@@ -501,6 +515,7 @@ class MainWindow(QMainWindow):
         self.review = None
         self._start_engine()
         self.game = Game(self.mode.currentData(), self.side.currentData())
+        self.game.opp_book = self._opponent_book()
         self.rated = None
         p = self._opponent()
         if self.rated_box.isChecked() and self.game.mode == "ai" and p is not None and self._ensure_profile():

@@ -344,3 +344,13 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
     scale is anchored at its strongest personality (Chessmaster, 2724).
   - The Maia opponents stay in the roster as human-like styles, labelled by their training band, not by measured
     strength.
+- **CM-10 (10-06): done.** Chessmaster's opening-book format is decoded (`chessiq/cmbook.py`).
+  - Format: "BOO!", a count, then 2 bytes a move in a depth-first tree. First byte: bits 0–5 the from-square, bit 6
+    clear when a sibling follows the move's subtree, bit 7 end of line. Second byte: bits 0–5 the to-square, bits
+    6–7 annotations.
+  - Check: all entries of four books (CMX's 285,038 included) are consumed with no illegal move.
+  - Each Chessmaster personality now opens from its own book, cut at castling and weighted by the number of book
+    lines through each move, then falls back to the grandmaster book. The generic `Depth6.OBK` of weaker
+    personalities uses another format and falls back.
+  - Check: with Bird's book the computer opens 1.f4 in 24% of 400 games (none with the grandmaster book), matching
+    the book's 52 of 219 lines. `tests/test_cmbook.py` uses a synthetic book.

@@ -64,6 +64,7 @@ class Game:
         self.over = None           # None or {type: mate|stalemate|draw|resign, winner?, reason?}
         self.keys, self.half = [], 0
         self.offers = {"count": 0, "last_ply": -99}      # the computer's draw offers
+        self.opp_book = None       # the opponent's own opening book (CM-10), consulted before the grandmaster book
         self.p_offer = {"pending": False, "last_ply": -99}  # the player's offer to the computer
         # VARIETY: each game walks the book from a fresh clock seed, and at every branch point avoids the choice
         # made last game (remembered across sessions in ~/.config/chessiq/bookmem.json)
@@ -162,7 +163,7 @@ class Game:
         if len(self.history) >= BOOK_PLIES:
             return None
         key = self._book_key()
-        opts = book().get(key)               # {move: games} (tools/build_book.py)
+        opts = (self.opp_book or {}).get(key) or book().get(key)   # his own book first, then the grandmasters
         if not opts:
             return None
         pool = dict(opts)
