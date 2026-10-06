@@ -130,3 +130,16 @@ them from the player's own installation when present, and otherwise ships a rost
   - The profile, with full history, is `~/.local/share/chessIQ/profile.json`.
   - Checked off-screen: stakes shown; take-back refused; resigning applied exactly the shown loss; an abandoned game
     was recorded as a loss. `tests/test_rating.py` has 5 tests.
+- **CM-5 (10-06): done** (the calibration re-measure follows below).
+  - Time controls are `chessiq/clock.py`: Fischer 10+3, 5+3, 15+10 and 3+2; 30 minutes per game; 40 moves in 90
+    minutes (repeating); and untimed. Rated games are always timed, falling back to 10+3 if untimed is chosen, as
+    Chessmaster's ranked play has no infinite time.
+  - Both clocks are shown and the side to move is marked. The engine receives the real clock (wtime, btime, winc,
+    binc) and manages its own time.
+  - A flag fall loses, or draws if the other side cannot mate (king alone, or king and one minor piece). The PGN
+    result follows.
+  - Network games stay untimed for now.
+  - Checks: `tests/test_clock.py` (6 tests, on a fake time source). Engine against engine at Fischer 1+1
+    (`tools/clock_selfplay.py`): 62 moves each, and both clocks equal base + increments − measured time to within
+    15 ms; the engines ended with 11 and 13 s left. In the app, off-screen: a rated game whose player's flag fell
+    ended "White ran out of time — Black wins", 0-1, and recorded the rated loss.

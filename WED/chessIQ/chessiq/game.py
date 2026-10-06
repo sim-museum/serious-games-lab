@@ -220,7 +220,7 @@ class Game:
     def result_str(self):
         if not self.over:
             return "*"
-        if self.over["type"] in ("mate", "resign"):
+        if self.over["type"] in ("mate", "resign", "time"):
             return "1-0" if self.over["winner"] == "w" else "0-1"
         return "1/2-1/2"
 
