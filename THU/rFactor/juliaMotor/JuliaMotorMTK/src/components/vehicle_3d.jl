@@ -79,9 +79,10 @@ function DrivenVehicle3D(; name,
 
     # brush=true ⇒ physics-based brush tyre (no fudge); else the Magic-Formula preset
     cmb = brush && camber !== nothing
-    # CAMBER-1: the camber tyre's lateral μ is its UPRIGHT peak (CAMBER_MU), the upright model's already carries the lean
-    bf = cmb ? merge(BRUSH_FRONT, (μ = CAMBER_MU[1]*_GRIP,)) : BRUSH_FRONT
-    br = cmb ? merge(BRUSH_REAR,  (μ = CAMBER_MU[2]*_GRIP,)) : BRUSH_REAR
+    # CAMBER-1 / TYRE-2: the camber tyre's lateral side is its own fit (TYRE2): the upright μ (the upright model's already
+    # carries the lean loss) and the cornering stiffness refitted with camber, the LSD and the bars in the car
+    bf = cmb ? merge(BRUSH_FRONT, (μ = TYRE2.μf*_GRIP, Cα = TYRE2.Cαf)) : BRUSH_FRONT
+    br = cmb ? merge(BRUSH_REAR,  (μ = TYRE2.μr*_GRIP, Cα = TYRE2.Cαr)) : BRUSH_REAR
     FL = brush ? BrushTyre(; name=:FL, bf..., camber=cmb) : Tyre(; name=:FL, TYRE_SKIDPAD_FRONT...)
     FR = brush ? BrushTyre(; name=:FR, bf..., camber=cmb) : Tyre(; name=:FR, TYRE_SKIDPAD_FRONT...)
     RL = brush ? BrushTyre(; name=:RL, br...,  camber=cmb) : Tyre(; name=:RL, TYRE_SKIDPAD_REAR...)

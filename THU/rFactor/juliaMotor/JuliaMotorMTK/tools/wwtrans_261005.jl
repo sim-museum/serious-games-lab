@@ -6,7 +6,8 @@
 #   B4 lift-off: the throttle snapped shut at 1.0-1.2 g, wheel held. Measured over 2.5 s: the peak yaw rate over the
 #      path rate (r·u/ay; 1 = the car just follows its path, > 1 tucks in), the peak |β| and the speed lost.
 # Gold events are found from the channels (no hand list); each is replayed by its own setup's sim car (the same
-# install as tools/arbfit_261005.jl) at the event's speed and lateral g, settled first with the same controller.
+# install as tools/arbfit_261005.jl) at the event's speed and lateral g, settled first with the same controller,
+# in the event's own DIRECTION (TYRE-2 S1: since CAMBER-1 the setups differ left/right; every event used to run left).
 #
 #   julia --project=. tools/wwtrans_261005.jl
 using Printf, Statistics
@@ -30,7 +31,7 @@ function gold_events()
                 if rise > 0.3 && all(j -> thr[j+1] >= thr[j] - 0.05, j0:jf-1)
                     jl = findfirst(j -> β(j) > 6, j0:min(n, jf + 180))
                     jl = jl === nothing ? nothing : jl + j0 - 1
-                    push!(E, (kind = :power, side, file = basename(fn), t = k/60, v = v[k], g = abs(ay[k])/G,
+                    push!(E, (kind = :power, side, file = basename(fn), t = k/60, v = v[k], g = abs(ay[k])/G, dir = sign(ay[k]),
                               thr0 = thr[j0], ramp = (jf - j0)/60, letgo = jl === nothing ? NaN : thr[jl],
                               spin = any(j -> β(j) > 20, j0:min(n, jf + 180))))
                     k = jf + 180; continue
@@ -39,7 +40,7 @@ function gold_events()
             if steady && thr[k] > 0.3 && v[k] > 38 && abs(ay[k]) > 0.95G && thr[k+18] < 0.05   # B4: shut within 0.3 s
                 w = k:min(n, k + 150)
                 pr = [abs(r[j])*v[j]/max(abs(ay[j]), 1.0) for j in w]
-                push!(E, (kind = :lift, side, file = basename(fn), t = k/60, v = v[k], g = abs(ay[k])/G,
+                push!(E, (kind = :lift, side, file = basename(fn), t = k/60, v = v[k], g = abs(ay[k])/G, dir = sign(ay[k]),
                           yawratio = maximum(pr), βmax = maximum(β(j) for j in w), dv = 3.6*(v[k] - v[last(w)]),
                           spin = maximum(β(j) for j in w) > 20))
                 k += 180; continue
@@ -63,7 +64,9 @@ function sim_event(car, sp, u0, V, gt, dir; kind, thr0 = 0.4, ramp = 3.0)
     δ = 0.0; ie = 0.0; thr = 0.3
     for n in 1:9*60                                              # settle: PI throttle on speed, I steer on lateral g
         u, v, r, ay = get(car.integ)
-        δ = clamp(δ + 0.004*(gt*G - abs(ay))/G, 0.0, 0.25)
+        # TYRE-2 S1: rate-limited (0.03 rad/s), gain ∝ 1/V² -- the unlimited integrator spun the car at 160 km/h on the
+        # settle itself, before any lift (the two 1.15 g WW "spins" were that)
+        δ = clamp(δ + clamp(0.004*(25/max(V, 25))^2*(gt*G - abs(ay))/G, -0.0005, 0.0005), 0.0, 0.25)
         thr = clamp(0.3 + 0.3*(V - u) + ie, 0, 1); ie = clamp(ie + 0.01*(V - u), -0.4, 0.7)
         DriveRT3D.step_car3d!(car, thr, 0.0, dir*δ/DriveRT3D.MAXSTEER, 1/60; clutch = 0.0, manual = true)
     end
@@ -102,8 +105,8 @@ function main()
     for e in E
         e.kind === :power || continue
         car, sp, u0, _ = cars[e.side]
-        s = sim_event(car, sp, u0, e.v, min(e.g, 1.15), 1.0; kind = :power, thr0 = e.thr0, ramp = max(e.ramp, 0.5))
-        @printf("   %-8s %-40s %5.1f  %4.0f  %.2f  |       %.2f   %4.1f    %4.2f   %-5s|       %4.2f  %s\n", e.side, e.file, e.t,
+        s = sim_event(car, sp, u0, e.v, min(e.g, 1.15), e.dir; kind = :power, thr0 = e.thr0, ramp = max(e.ramp, 0.5))
+        @printf("   %-8s%+.0f %-40s %5.1f  %4.0f  %.2f  |       %.2f   %4.1f    %4.2f   %-5s|       %4.2f  %s\n", e.side, e.dir, e.file, e.t,
                 3.6e.v, e.g, e.thr0, e.ramp, e.letgo, e.spin, s.letgo, s.spin)
     end
     println("\nB4 LIFT-OFF (snap shut at 1.0-1.2 g, wheel held 2.5 s): peak yaw/path rate, peak |β|, speed lost")
@@ -111,8 +114,8 @@ function main()
     for e in E
         e.kind === :lift || continue
         car, sp, u0, _ = cars[e.side]
-        s = sim_event(car, sp, u0, e.v, min(e.g, 1.15), 1.0; kind = :lift)
-        @printf("   %-8s %-40s %5.1f  %4.0f  %.2f  |       %4.2f   %5.1f  %4.0f  %-5s|       %4.2f   %5.1f  %4.0f  %s\n", e.side, e.file, e.t,
+        s = sim_event(car, sp, u0, e.v, min(e.g, 1.15), e.dir; kind = :lift)
+        @printf("   %-8s%+.0f %-40s %5.1f  %4.0f  %.2f  |       %4.2f   %5.1f  %4.0f  %-5s|       %4.2f   %5.1f  %4.0f  %s\n", e.side, e.dir, e.file, e.t,
                 3.6e.v, e.g, e.yawratio, e.βmax, e.dv, e.spin, s.yawratio, s.βmax, s.dv, s.spin)
     end
 end

@@ -112,7 +112,21 @@ const BRUSH_REAR  = (μ = 1.446*_GRIP, μx = 1.498*_GRIP, Cα = 34.0, Cκ = 23.2
 const CAMBER_CG = 1.0          # [1/rad] camber thrust coefficient (thrust/Fz per rad at low slip): physical, not identified
 const CAMBER_KG = 6.0          # [1/rad] peak lateral friction gain when leaning into the slip force
 const CAMBER_RC = (1.0, 0.8)   # roll camber (front, rear): road inclination change per rad of suspension roll
-const CAMBER_MU = (1.36, 1.446) # upright lateral μ (front, rear) of the camber tyre, refitted with the above
+const CAMBER_MU = (1.36, 1.446) # CAMBER-1 S1's upright μ; superseded by TYRE2 below (kept for the record and the tools)
+
+# TYRE-2 S1 (2026-10-06): the camber tyre's lateral side refitted THROUGH THE PLAYER CAR on the skidpad cells
+# (tools/tyre2fit_261005.jl: three garage setups, both directions, each cell at its own speed, g and longitudinal
+# acceleration; absolute slips + the camber A/B + holding 1.10 g + the stability suite). From CAMBER-1 S1's tyre
+# (μ 1.36/1.446, Cα 30.21/34.0): absolute slip error 0.696 -> 0.320°, A/B 0.526 -> 0.538°, 1.10 g held both ways,
+# stability penalty 0. The gold's ~20 % more mid-range slip is LOWER CORNERING STIFFNESS, not load sensitivity: the
+# stiffness load exponent (BRUSH_NS) went free and came back 0.989, so it stays 1. Rear μ sits on its bound, the rear's
+# braking μx. Rear Cα 27.8 is below TYRE-1's 34, which was raised for full-throttle stability above 200 km/h; with
+# the LSD and camber now in the car, that check still passes (yaw left at 3 s after a 0.5° blip at 240 km/h: 0.06,
+# limit 0.10) -- see the stability suite (tools/stability_check.jl, JM_STAB_IBT) for both setups.
+const TYRE2 = (μf = 1.347, μr = 1.494, Cαf = 26.17, Cαr = 27.77)
+
+# TYRE-2 (2026-10-06): the slip stiffnesses' load exponent (BrushTyre `ns`): CFα, CFκ ∝ Fz^ns. 1 = the plain brush.
+const BRUSH_NS = 1.0
 
 "Pure-lateral brush force Fy(Fz, α) — for fitting/validation."
 function brush_fy(Fz, α; p = BRUSH_FRONT)

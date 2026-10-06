@@ -171,9 +171,10 @@ end
 function main()
     T = gold_target()
     println("gold target (Ring + Centripetal, steady):"); for t in T; @printf("   %.2f g  n %5d  front %5.2f°  rear %5.2f°\n", t.g, t.n, t.af, t.ar); end
-    # CAMBER-1: a car with camber (a JM_STAB_IBT session's) carries the camber tyre's upright μ
-    μ0 = hasproperty(SYS, :rc_f) ? DriveRT3D.CAMBER_MU : (BRUSH_FRONT.μ, BRUSH_REAR.μ)
-    θ0 = [μ0[1], μ0[2], BRUSH_FRONT.Cα, BRUSH_REAR.Cα, BRUSH_FRONT.kμ]
+    # CAMBER-1 / TYRE-2: a car with camber (a JM_STAB_IBT session's) carries the camber tyre (TYRE2)
+    T2 = DriveRT3D.TYRE2
+    θ0 = hasproperty(SYS, :rc_f) ? [T2.μf, T2.μr, T2.Cαf, T2.Cαr, BRUSH_FRONT.kμ] :
+                                   [BRUSH_FRONT.μ, BRUSH_REAR.μ, BRUSH_FRONT.Cα, BRUSH_REAR.Cα, BRUSH_FRONT.kμ]
     @printf("\nCURRENT tyre %s  score %.1f\n", θ0, score(T, θ0; verbose = true))
     parse(Int, get(ENV, "JM_TYREID_ITERS", "150")) == 0 && return θ0
     θ, e = nelder_mead(θ -> score(T, θ), [1.277, 1.446, 30.21, 30.21, 0.082]; iters = parse(Int, get(ENV, "JM_TYREID_ITERS", "150")), step = 0.1)

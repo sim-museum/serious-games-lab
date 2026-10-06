@@ -78,7 +78,9 @@ function sim_cell(car, sp, u0, V, gt, dir; axt = 0.0)
     F = Float64[]; R = Float64[]; Gs = Float64[]; P = Float64[]; Th = Float64[]
     for n in 1:12*60
         u, v, r, ay, _, ax = get(car.integ)
-        δ = clamp(δ + 0.006*(gt*G - abs(ay))/G, 0.0, 0.30)
+        # TYRE-2 S1: the steer integrator is RATE-LIMITED (0.03 rad/s) with its gain falling as 1/V²: unlimited, it wound
+        # on ~0.4 rad/s, which at 44 m/s overshot to 1.17 g and spun a car that holds 1.05 g when eased in
+        δ = clamp(δ + clamp(0.006*(25/max(Vs, 25))^2*(gt*G - abs(ay))/G, -0.0005, 0.0005), 0.0, 0.30)
         if n <= 9*60
             thr = clamp(0.3 + 0.3*(Vs - u) + ie, 0, 1); ie = clamp(ie + 0.01*(Vs - u), -0.4, 0.8)
         else
@@ -111,8 +113,9 @@ end
 
 """Sim slips for every gold cell, then the score: Σ over non-default cells of the squared error of the
 difference from the default's cell (same direction, same g), front and rear, weighted by √n of the smaller."""
+const LAST = Ref{Any}(nothing)                                # the last evaluate()'s sim cells (tools/tyre2fit_261005.jl)
 function evaluate(cars, C, θ; verbose = false)
-    S = Dict{Any,NamedTuple}()
+    S = Dict{Any,NamedTuple}(); LAST[] = S
     for (k, c) in cars
         set_camber!(c.car, θ...)
     end
