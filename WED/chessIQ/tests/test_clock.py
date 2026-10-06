@@ -71,5 +71,19 @@ class Format(unittest.TestCase):
         self.assertEqual(C.fmt(9500), "9.5")
 
 
+class ThinkTime(unittest.TestCase):              # CM-15: personalities pause like players, never into a flag
+    def test_think_time(self):
+        import os
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        from chessiq.app import think_time
+        clk = {"wtime": 600000, "btime": 600000, "winc": 3000, "binc": 3000}
+        mid = think_time(clk, "w", 0, 0.5)
+        self.assertTrue(10 < mid < 30, mid)                                     # about 19 s early in 10+3
+        self.assertLess(think_time(clk, "w", 0, 0.0), think_time(clk, "w", 0, 0.99))
+        low = {"wtime": 5000, "btime": 5000, "winc": 3000, "binc": 3000}
+        self.assertLessEqual(think_time(low, "b", 80, 0.99), 0.4 + 1e-9)         # 8% of 5 s, floored at 0.4 s
+        self.assertTrue(0.8 <= think_time(None, "w", 10, 0.5) <= 3.0)            # untimed
+
+
 if __name__ == "__main__":
     unittest.main()
