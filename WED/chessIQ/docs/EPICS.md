@@ -285,3 +285,62 @@ straight into the patched lc0 and Nibbler without TensorFlow.
     Scandinavian, Leela a gambit line; switching opponents mid-search no longer raises an error.
   - For EPIC CM, the Maia levels are a candidate answer to the strength-calibration problem: their ratings come
     from human games, not from an engine's limiter.
+
+## EPIC CM, retrospective 2 (2026-10-06, before sprints CM-7..CM-12)
+
+### What the first block delivered
+- An engine that plays Kramnik chess with Chessmaster's knobs.
+- 188 Chessmaster opponents read from the player's own installation, plus chessIQ's own eight, plus (from EPIC NN)
+  Leela and Maia 1100–1900.
+- Rated play with Chessmaster's arithmetic, and clocks including Fischer 10+3.
+- An opening helper built from 25,072 grandmaster games.
+- The self-capture drive is gone.
+
+### What did not work, and why
+- **Strength does not match the labels.** Fairy-Stockfish's Elo limiter separates levels far more steeply than its
+  numbers: 1600 vs 1400 went 12–0 at Fischer 1+1 even after compressing the scale. While opponent ratings are
+  wrong, the rated system in CM-4 rates you against fictions. This undermines the epic's core promise, so it comes
+  first.
+- **Style is real but faint.** Personalities choose differently from the neutral engine in 39–54% of positions, but
+  aggregate behaviour (checks, captures) barely separates them.
+- The full ranked 10+3 game check from CM-6 is still outstanding.
+
+### Approaches considered for strength
+1. **A better formula for the limiter.** Cheap, but the limiter's slope changes with thinking time, so no single
+   formula holds; 12–0 shows the size of the error.
+2. **A measured ladder.** Strength levels that are easy to control (Fairy-Stockfish node counts, Leela node counts)
+   are placed on one scale by matches between neighbours.
+3. **Anchor the ladder to people.** The Maia networks learned from rated human games, one per rating band
+   (1100–1900). Their labels are human ratings, the scale Chessmaster's numbers mean. A ladder anchored on Maia
+   turns "rated 1600" into "plays like the Maia 1600 band" without trusting any engine's limiter.
+
+**Chosen:** 2 + 3. First measure whether the Maia levels keep their order and spacing in Kramnik chess (they learned
+ordinary chess). Then place Fairy-Stockfish node levels on that scale, and map each personality's rating to the
+engine setting the ladder says plays at that strength. Style knobs stay on the Fairy-Stockfish levels.
+
+### Sprints CM-7..CM-12 (goal, check, stop)
+- **CM-7. The Maia ladder in Kramnik chess.** Matches between Maia levels 200 and 400 apart.
+  - Check: the stronger side wins, and the measured gap is within the 95% interval of the label gap, or the
+    deviation is recorded.
+- **CM-8. Engine levels on the ladder.** Find the Fairy-Stockfish node counts (with personality knobs neutral) that
+  score about 50% against each Maia anchor; extend above 1900 by Leela/Fairy-Stockfish node doubling and below 1100
+  by Maia 1100 plus randomness.
+  - Check: a table from rating to engine setting.
+- **CM-9. Personalities use the table.** Rating → engine and node count, with the style knobs on top.
+  - Check: two personalities 400 apart score within the interval the Elo formula predicts.
+- **CM-10. Personality opening books.** Decode Chessmaster's `.OBK` files and use each personality's own book, cut
+  at castling.
+  - Check: a personality with a distinctive book opens from it.
+- **CM-11. Adjourn and resume rated games,** as Chessmaster does, and keep each rated game's PGN in the history.
+  - Check: adjourn, restart the app, resume, finish, and the rating changes once.
+- **CM-12. The opponent picker and the outstanding check.** A picker dialog that filters by rating and type and
+  shows biographies, then one full ranked Fischer 10+3 game against a chosen personality.
+- **CM-7 (10-06): done, with a negative result.** In Kramnik chess at one node, the Maia levels are compressed:
+  Maia 1500 vs 1100 scored 31/40 (+215 ± 129 for a labelled 400), and 1500 vs 1300 21/40 (+17 ± 108 for 200). A
+  Maia network predicts the moves of players in its band; it does not play at that strength, so its labels cannot
+  anchor the scale alone.
+  - New plan for CM-8: measure rating *differences* on a ladder of controllable levels (Fairy-Stockfish node
+    counts, and the Maia levels where they fit), and anchor the top at full engine strength, as Chessmaster's own
+    scale is anchored at its strongest personality (Chessmaster, 2724).
+  - The Maia opponents stay in the roster as human-like styles, labelled by their training band, not by measured
+    strength.
