@@ -385,3 +385,47 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
     is in the history.
   - Noted for later: at fixed node counts the personalities move almost instantly (Tasha used about 2 s in the
     game). A short thinking pause would feel more like a human opponent.
+- **NN round 3 (10-06):** LD2 fine-tuned for 1 epoch on all 1.18 million positions, value targets blended 50/50 with
+  evaluations. Held-out results: top-move agreement 36.3% (LD2 32.8%), policy loss 2.33 (2.99), value loss 0.649
+  (0.745), results 74.3% (72.5%). It passes the lc0 identity check (0.076 / 0.0036) and is now chessIQ's Leela
+  network (`engine/nets/kramnik-r3.pb.gz`).
+
+## EPIC NN, retrospective 2 (2026-10-06, before sprints NN-7..NN-12)
+
+### What the first block delivered
+- lc0 and Nibbler play Kramnik chess, both proven equal to the perft gold.
+- A data pipeline with lc0's own encoder, and 1.24 million positions from Fairy-Stockfish.
+- A PyTorch Leela network proven identical inside lc0.
+- Fine-tuned networks that beat untouched LD2 on every held-out measure.
+- Leela and Maia opponents inside chessIQ.
+
+### What the block taught
+- **Transfer beats training from zero** on one GPU. Round 1 (from zero) lost 0/20 to a 2x16 network; fine-tuning
+  LD2 starts at 33% top-move agreement and climbs from there.
+- **Value overfits quickly:** after one epoch of 0.68 million positions, held-out value loss rises again. Blending
+  with evaluations helps; more games help more.
+- **Strength is the real measure.** Held-out loss shows the network imitates Fairy-Stockfish better; whether it
+  plays better needs matches. CM-8's ladder now gives those matches a rating scale.
+- **The CPU is the bottleneck** for lc0 (no CUDA compiler on this machine): a 10x128 network at 400 nodes takes about
+  1–2 s a move, so a 30-game match takes about 90 minutes.
+
+### Approaches considered for the next block
+1. **More, better distillation data.** Fairy-Stockfish at more nodes, and positions from Leela's own games (so the
+   network learns to fix its own mistakes). Cheap and proven.
+2. **Self-play reinforcement learning** with lc0's own self-play mode under Kramnik rules. The faithful method, but
+   on the CPU a 10x128 network yields roughly 10,000 positions an hour, about 40 times slower than distillation. A
+   proof of concept only, unless lc0 runs on the GPU.
+3. **lc0 on the GPU.** Without nvcc, the options are CUDA tooling from pip, or lc0's ONNX backends with ONNX
+   Runtime's GPU build. Would speed up matches and self-play by about 20 times. Worth one sprint to find out.
+
+### Sprints NN-7..NN-12 (goal, check, stop)
+- **NN-7. Measure strength on the ladder.** Rounds 2/3 against LD2, and against Fairy-Stockfish ladder levels to
+  give each network a rating. Check: a rating with an interval for round 3, and round 3 vs LD2 head to head.
+- **NN-8. Delivery.** A WED launcher that builds and opens the Kramnik Nibbler with lc0 and the newest network, plus
+  documentation. Check: a fresh scratch HOME launches it and analyses a position with a self-capture line.
+- **NN-9. lc0 on the GPU** (time-boxed to one sprint). Check: an nps comparison, CPU against GPU.
+- **NN-10. On-policy data:** Fairy-Stockfish labels on positions from Leela's own games, at more nodes; train
+  round 4. Check: round 4 against round 3 head to head.
+- **NN-11. Self-play proof of concept:** lc0 self-play under Kramnik rules writing V6 directly, mixed into
+  training. Check: the pipeline runs end to end; the improvement is measured, whatever its sign.
+- **NN-12. Retrospective and the strongest network delivered** to chessIQ and Nibbler.
