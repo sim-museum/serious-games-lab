@@ -459,7 +459,7 @@ class Search:
         return best
 
 
-def best_move(b, color, ep, t=1.2, d=12, banned=(), cancel=None, stats=None):
+def best_move(b, color, ep, t=1.2, d=12, banned=(), cancel=None, stats=None, drive=False):
     """Iterative deepening, time-bounded (t seconds, at most d plies). Always full strength.
     banned: keys of positions already seen twice -- never walked into while clearly better (that throws the win)."""
     root = legal_moves(b, color, ep)
@@ -476,7 +476,9 @@ def best_move(b, color, ep, t=1.2, d=12, banned=(), cancel=None, stats=None):
             continue
         mat += VAL[p[1]] if p[0] == color else -VAL[p[1]]
         phase += PHASE[p[1]]
-    if mat > SELFCAP["lead"] and phase >= SELFCAP["minPhase"]:
+    # EPIC CM (2026-10-06): the drive is OFF in chessIQ's play -- a Chessmaster rated game is the standard, and a
+    # strong side does not hand material back. drive=True keeps the HTML original's behaviour for the parity tests.
+    if drive and mat > SELFCAP["lead"] and phase >= SELFCAP["minPhase"]:
         se.bias = (color, min(SELFCAP["cap"], SELFCAP["base"] + mat * SELFCAP["slope"]))
     se.deadline = time.monotonic() + t
     scored = pv = None

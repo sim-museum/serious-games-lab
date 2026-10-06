@@ -13,7 +13,7 @@ from . import engine as E
 BOOK_PLIES = 16
 AI_NAME = "Kramnik (capture-anything/no-castle AI)"   # PGN name; loading treats any name with "AI" as the computer
 # The gold searches 1.2 s in JavaScript; this port runs ~1.5x slower (same tree, same node counts), so 1.8 s buys
-# the same search. He always plays at full strength -- there is no strength dial, by design.
+# the same search. This Python engine is the fallback; the chosen personality plays through chessiq/uci_engine.py.
 THINK_S = 1.8
 MAX_DEPTH = 12
 
