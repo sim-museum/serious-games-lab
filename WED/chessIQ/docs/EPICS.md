@@ -445,3 +445,13 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
     showed the game's final position, and the round-3 network's top line was **Rxe4 (a rook taking its own pawn) at
     96.3%**, principal variation `Rxe4 Qf1 f4 Rg1 Rxg1 Bxg1 Rb4 …`. This also closes NN-2's open point: a principal
     variation containing a self-capture is displayed.
+- **NN-9 (10-06): done. lc0 runs on the GPU, about 100 times faster.**
+  - `engine/build_lc0_gpu.sh` builds lc0's plain CUDA backend (cuBLAS, no cuDNN) with no system CUDA toolkit. The
+    compiler and libraries come from pip into a private environment (`engine/cuda-env`, about 1 GB), pinned to CUDA
+    13.2 to match the driver. Two traps on the way: pip mixed a 13.4 compiler front end with a 13.2 assembler, and
+    the CCCL headers had to be added.
+  - Result, round-3 network on a GTX 1660 Super: CPU (OpenBLAS) about 350 nodes/s, CUDA 21,642, CUDA half precision
+    32–37k.
+  - The GPU build passes the 1,305-position rules test. `kramnikNibbler.sh` and chessIQ's Leela opponents use it
+    when present (wrapper `engine/lc0-kramnik-gpu`), else the CPU build.
+  - In Nibbler, on the self-capture position: 817k nodes in 20 s, `Rxe4` still on top with a 16-ply line.
