@@ -228,3 +228,8 @@ straight into the patched lc0 and Nibbler without TensorFlow.
     checking, including the self-capture `27...Kxg6`. The engine panel showed a principal variation and listed
     self-captures (`Qxa7`, `Qxc2`, `Kxf7`, `Kxh5`) among the candidate moves. A principal variation containing a
     self-capture was not seen in that minute.
+- **CM calibration re-measure (10-06): the compression is not enough.** At Fischer 1+1 with the compressed mapping,
+  labelled 1600 vs 1400 (engine Elo 1558 vs 1442) went **12–0** (target 76%). At real thinking times the engine's
+  Elo limiter separates levels far more steeply than any linear correction. Strength needs a different mechanism:
+  the first topic for CM's next retrospective (options include a per-level node cap with MultiPV sampling, or
+  Maia-style human networks under the Kramnik lc0).
