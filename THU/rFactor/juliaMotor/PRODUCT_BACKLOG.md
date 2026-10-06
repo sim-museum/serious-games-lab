@@ -22214,6 +22214,25 @@ The 261004 session (17 `.ibt`, 360 Hz, setup `261004_nurburgring`, test log in `
 acceptance tool; the stability suite (`tools/stability_check.jl`: step steers 90/125 km/h, WOT blips 200/240, straight WOT
 pull, trail braking from 250) passes on the final model.
 
+### TYRE-2 S2 (2026-10-06) — the transient "gaps" were the harness: replayed with the driver's inputs, the sim lets go when iRacing does
+**Retrospective.** S1 left two transient gaps from `wwtrans_261005.jl`: the default car "too forgiving on power" (B3) and the
+lift-off "not tucking in" (B4). Read raw, the gold's first B3 event is not a squeeze: 4th gear at ~4,500 rpm, the throttle
+SNAPPED 0.3 → 1.0 in half a second, rear wheel slip 3 % → 27 % in a second, the inside rear spinning up (ρ −13), then the spin.
+wwtrans replays a 6 s ramp in the LOWEST gear under 8,200 rpm (2nd) -- a different event.
+**New tool `tools/replay_261005.jl`:** each event's session car settled on its circle at its speed and g IN THE GOLD'S
+GEAR, then 9 s of the gold's throttle and the gold's steering CHANGES, open loop; gold vs sim every 0.25 s (g, β, rear slip
+angle, rear wheel slip κ, diff split ρ).
+* The default's 789.9 s let-go: **gold 6.45 s, sim 6.55 s**; κ 0.126/0.132, 0.191/0.182, 0.282/0.250 and ρ −4.7/−5.5,
+  −9.4/−8.9, −13.9/−12.8 at 6.5/6.75/7.0 s -- the wheelspin and the inside wheel's spin-up follow the gold step for step.
+* All 19 events: let-go within ~0.1 s on 5 (789.9, 41.6, 104.4, 101.4 lift, and 6.45/6.55), both hold on 3, the rest
+  scatter BOTH ways (sim earlier on 5, later/never on 6; median |Δt| ≈ 0.5 s where both let go). Two mismatches start with
+  the gold in neutral (gear 0), which the replay cannot reproduce; open-loop steering drifts after a few seconds and the
+  drivers countersteer, so only the FIRST let-go is a fair comparison. No systematic bias either way.
+* **Verdict: with the driver's own inputs the sim's power-on and lift-off match iRacing within the replay's resolution.**
+  The B3/B4 rows in wwtrans stay as the setups' A/B under identical inputs; its header now says so.
+**Still open in TYRE-2 (low priority):** the gold's diff is ~half open under LIGHT steady power (ρ ≈ 0.5) where the sim's
+is locked; it moves the balance ≤ 0.1° (CAMBER-1 S2), so it is parked.
+
 ### IRFIT-261004 TORQUE (test 4) — measured to 8,900 rpm
 `tools/torquefit_261004.jl`. The 3rd/4th-gear pulls run 4–13 % rear wheelspin, which `longfit_261002` rejected (> 5 %), so its
 torque stopped at 7,775 rpm and the parabola was extrapolated (299 N·m at 9,000). With the engine and wheels accelerating at the

@@ -1,4 +1,8 @@
 # WWSETUP-1: the TRANSIENT A/B of the two setups, gold vs sim -- the PO's "loose on power", and the lift-off.
+# ⚠️ TYRE-2 S2: this ABSTRACTS each event (a smooth throttle ramp, the lowest gear under 8,200 rpm), which is not what the
+# driver did, and its B3/B4 "gaps" (default too forgiving on power, lift-off not tucking in) were that abstraction: with
+# the gold's own throttle, steering and gear (tools/replay_261005.jl) the sim lets go when the gold does. Use the replay
+# for physics verdicts; this stays as the setups' A/B under identical inputs.
 #
 #   B3 power-on: on a ~1 g circle the throttle is squeezed to full. Measured: the throttle at which the rear lets go
 #      (sideslip |β| passes 6°) and whether it then spins (|β| > 20°). The gold driver catches some slides with
