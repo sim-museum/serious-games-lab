@@ -1,5 +1,6 @@
 """Train a Kramnik Leela network on prepared positions (EPIC NN, sprint NN-4) and save it in lc0's format.
 python train.py <train.npz> <holdout.npz> <out prefix> [--blocks 6] [--channels 64] [--epochs 10] [--batch 1024]
+                [--lr 0.002] [--qmix 0.0] [--init <lc0 network to fine-tune>]
 Writes <prefix>.pt (PyTorch) and <prefix>.pb.gz (for lc0 / Nibbler), and prints per-epoch held-out metrics:
 policy loss, top-1 agreement with the engine's best move, value loss, and W/D/L accuracy."""
 import math
@@ -16,6 +17,7 @@ import lc0net as L  # noqa: E402
 
 DEV = "cuda" if torch.cuda.is_available() else "cpu"
 BIT = torch.tensor([128, 64, 32, 16, 8, 4, 2, 1], dtype=torch.uint8)
+QMIX = 0.0        # --qmix: weight of the engine evaluation in the value target (set in main)
 
 
 def arg(name, default):
@@ -43,7 +45,13 @@ def batch(data, idx):
     legal = unpack(b["legal"])[:, :1858]
     pol = torch.zeros(n, 1858, device=DEV)
     pol.scatter_(1, b["pidx"].long(), b["pval"])
-    return x.view(n, 112, 8, 8), legal, pol, b["wdl"]
+    wdl = b["wdl"]
+    if QMIX > 0 and "q" in b:     # blend the game result with the engine's evaluation where there is one
+        q = b["q"].clamp(-1, 1)
+        qwdl = torch.stack([(1 + q) / 2, torch.zeros_like(q), (1 - q) / 2], 1)
+        mix = QMIX * b["has_q"].float()[:, None]
+        wdl = (1 - mix) * wdl + mix * qwdl
+    return x.view(n, 112, 8, 8), legal, pol, wdl
 
 
 def losses(net, x, legal, pol, wdl):
@@ -58,6 +66,9 @@ def losses(net, x, legal, pol, wdl):
 
 
 def evaluate(net, data, bs):
+    """Held-out metrics against the plain game result (no evaluation blending), so runs stay comparable."""
+    global QMIX
+    saved, QMIX = QMIX, 0.0
     net.eval()
     n = len(data["stm"])
     tot = np.zeros(4)
@@ -66,6 +77,7 @@ def evaluate(net, data, bs):
             idx = torch.arange(s, min(n, s + bs))
             tot += np.array([t.item() for t in losses(net, *batch(data, idx))]) * len(idx)
     net.train()
+    QMIX = saved
     return tot / n
 
 
@@ -73,7 +85,14 @@ def main():
     tr, ho, prefix = load(sys.argv[1]), load(sys.argv[2]), sys.argv[3]
     blocks, channels = arg("--blocks", 6), arg("--channels", 64)
     epochs, bs, lr = arg("--epochs", 10), arg("--batch", 1024), arg("--lr", 0.002)
-    net = L.LeelaNet(blocks, channels).to(DEV)
+    global QMIX
+    QMIX = arg("--qmix", 0.0)
+    init = arg("--init", "")
+    if init:                                  # fine-tune an existing Leela network (lc0 .pb.gz) on Kramnik data
+        net = L.load_lc0(init).to(DEV)
+        blocks, channels = net.blocks, net.channels
+    else:
+        net = L.LeelaNet(blocks, channels).to(DEV)
     opt = torch.optim.AdamW(net.parameters(), lr=lr, weight_decay=1e-4)
     n = len(tr["stm"])
     steps = epochs * math.ceil(n / bs)

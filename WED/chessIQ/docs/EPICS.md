@@ -260,3 +260,19 @@ straight into the patched lc0 and Nibbler without TensorFlow.
     games under the Kramnik lc0.
   - Next round: the generator now stores each position's evaluation, so the value target can blend game result
     with evaluation (Leela's remedy for overfitting), and there will be more games.
+- **NN-5 (10-06), in progress.**
+  - Round 1 (from scratch, 6x64, 217k positions) is weak: 0/20 against tinygyal (a 2x16 standard-chess network) and
+    0/20 against Fairy-Stockfish at 1,000 nodes.
+  - Lesson: Kramnik chess is mostly chess, so **fine-tune a strong chess network** rather than train from zero.
+    `nn/lc0net.py` now reads Leela networks (LINEAR16, batch norm, convolutional policy head through lc0's 73x64
+    map) and writes them back. The batch norm is stored separately, as lc0's own files do: folding before 16-bit
+    quantization made a round trip drift by 1.3 points.
+    - Check: LD2 read into PyTorch equals LD2 in lc0 (0.073 points of policy, 0.0032 of value), and so does the
+      round trip.
+  - Round 2 fine-tunes LD2 (10x128, WDL) on 678k positions with a learning rate of 2e-4, 2 epochs, and value targets
+    blended 50/50 with Fairy-Stockfish evaluations.
+    - Held-out top-move agreement with Fairy-Stockfish: untouched LD2 32.7%, epoch 1 34.4%, epoch 2 35.7%. Policy
+      loss 3.00 → 2.36. Value loss is best after epoch 1 (0.66) and back to 0.73 at epoch 2.
+    - It passes the lc0 identity check (0.108 / 0.0041).
+  - Tools: `tools/uci_match.py` (any two UCI engines, grandmaster openings, chessIQ-validated moves, Elo ± 95%) and
+    `nn/make_round.sh` (games → chunks → arrays → train → verify).

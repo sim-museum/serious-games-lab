@@ -38,8 +38,11 @@ def lc0_eval(proc, moves):
 def main():
     pt, pb, blocks, channels, games_path, chunk_dir = sys.argv[1:7]
     n_games = int(sys.argv[7]) if len(sys.argv) > 7 else 3
-    net = L.LeelaNet(int(blocks), int(channels)).eval()
-    net.load_state_dict(torch.load(pt))
+    if pt.endswith(".pb.gz"):               # an lc0 network read by load_lc0 (checks the loader)
+        net = L.load_lc0(pt)
+    else:
+        net = L.LeelaNet(int(blocks), int(channels), policy=os.environ.get("POLICY", "classical")).eval()
+        net.load_state_dict(torch.load(pt))
     proc = subprocess.Popen([LC0, "--weights=" + pb, "--backend=blas", "--threads=1", "--policy-softmax-temp=1.0",
                              "--verbose-move-stats"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                             stderr=subprocess.DEVNULL, text=True, bufsize=1)
