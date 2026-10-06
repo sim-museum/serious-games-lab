@@ -276,3 +276,12 @@ straight into the patched lc0 and Nibbler without TensorFlow.
     - It passes the lc0 identity check (0.108 / 0.0041).
   - Tools: `tools/uci_match.py` (any two UCI engines, grandmaster openings, chessIQ-validated moves, Elo ± 95%) and
     `nn/make_round.sh` (games → chunks → arrays → train → verify).
+- **NN-6 (10-06), part 1: Leela opponents in chessIQ.** `uci_engine.LeelaEngine` plays a personality with the Kramnik
+  lc0 and a network. The roster adds "Leela (Kramnik network)" (the newest `engine/nets/kramnik-*.pb.gz`, 800 nodes
+  a move; nets are kept out of git) and Maia 1100–1900 from `INSTALL/maia_weights`: human-like play learned from
+  rated human games, one node a move. Maia never learned self-capture, so it plays Kramnik chess legally but
+  rarely uses it.
+  - Checked off-screen with the book off: Maia 1100 plays the beginner's `Ng5` attack on f7, Maia 1900 a sound
+    Scandinavian, Leela a gambit line; switching opponents mid-search no longer raises an error.
+  - For EPIC CM, the Maia levels are a candidate answer to the strength-calibration problem: their ratings come
+    from human games, not from an engine's limiter.

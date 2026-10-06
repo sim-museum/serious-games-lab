@@ -423,7 +423,7 @@ class MainWindow(QMainWindow):
             self.engine = None
         if p is not None and self.engine is None:
             try:
-                self.engine = uci_engine.PersonalityEngine(p)
+                self.engine = (uci_engine.LeelaEngine(p) if p.engine == "leela" else uci_engine.PersonalityEngine(p))
             except OSError:
                 self.engine = None
         elif self.engine is not None:

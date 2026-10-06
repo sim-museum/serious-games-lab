@@ -84,7 +84,7 @@ class PersonalityEngine:
                     best = line.split()[1]
                     break
             else:
-                raise RuntimeError("engine ended")
+                return None           # the engine was closed under us (a new game or opponent): nothing to play
         if best in ("(none)", "0000"):
             return None
         r = self.p.randomness
@@ -103,3 +103,50 @@ class PersonalityEngine:
             self.proc.wait(timeout=3)
         except Exception:
             self.proc.kill()
+
+
+# ---- Leela (lc0) opponents: the Kramnik lc0 with a network (EPIC NN, sprint NN-6) ---------------------------------
+LC0 = os.environ.get("CHESSIQ_LC0", os.path.join(ROOT, "engine", "lc0-kramnik"))
+NETS = os.path.join(ROOT, "engine", "nets")
+
+
+def leela_available(net):
+    return os.access(LC0, os.X_OK) and bool(net) and os.path.exists(net)
+
+
+class LeelaEngine(PersonalityEngine):
+    """Same interface as PersonalityEngine, played by lc0 (Kramnik build) with personality.net. Randomness comes from
+    lc0's own move temperature; strength from the network and the node limit (personality.nodes)."""
+
+    def __init__(self, personality, seed=None):
+        self.p = personality
+        self.rand = random.Random(seed)
+        self.lock = threading.Lock()
+        args = [LC0, "--weights=" + personality.net, "--backend=blas", "--threads=2"]
+        self.proc = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                     text=True, bufsize=1)
+        self._send("uci"); self._wait("uciok")
+        if personality.randomness:
+            self._send("setoption name Temperature value %.2f" % (personality.randomness / 100.0))
+            self._send("setoption name TempDecayMoves value 0")
+        self.multipv = 1
+        self._send("isready"); self._wait("readyok")
+
+    def choose(self, moves, movetime_ms=None, clock=None):
+        with self.lock:
+            self._send("position startpos" + (" moves " + " ".join(moves) if moves else ""))
+            go = "go"
+            if getattr(self.p, "nodes", 0):
+                go += " nodes %d" % self.p.nodes
+            elif clock:
+                go += " wtime %d btime %d winc %d binc %d" % (clock["wtime"], clock["btime"], clock["winc"], clock["binc"])
+            elif movetime_ms:
+                go += " movetime %d" % movetime_ms
+            self._send(go)
+            for line in self.proc.stdout:
+                if line.startswith("bestmove"):
+                    best = line.split()[1]
+                    break
+            else:
+                return None           # closed under us (a new game or opponent): the result is discarded anyway
+        return None if best in ("(none)", "0000") else best
