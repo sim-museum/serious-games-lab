@@ -10,8 +10,14 @@ may take its own pieces too). It's Wednesday's game in Serious Games Week ([seri
   installation); otherwise chessIQ's own eight, from 800 to full strength. The opponents play Kramnik chess properly
   and never hand material back. They need the personality engine, built once with `engine/build_engine.sh`
   (Fairy-Stockfish with a self-capture patch); without it, chessIQ's own engine plays at full strength.
-- **Opening book** of real grandmaster games in which neither side castled (635 games out of 25,072). Blue marks
-  show what the grandmasters played, and he never opens the same way twice running.
+- **Rated games**, as in Chessmaster's ranked play: tick "Rated game". Your rating starts from your experience,
+  moves quickly for the first 20 games, and each game shows what a loss, draw or win would do to it. No take-backs.
+  Your history is kept in `~/.local/share/chessIQ/profile.json`.
+- **Time controls:** Fischer 10+3 (and 5+3, 15+10, 3+2), 30 minutes per game, 40 moves in 90 minutes, or untimed.
+  Rated games are always timed. Running out of time loses, unless the other side cannot mate.
+- **Opening helper** from 25,072 grandmaster games, each legal Kramnik chess up to its first castling move: blue
+  marks show what the grandmasters played here, and the panel lists their moves with how often each was chosen.
+  The computer opens as they did, in proportion, and never the same way twice running.
 - **Network play** (Network menu). Host a game, or join one. With a Serious Games Week matchmaker set up
   (`sgw url http://<matchmaker>:8090`), a hosted game is listed while it waits for an opponent, and the join dialog
   lists open games. Without one, enter the host's address. TCP port 47810 by default.

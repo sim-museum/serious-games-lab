@@ -162,15 +162,18 @@ class Game:
         if len(self.history) >= BOOK_PLIES:
             return None
         key = self._book_key()
-        opts = book().get(key)
+        opts = book().get(key)               # {move: games} (tools/build_book.py)
         if not opts:
             return None
-        pool = opts
-        if len(set(opts)) > 1 and key in self.book_mem:      # don't repeat last game's choice here
-            rest = [o for o in opts if o != self.book_mem[key]]
-            if rest:
-                pool = rest
-        want = pool[int(self.rand.random() * len(pool))]
+        pool = dict(opts)
+        if len(pool) > 1 and key in self.book_mem:           # don't repeat last game's choice here
+            pool.pop(self.book_mem[key], None)
+        # pick as the grandmasters did: each move with the probability of its share of their games
+        r, want = self.rand.random() * sum(pool.values()), None
+        for want, n in sorted(pool.items()):
+            r -= n
+            if r < 0:
+                break
         for m in self.legal():
             if strip_checks(E.san_of(self.board, m, self.ep)) == want:
                 self.book_mem[key] = want
@@ -186,6 +189,15 @@ class Game:
         if not wants:
             return []
         return [m for m in self.legal() if strip_checks(E.san_of(self.board, m, self.ep)) in wants]
+
+    def book_stats(self, ply=None):
+        """What the grandmasters played here (the opening helper): [(move, games, percent)], most played first."""
+        hist = self.history if ply is None else self.history[:ply]
+        if len(hist) >= BOOK_PLIES:
+            return []
+        opts = book().get(" ".join(strip_checks(h["san"]) for h in hist), {})
+        total = sum(opts.values())
+        return [(m, n, 100.0 * n / total) for m, n in sorted(opts.items(), key=lambda kv: -kv[1])]
 
     def banned_keys(self):
         """Positions already seen twice: the engine must not stumble into a threefold while winning."""
