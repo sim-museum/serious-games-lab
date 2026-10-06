@@ -21995,6 +21995,36 @@ gives a landing spike only 2–3 samples). If short on time: 1, 2, then 3b.
 Test 2 measures the CAR's vertical response, not 1967 elevation; Julia's Ring geometry stays GPL's `.trk`.
 
 
+## WWSETUP-1 — a second Julia setup, "WW103 fast loose" (PO 2026-10-05)
+
+PO: *"in GPL I like the fast, loose setup WW103 that I use for Watkins Glen races ... 1. translate ww103 to iracing garage
+parameters. 2. give me the tests to run in iracing with that new iracing setup, such that I can generate .ibt files julia can
+use to create the new "fast loose" julia setup. The julia user can then choose which setup to use - default iracing, or ww"*
+
+**Source:** `Wat10361WW.kj1` (1:03.61, Lotus) in `players/67__Driver/setups/watglen` (`.lo1` and `67x__Driver` copies are
+byte-identical). **Format decoded from gpl.exe** (decomp FUN_004892c0 serialiser, 'PGTS' v3; garage formatters for units):
+`JuliaMotorMTK/tools/gplsetup_decode.jl`. Values: psi 19/20/20/20, wheel rate 50/50/120/120 lb/in, bump 3/3/4/4, rebound
+4/4/5/5, camber −0.75/0/−0.5/+0.25, toe F −0.5 in R +0.125 in, roll bars 200/200 lb/in, ramps 30/85, clutches 4, gears
+2.286/1.706/1.474/1.286/1.16 × final 3.1, bias 54 %, steering 16:1, fuel 4 US gal; stored ride 1.0 in drives as 2.5 (GPL's load clamp).
+Against 1,720 Lotus setups on disk WW is at the extremes: front rate at GPL's minimum, rear rebound and front toe-out at the
+maximum, both bars well above median. That means front roll +11 % and rear roll +31 % against a typical setup.
+
+**Translation** (plan given to the PO, saved as `~/Documents/261005/iracing_ww103_plan.txt`): physical units where both sims
+expose the same quantity. Springs go through Julia's measured motion ratios (front 0.78, rear 0.648): front 14.4 N/mm (or the
+softest), rear 50. Also kPa, deg, mm toe, overall gearing as garage km/h (167/224/260/298/330), ramp degrees, plates, bias.
+Range position where units differ (damper clicks, ARB). Fuel stays 43.2 L for tests. Julia reads the as-run CarSetup, so
+garage limits only cost WW-likeness, never correctness. **Open:** GPL's ramp pair is unlabelled. It is read as power/coast,
+and the PO swaps it if the feel says so.
+
+**Tests:** the 261004 tests repeated on `jr_ww103`; the 261004 files are the default half of each A/B. B1 circles (roll split
+from shock deflection vs lateral g), B2 step steers, B3 power-on, **B4 new** lift-off in the circle (coast ramp; needs a
+default-setup run too), C1 crests, C2 stops, C3 laps.
+
+**Julia work once the files arrive:** springs/ride/gears/bias/mass load from the ibt as now. The 3-D car has no ARB, diff-ramp,
+damper-setting or camber input (E100-S6), so add those fitted from the A/B pairs. Then add a setup chooser: "iRacing default" |
+"WW103 fast loose", each locked to its own ibt (setup_tab.jl rule). Blocked on the PO's iRacing session.
+
+
 ## PO 2026-10-04 (evening) — three requests
 
 PO: *"update the julia racer physics model using the iracing gold standard .ibt files in the 261004 directory on the USB stick.
