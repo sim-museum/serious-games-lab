@@ -13911,7 +13911,7 @@ function main()
                 LAYOFF_OBJ && continue   # (trees graze-fade; uBackFlip stays 1 when un-culled)
                 _ocl = oi <= length(OBJCLIP) ? OBJCLIP[oi] : nothing                 # GPLVIS-1 S4: GPL's cells (clipped)
                 (_ocl === nothing && _cseg > 0 && oi <= length(OBJVIS) && OBJVIS[oi] !== nothing && !OBJVIS[oi][_cseg]) && continue   # GREY-1: GPL's window
-                (OBJ_SCENEDUP[oi] && !(oi <= length(OBJVIS) && OBJVIS[oi] !== nothing)) && continue   # RING-GOLD-1 S3 (E109-S15: not the veils -- their scenery copy is hidden)
+                (OBJ_SCENEDUP[oi] && _ocl === nothing && !(oi <= length(OBJVIS) && OBJVIS[oi] !== nothing)) && continue   # RING-GOLD-1 S3 (E109-S15: not the veils -- their scenery copy is hidden; GPLVIS-1: nor a cell-clipped object)
                 bc, br = oi <= length(_BND) ? _BND[oi] : ((opos[1], opos[2], opos[3]), 80f0)   # CULLBOUND-1: the object's real bounding sphere
                 max(sqrt((eye_[1]-bc[1])^2+(eye_[2]-bc[2])^2+(eye_[3]-bc[3])^2) - br, 0f0)^2 > (flip ? MIR_OBJ_CULL2 : OBJ_CULL2) && continue   # distance cull (mirror gets its own radius, S14)
                 FRUSTUM_CULL && !infrustum(vp_, bc, br) && continue

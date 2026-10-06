@@ -22805,6 +22805,18 @@ negated), for the segments within the view range -- on the two E109 sites first,
 object that has cells and draw the object copy clipped (`JM_GPLCLIP=all`) -- then the lap sweep against the gold, and FPS
 (6,394 cell draws is too many to ship unbatched).
 
+### GPLVIS-1 — cycle 2 retrospective + S5 (2026-10-06): at Döttinger Höhe ours matches the gold once the frames are aligned by a LANDMARK
+Retrospective: S1–S4 left one concrete lead -- the tall walls at s≈21250–21350 are the scenery copy, outside the cell rule.
+* A/B (`261006/gplclip2/anton_hide_clip_ab.jpg`): `JM_PLACE_HIDE=anton-l,anton-r` (their scenery copy gone) + `JM_GPLCLIP=all`
+  (object copy drawn, clipped to its cells; clipped objects are now exempt from RING-GOLD-1's duplicate skip) -- the walls
+  are UNCHANGED: the object copy draws the same tall tree rows, wholly inside their cells. Only the road shadow they cast moves.
+* **The comparison was the weak link.** t ≈ 116 + 0.0337·s is good to ±30 s; the bridge at the end of the straight is a hard
+  anchor: our s=21330 ↔ gold t=836 -- and there the gold ALSO has tall dense trees close to the road on both sides; 4 s
+  earlier (t=832 ≈ our s 21170) both show hedges with trees behind. **So the E109 "tall walls" are GPL's tree rows, as the
+  gold has them; there is no defect left to fix there.** Nothing shipped; `JM_GPLCLIP` stays an A/B tool (default off).
+* Lesson for every gold comparison here: align on a landmark in both frames (bridge, hairpin, building), not on the
+  lap-time line -- ±30 s is ±1 km at the Ring, and several S2/S4 "differences" above were probably misalignment.
+
 ### E111 — cycle 2 retrospective + S5 (2026-10-05): both halves likely changed by today's fixes; AWAITING the PO's look
 Two of today's fixes touched exactly E111's ground: the sprite heights (S4: Spa's pine rows were 2.5 m) and YAWSIGN-1 (Spa's
 objects were turned the wrong way; the shipped build had a huge YELLOW SLAB over the road at the pit straight, s≈14100).
