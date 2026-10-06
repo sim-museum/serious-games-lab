@@ -1,0 +1,153 @@
+diff --git a/src/chess/board.cc b/src/chess/board.cc
+index 59bc0c3..494cb00 100644
+--- a/src/chess/board.cc
++++ b/src/chess/board.cc
+@@ -430,6 +430,8 @@ void InitializeMagicBitboards() {
+ MoveList ChessBoard::GeneratePseudolegalMoves() const {
+   MoveList result;
+   result.reserve(60);
++  // Squares a piece may not move to: our own pieces -- in Kramnik chess only our king.
++  const BitBoard uncapturable = kKramnik ? BitBoard::FromSquare(our_king_) : our_pieces_;
+   for (auto source : our_pieces_) {
+     // King
+     if (source == our_king_) {
+@@ -439,7 +441,7 @@ MoveList ChessBoard::GeneratePseudolegalMoves() const {
+         const File dst_file = source.file() + delta.second;
+         if (!dst_file.IsValid()) continue;
+         const Square destination(dst_file, dst_rank);
+-        if (our_pieces_.get(destination)) continue;
++        if (our_pieces_.get(destination) && !kKramnik) continue;   // Kramnik: the king may take its own pieces
+         if (IsUnderAttack(destination)) continue;
+         result.emplace_back(Move::White(source, destination));
+       }
+@@ -467,7 +469,7 @@ MoveList ChessBoard::GeneratePseudolegalMoves() const {
+       const File king = source.file();
+       // For castlings we don't check destination king square for checks, it
+       // will be done in legal move check phase.
+-      if (castlings_.we_can_000()) {
++      if (!kKramnik && castlings_.we_can_000()) {
+         const File qrook = castlings_.our_queenside_rook;
+         if (walk_free(std::min(kFileC, qrook), std::max(kFileD, king), qrook,
+                       king) &&
+@@ -475,7 +477,7 @@ MoveList ChessBoard::GeneratePseudolegalMoves() const {
+           result.emplace_back(Move::WhiteCastling(king, qrook));
+         }
+       }
+-      if (castlings_.we_can_00()) {
++      if (!kKramnik && castlings_.we_can_00()) {
+         const File krook = castlings_.our_kingside_rook;
+         if (walk_free(std::min(kFileF, king), std::max(kFileG, krook), krook,
+                       king) &&
+@@ -490,7 +492,7 @@ MoveList ChessBoard::GeneratePseudolegalMoves() const {
+     if (rooks_.get(source)) {
+       processed_piece = true;
+       BitBoard attacked =
+-          GetRookAttacks(source, our_pieces_ | their_pieces_) - our_pieces_;
++          GetRookAttacks(source, our_pieces_ | their_pieces_) - uncapturable;
+ 
+       for (const auto& destination : attacked) {
+         result.emplace_back(Move::White(source, destination));
+@@ -500,7 +502,7 @@ MoveList ChessBoard::GeneratePseudolegalMoves() const {
+     if (bishops_.get(source)) {
+       processed_piece = true;
+       BitBoard attacked =
+-          GetBishopAttacks(source, our_pieces_ | their_pieces_) - our_pieces_;
++          GetBishopAttacks(source, our_pieces_ | their_pieces_) - uncapturable;
+ 
+       for (const auto& destination : attacked) {
+         result.emplace_back(Move::White(source, destination));
+@@ -541,7 +543,8 @@ MoveList ChessBoard::GeneratePseudolegalMoves() const {
+           const auto dst_file = source.file() + direction;
+           if (!dst_file.IsValid()) continue;
+           const Square destination(dst_file, dst_rank);
+-          if (their_pieces_.get(destination)) {
++          if (their_pieces_.get(destination) ||
++              (kKramnik && our_pieces_.get(destination) && destination != our_king_)) {
+             if (dst_rank == kRank8) {
+               // Promotion.
+               for (auto promotion : kPromotions) {
+@@ -566,7 +569,7 @@ MoveList ChessBoard::GeneratePseudolegalMoves() const {
+     // Knight.
+     {
+       for (const auto destination :
+-           kKnightAttacks[source.as_idx()] - our_pieces_) {
++           kKnightAttacks[source.as_idx()] - uncapturable) {
+         result.emplace_back(Move::White(source, destination));
+       }
+     }
+@@ -641,11 +644,18 @@ bool ChessBoard::ApplyMove(Move move) {
+   }
+ 
+   // Move in our pieces.
++  const bool self_capture = kKramnik && our_pieces_.get(to);
+   our_pieces_.reset(from);
+   our_pieces_.set(to);
+ 
+   // Remove captured piece.
+   bool reset_50_moves = their_pieces_.get(to);
++  if (self_capture) {          // Kramnik: our own piece on `to` is captured
++    rooks_.reset(to);
++    bishops_.reset(to);
++    pawns_.reset(to);
++    reset_50_moves = true;
++  }
+   if (reset_50_moves) {
+     their_pieces_.reset(to);
+     rooks_.reset(to);
+@@ -1079,6 +1089,12 @@ void ChessBoard::SetFromFen(std::string_view fen, int* rule50_ply, int* moves) {
+       }
+     }
+   }
++  if (kKramnik) {            // Kramnik chess has no castling, whatever the FEN says
++    castlings_.reset_we_can_00();
++    castlings_.reset_we_can_000();
++    castlings_.reset_they_can_00();
++    castlings_.reset_they_can_000();
++  }
+   if (skip_whitespace("after castling")) return;
+ 
+   // Parse en passant square.
+@@ -1179,19 +1195,20 @@ Move ChessBoard::ParseMove(std::string_view move_str) const {
+     if (!promotion.CanPromoteInto()) complain("invalid promotion");
+     return Move::WhitePromotion(from, to, promotion);
+   }
+-  if (from == our_king_ && our_pieces_.get(to)) {
++  if (from == our_king_ && our_pieces_.get(to) && !kKramnik) {
+     // FRC-style castling.
+     return Move::WhiteCastling(from.file(), to.file());
+   }
+-  if (from == our_king_ && from == kSquareE1 && to == kSquareG1) {
++  if (!kKramnik && from == our_king_ && from == kSquareE1 && to == kSquareG1) {
+     // Kingside castling.
+     return Move::WhiteCastling(from.file(), kFileH);
+   }
+-  if (from == our_king_ && from == kSquareE1 && to == kSquareC1) {
++  if (!kKramnik && from == our_king_ && from == kSquareE1 && to == kSquareC1) {
+     // Qeenside castling.
+     return Move::WhiteCastling(from.file(), kFileA);
+   }
+-  if (from.file() != to.file() && pawns().get(from) && !their_pieces_.get(to)) {
++  if (from.file() != to.file() && pawns().get(from) && !their_pieces_.get(to) &&
++      !our_pieces_.get(to)) {
+     // En passant.
+     return Move::WhiteEnPassant(from, to);
+   }
+diff --git a/src/chess/board.h b/src/chess/board.h
+index d455fcb..0422637 100644
+--- a/src/chess/board.h
++++ b/src/chess/board.h
+@@ -36,6 +36,14 @@
+ 
+ namespace lczero {
+ 
++// Kramnik chess (chessIQ EPIC NN, 2026-10-06): no castling, and a piece may capture its own pieces (never its own
++// king). Compiled in with -DLC0_KRAMNIK; a normal build is standard chess.
++#ifdef LC0_KRAMNIK
++inline constexpr bool kKramnik = true;
++#else
++inline constexpr bool kKramnik = false;
++#endif
++
+ // Initializes internal magic bitboard structures.
+ void InitializeMagicBitboards();
+ 
