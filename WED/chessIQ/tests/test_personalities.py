@@ -59,8 +59,11 @@ class Options(unittest.TestCase):
 
     def test_rating_limits_strength(self):
         o = P.Personality("W", 300).engine_options()
-        self.assertEqual((o["UCI_LimitStrength"], o["UCI_Elo"]), ("true", 500))   # the engine's floor
-        self.assertEqual(P.Personality("M", 1900).engine_options()["UCI_Elo"], 1900)
+        self.assertEqual((o["UCI_LimitStrength"], o["UCI_Elo"]), ("true", P.engine_elo(300)))
+        self.assertEqual(P.Personality("Z", 1).engine_options()["UCI_Elo"], 631)   # compressed, above the floor of 500
+        self.assertEqual(P.Personality("M", 1500).engine_options()["UCI_Elo"], 1500)  # the anchor maps to itself
+        self.assertEqual(P.Personality("M", 1900).engine_options()["UCI_Elo"], P.engine_elo(1900))
+        self.assertLess(P.engine_elo(1900) - P.engine_elo(1500), 400)              # compressed (CM-3)
 
     def test_material_as_percent(self):
         p = P.Personality("K", 2000, material={**{x: (P.BASE[x], P.BASE[x]) for x in P.PIECES}, "Knight": (45, 30)})

@@ -103,3 +103,17 @@ them from the player's own installation when present, and otherwise ships a rost
     snatcher, captures pawns 10% of the time, Yara the attacker 7%; Alekhine captures more and checks more than
     Evans). Checks did not separate Tomas and Yara, and the aggregate gaps are near what 120 positions can resolve.
   - Open for CM-3: whether the knobs need amplifying to be felt in play.
+- **CM-3 (10-06): done.**
+  - The self-capture drive is off in chessIQ's play; `drive=True` survives only in the HTML parity tests.
+  - The chosen opponent plays through the engine (`chessiq/uci_engine.py`), and the side panel offers the opponents
+    by rating and style.
+  - Randomness: 100 ("completely random") draws among all legal moves; otherwise it draws among the best few within a
+    margin.
+  - **Strength calibration (provisional).** The engine's Elo limiter is steeper than its labels: labelled 1600 vs
+    1200 and 2000 vs 1600 both went 20–0 at 50 ms a move (the formula expects 91%), and 1600 vs 1400 scored 88% at
+    500 ms (the formula expects 76%, so the effective gap is about 345). Ratings are now compressed around 1500 by
+    0.58 before reaching the engine. Re-measure at the real time controls in CM-5.
+  - **Handing back.** In Odile (2400) vs Pip (800), 10 games at 100 ms: Odile scored 9½. While two or more pawns
+    ahead she made 0.7 self-captures a game (0.9 pawns' worth). These are the full-strength search's own choices,
+    which in Kramnik chess are line-opening tactics, not the old drive's deliberate giveaways. Not proven sound move
+    by move.
