@@ -22732,6 +22732,24 @@ question for gpl.exe, not for the screen. Read from the decompile (`~/tools/gplr
 **Next (S2):** the lap-long sweep `JM_GPLVIS=1` vs default vs the gold video, at stations covering every object family,
 plus FPS; if it matches, default ON. The scenery copies (`SECPARTS`) are still outside the rule (GREY-1 S4 note).
 
+### GPLVIS-1 S2 (2026-10-06) — the lap sweep REJECTS "draw by camera segment" for all objects; gpl.exe draws every group child
+* Sweep (`261006/gplvis/`): Ring chase views every 250 m, default vs `JM_GPLVIS=1` (92 stations; 89 differ). Gold: the PO's
+  `261003_ring.mp4` at 1 fps, aligned by t ≈ 116 + 0.0337·s (anchors Metzgesfeld s 7860 ↔ t≈380, Antoniusbuche s 21300 ↔
+  t≈830; slope = the PO's 12:49 lap).
+* **s=1500 Südkehre (`s1500_gold_vs_vis.jpg`): the gold (t=161) has ONE long grey wall down the right, the Continental banner
+  on top, running far ahead. Default draws it so; `JM_GPLVIS=1` cuts it short and opens a view to the pits.** At s=13250
+  (Klostertal) `JM_GPLVIS=1` even shows a dark slab across the sky that default does not (`top6_vis_ab.jpg`).
+* Why, from the decompile (interpreter 0x488051): group (`0x04`) draws ALL its children; the BSP nodes `0x07`–`0x0B` draw ALL
+  their children, only ORDERED by the camera's side of the plane; the segment table `0x10` draws nothing. Only `0x06`
+  (half-space), `0x19` (box outcodes vs the frustum) and `0x11` (distance LOD: the first child whose threshold exceeds the
+  camera distance) CULL. The segment group is a spatial partition, not a "camera is here" switch. The four values in each
+  segment's `0x10` table are points within the segment (e.g. 8306.1/8310.3/8314.5/8318.7), not a draw range.
+* **`JM_GPLVIS=1` stays OFF.** The shipped veil / hill-cap rules (E109-S15, GREY-1 S5) stay: each was checked against the gold
+  by eye. Their real mechanism is most likely the `0x11` distance LOD (an impostor drawn while FAR, gone as the car
+  arrives), which the one-segment window approximates.
+**Next (S3):** decode `0x11` (its distance reference `FUN_004cf7e0`, thresholds `FUN_004cf880`, the `param_1[3] == 5`
+special case) and `0x19`, and give the object pipeline GPL's actual LOD bands per placement.
+
 ### E111 — cycle 2 retrospective + S5 (2026-10-05): both halves likely changed by today's fixes; AWAITING the PO's look
 Two of today's fixes touched exactly E111's ground: the sprite heights (S4: Spa's pine rows were 2.5 m) and YAWSIGN-1 (Spa's
 objects were turned the wrong way; the shipped build had a huge YELLOW SLAB over the road at the pit straight, s≈14100).
