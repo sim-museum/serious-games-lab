@@ -29,15 +29,31 @@ TERMS = ("Centre", "Mobility", "KingSafety", "PassedPawns", "PawnWeakness")
 PIECES = ("Queen", "Rook", "Bishop", "Knight", "Pawn")
 BASE = {"Queen": 90, "Rook": 50, "Bishop": 30, "Knight": 30, "Pawn": 10}     # Chessmaster's own values, tenths
 
-# The engine's strength limiter separates levels more steeply than its Elo labels (CM-3, 2026-10-06): a labelled
-# 1600 scored 88% against a 1400 at 500 ms a move (the formula expects 76%: an effective gap of ~345 for 200), and
-# 40-0 at 400 apart at 50 ms. So a personality's rating is compressed around the club middle before it reaches the
-# engine. PROVISIONAL: re-measure at the real time controls (CM-5), where thinking time changes the slope.
-ELO_ANCHOR, ELO_SCALE = 1500, 0.58
+# Strength (CM-8, 2026-10-06). The engine's own Elo limiter does not hold its labels in Kramnik chess (12-0 between
+# a labelled 1600 and 1400), so strength is set by search nodes on a MEASURED ladder: 26 matches of 40 games between
+# Fairy-Stockfish node levels, fitted jointly (Bradley-Terry): about 195 Elo per doubling of nodes, with a floor
+# below ~45 nodes. Anchor: Maia 1500 (a network that moves like 1500-rated humans, one node) placed itself at the
+# same point against 64, 181 and 512 nodes; that point is rating 1500.  (nodes, rating) along the ladder:
+LADDER = [(16, 1163), (64, 1272), (128, 1493), (181, 1597), (256, 1691), (362, 1766), (1024, 1983), (1448, 2090),
+          (2048, 2160), (2896, 2350), (4096, 2497), (5793, 2656), (8192, 2702), (11585, 2872), (16384, 2962),
+          (65536, 3300)]
+FLOOR = LADDER[0][1]
 
 
-def engine_elo(rating):
-    return round(ELO_ANCHOR + (rating - ELO_ANCHOR) * ELO_SCALE)
+def level_for(rating):
+    """(nodes, extra randomness) that play at `rating`. Below the 16-node floor the engine keeps 16 nodes and
+    strays from its best move more often (PROVISIONAL below the floor: not yet measured)."""
+    if rating <= FLOOR:
+        return LADDER[0][0], min(100, round((FLOOR - rating) / 8))
+    for (n0, r0), (n1, r1) in zip(LADDER, LADDER[1:]):
+        if rating <= r1:
+            t = (rating - r0) / max(1, r1 - r0)
+            return round(n0 * (n1 / n0) ** t), 0
+    return LADDER[-1][0], 0
+
+
+def engine_elo(rating):          # kept for callers: the ladder replaced the engine's own limiter
+    return rating
 
 
 @dataclass
@@ -71,12 +87,14 @@ class Personality:
             o["CM %s Opp" % p] = round(opp * 100 / BASE[p])
         o["CM Contempt"] = self.contempt
         o["CM Attack"] = max(-100, min(100, self.attack))
-        if self.rating < 2850:
-            o["UCI_LimitStrength"] = "true"
-            o["UCI_Elo"] = max(500, min(2850, engine_elo(self.rating)))
-        else:
-            o["UCI_LimitStrength"] = "false"
+        o["UCI_LimitStrength"] = "false"             # strength comes from search nodes (level_for), not the limiter
         return o
+
+    def search_nodes(self):
+        return level_for(self.rating)[0] if self.rating < 2850 else 0          # 0 = full strength on the clock
+
+    def total_randomness(self):
+        return min(100, self.randomness + level_for(self.rating)[1])
 
 
 def chessmaster_dir():

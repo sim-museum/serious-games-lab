@@ -135,6 +135,85 @@ class ThinkThread(QThread):
         self.done.emit(self.token, self.think())
 
 
+class OpponentDialog(QDialog):
+    """Choose the computer opponent, as Chessmaster's opponent list does: filter by type and rating, search by name or
+    style, and read the biography (CM-12)."""
+
+    def __init__(self, people, current, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Choose your opponent")
+        self.resize(760, 520)
+        self.people = people
+        v = QVBoxLayout(self)
+        row = QHBoxLayout()
+        self.kind = QComboBox()
+        for label, key in (("All opponents", ""), ("Chessmaster personalities", "Chessmaster"),
+                           ("chessIQ's own", "chessIQ"), ("Neural networks (Leela, Maia)", "leela")):
+            self.kind.addItem(label, key)
+        self.lo, self.hi = QSpinBox(), QSpinBox()
+        for sb, val in ((self.lo, 0), (self.hi, 3000)):
+            sb.setRange(0, 3000); sb.setSingleStep(100); sb.setValue(val)
+        self.search = QLineEdit()
+        self.search.setPlaceholderText("name or style, e.g. attacker")
+        for w in (QLabel("Show"), self.kind, QLabel("rated"), self.lo, QLabel("to"), self.hi, self.search):
+            row.addWidget(w)
+        v.addLayout(row)
+        body = QHBoxLayout()
+        self.list = QListWidget()
+        self.bio = QTextBrowser()
+        body.addWidget(self.list, 3)
+        body.addWidget(self.bio, 4)
+        v.addLayout(body)
+        bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        bb.accepted.connect(self.accept)
+        bb.rejected.connect(self.reject)
+        v.addWidget(bb)
+        for w in (self.kind, self.lo, self.hi):
+            (w.currentIndexChanged if w is self.kind else w.valueChanged).connect(self.refill)
+        self.search.textChanged.connect(self.refill)
+        self.list.currentItemChanged.connect(self.show_bio)
+        self.list.itemDoubleClicked.connect(lambda *_: self.accept())
+        self.refill(select=current)
+
+    def matches(self, p):
+        k = self.kind.currentData()
+        if k == "leela" and p.engine != "leela":
+            return False
+        if k in ("Chessmaster", "chessIQ") and (p.source != k or p.engine == "leela"):
+            return False
+        if not self.lo.value() <= p.rating <= self.hi.value():
+            return False
+        q = self.search.text().strip().lower()
+        return not q or q in p.name.lower() or q in (p.style or "").lower()
+
+    def refill(self, *_, select=None):
+        keep = select or self.chosen()
+        self.list.clear()
+        for p in self.people:
+            if self.matches(p):
+                it = QListWidgetItem("%-24s %4d   %s" % (p.name, p.rating, p.style[:40]))
+                it.setData(Qt.ItemDataRole.UserRole, p.name)
+                self.list.addItem(it)
+                if p.name == keep:
+                    self.list.setCurrentItem(it)
+        if self.list.currentItem() is None and self.list.count():
+            self.list.setCurrentRow(0)
+
+    def chosen(self):
+        it = self.list.currentItem() if hasattr(self, "list") else None
+        return it.data(Qt.ItemDataRole.UserRole) if it else None
+
+    def show_bio(self, *_):
+        p = next((p for p in self.people if p.name == self.chosen()), None)
+        if p is None:
+            self.bio.setHtml("")
+            return
+        kind = ("a neural network" if p.engine == "leela" else
+                "a Chessmaster personality (from your installation)" if p.source == "Chessmaster" else "chessIQ's own")
+        self.bio.setHtml("<h3>%s</h3><p><b>Rated %d</b> &middot; %s</p><p><i>%s</i></p><p>%s</p>"
+                         % (p.name, p.rating, kind, p.style or "", (p.bio or "").replace("\n", "<br>")))
+
+
 class HostDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -269,7 +348,13 @@ class MainWindow(QMainWindow):
             self.who.addItem("chessIQ classic (engine not built)", None)
         self.who.setCurrentIndex(self._default_opponent())
         grid.addWidget(QLabel("Computer"), 2, 0)
-        grid.addWidget(self.who, 2, 1)
+        pick = QHBoxLayout()
+        pick.addWidget(self.who, 1)
+        choose = QPushButton("Choose…")
+        choose.setEnabled(bool(self.people))
+        choose.clicked.connect(self.choose_opponent)
+        pick.addWidget(choose)
+        grid.addLayout(pick, 2, 1)
         self.rated_box = QCheckBox("Rated game (no take-backs; your rating changes)")
         self.rated_box.setChecked(QSettings("sim-museum", "chessIQ").value("rated", "false") == "true")
         self.rated_box.toggled.connect(lambda on: (QSettings("sim-museum", "chessIQ").setValue("rated", "true" if on else "false"),
@@ -384,6 +469,11 @@ class MainWindow(QMainWindow):
         self.resize(1000, 680)
 
     # ---------------- game flow ----------------
+    def choose_opponent(self):
+        d = OpponentDialog(self.people, self.who.currentData(), self)
+        if d.exec() and d.chosen():
+            self.who.setCurrentIndex(self.who.findData(d.chosen()))
+
     def _default_opponent(self):
         """The opponent nearest 1500, the first time; afterwards the last one chosen."""
         last = QSettings("sim-museum", "chessIQ").value("opponent", "")

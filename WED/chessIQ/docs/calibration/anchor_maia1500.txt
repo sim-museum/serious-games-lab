@@ -1,0 +1,3 @@
+maia1500 vs n64: 31.0 / 40 (78%), Elo difference +215 +/- 129
+maia1500 vs n181: 14.5 / 40 (36%), Elo difference -98 +/- 112
+maia1500 vs n512: 8.5 / 40 (21%), Elo difference -228 +/- 132
