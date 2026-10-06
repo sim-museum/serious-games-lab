@@ -338,6 +338,7 @@ class TableManager:
         self.remote_seats = [BY_NAME[{"N": "north", "E": "east", "S": "south", "W": "west"}[x.strip().upper()[0]]]
                              for x in a.remote.split(",") if x.strip()]
         self.system = get_system(a.system)
+        self.script = {}                     # probe mode: this board's script
         from backend import bid_sim
         bid_sim.set_play_system(a.system)    # card-play sampler reads our system
         self.out = Path(a.out or (_HERE / "runs" / "bluechip" /
@@ -476,6 +477,13 @@ class TableManager:
                 line_partner = fmt_call(seat, b)
                 if alert:
                     alerts[len(auction)] = alert
+            elif self.script.get("calls", {}).get(NAME[seat][0]):
+                # Probe mode: biq's seat makes the scripted call.
+                b = Bid.from_str(self.script["calls"][NAME[seat][0]].pop(0))
+                if not legal_call(auction, dealer, seat, b):
+                    self.log(f"scripted {_call_str(b)} illegal; passing")
+                    b = Bid.make_pass()
+                line_opp = line_partner = fmt_call(seat, b)
             else:
                 st = parse_auction(seat, dealer, list(auction), vulnerability=vul)
                 e = evaluate_hand(hands[seat])
@@ -554,7 +562,9 @@ class TableManager:
                         raise RuntimeError(f"{NAME[p]} played three illegal cards")
                 else:
                     board.tricks = list(board.tricks)
-                    c = biq_card(board, p, cur)
+                    c = self._scripted_card(t, p, live[p], cur)
+                    if c is None:
+                        c = biq_card(board, p, cur)
                     if c is None or c not in legal_cards(live[p], cur):
                         self.log(f"biq card search failed for {NAME[p]}; legal fallback")
                         c = sorted(legal_cards(live[p], cur), key=lambda x: -x.rank.value)[0]
@@ -583,6 +593,26 @@ class TableManager:
             time.sleep(self.a.trick_pause)
         return decl_tricks, play
 
+    def _scripted_card(self, t, p, hand, cur):
+        """Probe mode: a scripted card for biq's seat `p` if the script has
+        one: "follows" {"<trick><seat>": card}, else, on lead, the first card
+        of "leads" that `p` holds."""
+        sc = self.script
+        if not sc:
+            return None
+        legal = legal_cards(hand, cur)
+        f = sc.get("follows", {}).get(f"{t}{NAME[p][0]}")
+        if f:
+            c = parse_card(f)
+            return c if c in legal else None
+        if not cur:
+            for i, tok in enumerate(sc.get("leads", [])):
+                c = parse_card(tok)
+                if c in legal:
+                    sc["leads"].pop(i)
+                    return c
+        return None
+
     # --- the match
     def run(self):
         if self.a.pbn:
@@ -592,12 +622,19 @@ class TableManager:
                     for n in range(self.a.start, self.a.start + self.a.boards)]
         self.connect_all()
         rooms = ["open", "closed"][: self.a.rooms]
+        scripts = {}
+        if self.a.script:
+            for line in open(self.a.script):
+                if line.strip():
+                    x = json.loads(line)
+                    scripts[int(x["board"])] = x
         # Rooms alternate board by board (open 1, closed 1, open 2, ...) so a
         # crash in a long unattended run loses at most one board's pair.
         with open(self.out / "results.jsonl", "a") as fh:
             for n, dealer0, vul0, hands0 in deck:
                 for room in rooms:
                     dealer, vul, hands = dealer0, vul0, hands0
+                    self.script = json.loads(json.dumps(scripts.get(n, {})))
                     if room == "closed":
                         dealer, vul, hands = rotate(dealer, vul, hands)
                     try:
@@ -606,6 +643,7 @@ class TableManager:
                         self.log(f"{ex}; replaying {room}-{n} from the start")
                         for rc in self.conns.values():
                             rc.pending = []
+                        self.script = json.loads(json.dumps(scripts.get(n, {})))
                         rec = self.play_board(f"{room}-{n}", n, dealer, vul, hands)
                     rec["room"] = room
                     fh.write(json.dumps(rec) + "\n")
@@ -684,6 +722,9 @@ def main(argv=None):
     ap.add_argument("--relay-alerts", action="store_true",
                     help="pass robots' alerts on to their opponents")
     ap.add_argument("--quiet", action="store_true")
+    ap.add_argument("--script", default=None,
+                    help="probe mode: JSON lines {board, calls: {N: [..], S: [..]}, "
+                         "leads: [cards], follows: {'<trick><seat>': card}} for biq's seats")
     a = ap.parse_args(argv)
     tm = TableManager(a)
     try:
