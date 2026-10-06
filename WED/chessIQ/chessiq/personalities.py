@@ -29,6 +29,16 @@ TERMS = ("Centre", "Mobility", "KingSafety", "PassedPawns", "PawnWeakness")
 PIECES = ("Queen", "Rook", "Bishop", "Knight", "Pawn")
 BASE = {"Queen": 90, "Rook": 50, "Bishop": 30, "Knight": 30, "Pawn": 10}     # Chessmaster's own values, tenths
 
+# The engine's strength limiter separates levels more steeply than its Elo labels (CM-3, 2026-10-06): a labelled
+# 1600 scored 88% against a 1400 at 500 ms a move (the formula expects 76%: an effective gap of ~345 for 200), and
+# 40-0 at 400 apart at 50 ms. So a personality's rating is compressed around the club middle before it reaches the
+# engine. PROVISIONAL: re-measure at the real time controls (CM-5), where thinking time changes the slope.
+ELO_ANCHOR, ELO_SCALE = 1500, 0.58
+
+
+def engine_elo(rating):
+    return round(ELO_ANCHOR + (rating - ELO_ANCHOR) * ELO_SCALE)
+
 
 @dataclass
 class Personality:
@@ -60,7 +70,7 @@ class Personality:
         o["CM Attack"] = max(-100, min(100, self.attack))
         if self.rating < 2850:
             o["UCI_LimitStrength"] = "true"
-            o["UCI_Elo"] = max(500, self.rating)
+            o["UCI_Elo"] = max(500, min(2850, engine_elo(self.rating)))
         else:
             o["UCI_LimitStrength"] = "false"
         return o

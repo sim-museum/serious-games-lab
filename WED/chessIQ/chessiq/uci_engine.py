@@ -3,7 +3,8 @@
 One engine process per opponent. Rating, style, contempt and material go in as UCI options
 (Personality.engine_options); two Chessmaster knobs are applied here instead:
   * randomness (0..100): the engine reports its best few moves (MultiPV), and with probability randomness/200 a
-    move within (10 + 2 x randomness) centipawns of the best is played instead of the best;
+    move within (10 + 2 x randomness) centipawns of the best is played instead of the best; at 100 ("completely
+    random", Chessmaster's Stanley) every legal move is listed and one is drawn at random;
   * max depth (< 99): the search is limited to that many plies.
 available() is False when the binary has not been built (engine/build_engine.sh); chessIQ then falls back to its
 own Python engine.
@@ -34,7 +35,7 @@ class PersonalityEngine:
         self._send("setoption name UCI_Variant value kramnik")
         for k, v in personality.engine_options().items():
             self._send("setoption name %s value %s" % (k, v))
-        self.multipv = 4 if personality.randomness > 0 else 1
+        self.multipv = 500 if personality.randomness >= 100 else 4 if personality.randomness > 0 else 1
         self._send("setoption name MultiPV value %d" % self.multipv)
         self._send("isready"); self._wait("readyok")
 
@@ -87,6 +88,8 @@ class PersonalityEngine:
         if best in ("(none)", "0000"):
             return None
         r = self.p.randomness
+        if r >= 100 and lines:
+            return self.rand.choice([mv for _, mv in lines.values()])
         if r > 0 and len(lines) > 1 and self.rand.random() < r / 200:
             top = max(cp for cp, _ in lines.values())
             near = [mv for cp, mv in lines.values() if top - cp <= 10 + 2 * r and mv != best]

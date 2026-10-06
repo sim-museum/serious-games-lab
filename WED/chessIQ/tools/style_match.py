@@ -48,6 +48,10 @@ class Engine:
         self.p.wait()
 
 
+def material(b, color):
+    return sum(VALUE.get(p[1], 0) for p in b if p and p[0] == color)
+
+
 def uci_of(m):
     return E.sqname(m.frm) + E.sqname(m.to) + (m.promo or "")
 
@@ -77,6 +81,9 @@ def play(white, black, ms, cap=240):
             st[turn]["material"] += 1; st[turn]["pawns"] += 1
         elif m.kind == "self":
             st[turn]["selfcaptures"] += 1
+            if material(b, turn) - material(b, E.opp(turn)) >= 2:      # handing material back while ahead?
+                st[turn]["selfcap_ahead"] += 1
+                st[turn]["given_back"] += VALUE[b[m.to][1]]
         b, ep, turn = E.apply_move(b, m), E.ep_after(m), E.opp(turn)
         st[E.opp(turn)]["checks"] += E.in_check(b, turn)
         moves.append(u)
@@ -104,6 +111,7 @@ if __name__ == "__main__":
     by = P.by_name()
     opp = by[sys.argv[4]] if len(sys.argv) > 4 else None
     per, sc = match(by[name], games, ms, opp)
-    print("%-10s vs %-10s %d games: score %.2f | per game: checks %.1f, pawns %.1f, material %.1f, self-captures %.1f, plies %.0f"
+    print("%-10s vs %-10s %d games: score %.2f | per game: checks %.1f, pawns %.1f, material %.1f, self-captures %.1f (while 2+ ahead %.2f, giving back %.2f), plies %.0f"
           % (name, opp.name if opp else "neutral", games, sc, per.get("checks", 0), per.get("pawns", 0),
-             per.get("material", 0), per.get("selfcaptures", 0), per.get("plies", 0)))
+             per.get("material", 0), per.get("selfcaptures", 0), per.get("selfcap_ahead", 0), per.get("given_back", 0),
+             per.get("plies", 0)))
