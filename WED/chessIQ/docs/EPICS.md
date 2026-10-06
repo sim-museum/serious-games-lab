@@ -117,3 +117,16 @@ them from the player's own installation when present, and otherwise ships a rost
     ahead she made 0.7 self-captures a game (0.9 pawns' worth). These are the full-strength search's own choices,
     which in Kramnik chess are line-opening tactics, not the old drive's deliberate giveaways. Not proven sound move
     by move.
+- **CM-4 (10-06): done.**
+  - Ranked play: tick "Rated game" against the computer.
+  - Rating rule: Elo with K = max(16, 800/(games+1)). The first 20 games are provisional. This reproduces the
+    manual's example exactly (−424 / −24 / +376: K = 800, expected score 0.53).
+  - Starting rating: from your experience level, asked once (Chessmaster asks age and knowledge).
+  - Before each game, your rating and the game's stakes are shown.
+  - No take-backs in a rated game. The grandmaster opening marks stay, as Chessmaster allows its opening display in
+    ranked play.
+  - Results are recorded at mate, resignation or draw. Abandoning the game (new game or closing the app) is a loss:
+    chessIQ does not adjourn as Chessmaster does.
+  - The profile, with full history, is `~/.local/share/chessIQ/profile.json`.
+  - Checked off-screen: stakes shown; take-back refused; resigning applied exactly the shown loss; an abandoned game
+    was recorded as a loss. `tests/test_rating.py` has 5 tests.
