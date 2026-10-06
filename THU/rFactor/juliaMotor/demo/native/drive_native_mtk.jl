@@ -8709,6 +8709,19 @@ function _gv_bridge(v::BitVector)
 end
 const OBJVIS = Union{Nothing,BitVector}[(GPLVIS_ALL || (GPLVIS_VEIL && isveil(OBJECTS[k][5]))) ?
                                          (v = get(GPLVIS_VIS, OBJNODE[k], nothing); v === nothing ? nothing : _gv_bridge(v)) : nothing for k in eachindex(OBJNODE)]
+# GPLVIS-1 S4: GPL draws each placement once per CELL that lists it, clipped to the cell's four planes (gpl.exe 0x4c5560).
+# JM_GPLCLIP=1 (the Ring) does the same for the veils (`isveil`), JM_GPLCLIP=all for every object with cells; a clipped
+# object drops its per-segment window (GPL draws it over its whole segment range). Planes GPL world (x, y, z up) ->
+# render (X, Y, Z) = (x, z + h, -y), h = the object's render height minus its GPL z: (a, b, c, d) -> (a, c, -b, d - c·h).
+const GPLCLIP = NURB ? get(ENV, "JM_GPLCLIP", "0") : "0"
+const OBJCELLS = GPLCLIP != "0" ? GPLTrack.object_cells(ZTRK) : Dict{Int,Tuple{Float64,Vector{NTuple{4,NTuple{4,Float64}}}}}()
+const OBJCLIP = Union{Nothing,Vector{NTuple{4,NTuple{4,Float32}}}}[
+    (GPLCLIP == "all" || (GPLCLIP == "1" && isveil(OBJECTS[k][5]))) && haskey(OBJCELLS, OBJNODE[k]) ?
+        (let (zg, L) = OBJCELLS[OBJNODE[k]], h = Float64(OBJECTS[k][4][2]) - zg
+             [ntuple(j -> (Float32(c[j][1]), Float32(c[j][3]), Float32(-c[j][2]), Float32(c[j][4] - c[j][3]*h)), 4) for c in L]
+         end) : nothing for k in eachindex(OBJNODE)]
+GPLCLIP != "0" && println("  [gplclip] ", count(!isnothing, OBJCLIP), " objects drawn per GPL cell, ",
+                          sum(x -> x === nothing ? 0 : length(x), OBJCLIP; init = 0), " cell draws")
 const _GV_R = length(_GV_S) > 2 ? (_GV_S[end] + (_GV_S[end] - _GV_S[end-1])) / LAPLEN : 1.0    # GPL dlong per our lap metre
 function gplvis_seg(ex, ez)     # the camera's GPL segment from the eye position (render coords), 0 = unknown (draw all)
     (GPLVIS && !isempty(_GV_S)) || return 0
@@ -13852,7 +13865,8 @@ function main()
             _cseg = gplvis_seg(eye_[1], eye_[3])
             for (oi,(items,mat,grz,opos,onm)) in enumerate(_OBJS)   # trackside objects
                 LAYOFF_OBJ && continue   # (trees graze-fade; uBackFlip stays 1 when un-culled)
-                (_cseg > 0 && oi <= length(OBJVIS) && OBJVIS[oi] !== nothing && !OBJVIS[oi][_cseg]) && continue   # GREY-1: GPL's window
+                _ocl = oi <= length(OBJCLIP) ? OBJCLIP[oi] : nothing                 # GPLVIS-1 S4: GPL's cells (clipped)
+                (_ocl === nothing && _cseg > 0 && oi <= length(OBJVIS) && OBJVIS[oi] !== nothing && !OBJVIS[oi][_cseg]) && continue   # GREY-1: GPL's window
                 (OBJ_SCENEDUP[oi] && !(oi <= length(OBJVIS) && OBJVIS[oi] !== nothing)) && continue   # RING-GOLD-1 S3 (E109-S15: not the veils -- their scenery copy is hidden)
                 bc, br = oi <= length(_BND) ? _BND[oi] : ((opos[1], opos[2], opos[3]), 80f0)   # CULLBOUND-1: the object's real bounding sphere
                 max(sqrt((eye_[1]-bc[1])^2+(eye_[2]-bc[2])^2+(eye_[3]-bc[3])^2) - br, 0f0)^2 > (flip ? MIR_OBJ_CULL2 : OBJ_CULL2) && continue   # distance cull (mirror gets its own radius, S14)
@@ -13891,13 +13905,17 @@ function main()
                 end
                 _obd = BACKDROP_ON ? get(OBJBACKDROP, onm, nothing) : nothing
                 _bdfar = _obd !== nothing && hypot(eye_[1] - opos[1], eye_[3] - opos[3]) > backdrop_r(onm)   # out of its viewing area
+                for _cpl in (_ocl === nothing ? (nothing,) : _ocl)                       # GPLVIS-1 S4: once per GPL cell, clipped
+                _cpl === nothing || Render.clip_planes!(prog, _cpl)
                 for (_ii, it) in enumerate(items)                                        # SPAYELLOW-1: foliage PARTS take the track's vegetation grade
                     _fol = _ovg !== nothing && _ii <= length(_ovg) && _ovg[_ii]
                     _bd = _obd !== nothing && _ii <= length(_obd) && _obd[_ii]       # RING-GOLD-1 S2: backdrop panorama part
                     (_bd && _bdfar) && continue
                     Render.draw(prog, it, vp_, mat; bright = _fol ? TRACK_BRIGHT*VEG_GAIN : ob,
                                 ambfill = _fol ? TRACK_AMB*VEG_GAIN : oa, graze=grz || _bd, tint=otint)
-                end   # grandstands/buildings: ambfill kills the "post-Hiroshima carbonized" shadow faces → vibrant GPL look
+                end
+                end
+                _ocl === nothing || Render.clip_planes!(prog, nothing)   # grandstands/buildings: ambfill kills the "post-Hiroshima carbonized" shadow faces → vibrant GPL look
                 if _sbcull; glDisable(GL_CULL_FACE); glUniform1i(Render.uloc(prog,"uBackFlip"), 1); end
             end
             end)(OBJECTS, OBJBOUND)

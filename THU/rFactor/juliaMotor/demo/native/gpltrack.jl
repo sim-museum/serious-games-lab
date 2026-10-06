@@ -246,6 +246,70 @@ end
 const SEGBANDS = Ref(Dict{Int,BitMatrix}())    # filled by segment_visibility (GPLVIS-1 S3)
 
 """
+    object_cells(path3do) -> Dict{Int, Tuple{Float64, Vector{NTuple{4,NTuple{4,Float64}}}}}
+
+GPLVIS-1 S4: for every placed object (0x0E record offset), its GPL z and the four SIGNED clip planes of every cell that lists
+it from a segment's NEAR slots (1-4). gpl.exe draws a cell's objects clipped to its planes (0x4c5560: planes 1 and 2
+negated); a point p is inside when a·x + b·y + c·z + d >= 0 for all four (GPL world, z up). Planes from the NALP chunk.
+"""
+function object_cells(path3do)
+    segs, _ = segment_visibility(path3do)
+    b = read(path3do)
+    u32(o) = (o < 0 || o+4 > length(b)) ? UInt32(0) : UInt32(b[o+1]) | UInt32(b[o+2])<<8 | UInt32(b[o+3])<<16 | UInt32(b[o+4])<<24
+    i32(o) = reinterpret(Int32, u32(o)); f32(o) = reinterpret(Float32, u32(o))
+    prim = 0; primsz = 0; plan = 0; o = 12
+    while o + 12 <= length(b)
+        t = String(b[o+1:o+4]); sz = Int(u32(o+8)); d = o + 12
+        t == "MIRP" && (prim = d; primsz = sz); t == "NALP" && (plan = d)
+        o = d + sz; o += (4 - o % 4) % 4
+    end
+    out = Dict{Int,Tuple{Float64,Vector{NTuple{4,NTuple{4,Float64}}}}}()
+    (prim == 0 || plan == 0) && return out
+    pl(k, sg) = (sg*Float64(f32(plan+16k)), sg*Float64(f32(plan+16k+4)), sg*Float64(f32(plan+16k+8)), sg*Float64(f32(plan+16k+12)))
+    isseg(g) = u32(prim+g) == 0x04 && u32(prim+g+4) == 8 && u32(prim + Int(i32(prim+g+36))) == 0x10
+    root = Int(u32(prim)); segroot = -1
+    for k in 1:Int(u32(prim+root+4))
+        c = Int(i32(prim+root+4+4k)); (c >= 0 && u32(prim+c) == 0x04) || continue
+        n = Int(u32(prim+c+4)); n > 16 || continue
+        count(j -> (g = Int(i32(prim+c+4+4j)); g >= 0 && isseg(g)), 1:min(n, 64)) >= 32 && (segroot = c; break)
+    end
+    segroot < 0 && return out
+    for k in 1:Int(u32(prim+segroot+4))
+        g = Int(i32(prim+segroot+4+4k)); isseg(g) || continue
+        for s in 1:4
+            c0 = Int(i32(prim+g+4+4s)); (c0 >= 0 && c0 < primsz) || continue
+            seen = Set{Int}(); st = Int[c0]
+            while !isempty(st)
+                off = pop!(st); (off in seen || off < 0 || off >= primsz) && continue; push!(seen, off)
+                p = prim + off; t = u32(p)
+                if t == 0x0F
+                    idx = (Int(i32(p+4)), Int(i32(p+12)), Int(i32(p+20)), Int(i32(p+28)))
+                    planes = ntuple(j -> idx[j] < 0 ? (0.0, 0.0, 0.0, 1.0) : pl(idx[j], j <= 2 ? -1.0 : 1.0), 4)
+                    n = Int(u32(p+60))
+                    for e in 1:(0 < n < 4096 ? n : 0)
+                        q = Int(i32(p+64+16(e-1)+12)); (q >= 0 && q < primsz) || continue
+                        r = u32(prim+q) == 0x13 ? Int(i32(prim+q+32)) : q          # positioner -> the 0x0E record
+                        (r >= 0 && r < primsz && u32(prim+r) == 0x0E) || continue
+                        z, L = get!(() -> (Float64(f32(prim+r+24)), NTuple{4,NTuple{4,Float64}}[]), out, r)
+                        planes in L || push!(L, planes)
+                    end
+                    c40 = Int(i32(p+40)); c40 >= 0 && push!(st, c40)
+                elseif t == 0x04
+                    nn = Int(u32(p+4)); 0 < nn < 5000 && for j in 1:nn; push!(st, Int(i32(p+4+4j))); end
+                elseif 0x06 <= t <= 0x0B
+                    for j in 1:(t == 0x06 ? 1 : t in (0x07, 0x0B) ? 2 : t == 0x08 ? 4 : 3); push!(st, Int(i32(p+8+4(j-1)))); end
+                elseif t == 0x05; push!(st, Int(i32(p+4)))
+                elseif t in (0x0D, 0x13, 0x16); push!(st, Int(i32(p+32)))
+                elseif t == 0x11
+                    nn = Int(u32(p+16)); 0 < nn < 4096 && for j in 1:nn; push!(st, Int(i32(p+24+8(j-1)))); end
+                end
+            end
+        end
+    end
+    out
+end
+
+"""
     trackside_objects(path3do; objnames) -> Vector{ObjInst}
 
 Scan a GPL track .3do's PRIM section for object-INSTANCE records and return the

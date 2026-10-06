@@ -312,9 +312,12 @@ const VSRC = """
 layout(location=0) in vec3 pos; layout(location=1) in vec3 nrm;
 layout(location=2) in vec3 col; layout(location=3) in vec2 uv;
 uniform mat4 uVP; uniform mat4 uModel; uniform mat4 uLightVP;
+uniform vec4 uClip[4]; uniform int uNClip;   // GPLVIS-1 S4: GPL's per-cell clip planes (world), 0 = none
+out float gl_ClipDistance[4];
 out vec3 vN; out vec3 vC; out vec2 vUV; out vec3 vWorld; out vec4 vLS;
 void main(){ vN=mat3(uModel)*nrm; vC=col; vUV=uv;
   vWorld=(uModel*vec4(pos,1.0)).xyz; vLS=uLightVP*vec4(vWorld,1.0);
+  for(int i=0;i<4;i++) gl_ClipDistance[i] = i < uNClip ? dot(uClip[i], vec4(vWorld,1.0)) : 1.0;
   gl_Position=uVP*uModel*vec4(pos,1.0); }"""
 const FSRC = """
 #version 330 core
@@ -668,6 +671,19 @@ end
 # patch, no lit band. Acne check, same views shipped vs this, at Monza, Spa, Zandvoort and the Ring (acne_*_ab.png): no
 # striping on road or grass at any of the five tracks' sun angles; at Zandvoort the shipped frame had NO tyre shadow at
 # all under the high sun. JM_SHADOW_NOFS=0 JM_SHADOW_BIASK=1 restores the pre-S5 shading exactly.
+"""GPLVIS-1 S4: set up to four world-space clip planes (vec4 a,b,c,d: inside where a·x+b·y+c·z+d >= 0) for the next draws;
+`clip_planes!(prog, nothing)` turns clipping off again."""
+function clip_planes!(prog, planes)
+    glUseProgram(prog)
+    if planes === nothing
+        for i in 0:3; glDisable(GL_CLIP_DISTANCE0 + i); end
+        glUniform1i(uloc(prog,"uNClip"),0); return
+    end
+    n = min(length(planes), 4)
+    for i in 0:3; glEnable(GL_CLIP_DISTANCE0 + i); end
+    buf = zeros(Float32, 16); for i in 1:n, j in 1:4; buf[4(i-1)+j] = Float32(planes[i][j]); end
+    glUniform4fv(uloc(prog,"uClip[0]"), 4, buf); glUniform1i(uloc(prog,"uNClip"), n)
+end
 const SHADOW_NOFS  = parse(Float32, get(ENV, "JM_SHADOW_NOFS", "0.07"))  # normal-offset lookup [m] (fragment shader shadow())
 const SHADOW_BIASK = parse(Float32, get(ENV, "JM_SHADOW_BIASK", "0.15")) # scale on the shader's depth bias
 const SHADOW_POFS = Tuple(parse.(Float32, split(get(ENV, "JM_SHADOW_POFS", "2.5,4.0"), ",")))
@@ -715,6 +731,7 @@ function set_scene_uniforms(prog, campos; fognear=300f0, fogfar=2400f0,
     glUniform1f(uloc(prog,"uFogFar"),Float32(fogfar))
     glUniform3f(uloc(prog,"uTint"),1f0,1f0,1f0)   # frame default white (draws that bypass draw(), e.g. the horizon ring)
     glUniform1i(uloc(prog,"uMirrorGlass"),0)      # frame default off (same bypass-draw safety)
+    glUniform1i(uloc(prog,"uNClip"),0)            # GPLVIS-1 S4: no clip planes unless a draw sets them
     glUniform1i(uloc(prog,"uMacro"), get(ENV,"JM_MACRO","1")=="0" ? 0 : 1)   # E68 S3 A/B
 end
 

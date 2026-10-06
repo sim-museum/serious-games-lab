@@ -23,7 +23,7 @@ this index was written; that is what it exists to stop.
 |---|---|---|
 | **E107** | **EPIC (PO priority): Julia AI as close as possible to GPL AI** | **S9–S10 (2026-10-01): graded on-road test (car body overlaps road) → Spa accepted, GPL's line on 5 of 5 tracks**; Monza aligned0 control still refused. **S5–S8 (2026-09-30):** the `.trk` decode is exact; our placement had a RIGID error (Monza 4.2 m). Refit (`JM_GPLREF=rigid`, default) puts GPL's own line on the road: **4 of 5 tracks now drive GPL's line + rails** (was 2). Spa at 94.0 % (bar 95). |
 | **E108** | **EPIC (PO priority): tracks as close as possible to GPL** | **S5–S8 (2026-09-30):** flat shading (100 % of road polys lack normals) refuted as the visible cause (A/B < 0.3 % of pixels); finer rounding (4× tris) invisible at WG's gentle curves. **Needs the PO: the track + station where the faceting shows.** |
-| **E109** | Nürburgring tree "curtains" across the road + individual trees intruding | ✅ **curtains FIXED** (S6). **Individual trees MEASURED (S7–S10):** two sites stand ~1 m onto the drawn road — `halftr1s` s≈8350–8475 and `halftr07` s≈21350 — and both are exactly the veil placements at 98–110° to the road (the rest are ±90° and stand 1.7 m clear). Needs a GPL capture at s≈8400/21355 to tell data from our rotation pivot. |
+| **E109** | Nürburgring tree "curtains" across the road + individual trees intruding | ✅ curtains FIXED (S6); veils under GPL's window (S15). **GPLVIS-1 S1–S4 (2026-10-06):** gpl.exe's track renderer decoded (segment range, 117/312/914 m bands, per-cell CLIP PLANES) and per-cell clipping implemented (`JM_GPLCLIP`, off); the remaining tall walls at Döttinger Höhe are the SCENERY copy -- next: scenery copies under the cell rule. |
 | **E110** | Watkins Glen start/finish gantry drawn twice | NEW 2026-09-28. Only one placement exists, so it is a second draw path, not a second instance. |
 | **E111** | Spa: missing corner house before the 90° left; bright yellow polygon over the road after it | NEW 2026-09-28. `house12`/`house13` are in neither archive nor disk. |
 | **E85** | EPIC: multiplayer, the way GPL did it |  **sprint 1 DONE** (E85-S1): poses cross two processes exactly, both ways, gated. Sprints 2–4 open. |
@@ -60,6 +60,8 @@ this index was written; that is what it exists to stop.
 | **CARGOLD-2 S5** | the cars' "10 cm float" | the tyre shadows now start at the contact patch (`261006/shadow/*_ab.png`); the physics gap was always ~0. Does the car still look like it floats? |
 | **TYREP-1** | tyre PRESSURE (every gold skidpad session runs 152 kPa left / 207 kPa right) | not identifiable from the gold: the split never changes. Needs an iRacing skidpad run with SYMMETRIC pressures (e.g. 152/152 then 207/207, same default setup otherwise, both directions, steady 0.6–1.0 g) to fit a pressure law. |
 | **CAMBER-CTL** | a camber control on the setup tab | camber is modelled (CAMBER-1) from the session; the tab's %-of-session bands cannot express it. Want a degree-step camber control? |
+| **E76** | Ring objects "removed" after start/finish | E76-S11 found nothing removed any more; 2026-10-06 the chase views s=1250–1750 against the GPL gold (t=157–165, `261006/evidence/e76_s1250_1750_gold_vs_ours.jpg`): grandstand with the FERODO/LUCAS/UNIROYAL banners, the timing tower, the pit buildings and the long grey wall with the Continental banner are all there. Is anything still missing? |
+| **E102** | rear axles pointing outward/down | CHASE-AXLE-1 / CARGOLD-2 built the shafts; 2026-10-06 player chase (`261006/evidence/e102_rear_crop.png`): both shafts run horizontally hub to gearbox, nothing hangs down. Close? |
 
 ### ✅ CLOSED (assessed this session or landed by me)
 
@@ -22768,6 +22770,22 @@ special case) and `0x19`, and give the object pipeline GPL's actual LOD bands pe
 **Next (S4, last before rotating):** prototype GPL's mechanism for the object pipeline -- draw each placement once per cell
 that lists it, with that cell's planes as `gl_ClipDistance` (NALP plane table, plane index at cell +4/+12/+20/+28, two
 negated), for the segments within the view range -- on the two E109 sites first, against the gold.
+
+### GPLVIS-1 S4 (2026-10-06) — GPL's per-cell clipping implemented (`JM_GPLCLIP`, default off); the tall walls are the SCENERY copy (4 sprints — ROTATING)
+* `GPLTrack.object_cells`: every placement's near-slot cells with their four SIGNED planes (NALP; planes 1–2 negated). Checked:
+  every `half07` placement lies inside all four planes of each of its cells (e.g. distances 78.7 / 5.1 / 8.8 / 4.7 m); the
+  slabs are tight (the third plane 0.9–9 m from the anchor). Ring: 1,635 placements with cells, median 1, `wehr-r1b` 111.
+* Render: the vertex shader writes `gl_ClipDistance[0..3]` from `uClip`/`uNClip` (0 = none; the clip distances are
+  enabled only around clipped draws, `Render.clip_planes!`). Drive: `JM_GPLCLIP=1` draws the veils, `=all` every object with
+  cells, once per cell clipped to it (planes mapped GPL (x,y,z) → render (x, z+h, −y)); a clipped object drops its
+  per-segment window. Default off -- the draw path is unchanged.
+* A/B at the E109 sites (`261006/gplclip/e109_sites_clip*_ab.jpg`, gold t 396–404 / 832–840): veils only (15 objects, 414
+  cell draws) and all (400 objects, 6,394 cell draws) are **visually identical to default**. The tall dark walls either
+  side at Döttinger Höhe (gold: a low hedge left, taller trees right) are NOT the object pipeline -- they are the scenery
+  copy (`SECPARTS`), which no GPL rule touches yet.
+**Next (on revisit):** put the scenery copies of placed objects under the same mechanism -- drop the scenery copy of each
+object that has cells and draw the object copy clipped (`JM_GPLCLIP=all`) -- then the lap sweep against the gold, and FPS
+(6,394 cell draws is too many to ship unbatched).
 
 ### E111 — cycle 2 retrospective + S5 (2026-10-05): both halves likely changed by today's fixes; AWAITING the PO's look
 Two of today's fixes touched exactly E111's ground: the sprite heights (S4: Spa's pine rows were 2.5 m) and YAWSIGN-1 (Spa's
