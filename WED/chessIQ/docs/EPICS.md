@@ -378,3 +378,10 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
 - **CM-12 (10-06), part 1: the opponent picker.** A "Choose…" dialog lists all 198 opponents, filters by type
   (Chessmaster, chessIQ's own, neural networks) and rating range, searches name or style ("attacker": 23), and
   shows the biography (read from the player's own Chessmaster files).
+- **CM-12 (10-06): done.** The outstanding check from CM-6 now passes (`tools/ranked_game_check.py`): a full rated
+  Fischer 10+3 game in the real app against Tasha (1,513, 137 nodes).
+  - 63 plies, ending in mate (32.Qxb7#). The clocks follow the increment arithmetic (White 660 s = 600 + 32 × 3 −
+    about 36 s used). The rating moved once by the previewed amount (+526, the first provisional game), and the PGN
+    is in the history.
+  - Noted for later: at fixed node counts the personalities move almost instantly (Tasha used about 2 s in the
+    game). A short thinking pause would feel more like a human opponent.
