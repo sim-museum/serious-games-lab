@@ -349,10 +349,18 @@ uniform vec3 uTint;       // per-draw colour multiply (default white = no-op; e.
 uniform int uMirrorGlass; // 1 for the cockpit mirror glass quads → unlit round-masked RTT sample (E64)
 uniform int uUnlit;       // E83-S3: 1 = sprite drawn at texture brightness (fog/WB/exposure only), as GPL draws its billboards
 uniform int uMacro;       // 1 = macro tiling break-up on (default; JM_MACRO=0 disables — E68 S3 A/B)
+// CARGOLD-2 S5: NORMAL-OFFSET lookup. The depth bias below is in light-space depth, i.e. METRES along the light ray
+// (0.0018 x the 120 m box = 0.22 m): any occluder within it of the receiver casts nothing, so the bottom ~15 cm of every
+// tyre threw no shadow and each tyre's shadow started a hand's width from its contact patch (the PO's "float").
+// Offsetting the LOOKUP point along the surface normal by ~a shadow texel (uShadowNofs, m) kills flat-ground acne the
+// way the big bias did, so the bias can shrink (uShadowBiasK). 0 / 1 = the pre-S5 shading exactly.
+uniform mat4 uLightVP; uniform float uShadowNofs; uniform float uShadowBiasK;
 float shadow(vec3 N){
-  vec3 lp = vLS.xyz/vLS.w*0.5+0.5;
+  float ndl = clamp(dot(normalize(N), normalize(uLightDir)), 0.0, 1.0);
+  vec4 ls = uShadowNofs > 0.0 ? uLightVP*vec4(vWorld + normalize(N)*uShadowNofs*(1.0 - ndl), 1.0) : vLS;
+  vec3 lp = ls.xyz/ls.w*0.5+0.5;
   if(lp.z>1.0 || lp.x<0.0||lp.x>1.0||lp.y<0.0||lp.y>1.0) return 1.0;
-  float bias = max(0.0035*(1.0-dot(N,normalize(uLightDir))), 0.0018);   // larger → kill flat-ground acne
+  float bias = uShadowBiasK*max(0.0035*(1.0-dot(N,normalize(uLightDir))), 0.0018);   // larger → kill flat-ground acne
   float s=0.0;
   for(int x=-1;x<=1;x++) for(int y=-1;y<=1;y++)
     s += (lp.z-bias > texture(uShadow, lp.xy+vec2(x,y)*uShadowTexel).r) ? 0.0 : 1.0;
@@ -652,13 +660,24 @@ function light_vp(center, lightdir;
     up = abs(L[2])>0.99 ? [0.0,0.0,1.0] : [0.0,1.0,0.0]
     ortho(-R,R,-R,R,1.0,depth) * lookat(eye, Float64.(center), up)
 end
+# CARGOLD-2 S5: the shadow pass's polygon offset (factor, units). The SLOPE term (factor) pushes faces that are steep to
+# the light back in the shadow map, and the tyres' tread and sidewalls are exactly such faces, so a large factor
+# lifts each tyre's shadow off its contact patch (the PO's "10 cm float"). JM_SHADOW_POFS="f,u" re-tunes it for A/B.
+# CARGOLD-2 S5 SHIPPED: 0.07 m (one shadow texel: 140 m box / 2048 px) and 0.15 x the bias (floor 0.22 -> 0.03 m along
+# the light). WG AI close-up (261006/shadow/rsusp_contact_nofs_ab.png): each tyre's shadow now starts AT its contact
+# patch, no lit band. Acne check, same views shipped vs this, at Monza, Spa, Zandvoort and the Ring (acne_*_ab.png): no
+# striping on road or grass at any of the five tracks' sun angles; at Zandvoort the shipped frame had NO tyre shadow at
+# all under the high sun. JM_SHADOW_NOFS=0 JM_SHADOW_BIASK=1 restores the pre-S5 shading exactly.
+const SHADOW_NOFS  = parse(Float32, get(ENV, "JM_SHADOW_NOFS", "0.07"))  # normal-offset lookup [m] (fragment shader shadow())
+const SHADOW_BIASK = parse(Float32, get(ENV, "JM_SHADOW_BIASK", "0.15")) # scale on the shader's depth bias
+const SHADOW_POFS = Tuple(parse.(Float32, split(get(ENV, "JM_SHADOW_POFS", "2.5,4.0"), ",")))
 function shadow_pass(drawfn, depthprog, fbo, lightVP; size=SHADOW_SIZE)
     # the shadow map stays STANDARD depth ([0,1] clip, near→0, LESS) regardless of the
     # reversed-Z main pass — so the shadow map + the sampler logic in the FS are untouched
     glClipControl(GL_LOWER_LEFT, GL_NEGATIVE_ONE_TO_ONE); glDepthFunc(GL_LESS); glClearDepth(1.0)
     glBindFramebuffer(GL_FRAMEBUFFER,fbo); glViewport(0,0,size,size); glClear(GL_DEPTH_BUFFER_BIT)
     glUseProgram(depthprog); glUniformMatrix4fv(uloc(depthprog,"uLightVP"),1,GL_FALSE,umat(lightVP))
-    glEnable(GL_POLYGON_OFFSET_FILL); glPolygonOffset(2.5f0, 4.0f0)
+    glEnable(GL_POLYGON_OFFSET_FILL); glPolygonOffset(SHADOW_POFS[1], SHADOW_POFS[2])
     drawfn(depthprog)
     glDisable(GL_POLYGON_OFFSET_FILL); glBindFramebuffer(GL_FRAMEBUFFER,0)
 end
@@ -681,6 +700,7 @@ function bind_shadow(prog, shadowtex, lightVP; unit=1, size=SHADOW_SIZE)
     glActiveTexture(GL_TEXTURE0+unit); glBindTexture(GL_TEXTURE_2D,shadowtex)
     glUniform1i(uloc(prog,"uShadow"),Int32(unit))
     glUniform1f(uloc(prog,"uShadowTexel"),Float32(1/size))
+    glUniform1f(uloc(prog,"uShadowNofs"),SHADOW_NOFS); glUniform1f(uloc(prog,"uShadowBiasK"),SHADOW_BIASK)
 end
 
 """Per-frame scene uniforms (camera position + distance fog into the haze)."""
