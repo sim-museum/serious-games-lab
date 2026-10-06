@@ -18,22 +18,34 @@ include("brush_tyre.jl") # PHYSICS-BASED brush: brush_forces + BRUSH_FRONT/REAR 
 # with PHYSICAL parameters (μ, Cα, Cκ, kμ) — no Magic-Formula Cy/Ey, no grip fudge.
 function BrushTyre(; name, μ = BRUSH_FRONT.μ, μx = BRUSH_FRONT.μx, Cα = BRUSH_FRONT.Cα,
                    Cκ = BRUSH_FRONT.Cκ, kμ = BRUSH_FRONT.kμ, Fz0 = BRUSH_FRONT.Fz0, t0 = 0.035, μscale = 1.0,
-                   rs = BRUSH_FRONT.rs, ws = BRUSH_FRONT.ws)
+                   rs = BRUSH_FRONT.rs, ws = BRUSH_FRONT.ws, camber = false, Cγ = CAMBER_CG, kγ = CAMBER_KG)
     # E56: μscale is a per-wheel SURFACE friction multiplier (1 = tarmac; <1 = grass/verge).  Driving it
     # from the game makes "off the racing line" a REAL per-tyre grip loss the model integrates — a wheel
     # dropping onto the grass loses grip and pulls the car — not a bumpX! drag/yaw state hack.
     ps = @parameters μ=μ μx=μx Cα=Cα Cκ=Cκ kμ=kμ Fz0=Fz0 t0=t0 μscale=μscale rs=rs ws=ws
     vars = @variables Fz(t) α(t) κ(t) Fy(t) Fx(t) Mz(t) μye(t) μxe(t) ξx(t) ξy(t) ξ(t) sat(t)
+    # CAMBER-1 (2026-10-06): γ is the wheel's inclination to the ROAD, + = top leaning toward the tyre's +y (the
+    # direction its camber thrust pushes). Without `camber` the tyre is upright, exactly as before.
+    if camber
+        append!(ps, @parameters Cγ=Cγ kγ=kγ)
+        @variables γ(t)
+        push!(vars, γ)
+        cthr = Cγ*sin(γ)                                   # camber deflection, in the same units as Cα·sinα
+        cmu  = clamp(1.0 + kγ*sin(γ)*tanh(sin(α)/0.005), 0.7, 1.3)   # leaning INTO the slip force grips more
+    else
+        cthr = 0.0; cmu = 1.0
+    end
     eqs = [
-        μye  ~ μscale * μ  * clamp(1.0 - kμ*(Fz/Fz0 - 1.0), 0.4, 1.6),  # lateral friction (load-sensitive, clamped >0)
+        μye  ~ μscale * μ  * clamp(1.0 - kμ*(Fz/Fz0 - 1.0), 0.4, 1.6) * cmu,  # lateral friction (load-sensitive, clamped >0)
         μxe  ~ μscale * μx * clamp(1.0 - kμ*(Fz/Fz0 - 1.0), 0.4, 1.6),  # longitudinal friction (anisotropic, clamped >0)
         ξx   ~ Cκ*κ      / (3.0*μxe),                  # per-axis NORMALIZED slip (1 = friction limit)
-        ξy   ~ Cα*sin(α) / (3.0*μye),                  # — the ellipse lives here, no 1/0 at zero slip
+        ξy   ~ (Cα*sin(α) + cthr) / (3.0*μye),         # — the ellipse lives here, no 1/0 at zero slip
         ξ    ~ sqrt(ξx^2 + ξy^2 + 1e-9),               # floor INSIDE the sqrt → autodiff Jacobian finite at
         sat  ~ (1.0 - (1.0 - min(ξ, 1.0))^3) * brush_slide(ξ, rs, ws),   # zero slip (sqrt(0)' = 0/0 = NaN breaks the solver)
         Fx   ~ μxe*Fz * sat * ξx/ξ,                    # along the deflection dir; magnitude on the ellipse
         Fy   ~ μye*Fz * sat * ξy/ξ,
-        Mz   ~ -t0 * (1.0 - min(ξ, 1.0)) * Fy,         # pneumatic trail collapses as the patch slides
+        # pneumatic trail collapses as the patch slides; camber thrust acts at the patch centre (no trail)
+        Mz   ~ -t0 * (1.0 - min(ξ, 1.0)) * (camber ? μye*Fz * sat * (Cα*sin(α)/(3.0*μye))/ξ : Fy),
     ]
     System(eqs, t, vars, ps; name)
 end

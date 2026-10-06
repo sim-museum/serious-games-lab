@@ -7,6 +7,9 @@
 #      rear wheels together (|ρ| small), the default's 75° ramp lets the inside wheel spin up (ρ well below 0).
 #      ρ = rear wheel-speed split / an open diff's (tools/lsdfit_261005.jl).
 #   3. The spool path (no Differential block) still builds -- every pre-WWSETUP tool runs on it.
+#   4. CAMBER-1: the garage camber reaches the model, and it acts the way the gold's A/B says. WW103's right side
+#      leans out (0.0 / +0.2), so on the SAME circle (speed, g) its front slips more turning left -- the right
+#      wheels outside -- than turning right; the default's near-symmetric camber barely separates the directions.
 #
 #   julia --project=. tools/carsetup_smoke.jl
 using Printf
@@ -34,6 +37,8 @@ check(cw.karb == DriveRT3D.ARB_ID[("0.375\" 5", "0.6875\" firm")] && cd.karb == 
       sum(cw.karb) > sum(cd.karb), "bars: identified values, WW stiffer")
 check(cw.cscale == (1.0, 1.15) && cd.cscale == (1.0, 1.0), "dampers: WW measured ratio, default unscaled")
 check(cw.bias > cd.bias && abs(cd.bias - 0.585) < 1e-9, "brake split: 53.5 % -> 0.585 (BRAKE-2), 54 % slightly more front")
+check(cw.camber !== nothing && cd.camber !== nothing && all(isapprox.(rad2deg.(cw.camber), (-0.4, 0.0, -0.4, 0.2); atol = 0.051)) &&
+      all(isapprox.(rad2deg.(cd.camber), (-0.5, -0.4, -0.4, -0.5); atol = 0.051)), "camber from the garage (WW -0.4/0.0/-0.4/+0.2, default -0.5/-0.4/-0.4/-0.5)")
 check(!occursin("estimated", cw.src) && !occursin("estimated", cd.src), "identified sessions carry no fallback note")
 if isfile(OLD)
     co = DriveRT3D.chassis_from_setup(sp(OLD); source = "old")
@@ -71,10 +76,45 @@ end
 check(abs(ρw) < 0.4, "WW103 (35° drive ramp) holds the rear wheels together under power")
 check(ρd < -0.5, "default (75° drive ramp) lets the inside rear wheel spin up under power")
 
+# 4. camber: front axle slip on a 24 m/s, 0.95 g circle, left minus right
+function front_slip_lr(fn)
+    p = sp(fn)
+    DriveRT3D.set_transmission!(p.gear_ratios, p.final_drive; source = basename(fn))
+    m, ff = DriveRT3D.mass_from_corner_weights(p.corner_weight_N); DriveRT3D.set_mass!(m, ff; source = basename(fn))
+    DriveRT3D.set_chassis!(DriveRT3D.chassis_from_setup(p; source = basename(fn)))
+    car = DriveRT3D.build_car3d(; v0 = 24.0); sys = car.sys; u0 = copy(car.integ.u)
+    hasproperty(sys, :rc_f) || return NaN
+    gs = ModelingToolkit.getsym(sys, [sys.u, sys.v, sys.r, sys.ay, sys.δ])
+    a = ModelingToolkit.getp(sys, sys.a)(car.integ)
+    αf = Dict{Int,Float64}()
+    for dir in (1, -1)
+        reinit!(car.integ, copy(u0)); V = 24.0; g = 2; car.gear = g; car.s_gr(car.integ, p.gear_ratios[g])
+        ModelingToolkit.setu(sys, [sys.u, sys.v])(car.integ, [V, 0.0])
+        ModelingToolkit.setu(sys, [sys.ωf, sys.ωRL, sys.ωRR])(car.integ, [V/0.30, V/DriveRT3D.RW_R, V/DriveRT3D.RW_R])
+        car.s_we(car.integ, V/DriveRT3D.RW_R*p.gear_ratios[g]*p.final_drive)
+        δ = 0.03; ie = 0.0; acc = Float64[]
+        for n in 1:12*60
+            u, v, r, ay, _ = gs(car.integ)
+            δ = clamp(δ + 0.006*(0.95*9.80665 - abs(ay))/9.80665, 0.0, 0.30)
+            thr = clamp(0.3 + 0.3*(V - u) + ie, 0, 1); ie = clamp(ie + 0.01*(V - u), -0.4, 0.8)
+            DriveRT3D.step_car3d!(car, thr, 0.0, dir*δ/DriveRT3D.MAXSTEER, 1/60; clutch = 0.0, manual = true)
+            u, v, r, ay, δr = gs(car.integ)
+            n > 10*60 && push!(acc, rad2deg(dir*(δr - atan(v + a*r, u))))
+        end
+        αf[dir] = sum(acc)/length(acc)
+    end
+    αf[1] - αf[-1]
+end
+lrw = front_slip_lr(WW); lrd = front_slip_lr(DEF)
+@printf("  front slip left - right turns at 24 m/s, 0.95 g:  WW103 %+.2f°   default %+.2f°\n", lrw, lrd)
+# gold (tools/camberfit_261005.jl cells, block bootstrap): WW (left - right) minus default's = +0.30 ± 0.19° at 0.9 g;
+# upright tyres give ~0, so 0.08 (the gold's lower 1σ is 0.11) fails if camber is ever disconnected
+check(lrw > 0 && lrw - lrd > 0.08, "camber: WW103's leaned-out right side costs it front grip turning left")
+
 DriveRT3D.set_chassis!(DriveRT3D.Chassis())
 c0 = DriveRT3D.build_car3d(; v0 = 20.0)
 for _ in 1:60; DriveRT3D.step_car3d!(c0, 0.5, 0.0, 0.0, 1/60); end
-check(isfinite(c0.v) && c0.v > 15 && !hasproperty(c0.sys, :ωRL), "spool path (no diff) builds and drives")
+check(isfinite(c0.v) && c0.v > 15 && !hasproperty(c0.sys, :ωRL) && !hasproperty(c0.sys, :rc_f), "spool path (no diff, no camber) builds and drives")
 
 println(isempty(fails) ? "\n  CARSETUP GATE: PASS ✓" : "\n  CARSETUP GATE: FAIL ✗  " * join(fails, "; "))
 exit(isempty(fails) ? 0 : 1)

@@ -60,12 +60,13 @@ chk("reset car == never-touched car",
     s4.ks == fresh.ks && s4.rh == fresh.rh && s4.final == fresh.final && s4.mass == fresh.mass,
     "byte-identical, not merely close")
 
-# 6. camber must NOT be offerable: E100-S6 established it is not modelled, and a control that moves
-# nothing is worse than no control.
+# 6. camber must NOT be offerable here. E100-S6 found it unmodelled; CAMBER-1 (2026-10-06) models it, but from the
+# SESSION's garage values (DriveRT3D.chassis_from_setup), and this tab's percentage-of-session bands cannot express
+# a camber change (a ±% of −0.4° is nothing, and of 0.0° is exactly nothing). Refused until it has its own control.
 # In a FUNCTION, so `threw` is an ordinary local. At top level Julia's soft-scope rule makes the
 # assignment inside `try` a new local and the check reads FAIL on working code -- which it did.
 refuses(field) = (try; apply_delta(session_setup(KS, RH, FD, MASS), field, 1.0); false; catch; true; end)
-chk("camber is refused (it is not modelled)", refuses(:camber), refuses(:camber) ? "threw" : "ACCEPTED IT")
+chk("camber is refused (no %-band control for it)", refuses(:camber), refuses(:camber) ? "threw" : "ACCEPTED IT")
 chk("tyre pressure is refused (not on the live path)", refuses(:pressure), refuses(:pressure) ? "threw" : "ACCEPTED IT")
 
 # 7. E105-S2 -- the TAB ITSELF. The menu lives in the module and takes its streams as parameters

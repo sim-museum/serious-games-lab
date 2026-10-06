@@ -139,12 +139,15 @@ end
 #                    the garage's bar sizes are not rates, so the total is fitted to the gold's roll gradient)
 #   CHASSIS.cscale   damper scale front / rear on the hand-set dampers (the measured WW/default ratio)
 #   CHASSIS.bias     brake TORQUE split front (from the garage's PRESSURE bias, see bias_torque)
+#   CHASSIS.camber   CAMBER-1: static camber per wheel FL FR RL RR [rad], garage convention (negative = top in);
+#                    `nothing` = upright tyres (the pre-CAMBER-1 model). Roll camber: brush_tyre.jl CAMBER_RC.
 Base.@kwdef mutable struct Chassis
     diff::Any = nothing
     toe::NTuple{2,Float64} = (0.0, 0.0)
     karb::NTuple{2,Float64} = (0.0, 0.0)
     cscale::NTuple{2,Float64} = (1.0, 1.0)
     bias::Float64 = 0.585
+    camber::Union{Nothing,NTuple{4,Float64}} = nothing
     src::String = "built-in (spool rear, no toe, default bars/dampers/bias -- NOT from an ibt)"
 end
 const CHASSIS = Ref(Chassis())
@@ -212,7 +215,9 @@ function chassis_from_setup(sp; source::AbstractString = "unknown")
         push!(notes, "dampers $(clk) not identified: hand-set"); (1.0, 1.0)
     end
     bias = isfinite(sp.brake_bias_pct) ? bias_torque(sp.brake_bias_pct) : 0.585
-    Chassis(; diff, toe, karb, cscale, bias, src = source * (isempty(notes) ? "" : "  (" * join(notes, "; ") * ")"))
+    cd = [sp.camber_deg[k] for k in (:LF, :RF, :LR, :RR)]
+    camber = all(isfinite, cd) ? Tuple(deg2rad.(cd)) : (push!(notes, "no camber in the setup: upright tyres"); nothing)
+    Chassis(; diff, toe, karb, cscale, bias, camber, src = source * (isempty(notes) ? "" : "  (" * join(notes, "; ") * ")"))
 end
 
 """One line per chassis input, for the launch log: a silent fallback is the defect E100 exists to prevent."""
@@ -220,7 +225,9 @@ describe_chassis(ch::Chassis = CHASSIS[]) =
     "diff " * (ch.diff === nothing ? "spool" : "LSD preload $(round(Int, ch.diff[1])) N·m ramps $(round(Int, ch.diff[2]))/$(round(Int, ch.diff[3]))° plates $(round(Int, ch.diff[4]))") *
     "   toe-in F $(round(rad2deg(ch.toe[1]), digits = 2))° R $(round(rad2deg(ch.toe[2]), digits = 2))°" *
     "   +roll k F $(round(Int, ch.karb[1])) R $(round(Int, ch.karb[2])) N/m   dampers x$(ch.cscale[1])/$(ch.cscale[2])" *
-    "   brake split $(round(ch.bias, digits = 3))   <- $(ch.src)"
+    "   brake split $(round(ch.bias, digits = 3))" *
+    "   camber " * (ch.camber === nothing ? "none (upright)" : join((string(round(rad2deg(c), digits = 2)) for c in ch.camber), "/") * "°") *
+    "   <- $(ch.src)"
 
 """Wheel rate [N/m] from an ibt SpringRate [N/mm]. One place for the unit and motion-ratio change."""
 wheel_rate(spring_N_per_mm::Real; rear::Bool = false) = float(spring_N_per_mm) * 1000.0 * (rear ? MR2_R : MR2)
@@ -491,7 +498,8 @@ _corner(axle::Symbol, ks::Real; ch::Chassis = CHASSIS[]) = axle === :f ?
     (ks = float(ks), cs = 2500.0*ch.cscale[1], karb = 0.0, m_s = 120.0, m_u = 20.0, kt = 180_000.0, ct = 1000.0) :
     (ks = float(ks), cs = 3000.0*ch.cscale[2], karb = _karb_r(ks), m_s = 148.0, m_u = 20.0, kt = 200_000.0, ct = 1100.0)
 # WWSETUP-1: the vehicle keywords the chassis state adds (diff, toe, brake split) -- one place, both builders.
-_chassis_kw(ch::Chassis = CHASSIS[]) = (diff = ch.diff, toe_f = ch.toe[1], toe_r = ch.toe[2], bias = ch.bias, karb_f = ch.karb[1], karb_r = ch.karb[2])
+_chassis_kw(ch::Chassis = CHASSIS[]) = (diff = ch.diff, toe_f = ch.toe[1], toe_r = ch.toe[2], bias = ch.bias, karb_f = ch.karb[1], karb_r = ch.karb[2],
+                                        camber = ch.camber)
 # initial wheel speeds: the per-wheel rear states exist only with an LSD
 _wheel_u0(sys, v0) = CHASSIS[].diff === nothing ? [sys.ωr => v0/RW_R] : [sys.ωRL => v0/RW_R, sys.ωRR => v0/RW_R]
 

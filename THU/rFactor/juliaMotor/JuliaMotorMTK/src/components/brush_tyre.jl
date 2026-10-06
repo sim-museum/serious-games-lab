@@ -86,6 +86,34 @@ const C_ABL = 0.40
 const BRUSH_FRONT = (μ = 1.277*_GRIP, μx = 1.438*_GRIP, Cα = 30.21, Cκ = 23.7, kμ = 0.082, Fz0 = 1415.0, rs = 0.629, ws = 1.5)
 const BRUSH_REAR  = (μ = 1.446*_GRIP, μx = 1.498*_GRIP, Cα = 34.0, Cκ = 23.2, kμ = 0.082, Fz0 = 1670.0, rs = 0.629, ws = 1.5)
 
+# CAMBER-1 (2026-10-06): the wheel's inclination γ to the road (BrushTyre `camber = true`). Two physical effects:
+#   * camber THRUST -- a leaning tread is pushed sideways as it rolls through the patch, a lateral deflection
+#     Cγ·sinγ added to the slip's Cα·sinα. It saturates with the slip (a sliding patch carries μ·Fz whatever
+#     the lean), so camber thrust is a LOW-slip effect;
+#   * the PEAK lateral friction rises when the tyre leans INTO its slip force and falls when it leans away (the
+#     patch pressure moves to one shoulder): μy·(1 + kγ·sinγ·sign(α)), clamped to ±30 %.
+# γ itself is the garage's static camber plus the suspension's roll camber (vehicle_3d.jl `rc_f`/`rc_r`).
+# Values identified THROUGH THE PLAYER CAR on two independent gold sets, jointly with the upright μ (2026-10-06):
+#   * the camber A/B (tools/camberfit_261005.jl): three garage camber sets on the skidpad (default, WW103, the oval
+#     set), both directions, each cell at its own speed, scored as differences from the default car so the
+#     skidpads' 152/207 kPa pressure split cancels. Upright 0.582°; kγ 6 0.530°, kγ 7 0.515° (μ 1.36).
+#   * the TYRE-1 slip curve + stability suite (tools/tyreid_261002.jl, JM_STAB_IBT = the 261004 default car,
+#     JM_CAMB_TRY): with μ re-fitted per kγ, kγ 0: 814 (μf 1.277), 3: 515, 5: 470 (1.33), 6: 443 (1.36),
+#     7: 444 (1.40), 8: 754 (1.43, holds only 1.10 g). Every point passes the stability checks.
+#   kγ 6 is taken: both sets prefer 6-7 over upright, and 6 is the smaller shift. It is LARGE -- ~10 % peak lateral
+#   grip per degree of lean -- and that is what the gold says: the tread temperatures show the same thing (WW103's
+#   +0.2° right rear runs its outer edge 15-19 °C hotter than the default's -0.5° in left turns).
+#   Cγ is NOT identified: 0 to 2.5 /rad moves the A/B by < 0.003°, so it keeps a physical bias-ply 1.0.
+#   Roll camber: the A/B wants the front wheel to lean fully with the body (rc_f 1.0, the edge of the physical
+#   range; 0.75 is worse); the rear is flat 0.25-1.0, set 0.8 (the rear tread temperatures show it leaning).
+# μ: with the lean modelled, the tyre's lateral μ is its UPRIGHT peak. The front's TYRE-1 1.277 was fitted on
+# upright tyres and so already carried the roll-camber loss; the camber tyre takes CAMBER_MU instead. Cars built
+# without camber (the 2-D model, a car with no setup) keep BRUSH_FRONT/REAR unchanged.
+const CAMBER_CG = 1.0          # [1/rad] camber thrust coefficient (thrust/Fz per rad at low slip): physical, not identified
+const CAMBER_KG = 6.0          # [1/rad] peak lateral friction gain when leaning into the slip force
+const CAMBER_RC = (1.0, 0.8)   # roll camber (front, rear): road inclination change per rad of suspension roll
+const CAMBER_MU = (1.36, 1.446) # upright lateral μ (front, rear) of the camber tyre, refitted with the above
+
 "Pure-lateral brush force Fy(Fz, α) — for fitting/validation."
 function brush_fy(Fz, α; p = BRUSH_FRONT)
     μ = brush_mu(Fz, p.μ, p.kμ, p.Fz0)

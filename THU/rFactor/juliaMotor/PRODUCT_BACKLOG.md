@@ -59,7 +59,7 @@ this index was written; that is what it exists to stop.
 
 E57, E77, E86, E87, E88, E89 (AI lunging 1.83→0.46 cycles/car-lap), E92, E93 (clutch — physics
 exonerated), E94, E95, E96 (no bounce-back at any speed, S5), E97, E98, E99, E100 (gearbox, mass,
-spring rates, ride height all from the ibt; camber is *unmodelled*, not frozen), E101.
+spring rates, ride height all from the ibt; camber was *unmodelled*, not frozen -- modelled since CAMBER-1 S1, 2026-10-06), E101.
 
 **E82 is CLOSED-THEN-REOPENED:** the driveshafts were restored and verified on screen, and the PO
 then reported the remaining defect as E102.
@@ -22078,8 +22078,61 @@ returns to the chosen session.
 **Open / not modelled:**
 - CAMBER-1: WW's steady-state extra understeer (gold front +1–2° at 0.9–1.0 g, sim +0.0). WW's fronts run −0.4/−0.1 against
   −0.5/−0.4, and the model has no camber. Needs a camber law; two setups are too few to fit it alone.
+  → **CAMBER-1 S1 below** (camber modelled; it explains the direction-dependent part, not the symmetric part).
 - The lateral tyre (sim slips ~25 % less than iRacing, 10-04) also makes the default too forgiving on power.
 - Not driven by the PO: B2 step steers, Pflanzgarten, C3 laps.
+
+### CAMBER-1 S1 (2026-10-06) — camber modelled and identified through the player car
+PO: *"push it, then add the camber model"* (WWSETUP-1 pushed as `d8c59246` first).
+
+**What the gold shows** (every skidpad session, three garage camber sets, both directions):
+- Sign check: `LatAccel` ≈ `YawRate·Speed` (ratio 1.02), so + = left turn, as the sim.
+- EVERY skidpad session runs 152 kPa left / 207 kPa right (an oval pressure split the model does not have), so a direction
+  asymmetry within one setup is pressure as much as camber. The camber signal is the DIFFERENCE-IN-DIFFERENCES between setups.
+  Block-bootstrap at 0.9 g: WW (left − right) minus default's = front **+0.30 ± 0.19°** (camber's sign: WW's right front 0.0
+  is outside turning left), rear −0.46 ± 0.05° (camber's WRONG sign -- but WW's right-hand runs were at 40 m/s and its
+  left-hand ones at 24 m/s, more drive force on the rear; a cell must be simulated at its own speed).
+- **The tread temperatures show iRacing models camber, strongly at the rear:** in left turns WW's right rear (+0.2°) runs its
+  outer edge 15–19 °C hotter than its inner; the default's (−0.5°) 1–4 °C. The inside left rear's inner edge runs 10–15 °C
+  hotter -- the rear wheels lean with the body. Front edge spreads barely move with camber.
+- WW's extra slip that is the SAME in both directions (+0.4–0.5° on both axles at 0.65 g turning right) is not camber and is
+  still unexplained.
+
+**Model** (`brush_tyre.jl` CAMBER_*, `tyre.jl` BrushTyre `camber=true`, `vehicle_3d.jl` `camber`/`rc`):
+- inclination to the road per wheel = garage static camber (side-signed) − rc_axle × SUSPENSION roll (body roll less the axle's
+  own unsprung roll, so a banked road is not read as roll);
+- camber THRUST Cγ·sinγ added to the brush's lateral deflection (saturates with the slip, a low-slip effect);
+- PEAK lateral μ × (1 + kγ·sinγ·sign α), clamped ±30 %: leaning into the slip force grips more.
+- with the lean modelled, the tyre's μ is its UPRIGHT peak: CAMBER_MU (1.36 / 1.446). TYRE-1's 1.277 was fitted on upright tyres
+  and so already carried the roll-camber loss; cars built without camber (2-D model, no setup) keep it unchanged.
+- `Chassis.camber` from the session's garage values (`chassis_from_setup`), printed in the chassis line.
+
+**Identification** -- two independent gold sets, jointly with μ:
+- `tools/camberfit_261005.jl`: cells = (camber set × direction × g band), each simulated with ITS session's whole car at ITS
+  speed and g, scored as differences from the default car (the pressure split and any common tyre offset cancel).
+  Upright 0.582° → kγ 6 0.530°. Cγ 0–2.5 /rad moves it by < 0.003°: **thrust is not identifiable**, kept at a physical 1.0.
+  Roll camber: front 1.0 (0.75 worse), rear flat 0.25–1.0 (set 0.8, the rear temperatures show it leaning).
+- `tools/tyreid_261002.jl` with `JM_STAB_IBT` = the default car and `JM_CAMB_TRY`: the TYRE-1 slip curve + stability with μ
+  re-fitted per kγ -- kγ 0: 814 (μf 1.277), 3: 515, 5: 470 (1.33), **6: 443 (1.36)**, 7: 444 (1.40), 8: 754 (1.43, holds only
+  1.10 g). Without the μ refit kγ 8 left the car at 0.99 g. kγ 6 taken: both sets prefer 6–7, 6 is the smaller shift.
+  It is large -- ~10 % peak lateral grip per degree of lean -- and the tread temperatures agree that iRacing's tyre is sensitive.
+
+**Results:**
+- Default car: TYRE-1 slip curve 814 → **443**; stability penalty 0; trail braking pedal 0.4 sideslip 8.0° → 5.5°;
+  absolute front slip at 0.95 g 2.82 → 3.0° (gold 3.4–3.7: the ~25 % low-slip gap narrows).
+- WW car: stability 0; holds 1.10 g turning left (its leaned-out right side outside; gold ~1.13).
+- WW's left-turn front difference from the default: sim +0.43 → +0.60° (gold +1.22). Same-circle gate (24 m/s, 0.95 g): WW
+  left − right front slip +0.18°, default +0.05° (gold DiD +0.30 ± 0.19).
+- Crests unchanged (default 0.168 s / 0.21 g, WW 0.108 s / 0.21 g). `carsetup_smoke` gains camber checks (garage values reach
+  the model; the WW direction asymmetry) -- the asymmetry check FAILS with kγ = 0 (+0.01 / +0.00), so it detects camber.
+- `setup_tab_smoke`: camber stays refused there -- the tab's %-of-session bands cannot express a camber change -- but the
+  stated reason is now that, not "not modelled".
+
+**Open:**
+- WW's direction-INDEPENDENT extra slip (both axles, both directions) -- not camber; candidates: the 18 N/mm front springs
+  (ride/heave), the toe-out under load, or tyre temperature (iRacing's tyre is thermal; `tyre_thermal.jl` is not live).
+- The skidpads' 152/207 kPa pressure split is not modelled (it cancels in every A/B here).
+- A camber control for the setup tab (degree steps, not %), if the PO wants one.
 
 
 ## PO 2026-10-04 (evening) — three requests

@@ -71,17 +71,26 @@ function DrivenVehicle3D(; name,
         # [rad] (negative = toe-out), as the iRacing garage sets them.
         # `karb_f`/`karb_r`: the anti-roll bars, roll-only stiffness per axle [N/m] on top of the corner specs' (total
         # fitted to the gold's roll gradient: tools/arbfit_261005.jl).
-        diff = nothing, toe_f = 0.0, toe_r = 0.0, karb_f = 0.0, karb_r = 0.0)
+        # CAMBER-1 (2026-10-06): `camber = (FL, FR, RL, RR)` static camber [rad] in the GARAGE's convention (negative =
+        # top leaning toward the car), `rc = (front, rear)` roll camber; `nothing` keeps the upright tyre (brush only).
+        diff = nothing, toe_f = 0.0, toe_r = 0.0, karb_f = 0.0, karb_r = 0.0, camber = nothing, rc = CAMBER_RC)
     L = a + b; mf = m*front_frac; mr = m*(1 - front_frac)
     M_s = fl_corner.m_s + fr_corner.m_s + rl_corner.m_s + rr_corner.m_s   # total sprung mass
 
     # brush=true ⇒ physics-based brush tyre (no fudge); else the Magic-Formula preset
-    FL = brush ? BrushTyre(; name=:FL, BRUSH_FRONT...) : Tyre(; name=:FL, TYRE_SKIDPAD_FRONT...)
-    FR = brush ? BrushTyre(; name=:FR, BRUSH_FRONT...) : Tyre(; name=:FR, TYRE_SKIDPAD_FRONT...)
-    RL = brush ? BrushTyre(; name=:RL, BRUSH_REAR...)  : Tyre(; name=:RL, TYRE_SKIDPAD_REAR...)
-    RR = brush ? BrushTyre(; name=:RR, BRUSH_REAR...)  : Tyre(; name=:RR, TYRE_SKIDPAD_REAR...)
+    cmb = brush && camber !== nothing
+    # CAMBER-1: the camber tyre's lateral μ is its UPRIGHT peak (CAMBER_MU), the upright model's already carries the lean
+    bf = cmb ? merge(BRUSH_FRONT, (μ = CAMBER_MU[1]*_GRIP,)) : BRUSH_FRONT
+    br = cmb ? merge(BRUSH_REAR,  (μ = CAMBER_MU[2]*_GRIP,)) : BRUSH_REAR
+    FL = brush ? BrushTyre(; name=:FL, bf..., camber=cmb) : Tyre(; name=:FL, TYRE_SKIDPAD_FRONT...)
+    FR = brush ? BrushTyre(; name=:FR, bf..., camber=cmb) : Tyre(; name=:FR, TYRE_SKIDPAD_FRONT...)
+    RL = brush ? BrushTyre(; name=:RL, br...,  camber=cmb) : Tyre(; name=:RL, TYRE_SKIDPAD_REAR...)
+    RR = brush ? BrushTyre(; name=:RR, br...,  camber=cmb) : Tyre(; name=:RR, TYRE_SKIDPAD_REAR...)
 
     ps = @parameters m=m Izz=Izz Ixx=Ixx Iyy=Iyy a=a b=b tf=tf tr=tr h=h mf=mf mr=mr L=L M_s=M_s g=g Rw_f=Rw_f Rw_r=Rw_r Iw=Iw η=η final=final bias=bias Tbrake_max=Tbrake_max CdA=CdA ρair=ρair throttle=throttle0 brake=brake0 δ=steer0 gear=gear0 clutch=0.0 Ie=0.18 c_c=60.0 T_cap=500.0 k_idle=0.5 idle_rpm=2000.0 zrFL=0.0 zrFR=0.0 zrRL=0.0 zrRR=0.0 vrFL=0.0 vrFR=0.0 vrRL=0.0 vrRR=0.0 Fx_ext=0.0 Fy_ext=0.0 Mz_ext=0.0 CdA_scale=1.0 c_abl=C_ABL toe_f=toe_f toe_r=toe_r karb_f=karb_f karb_r=karb_r
+    if cmb
+        append!(ps, @parameters camFL=camber[1] camFR=camber[2] camRL=camber[3] camRR=camber[4] rc_f=rc[1] rc_r=rc[2])
+    end
     lsd = diff !== nothing
     if lsd
         lsd_ps = @parameters lsd_pre=diff[1] lsd_cotd=cotd(diff[2]) lsd_cotc=cotd(diff[3]) lsd_plates=diff[4] lsd_k=LSD_K lsd_weps=LSD_WEPS
@@ -147,6 +156,17 @@ function DrivenVehicle3D(; name,
         Vref = sqrt(vx^2 + 1.0)
         α = st - atan(vy, Vref);  κ = (ωax*Rw - vx)/Vref
         append!(eqs, [ty.Fz ~ Fz, ty.α ~ α, ty.κ ~ κ])
+        if cmb
+            # CAMBER-1: inclination to the road, + = top toward +y (the tyre's thrust side). The garage's camber is
+            # negative top-in, so the left wheel's static lean is +cam and the right's −cam. The SUSPENSION roll --
+            # the body's roll ph less the axle's own (unsprung heights, so a banked road is not read as roll; ph > 0
+            # lifts the left side and tips the tops toward −y) -- tilts the wheel by rc of it (1 = the wheel leans
+            # with the body as on equal parallel wishbones, 0 = it stays upright to the road).
+            camst = (camFL, -camFR, camRL, -camRR)[idx]
+            zuo = spec[pidx][7]; trk = axle == :f ? tf : tr
+            φs = ph - (isodd(idx) ? zu - zuo : zuo - zu)/trk
+            push!(eqs, ty.γ ~ camst - (axle == :f ? rc_f : rc_r)*φs)
+        end
         fxb = ty.Fx*cos(st) - ty.Fy*sin(st)
         fyb = ty.Fx*sin(st) + ty.Fy*cos(st)
         push!(Fxb, fxb); push!(Fyb, fyb); push!(Mz, ty.Mz)

@@ -50,6 +50,16 @@ const SETW = Dict((w, k) => setp(SYS, getproperty(getproperty(SYS, w), k)) for w
 const GET = ModelingToolkit.getsym(SYS, [SYS.u, SYS.v, SYS.r, SYS.ay])
 const A_CG = ModelingToolkit.getp(SYS, SYS.a)(CAR.integ)      # the sim's own CG geometry
 const B_CG = ModelingToolkit.getp(SYS, SYS.b)(CAR.integ)
+# CAMBER-1: JM_CAMB_TRY="Cγ,kγ,rc_f,rc_r" tries a candidate camber law on a car that has camber (a JM_STAB_IBT session's)
+if haskey(ENV, "JM_CAMB_TRY") && hasproperty(SYS, :rc_f)
+    let θ = parse.(Float64, split(ENV["JM_CAMB_TRY"], ","))
+        for w in (:FL, :FR, :RL, :RR)
+            setp(SYS, getproperty(getproperty(SYS, w), :Cγ))(CAR.integ, θ[1]); setp(SYS, getproperty(getproperty(SYS, w), :kγ))(CAR.integ, θ[2])
+        end
+        setp(SYS, SYS.rc_f)(CAR.integ, θ[3]); setp(SYS, SYS.rc_r)(CAR.integ, θ[4])
+        println("camber law tried: Cγ $(θ[1]) kγ $(θ[2]) rc $(θ[3])/$(θ[4])")
+    end
+end
 
 function settyre!(μf, μr, Cf, Cr, kμ)
     for w in (:FL, :FR); SETW[(w,:μ)](CAR.integ, μf); SETW[(w,:Cα)](CAR.integ, Cf); SETW[(w,:kμ)](CAR.integ, kμ); end
@@ -161,7 +171,9 @@ end
 function main()
     T = gold_target()
     println("gold target (Ring + Centripetal, steady):"); for t in T; @printf("   %.2f g  n %5d  front %5.2f°  rear %5.2f°\n", t.g, t.n, t.af, t.ar); end
-    θ0 = [BRUSH_FRONT.μ, BRUSH_REAR.μ, BRUSH_FRONT.Cα, BRUSH_REAR.Cα, BRUSH_FRONT.kμ]
+    # CAMBER-1: a car with camber (a JM_STAB_IBT session's) carries the camber tyre's upright μ
+    μ0 = hasproperty(SYS, :rc_f) ? DriveRT3D.CAMBER_MU : (BRUSH_FRONT.μ, BRUSH_REAR.μ)
+    θ0 = [μ0[1], μ0[2], BRUSH_FRONT.Cα, BRUSH_REAR.Cα, BRUSH_FRONT.kμ]
     @printf("\nCURRENT tyre %s  score %.1f\n", θ0, score(T, θ0; verbose = true))
     parse(Int, get(ENV, "JM_TYREID_ITERS", "150")) == 0 && return θ0
     θ, e = nelder_mead(θ -> score(T, θ), [1.277, 1.446, 30.21, 30.21, 0.082]; iters = parse(Int, get(ENV, "JM_TYREID_ITERS", "150")), step = 0.1)
