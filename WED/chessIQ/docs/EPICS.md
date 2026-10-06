@@ -248,3 +248,15 @@ straight into the patched lc0 and Nibbler without TensorFlow.
   - Check: lc0 and PyTorch compute the same network. On 312 positions, lc0's per-move policy (VerboseMoveStats,
     temperature 1) and root W−L/D differ from PyTorch's by at most 0.067 percentage points and 0.0026. A different
     PyTorch network against the same file differs by 17.8 points (`nn/verify_export.py`).
+- **NN-4 (10-06): done (round 1).** `nn/prepare.py` compacts the V6 chunks to about 1.1 KB a position, holding out
+  every 20th game; `nn/train.py` trains on the GPU (16 s an epoch for 6x64 on 217k positions) and saves lc0
+  weights.
+  - Round 1: 216,681 positions from 2,659 games, 11,709 held out from 140 games.
+    - After 3 epochs, the network's top move equals Fairy-Stockfish's best in **19.1%** of held-out positions (5.5%
+      untrained, about 1 in 30 legal moves). Held-out value loss is 0.89 (1.11 untrained), and the result is
+      predicted correctly 69.6% of the time.
+    - Ten epochs overfit badly: value loss rose to 2.86, as the network memorised 2.7k game results.
+  - The trained network passes the lc0 identity check (0.067 points of policy, 0.0087 of value) and plays legal
+    games under the Kramnik lc0.
+  - Next round: the generator now stores each position's evaluation, so the value target can blend game result
+    with evaluation (Leela's remedy for overfitting), and there will be more games.
