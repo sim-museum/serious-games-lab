@@ -55,6 +55,9 @@ class Personality:
     material: dict = field(default_factory=lambda: {p: (BASE[p], BASE[p]) for p in PIECES})  # (own, opp) tenths
     book: str = ""
     source: str = "chessIQ"
+    engine: str = "fsf"          # "fsf" (Fairy-Stockfish with these knobs) or "leela" (lc0 with `net`)
+    net: str = ""                # Leela network file (engine "leela")
+    nodes: int = 0               # Leela: nodes per move (0 = use the clock)
 
     def engine_options(self):
         """UCI options for the Kramnik Fairy-Stockfish (engine/kramnik-selfcapture.patch)."""
@@ -145,9 +148,27 @@ ROSTER = [
 ]
 
 
+def leela_roster():
+    """Opponents played by the Kramnik lc0 (EPIC NN): the Kramnik network trained here, and the Maia networks --
+    human-like play learned from rated human games, one node a move, at the rating band each was trained on. Maia
+    learned ordinary chess, so it plays Kramnik chess legally but rarely thinks of a self-capture."""
+    out = []
+    nets = os.path.join(HERE and os.path.dirname(HERE), "engine", "nets")
+    kr = sorted(glob.glob(os.path.join(nets, "kramnik-*.pb.gz")))
+    if kr:
+        out.append(Personality("Leela (Kramnik network)", 2850, "a neural network trained on Kramnik chess", engine="leela",
+                               net=kr[-1], nodes=800))
+    maia = os.path.join(WED, "INSTALL", "maia_weights")
+    for f in sorted(glob.glob(os.path.join(maia, "maia-*.pb.gz"))):
+        r = int(re.findall(r"maia-(\d+)", f)[0])
+        out.append(Personality("Maia %d" % r, r, "plays like a human rated about %d (human games, one node)" % r,
+                               engine="leela", net=f, nodes=1))
+    return out
+
+
 def roster():
-    """Chessmaster's personalities when installed, otherwise chessIQ's own."""
-    return load_chessmaster() or list(ROSTER)
+    """Chessmaster's personalities when installed, otherwise chessIQ's own; plus the Leela opponents available."""
+    return (load_chessmaster() or list(ROSTER)) + leela_roster()
 
 
 def by_name():
