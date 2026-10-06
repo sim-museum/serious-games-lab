@@ -1,5 +1,18 @@
 # biq — Claude Code project notes
 
+## STATUS — biq + 3 Q-Plus; selective signalling (2026-10-05)
+Full write-up: tools/HARNESS_STATUS_2026-09-30.md, last section.
+* biq South with Q-Plus N/E/W (`--remote N,E,W`): -2.72 IMP/board over 87
+  boards (bidding -158, play -79). TM: ready/card timeouts, board replay,
+  no alert relay, mixed-seat score sign fixed.
+* Bidding fixes behind BIQ_* switches (QUANT_NO_GERBER, NTX_RUN,
+  BALANCE_ACT, GF_3NT, SHAPE_ACT, DBL_RESCUE, GF_MAJOR, PREC_4M_RAISE,
+  PRE_X_MAJORS; TOX_PULL off). Par A/B +0.01 IMP/deal both systems.
+* Signals like Q-Plus: count only when partner may hold the A/K (a
+  decision), attitude only with the honour that matters, first round only;
+  the signal margin never swaps a winning/honour card for a spot.
+  BIQ_SIGNAL_SELECTIVE / BIQ_SIGNAL_SAME_CLASS. Reader mirrors the emitter.
+
 ## STATUS — fixes mined from the Precision run vs Q-Plus (2026-10-04 night)
 Full write-up: tools/HARNESS_STATUS_2026-09-30.md, last section. Legalizer
 no longer bumps artificial / repeated calls, Landy gate, light 3rd-seat

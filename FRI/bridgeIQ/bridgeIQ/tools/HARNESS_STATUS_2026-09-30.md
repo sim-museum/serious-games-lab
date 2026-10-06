@@ -726,3 +726,94 @@ Measured vs the slam commit (rules only):
 | Precision teams A/B seed 2612, 805 bds | +0.027 DD (SE 0.032), +0.099 robust |
 | card decisions replayed (576), old vs new sampler | 115 vs 114 tricks lost: neutral |
 The bid_sim change cannot be measured offline (the live run will).
+
+### biq South with three Q-Plus players; selective signalling (2026-10-05)
+
+Runs:
+* `tools/runs/bluechip/261004_qplus_prec3`: biq N/S vs Q-Plus E/W, Precision,
+  fresh seed 261007, 194 boards: -741 IMP (bidding -354 by DD, play -387).
+* `tools/runs/bluechip/261005_qplus_biqS`: biq South, Q-Plus N/E/W
+  (`--remote N,E,W`), seed 261008, 87 boards: -237 IMP (-2.72/board, SE
+  0.69); bidding -158 by DD, play/defence -79. This measures biq against
+  Q-Plus in one seat with a Q-Plus partner. The TM's printed running total
+  had the WRONG SIGN for mixed seats (fixed: `biq_ns_open = any(...)`).
+
+TM robustness (tools/biq_bluechip_tm.py): waits 120 s for a robot's "ready"
+then sends anyway; resends the last line when a card does not arrive, and
+replays the board once (`BoardRedo`) if the robot stays silent. Robots'
+alerts are no longer relayed (Q-Plus froze on the first relayed "Alert.");
+`--relay-alerts` restores it.
+
+Bidding fixes (backend/native_bidder.py, each behind a BIQ_* switch, pinned
+in test_qplus_match_fixes.py as Q3-* and M-*):
+* QUANT_NO_GERBER: 1NT-4NT quantitative with 17 opposite 14-16.
+* NTX_RUN: 1NT-X with 0-4 HCP and a four-card major: Stayman escape, pass
+  partner's answer. TOX_PULL (pulling partner's 4-level takeout X) is OFF:
+  it lost 10 IMP on valid deal 234.
+* BALANCE_ACT: compete over the opponents' natural Precision 2C.
+* GF_3NT: 3NT in a game force with a singleton in partner's suit.
+* SHAPE_ACT: 5-card major + 5-card suit over 1NT; good 5-card major over
+  3-level preempts; 5-5 or good 5-card suit over weak twos.
+* DBL_RESCUE: Truscott 2NT doubled and passed -> 3m (board 10, -500);
+  partner's takeout X redoubled -> run to the best unbid suit (board 51,
+  2SXX made, -1240).
+* GF_MAJOR: responder shows an unbid 4-card major at the two level before
+  3NT (1C-2C-2H-2S, board 41).
+* PREC_4M_RAISE: 1C-...-4m uncontested is never passed: RKC with 18+ HCP and
+  7+ controls, else 5m (board 57: 19 HCP and four aces passed 4D; 7D made).
+* PRE_X_MAJORS (13): takeout X of a 3-level minor preempt with both majors
+  (board 64).
+Par A/B (rules only, all four seats): Precision +0.013/+0.010 (test split),
+SAYC +0.011/+0.011, all positive; 57/64 fixes neutral (8 deals differ).
+
+How Q-Plus signals (5,000 defender follows from the four Q-Plus runs, each
+card scored double-dummy, first-round spots also over 20 layouts consistent
+with the defender's view):
+* Q-Plus's config (saved match files: `conv.signals = -ldA-lwN-paA-pwN-dcC-
+  maH-mcH-pcY-dsN-dnN-`, Configuration / Signalling Conventions): attitude
+  on partner's leads, count
+  on declarer's, standard high = encourage / even, present count, no suit
+  preference. The help (MANUAL/ENG/BRIDGE.HLQ ".signal-conv") documents "NW":
+  no signal when partner is too weak to win a trick, because declarer
+  profits more.
+* Measured: COUNT only when partner may have a decision. Free spot, even
+  length: count 68% when partner holds the A or K (a hold-up decision), 21%
+  when not; from Q-Plus's own view, 7% when both A and K are visible
+  (own hand / dummy / played), 55-64% when either is hidden. The risk that
+  the high spot costs a trick barely matters. ATTITUDE: encourage only with
+  the honour that matters (A led: K 92%, Q 31%; K led: A/Q 80%). First round
+  only: later rounds ~97% lowest spot.
+* biq signalled mechanically (count 95-99% regardless) and spent tricks on
+  it: where the signal card cost a trick DD, biq played it 41/247 times (47
+  tricks), Q-Plus 12/221 (18). Cause: alpha-mu's BIQ_SIGNAL_MARGIN (0.15)
+  let the signal tie-break swap a winning honour for a spot (ducked A84,
+  A975, A32).
+* biq read Q-Plus's cards as pure standard: 45% (attitude) / 51% (count) of
+  Q-Plus's signals contradicted the convention, and the reader is a HARD
+  filter (board 61: read count 8 from T873 as encouragement, underled K).
+
+Signalling changes (backend/signals.py, signal_read.py, alphamu.py):
+* BIQ_SIGNAL_SELECTIVE=1: count only while the suit's A or K is out of the
+  signaller's sight; attitude only on our side's lead, encourage only with
+  the honour that matters opposite the card led (doubleton ruff ask kept);
+  first round of a suit only; otherwise the lowest spot = no signal. The
+  reader applies the same rules (needs dummy's cards; falls back otherwise).
+  Q-Plus-partner misreads: attitude 45% -> 32%, count 51% -> 16%.
+* BIQ_SIGNAL_SAME_CLASS=1: the signal margin may only swap a spot for a
+  spot -- never a trick-winning card, an honour or ten, or (on lead) another
+  suit.
+* Replay of biq South's 709 defensive decisions in 261005_qplus_biqS: DD
+  tricks lost 22 (old) -> 20 (new). Self-play defence A/B still to run
+  (old code snapshot in the session scratchpad).
+
+Sources for selective signalling: Karen Walker, "give count signals . . .
+but only if you believe partner needs this information (he has to figure out
+how many times to duck his ace)" (kwbridge.com/signals.htm); Robert Todd,
+"Play Bridge First! Do not give up a trick trying to signal count!"
+(advinbridge.com, week 472); Wikipedia "Signal (bridge)": "not signal if
+doing so will help the declarer more than the defenders".
+
+Open: slam tries after partner's 4M in a game force (board 4, 7H missed;
+the slam trigger counts partner's floor, 15+11); biq passes a 12-count in
+the balancing seat over 3m; the simulation never considers slams (level
+cap 5).

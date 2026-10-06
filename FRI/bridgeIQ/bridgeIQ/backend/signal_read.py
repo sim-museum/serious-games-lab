@@ -82,12 +82,31 @@ def read(board: BoardState, seat: Seat, declarer: Seat,
         if _winner_pos(t.cards, trump) == (partner.value - t.leader.value) % 4:
             continue                                   # partner won — not a signal
         attitude = t.leader.is_ns() == seat.is_ns()    # our suit -> attitude
+        from . import signals as _signals
+        if _signals._SELECTIVE and any(
+                tt.cards and tt.cards[0].suit == led for tt in board.tricks[:i]):
+            continue                                   # first round only
         later = {j: c for j, c in pplayed.items() if j >= i}
         ppos = (partner.value - t.leader.value) % 4
         before = [_c52(c) for c in t.cards[:ppos]]
+        # What partner could see of the suit's A/K apart from its own hand:
+        # dummy's holding then, and every card played before its signal.
+        seen = {_c52(c) for tt in board.tricks[:i] for c in tt.cards} | set(before)
+        dummy = declarer.partner()
+        dh = getattr(board, "hands", None) or {}
+        if dummy != partner and dh.get(dummy) is not None:
+            seen |= {_c52(c) for c in dh[dummy].cards}
+            for tt in board.tricks[i:]:
+                if tt.cards and len(tt.cards) == 4:
+                    seen.add(_c52(tt.cards[(dummy.value - tt.leader.value) % 4]))
+            dummy_known = True
+        else:
+            dummy_known = False
         out.append({"trick": i, "suit": led.value, "attitude": attitude,
                     "card52": _c52(pcard), "played": later, "before": before,
-                    "trump": None if trump is None else trump.value})
+                    "trump": None if trump is None else trump.value,
+                    "lead": _c52(t.cards[0]), "seen": seen,
+                    "dummy_known": dummy_known})
     return out
 
 
@@ -116,9 +135,17 @@ def _convention_card(rec: dict, hand_at_trick: set) -> Optional[int]:
     from . import signals
     udca = signals.is_udca()                                 # match the emitter
     if rec["attitude"]:
-        like = any(_rank_i(c) <= _HONOUR for c in in_suit)   # honour -> encourage
+        lead = rec.get("lead")
+        like = signals.attitude_like(
+            None if lead is None else _rank_i(lead),
+            [_rank_i(c) for c in in_suit], rec["trump"] is not None)
         high = (like != udca)
     else:
+        if signals._SELECTIVE and rec.get("dummy_known"):
+            seen = rec["seen"] | set(hand_at_trick)
+            hidden = sum(1 for r in (0, 1) if suit * 13 + r not in seen)
+            if not signals.count_wanted(hidden):
+                return sorted(spots, key=_rank_i)[-1]       # no signal: lowest
         high = ((len(in_suit) % 2 == 0) != udca)             # count: even -> high
     spots = sorted(spots, key=_rank_i)                       # high card first
     return spots[0] if high else spots[-1]

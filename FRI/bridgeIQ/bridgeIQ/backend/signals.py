@@ -140,6 +140,55 @@ def _discard_signal(cands: List[Card], board: BoardState, seat: Seat,
     return group[-1]                   # default: low (discouraging the pitch suit)
 
 
+# SELECTIVE signals (Q-Plus's carding, and the textbook advice "give count
+# only if partner needs it"): count only while the ace or king of the suit is
+# out of the signaller's sight, so partner may hold it and face a hold-up
+# decision; attitude only on our own side's lead, and "encourage" only with the
+# honour that matters opposite the card partner led. Otherwise play the lowest
+# spot, which then means "no signal". signal_read uses the same two helpers.
+_SELECTIVE = os.environ.get("BIQ_SIGNAL_SELECTIVE", "1") == "1"
+
+
+def attitude_like(lead_rank: Optional[int], ranks: List[int],
+                  trump_contract: bool) -> bool:
+    """Encourage partner's lead? `lead_rank` is the rank.value partner led (A=0)
+    or None, `ranks` my rank.values in the suit. Selective: after an honour
+    lead only a higher honour or the next one down counts (A led: the K; K led:
+    the A or Q; Q/J/T led: an honour above it); after a spot lead any of A/K/Q.
+    A doubleton still asks for a ruff in a trump contract."""
+    if trump_contract and len(ranks) == 2:
+        return True
+    if not _SELECTIVE or lead_rank is None:
+        return any(r <= _HONOUR for r in ranks)
+    if lead_rank == 0:
+        return 1 in ranks
+    if lead_rank == 1:
+        return 0 in ranks or 2 in ranks
+    if lead_rank <= 4:
+        return any(r < lead_rank and r <= 2 for r in ranks)
+    return any(r <= 2 for r in ranks)
+
+
+def count_wanted(hidden_ak: int) -> bool:
+    """Give count? Only while partner may hold the ace or king (`hidden_ak` =
+    how many of the two the signaller cannot see)."""
+    return not _SELECTIVE or hidden_ak > 0
+
+
+def _hidden_ak(board: BoardState, seat: Seat, trick: List[Card],
+               declarer: Seat, led: Suit) -> int:
+    """How many of the led suit's A and K the signaller cannot see: not in its
+    own hand, not in dummy, not played to an earlier trick or this one."""
+    seen = {c.rank.value for c in board.hands[seat].cards if c.suit == led}
+    dummy = declarer.partner()
+    if dummy != seat and board.hands.get(dummy) is not None:
+        seen |= {c.rank.value for c in board.hands[dummy].cards if c.suit == led}
+    for t in board.tricks:
+        seen |= {c.rank.value for c in t.cards if c.suit == led}
+    seen |= {c.rank.value for c in trick if c.suit == led}
+    return sum(1 for r in (0, 1) if r not in seen)
+
+
 def choose_signal_card(cands: List[Card], board: BoardState, seat: Seat,
                        trick: List[Card], declarer: Seat,
                        trump: Optional[Suit]) -> Card:
@@ -156,9 +205,21 @@ def choose_signal_card(cands: List[Card], board: BoardState, seat: Seat,
     led = trick[0].suit
     leader = Seat((seat.value - pos) % 4)
     winner = _winner_seat(trick, leader, trump)
+    suit_cards = [c for c in board.hands[seat].cards if c.suit == led]
+    if _SELECTIVE:
+        if any(t.cards and t.cards[0].suit == led for t in board.tricks):
+            return _hl(cands, high=False)    # signals are first-round only
+        if leader.is_ns() == seat.is_ns():                # ATTITUDE: our lead
+            like = attitude_like(trick[0].rank.value,
+                                 [c.rank.value for c in suit_cards],
+                                 trump is not None)
+            return _hl(cands, high=(like != _UDCA))
+        if not count_wanted(_hidden_ak(board, seat, trick, declarer, led)):
+            return _hl(cands, high=False)                 # no signal: lowest
+        even = (len(suit_cards) % 2 == 0)
+        return _hl(cands, high=(even != _UDCA))
     partner_context = leader.is_ns() == seat.is_ns() \
         or winner.is_ns() == seat.is_ns()
-    suit_cards = [c for c in board.hands[seat].cards if c.suit == led]
     if partner_context:                       # ATTITUDE
         like = _like_suit(suit_cards, trump)
         return _hl(cands, high=(like != _UDCA))          # UDCA flips encourage

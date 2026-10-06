@@ -230,6 +230,10 @@ def rotate(dealer: Seat, vul: Vulnerability, hands):
 
 
 # ------------------------------------------------------------ connections
+class BoardRedo(RuntimeError):
+    """A robot went silent mid-board: start the board again."""
+
+
 class Remote:
     def __init__(self, sock, addr, log):
         self.sock, self.addr, self.log = sock, addr, log
@@ -237,9 +241,11 @@ class Remote:
         self.pending: List[str] = []
         self.seat: Optional[Seat] = None
         self.team = ""
+        self.last = ""
 
     def send(self, line: str):
-        self.log(f"-> {NAME[self.seat] if self.seat else self.addr}: {line}")
+        self.last = line
+        self.log(f"-> {NAME[self.seat] if self.seat is not None else self.addr}: {line}")
         self.sock.sendall((line + "\r\n").encode("latin-1"))
 
     def _readline(self, timeout: float) -> str:
@@ -272,7 +278,7 @@ class Remote:
             line = self._readline(timeout)
             if not line:
                 continue
-            self.log(f"<- {NAME[self.seat] if self.seat else self.addr}: {line}")
+            self.log(f"<- {NAME[self.seat] if self.seat is not None else self.addr}: {line}")
             m = pat.search(line)
             if m:
                 return m
@@ -391,6 +397,8 @@ class TableManager:
             rc.expect(rf"{NAME[s]}\s+ready\s+to\s+start")
 
     def _team(self, ns: bool) -> str:
+        if any(s.is_ns() == ns for s in SEATS if s not in self.remote_seats):
+            return self.a.team                  # biq sits on this side
         for s, rc in self.conns.items():
             if s.is_ns() == ns:
                 return rc.team
@@ -412,7 +420,8 @@ class TableManager:
     # --- one board
     def play_board(self, label: str, number: int, dealer: Seat, vul: Vulnerability, hands):
         t0 = time.time()
-        for rc in self.conns.values():
+        for rc in self.conns.values():      # late "ready" lines from a skipped wait
+            rc.pending = [x for x in rc.pending if not re.search(r"ready\s+for", x, re.I)]
             rc.send("Start of board")
         for s, rc in self.conns.items():
             rc.expect(rf"{NAME[s]}\s+ready\s+for\s+deal")
@@ -460,7 +469,10 @@ class TableManager:
                 else:
                     raise RuntimeError(f"{NAME[seat]} made three illegal calls")
                 _, b, alert = p
-                line_opp = fmt_call(seat, b) + (f" {alert}" if alert else "")
+                # Q-Plus froze on the first alerted call relayed to it ("North
+                # bids 2NT Alert.", 2026-10-05): opponents get alerts only
+                # with --relay-alerts.
+                line_opp = fmt_call(seat, b) + (f" {alert}" if alert and self.a.relay_alerts else "")
                 line_partner = fmt_call(seat, b)
                 if alert:
                     alerts[len(auction)] = alert
@@ -481,12 +493,36 @@ class TableManager:
             for s, rc in self.conns.items():
                 if s == seat:
                     continue
-                rc.expect(rf"{NAME[s]}\s+ready\s+for\s+{NAME[seat]}'s\s+bid")
+                self._await_ready(rc, rf"{NAME[s]}\s+ready\s+for\s+{NAME[seat]}'s\s+bid")
                 rc.send(line_partner if s.is_ns() == seat.is_ns() else line_opp)
             auction.append(b)
             seat = seat.next()
         self.log("auction: " + " ".join(_call_str(b) for b in auction))
         return auction, alerts
+
+    def _await_card(self, rc, rx):
+        """A robot's card. Q-Plus sometimes shows its card in its window but
+        never sends it (East leading to trick 4, 2026-10-05). Resend the last
+        message after 120 s; after another 180 s replay the board."""
+        try:
+            return rc.expect(rx, timeout=120.0)
+        except TimeoutError:
+            self.log(f"no card from {NAME[rc.seat]} in 120 s; resending {rc.last!r}")
+            rc.send(rc.last)
+        try:
+            return rc.expect(rx, timeout=180.0)
+        except TimeoutError:
+            raise BoardRedo(f"no card from {NAME[rc.seat]}") from None
+
+    def _await_ready(self, rc, rx):
+        """Wait for a robot's "ready for ..." before relaying a card. Q-Plus
+        once never sent "West ready for South's card to trick 3" although its
+        window sat waiting for that card (2026-10-04, after 6 boards), and the
+        900 s timeout ended the session. Send the card anyway after 120 s."""
+        try:
+            rc.expect(rx, timeout=120.0)
+        except TimeoutError:
+            self.log(f"no 'ready' from {NAME[rc.seat]} in 120 s; sending anyway")
 
     def _play(self, dealer, vul, hands, auction, contract):
         decl = contract.declarer
@@ -506,7 +542,7 @@ class TableManager:
                     self.conns[actor].send("Dummy to lead" if p == dummy else f"{NAME[p]} to lead")
                 if actor in self.conns:
                     for _ in range(3):
-                        m = self.conns[actor].expect(rf"^{NAME[p]}\s+plays\s+(\S+)")
+                        m = self._await_card(self.conns[actor], rf"^{NAME[p]}\s+plays\s+(\S+)")
                         try:
                             c = parse_card(m.group(1))
                         except (KeyError, ValueError, IndexError):
@@ -528,7 +564,7 @@ class TableManager:
                 for s, rc in self.conns.items():
                     if s == actor:
                         continue
-                    rc.expect(rf"{NAME[s]}\s+ready\s+for\s+\w+'s\s+card\s+to\s+trick\s+{t}\b")
+                    self._await_ready(rc, rf"{NAME[s]}\s+ready\s+for\s+\w+'s\s+card\s+to\s+trick\s+{t}\b")
                     rc.send(f"{NAME[p]} plays {fmt_card(c)}")
                 live[p].cards.remove(c)
                 cur.append(c)
@@ -537,7 +573,7 @@ class TableManager:
                     for s, rc in self.conns.items():
                         if s == dummy:
                             continue
-                        rc.expect(rf"{NAME[s]}\s+ready\s+for\s+dummy\b(?!')")
+                        self._await_ready(rc, rf"{NAME[s]}\s+ready\s+for\s+dummy\b(?!')")
                         rc.send(f"Dummy's cards : {fmt_hand(live[dummy])}")
             w = trick_winner(cur, leader, trump)
             board.tricks.append(Trick(cards=list(cur), leader=leader, winner=w))
@@ -564,7 +600,13 @@ class TableManager:
                     dealer, vul, hands = dealer0, vul0, hands0
                     if room == "closed":
                         dealer, vul, hands = rotate(dealer, vul, hands)
-                    rec = self.play_board(f"{room}-{n}", n, dealer, vul, hands)
+                    try:
+                        rec = self.play_board(f"{room}-{n}", n, dealer, vul, hands)
+                    except BoardRedo as ex:
+                        self.log(f"{ex}; replaying {room}-{n} from the start")
+                        for rc in self.conns.values():
+                            rc.pending = []
+                        rec = self.play_board(f"{room}-{n}", n, dealer, vul, hands)
                     rec["room"] = room
                     fh.write(json.dumps(rec) + "\n")
                     fh.flush()
@@ -579,7 +621,7 @@ class TableManager:
         by = {}
         for r in self.results:
             by.setdefault(r["board"], {})[r["room"]] = r
-        biq_ns_open = all(s not in self.conns for s in (Seat.NORTH, Seat.SOUTH))
+        biq_ns_open = any(s not in self.conns for s in (Seat.NORTH, Seat.SOUTH))  # biq sits N/S
         tot = n = 0
         for b in by.values():
             if "open" in b and "closed" in b:
@@ -593,7 +635,7 @@ class TableManager:
         for r in self.results:
             by.setdefault(r["board"], {})[r["room"]] = r
         lines, total = [], 0
-        biq_ns_open = all(s not in self.conns for s in (Seat.NORTH, Seat.SOUTH))
+        biq_ns_open = any(s not in self.conns for s in (Seat.NORTH, Seat.SOUTH))  # biq sits N/S
         for n in sorted(by):
             o, c = by[n].get("open"), by[n].get("closed")
             if not o or not c:
@@ -639,6 +681,8 @@ def main(argv=None):
     ap.add_argument("--trick-pause", type=float, default=1.0,
                     help="seconds between tricks (the protocol asks for 1)")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--relay-alerts", action="store_true",
+                    help="pass robots' alerts on to their opponents")
     ap.add_argument("--quiet", action="store_true")
     a = ap.parse_args(argv)
     tm = TableManager(a)

@@ -145,6 +145,18 @@ def _pbn(hands: Dict[Seat, frozenset]) -> str:
     return "N:" + " ".join(one(hands[s]) for s in order)
 
 
+_SIGNAL_SAME_CLASS = __import__("os").environ.get("BIQ_SIGNAL_SAME_CLASS", "1") == "1"
+
+
+def _beats52(a: int, b: int, led: int, trump) -> bool:
+    """Does card code a beat the winning card code b? (code = suit*13+rank,
+    rank 0 = ace)."""
+    sa, sb = a // 13, b // 13
+    if sa == sb:
+        return a < b
+    return trump is not None and sa == trump
+
+
 class AlphaMu:
     """Single-dummy declarer search. One instance per decision is fine; it owns
     a DDS handle and a small cache."""
@@ -449,8 +461,34 @@ class AlphaMu:
         # cost), let the caller pick the one carrying the standard signal.
         if tiebreak is not None and best_val is not None:
             margin = self.signal_margin if self.signal_margin > 0 else 1e-9
-            tied = [Card.from_code52(x) for c, m in scored
-                    if m >= best_val - margin for x in runs.get(c, [c])]
+            if _SIGNAL_SAME_CLASS:
+                # The margin may swap one SPOT for another, never a card that
+                # does something else: winning the trick instead of losing it,
+                # an honour or ten for a spot, or (on lead) another suit. biq
+                # ducked A84, A975, A32 for a signal (2026-10-05 Q-Plus runs:
+                # 41 costly signals against Q-Plus's 12).
+                led52 = trick52[0] // 13 if trick52 else None
+
+                def _wins(x):
+                    if not trick52:
+                        return None
+                    w = trick52[0]
+                    for y in trick52[1:]:
+                        if _beats52(y, w, led52, self.trump):
+                            w = y
+                    return _beats52(x, w, led52, self.trump)
+
+                def _cls(x):
+                    return (_wins(x), x % 13 <= 4,
+                            x // 13 if not trick52 else None)
+                bc = _cls(best_c)
+                tied = [Card.from_code52(x) for c, m in scored
+                        for x in runs.get(c, [c])
+                        if m >= best_val - 1e-9
+                        or (m >= best_val - margin and _cls(x) == bc)]
+            else:
+                tied = [Card.from_code52(x) for c, m in scored
+                        if m >= best_val - margin for x in runs.get(c, [c])]
             if len(tied) > 1:
                 pick = tiebreak(tied)
                 if pick is not None:
