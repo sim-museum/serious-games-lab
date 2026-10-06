@@ -22024,6 +22024,63 @@ default-setup run too), C1 crests, C2 stops, C3 laps.
 damper-setting or camber input (E100-S6), so add those fitted from the A/B pairs. Then add a setup chooser: "iRacing default" |
 "WW103 fast loose", each locked to its own ibt (setup_tab.jl rule). Blocked on the PO's iRacing session.
 
+### WWSETUP-1 S1 (2026-10-06) — the 261005 session fitted; the setup is selectable
+
+PO 2026-10-06: *"read the new .ibt files ... use this data to create a 2nd setup for julia racer. Let the user choose between the
+default setup already provided, and then new "loose" setup"*; *"this will require modifications to the julia code, as iracing and
+julia use different models"*; *"make the julia physics model as close to the iracing gold standard as possible, in terms of the
+physics"*.
+
+**Data.** 12 `.ibt` + notes from the stick, copied to `~/gold standard/julia racer/261005/`. As run (garage/tech limits, see
+`iracing_setup_2026-10-05.txt`): springs 18/48, bars F 0.375" arms 5 / R 0.6875" firm, dampers +6/+9/+9/+12, toe F −6 R +3 mm,
+diff 35/85° 4 plates 41 N·m, final 3.78, bias 54 %. Ramp swap NOT made (the car is loose on power). 00-38-20 is the
+default-setup half of B4. Not driven: B2 step steers, Pflanzgarten, C3 laps.
+
+**What the gold A/B says (gold only, `tools/wwab_261005.jl`, `tools/lsdfit_261005.jl`):**
+- DIFF: rear split ρ = (RRspeed−LRspeed)/(YawRate·1.5), 1 = open, 0 = locked (front axle reads 0.95–1.07, so the measure is
+  sound). Default (75° drive ramp): the inside wheel spins up above ~450 N·m diff input (ρ −0.5 … −3.2). WW (35°): ≈0 to
+  1000 N·m. The model's SPOOL was wrong for the default too.
+- ROLL: both axles roll alike (stiff chassis): default 1.238 °/g, WW 1.156 °/g. The sim rolled 1.91 °/g (it had no bars).
+- BALANCE: WW is NOT looser in steady state. It runs MORE front slip (+0.5 … +1° at 0.8–1.0 g); "loose" is a transient effect
+  (power-on, turn-in).
+- B4 lift-off: no setup difference (both just slow 15–20 km/h, yaw/path 1.0–1.4), so the coast ramp hardly matters.
+- Dampers (`suspfit_261004.jl` on the 261005 Ring files vs 261004): front bump/rebound ×1.05/×0.95, rear ×1.21/×1.09.
+
+**Model (DrivenVehicle3D / DriveRT3D, all inputs from the session via `chassis_from_setup`):**
+- `diff=(preload, drive°, coast°, plates)`: per-wheel rear speeds ωRL/ωRR (ωr = their mean, so every consumer still works),
+  ramp clutch-pack LSD, capacity = preload + k·plates·cot(ramp)·|Tin|. **LSD_K 0.20** (ωε 0.1 rad/s) is fitted through the car
+  on BOTH setups at once. The garage's 41 N·m preload scores best (×0.25 and ×0.5 are worse). Default breakaway sim −0.58/−1.11/−2.09
+  vs gold −0.48/−1.33/−2.04 (450–1000 N·m); WW ≈0 vs gold −0.3…+0.3. Open: below ~450 N·m the gold default partly slips (ρ 0.43)
+  while the sim sticks.
+- bars: `karb_f/karb_r`, extra roll-only stiffness. The TOTAL is fitted to the roll gradient (sim 1.240 / 1.163 vs gold 1.238 / 1.156).
+  The split follows bar diameter⁴, because the sim's balance moves ≤0.13° with the split (the brush has little load sensitivity), so
+  the split is not identifiable. Identified: 261004 default (1121, 12714) N/m; WW103 (1758, 19940). Other bars are scaled by
+  diameter⁴ from 261004 and labelled as such in the launch log.
+- toe per wheel (garage mm across the tyre diameter), dampers ×(1.00, 1.15) for WW, brake torque split from the pressure bias
+  (53.5 % → 0.585 as BRAKE-2, 54 % → 0.590).
+
+**Chooser.** `JM_CARSETUP=default|ww103`, a launcher "Car setup" dropdown (remembered), and a prompt on an interactive launch.
+The session ibt is the physics source AND the `.ibt` export template, so a WW103 lap exports WW103's CarSetup. WW sessions
+are found by content, not filename. If none is found the launch prints `!!` and drives the default. The setup tab's reset
+returns to the chosen session.
+
+**Acceptance:**
+- `carsetup_smoke` (new gate) PASS.
+- `stability_check` passes on the old car, the new default (06-24 Ring) and WW103 (JM_STAB_IBT). Note: light trail braking
+  (pedal 0.4) now peaks at 7–8° sideslip, against 3.9° on the spool.
+- Crest (`crestval_261005`): default 0.168 s / 0.21 g, unchanged. WW103 0.108 s / 0.21 g over its 4 passes.
+- Braking (`brakeval_261005`): identical old/new for the default. WW follows the same BRAKE-2 residual (part pedal −0.05 g,
+  full pedal high).
+- Transients (`wwtrans_261005`): WW B3 lets go at 0.65–1.0 throttle and spins, as the gold. The default B3 is too forgiving
+  (sim holds where the gold lets go at 100 %), which is the known ~25 % lower rear slip. B4 both "just slow".
+- In-sim smoke at the Ring with JM_CARSETUP=ww103: setup, gearbox 3.78, springs and chassis lines correct; export carries 18 N/mm 35/85.
+
+**Open / not modelled:**
+- CAMBER-1: WW's steady-state extra understeer (gold front +1–2° at 0.9–1.0 g, sim +0.0). WW's fronts run −0.4/−0.1 against
+  −0.5/−0.4, and the model has no camber. Needs a camber law; two setups are too few to fit it alone.
+- The lateral tyre (sim slips ~25 % less than iRacing, 10-04) also makes the default too forgiving on power.
+- Not driven by the PO: B2 step steers, Pflanzgarten, C3 laps.
+
 
 ## PO 2026-10-04 (evening) — three requests
 

@@ -63,7 +63,15 @@ function DrivenVehicle3D(; name,
         # Each corner may now carry its own spec. Defaults keep the axle-shared behaviour exactly,
         # so a caller that passes nothing gets the previous model unchanged.
         fl_corner = front_corner, fr_corner = front_corner,
-        rl_corner = rear_corner,  rr_corner = rear_corner)
+        rl_corner = rear_corner,  rr_corner = rear_corner,
+        # WWSETUP-1 (2026-10-06): the setup quantities iRacing's garage exposes and the gold shows an effect of.
+        # `diff = nothing` keeps the SPOOL (one rear wheel speed), which every pre-WWSETUP tool was fitted on.
+        # `diff = (preload, drive_ramp, coast_ramp, plates)` [N·m, deg, deg, count] gives each rear wheel its
+        # own speed, coupled by a ramp-type clutch-pack LSD (see below). `toe_f`/`toe_r` are toe-IN per wheel
+        # [rad] (negative = toe-out), as the iRacing garage sets them.
+        # `karb_f`/`karb_r`: the anti-roll bars, roll-only stiffness per axle [N/m] on top of the corner specs' (total
+        # fitted to the gold's roll gradient: tools/arbfit_261005.jl).
+        diff = nothing, toe_f = 0.0, toe_r = 0.0, karb_f = 0.0, karb_r = 0.0)
     L = a + b; mf = m*front_frac; mr = m*(1 - front_frac)
     M_s = fl_corner.m_s + fr_corner.m_s + rl_corner.m_s + rr_corner.m_s   # total sprung mass
 
@@ -73,14 +81,22 @@ function DrivenVehicle3D(; name,
     RL = brush ? BrushTyre(; name=:RL, BRUSH_REAR...)  : Tyre(; name=:RL, TYRE_SKIDPAD_REAR...)
     RR = brush ? BrushTyre(; name=:RR, BRUSH_REAR...)  : Tyre(; name=:RR, TYRE_SKIDPAD_REAR...)
 
-    ps = @parameters m=m Izz=Izz Ixx=Ixx Iyy=Iyy a=a b=b tf=tf tr=tr h=h mf=mf mr=mr L=L M_s=M_s g=g Rw_f=Rw_f Rw_r=Rw_r Iw=Iw η=η final=final bias=bias Tbrake_max=Tbrake_max CdA=CdA ρair=ρair throttle=throttle0 brake=brake0 δ=steer0 gear=gear0 clutch=0.0 Ie=0.18 c_c=60.0 T_cap=500.0 k_idle=0.5 idle_rpm=2000.0 zrFL=0.0 zrFR=0.0 zrRL=0.0 zrRR=0.0 vrFL=0.0 vrFR=0.0 vrRL=0.0 vrRR=0.0 Fx_ext=0.0 Fy_ext=0.0 Mz_ext=0.0 CdA_scale=1.0 c_abl=C_ABL
+    ps = @parameters m=m Izz=Izz Ixx=Ixx Iyy=Iyy a=a b=b tf=tf tr=tr h=h mf=mf mr=mr L=L M_s=M_s g=g Rw_f=Rw_f Rw_r=Rw_r Iw=Iw η=η final=final bias=bias Tbrake_max=Tbrake_max CdA=CdA ρair=ρair throttle=throttle0 brake=brake0 δ=steer0 gear=gear0 clutch=0.0 Ie=0.18 c_c=60.0 T_cap=500.0 k_idle=0.5 idle_rpm=2000.0 zrFL=0.0 zrFR=0.0 zrRL=0.0 zrRR=0.0 vrFL=0.0 vrFR=0.0 vrRL=0.0 vrRR=0.0 Fx_ext=0.0 Fy_ext=0.0 Mz_ext=0.0 CdA_scale=1.0 c_abl=C_ABL toe_f=toe_f toe_r=toe_r karb_f=karb_f karb_r=karb_r
+    lsd = diff !== nothing
+    if lsd
+        lsd_ps = @parameters lsd_pre=diff[1] lsd_cotd=cotd(diff[2]) lsd_cotc=cotd(diff[3]) lsd_plates=diff[4] lsd_k=LSD_K lsd_weps=LSD_WEPS
+        append!(ps, lsd_ps)
+    end
     # in-plane + powertrain states
-    vplane = @variables u(t)=0.0 v(t)=0.0 r(t)=0.0 ωf(t)=0.0 ωr(t)=0.0 ωe(t)=209.4 ay(t) ax(t) az(t) rpm(t) X(t)=0.0 Y(t)=0.0 ψ(t)=0.0
+    # with an LSD the axle speed ωr is the MEAN of the two rear wheels (observed, so it must carry no start value)
+    if lsd; @variables ωr(t); else; @variables ωr(t)=0.0; end
+    vplane = [@variables(u(t)=0.0, v(t)=0.0, r(t)=0.0, ωf(t)=0.0)...; ωr; @variables ωe(t)=209.4 ωRL(t)=0.0 ωRR(t)=0.0 Tlsd(t) ay(t) ax(t) az(t) rpm(t) X(t)=0.0 Y(t)=0.0 ψ(t)=0.0]
     # vertical / attitude states (sprung): heave z, pitch th, roll ph + rates
     vatt = @variables z(t)=0.0 w(t)=0.0 th(t)=0.0 q(t)=0.0 ph(t)=0.0 pp(t)=0.0
     # unsprung vertical states (one per corner)
     vuns = @variables zuFL(t)=0.0 vuFL(t)=0.0 zuFR(t)=0.0 vuFR(t)=0.0 zuRL(t)=0.0 vuRL(t)=0.0 zuRR(t)=0.0 vuRR(t)=0.0
     vfz  = @variables FzFL(t) FzFR(t) FzRL(t) FzRR(t)     # tyre vertical loads (observed)
+    lsd || (vplane = filter(x -> !any(isequal(x), (ωRL, ωRR, Tlsd)), vplane))
     vars = vcat(vplane, vatt, vuns, vfz)
 
     # CdA_scale (≤1 in a leading car's slipstream) makes DRAFT a real aero effect — reduced frontal
@@ -93,10 +109,11 @@ function DrivenVehicle3D(; name,
     εF = 80.0                                             # contact/clamp rounding scale [N]
 
     #            tyre  xi    yi    steer axle  m_s              m_u              ks/cs/kt/ct          zu     vu     zr     vr     Fz
-    spec = ((FL,  a,  tf/2,  δ, :f, fl_corner, zuFL, vuFL, zrFL, vrFL, FzFL),
-            (FR,  a, -tf/2,  δ, :f, fr_corner, zuFR, vuFR, zrFR, vrFR, FzFR),
-            (RL, -b,  tr/2,  0, :r, rl_corner, zuRL, vuRL, zrRL, vrRL, FzRL),
-            (RR, -b, -tr/2,  0, :r, rr_corner, zuRR, vuRR, zrRR, vrRR, FzRR))
+    # toe-in turns each wheel toward the centreline: the LEFT wheel (+y) steers right (−), the right one left (+)
+    spec = ((FL,  a,  tf/2,  δ - toe_f, :f, fl_corner, zuFL, vuFL, zrFL, vrFL, FzFL),
+            (FR,  a, -tf/2,  δ + toe_f, :f, fr_corner, zuFR, vuFR, zrFR, vrFR, FzFR),
+            (RL, -b,  tr/2,     -toe_r, :r, rl_corner, zuRL, vuRL, zrRL, vrRL, FzRL),
+            (RR, -b, -tr/2,      toe_r, :r, rr_corner, zuRR, vuRR, zrRR, vrRR, FzRR))
 
     eqs = Equation[]; Fyb=Any[]; Fxb=Any[]; Mz=Any[]; Fx_f=Any[]; Fx_r=Any[]; Pslip=Any[]
     Fsusp=Any[]; xs=Any[]; ys=Any[]
@@ -106,9 +123,9 @@ function DrivenVehicle3D(; name,
     karb(c) = hasproperty(c, :karb) ? c.karb : 0.0
     for (idx, (ty, xi, yi, st, axle, cor, zu, vu, zr, vr, Fz)) in enumerate(spec)
         pidx = isodd(idx) ? idx + 1 : idx - 1                 # the other corner of this axle
-        kab = 0.5*(karb(cor) + karb(spec[pidx][6]))
+        kab = 0.5*(karb(cor) + karb(spec[pidx][6])) + (axle == :f ? karb_f : karb_r)
         Rw  = axle == :f ? Rw_f : Rw_r
-        ωax = axle == :f ? ωf : ωr
+        ωax = axle == :f ? ωf : !lsd ? ωr : idx == 3 ? ωRL : ωRR
         m_s_i = cor.m_s; m_u_i = cor.m_u
         P_s   = m_s_i*g                                   # static suspension preload
         Fz_static = (m_s_i + m_u_i)*g                     # static tyre load
@@ -172,11 +189,33 @@ function DrivenVehicle3D(; name,
         # ---- powertrain (identical to DrivenVehicleRT) ----
         Ie*D(ωe) ~ (engine_torque(rpm, throttle) + Tidle)*run - (1.0 - run)*45.0*ωe - Tcl,
         2*Iw*D(ωf) ~ -brake*Tbrake_max*bias*tanh(ωf) - (Fx_f[1]+Fx_f[2])*Rw_f,
-        2*Iw*D(ωr) ~ Tcl*gr*η - brake*Tbrake_max*(1-bias)*tanh(ωr) - (Fx_r[1]+Fx_r[2])*Rw_r,
         # ---- world pose for rendering ----
         D(X) ~ u*cos(ψ) - v*sin(ψ),
         D(Y) ~ u*sin(ψ) + v*cos(ψ),
         D(ψ) ~ r,
     )
+    if !lsd
+        push!(eqs, 2*Iw*D(ωr) ~ Tcl*gr*η - brake*Tbrake_max*(1-bias)*tanh(ωr) - (Fx_r[1]+Fx_r[2])*Rw_r)
+    else
+        # WWSETUP-1 LSD: a ramp-type (Salisbury) clutch-pack diff. The input torque Tin = Tcl·gr·η splits equally,
+        # as in an open diff; the clutch packs then pass torque Tlsd from the faster half-shaft to the slower one,
+        # up to their capacity Tcap = preload + k·plates·cot(ramp)·|Tin| -- the ramp's wedge loads the packs in
+        # proportion to the torque through it, and a STEEPER ramp wedges less (cot 75° = 0.27, cot 35° = 1.43).
+        # The drive ramp acts under power, the coast ramp under engine braking (blended through Tin = 0).
+        # Below capacity the packs stick and both wheels turn together; the tanh is that stick-slip, regularised
+        # over ωε (the solver is implicit, so the stiff locked branch is safe at the 1/300 s step).
+        # k (LSD_K, powertrain.jl) is the one constant the garage does not give -- friction faces × μ × the
+        # ramp/clutch radius ratio -- and is identified from the gold's rear wheel-speed split
+        # (tools/lsdfit_261005.jl), with BOTH setups' ramps on the same k.
+        Tin  = Tcl*gr*η
+        wdr  = 0.5*(1 + tanh(Tin/10.0))
+        Tcap = lsd_pre + lsd_k*lsd_plates*(wdr*lsd_cotd + (1 - wdr)*lsd_cotc)*sqrt(Tin^2 + 1.0)
+        append!(eqs, [
+            Tlsd ~ Tcap*tanh((ωRR - ωRL)/lsd_weps),                       # >0: RR faster, torque passes to RL
+            Iw*D(ωRL) ~ Tin/2 + Tlsd/2 - brake*Tbrake_max*(1-bias)/2*tanh(ωRL) - Fx_r[1]*Rw_r,
+            Iw*D(ωRR) ~ Tin/2 - Tlsd/2 - brake*Tbrake_max*(1-bias)/2*tanh(ωRR) - Fx_r[2]*Rw_r,
+            ωr ~ (ωRL + ωRR)/2,
+        ])
+    end
     System(eqs, t, vars, ps; systems = [FL, FR, RL, RR], name)
 end

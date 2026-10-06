@@ -16,7 +16,7 @@ set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PROJ="$(cd "$HERE/.." && pwd)"
 FILTER="${1:-}"
-SMOKES="parse_smoke gplwall_smoke wreck_smoke contact_smoke stacked_contact_smoke solid_box_smoke ai_parked_susp_smoke boundary3d_smoke extforce3d_smoke wheelmu_smoke drive3d_smoke stall_smoke transmission_smoke controls_smoke people_smoke damage_smoke mipcolor_smoke ai_field_smoke susp_pose_smoke netplay_smoke setup_tab_smoke offroad_smoke wreck_seal_smoke reground_smoke netplay_dr_smoke netplay_dr2_smoke hat_hole_smoke clutchgate_smoke contact_geom_smoke lapprog_smoke restart_smoke softband_smoke vtbrake_smoke netai_smoke netai_host_smoke racestart_smoke step_guard_smoke road_clear_smoke telemetry_rpm_smoke wheel_hubs_smoke seam_smoke gplroad_smoke gpldlat_smoke gplplan_smoke"
+SMOKES="parse_smoke gplwall_smoke wreck_smoke contact_smoke stacked_contact_smoke solid_box_smoke ai_parked_susp_smoke boundary3d_smoke extforce3d_smoke wheelmu_smoke drive3d_smoke stall_smoke transmission_smoke controls_smoke people_smoke damage_smoke mipcolor_smoke ai_field_smoke susp_pose_smoke netplay_smoke setup_tab_smoke offroad_smoke wreck_seal_smoke reground_smoke netplay_dr_smoke netplay_dr2_smoke hat_hole_smoke clutchgate_smoke contact_geom_smoke lapprog_smoke restart_smoke softband_smoke vtbrake_smoke netai_smoke netai_host_smoke racestart_smoke step_guard_smoke road_clear_smoke telemetry_rpm_smoke wheel_hubs_smoke seam_smoke gplroad_smoke gpldlat_smoke gplplan_smoke carsetup_smoke"
 
 # OFFROAD-1 (S12, 2026-09-17): offroad_track_smoke is in the gproj list above but deliberately NOT
 # in SMOKES -- it is parked red on purpose (OFFROAD-1 S2-S5: "parking a permanently-red gate in the

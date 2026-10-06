@@ -658,12 +658,70 @@ const IBTNAME = get(Dict("nurburgring" => "nurburgring nordschleife",
 # 2026-06-24 — so the lookup could never succeed and every session ended with a SystemError. A
 # reference set that is addressed by an exact timestamp breaks the moment it is re-captured, which
 # is the opposite of what a reference is for.
-const IBTTMPL = let want = (SKIDPAD ? "lotus49_skidpad" : "lotus49_nurburgring"),
+include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","setup.jl"))); using .Setup
+const IBTTMPL_DEFAULT = let want = (SKIDPAD ? "lotus49_skidpad" : "lotus49_nurburgring"),
                     cands = isdir(IBTDIR) ? sort(filter(f -> startswith(lowercase(f), want) &&
                                                              endswith(lowercase(f), ".ibt"),
                                                         readdir(IBTDIR))) : String[]
     isempty(cands) ? joinpath(IBTDIR, want * " (none found).ibt") : joinpath(IBTDIR, cands[1])
 end   # zandvoort/spa/monza/watkins borrow the Nordschleife layout (channel set is the same)
+
+# ---- WWSETUP-1: the CAR SETUP is a choice of ibt session -------------------------------------------------------
+# PO 2026-10-05: "The julia user can then choose which setup to use - default iracing, or ww". Each setup is LOCKED
+# TO ITS OWN ibt (the E100/E105 rule): the session file supplies the gearbox, mass, springs, ride heights, diff,
+# toe, bars, dampers and brake bias, and is the template the .ibt export copies -- so an exported WW103 lap carries
+# WW103's CarSetup block, not the default's. The setup tab's "reset" returns to the CHOSEN session.
+#   JM_CARSETUP=default | ww103            (unset: asked on an interactive launch, else default)
+# WW103 = Wolfgang Wagner's GPL Watkins Glen setup Wat10361WW.kj1, translated to iRacing ("261005_jr_ww103") and driven
+# by the PO on 2026-10-05; its sessions are found by their CONTENT (the 35/85° ramps and 18 N/mm fronts), not by a
+# filename, because that session folder also holds the default-setup A/B run (00-38-20).
+const CARSETUPS = (
+    (key = "default", label = "iRacing default",  note = "the iRacing Lotus 49 setup Julia has always raced"),
+    (key = "ww103",   label = "WW103 fast loose", note = "Wolfgang Wagner's GPL Watkins Glen setup via iRacing: soft front, stiff rear bar, 35° drive ramp, toe-out"),
+)
+function choose_carsetup()
+    haskey(ENV, "JM_CARSETUP") && return lowercase(strip(ENV["JM_CARSETUP"]))
+    (haskey(ENV, "JM_SMOKE") || !isa(stdin, Base.TTY)) && return "default"
+    println("""
+
+      ╔════════════════════════════════════════════════╗
+      ║          juliaMotor — car setup                 ║
+      ╚════════════════════════════════════════════════╝""")
+    for (i, c) in enumerate(CARSETUPS); println("   ", i, ") ", rpad(c.label, 18), c.note); end
+    print("\n  Setup [1/2] (Enter = 1): "); flush(stdout)
+    s = strip(readline())
+    s == "2" ? "ww103" : "default"
+end
+const CARSETUP = let k = choose_carsetup()
+    if !any(c -> c.key == k, CARSETUPS)
+        println("!! unknown JM_CARSETUP=\"", k, "\" -- known: ", join((c.key for c in CARSETUPS), ", "))
+        flush(stdout); exit(2)
+    end
+    k
+end
+isww103(sp) = sp.diff_drive_ramp == 35 && sp.diff_coast_ramp == 85 && sp.spring_rate_Npmm[:LF] == 18
+const IBTTMPL = if CARSETUP == "ww103"
+    want = SKIDPAD ? "lotus49_skidpad" : "lotus49_nurburgring"
+    cands = String[]
+    for (r, _, fs) in (isdir(IBTDIR) ? walkdir(IBTDIR) : ()), fn in sort(fs)
+        (startswith(lowercase(fn), want) && endswith(lowercase(fn), ".ibt")) || continue
+        f = joinpath(r, fn)
+        ok = try isww103(Setup.setup_params(IBT.session_yaml(IBT.ibt_open(f)))) catch; false end
+        ok && push!(cands, f)
+    end
+    if isempty(cands)
+        # LOUD, and the default car rather than no car: the chosen setup's data is simply not on this machine.
+        println("!! WW103: no ", want, " session with the WW103 setup under ", IBTDIR,
+                " (expected its 261005 folder) -- driving the iRacing DEFAULT setup instead")
+        IBTTMPL_DEFAULT
+    else
+        first(cands)
+    end
+else
+    IBTTMPL_DEFAULT
+end
+println("  car setup: ", CARSETUP == "ww103" && IBTTMPL != IBTTMPL_DEFAULT ? "WW103 fast loose" : "iRacing default",
+        "   <- ", basename(IBTTMPL))
 
 # ---- E100: the GEARBOX comes from the ibt session, not from source constants ----------------
 # PO 2026-08-27: "the car physics should be determined entirely by the iracing ibt data, there
@@ -675,7 +733,6 @@ end   # zandvoort/spa/monza/watkins borrow the Nordschleife layout (channel set 
 # skidpad), so the gearbox simply comes from the file the session is already keyed to.
 # Set BEFORE the car is built (line ~4358): the final drive is an MTK parameter baked in at
 # construction, so a later change would move the ratios and not the drivetrain.
-include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","setup.jl"))); using .Setup
 let
     if isfile(IBTTMPL)
         try
@@ -703,6 +760,8 @@ let
                                               source = basename(IBTTMPL))
                 end
             end
+            # WWSETUP-1: the diff, toe, bars, dampers and brake bias of the same session (see DriveRT3D.chassis_from_setup)
+            DriveRT3D.set_chassis!(DriveRT3D.chassis_from_setup(pp; source = basename(IBTTMPL)))
         catch e
             @warn "E100: could not read the gearbox from $(basename(IBTTMPL)); the built-in \
                    fallback is the SKIDPAD setup and is wrong for a circuit" e
@@ -735,6 +794,7 @@ let
             " N/m (FL/FR/RL/RR)   <- ", DriveRT3D.KS_SRC[])
     println("  ride ht: ", join((round(1000*h, digits=1) for h in DriveRT3D.RIDE_H[]), " / "),
             " mm (FL/FR/RL/RR)   <- ", DriveRT3D.RIDE_H_SRC[])
+    println("  chassis: ", DriveRT3D.describe_chassis())
 end
 
 # ---- E105: the SETUP TAB ---------------------------------------------------------------------
@@ -13152,7 +13212,7 @@ function main()
                 "VelocityX"=>tl.u, "VelocityY"=>tl.v, "VelocityZ"=>0.0,
                 # VertAccel is REAL in 3-D mode (the planar model has no vertical DOF → 1 g stub)
                 "LongAccel"=>tl.ax, "LatAccel"=>tl.ay, "VertAccel"=>(CAR3D ? tl.vacc : 9.80665),
-                "LFspeed"=>tl.ωf*0.30, "RFspeed"=>tl.ωf*0.30, "LRspeed"=>tl.ωr*DriveRT3D.RW_R, "RRspeed"=>tl.ωr*DriveRT3D.RW_R,
+                "LFspeed"=>tl.ωf*0.30, "RFspeed"=>tl.ωf*0.30, "LRspeed"=>tl.ωRL*DriveRT3D.RW_R, "RRspeed"=>tl.ωRR*DriveRT3D.RW_R,
                 "Alt"=>cs.y)
             if CAR3D                                   # real ride heights + body attitude (Flugplatz benchmark)
                 # E106-S37: export ride height ONLY while the wheels are loaded. Measured

@@ -629,6 +629,19 @@ class DriveTab(QWidget):
         self.ai_pct_note = QLabel("")          # A3: shows how the preset was derived (your best vs GPLrank)
         self.ai_pct_note.setStyleSheet("color:#888;font-size:10px")
         form.addWidget(self.ai_pct_note, 4, 2)
+        # WWSETUP-1 (PO 2026-10-05): "The julia user can then choose which setup to use - default iracing, or ww".
+        # Each choice is an iRacing session the car physics is locked to (JM_CARSETUP; see drive_native_mtk.jl).
+        form.addWidget(QLabel("Car setup:"), 11, 0)
+        self.carsetup = QComboBox()
+        self.carsetup.addItems(["iRacing default", "WW103 fast loose (Wolfgang Wagner)"])
+        self.carsetup.setToolTip("iRacing default: the Lotus 49 setup Julia has always raced.\n"
+                                 "WW103 fast loose: Wolfgang Wagner's GPL Watkins Glen setup, driven in iRacing "
+                                 "(session 261005) -- soft front springs, stiff rear bar, 35° drive ramp (the diff "
+                                 "locks under power), front toe-out, long gearing. Loose on power, controllable at speed.")
+        _cs = QSettings("juliaRacer", "launcher")             # remembered across launches, like the graphics choices
+        self.carsetup.setCurrentIndex(min(max(int(_cs.value("car/setup", 0)), 0), 1))
+        self.carsetup.currentIndexChanged.connect(lambda i: QSettings("juliaRacer", "launcher").setValue("car/setup", i))
+        form.addWidget(self.carsetup, 11, 1)
         form.addWidget(QLabel("Gearbox:"), 5, 0)
         self.gearbox = QComboBox()
         self.gearbox.addItems(["Automatic (auto-clutch + auto-shift)", "Manual (clutch C + shift E/Q)"])
@@ -1010,6 +1023,7 @@ class DriveTab(QWidget):
         qenv.insert("JM_AI", str(self.ai.value() if is_race else 0))   # Practice = lone car (no AI grid)
         qenv.insert("JM_AI_PCT", str(self.ai_pct.value()))
         qenv.insert("ZAND_SHIFT", "auto" if self.gearbox.currentIndex() == 0 else "manual")
+        qenv.insert("JM_CARSETUP", ["default", "ww103"][self.carsetup.currentIndex()])
         if self.mute.isChecked():
             qenv.insert("JM_NOSOUND", "1")
         if self.noffb.isChecked():

@@ -20,7 +20,7 @@ for f in ("tyre.jl","powertrain.jl","vehicle_3d.jl")
     include(joinpath(HERE, "components", f))
 end
 
-export Car3D, build_car3d, set_shift_rpm!, set_suspension!, wheel_rate, set_ride_height!, step_car3d!, telemetry3d, respawn3d!, contain3d!, extforce3d!, contact_force, cap_total_contact, wheelmu3d!, world_velocity, damage_hit!, damage_impact!, damage_engine!, damage_mu, engine_power, engine_dead, damaged, damage_reset!
+export Car3D, build_car3d, Chassis, CHASSIS, set_chassis!, chassis_from_setup, describe_chassis, toe_rad, bias_torque, set_shift_rpm!, set_suspension!, wheel_rate, set_ride_height!, step_car3d!, telemetry3d, respawn3d!, contain3d!, extforce3d!, contact_force, cap_total_contact, wheelmu3d!, world_velocity, damage_hit!, damage_impact!, damage_engine!, damage_mu, engine_power, engine_dead, damaged, damage_reset!
 
 # E100: the transmission is SESSION data, not a car constant. The Lotus 49's gears are
 # adjustable and the ibt captures prove it -- Nurburgring runs [2.23,1.72,1.32,1.04,0.846]
@@ -127,6 +127,100 @@ function set_suspension!(fl::Real, fr::Real, rl::Real, rr::Real; source::Abstrac
     KS[] = (float(fl), float(fr), float(rl), float(rr)); KS_SRC[] = source
     nothing
 end
+
+# ---- WWSETUP-1 (2026-10-06): the rest of the setup the gold shows an effect of ---------------------------------
+# PO 2026-10-06: "make the julia physics model as close to the iracing gold standard as possible, in terms of the
+# physics". The A/B of the default and WW103 sessions (tools/wwab_261005.jl, tools/lsdfit_261005.jl) shows the
+# rear DIFF, the roll stiffness and the dampers move the car; these are their model inputs. Like the springs they
+# are MTK parameters baked in at construction, so they are set before a Car3D is built.
+#   CHASSIS.diff     (preload N·m, drive ramp °, coast ramp °, clutch plates) from the session's Differential block
+#   CHASSIS.toe      toe-in per wheel [rad], front / rear (garage mm across the tyre diameter, see toe_rad)
+#   CHASSIS.karb     the anti-roll bars: roll-only stiffness [N/m] front / rear on top of the springs (see ARB_ID:
+#                    the garage's bar sizes are not rates, so the total is fitted to the gold's roll gradient)
+#   CHASSIS.cscale   damper scale front / rear on the hand-set dampers (the measured WW/default ratio)
+#   CHASSIS.bias     brake TORQUE split front (from the garage's PRESSURE bias, see bias_torque)
+Base.@kwdef mutable struct Chassis
+    diff::Any = nothing
+    toe::NTuple{2,Float64} = (0.0, 0.0)
+    karb::NTuple{2,Float64} = (0.0, 0.0)
+    cscale::NTuple{2,Float64} = (1.0, 1.0)
+    bias::Float64 = 0.585
+    src::String = "built-in (spool rear, no toe, default bars/dampers/bias -- NOT from an ibt)"
+end
+const CHASSIS = Ref(Chassis())
+set_chassis!(ch::Chassis) = (CHASSIS[] = ch; nothing)
+
+"""Toe-in per wheel [rad] from the garage's toe [mm], read as the toe at the tyre's edge -- across its diameter."""
+toe_rad(mm::Real; rear::Bool = false) = atan(float(mm)/1000, 2*(rear ? RW_R : 0.30))
+
+"""Brake TORQUE split front from the garage's PRESSURE bias [%]. BRAKE-2 fitted 0.585 at the default's 53.5 %:
+the ratio of front to rear torque per unit pressure (bigger front calipers/discs) is then fixed, and any other
+pressure split maps through it."""
+function bias_torque(pct::Real)
+    kA = 0.585*(1 - 0.535) / (0.535*(1 - 0.585))
+    p = float(pct)/100
+    p*kA / (p*kA + (1 - p))
+end
+
+# The garage's anti-roll bars (diameter + arms) and damper clicks are settings, not rates, so they cannot be converted;
+# their effect is IDENTIFIED from the gold per setting and kept here, keyed on the garage's own values. A setting
+# with no gold behind it gets the default's (no extra stiffness, unscaled dampers) and says so in the source line.
+#   ARB:     (front, rear) garage strings -> extra roll stiffness (front, rear) [N/m per corner pair, as karb]
+#   DAMPERS: (bump F, rebound F, bump R, rebound R) clicks -> damper scale (front, rear)
+# ARB: the gold measures the TOTAL roll stiffness, not its split (tools/wwab_261005.jl B.: both axles of the stiff
+# chassis roll alike, 1.24 °/g default, 1.16 °/g WW103), and the sim's balance barely moves with the split (the brush
+# has little load sensitivity: ±5 kN/m front vs rear changes the axle slip by ≤0.13°), so the split cannot be
+# identified through the car. The total is fitted to the gold's roll gradient (tools/arbfit_261005.jl); it is shared
+# front/rear as the bars' diameter⁴ (a torsion bar's rate; the garage's arm positions are not convertible).
+# Before this the 3-D car had NO bars and rolled 1.91 °/g against iRacing's 1.24.
+const ARB_ID = Dict{Tuple{String,String},NTuple{2,Float64}}(
+    ("0.375\" 2", "0.6875\" 5")    => (1121.0, 12714.0),       # 261004 default (Ring "identical to nurburgring")
+    ("0.375\" 5", "0.6875\" firm") => (1758.0, 19940.0),       # 261005 WW103
+)
+_firstnum(s) = (m = match(r"[-+]?\d+(?:\.\d+)?", s); m === nothing ? NaN : parse(Float64, m.match))
+const ARB_REF = (("0.375\" 2", "0.6875\" 5"), 0.375, 0.6875)   # the reference for bars with no gold run
+const DAMPER_ID = Dict{NTuple{4,Float64},NTuple{2,Float64}}(
+    (4.0, 8.0, 4.0, 7.0) => (1.0, 1.0),                         # 261004 default: the hand-set dampers
+    # WW103 (261005): tools/suspfit_261004.jl on the 261005 Ring files vs the 261004 ones, per shock:
+    # front bump 4217/4017 rebound 2708/2855, rear bump 1995/1654 rebound 859/788 -> axle means 1.00 / 1.15
+    (6.0, 9.0, 9.0, 12.0) => (1.00, 1.15),
+)
+
+"""    chassis_from_setup(sp; source) -> Chassis
+
+The session's diff, toe, bars, dampers and brake bias as model inputs (sp = Setup.setup_params of the ibt)."""
+function chassis_from_setup(sp; source::AbstractString = "unknown")
+    notes = String[]
+    diff = all(isfinite, (sp.diff_preload_Nm, sp.diff_drive_ramp, sp.diff_coast_ramp)) ?
+        (sp.diff_preload_Nm, sp.diff_drive_ramp, sp.diff_coast_ramp, isfinite(sp.diff_plates) ? sp.diff_plates : 4.0) :
+        (push!(notes, "no Differential block: spool"); nothing)
+    toe = (isfinite(sp.toe_front_mm) ? toe_rad(sp.toe_front_mm) : 0.0, isfinite(sp.toe_rear_mm) ? toe_rad(sp.toe_rear_mm; rear = true) : 0.0)
+    karb = get(ARB_ID, (sp.arb_front, sp.arb_rear)) do
+        # no gold run on these bars: scale the reference's by diameter⁴ ("Disconnected" -> 0), arms ignored
+        df = occursin(r"(?i)disc", sp.arb_front) ? 0.0 : _firstnum(sp.arb_front)
+        dr = occursin(r"(?i)disc", sp.arb_rear)  ? 0.0 : _firstnum(sp.arb_rear)
+        ref = ARB_ID[ARB_REF[1]]
+        if isfinite(df) && isfinite(dr)
+            push!(notes, "bars $(sp.arb_front) / $(sp.arb_rear) estimated from 261004's by diameter⁴")
+            (ref[1]*(df/ARB_REF[2])^4, ref[2]*(dr/ARB_REF[3])^4)
+        else
+            push!(notes, "bars $(sp.arb_front) / $(sp.arb_rear) unreadable: 261004's"); ref
+        end
+    end
+    clk = (sp.bump_clicks[:LF], sp.rebound_clicks[:LF], sp.bump_clicks[:LR], sp.rebound_clicks[:LR])
+    cscale = get(DAMPER_ID, clk) do
+        push!(notes, "dampers $(clk) not identified: hand-set"); (1.0, 1.0)
+    end
+    bias = isfinite(sp.brake_bias_pct) ? bias_torque(sp.brake_bias_pct) : 0.585
+    Chassis(; diff, toe, karb, cscale, bias, src = source * (isempty(notes) ? "" : "  (" * join(notes, "; ") * ")"))
+end
+
+"""One line per chassis input, for the launch log: a silent fallback is the defect E100 exists to prevent."""
+describe_chassis(ch::Chassis = CHASSIS[]) =
+    "diff " * (ch.diff === nothing ? "spool" : "LSD preload $(round(Int, ch.diff[1])) N·m ramps $(round(Int, ch.diff[2]))/$(round(Int, ch.diff[3]))° plates $(round(Int, ch.diff[4]))") *
+    "   toe-in F $(round(rad2deg(ch.toe[1]), digits = 2))° R $(round(rad2deg(ch.toe[2]), digits = 2))°" *
+    "   +roll k F $(round(Int, ch.karb[1])) R $(round(Int, ch.karb[2])) N/m   dampers x$(ch.cscale[1])/$(ch.cscale[2])" *
+    "   brake split $(round(ch.bias, digits = 3))   <- $(ch.src)"
 
 """Wheel rate [N/m] from an ibt SpringRate [N/mm]. One place for the unit and motion-ratio change."""
 wheel_rate(spring_N_per_mm::Real; rear::Bool = false) = float(spring_N_per_mm) * 1000.0 * (rear ? MR2_R : MR2)
@@ -393,17 +487,21 @@ end
 # ratio, so a rear roll-only coupling keeps exactly that: per side ks + 2·karb = spring x MR2, as before. Heave and
 # pitch take the measured rate; the cornering balance is unchanged.
 _karb_r(ks) = 0.5 * float(ks) * (MR2/MR2_R - 1.0)
-_corner(axle::Symbol, ks::Real) = axle === :f ?
-    (ks = float(ks), cs = 2500.0, karb = 0.0, m_s = 120.0, m_u = 20.0, kt = 180_000.0, ct = 1000.0) :
-    (ks = float(ks), cs = 3000.0, karb = _karb_r(ks), m_s = 148.0, m_u = 20.0, kt = 200_000.0, ct = 1100.0)
+_corner(axle::Symbol, ks::Real; ch::Chassis = CHASSIS[]) = axle === :f ?
+    (ks = float(ks), cs = 2500.0*ch.cscale[1], karb = 0.0, m_s = 120.0, m_u = 20.0, kt = 180_000.0, ct = 1000.0) :
+    (ks = float(ks), cs = 3000.0*ch.cscale[2], karb = _karb_r(ks), m_s = 148.0, m_u = 20.0, kt = 200_000.0, ct = 1100.0)
+# WWSETUP-1: the vehicle keywords the chassis state adds (diff, toe, brake split) -- one place, both builders.
+_chassis_kw(ch::Chassis = CHASSIS[]) = (diff = ch.diff, toe_f = ch.toe[1], toe_r = ch.toe[2], bias = ch.bias, karb_f = ch.karb[1], karb_r = ch.karb[2])
+# initial wheel speeds: the per-wheel rear states exist only with an LSD
+_wheel_u0(sys, v0) = CHASSIS[].diff === nothing ? [sys.ωr => v0/RW_R] : [sys.ωRL => v0/RW_R, sys.ωRR => v0/RW_R]
 
 function build_car3d(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0, y0 = 0.0,
                      brush = !haskey(ENV, "JM_MAGIC"), dt = 1/300)
     sys = mtkcompile(DrivenVehicle3D(name = :car, brush = brush, final = FINAL[], m = MASS[], front_frac = FRONT_FRAC[],
                     fl_corner = _corner(:f, KS[][1]), fr_corner = _corner(:f, KS[][2]),
-                    rl_corner = _corner(:r, KS[][3]), rr_corner = _corner(:r, KS[][4])))   # physics brush by DEFAULT; JM_MAGIC ⇒ Magic-Formula tyre
+                    rl_corner = _corner(:r, KS[][3]), rr_corner = _corner(:r, KS[][4]); _chassis_kw()...))   # physics brush by DEFAULT; JM_MAGIC ⇒ Magic-Formula tyre
     println(brush ? "  TYRE (3-D): physics-based brush model (default)" : "  TYRE (3-D): Magic-Formula tyre (JM_MAGIC)")
-    prob = ODEProblem(sys, [sys.u => v0, sys.ωf => v0/0.30, sys.ωr => v0/RW_R,
+    prob = ODEProblem(sys, [sys.u => v0, sys.ωf => v0/0.30, _wheel_u0(sys, v0)...,
                             sys.ωe => 209.4, sys.X => x0, sys.Y => z0, sys.ψ => θ0], (0.0, 1e7))
     # the divergence guard handles recovery from the rare hard-landing solver abort; a finer
     # `dt` (e.g. 1/1200) reduces those recoverable warnings further at some CPU cost.
@@ -438,7 +536,7 @@ end
 function build_cars3d(poses; brush = !haskey(ENV, "JM_MAGIC"), dt = 1/300)
     sys = mtkcompile(DrivenVehicle3D(name = :car, brush = brush, final = FINAL[], m = MASS[], front_frac = FRONT_FRAC[],
                     fl_corner = _corner(:f, KS[][1]), fr_corner = _corner(:f, KS[][2]),
-                    rl_corner = _corner(:r, KS[][3]), rr_corner = _corner(:r, KS[][4])))
+                    rl_corner = _corner(:r, KS[][3]), rr_corner = _corner(:r, KS[][4]); _chassis_kw()...))
     s_thr=setp(sys,sys.throttle); s_brk=setp(sys,sys.brake); s_st=setp(sys,sys.δ)
     s_gr=setp(sys,sys.gear); s_clu=setp(sys,sys.clutch); s_we=ModelingToolkit.setu(sys,sys.ωe)
     s_zr=(setp(sys,sys.zrFL),setp(sys,sys.zrFR),setp(sys,sys.zrRL),setp(sys,sys.zrRR))
@@ -453,7 +551,7 @@ function build_cars3d(poses; brush = !haskey(ENV, "JM_MAGIC"), dt = 1/300)
         sys.z, sys.th, sys.ph, sys.az, sys.FzFL, sys.FzFR, sys.FzRL, sys.FzRR, sys.ωr])
     cars=Car3D[]
     for (x0,z0,θ0,v0) in poses
-        prob = ODEProblem(sys, [sys.u=>v0, sys.ωf=>v0/0.30, sys.ωr=>v0/RW_R,
+        prob = ODEProblem(sys, [sys.u=>v0, sys.ωf=>v0/0.30, _wheel_u0(sys, v0)...,
                                 sys.ωe=>209.4, sys.X=>x0, sys.Y=>z0, sys.ψ=>θ0], (0.0,1e7))
         integ = init(prob, Rosenbrock23(); save_everystep=false, dense=false, adaptive=false, dt=dt)
         c = Car3D(sys, integ, s_thr,s_brk,s_st,s_gr,s_clu,s_we, s_zr, s_vr, s_pos,s_vel, s_vreset,
@@ -705,10 +803,12 @@ end
 const _TC = IdDict{Any,Any}()
 function telemetry3d(c::Car3D)
     g = get!(_TC, c.sys) do
-        ModelingToolkit.getsym(c.sys, [c.sys.u, c.sys.v, c.sys.r, c.sys.ax, c.sys.ay, c.sys.ωf, c.sys.ωr])
+        lsd = hasproperty(c.sys, :ωRL)          # WWSETUP-1: per-wheel rear speeds when the car has an LSD
+        ModelingToolkit.getsym(c.sys, [c.sys.u, c.sys.v, c.sys.r, c.sys.ax, c.sys.ay, c.sys.ωf, c.sys.ωr,
+                                       lsd ? c.sys.ωRL : c.sys.ωr, lsd ? c.sys.ωRR : c.sys.ωr])
     end
     a = g(c.integ)
-    (u=a[1], v=a[2], r=a[3], ax=a[4], ay=a[5], ωf=a[6], ωr=a[7], vacc=c.vacc,
+    (u=a[1], v=a[2], r=a[3], ax=a[4], ay=a[5], ωf=a[6], ωr=a[7], ωRL=a[8], ωRR=a[9], vacc=c.vacc,
      pitch=c.pitch, roll=c.roll, rh=c.rh, grounded=c.grounded)
 end
 

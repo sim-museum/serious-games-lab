@@ -45,6 +45,11 @@ using ModelingToolkit: t_nounits as t, D_nounits as D
 #               Below 3,700 rpm and above 8,900 rpm the table holds its end slope.
 const CDA_IBT = 0.480                 # m², at the model's ρair 1.10 (the Ring session's AirDensity 1.099)
 const CRR_IBT = 0.0139
+# WWSETUP-1 (2026-10-06): the rear LSD (DrivenVehicle3D `diff`). LSD_K = friction faces × μ × radius ratio per
+# clutch plate, the one constant the iRacing garage does not show; identified from the gold's rear wheel-speed split
+# with both setups' ramps on the same value (tools/lsdfit_261005.jl). LSD_WEPS = the stick-slip regularisation [rad/s].
+const LSD_K    = 0.20
+const LSD_WEPS = 0.1
 const EFRIC_T0 = 14.24                # N·m   engine drag at zero throttle: (T0 + k·rpm) (friction-MEP form) ...
 const EFRIC_K  = 0.00389              # N·m/rpm
 const EFRIC_R0 = 2353.0               # rpm   ... × ½(1 + tanh((rpm − R0)/W)), the fade toward idle
