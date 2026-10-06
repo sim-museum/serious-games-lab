@@ -217,19 +217,33 @@ function segment_visibility(path3do)
         end
         filter(c -> 0 <= c < primsz, out)
     end
+    # GPLVIS-1 S3: gpl.exe's track renderer (FUN_00485960 / FUN_00485ff0) draws a RANGE of segment trees around the
+    # camera, and from each one the slots of the camera's distance BAND: slots 1-4 near (<= 117 m along the lap), 5-6 mid
+    # (<= 312 m), 7 far (to the view distance, 914 m by default); slot 8 is the 0x10 table. `bands[node]` = 3 x nseg:
+    # row b (1 near, 2 mid, 3 far) marks the segments whose band-b slots reach the object. `vis` = their union.
+    bands = Dict{Int,BitMatrix}()
+    slotband(s) = s <= 4 ? 1 : s <= 6 ? 2 : 3
     for (k, g) in enumerate(segtrees)
-        seen = Set{Int}(); st = Int[g]
-        while !isempty(st)
-            off = pop!(st); off in seen && continue; push!(seen, off)
-            if u32(prim+off) == 0x0E
-                get!(() -> falses(nseg), vis, off)[k] = true
-                continue                                  # the object's own subtree is its mesh
+        isseg(g) || continue
+        for s in 1:7
+            c = Int(i32(prim+g+4+4s)); (c >= 0 && c < primsz) || continue
+            u32(prim+c) & 0xff == 0x01 && continue        # an empty slot (GPL skips type-1 children)
+            seen = Set{Int}(); st = Int[c]
+            while !isempty(st)
+                off = pop!(st); off in seen && continue; push!(seen, off)
+                if u32(prim+off) == 0x0E
+                    get!(() -> falses(nseg), vis, off)[k] = true
+                    get!(() -> falses(3, nseg), bands, off)[slotband(s), k] = true
+                    continue                              # the object's own subtree is its mesh
+                end
+                append!(st, children(off))
             end
-            append!(st, children(off))
         end
     end
+    SEGBANDS[] = bands
     (segs, vis)
 end
+const SEGBANDS = Ref(Dict{Int,BitMatrix}())    # filled by segment_visibility (GPLVIS-1 S3)
 
 """
     trackside_objects(path3do; objnames) -> Vector{ObjInst}

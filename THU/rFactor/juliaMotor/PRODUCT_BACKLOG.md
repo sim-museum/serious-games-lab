@@ -22750,6 +22750,25 @@ plus FPS; if it matches, default ON. The scenery copies (`SECPARTS`) are still o
 **Next (S3):** decode `0x11` (its distance reference `FUN_004cf7e0`, thresholds `FUN_004cf880`, the `param_1[3] == 5`
 special case) and `0x19`, and give the object pipeline GPL's actual LOD bands per placement.
 
+### GPLVIS-1 S3 (2026-10-06) — gpl.exe's TRACK RENDERER decoded: a range of segments, three distance bands, and per-cell CLIP PLANES
+* **`FUN_00485960` = the track renderer.** It maps the camera's lap position ± distances to segment indices
+  (`FUN_00485fa0`) and draws EVERY segment tree from the farthest behind up to the camera, then from the farthest ahead back
+  down (painter's order, wrapping round the lap). Per segment, `FUN_00485ff0` picks the slots of its distance BAND:
+  near (≤ `DAT_00559fb8` = 2,304,000 TRK = **117 m**) → slots 1–4 (the segment's four quarter pieces, = the four lap positions
+  in its `0x10` table); mid (≤ `PTR_DAT_00559fbc` = 6,144,000 = **312 m**) → slots 5–6; far (to the view distance) → slot 7.
+  The main view asks for **18,000,000 TRK = 914 m** ahead and behind (a per-track table can override it); a second caller
+  (mirror/replay) sets its own. Distances are clamped to half a lap and adjusted when the car faces backwards.
+* `segment_visibility` now also records, per object, which BAND reaches it from each segment (`GPLTrack.SEGBANDS`, 3 × nseg).
+  Result: the veils, `wehr-r1b`, `walls2`, `anton-l` are reached from ALL THREE bands of their segments -- the slots share
+  subtrees -- so by GPL's rule they are DRAWN whenever one of their segments is within ~914 m. The per-segment window of
+  GREY-1 was too narrow (hence S2's missing wall), and band selection does not explain the veils either.
+* **What bounds them on screen is the cell's four CLIP PLANES (S1):** a cell draws only the part of each listed object inside
+  its slab. A veil quad whose crowns overhang the road is CLIPPED by the cell it is drawn from -- which is also the E109 open
+  item (two sites where trees stand ~1 m onto the drawn road: `halftr1s` s≈8350–8475, `halftr07` s≈21350).
+**Next (S4, last before rotating):** prototype GPL's mechanism for the object pipeline -- draw each placement once per cell
+that lists it, with that cell's planes as `gl_ClipDistance` (NALP plane table, plane index at cell +4/+12/+20/+28, two
+negated), for the segments within the view range -- on the two E109 sites first, against the gold.
+
 ### E111 — cycle 2 retrospective + S5 (2026-10-05): both halves likely changed by today's fixes; AWAITING the PO's look
 Two of today's fixes touched exactly E111's ground: the sprite heights (S4: Spa's pine rows were 2.5 m) and YAWSIGN-1 (Spa's
 objects were turned the wrong way; the shipped build had a huge YELLOW SLAB over the road at the pit straight, s≈14100).
