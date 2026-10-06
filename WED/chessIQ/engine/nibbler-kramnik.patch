@@ -1,0 +1,101 @@
+--- a/resources/app/renderer/10_globals.js
++++ b/resources/app/renderer/10_globals.js
+@@ -1,5 +1,9 @@
+ "use strict";
+ 
++// Kramnik chess (chessIQ EPIC NN, 2026-10-06): no castling, and a piece may capture its own pieces (never its own
++// king). This copy of Nibbler is built for the Kramnik lc0 (engine/lc0-kramnik); set false for standard chess.
++const KRAMNIK = true;
++
+ // HTML stuff.......................................................
+ //
+ // All of this may be redundant since id-havers are in the global
+--- a/resources/app/renderer/40_position.js
++++ b/resources/app/renderer/40_position.js
+@@ -46,7 +46,7 @@
+ 
+ 		let white_flag = ret.is_white(Point(x1, y1));
+ 		let pawn_flag = ret.state[x1][y1] === "P" || ret.state[x1][y1] === "p";
+-		let castle_flag = (ret.state[x2][y2] === "R" && white_flag) || (ret.state[x2][y2] === "r" && white_flag === false);
++		let castle_flag = !KRAMNIK && ((ret.state[x2][y2] === "R" && white_flag) || (ret.state[x2][y2] === "r" && white_flag === false));
+ 		let capture_flag = castle_flag === false && ret.state[x2][y2];
+ 
+ 		if (pawn_flag && x1 !== x2) {		// Make sure capture_flag is set even for enpassant captures
+@@ -229,7 +229,12 @@
+ 		// Colours must not be the same, except for castling.
+ 		// Note that king-onto-rook is the only valid castling move...
+ 
+-		if (this.same_colour(Point(x1, y1), Point(x2, y2))) {
++		if (KRAMNIK && this.same_colour(Point(x1, y1), Point(x2, y2))) {
++			if (["K", "k"].includes(this.state[x2][y2])) {
++				return "cannot capture your own king";
++			}
++			// otherwise a self-capture: carry on with the normal movement checks
++		} else if (this.same_colour(Point(x1, y1), Point(x2, y2))) {
+ 			if (this.state[x1][y1] === "K" && this.state[x2][y2] === "R") {
+ 				return this.illegal_castling(x1, y1, x2, y2);
+ 			} else if (this.state[x1][y1] === "k" && this.state[x2][y2] === "r") {
+@@ -988,9 +993,10 @@
+ 							let dest = Point(x2, y2);
+ 							let dest_colour = this.colour(dest);
+ 
+-							if (dest_colour === this.active) {				// No move further along the slider will be legal.
++							if (dest_colour === this.active && !KRAMNIK) {	// No move further along the slider will be legal.
+ 								break;
+ 							}
++							// (Kramnik: a self-capture is considered below, then the slider stops at the piece.)
+ 
+ 							let move = source.s + dest.s;
+ 
+@@ -1069,6 +1075,7 @@
+ 	},
+ 
+ 	c960_castling_converter: function(s) {
++		if (KRAMNIK) return s;			// no castling: a king onto its own rook is a self-capture
+ 
+ 		// Given some move s, convert it to the new Chess 960 castling format if needed.
+ 
+@@ -1119,7 +1126,7 @@
+ 		if (["K", "k", "Q", "q", "R", "r", "B", "b", "N", "n"].includes(piece)) {
+ 
+ 			if (["K", "k"].includes(piece)) {
+-				if (this.colour(dest) === this.colour(source)) {
++				if (!KRAMNIK && this.colour(dest) === this.colour(source)) {
+ 					if (dest.x > source.x) {
+ 						return `O-O${check}`;
+ 					} else {
+--- a/resources/app/renderer/41_fen.js
++++ b/resources/app/renderer/41_fen.js
+@@ -108,7 +108,7 @@
+ 
+ 	// Some hard things. Do these in the right order!
+ 
+-	ret.castling = CastlingRights(ret, tokens[2]);
++	ret.castling = KRAMNIK ? "" : CastlingRights(ret, tokens[2]);
+ 	ret.enpassant = EnPassantSquare(ret, tokens[3]);	// Requires ret.active to be correct.
+ 	ret.normalchess = IsNormalChessPosition(ret);		// Requires ret.castling to be correct.
+ 
+--- a/resources/app/renderer/99_start.js
++++ b/resources/app/renderer/99_start.js
+@@ -314,3 +314,21 @@
+ }
+ 
+ enter_loop();
++
++// chessIQ EPIC NN test hook (2026-10-06): NIBBLER_BEHAVIOUR=self_play|analysis_free starts that behaviour a few
++// seconds after launch, so a scripted session needs no keypress (synthetic input does not reach windows here).
++if (typeof process !== "undefined" && process.env && process.env.NIBBLER_BEHAVIOUR) {
++	setTimeout(() => hub.set_behaviour(process.env.NIBBLER_BEHAVIOUR), 6000);
++}
++// NIBBLER_DUMP=<file>: after NIBBLER_DUMP_AFTER seconds (default 60) write what the window shows -- the move list,
++// the engine-lines panel, the status line and the FEN -- then quit. Test evidence without a screenshot.
++if (typeof process !== "undefined" && process.env && process.env.NIBBLER_DUMP) {
++	setTimeout(() => {
++		const text = id => (document.getElementById(id) || {}).innerText || "";
++		require("fs").writeFileSync(process.env.NIBBLER_DUMP, JSON.stringify({
++			movelist: text("movelist"), infobox: text("infobox"), statusbox: text("statusbox"),
++			fen: hub.tree.node.board.fen(),
++		}, null, 1));
++		require("electron").ipcRenderer.send("terminate");
++	}, 1000 * Number(process.env.NIBBLER_DUMP_AFTER || 60));
++}

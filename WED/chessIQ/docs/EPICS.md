@@ -216,3 +216,15 @@ straight into the patched lc0 and Nibbler without TensorFlow.
     12 random self-capture-rich games (5,441 moves over the first 200). The standard lc0 fails the same test at the
     first self-capture.
   - Check: the tinygyal network plays complete legal games under the Kramnik build, with self-captures.
+- **NN-2 (10-06): done.** A Nibbler for Kramnik chess. `engine/make_nibbler.sh` copies a Nibbler 2.5.3 release and
+  applies `engine/nibbler-kramnik.patch` (101 lines).
+  - Rules: a `KRAMNIK` switch; `illegal()` allows self-capture except of the own king; `move()` never castles; the
+    move generator lets sliders take their own pieces; no castling converter, no "O-O" for a king onto its own rook,
+    and no castling rights from the FEN.
+  - A test hook: `NIBBLER_BEHAVIOUR` starts play without a keypress, and `NIBBLER_DUMP` writes what the window shows.
+  - Check: Nibbler's own perft (`tools/nibbler_perft.js`, its renderer code under node) equals the gold on all six
+    positions; with the switch off it gives standard chess (197,281).
+  - Check, with the Kramnik lc0 and tinygyal in self-play for 60 s: 28 moves played through Nibbler's own move
+    checking, including the self-capture `27...Kxg6`. The engine panel showed a principal variation and listed
+    self-captures (`Qxa7`, `Qxc2`, `Kxf7`, `Kxh5`) among the candidate moves. A principal variation containing a
+    self-capture was not seen in that minute.
