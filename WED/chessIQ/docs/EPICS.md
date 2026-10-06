@@ -581,3 +581,25 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
     and finished with 203 s, never near a flag. Before this change: about 2 s for the whole game.
   - Also fixed: the opponent messages said "He declines…" and "his move", although many personalities are women.
     They now use the opponent's name ("Tasha declines your draw offer", "Tasha to move").
+- **CM-16 (10-06): done. Style is visible in play; contempt was broken and is fixed; styles cost rating.**
+  - `tools/style_signature.py`: a style plays 200 games against a neutral opponent of the same rating (1,900), and
+    its moves are counted per 100 (`docs/calibration/style_signatures.txt`). Neutral control: king-zone moves 20.7,
+    checks 11.1, material taken 55.0, own material given 3.8, average 129 plies.
+    - Attack +80: checks 12.7, given 6.5 (line-opening self-captures), games 99 plies. Scored 33.8%.
+    - Attack −80: checks 9.2, zone 17.6, draws 21 against 16. Scored 44.2%.
+    - Greedy (enemy material counted double): taken 61.6. Scored 5.2%.
+    - No amplification needed. The Chessmaster knobs already span their full ranges, and the inferred attack sign
+      is right (all 23 personalities whose style line says "attacker" have positive attack).
+  - **Contempt never reached repetition or 50-move draws.** Fairy-Stockfish's search returns the variant framework's
+    own draw score at game ends, bypassing the patched `value_draw`.
+    - Fixed in `kramnik-selfcapture.patch`: exact draws from `is_game_end` in search and quiescence carry the
+      contempt, and the upcoming-repetition shortcut only ever raises alpha.
+    - Probe (Black can repeat the start position for the third time; `searchmoves f6g8`, depth 10): the old engine
+      scores the repetition 0 at contempt 0 and −300. The new one scores −300 → +182 and takes the draw, and +300 →
+      −181 and avoids it.
+    - Perft and the 1,305-position rules test still pass.
+    - In games at 1,900, contempt still shows little (21–22 draws in 200 at ±300): a choosable repetition seldom
+      comes up.
+  - **Styles cost rating:** attack +80 about −115 Elo, attack −80 about −40, greedy about −500. Nodes come from the
+    rating alone, so a styled opponent plays below its label. CM-17 is re-planned to fix this (the neural family
+    moves to a later block).

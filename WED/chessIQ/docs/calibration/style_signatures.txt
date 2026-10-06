@@ -1,0 +1,10 @@
+# CM-16: style signatures in play, 200 games against a neutral opponent of the same rating (tools/style_signature.py, seed 5)
+neutral        r1900 200 games: score 50.0% draws 16 avg plies 129 | per 100 moves: zone  20.7 +/-  1.5  checks  11.1 +/-  1.1  taken  55.0 +/-  2.5  given   3.8 +/-  0.7
+attack=80      r1900 200 games: score 33.8% draws 11 avg plies  99 | per 100 moves: zone  19.3 +/-  1.3  checks  12.7 +/-  1.2  taken  53.4 +/-  2.2  given   6.5 +/-  1.1
+attack=-80     r1900 200 games: score 44.2% draws 21 avg plies 125 | per 100 moves: zone  17.6 +/-  1.4  checks   9.2 +/-  0.9  taken  54.4 +/-  2.1  given   3.3 +/-  0.5
+contempt=300   r1900 200 games: score 49.5% draws 18 avg plies 127 | per 100 moves: zone  21.0 +/-  1.4  checks  11.0 +/-  1.1  taken  56.2 +/-  2.5  given   3.1 +/-  0.5
+greedy         r1900 200 games: score  5.2% draws  5 avg plies  93 | per 100 moves: zone  17.2 +/-  1.4  checks   6.3 +/-  0.7  taken  61.6 +/-  1.7  given   6.9 +/-  1.3
+contempt=-300  r1900 200 games: score 51.5% draws 22 avg plies 123 | per 100 moves: zone  19.8 +/-  1.4  checks  10.4 +/-  1.0  taken  56.5 +/-  2.5  given   4.1 +/-  0.8
+# after the CM-16 contempt fix (repetition/50-move draws carry the contempt):
+contempt=-300  r1900 200 games: score 46.2% draws 21 avg plies 120 | per 100 moves: zone  18.6 +/-  1.5  checks  10.5 +/-  1.1  taken  55.2 +/-  2.6  given   4.0 +/-  0.8
+contempt=300   r1900 200 games: score 48.5% draws 22 avg plies 126 | per 100 moves: zone  20.8 +/-  1.4  checks  10.6 +/-  1.1  taken  56.2 +/-  2.4  given   3.3 +/-  0.6
