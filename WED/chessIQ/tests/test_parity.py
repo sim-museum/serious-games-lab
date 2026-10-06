@@ -77,7 +77,7 @@ class ParityTest(unittest.TestCase):
         """Same best move, same root score, same node count: the searches walk the same tree."""
         for c, g in zip(CASES, self.gold):
             st = {}
-            m = E.best_move(c["board"], c["turn"], c["ep"], t=1e9, d=c["depth"], stats=st)
+            m = E.best_move(c["board"], c["turn"], c["ep"], t=1e9, d=c["depth"], stats=st, drive=True)   # the HTML has it
             mine = [m.frm, m.to, m.promo, m.kind, m.v]
             self.assertEqual(mine[:4], g["best"][:4], c["name"])
             if g["best"][4] is not None:

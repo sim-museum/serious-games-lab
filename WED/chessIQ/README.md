@@ -5,8 +5,11 @@ may take its own pieces too). It's Wednesday's game in Serious Games Week ([seri
 
     ../chessIQ.sh          # or: python3 -m chessiq   (needs python3 and PyQt6)
 
-- **Vs Computer, hotseat, or Computer vs Computer.** He always plays at full strength. When he's more than two pawns
-  ahead he starts handing material back in self-capture combinations, so a club player keeps a live game.
+- **Vs Computer, hotseat, or Computer vs Computer.** Choose your computer opponent by rating and playing style, as in
+  Chessmaster. With Chessmaster installed under `../chessmaster`, its 188 personalities are offered (read from your
+  installation); otherwise chessIQ's own eight, from 800 to full strength. The opponents play Kramnik chess properly
+  and never hand material back. They need the personality engine, built once with `engine/build_engine.sh`
+  (Fairy-Stockfish with a self-capture patch); without it, chessIQ's own engine plays at full strength.
 - **Opening book** of real grandmaster games in which neither side castled (635 games out of 25,072). Blue marks
   show what the grandmasters played, and he never opens the same way twice running.
 - **Network play** (Network menu). Host a game, or join one. With a Serious Games Week matchmaker set up

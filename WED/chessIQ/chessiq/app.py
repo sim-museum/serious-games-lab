@@ -4,7 +4,7 @@ import os
 import random
 import sys
 
-from PyQt6.QtCore import QRectF, Qt, QThread, QTimer, pyqtSignal
+from PyQt6.QtCore import QRectF, QSettings, Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QColor, QFont, QPainter, QPen
 from PyQt6.QtWidgets import (QApplication, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QFrame,
                              QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
@@ -15,6 +15,7 @@ from . import VERSION
 from . import engine as E
 from . import serious_games_week
 from .game import AI_NAME, MAX_DEPTH, THINK_S, Game, load_pgn
+from . import personalities, uci_engine
 from .net import DEFAULT_PORT, Link
 
 LIGHT, DARK = QColor("#f0d9b5"), QColor("#b58863")
@@ -126,16 +127,12 @@ class ThinkThread(QThread):
     """The search, off the UI thread (the GIL is shared, but Python switches often enough to keep the board live)."""
     done = pyqtSignal(int, object)
 
-    def __init__(self, token, board, turn, ep, banned, current, parent=None):
+    def __init__(self, token, think, parent=None):
         super().__init__(parent)
-        self.args = (token, board, turn, ep, banned)
-        self.current = current
+        self.token, self.think = token, think
 
     def run(self):
-        token, board, turn, ep, banned = self.args
-        m = E.best_move(board, turn, ep, t=THINK_S, d=MAX_DEPTH, banned=banned,
-                        cancel=lambda: self.current() != token)
-        self.done.emit(token, m)
+        self.done.emit(self.token, self.think())
 
 
 class HostDialog(QDialog):
@@ -225,6 +222,7 @@ class MainWindow(QMainWindow):
         self.review = None              # None = live; else showing the position after this many plies
         self.token = 0                  # bumps cancel any thinking or pending book move
         self.threads = []
+        self.engine = None                  # the chosen personality's engine process (EPIC CM)
         self.note = ""
         self.link = None
         self.announcer = None
@@ -258,11 +256,23 @@ class MainWindow(QMainWindow):
         grid.addWidget(QLabel("Play as"), 1, 0)
         grid.addWidget(self.side, 1, 1)
         side.addLayout(grid)
-        blurb = QLabel("He always plays at full strength. When he gets more than two pawns ahead, he starts giving "
-                       "material back in self-capture combinations — the bigger his lead, the more freely.")
-        blurb.setWordWrap(True)
-        blurb.setStyleSheet("color: gray; font-size: 9pt")
-        side.addWidget(blurb)
+        # EPIC CM: choose the computer opponent -- a rating and a playing style (Chessmaster's personalities when
+        # Chessmaster is installed, chessIQ's own otherwise). Without the engine build, chessIQ's own engine plays.
+        self.who = QComboBox()
+        self.people = sorted(personalities.roster(), key=lambda p: p.rating) if uci_engine.available() else []
+        for p in self.people:
+            self.who.addItem("%s (%d)%s" % (p.name, p.rating, " — " + p.style if p.style else ""), p.name)
+        if not self.people:
+            self.who.addItem("chessIQ classic (engine not built)", None)
+        self.who.setCurrentIndex(self._default_opponent())
+        grid.addWidget(QLabel("Computer"), 2, 0)
+        grid.addWidget(self.who, 2, 1)
+        self.blurb = QLabel()
+        self.blurb.setWordWrap(True)
+        self.blurb.setStyleSheet("color: gray; font-size: 9pt")
+        side.addWidget(self.blurb)
+        self.who.currentIndexChanged.connect(self._show_opponent)
+        self._show_opponent()
         self.new_btn = QPushButton("New Game")
         self.new_btn.clicked.connect(self.new_game)
         side.addWidget(self.new_btn)
@@ -346,6 +356,43 @@ class MainWindow(QMainWindow):
         self.resize(1000, 680)
 
     # ---------------- game flow ----------------
+    def _default_opponent(self):
+        """The opponent nearest 1500, the first time; afterwards the last one chosen."""
+        last = QSettings("sim-museum", "chessIQ").value("opponent", "")
+        names = [p.name for p in self.people]
+        if last in names:
+            return names.index(last)
+        return min(range(len(self.people)), key=lambda i: abs(self.people[i].rating - 1500)) if self.people else 0
+
+    def _opponent(self):
+        name = self.who.currentData()
+        return next((p for p in self.people if p.name == name), None)
+
+    def _show_opponent(self):
+        p = self._opponent()
+        if p is None:
+            self.blurb.setText("chessIQ's own engine at full strength. Build the personality engine "
+                               "(engine/build_engine.sh) to choose opponents by rating and style.")
+            return
+        self.blurb.setText("%s, rated %d. %s" % (p.name, p.rating, p.style + "." if p.style else ""))
+        self.who.setToolTip(p.bio or p.style)
+        QSettings("sim-museum", "chessIQ").setValue("opponent", p.name)
+
+    def _start_engine(self):
+        p = self._opponent()
+        if self.engine is not None and (p is None or self.engine.p is not p):
+            self.engine.stop()
+            self.engine.close()
+            self.engine = None
+        if p is not None and self.engine is None:
+            try:
+                self.engine = uci_engine.PersonalityEngine(p)
+            except OSError:
+                self.engine = None
+        elif self.engine is not None:
+            self.engine.stop()
+            self.engine.new_game()
+
     def new_game(self):
         if self.link is not None:
             if not self.link.is_host or self.link.sock is None:
@@ -356,6 +403,7 @@ class MainWindow(QMainWindow):
             return
         self.token += 1
         self.review = None
+        self._start_engine()
         self.game = Game(self.mode.currentData(), self.side.currentData())
         self.orient = "w" if self.game.mode == "self" else self.game.human
         self.boardw.selected, self.boardw.targets = None, []
@@ -433,7 +481,20 @@ class MainWindow(QMainWindow):
                     self.render()
             QTimer.singleShot(300 + int(random.random() * 400), play)
             return
-        th = ThinkThread(tok, g.board[:], g.turn, g.ep, g.banned_keys(), lambda: self.token)
+        if self.engine is not None:
+            moves, eng, legal = [E.sqname(h["m"].frm) + E.sqname(h["m"].to) + (h["m"].promo or "") for h in g.history], \
+                self.engine, g.legal()
+
+            def think():                    # the chosen personality (EPIC CM)
+                u = eng.choose(moves, movetime_ms=int(THINK_S * 1000))
+                return next((m for m in legal if E.sqname(m.frm) + E.sqname(m.to) + (m.promo or "") == u), None)
+        else:
+            board, turn_, ep, banned = g.board[:], g.turn, g.ep, g.banned_keys()
+
+            def think():                    # chessIQ's own engine (no personality engine built)
+                return E.best_move(board, turn_, ep, t=THINK_S, d=MAX_DEPTH, banned=banned,
+                                   cancel=lambda: self.token != tok)
+        th = ThinkThread(tok, think)
         th.done.connect(self._thought)
         th.finished.connect(lambda: self.threads.remove(th) if th in self.threads else None)
         self.threads.append(th)
@@ -737,8 +798,12 @@ class MainWindow(QMainWindow):
             self.announcer.stop()
         if self.link:
             self.link.close()
+        if self.engine is not None:
+            self.engine.stop()
         for th in list(self.threads):
             th.wait(3000)
+        if self.engine is not None:
+            self.engine.close()
         super().closeEvent(ev)
 
     # ---------------- drawing ----------------
