@@ -46,7 +46,10 @@ this index was written; that is what it exists to stop.
 | **E85** | EPIC: multiplayer, the way GPL did it | open, not started. assessed |
 | **E60** | Zandvoort gold-video parity | epic, ongoing. assessed |
 | **E64** | cockpit/chase parity | epic, ongoing (E82/E83 are its children). assessed |
-| **CARGOLD-2** | compare the cars (player + AI) to the gold standard (PO 2026-10-05) | NEW. Cars floating ~10 cm above the road; metal parts still embedded in the rear tyres; anything else where the gold's car differs from Julia's. Queued after the Ring grey polygons. |
+| **CARGOLD-2** | compare the cars (player + AI) to the gold standard (PO 2026-10-05) | **S1–S5 done:** AI field un-mirrored, the rear-tyre plates gone, AI driveshafts built, AI cars reflected about their wheel centreline; S5 (2026-10-06) the "10 cm float" was the SHADOW (0.22 m depth bias) -- normal-offset lookup ships, tyre shadows start at the contact patch. **Awaiting the PO's look** (see below). |
+| **WWSETUP-1** | a second, "loose" setup from the PO's 261005 iRacing session (PO 2026-10-06) | ✅ **DONE S1 (2026-10-06):** WW103 selectable (launcher / `JM_CARSETUP`); LSD, bars, toe, dampers, brake split from each session. assessed |
+| **CAMBER-1** | camber in the tyre model (PO 2026-10-06: "add the camber model") | ✅ **DONE S1–S2 (2026-10-06):** static + roll camber, thrust, peak-μ lean law (kγ 6) fitted on two gold sets; direction asymmetry gated in `carsetup_smoke`. WW's coasting right-hand excess (~0.4°) still unexplained, parked. assessed |
+| **TYRE-2** | the setup car's tyre against the gold, through the car | ✅ **S1–S2 (2026-10-06):** refit (Cα 26.2/27.8, μ 1.347/1.494): absolute slip error 0.70 → 0.32°; gold-input replays (`replay_261005.jl`) let go when iRacing does -- the "too forgiving on power" / "no lift-off tuck" gaps were wwtrans's abstraction. Parked: the diff half-open under light steady power (≤ 0.1° balance). assessed |
 
 ### 🟡 AWAITING THE PO — implemented, needs your eye
 
@@ -54,6 +57,9 @@ this index was written; that is what it exists to stop.
 |---|---|---|
 | **E83** | vegetation brightness | palette + unlit sprites fixed and seen on screen; a residual ~1.4× gap remains. Must NOT be closed with a grade change. |
 | **E84** | GPL's lateral tables as the AI line | **now DEFAULT ON** (`JM_AI_GPLLAT`, since E107 adopted GPL's line + rails on all 5 tracks; AIJIT-2 interpolates them). Left: the PO's verdict whether the field queues like GPL's or trains too much. (corrected 2026-10-02) |
+| **CARGOLD-2 S5** | the cars' "10 cm float" | the tyre shadows now start at the contact patch (`261006/shadow/*_ab.png`); the physics gap was always ~0. Does the car still look like it floats? |
+| **TYREP-1** | tyre PRESSURE (every gold skidpad session runs 152 kPa left / 207 kPa right) | not identifiable from the gold: the split never changes. Needs an iRacing skidpad run with SYMMETRIC pressures (e.g. 152/152 then 207/207, same default setup otherwise, both directions, steady 0.6–1.0 g) to fit a pressure law. |
+| **CAMBER-CTL** | a camber control on the setup tab | camber is modelled (CAMBER-1) from the session; the tab's %-of-session bands cannot express it. Want a degree-step camber control? |
 
 ### ✅ CLOSED (assessed this session or landed by me)
 
