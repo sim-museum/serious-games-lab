@@ -11,9 +11,10 @@ fi
 cd "$SRC"
 git fetch -q origin "$COMMIT" 2>/dev/null || true
 git checkout -q -f "$COMMIT"
+git clean -fdq     # the build clone only: drop files a previous patch added
 git apply "$HERE/kramnik-selfcapture.patch"
 cd src
 make -j"$(nproc)" build ARCH="${ARCH:-x86-64-modern}" > "$HERE/build.log" 2>&1
 cp stockfish "$HERE/fairy-stockfish-kramnik"
-git -C "$SRC" checkout -q -- .
+git -C "$SRC" checkout -q -- . && git -C "$SRC" clean -fdq -e src/stockfish
 echo "built $HERE/fairy-stockfish-kramnik"

@@ -86,3 +86,20 @@ them from the player's own installation when present, and otherwise ships a rost
   installed opening helper) is available in ranked play, as Chessmaster allows. Then the README, tests and a
   release note.
   - Check: the test suite, and one full ranked 10+3 game against a chosen personality.
+
+## Sprint log
+- **CM-1 (10-06): done.** Fairy-Stockfish plays Kramnik chess: a `selfCapture` variant option and a `kramnik`
+  variant (`engine/`). Perft equals the gold on six positions; with self-capture off the same engine gives standard
+  chess and differs everywhere. In self-play every move is legal by chessIQ's rules.
+- **CM-2 (10-06): done, with one caveat.**
+  - The engine takes Chessmaster's knobs as 22 UCI options, each relative to the engine's own side: five positional
+    weights and five material values for each side, contempt (as the value of a draw), and attack. Neutral defaults
+    are proven identical to CM-1 (node counts and scores at depth 13 on four positions).
+  - `chessiq/personalities.py` reads all 188 Chessmaster personalities from the local installation (none of its
+    text enters the repository) and falls back to chessIQ's own roster of eight. The decoding was corrected on the
+    way: columns 26–35 are the material values and 16–25 the positional weights.
+  - Style is measurable but subtle. Over 120 positions at fixed depth with no Elo limit, each personality chooses a
+    different move from the neutral engine in 39–54% of them. Material taken goes the expected way (Tomas, the pawn
+    snatcher, captures pawns 10% of the time, Yara the attacker 7%; Alekhine captures more and checks more than
+    Evans). Checks did not separate Tomas and Yara, and the aggregate gaps are near what 120 positions can resolve.
+  - Open for CM-3: whether the knobs need amplifying to be felt in play.
