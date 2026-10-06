@@ -480,7 +480,9 @@ class MainWindow(QMainWindow):
         if r is None or r["recorded"] or self.profile is None:
             return
         r["recorded"] = True
-        d = self.profile.record(r["opponent"], r["rating"], score, r["colour"], len(self.game.history))
+        me, them = player_name(), "%s (%d)" % (r["opponent"], r["rating"])
+        pgn = self.game.pgn(*((me, them) if r["colour"] == "w" else (them, me)))
+        d = self.profile.record(r["opponent"], r["rating"], score, r["colour"], len(self.game.history), pgn)
         self.note = "Rated%s: your rating %+d → %d." % (" (" + why + ")" if why else "", d, self.profile.rating)
         self._show_opponent()
 
@@ -497,13 +499,73 @@ class MainWindow(QMainWindow):
         self.profile.save()
         return True
 
+    def _adjourn(self):
+        """Save the rated game in progress to finish later (CM-11): moves, clocks, stakes."""
+        r, g, c = self.rated, self.game, self.clock
+        c.stop()
+        rating.save_adjourned({"opponent": r["opponent"], "rating": r["rating"], "colour": r["colour"],
+                               "sans": [h["san"] for h in g.history],
+                               "clock": {"kind": c.kind, "args": list(c.args), "left": c.left, "moves": c.moves}})
+        r["recorded"] = True                     # nothing to record now; the result comes when it is finished
+
+    def _resume_adjourned(self, state):
+        """Recreate an adjourned rated game: the same opponent, moves, clocks and stakes."""
+        i = next((i for i in range(self.who.count()) if self.who.itemData(i) == state["opponent"]), -1)
+        if i < 0:
+            QMessageBox.information(self, "Adjourned game", "%s is no longer available; the game cannot be resumed."
+                                    % state["opponent"])
+            rating.clear_adjourned()
+            return False
+        self.who.setCurrentIndex(i)
+        self.mode.setCurrentIndex(self.mode.findData("ai"))
+        self.side.setCurrentIndex(self.side.findData(state["colour"]))
+        self._start_engine()
+        self.game = Game("ai", state["colour"])
+        self.game.opp_book = self._opponent_book()
+        for san in state["sans"]:
+            m = self.game.move_from_san(san)
+            if m is None:
+                break
+            self.game.do_move(m)
+        ck = state["clock"]
+        self.clock = clocks.Clock(ck["kind"], ck["args"])
+        self.clock.left, self.clock.moves = {k: float(v) for k, v in ck["left"].items()}, dict(ck["moves"])
+        self.clock.start(self.game.turn)
+        self.rated = {"opponent": state["opponent"], "rating": state["rating"], "colour": state["colour"],
+                      "recorded": False}
+        rating.clear_adjourned()
+        return True
+
     def new_game(self):
         if self._rated_in_progress():
-            if QMessageBox.question(self, "Abandon the rated game?",
-                                    "Starting a new game now counts as a loss in the rated game.") \
-                    != QMessageBox.StandardButton.Yes:
+            box = QMessageBox(self)
+            box.setWindowTitle("The rated game is not finished")
+            box.setText("Adjourn it to finish later, or resign it (a loss)?")
+            adj = box.addButton("Adjourn", QMessageBox.ButtonRole.AcceptRole)
+            res = box.addButton("Resign", QMessageBox.ButtonRole.DestructiveRole)
+            box.addButton(QMessageBox.StandardButton.Cancel)
+            box.exec()
+            if box.clickedButton() is adj:
+                self._adjourn()
+            elif box.clickedButton() is res:
+                self._record_rated(0, "resigned")
+            else:
                 return
-            self._record_rated(0, "abandoned")
+        if self.link is None and self.rated_box.isChecked() and self.mode.currentData() == "ai":
+            st = rating.load_adjourned()
+            if st and QMessageBox.question(self, "Adjourned game",
+                                           "Resume your adjourned rated game against %s (after %d moves)?"
+                                           % (st["opponent"], len(st["sans"]))) == QMessageBox.StandardButton.Yes:
+                self.token += 1
+                self.review = None
+                if self._resume_adjourned(st):
+                    self.orient = self.game.human
+                    self.boardw.selected, self.boardw.targets = None, []
+                    self.note = "Resumed: rated game against %s." % st["opponent"]
+                    self.offer_bar.hide()
+                    self.render()
+                    self.maybe_ai()
+                    return
         if self.link is not None:
             if not self.link.is_host or self.link.sock is None:
                 return                      # in a network game only the host starts games, once a guest is here
@@ -935,7 +997,7 @@ class MainWindow(QMainWindow):
         if self.link:
             self.link.close()
         if self._rated_in_progress():
-            self._record_rated(0, "abandoned")      # Chessmaster adjourns; chessIQ does not, so leaving is a loss
+            self._adjourn()                         # as Chessmaster does: closing adjourns the rated game
         if self.engine is not None:
             self.engine.stop()
         for th in list(self.threads):

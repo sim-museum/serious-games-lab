@@ -54,14 +54,15 @@ class Profile:
     def preview(self, opp_rating):
         return changes(self.rating, opp_rating, self.games)
 
-    def record(self, opponent, opp_rating, score, colour="", plies=0):
+    def record(self, opponent, opp_rating, score, colour="", plies=0, pgn=""):
         """score: 1 win, 0.5 draw, 0 loss. Returns the change applied."""
         delta = round(k_factor(self.games) * (score - expected(self.rating, opp_rating)))
         before = self.rating
         self.rating = max(100, self.rating + delta)
         self.games += 1
         self.history.append({"time": int(time.time()), "opponent": opponent, "opponent_rating": opp_rating,
-                             "result": score, "before": before, "after": self.rating, "colour": colour, "plies": plies})
+                             "result": score, "before": before, "after": self.rating, "colour": colour, "plies": plies,
+                             "pgn": pgn})
         self.save()
         return self.rating - before
 
@@ -82,3 +83,32 @@ class Profile:
             return cls(d.get("name", "Player"), int(d["rating"]), int(d.get("games", 0)), d.get("history", []), p)
         except (OSError, ValueError, KeyError):
             return None
+
+
+# ---- adjourned rated games (CM-11): one at a time, as Chessmaster keeps them ----------------------------------------
+def _adjourned_path():
+    return os.path.join(os.path.dirname(profile_path()), "adjourned.json")
+
+
+def save_adjourned(state):
+    """state: opponent, rating, colour, sans (moves so far), clock (kind, args, left, moves)."""
+    p = _adjourned_path()
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    with open(p + ".tmp", "w") as f:
+        json.dump(state, f)
+    os.replace(p + ".tmp", p)
+
+
+def load_adjourned():
+    try:
+        with open(_adjourned_path()) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def clear_adjourned():
+    try:
+        os.remove(_adjourned_path())
+    except OSError:
+        pass

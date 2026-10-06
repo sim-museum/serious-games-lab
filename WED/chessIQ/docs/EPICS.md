@@ -354,3 +354,11 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
     personalities uses another format and falls back.
   - Check: with Bird's book the computer opens 1.f4 in 24% of 400 games (none with the grandmaster book), matching
     the book's 52 of 219 lines. `tests/test_cmbook.py` uses a synthetic book.
+- **CM-11 (10-06): done.** Rated games can be adjourned, as in Chessmaster.
+  - Leaving one by starting a new game offers Adjourn, Resign or Cancel; closing the app adjourns it.
+  - The next rated game, including the one started at launch, offers to resume it: opponent, moves, clocks and
+    stakes are restored.
+  - Each recorded result keeps the game's PGN in the history.
+  - Check, off-screen: closed after `e4 e5`, so adjourned with the rating untouched; relaunch resumed it (moves and
+    White's 603 s restored); resigning changed the rating once (1400 → 1126), stored the PGN and cleared the
+    adjourned game.
