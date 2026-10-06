@@ -476,3 +476,17 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
     dropped. NN-10/11 become **self-play from LD2 on the GPU** with lc0's own self-play mode under Kramnik rules. Its
     policy targets come from the network's own 800-node search, which improves on its raw policy, so the teacher
     grows with the student. The check is unchanged: the new network against LD2, head to head.
+- **NN-10 (10-06): done. Self-play from LD2 gives the first network stronger than LD2.**
+  - `nn/selfplay/`: lc0's own selfplay mode with the Kramnik GPU build (800 visits, Dirichlet noise 0.25/0.3,
+    temperature 1 to move 30, resignation at 3%), a checker that replays every game under chessIQ's rules, and a
+    training step. Generation 1: 3,000 games in about 95 minutes, 272,690 plies, **0 illegal**, 1.5% of moves
+    self-captures.
+  - Trained from LD2 for 1 epoch at learning rate 1e-4. Value targets matter:
+    - Game results blended 50/50 with search values: held-out value loss **rose** (0.695 → 0.749), and the match
+      was equal (20.5/40, +9 ± 108).
+    - Search values only, keeping the search's draw probability (new: `prepare.py` stores best_d; the target is W =
+      (1+q−d)/2, D = d, L = (1−q−d)/2): held-out value loss against real results **fell** to 0.670.
+    - With game results only, about 90 correlated positions share one result, so the value head overfits.
+  - **Check: generation 1 vs LD2, 93.5/160 (58.4%), +59 Elo, 95% interval +6 to +116** (40 games seed 11: 24.5;
+    120 games seed 23: 69.0). Delivered as `engine/nets/kramnik-sp1.pb.gz`, now the default in `kramnikNibbler.sh`
+    and chessIQ's Leela opponent.
