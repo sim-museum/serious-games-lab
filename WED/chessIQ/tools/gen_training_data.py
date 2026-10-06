@@ -1,7 +1,8 @@
 """Training data for a Kramnik-chess Leela network (EPIC NN, sprint NN-3), from Kramnik Fairy-Stockfish self-play.
 
 One JSON line per game:
-  {"moves": [uci, ...], "policy": [[[uci, p], ...] per ply], "result": 1 | 0 | -1 (White's view), "end": reason}
+  {"moves": [uci, ...], "policy": [[[uci, p], ...] per ply], "eval": [cp for the side to move per ply],
+   "result": 1 | 0 | -1 (White's view), "end": reason}   (eval: the engine's best score; None where no policy)
 Positions come from varied openings: a random grandmaster book line (0-16 plies, cut at castling -- legal Kramnik
 chess), then 0-4 random moves (self-captures favoured), then engine play sampled with temperature for the first 20
 plies. At every ply the engine's best MultiPV lines become a soft policy target: softmax(score / 100 cp) over up to 8
@@ -109,20 +110,21 @@ def play(eng, rnd):
     b, turn, ep, moves = opening(rnd)
     start = len(moves)
     policy, seen, half, streak, lead = [None] * start, Counter(), 0, 0, 0
+    evals = [None] * start
     while True:
         legal = E.legal_moves(b, turn, ep)
         if not legal:
             res = (-1 if turn == "w" else 1) if E.in_check(b, turn) else 0
-            return moves, policy, res, "mate" if res else "stalemate"
+            return moves, policy, evals, res, "mate" if res else "stalemate"
         if E.insufficient_material(b):
-            return moves, policy, 0, "material"
+            return moves, policy, evals, 0, "material"
         key = E.pos_key(b, turn, ep); seen[key] += 1
         if seen[key] >= 3:
-            return moves, policy, 0, "repetition"
+            return moves, policy, evals, 0, "repetition"
         if half >= 100:
-            return moves, policy, 0, "fifty"
+            return moves, policy, evals, 0, "fifty"
         if len(moves) >= CAP:
-            return moves, policy, 0, "cap"
+            return moves, policy, evals, 0, "cap"
         sc = eng.lines(moves)
         legal_u = {uci_of(m): m for m in legal}
         sc = {m: s for m, s in sc.items() if m in legal_u}
@@ -132,13 +134,14 @@ def play(eng, rnd):
         policy.append(sorted(([m, round(p, 4)] for m, p in pol.items()), key=lambda x: -x[1]))
         best = max(sc, key=sc.get)
         stm_eval = sc[best]                                   # side to move's view
+        evals.append(stm_eval)
         white_eval = stm_eval if turn == "w" else -stm_eval
         if abs(white_eval) >= RESIGN_CP and (streak == 0 or (white_eval > 0) == (lead > 0)):
             streak, lead = streak + 1, white_eval
         else:
             streak, lead = 0, 0
         if streak >= RESIGN_PLIES:
-            return moves, policy, 1 if lead > 0 else -1, "resign"
+            return moves, policy, evals, 1 if lead > 0 else -1, "resign"
         if len(moves) - start < 20:                            # temperature: sample from the policy early on
             r, u = rnd.random(), best
             for u, p in sorted(pol.items(), key=lambda kv: -kv[1]):
@@ -165,8 +168,9 @@ def main():
     positions = 0
     with open(out, "a") as f:
         for g in range(games):
-            moves, policy, res, end = play(eng, rnd)
-            f.write(json.dumps({"moves": moves, "policy": policy, "result": res, "end": end}, separators=(",", ":")) + "\n")
+            moves, policy, evals, res, end = play(eng, rnd)
+            f.write(json.dumps({"moves": moves, "policy": policy, "eval": evals, "result": res, "end": end},
+                               separators=(",", ":")) + "\n")
             f.flush()
             positions += sum(p is not None for p in policy)
             if (g + 1) % 10 == 0:
