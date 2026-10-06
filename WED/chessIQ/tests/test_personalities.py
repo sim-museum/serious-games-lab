@@ -65,6 +65,15 @@ class Options(unittest.TestCase):
         self.assertLess(P.level_for(1600)[0], P.level_for(2000)[0])                 # stronger = more nodes
         self.assertEqual(P.Personality("E", 2850).search_nodes(), 0)                # full strength on the clock
 
+    def test_below_the_floor_a_measured_continuous_blunder_rate(self):           # CM-14
+        rates = [P.blunder_for(r) for r in range(1300, -600, -25)]
+        self.assertEqual(rates[0], 0.0)
+        self.assertEqual(rates[-1], 1.0)                                            # a random mover at the bottom
+        self.assertTrue(all(a <= b for a, b in zip(rates, rates[1:])))             # monotone
+        self.assertLess(max(b - a for a, b in zip(rates, rates[1:])), 0.05)         # no cliff
+        self.assertAlmostEqual(P.Personality("S", 1).blunder_rate(), 0.68, places=2)
+        self.assertEqual(P.Personality("S", 1, blunder=0.2).blunder_rate(), 0.2)
+
     def test_material_as_percent(self):
         p = P.Personality("K", 2000, material={**{x: (P.BASE[x], P.BASE[x]) for x in P.PIECES}, "Knight": (45, 30)})
         o = p.engine_options()

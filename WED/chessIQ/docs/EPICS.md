@@ -558,3 +558,17 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
   during a rated game". Take-backs were already blocked. `tests/test_app_rated.py` runs the real window off-screen:
   an unrated game shows hints and the grandmaster panel, a rated one shows neither. The control, with the check
   disabled, fails.
+- **CM-14 (10-06): done. The 54 opponents below the floor now have measured strength.**
+  - The old extra-randomness formula had a cliff: r = 99 picked among good lines, while r = 100 played uniformly
+    random moves.
+  - New model: below the floor the engine keeps 16 nodes, and with probability p plays a uniformly random legal
+    move. Fairy-Stockfish's `go perft 1` lists the moves, proven against the rules. A personality's own randomness
+    knob keeps its meaning (variety among good moves).
+  - Measured (`tools/floor_match.py`; 13 matches of 100 games, neighbours and skip-one, Bradley–Terry with p = 0
+    pinned at 1,163): p 0.05 → 992, 0.10 → 920, 0.20 → 758, 0.35 → 499, 0.50 → 226, 0.75 → −87, a random mover
+    (p = 1) → −327. Chessmaster's weakest opponent (Stanley, 1) plays at p ≈ 0.68: weak but not random.
+  - Check through the normal rating path (`tools/personality_match.py`, 100 games each), both within interval:
+    - 900 vs 500 (gap 400): +346 ± 105, 88% (the formula expects 91%).
+    - 600 vs 300 (gap 300): +246 ± 86, 80% (expects 85%).
+  - Tests: the rate is monotone with no cliff (steps under 0.05 per 25 points), a random mover at the bottom, and
+    random picks always legal and varied.

@@ -40,16 +40,31 @@ LADDER = [(16, 1163), (64, 1272), (128, 1493), (181, 1597), (256, 1691), (362, 1
 FLOOR = LADDER[0][1]
 
 
+# Below the floor (CM-14): 16 nodes, and with probability p a uniformly random legal move instead of the engine's.
+# (p, rating), measured: 13 matches of 100 games, Bradley-Terry with p = 0 pinned at the floor
+# (docs/calibration/floor_blunder_ladder.txt). p = 1 is a random mover, about -327; Chessmaster's weakest (1) is p ~ 0.66.
+BLUNDER_LADDER = [(0.0, 1163), (0.05, 992), (0.10, 920), (0.20, 758), (0.35, 499), (0.50, 226), (0.75, -87), (1.0, -327)]
+
+
+def blunder_for(rating):
+    if rating >= FLOOR:
+        return 0.0
+    for (p0, r0), (p1, r1) in zip(BLUNDER_LADDER, BLUNDER_LADDER[1:]):
+        if rating >= r1:
+            return p0 + (p1 - p0) * (r0 - rating) / max(1, r0 - r1)
+    return BLUNDER_LADDER[-1][0]
+
+
 def level_for(rating):
-    """(nodes, extra randomness) that play at `rating`. Below the 16-node floor the engine keeps 16 nodes and
-    strays from its best move more often (PROVISIONAL below the floor: not yet measured)."""
+    """(nodes, blunder probability) that play at `rating`: nodes on the measured ladder above the floor; below it 16
+    nodes and a measured rate of random moves (CM-14)."""
     if rating <= FLOOR:
-        return LADDER[0][0], min(100, round((FLOOR - rating) / 8))
+        return LADDER[0][0], blunder_for(rating)
     for (n0, r0), (n1, r1) in zip(LADDER, LADDER[1:]):
         if rating <= r1:
             t = (rating - r0) / max(1, r1 - r0)
-            return round(n0 * (n1 / n0) ** t), 0
-    return LADDER[-1][0], 0
+            return round(n0 * (n1 / n0) ** t), 0.0
+    return LADDER[-1][0], 0.0
 
 
 def engine_elo(rating):          # kept for callers: the ladder replaced the engine's own limiter
@@ -74,6 +89,7 @@ class Personality:
     engine: str = "fsf"          # "fsf" (Fairy-Stockfish with these knobs) or "leela" (lc0 with `net`)
     net: str = ""                # Leela network file (engine "leela")
     nodes: int = 0               # Leela: nodes per move (0 = use the clock)
+    blunder: float = -1.0        # probability of a random legal move; -1 = from the rating (below the ladder's floor)
 
     def engine_options(self):
         """UCI options for the Kramnik Fairy-Stockfish (engine/kramnik-selfcapture.patch)."""
@@ -94,7 +110,10 @@ class Personality:
         return level_for(self.rating)[0] if self.rating < 2850 else 0          # 0 = full strength on the clock
 
     def total_randomness(self):
-        return min(100, self.randomness + level_for(self.rating)[1])
+        return min(100, self.randomness)
+
+    def blunder_rate(self):
+        return self.blunder if self.blunder >= 0 else level_for(self.rating)[1]
 
 
 def chessmaster_dir():

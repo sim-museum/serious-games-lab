@@ -36,6 +36,7 @@ class PersonalityEngine:
         for k, v in personality.engine_options().items():
             self._send("setoption name %s value %s" % (k, v))
         self.rnd_level = personality.total_randomness() if hasattr(personality, "total_randomness") else personality.randomness
+        self.blunder = personality.blunder_rate() if hasattr(personality, "blunder_rate") else 0.0
         self.nodes = personality.search_nodes() if hasattr(personality, "search_nodes") else 0
         self.multipv = 500 if self.rnd_level >= 100 else 4 if self.rnd_level > 0 else 1
         self._send("setoption name MultiPV value %d" % self.multipv)
@@ -91,6 +92,10 @@ class PersonalityEngine:
                 return None           # the engine was closed under us (a new game or opponent): nothing to play
         if best in ("(none)", "0000"):
             return None
+        if self.blunder > 0 and self.rand.random() < self.blunder:     # below the floor (CM-14)
+            root = self._root_moves(moves)
+            if root:
+                return self.rand.choice(sorted(root))
         r = self.rnd_level
         if r >= 100 and lines:
             return self.rand.choice([mv for _, mv in lines.values()])
@@ -100,6 +105,20 @@ class PersonalityEngine:
             if near:
                 return self.rand.choice(near)
         return best
+
+    def _root_moves(self, moves):
+        """The legal moves, as Fairy-Stockfish lists them (`go perft 1`; proven against the rules in test_fsf_moves)."""
+        with self.lock:
+            self._send("position startpos" + (" moves " + " ".join(moves) if moves else ""))
+            self._send("go perft 1")
+            out = []
+            for line in self.proc.stdout:
+                if line.startswith("Nodes searched"):
+                    return out
+                tok = line.split(":")[0].strip()
+                if ":" in line and 4 <= len(tok) <= 5:
+                    out.append(tok)
+        return out
 
     def close(self):
         try:

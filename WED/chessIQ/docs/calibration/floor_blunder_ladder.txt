@@ -1,0 +1,23 @@
+# CM-14: blunder rates at 16 nodes, 100 games a pair (tools/floor_match.py, seed 17)
+p0.00 vs p0.05: 73.5 / 100 (74%), Elo difference +177 +/- 77
+p0.00 vs p0.10: 79.5 / 100 (80%), Elo difference +235 +/- 84
+p0.05 vs p0.10: 62.0 / 100 (62%), Elo difference +85 +/- 70
+p0.05 vs p0.20: 78.5 / 100 (78%), Elo difference +225 +/- 83
+p0.10 vs p0.20: 74.5 / 100 (74%), Elo difference +186 +/- 78
+p0.10 vs p0.35: 90.0 / 100 (90%), Elo difference +382 +/- 113
+p0.20 vs p0.35: 84.5 / 100 (84%), Elo difference +295 +/- 94
+p0.20 vs p0.50: 94.5 / 100 (94%), Elo difference +494 +/- 149
+p0.35 vs p0.50: 83.5 / 100 (84%), Elo difference +282 +/- 92
+p0.35 vs p0.75: 97.0 / 100 (97%), Elo difference +604 +/- 200
+p0.50 vs p0.75: 85.5 / 100 (86%), Elo difference +308 +/- 97
+p0.50 vs p1.00: 96.0 / 100 (96%), Elo difference +552 +/- 174
+p0.75 vs p1.00: 80.0 / 100 (80%), Elo difference +241 +/- 85
+# fit (Bradley-Terry, p=0 pinned at the floor 1163):
+#   p 0.00  rating  1163
+#   p 0.05  rating   992
+#   p 0.10  rating   920
+#   p 0.20  rating   758
+#   p 0.35  rating   499
+#   p 0.50  rating   226
+#   p 0.75  rating   -87
+#   p 1.00  rating  -327

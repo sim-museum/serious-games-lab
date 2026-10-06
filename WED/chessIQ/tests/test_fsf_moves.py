@@ -64,5 +64,19 @@ class FsfMoves(unittest.TestCase):
         self.assertEqual(bad[:3], [], "%d of %d positions differ" % (len(bad), len(positions)))
 
 
+    def test_random_mover_plays_legal_moves(self):                                # CM-14: blunders come from perft
+        sys.path.insert(0, ROOT)
+        from chessiq.personalities import Personality
+        from chessiq.uci_engine import PersonalityEngine
+        moves, legal = random_positions(1)[30]
+        e = PersonalityEngine(Personality("R", 1163, blunder=1.0), seed=3)
+        try:
+            picks = {e.choose(moves) for _ in range(30)}
+        finally:
+            e.close()
+        self.assertTrue(picks <= legal)
+        self.assertGreater(len(picks), 5)                                           # really random
+
+
 if __name__ == "__main__":
     unittest.main()
