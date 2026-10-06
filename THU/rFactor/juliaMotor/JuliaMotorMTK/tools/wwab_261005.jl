@@ -27,7 +27,8 @@ function steady(fn)
     cw = sp.corner_weight_N; ff = (cw[:LF] + cw[:RF]) / sum(values(cw)); a = (1 - ff)*LWB; b = ff*LWB
     sr = sp.steering_ratio
     c = Dict(n => ch(f, n) for n in ("Speed","VelocityX","VelocityY","YawRate","LatAccel","LongAccel","SteeringWheelAngle",
-                                     "Throttle","Brake","IsOnTrack","LFshockDefl","RFshockDefl","LRshockDefl","RRshockDefl"))
+                                     "Throttle","Brake","IsOnTrack","LFshockDefl","RFshockDefl","LRshockDefl","RRshockDefl",
+                                     "LRspeed","RRspeed"))
     spd, vx, vy, yr, lat = c["Speed"], c["VelocityX"], c["VelocityY"], c["YawRate"], c["LatAccel"]
     stw, thr, brk = c["SteeringWheelAngle"], c["Throttle"], c["Brake"]
     out = NamedTuple[]
@@ -43,8 +44,10 @@ function steady(fn)
         s = sign(lat[k]); s == 0 && continue
         φf = (c["LFshockDefl"][k] - c["RFshockDefl"][k]) / MRF / TRK
         φr = (c["LRshockDefl"][k] - c["RRshockDefl"][k]) / MRR / TRK
+        # CAMBER-1 S2: the longitudinal state (a coasting cell is not a driven one) and the rear split ρ (lsdfit's measure)
         push!(out, (v = spd[k], ay = lat[k], g = s*lat[k]/G, αf = s*αf, αr = s*αr, φf = φf, φr = φr,
-                    thr = thr[k], dir = Int(s)))
+                    thr = thr[k], dir = Int(s), ax = c["LongAccel"][k],
+                    ρ = abs(yr[k]) > 0.1 ? (c["RRspeed"][k] - c["LRspeed"][k])/(yr[k]*TRK) : NaN))
     end
     out
 end

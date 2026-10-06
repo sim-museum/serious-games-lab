@@ -22134,6 +22134,34 @@ PO: *"push it, then add the camber model"* (WWSETUP-1 pushed as `d8c59246` first
 - The skidpads' 152/207 kPa pressure split is not modelled (it cancels in every A/B here).
 - A camber control for the setup tab (degree steps, not %), if the PO wants one.
 
+### CAMBER-1 S2 (2026-10-06) — retrospective; WW's residual is not the diff, the cells now match the gold's longitudinal state
+PO: *"push it, keep going on these issues"* (`65f0fbc1` pushed).
+**Retrospective.** S1 worked because both gold sets were fitted through the car. Its blind spot was the cell CONDITIONS: a
+sim cell held constant speed, but the gold's 0.65 g WW cells were COASTING (−0.09…−0.11 g, throttle 0) and most others
+gently accelerating (+0.02…+0.09 g). And the "symmetric" WW excess is not symmetric: it is mostly the RIGHT-hand cells
+(+0.43/+0.51° front/rear at 0.65 g), where camber says WW should slip LESS.
+**Sprint:**
+- `wwab_261005.jl steady()` keeps each sample's LongAccel and the rear split ρ; `camberfit_261005.jl` cells carry the gold's
+  median ax, throttle and ρ, and `sim_cell` settles on the circle, then tracks the cell's longitudinal acceleration (speed
+  passes the cell's at mid-measurement). Camber score 0.530 → 0.526° (kγ 6 still best: unchanged law).
+- Tread temperature is not the cause: surface temps in these cells are 35–48 °C in every setup, slip moves ≤ 0.06°/°C.
+- Toe is not the cause: WW's rear toe-in (+3 vs +1 mm) should REDUCE its rear slip; the gold's rises.
+- **The diff is not the cause either, but the cells expose it.** Gold ρ (1 open, 0 locked) under light power is ~0.5 for the
+  default (direction-averaged 0.53/0.17/0.14 at 0.65/0.8/0.95 g) and 0.1–0.3 for WW; the sim is locked (≈0) in every
+  driven cell. The free-rolling front reads 1.03–1.22 in BOTH directions, so the gold's direction asymmetry (default
+  +0.56 left / −0.23 right at 0.8 g) is real, not a radius bias -- the 207 kPa inside rear (right turns) spins up.
+  Preload 41 → 0 and k 0.20 → 0.05 move the axle slips by ≤ 0.1°, so the diff does not explain WW's residual; and no
+  preload/k reproduces the gold's "half open under power": the sim goes from locked straight to the inside wheel spinning
+  (ρ −0.25…−1.1). That is the TYRE, not the diff: the sim's unloaded inside rear runs out of combined grip and spins where
+  iRacing's does not. LSD left as fitted (its high-torque breakaway matches; its low-torque state barely moves the car).
+**Open (re-prioritised):**
+- TYRE-2 (new): the inside rear's combined-slip capacity under light power (gold ρ ≈ 0.5, sim spins), together with the
+  ~25 % low lateral slip and the higher throttle the gold needs for the same acceleration (0.42 vs 0.27: iRacing scrubs
+  more). One cause is likely: the brush is too stiff at low slip and too load-insensitive. Needs a TYRE-1-scale refit
+  (Cα, kμ, combined slip) with camber and the LSD in the loop -- the next physics item.
+- WW's right-hand extra slip (both axles) is still unexplained; candidates left: load sensitivity × WW's different roll
+  stiffness split (the bars' split is d⁴-assumed because the brush could not see it -- a more load-sensitive tyre would).
+
 
 ## PO 2026-10-04 (evening) — three requests
 

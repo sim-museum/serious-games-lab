@@ -43,8 +43,10 @@ function gold_cells()
     for ((c, dir), P) in S, g in GC
         ii = [q for q in P if g - 0.075 <= q.g < g + 0.075]
         length(ii) >= 40 || continue
+        ρs = [q.ρ for q in ii if isfinite(q.ρ)]
         C[(c, dir, g)] = (n = length(ii), f = rad2deg(median(q.αf for q in ii)), r = rad2deg(median(q.αr for q in ii)),
-                          v = median(q.v for q in ii))
+                          v = median(q.v for q in ii), ax = median(q.ax for q in ii), thr = median(q.thr for q in ii),
+                          ρ = isempty(ρs) ? NaN : median(ρs))
     end
     C
 end
@@ -58,30 +60,39 @@ function set_camber!(car, Cg, kg, rcf, rcr)
     setp(sys, sys.rc_f)(car.integ, rcf); setp(sys, sys.rc_r)(car.integ, rcr)
 end
 
-"""Settle on a circle at speed V and lateral g `gt` in direction `dir`; mean axle slips (deg) over the last 2 s."""
-function sim_cell(car, sp, u0, V, gt, dir)
+"""Settle on a circle at lateral g `gt` in direction `dir`, then hold the gold cell's longitudinal acceleration `axt`
+(CAMBER-1 S2: the gold's 0.65 g WW cells were COASTING, which a constant-speed sim cell is not); the speed passes V at
+the middle of the measurement. Means over the last 1.5 s: axle slips (deg), lateral g, rear split ρ, throttle."""
+function sim_cell(car, sp, u0, V, gt, dir; axt = 0.0)
     sys = car.sys
-    get = ModelingToolkit.getsym(sys, [sys.u, sys.v, sys.r, sys.ay, sys.δ])
+    get = ModelingToolkit.getsym(sys, [sys.u, sys.v, sys.r, sys.ay, sys.δ, sys.ax, sys.ωRL, sys.ωRR])
     a = ModelingToolkit.getp(sys, sys.a)(car.integ); b = ModelingToolkit.getp(sys, sys.b)(car.integ)
     reinit!(car.integ, copy(u0))
-    g = findfirst(i -> V/DriveRT3D.RW_R*sp.gear_ratios[i]*sp.final_drive*60/2π < 8200, 1:5)
+    Vs = V - axt*2.25                                        # 9 s at Vs, then 3 s at axt: V at 11.25 s
+    g = findfirst(i -> max(V, Vs)/DriveRT3D.RW_R*sp.gear_ratios[i]*sp.final_drive*60/2π < 8200, 1:5)
     car.gear = g; car.s_gr(car.integ, sp.gear_ratios[g])
-    ModelingToolkit.setu(sys, [sys.u, sys.v])(car.integ, [V, 0.0])
-    ModelingToolkit.setu(sys, [sys.ωf, sys.ωRL, sys.ωRR])(car.integ, [V/0.30, V/DriveRT3D.RW_R, V/DriveRT3D.RW_R])
-    car.s_we(car.integ, V/DriveRT3D.RW_R*sp.gear_ratios[g]*sp.final_drive)
-    δ = 0.6*gt*G*(a + b)/V^2 + 0.02*gt; ie = 0.0; F = Float64[]; R = Float64[]; Gs = Float64[]
+    ModelingToolkit.setu(sys, [sys.u, sys.v])(car.integ, [Vs, 0.0])
+    ModelingToolkit.setu(sys, [sys.ωf, sys.ωRL, sys.ωRR])(car.integ, [Vs/0.30, Vs/DriveRT3D.RW_R, Vs/DriveRT3D.RW_R])
+    car.s_we(car.integ, Vs/DriveRT3D.RW_R*sp.gear_ratios[g]*sp.final_drive)
+    δ = 0.6*gt*G*(a + b)/Vs^2 + 0.02*gt; ie = 0.0; thr = 0.3
+    F = Float64[]; R = Float64[]; Gs = Float64[]; P = Float64[]; Th = Float64[]
     for n in 1:12*60
-        u, v, r, ay, _ = get(car.integ)
+        u, v, r, ay, _, ax = get(car.integ)
         δ = clamp(δ + 0.006*(gt*G - abs(ay))/G, 0.0, 0.30)
-        thr = clamp(0.3 + 0.3*(V - u) + ie, 0, 1); ie = clamp(ie + 0.01*(V - u), -0.4, 0.8)
+        if n <= 9*60
+            thr = clamp(0.3 + 0.3*(Vs - u) + ie, 0, 1); ie = clamp(ie + 0.01*(Vs - u), -0.4, 0.8)
+        else
+            thr = clamp(thr + 0.02*(axt - ax), 0, 1)        # integral on the longitudinal acceleration
+        end
         DriveRT3D.step_car3d!(car, thr, 0.0, dir*δ/DriveRT3D.MAXSTEER, 1/60; clutch = 0.0, manual = true)
-        u, v, r, ay, δr = get(car.integ)
-        (isfinite(u) && u > 5 && abs(atan(v, u)) < deg2rad(20)) || return (f = NaN, r = NaN, g = NaN)
-        if n > 10*60
+        u, v, r, ay, δr, ax, wl, wr = get(car.integ)
+        (isfinite(u) && u > 5 && abs(atan(v, u)) < deg2rad(20)) || return (f = NaN, r = NaN, g = NaN, ρ = NaN, thr = NaN)
+        if n > 10.5*60
             push!(F, rad2deg(dir*(δr - atan(v + a*r, u)))); push!(R, rad2deg(dir*(-atan(v - b*r, u)))); push!(Gs, abs(ay)/G)
+            abs(r) > 0.1 && push!(P, (wr - wl)*DriveRT3D.RW_R/(r*1.5)); push!(Th, thr)
         end
     end
-    (f = mean(F), r = mean(R), g = mean(Gs))
+    (f = mean(F), r = mean(R), g = mean(Gs), ρ = isempty(P) ? NaN : mean(P), thr = mean(Th))
 end
 
 function build_cars()
@@ -107,15 +118,16 @@ function evaluate(cars, C, θ; verbose = false)
     end
     for key in sort(collect(keys(C)); by = string)
         (c, dir, g) = key
-        S[key] = sim_cell(cars[c].car, cars[c].sp, cars[c].u0, C[key].v, g, dir)
+        S[key] = sim_cell(cars[c].car, cars[c].sp, cars[c].u0, C[key].v, g, dir; axt = C[key].ax)
     end
     err = 0.0; wsum = 0.0
-    verbose && println("   cfg   dir  g    | gold  front  rear (n, v)       | sim  front  rear  g    | Δdef gold f  r | Δdef sim f  r")
+    verbose && println("   cfg   dir  g    | gold  front  rear (n, v)  ax g thr ρ | sim  front  rear  g    thr  ρ   | Δdef gold f  r | Δdef sim f  r")
     for key in sort(collect(keys(C)); by = string)
         (c, dir, g) = key; gd = C[key]; sm = S[key]
         dk = (:def, dir, g)
         if verbose
-            @printf("   %-5s %+d  %.2f | %5.2f %5.2f (%4d, %4.1f) | %5.2f %5.2f %.2f", c, dir, g, gd.f, gd.r, gd.n, gd.v, sm.f, sm.r, sm.g)
+            @printf("   %-5s %+d  %.2f | %5.2f %5.2f (%4d, %4.1f) %+.2f %.2f %5.2f | %5.2f %5.2f %.2f %.2f %5.2f", c, dir, g, gd.f, gd.r,
+                    gd.n, gd.v, gd.ax/G, gd.thr, gd.ρ, sm.f, sm.r, sm.g, sm.thr, sm.ρ)
         end
         if c !== :def && haskey(C, dk)
             Gf = gd.f - C[dk].f; Gr = gd.r - C[dk].r; Sf = sm.f - S[dk].f; Sr = sm.r - S[dk].r
