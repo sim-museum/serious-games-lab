@@ -896,6 +896,12 @@ const AI_LAPDIAG = get(ENV, "JM_AI_LAPDIAG", "0") != "0"   # report each AI lap 
 # Poses of the remote cars, refreshed each frame and read by the draw pass. A Ref rather than a
 # closure capture because the draw pass is a nested function built before this is known.
 const NETPOSES = Ref(Tuple{Int,NTuple{6,Float64}}[])   # MP-5: (car id, grounded pose) -- the id picks the chassis
+# MP-COLLIDE-1: each remote car's world velocity (vx, vz) from its last packet, and the number of closing contacts the
+# local car has had with remote cars (the gate reads it). JM_NET_COLLIDE=0 lets cars pass through each other again.
+const NETVEL = Ref(Dict{Int,NTuple{2,Float64}}())
+const NET_HITS = Ref(0)
+const NET_DMIN = Ref(Inf)       # closest centre-to-centre approach to any remote car so far (m) -- the gate's pass-through test
+const NET_COLLIDE = get(ENV, "JM_NET_COLLIDE", "1") != "0"
 # E85-S7: receiver-side prediction-error census (JM_NET_ERR=1).
 const NET_ERR  = get(ENV, "JM_NET_ERR", "0") != "0"
 const NET_PREV = Ref(Dict{UInt8,NamedTuple}())
@@ -13673,6 +13679,41 @@ function main()
                 end
             end
         end
+        # MP-COLLIDE-1 (PO 2026-09-19, the first two-PC race: "cars can see each other but drive through each other").
+        # E85-S5/MP-5 drew remote cars (the other human, and on a client the host's AI field) but never collided them.
+        # Each machine now resolves contact for ITS OWN car against every remote car with the player half of the local-AI
+        # model above (same oriented contact distance, inelastic impulse, PLAYER_HIT knock, speed scrub, FF kick); the
+        # remote car is moved by its own machine, which sees the same contact from its side -- so two humans shove each
+        # other apart symmetrically, the way GPL's peers each ran their own car. Uses last frame's remote poses.
+        if NET_COLLIDE && NETLINK !== nothing && !REPLAY && race_go[] && !rst && !isempty(NETPOSES[])
+            pm = 560.0; am = 560.0; restn = 0.12; mr = pm*am/(pm+am)
+            pvx = WVX[]; pvz = WVZ[]
+            for (nid, p) in NETPOSES[]
+                dx = p[1] - cs.x; dz = p[3] - cs.z; d = hypot(dx, dz)
+                (d < 1e-3 || d > contact_d(dx, dz, d, cs.θ, p[4])) && continue
+                nx = dx/d; nz = dz/d
+                avx, avz = get(NETVEL[], nid, (0.0, 0.0))
+                lat = -dx*sin(cs.θ) + dz*cos(cs.θ)
+                ffb_jolt = clamp(-sign(lat)*0.6, -1.0, 1.0)
+                vrel = (pvx-avx)*nx + (pvz-avz)*nz
+                vrel <= 0.2 && continue
+                j = (1+restn)*vrel*mr
+                PLAYER_HIT = 1.8
+                across_p = -nx*sin(cs.θ) + nz*cos(cs.θ)
+                vlaunch = clamp(abs(across_p)*(j/pm)*0.45, 0.0, 3.0)
+                droll = clamp(sign(across_p)*vlaunch*0.7, -4.0, 4.0)
+                bumpX!(cs, -PLAYER_HIT*(j/pm)*nx, -PLAYER_HIT*(j/pm)*nz,
+                       clamp(-sign(lat)*PLAYER_HIT*(j/pm)*0.06, -2.2, 2.2), vlaunch, droll)
+                along_p = nx*cos(cs.θ) + nz*sin(cs.θ)
+                scrub = along_p > 0.25 ? clamp(PLAYER_HIT*(j/pm)*along_p*0.7, 0.0, cs.v*0.6) :
+                                         clamp((j/pm)*0.35, 0.0, cs.v*0.25)
+                cs.v = max(0.0, cs.v - scrub)
+                ffb_jolt = clamp(ffb_jolt - sign(lat)*PLAYER_HIT*(j/pm)*0.22 - 0.5*sign(vrel), -1.0, 1.0)
+                NET_HITS[] += 1
+                NET_DIAG > 0 && println("  [netcollide] t=", round(cs.t, digits = 2), " car ", nid, " closing ", round(vrel, digits = 2),
+                                        " m/s, d ", round(d, digits = 2), " m, scrub ", round(scrub, digits = 2), " m/s")
+            end
+        end
         # E18: record all car poses (player + AI) at ~15 Hz once the race is GREEN, for replay
         if replay_buf !== nothing && race_go[] && !rst && length(ai_poses) == length(AICARS) && (cs.t - replay_t[]) >= 1/15
             replay_t[] = cs.t
@@ -13714,10 +13755,11 @@ function main()
             # machine's ground if the two disagree by so much as a terrain rounding. A remote car's
             # height must come from the terrain UNDER IT, exactly as the AI field's does since
             # E104-S4, or remote cars float for the same reason the AI did.
-            netp = Tuple{Int,NTuple{6,Float64}}[]
+            netp = Tuple{Int,NTuple{6,Float64}}[]; empty!(NETVEL[])
             for (id, q) in NetPlay.remote_poses_at(NETLINK, time())
                 b = aibankK((q.x, 0.0, q.z, q.yaw))
                 push!(netp, (Int(id), ai_ground((q.x, q.y, q.z, q.yaw, b[1], b[2]))))
+                NETVEL[][Int(id)] = (q.v*cos(q.yaw), q.v*sin(q.yaw))
             end
             # ── E85-S7: PREDICTION ERROR, measured receiver-side with no clock sync ─────────────
             # When a NEW packet arrives for a car, we already know what the PREVIOUS packet
@@ -13749,6 +13791,7 @@ function main()
                 end
             end
             NETPOSES[] = netp
+            for (_, p) in netp; NET_DMIN[] = min(NET_DMIN[], hypot(p[1] - cs.x, p[3] - cs.z)); end
             # JM_NET_DIAG=<n>: report the link every n frames. "No car appeared" has at least four
             # causes -- nothing sent, nothing received, everything judged stale, or nothing drawn --
             # and a screenshot cannot tell them apart, especially with the two cars 80 m apart on a
@@ -13756,7 +13799,8 @@ function main()
             if NET_DIAG > 0 && (frames % NET_DIAG) == 0
                 println("  [net] t=", round(cs.t,digits=1), " rx=", NETLINK.rx,
                         " dropped=", NETLINK.dropped, " peers=", length(NETLINK.peers),
-                        " known=", length(NETLINK.remote), " drawn=", length(netp))
+                        " known=", length(NETLINK.remote), " drawn=", length(netp),
+                        " hits=", NET_HITS[], " dmin=", round(NET_DMIN[], digits = 2), " v=", round(cs.v, digits = 1))
                 flush(stdout)
             end
         end

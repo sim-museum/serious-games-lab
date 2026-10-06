@@ -27,7 +27,7 @@ this index was written; that is what it exists to stop.
 | **E110** | Watkins Glen start/finish gantry drawn twice | NEW 2026-09-28. Only one placement exists, so it is a second draw path, not a second instance. |
 | **E111** | Spa: missing corner house before the 90° left; bright yellow polygon over the road after it | NEW 2026-09-28. `house12`/`house13` are in neither archive nor disk. |
 | **E85** | EPIC: multiplayer, the way GPL did it | ✅ **S1–S7, MP-4, MP-5 done** (poses, dead reckoning, loss/jitter, host-authoritative AI); **two-PC race confirmed by the PO 2026-09-19** ("cars can see each other but drive through each other"). Open: **MP-COLLIDE-1** (below). |
-| **MP-COLLIDE-1** | remote cars (human + host-AI) must COLLIDE on the client, not drive through (PO 2026-09-19) | NEW row 2026-10-06 (the item was named in the PO's two-PC note and never started). |
+| **MP-COLLIDE-1** | remote cars (human + host-AI) must COLLIDE on the client, not drive through (PO 2026-09-19) | ✅ **S1 DONE (2026-10-06):** each machine collides its own car with every remote car (local-AI contact model); two-sim A/B: stopped at 2.91 m vs straight through at 1.68 m with it off; gate `netcollide_smoke`. **Awaiting the PO's two-PC race.** |
 | **MP-GUI-1** | multiplayer in the PyQt launcher (PO 2026-10-01) | **S1 DONE (2026-10-01):** Drive-tab Host/Join/address/port + launcher lobby that copies the host's race settings; two-process test passes. Two-PC race from the GUI not yet run. |
 | **GPLWALL-1** | the user's car must never go through any object, GPL's way (PO 2026-10-01) | **S1-S8 DONE (2026-10-01):** GPL's .trk walls decoded and registered to the drawn faces; every other drawn obstacle solid; 0 of 378 crashes through on all five tracks (old system: 16/50 at WG). Gate `gplwall_smoke`. **Open:** AI cars. GPL's invisible walls KEPT (PO 2026-10-01). |
 | **E105** | a setup tab exposing modest chassis-setup changes | **values + reset DONE and gated** (E105-S1); the UI shell is the PO's call. NEW 2026-08-31. Relaxes the "no modifiable parameters" constraint, scoped to setup. assessed |
@@ -19007,6 +19007,23 @@ real LAN. The missing contact between remote cars is the documented limitation (
 poses are drawn, not collided) — now the next MP item, **MP-COLLIDE-1**: give remote human and host-AI
 cars a collision body on the client (the same contact model the local AI field uses), sized ~1 sprint.
 
+
+### MP-COLLIDE-1 S1 (2026-10-06) — remote cars collide on the client (the PO's "drive through each other")
+**Retrospective.** E85-S5 / MP-5 drew remote cars -- the other human, and on a client the host's AI field -- through the AI
+draw path, and the two-PC race (2026-09-19) confirmed it, with this item named as the next one. It was never started:
+the local car's contact loop ran over `ai_poses` only.
+* `drive_native_mtk.jl`: each machine resolves contact for ITS OWN car against every remote car with the player half of the
+  local-AI model (same oriented `contact_d`, inelastic impulse restn 0.12, `PLAYER_HIT` knock, speed scrub, FF kick), from
+  the remote car's last grounded pose and the velocity of its last packet (`NETVEL`). The remote car is moved by its own
+  machine, which sees the same contact from its side -- the peers each run their own car, as GPL's did. A client's car
+  now also hits the host's AI cars (the host does not move them for it -- host-authoritative AI, MP-5).
+  `JM_NET_COLLIDE=0` reverts; `JM_NET_DIAG` lines add `hits=` / `dmin=` (closest approach to any remote car).
+* **Measured, two real sims over UDP loopback, Watkins Glen** (host parked at s=400, client autodriving from s=300 at
+  25 m/s): collide ON -- `[netcollide] closing 19.87 m/s, d 2.91 m, scrub 8.55 m/s`, speed 24.4 → 14.2 m/s, closest
+  approach 2.91 m; **control OFF -- straight through at 24.4 m/s, closest approach 1.68 m** (alongside, bodies overlapping).
+* Gate `netcollide_smoke` (in the suite, 1800 s cap -- it runs two sims): rx > 0, dmin < 6 (reached), hits ≥ 1, dmin ≥ 2.0 m.
+  First run PASS (closing 19.12 m/s, d 2.73 m). The control above is what makes the 2.0 m line meaningful.
+* **For the PO:** a two-PC race -- do the cars now bump off each other, and does the hit feel right from both seats?
 
 ### PO test drive 2026-09-19 — Watkins Glen race, `~/Videos/260919_julia_mg_race.mp4` (24 min, 60 fps)
 *"Overall, a big improvement over previous versions! Congrats!"* — and seven things to fix, logged here as
