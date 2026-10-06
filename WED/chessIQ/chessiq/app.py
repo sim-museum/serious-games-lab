@@ -15,7 +15,7 @@ from . import VERSION
 from . import engine as E
 from . import serious_games_week
 from .game import AI_NAME, MAX_DEPTH, THINK_S, Game, load_pgn
-from . import personalities, rating, uci_engine
+from . import clock as clocks, personalities, rating, uci_engine
 from .net import DEFAULT_PORT, Link
 
 LIGHT, DARK = QColor("#f0d9b5"), QColor("#b58863")
@@ -225,6 +225,7 @@ class MainWindow(QMainWindow):
         self.engine = None                  # the chosen personality's engine process (EPIC CM)
         self.profile = rating.Profile.load()  # your rating (CM-4); None until your first rated game
         self.rated = None                   # the rated game in progress: {opponent, rating, colour, recorded}
+        self.clock = clocks.Clock()         # CM-5: the game's chess clock (untimed by default)
         self.note = ""
         self.link = None
         self.announcer = None
@@ -274,6 +275,19 @@ class MainWindow(QMainWindow):
         self.rated_box.toggled.connect(lambda on: (QSettings("sim-museum", "chessIQ").setValue("rated", "true" if on else "false"),
                                                    self._show_opponent()))
         grid.addWidget(self.rated_box, 3, 0, 1, 2)
+        self.tc = QComboBox()
+        for label, kind, args in clocks.PRESETS:
+            self.tc.addItem(label, (kind, args))
+        self.tc.setCurrentIndex(int(QSettings("sim-museum", "chessIQ").value("timecontrol", 0)))
+        self.tc.currentIndexChanged.connect(lambda i: QSettings("sim-museum", "chessIQ").setValue("timecontrol", i))
+        grid.addWidget(QLabel("Time"), 4, 0)
+        grid.addWidget(self.tc, 4, 1)
+        self.clock_label = QLabel()
+        self.clock_label.setStyleSheet("font-family: monospace; font-size: 13pt")
+        side.addWidget(self.clock_label)
+        self.tick = QTimer(self)
+        self.tick.timeout.connect(self._on_tick)
+        self.tick.start(200)
         self.blurb = QLabel()
         self.blurb.setWordWrap(True)
         self.blurb.setStyleSheet("color: gray; font-size: 9pt")
@@ -409,6 +423,33 @@ class MainWindow(QMainWindow):
             self.engine.stop()
             self.engine.new_game()
 
+    def _on_tick(self):
+        g, c = self.game, self.clock
+        if not c.timed:
+            self.clock_label.setText("")
+            return
+        f = c.check_flag()
+        if f and not g.over:
+            winner = E.opp(f)
+            if self._cannot_mate(winner):
+                g.over = {"type": "draw", "reason": "flag fall, but the other side cannot mate"}
+            else:
+                g.over = {"type": "time", "winner": winner}
+            c.stop()
+            self.token += 1                            # stop any thinking
+            if self.engine is not None:
+                self.engine.stop()
+            self.render()
+        mark = lambda col: "▶" if c.running == col and not g.over else " "
+        self.clock_label.setText("%s White %s   %s Black %s" % (mark("w"), clocks.fmt(c.remaining("w")),
+                                                                  mark("b"), clocks.fmt(c.remaining("b"))))
+
+    def _cannot_mate(self, colour):
+        """FIDE: a player whose flag falls draws if the opponent cannot mate by any series of legal moves.
+        Approximated as the side having only its king, or king and one minor piece."""
+        pieces = [p[1] for p in self.game.board if p and p[0] == colour and p[1] != "k"]
+        return not pieces or (len(pieces) == 1 and pieces[0] in "nb")
+
     def _rated_in_progress(self):
         r = self.rated
         return r is not None and not r["recorded"] and not self.game.over and self.game.history
@@ -458,9 +499,15 @@ class MainWindow(QMainWindow):
         if self.rated_box.isChecked() and self.game.mode == "ai" and p is not None and self._ensure_profile():
             self.rated = {"opponent": p.name, "rating": p.rating, "colour": self.game.human, "recorded": False}
             self._show_opponent()
+        kind, args = self.tc.currentData()
+        if self.rated is not None and kind == "untimed":
+            kind, args = "fischer", (10, 3)            # Chessmaster's ranked play has no infinite time
+            self._pending_note = "Rated games are timed: Fischer 10+3."
+        self.clock = clocks.Clock(kind, args)
+        self.clock.start("w")
         self.orient = "w" if self.game.mode == "self" else self.game.human
         self.boardw.selected, self.boardw.targets = None, []
-        self.note = ""
+        self.note, self._pending_note = getattr(self, "_pending_note", ""), ""
         self.offer_bar.hide()
         self.render()
         self.maybe_ai()
@@ -468,7 +515,12 @@ class MainWindow(QMainWindow):
     def do_move(self, m, remote=False):
         self.offer_bar.hide()
         self.note = ""
+        mover = self.game.turn
         san = self.game.do_move(m)
+        if self.game.over:
+            self.clock.stop()
+        elif self.clock.moved(mover):
+            self._on_tick()                            # moved after the flag fell
         self.boardw.selected, self.boardw.targets = None, []
         if self.link is not None and not remote:
             self.link.send(t="move", ply=len(self.game.history) - 1, san=san)
@@ -535,11 +587,12 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(300 + int(random.random() * 400), play)
             return
         if self.engine is not None:
+            clk = self.clock.uci() if self.clock.timed else None
             moves, eng, legal = [E.sqname(h["m"].frm) + E.sqname(h["m"].to) + (h["m"].promo or "") for h in g.history], \
                 self.engine, g.legal()
 
             def think():                    # the chosen personality (EPIC CM)
-                u = eng.choose(moves, movetime_ms=int(THINK_S * 1000))
+                u = eng.choose(moves, clock=clk) if clk else eng.choose(moves, movetime_ms=int(THINK_S * 1000))
                 return next((m for m in legal if E.sqname(m.frm) + E.sqname(m.to) + (m.promo or "") == u), None)
         else:
             board, turn_, ep, banned = g.board[:], g.turn, g.ep, g.banned_keys()
@@ -738,6 +791,8 @@ class MainWindow(QMainWindow):
         self._net_ui(True)
         self.token += 1
         self.game = Game("net", colour)
+        self.clock = clocks.Clock()                    # network games are untimed (a shared clock is later work)
+        self.rated = None
         self.orient = colour
         self._announce()
         self.note = "Hosting on TCP %d — waiting for an opponent%s." % (
@@ -783,6 +838,8 @@ class MainWindow(QMainWindow):
         self.token += 1
         self.review = None
         self.game = Game("net", colour)
+        self.clock = clocks.Clock()                    # network games are untimed (a shared clock is later work)
+        self.rated = None
         self.orient = colour
         self.boardw.selected, self.boardw.targets = None, []
         self.offer_bar.hide()
@@ -899,6 +956,7 @@ class MainWindow(QMainWindow):
             won = "White" if o.get("winner") == "w" else "Black"
             lost = "Black" if o.get("winner") == "w" else "White"
             text = {"mate": "Checkmate — <b>%s wins!</b>" % won,
+                    "time": "%s ran out of time — <b>%s wins!</b>" % (lost, won),
                     "resign": "%s resigns — <b>%s wins!</b>" % (lost, won),
                     "stalemate": "Stalemate — <b>draw.</b>"}.get(o["type"], "Draw — <b>%s.</b>" % o.get("reason"))
             return text + note
