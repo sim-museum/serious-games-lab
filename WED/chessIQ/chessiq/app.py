@@ -561,6 +561,11 @@ class MainWindow(QMainWindow):
                 cache[p.book] = None
         return cache[p.book]
 
+    def _advice_off(self):
+        """Chessmaster's Ranked Play: "no advice tools are available" -- from the first position until the game ends."""
+        r = self.rated
+        return r is not None and not r["recorded"] and not self.game.over
+
     def _rated_in_progress(self):
         r = self.rated
         return r is not None and not r["recorded"] and not self.game.over and self.game.history
@@ -1105,14 +1110,16 @@ class MainWindow(QMainWindow):
         bw.board = g.board if live else g.board_at(ply)
         bw.orient = self.orient
         bw.last = g.history[ply - 1]["m"] if ply > 0 else None
-        bw.hints = g.book_hints() if (live and g.local_to_move() and g.mode != "net") else []
+        bw.hints = g.book_hints() if (live and g.local_to_move() and g.mode != "net" and not self._advice_off()) else []
         if not live:
             bw.selected, bw.targets = None, []
         bw.update()
         self.status.setText(self._status_html(thinking))
         self._render_moves(ply)
         stats = g.book_stats(ply)
-        if stats:
+        if self._advice_off():
+            self.openings.setText("<span style='color:gray'>No advice during a rated game.</span>")
+        elif stats:
             total = sum(n for _, n, _ in stats)
             top = [x for x in stats if x[2] >= 1.0][:6] or stats[:3]
             shown = " · ".join("<b>%s</b> %.0f%%" % (m, pct) for m, _, pct in top)

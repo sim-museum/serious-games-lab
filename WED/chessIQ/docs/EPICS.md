@@ -512,3 +512,49 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
 - **Next block (NN-13..):** run the loop unattended for many generations, with gating by 400-game matches (about 25
   minutes each). Either a 15x192 network distilled from generation 1's self-play, or a larger window with a smaller
   learning rate. Measure every promoted network against LD2, so gains add up visibly.
+
+## EPIC CM, retrospective 3 (2026-10-06, before sprints CM-13..CM-18)
+### Where the epic stands
+- Done: 188 Chessmaster personalities plus chessIQ's own, rated play with Chessmaster's arithmetic, Fischer 10+3,
+  adjourning, the opponent picker, personality opening books, and strength set by a measured node ladder anchored
+  on Maia 1500 (2000 vs 1600 and 1700 vs 1500 both within interval). A full rated 10+3 game passes end to end.
+- Since then the Leela side has grown: lc0 runs on the GPU, and `kramnik-sp1` beats LD2.
+
+### Gaps against the gold standard (a Chessmaster rated game)
+1. **Advice in rated games.** The manual says Ranked Play has "no advice tools are available". chessIQ still shows
+   book-move hints on the board and the grandmaster openings panel during a rated game.
+2. **54 of the 188 opponents (29%) are rated below the ladder's measured floor** (1,163), down to Stanley at 1.
+   Their strength comes from an unmeasured randomness formula.
+3. **Opponents move instantly.** At fixed node counts Tasha used about 2 s of a 10-minute game. A Chessmaster
+   opponent thinks on its clock.
+4. **Style is faint** (retrospective 2): personalities choose differently in 39–54% of positions, but their games
+   look alike.
+
+### Approaches considered for the floor
+- **Fewer nodes:** no use; the ladder flattens below about 45 nodes.
+- **Random move mixing:** the current formula. Each random move costs a lot, so strength falls quickly, but the
+  play looks erratic rather than weak.
+- **Maia at one node with temperature:** human-like mistakes. But Maia levels are compressed in Kramnik chess
+  (CM-7) and every Maia is above 1,100.
+- **Chosen:** measure the existing randomness mixing on the ladder. If it reaches the low ratings in a measured way,
+  keep it. A more human-looking weakness can come later.
+
+### Sprints CM-13..CM-18 (goal, check, stop)
+- **CM-13. No advice in rated games.** No hints, and no grandmaster panel while a rated game is in progress (the
+  panel says why). Check: an off-screen test.
+- **CM-14. Below the floor, measured.** Place randomness levels under 16 nodes on the ladder with matches, and refit
+  `level_for` below 1,163. Check: three or more levels with intervals, and two low-rated personalities matched
+  against each other within interval.
+- **CM-15. Opponents think on their clock.** A thinking pause drawn from the clock (strength stays set by nodes).
+  Check: in a 10+3 game the opponent uses a human-like share of its time and never loses on time.
+- **CM-16. Style made visible.** Signature measures per style (attackers: checks and king-zone moves; materialists:
+  captures and material balance; defenders: draws, game length), and amplify the knobs until styles separate.
+  Check: separated signatures, with rating still within interval after amplifying.
+- **CM-17. A neural family on the ladder.** Leela (`kramnik-sp1`) at node counts placed on the ladder, so strong
+  human-like opponents have measured ratings. Check: two levels with intervals.
+- **CM-18. Retrospective, and a final rated 10+3 game** with all of the above.
+- **CM-13 (10-06): done.** A rated game gives no advice, as in Chessmaster's Ranked Play. From the first position
+  until the game is recorded, there are no book-move hints on the board, and the openings panel reads "No advice
+  during a rated game". Take-backs were already blocked. `tests/test_app_rated.py` runs the real window off-screen:
+  an unrated game shows hints and the grandmaster panel, a rated one shows neither. The control, with the check
+  disabled, fails.
