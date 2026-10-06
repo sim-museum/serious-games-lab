@@ -205,3 +205,14 @@ straight into the patched lc0 and Nibbler without TensorFlow.
   - Check: an Elo estimate, and a Nibbler session showing the network's evaluations and a self-capture line.
 - **NN-6. Self-play improvement loop**, and the network as an opponent in chessIQ (a "Leela" personality).
   - Check: one self-play generation that measurably improves on NN-4's network.
+- **NN-1 (10-06): done.** lc0 v0.32.1 plays Kramnik chess (`engine/lc0-kramnik.patch`, `engine/build_lc0.sh`,
+  compiled with `-DLC0_KRAMNIK`):
+  - the generator allows self-capture (only the own king is uncapturable) and never castles;
+  - ApplyMove clears the self-captured piece's type bits and resets the 50-move counter, as the gold does;
+  - parsing never reads a king onto its own rook as castling, and never reads a pawn's diagonal onto its own piece
+    as en passant;
+  - castling rights are cleared at setup, so the network sees no castling.
+  - Check: lc0's root move list (VerboseMoveStats, one node) equals chessIQ's legal moves in all 1,305 positions of
+    12 random self-capture-rich games (5,441 moves over the first 200). The standard lc0 fails the same test at the
+    first self-capture.
+  - Check: the tinygyal network plays complete legal games under the Kramnik build, with self-captures.
