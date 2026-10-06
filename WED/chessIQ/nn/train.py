@@ -48,7 +48,9 @@ def batch(data, idx):
     wdl = b["wdl"]
     if QMIX > 0 and "q" in b:     # blend the game result with the engine's evaluation where there is one
         q = b["q"].clamp(-1, 1)
-        qwdl = torch.stack([(1 + q) / 2, torch.zeros_like(q), (1 - q) / 2], 1)
+        d = b["d"].clamp(0, 1) if "d" in b else torch.zeros_like(q)     # search draw probability (self-play chunks)
+        d = torch.minimum(d, 1 - q.abs())
+        qwdl = torch.stack([(1 + q - d) / 2, d, (1 - q - d) / 2], 1)
         mix = QMIX * b["has_q"].float()[:, None]
         wdl = (1 - mix) * wdl + mix * qwdl
     return x.view(n, 112, 8, 8), legal, pol, wdl

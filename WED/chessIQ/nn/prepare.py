@@ -26,8 +26,10 @@ def compact(recs):
         pval[i, :len(top)] = pr[top] / pr[top].sum()
     legal = np.packbits(recs["probs"] >= 0, axis=1)                      # (n, 233)
     _, wdl = L.targets_from_v6(recs)
+    best_q, best_d = recs["rest"][:, 1], recs["rest"][:, 3]
     return dict(planes=np.ascontiguousarray(recs["planes"]), stm=recs["stm"].copy(), rule50=recs["rule50"].copy(),
-                legal=legal, pidx=pidx, pval=pval, wdl=wdl.astype(np.float16))
+                legal=legal, pidx=pidx, pval=pval, wdl=wdl.astype(np.float16),
+                q=best_q.astype(np.float16), has_q=(best_d >= 0), d=np.clip(best_d, 0, 1).astype(np.float16))
 
 
 def main():
