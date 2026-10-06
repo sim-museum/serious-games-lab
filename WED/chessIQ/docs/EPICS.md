@@ -437,3 +437,11 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
     differs in all 1,305.
   - Caveat: this checks the rules, not strength. Search heuristics written for ordinary chess (exchange evaluation,
     capture ordering) may underrate self-capture tactics.
+- **NN-8 (10-06): done.** `WED/kramnikNibbler.sh [game.pgn]` builds the Kramnik lc0 and Nibbler if they are
+  missing, uses the newest `engine/nets/kramnik-*` network, and keeps its own Nibbler settings in
+  `~/.config/chessiq-kramnik-nibbler` (through XDG_CONFIG_HOME), so the PO's normal Nibbler is untouched. The test
+  hook gained `NIBBLER_GOTO_END`.
+  - Check, from a fresh scratch HOME, on a position where Fairy-Stockfish prefers a self-capture at 98.6%: Nibbler
+    showed the game's final position, and the round-3 network's top line was **Rxe4 (a rook taking its own pawn) at
+    96.3%**, principal variation `Rxe4 Qf1 f4 Rg1 Rxg1 Bxg1 Rb4 …`. This also closes NN-2's open point: a principal
+    variation containing a self-capture is displayed.

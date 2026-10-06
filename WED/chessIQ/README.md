@@ -30,3 +30,10 @@ perft counts, best move, root score and node count. The port searches ~1.5x slow
 the HTML thinks for 1.2 s, and reaches the same depth.
 
     python3 -m unittest tests.test_parity tests.test_game tests.test_net
+
+## Analysis in Nibbler, with a Kramnik neural network
+`../kramnikNibbler.sh [game.pgn]` opens Nibbler with Leela (lc0) playing Kramnik chess and the newest network in
+`engine/nets/` (trained on Kramnik chess; see `docs/EPICS.md`, EPIC NN). The first run builds the Kramnik lc0 and
+Nibbler (`engine/build_lc0.sh`, `engine/make_nibbler.sh`). Its settings live in `~/.config/chessiq-kramnik-nibbler`,
+so your normal Nibbler is untouched.
+
