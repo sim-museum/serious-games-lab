@@ -455,3 +455,24 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
   - The GPU build passes the 1,305-position rules test. `kramnikNibbler.sh` and chessIQ's Leela opponents use it
     when present (wrapper `engine/lc0-kramnik-gpu`), else the CPU build.
   - In Nibbler, on the self-capture position: 817k nodes in 20 s, `Rxe4` still on top with a 16-ply line.
+- **NN-7 (10-06): done, with a result that changes the plan.** Three 40-game matches on the GPU build
+  (`tools/uci_match.py`, GM openings, seed 11):
+
+  | match (800 lc0 nodes a move)               | score        | Elo           |
+  |--------------------------------------------|--------------|---------------|
+  | round 3 vs untouched LD2                   | 14.0/40, 35% | −108 ± 113    |
+  | round 2 vs untouched LD2                   | 5.5/40, 14%  | −319 ± 156    |
+  | LD2 vs Fairy-Stockfish 10,000 nodes (the teacher) | 34.5/40, 86% | **+319 ± 156** |
+
+  - **The student was already stronger than the teacher.** LD2 at 800 nodes beats the Fairy-Stockfish settings that
+    generated the training data. Distilling the teacher's choices therefore pulled the network down. Round 3 (half
+    its value targets from game results, twice the data) lost less than round 2.
+  - The held-out losses measured imitation of Fairy-Stockfish, not strength. Only matches decide.
+  - On chessIQ's scale (the CM-8 ladder: 8,192 nodes about 2,700, 11,585 about 2,870), LD2 at 800 nodes is roughly
+    3,100 and round 3 roughly 3,000. These are extrapolated, so treat them as rough.
+  - **Fixed now:** `kramnikNibbler.sh` uses the strongest measured network, today LD2 (`KRAMNIK_NET` overrides).
+    chessIQ's "Leela" opponent keeps round 3: at about 3,000 it is still far above every Chessmaster personality.
+  - **Plan change:** NN-10 (on-policy Fairy-Stockfish labels) would still learn from a weaker teacher, so it is
+    dropped. NN-10/11 become **self-play from LD2 on the GPU** with lc0's own self-play mode under Kramnik rules. Its
+    policy targets come from the network's own 800-node search, which improves on its raw policy, so the teacher
+    grows with the student. The check is unchanged: the new network against LD2, head to head.
