@@ -15,10 +15,10 @@ CONF="${XDG_CONFIG_HOME_KRAMNIK:-$HOME/.config/chessiq-kramnik-nibbler}"
 [ -x "$ENG/lc0-kramnik" ] || { echo "Building lc0 for Kramnik chess (once, a few minutes)..."; bash "$ENG/build_lc0.sh"; }
 [ -x "$ENG/nibbler-kramnik/nibbler" ] || { echo "Making the Kramnik Nibbler (once)..."; bash "$ENG/make_nibbler.sh"; }
 
-# The network that measured strongest at Kramnik chess (docs/EPICS.md, NN-7): today the untouched LD2 -- it beat the
-# Kramnik-trained rounds 2 and 3 head to head. KRAMNIK_NET=<file> overrides; else the newest engine/nets/kramnik-*.
-NET="${KRAMNIK_NET:-$WED/INSTALL/otherWeights/LD2.pb.gz}"
-[ -f "$NET" ] || NET="$(ls "$ENG"/nets/kramnik-*.pb.gz 2>/dev/null | sort | tail -n 1 || true)"
+# The network that measured strongest at Kramnik chess (docs/EPICS.md): self-play generation 1 (kramnik-sp1) beat the
+# untouched LD2 by about +59 Elo over 160 games (NN-10). KRAMNIK_NET=<file> overrides; else LD2.
+NET="${KRAMNIK_NET:-$ENG/nets/kramnik-sp1.pb.gz}"
+[ -f "$NET" ] || NET="$WED/INSTALL/otherWeights/LD2.pb.gz"
 [ -f "$NET" ] || { echo "No network found ($NET)" >&2; exit 1; }
 
 LC0="$ENG/lc0-kramnik"; BACKEND=blas
