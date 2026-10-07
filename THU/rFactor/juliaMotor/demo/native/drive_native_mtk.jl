@@ -6741,7 +6741,10 @@ let objnames=Set{String}()
                # E45 dropped Zandvoort's `hotels` ("a 310 m garbage bbox ... floats in the sky"): its placement is PITCHED -90.3°
                # (local x is up), which the object matrix did not apply then. It does now (OBJ_PR), and kept it stands 374-490 m
                # off the road at s 3600-3840, its towers on the horizon exactly as the gold shows them (E60-S6). JM_DROPTEST=hotels.
-               startswith(nm,"tent") || startswith(nm,"single") ||
+               # E60-S7 (2026-10-06): `tent*` ("white fuel-tank tents", dropped since the first Zandvoort drive with no recorded
+               # reason) are the gold's red-cross and paddock tents (s 92-101, 2769, 4001, 4142; gold t=105, t=141); only
+               # Zandvoort has them. Drawn now; JM_DROPTEST=tent drops them again.
+               startswith(nm,"single") ||
                (startswith(nm,"intree") && !WATGLEN) ||                      # INFIELD tree lines (100s of m wide) → distant central "smear".  WG3 (E64 S5): on WATKINS these + treefill/treesrb ARE the gold's close roadside autumn forest — the smear objection predates graze-fade (MZ3), which fixed it; kept there now
                ((startswith(nm,"treesrb") || startswith(nm,"treefill")) && !WATGLEN) ||  # forest-BACKDROP / gap-fill quads → streaky "painted tree" smear (non-Watkins; see WG3 note above)
                startswith(nm,"trbk") || startswith(nm,"brbk") ||             # Monza underpass tree/bush BANKS (trbk1-8/brbk1-3 at lapdist ~3100-3440, lat ~5 m) — MESH foliage that bypasses the sprite on-road filter and renders as dark vertical smears ACROSS the road (PO round 4: "7 stands of trees across the track near the underpass")

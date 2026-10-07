@@ -21,6 +21,12 @@ this index was written; that is what it exists to stop.
 
 | item | what | state |
 |---|---|---|
+| **TRACKSEG-3** | Preferences switch: show/hide the track-section names ("Front Straight", "Big Bend" at WG), default ON (PO 2026-10-06) | open -- next, small |
+| **GUI-1** | Redesign the julia racer GUI (`demo/native/juliaRacer.py`) for ease of use per GUI best practices, then restyle it like the PyQt GUIs of pokerIQ and bridgeIQ (`~/sgl/MON/pokerIQ`, `~/sgl/FRI/bridgeIQ`) (PO 2026-10-06) | open |
+| **DOC-RACE-1** | Documentation on how to race, drawing on the docs under `~/sgl/THU` (`DOC/`: GPL manual, setup guides, brake bias, diffs, tyre heat, ...) (PO 2026-10-06) | open |
+| **REPLAY-2** | A replay is ALWAYS available for the session just exited; add the GPL Replay Analyser's analysis features (gold standard: `~/sgl/THU/WP/drive_c/Program Files/GPL Replay Analyser`) alongside replaying the video; optional Claude Code analysis of the replay with how-to-improve advice (PO 2026-10-06) | open |
+| **COCKPIT-GOLD-1** | Cockpit mirrors closer but still not right -- they look tilted slightly up; match the gold. The windscreen/canopy is solid where GPL's is almost transparent -- match the gold (PO 2026-10-06) | open |
+| **HANDS-2** | Restore the arms and gloves in the cockpit view AND on the AI cars' external views, per the gold; watch for sleeves going upward ("rabbit ears") from outside the car instead of running from the driver to the gloves (PO 2026-10-06; supersedes HANDS-1's "hidden by default") | open |
 | **E107** | **EPIC (PO priority): Julia AI as close as possible to GPL AI** | **AIGPL-2 (2026-10-04): GPL's own AI algorithm, reverse-engineered from gpl.exe** -- the PO: *"The AI cars worked perfectly in the WG race!"*; E107-S11 GPL's passing rails pass the graded test. Open: per-track confirmation by the PO on the other four tracks. |
 | **E108** | **EPIC (PO priority): tracks as close as possible to GPL** | **S5–S8 (2026-09-30):** flat shading (100 % of road polys lack normals) refuted as the visible cause (A/B < 0.3 % of pixels); finer rounding (4× tris) invisible at WG's gentle curves. **Needs the PO: the track + station where the faceting shows.** |
 | **E109** | Nürburgring tree "curtains" across the road + individual trees intruding | ✅ curtains FIXED (S6); veils under GPL's window (S15). **GPLVIS-1 S1–S4 (2026-10-06):** gpl.exe's track renderer decoded (segment range, 117/312/914 m bands, per-cell CLIP PLANES) and per-cell clipping implemented (`JM_GPLCLIP`, off); the remaining tall walls at Döttinger Höhe are the SCENERY copy -- next: scenery copies under the cell rule. |
@@ -45,7 +51,7 @@ this index was written; that is what it exists to stop.
 | **E78** | improve all 5 tracks against the gold videos | **S1–S4 (2026-10-01), Ring Hinter den Boxen:** the Continental banners (`bannr_s`, 168 tris) exist and are drawn as geometry; whether they reach the screen is unseen. Found the E81 skewed panel; `JM_SCENE_AT` object listing mislabels rows (fix first). |
 | **E79** | audit every row-of-people object on all 5 tracks | ✅ **CLOSED 2026-10-06 (assessed):** (1) rows in the road and (2) rows floating at their ends are both moot -- every standing crowd row is dropped on ALL tracks (E88, `_dropcrowdrows` unconditional; ZANDCROWD-1) and every loose person by `PeopleFilter` (E101, gated by `people_smoke`); only seated crowds inside grandstand meshes remain, which cannot float. |
 | **E85** (dup) | (stale duplicate of the E85 row above -- superseded 2026-10-06) | see the E85 row in OPEN. |
-| **E60** | Zandvoort gold-video parity | epic, ongoing. assessed |
+| **E60** | Zandvoort gold-video parity | epic, ongoing. 2026-10-06 S4–S7: Tarzan boards (coplanar backs), distance boards checked, town skyline (`hotels`, pitched placement), tents restored; D6 closed; spectators absent by the PO's order (ZANDCROWD-1). Rotating; next: Gerlach VREDESTEIN gantry, Hugenholtz scaffold tower |
 | **E64** | cockpit/chase parity | epic, ongoing (E82/E83 are its children). assessed |
 | **CARGOLD-2** | compare the cars (player + AI) to the gold standard (PO 2026-10-05) | **S1–S5 done:** AI field un-mirrored, the rear-tyre plates gone, AI driveshafts built, AI cars reflected about their wheel centreline; S5 (2026-10-06) the "10 cm float" was the SHADOW (0.22 m depth bias) -- normal-offset lookup ships, tyre shadows start at the contact patch. **Awaiting the PO's look** (see below). |
 | **WWSETUP-1** | a second, "loose" setup from the PO's 261005 iRacing session (PO 2026-10-06) | ✅ **DONE S1 (2026-10-06):** WW103 selectable (launcher / `JM_CARSETUP`); LSD, bars, toe, dampers, brake split from each session. assessed |
@@ -23020,3 +23026,43 @@ horizon; ours had empty horizon from s 2000 to 3800.
 * **Gates** (`GATES_SKIP=road_clear_smoke`): 44/45 on the first run -- `solid_box_smoke`'s source check looked for the
   old `if r >= ... JM_SOLID_BOX_R` text this sprint refactored. Updated to the new condition (the intent unchanged: every
   upright meshed solid gets its box) plus a new check that the tilted exception exists; the gate passes. 45/45.
+
+### E60 S7 (2026-10-06) — the red-cross and paddock tents restored (dropped since the first Zandvoort drive); E60 ROTATES
+Following S6's lesson (old drop rules rest on fixed bugs), every Zandvoort `drop()` removal was listed
+(`JM_OBJDIAG_AT=2092:2200`): grass1–5 / herbe1–2 / infield (ground-cover planes, intended), `hotels` (S6), `starter`
+(a loose person, E101), and **six `tent`/`tent3`** (s 92–101, 2769, 4001, 4142) under "white fuel-tank tents" -- a rule
+from the very first Zandvoort test-drive commit (c8931af4), with no PO request or backlog record behind it.
+* Kept (`JM_KEEPTEST=tent`, `261006/zandtent/tent_ab.jpg`, `tent_gold.jpg`): the red-cross tent beside the van at s=2700
+  is the gold's t=105; the red-cross tent right of the pit tower at s=4100 is the gold's t=141; white tents by the
+  ambulance at s≈600 as at gold t=40–45. Only Zandvoort has `tent*` models (searched all five tracks' files and .dats),
+  so the change is Zandvoort-only. (`longtent` never matched the rule.)
+* **Fix (default):** `tent*` leaves drop(); `JM_DROPTEST=tent` drops them again.
+* **Verified:** sequential 42-station sweep (`zandsweep/tents` vs `fixed`): changes are the tents only (s 600, 2700, 4100;
+  `tents_check.jpg`); the car's pose identical at every station (the new solids wreck nothing). Objects 99 → 108, solids
+  158 → 167.
+* **E60 after S4–S7 (4 sprints this pass -- ROTATING):** Tarzan's boards, the distance boards, the town skyline and the
+  tents now match the gold; the remaining visible difference is the spectators, removed by the PO's order (ZANDCROWD-1).
+  Next pass: the gold's Gerlach VREDESTEIN gantry and the green scaffold tower at Hugenholtz (t≈35, 50) at 50 m spacing.
+* **Gates** (`GATES_SKIP=road_clear_smoke`): 45/45 pass.
+
+## PO batch 2026-10-06 (evening) — six new items, verbatim
+PO: *"keep going on the backlog, don't stop."* Then, in order:
+1. **GUI-1** -- *"redesign the julia GUI for ease of use, following GUI best practices, then restyle the GUI to be similar
+   to the PyQt GUI's of pokerIQ and bridgeIQ."* The GUI is the PyQt launcher `demo/native/juliaRacer.py`; references
+   `~/sgl/MON/pokerIQ`, `~/sgl/FRI/bridgeIQ`.
+2. **TRACKSEG-3** -- *"Add a preferences switch to turn on/off the printing of track parts (e.g. "front straight", "big
+   bend" at Watkin's Glen) with on being the default."*
+3. **DOC-RACE-1** -- *"create documentation about how to race, drawing on doc from ~/sgl/THU"*.
+4. **REPLAY-2** -- *"make sure there is always a replay available for the session the user just exited from, and add the
+   GPL replay analyzer features for further analysis of the replay (see GPL replay analyzer under ~/sgl/THU, this is the
+   gold standard for this functionality, which should be available as an addition to replaying the replay video. Also
+   add an optional claude code analysis of the replay and how you can improve"*.
+5. **COCKPIT-GOLD-1** -- *"the cockpit mirrors are closer, but still not quite right. They seem to be tilted slightly up,
+   not sure what else is off. Match mirrors to gold standard. Also the julia cockpit windscreen/canopy is solid, while
+   GPL's windscreen is almost transparent (by my memory) - again match to GPL gold standard here."*
+6. **HANDS-2** -- *"restore the arms and gloves in the julia cockpit view, and restore arms and gloves in the AI car
+   external views too, per GPL gold standard. Watch out for sleeves going upward "rabbit ear" effect from outside the
+   car, rather than from the driver to the gloves"*.
+Queue: TRACKSEG-3 first (small, direct), then the items in the PO's order; each opens with a retrospective and gets ≤ 4
+sprints before rotating, as before.
+
