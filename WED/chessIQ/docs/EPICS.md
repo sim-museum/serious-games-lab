@@ -830,3 +830,9 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
   - Off-screen test: a whole 4-player round robin through the windows (your games resigned, computer games played
     out), finished, saved and resumed identically.
   - Full suite: 70 tests pass.
+- **CM-23 (10-07): done. Rating history** (Rating → Rating history…).
+  - A chart of your rating after each rated game, starting from where you began. Provisional games (the first 20)
+    are drawn hollow.
+  - A table of your rated games, newest first: date, opponent and rating, colour, result, and the change.
+  - Test: three recorded games give four chart points, end at the profile's rating, and list three rows, newest
+    first. Full suite: 71 tests pass.

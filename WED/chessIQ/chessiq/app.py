@@ -488,6 +488,10 @@ class MainWindow(QMainWindow):
         self.leave_act.setEnabled(False)
         for a in (self.host_act, self.join_act, self.leave_act):
             net.addAction(a)
+        rm = self.menuBar().addMenu("&Rating")
+        hist = QAction("Rating &history...", self)
+        hist.triggered.connect(self.rating_history)
+        rm.addAction(hist)
         tm = self.menuBar().addMenu("&Tournament")
         for label, fn in (("&New tournament...", self.tournament_new), ("&Resume the saved tournament",
                                                                           self.tournament_resume),
@@ -1215,6 +1219,15 @@ class MainWindow(QMainWindow):
         if g.over and g.mode == "ai" and not self._postgame_done and g.history:
             self._postgame_done = True
             self._show_postgame()
+
+    def rating_history(self):
+        """Your rating game by game, and your rated games (CM-23)."""
+        if self.profile is None:
+            self.note = "No rated games yet: tick \"Rated game\" to start a rating."
+            self.render()
+            return
+        self.history_dlg = postgame.RatingHistoryDialog(self, self.profile, rating.PROVISIONAL)
+        self.history_dlg.show()
 
     def tournament_new(self):
         if not self.people:
