@@ -74,6 +74,16 @@ class Options(unittest.TestCase):
         self.assertAlmostEqual(P.Personality("S", 1).blunder_rate(), 0.68, places=2)
         self.assertEqual(P.Personality("S", 1, blunder=0.2).blunder_rate(), 0.2)
 
+    def test_styles_pay_their_cost_in_nodes(self):                                # CM-17
+        neutral = P.Personality("N", 1800)
+        self.assertEqual(P.style_cost(neutral), 0)
+        self.assertEqual(neutral.search_nodes(), P.level_for(1800)[0])
+        greedy = P.Personality("G", 1800, material={q: (P.BASE[q], 2 * P.BASE[q]) for q in P.PIECES})
+        self.assertGreater(greedy.search_nodes(), neutral.search_nodes())          # its cost is paid back
+        self.assertEqual(P.style_cost(P.Personality("A", 1800, attack=80)), 0)     # attack measured free
+        from dataclasses import replace
+        self.assertEqual(replace(greedy, compensate=False).search_nodes(), neutral.search_nodes())
+
     def test_material_as_percent(self):
         p = P.Personality("K", 2000, material={**{x: (P.BASE[x], P.BASE[x]) for x in P.PIECES}, "Knight": (45, 30)})
         o = p.engine_options()

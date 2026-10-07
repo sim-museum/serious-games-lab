@@ -78,5 +78,19 @@ class FsfMoves(unittest.TestCase):
         self.assertGreater(len(picks), 5)                                           # really random
 
 
+    def test_full_randomness_is_variety_not_chaos(self):                          # CM-17
+        sys.path.insert(0, ROOT)
+        from chessiq.personalities import Personality
+        from chessiq.uci_engine import PersonalityEngine
+        moves, legal = random_positions(1)[30]
+        e = PersonalityEngine(Personality("V", 1800, randomness=100), seed=4)
+        try:
+            picks = {e.choose(moves) for _ in range(30)}
+        finally:
+            e.close()
+        self.assertTrue(picks <= legal)
+        self.assertLessEqual(len(picks), 4)                                         # only the engine's top lines
+
+
 if __name__ == "__main__":
     unittest.main()

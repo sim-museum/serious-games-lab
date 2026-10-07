@@ -603,3 +603,20 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
   - **Styles cost rating:** attack +80 about −115 Elo, attack −80 about −40, greedy about −500. Nodes come from the
     rating alone, so a styled opponent plays below its label. CM-17 is re-planned to fix this (the neural family
     moves to a later block).
+- **CM-17 (10-06): done. Styles keep their rating.** (Re-planned from "a neural family" after CM-16 showed that styles
+  cost rating.)
+  - **Randomness is variety, never chaos.** Chessmaster's randomness 100 used to make chessIQ play uniformly random
+    moves; two personalities have it, one rated 2,238. Now 100 means half the moves are drawn from the engine's top
+    four lines within about two pawns. Weakness below the floor comes only from CM-14's measured blunder rate.
+  - **Four lines get four times the nodes.** At a fixed node count, MultiPV 4 split the search and weakened every
+    move: randomness 0.21 cost about 315 Elo. Now each listed line gets the full search.
+  - **Cost model**, fitted on 16 personalities (`tools/style_cost.py`; anonymous numbers in
+    `docs/calibration/style_costs.txt`): cost = 11 × positional + 113 × material + 387 × randomness − 236 ×
+    [randomness on] Elo, weighted χ²/dof 0.70. Attack is free. A personality now searches at the nodes for rating +
+    its predicted cost (`Personality.effective_rating`).
+  - **Check, 6 personalities held out of the fit, compensated, 100 games each against a neutral opponent of their
+    rating: 310.5/600 (51.8%), +12 ± 28 Elo.** Individually: +7, +85, +67, −38, −78, +31 (each ± about 70); one is
+    just outside its interval, about what chance gives among six. Before compensation, the fit set's costs ran to
+    −576.
+  - No Chessmaster names or texts are stored: the tool reads the installation at run time and prints only ratings,
+    style features and scores.

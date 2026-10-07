@@ -1,0 +1,26 @@
+# CM-17: what a style costs in strength. Chessmaster personalities (anonymous: rating and style features only) vs a
+# neutral opponent of the same rating, 100 games each (tools/style_cost.py). Randomness plays 4 lines at 4x nodes.
+# Fit (weighted NNLS, chi2/dof 0.70): cost = 11 x positional + 113 x material + 387 x randomness - 236 x [randomness on]
+fit #00 rating 2238 nodes  2361 | attack 0.00 positional 2.00 material 0.00 randomness 1.00 | 24.5/100  -196 +/- 79
+fit #01 rating 1171 nodes    18 | attack 0.80 positional 0.00 material 0.00 randomness 0.85 | 39.0/100  -78 +/- 70
+fit #02 rating 1454 nodes   113 | attack 0.50 positional 3.20 material 0.08 randomness 0.65 | 41.0/100  -63 +/- 69
+fit #03 rating 1674 nodes   240 | attack 0.42 positional 1.30 material 0.67 randomness 0.62 | 40.0/100  -70 +/- 70
+fit #04 rating 1655 nodes   224 | attack 0.36 positional 0.00 material 0.67 randomness 0.20 | 56.0/100  +42 +/- 69
+fit #05 rating 2214 nodes  2260 | attack 0.20 positional 0.00 material 0.00 randomness 0.21 | 70.0/100  +147 +/- 74
+fit #06 rating 2700 nodes  8070 | attack 0.40 positional 1.70 material 0.17 randomness 0.00 | 43.5/100  -45 +/- 69
+fit #07 rating 2700 nodes  8070 | attack 0.00 positional 1.40 material 0.20 randomness 0.00 | 49.5/100  -3 +/- 68
+fit #08 rating 1282 nodes    66 | attack 0.40 positional 0.40 material 0.06 randomness 0.00 | 50.0/100  -0 +/- 68
+fit #09 rating 2700 nodes  8070 | attack 0.25 positional 0.80 material 0.00 randomness 0.00 | 51.5/100  +10 +/- 68
+fit #10 rating 2700 nodes  8070 | attack 0.05 positional 3.00 material 0.20 randomness 0.00 | 37.0/100  -92 +/- 71
+fit #11 rating 2700 nodes  8070 | attack 0.30 positional 1.10 material 0.40 randomness 0.00 | 37.0/100  -92 +/- 71
+fit #12 rating 2700 nodes  8070 | attack 0.10 positional 0.20 material 0.00 randomness 0.00 | 44.0/100  -42 +/- 69
+fit #13 rating 2700 nodes  8070 | attack 0.30 positional 1.00 material 0.11 randomness 0.00 | 48.5/100  -10 +/- 68
+fit #14 rating 1301 nodes    70 | attack 0.35 positional 1.44 material 0.67 randomness 0.06 | 71.0/100  +156 +/- 75
+fit #15 rating 2700 nodes  8070 | attack 0.10 positional 1.90 material 0.16 randomness 0.00 | 47.5/100  -17 +/- 68
+# Held out, compensated (search at rating + predicted cost): pooled 310.5/600 = 51.8%, +12 +/- 28
+check #00 rating 1421 nodes   241 | attack 1.00 positional 2.90 material 2.00 randomness 0.60 | 51.0/100  +7 +/- 68
+check #01 rating 2415 nodes  2370 | attack 0.40 positional 2.20 material 0.09 randomness 0.07 | 62.0/100  +85 +/- 70
+check #02 rating 1554 nodes   180 | attack 0.10 positional 3.70 material 0.00 randomness 0.00 | 59.5/100  +67 +/- 69
+check #03 rating 1926 nodes   396 | attack 0.00 positional 0.00 material 0.67 randomness 0.05 | 44.5/100  -38 +/- 69
+check #04 rating 1241 nodes    16 | attack 0.95 positional 1.00 material 0.59 randomness 0.04 | 39.0/100  -78 +/- 70
+check #05 rating 1701 nodes   202 | attack 0.20 positional 1.80 material 0.40 randomness 0.25 | 54.5/100  +31 +/- 68
