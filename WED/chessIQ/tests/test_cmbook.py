@@ -11,6 +11,11 @@ from chessiq import cmbook  # noqa: E402
 SQ = {f + r: (int(r) - 1) * 8 + "abcdefgh".index(f) for f in "abcdefgh" for r in "12345678"}
 
 
+
+def _write(path, data):
+    with open(path, "wb") as f:
+        f.write(data)
+
 def entry(frm, to, sibling_follows=False, ends_line=False):
     return bytes([SQ[frm] | (0 if sibling_follows else 0x40) | (0x80 if ends_line else 0), SQ[to] | 0xC0])
 
@@ -27,7 +32,7 @@ class Obk(unittest.TestCase):
         data = b"BOO!" + struct.pack("<II", len(moves), 0) + b"".join(moves)
         with tempfile.TemporaryDirectory() as d:
             p = os.path.join(d, "t.obk")
-            open(p, "wb").write(data)
+            _write(p, data)
             book = cmbook.read_obk(p)
         self.assertEqual(book[""], {"e4": 2, "d4": 1})
         self.assertEqual(book["e4"], {"e5": 1, "c5": 1})
@@ -37,7 +42,7 @@ class Obk(unittest.TestCase):
     def test_other_formats(self):
         with tempfile.TemporaryDirectory() as d:
             p = os.path.join(d, "x.obk")
-            open(p, "wb").write(b"XXXX" + bytes(20))
+            _write(p, b"XXXX" + bytes(20))
             self.assertIsNone(cmbook.read_obk(p))
 
 

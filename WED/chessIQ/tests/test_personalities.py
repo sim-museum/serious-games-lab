@@ -10,6 +10,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from chessiq import personalities as P  # noqa: E402
 
 
+
+def _write(path, data):
+    with open(path, "wb") as f:
+        f.write(data)
+
 def synthetic_cmp(path, rating=1850, contempt=120, attack_raw=-30, knight_own=40):
     v = [0] * 38
     v[6], v[9], v[10], v[12], v[13], v[14], v[8] = rating, 60, 5, 99, 9, contempt, attack_raw
@@ -27,7 +32,7 @@ def synthetic_cmp(path, rating=1850, contempt=120, attack_raw=-30, knight_own=40
     b[0x1E2:0x1E2 + len(style)] = style
     bio = b"A synthetic personality written by the test suite, long enough to count as a biography."
     b[0x2C0:0x2C0 + len(bio)] = bio
-    open(path, "wb").write(b)
+    _write(path, b)
 
 
 class Reader(unittest.TestCase):
@@ -47,7 +52,7 @@ class Reader(unittest.TestCase):
     def test_rejects_other_files(self):
         with tempfile.TemporaryDirectory() as d:
             f = os.path.join(d, "x.CMP")
-            open(f, "wb").write(b"\0" * 3104)
+            _write(f, b"\0" * 3104)
             self.assertRaises(ValueError, P.read_cmp, f)
 
 
