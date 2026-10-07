@@ -355,7 +355,9 @@ class MainWindow(QMainWindow):
         # EPIC CM: choose the computer opponent -- a rating and a playing style (Chessmaster's personalities when
         # Chessmaster is installed, chessIQ's own otherwise). Without the engine build, chessIQ's own engine plays.
         self.who = QComboBox()
-        self.people = sorted(personalities.roster(), key=lambda p: p.rating) if uci_engine.available() else []
+        self.people = sorted((p for p in personalities.roster()             # an opponent is offered only if its engine
+                              if p.engine != "leela" or uci_engine.leela_available(p.net)),   # can run: never a
+                             key=lambda p: p.rating) if uci_engine.available() else []        # stand-in under its name
         for p in self.people:
             self.who.addItem("%s (%d)%s" % (p.name, p.rating, " — " + p.style if p.style else ""), p.name)
         if not self.people:

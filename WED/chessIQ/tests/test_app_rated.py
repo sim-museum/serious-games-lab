@@ -49,5 +49,24 @@ class RatedGivesNoAdvice(unittest.TestCase):
         self.assertIn("No advice during a rated game", self.w.openings.text())
 
 
+class LeelaOnlyWhenRunnable(unittest.TestCase):    # a missing lc0 must not leave "Leela 1370" played by a stand-in
+    @unittest.skipUnless(os.access(FSF, os.X_OK), "Kramnik Fairy-Stockfish missing")
+    def test_no_leela_without_lc0(self):
+        import subprocess
+        code = ("import os, sys; sys.path.insert(0, %r); os.environ['QT_QPA_PLATFORM'] = 'offscreen';"
+                "from PyQt6.QtWidgets import QApplication; qa = QApplication([]);"
+                "from chessiq import app as A; w = A.MainWindow();"
+                "print(sum(p.engine == 'leela' for p in w.people), len(w.people))" % ROOT)
+        home = tempfile.mkdtemp(prefix="chessiq-test-")
+        try:
+            env = dict(os.environ, CHESSIQ_HOME=home, CHESSIQ_LC0="/nonexistent/lc0")
+            out = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True, timeout=120)
+        finally:
+            shutil.rmtree(home, ignore_errors=True)
+        leela, total = map(int, out.stdout.split()[-2:])
+        self.assertEqual(leela, 0)
+        self.assertGreater(total, 0)
+
+
 if __name__ == "__main__":
     unittest.main()
