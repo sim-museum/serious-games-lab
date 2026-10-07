@@ -22986,3 +22986,37 @@ MARTINI, CALTEX) were in ours one Castrol plus two large **plain grey-white boar
 * Noted, not changed: the shot harness teleports the car to GPL's centreline, which on the start straight runs near the
   RIGHT edge of the drawn road (right wheels on the grass in `c200`), so harness frames sit right of the gold's line.
 
+
+### E60 S6 (2026-10-06) — Zandvoort's town skyline restored: E45's "floating" `hotels` was a pitched placement, now applied
+**Method.** A cockpit lap of ours every 100 m (`261006/zandsweep/ours`, 42 stations) against the cockpit gold at 1 fps
+(181 s: pit exit, Tarzan t≈20–25, start/finish t≈144). `anchor_align.py` could not pin stations here (edge-match costs
+0.44–0.68: the gold's crowds -- removed in ours by the PO's order -- and arms dominate the edges), so the landmarks were
+paired by eye (`landmark_pairs.jpg`). Matching: the Gerlach boards, the ambulance/stand, the red-cross tents. **Not
+matching:** at t≈120–125 (s≈3300–3400) the gold shows Zandvoort's apartment towers and a long white hangar on the left
+horizon; ours had empty horizon from s 2000 to 3800.
+* Not the horizon: `horiz0–11` are dune-and-sky panels (`horiz_tex.png`).
+* The skyline is `hotels.3do` (one placement, GPL (−300, 750)): `hotel_H/B/R/Y` blocks + a hangar, spread over ~1 km.
+  `JM_OBJDIAG_AT`: **DROPPED by the drop() junk filter** -- E45 (August) named it: "a 310 m garbage bbox that never
+  grounds → floats in the sky above the grandstand".
+* **The cause E45 could not see:** the placement is pitched **−90.3°** (roll 5°): the mesh's local x is UP (hangars
+  11–16 m, blocks 20–65 m tall), and its 310 m "height" is a horizontal extent. The object matrix now applies placement
+  pitch/roll (`OBJ_PR`); kept (`JM_KEEPTEST=hotels`), it stands 374–490 m off the road at s 3600–3840, on the ground
+  (JM_OBJNEAR h-road −1…+37 m), and from s=3300 it is the gold's skyline block for block -- hangar left, low rows, the
+  tall white tower, the blocks right (`skyline_vs_gold.jpg`, gold t=123).
+* **A second fault found by the sweep:** with `hotels` kept, every station from s=2200 on was taken from a displaced,
+  wrecked car. The collision builder makes each solid from the mesh's LOCAL horizontal footprint, assuming an upright
+  object; pitched −90°, the 1 km tall axis became a footprint box across the circuit (157 → 162 solids). A single shot
+  at s=2700 was fine; in the sweep the car met the box once and stayed wrecked.
+* **Fix (default):** `hotels` leaves drop() (`JM_DROPTEST=hotels` drops it again); a placement tilted > 20° (pitch or
+  roll > 0.35 rad) keeps its orientation-free **disc** but gets **no footprint box** (logged as `[solid] E60-S6: ...`;
+  `JM_SOLID_TILTED=1` boxes them again). A first cut removed tilted solids outright -- and the 4-track check showed it
+  took 63 of Spa's shrubs (the PO wants bushes hittable, E15); the disc fallback keeps them (Spa 1609 solids, as before).
+  Zandvoort: `hotels` alone, its disc 370 m from the road (158 solids).
+* **Verified:** the 42-station sweep before/after (`fixed/` vs `ours/`): every concentrated change is the skyline on
+  the horizon (s 2000, 2500, 2600, 3300, 3400; `fixed_check.jpg`); the car's pose is identical at all stations.
+  Other tracks: Watkins Glen, Monza, the Ring -- no tilted placements, solids unchanged (603 / 337 / 327). Spa: 63
+  tilted shrubs/`bushrow3` now collide as discs instead of boxes fitted on the wrong axes (same count, 1609). Zandvoort
+  single shots at s 2200/2700/3300 with the disc fallback (`261006/tiltsolid/`): the car's pose is undisturbed.
+* **Gates** (`GATES_SKIP=road_clear_smoke`): 44/45 on the first run -- `solid_box_smoke`'s source check looked for the
+  old `if r >= ... JM_SOLID_BOX_R` text this sprint refactored. Updated to the new condition (the intent unchanged: every
+  upright meshed solid gets its box) plus a new check that the tilted exception exists; the gate passes. 45/45.

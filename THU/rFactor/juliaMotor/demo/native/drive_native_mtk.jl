@@ -6738,7 +6738,9 @@ let objnames=Set{String}()
                # "curtain of trees"); the gold run shows no such slab anywhere in that region. JM_RING_TROW_OBJ=1 keeps it.
                (NURB && startswith(lowercase(nm), "trow") && get(ENV, "JM_RING_TROW_OBJ", "0") == "0") || (!standcrowd(nm) && (
                (startswith(nm,"grass") && !KEEP_GRASS) || (startswith(nm,"herbe") && !KEEP_GRASS) || nm == "infield" ||
-               nm == "hotels" ||                                             # E45: Zandvoort backdrop building cluster — a 310 m garbage bbox that never grounds → floats in the sky above the grandstand; the horizon ring + dunes carry the backdrop without it
+               # E45 dropped Zandvoort's `hotels` ("a 310 m garbage bbox ... floats in the sky"): its placement is PITCHED -90.3°
+               # (local x is up), which the object matrix did not apply then. It does now (OBJ_PR), and kept it stands 374-490 m
+               # off the road at s 3600-3840, its towers on the horizon exactly as the gold shows them (E60-S6). JM_DROPTEST=hotels.
                startswith(nm,"tent") || startswith(nm,"single") ||
                (startswith(nm,"intree") && !WATGLEN) ||                      # INFIELD tree lines (100s of m wide) → distant central "smear".  WG3 (E64 S5): on WATKINS these + treefill/treesrb ARE the gold's close roadside autumn forest — the smear objection predates graze-fade (MZ3), which fixed it; kept there now
                ((startswith(nm,"treesrb") || startswith(nm,"treefill")) && !WATGLEN) ||  # forest-BACKDROP / gap-fill quads → streaky "painted tree" smear (non-Watkins; see WG3 note above)
@@ -7415,6 +7417,7 @@ let objnames=Set{String}()
     global SOLIDS = Tuple{Float64,Float64,Float64,Symbol}[]
     global SOLIDNAMES = String[]                        # parallel to SOLIDS, for the census only
     _solidseen = Set{Tuple{Float64,Float64,Float64,Symbol}}(); _soliddup = Ref(0)   # SPA-BARRIER: one disc per (x,z,r,kind)
+    _solidtilt = String[]   # E60-S6: tilted placements given a disc instead of a footprint box
     empty!(SOLIDBOX)
     _geomn = 0; _undrawn_solid = Ref(0)
     for i in insts
@@ -7490,6 +7493,13 @@ let objnames=Set{String}()
                 (get(ymx,i.name,0f0) - get(ymn,i.name,0f0)) > 1.0f0 || continue
             end
         end
+        # E60-S6 (2026-10-06): the solid's disc/box comes from the mesh's LOCAL horizontal footprint and assumes the object is
+        # upright -- placement pitch/roll are not applied. Zandvoort's `hotels` is pitched -90°: its 1 km tall axis became a
+        # footprint box across the circuit, and a sweep car teleported into it was wrecked for the rest of the lap. A tilted
+        # placement (> 20°) keeps its DISC (orientation-free) but gets no footprint box; the names are logged.
+        # (A first cut dropped tilted solids outright and took 63 of Spa's shrubs with it -- the PO wants bushes hittable.)
+        # JM_SOLID_TILTED=1 builds their boxes again (A/B).
+        _tilted = (abs(i.pitch) > 0.35 || abs(i.roll) > 0.35) && get(ENV, "JM_SOLID_TILTED", "0") == "0"
         # SPA-BARRIER: GPL's placement list repeats some objects at the identical spot (house28 ×3 at
         # Spa; 38 exact duplicates track-wide). Each copy would add a full contact impulse, so keep one.
         _key = (Float64(i.x), Float64(i.y), r, solidkind(nml))
@@ -7513,7 +7523,9 @@ let objnames=Set{String}()
         # r4, prinzv, lancia), bushes (r=1.5) and armco pieces (r=1.2) at the tarmac edge with the
         # disc 0.2-1.1 m onto the road -- a disc around a 4 x 1.6 m car or an 8 x 0.3 m barrier is
         # the wrong shape, and the mesh AABB is the right one. Threshold JM_SOLID_BOX_R (default 1.2).
-        if r >= parse(Float64, get(ENV, "JM_SOLID_BOX_R", "1.2")) && haskey(lxmn, i.name) && get(ENV, "JM_SOLID_BOX", "1") != "0"
+        _boxable = r >= parse(Float64, get(ENV, "JM_SOLID_BOX_R", "1.2")) && haskey(lxmn, i.name) && get(ENV, "JM_SOLID_BOX", "1") != "0"
+        _boxable && _tilted && push!(_solidtilt, nml)
+        if _boxable && !_tilted
             ψ = Float64(OBJ_YAW_SIGN * -i.yaw + objyawfix(i.name)); c = cos(ψ); sn = sin(ψ)
             wx = Float64(lxmx[i.name] - lxmn[i.name]); wz = Float64(lzmx[i.name] - lzmn[i.name])
             pv = get(objverts, i.name, nothing)
@@ -7558,6 +7570,8 @@ let objnames=Set{String}()
             push!(SOLIDBOX, nothing)
         end
     end
+    isempty(_solidtilt) || println("  [solid] E60-S6: ", length(_solidtilt), " tilted placement(s) (> 20° pitch/roll) given a disc, not a footprint box: ",
+                                   join(sort(unique(_solidtilt)), ", "), " (JM_SOLID_TILTED=1 boxes them)")
     # v6: every remaining DISC must clear the corridor tarmac (shrunk, or dropped below 0.5 m)
     if ROADHAT !== TERRAIN0 && get(ENV, "JM_SOLID_ROADCHECK", "1") != "0"
         for k in eachindex(SOLIDS)

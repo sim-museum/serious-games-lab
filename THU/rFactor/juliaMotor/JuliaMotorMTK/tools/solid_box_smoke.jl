@@ -30,7 +30,10 @@ pass(count(x -> true, eachmatch(r"solid_gap\(wx, wz, k\)", SRC)) == 1, "the whee
 pass(occursin("solid_gap(x + CARLF*cθ, z + CARLF*sθ, k)", SRC) && occursin("solid_gap(x - CARLF*cθ, z - CARLF*sθ, k)", SRC),
      "the capsule tests both circles", "source check")
 # ROAD-1 S3: every meshed solid gets its footprint box (threshold JM_SOLID_BOX_R, default 1.2 m)
-pass(occursin("if r >= parse(Float64, get(ENV, \"JM_SOLID_BOX_R\", \"1.2\")) && haskey(lxmn, i.name)", SRC), "meshed solids get a mesh-footprint box", "source check")
+# E60-S6: ... except a TILTED placement (> 20° pitch/roll), whose local footprint is not horizontal -- it keeps its disc
+pass(occursin("_boxable = r >= parse(Float64, get(ENV, \"JM_SOLID_BOX_R\", \"1.2\")) && haskey(lxmn, i.name)", SRC) &&
+     occursin("if _boxable && !_tilted", SRC), "meshed solids get a mesh-footprint box", "source check")
+pass(occursin("_tilted = (abs(i.pitch) > 0.35 || abs(i.roll) > 0.35)", SRC), "a tilted placement keeps its disc, not a box", "source check")
 pass(occursin("function box_covers_tarmac", SRC) && occursin("function disc_clear_radius", SRC), "no fat box or disc may cover corridor tarmac (ROAD-1)", "source check")
 println(fails == 0 ? "SOLID-BOX GATE: PASS" : "SOLID-BOX GATE: FAIL ($fails)")
 exit(fails == 0 ? 0 : 1)
