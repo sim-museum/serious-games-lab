@@ -1,4 +1,4 @@
-"""CM-12 check: one full rated Fischer 10+3 game in the real app (off-screen) against Tasha; the player's side is a
+"""CM-12 check: one full rated Fischer 10+3 game in the real app (off-screen) against Tasha ($CHESSIQ_OPPONENT picks another); the player's side is a
 separate engine at 1 s a move. Run with HOME/CHESSIQ_HOME pointing at a scratch directory and QT_QPA_PLATFORM=offscreen."""
 import sys, json, os, subprocess
 import os as _os; sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
@@ -16,11 +16,12 @@ def wait(t):
 send('uci'); send('setoption name VariantPath value engine/kramnik.ini'); send('setoption name UCI_Variant value kramnik'); send('isready'); wait('readyok')
 qa = QApplication([])
 w = A.MainWindow()
-w.who.setCurrentIndex(w.who.findData('Tasha'))
+OPP = os.environ.get('CHESSIQ_OPPONENT', 'Tasha')
+w.who.setCurrentIndex(w.who.findData(OPP))
 w.mode.setCurrentIndex(w.mode.findData('ai')); w.side.setCurrentIndex(w.side.findData('w'))
 w.rated_box.setChecked(True); w.tc.setCurrentIndex(1)                         # Fischer 10+3
 w.new_game()
-print('rated game vs', w.rated['opponent'], w.rated['rating'], '| clock', w.clock.kind, w.clock.args, flush=True)
+print('rated game vs', w.rated['opponent'], w.rated['rating'], '| nodes', w.engine.nodes, 'multipv', w.engine.multipv, '| clock', w.clock.kind, w.clock.args, flush=True)
 def tick():
     g = w.game
     if g.over:

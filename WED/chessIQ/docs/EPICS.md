@@ -620,3 +620,32 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
     −576.
   - No Chessmaster names or texts are stored: the tool reads the installation at run time and prints only ratings,
     style features and scores.
+- **CM-18 (10-06): done. The final rated 10+3 game passes with everything in place** (`CHESSIQ_OPPONENT=Dave
+  tools/ranked_game_check.py`).
+  - Dave is an attacker rated 1,674 with randomness 62. His predicted style cost of +94 Elo raises his search from
+    240 to 365 nodes, over four lines.
+  - Mate in 95 plies. No advice was shown, and the rating moved once (+663, the first provisional game). He used 646
+    s over 47 moves and finished with 95 s, never flagging.
+
+## EPIC CM, retrospective 4 (2026-10-06, end of CM-13..CM-18)
+- **Delivered:**
+  - Rated games give no advice.
+  - The 54 opponents below the floor have measured strength (a continuous blunder rate in place of a cliff).
+  - Opponents think on their clock.
+  - Contempt finally reaches repetition and 50-move draws (it never had).
+  - Styles are visible in play and keep their rating: a measured cost model paid back in nodes, with a held-out
+    check of +12 ± 28.
+  - Randomness is variety, never random moves.
+- **Lessons:**
+  1. A style knob is not free. Every change to the evaluation or the move choice has to be priced in Elo before a
+     rating label can mean anything.
+  2. A mechanism can carry a hidden cost, as MultiPV did at a fixed node count. Fix the mechanism before modelling
+     its symptoms.
+  3. An engine probe must keep stdin open. An early end of input answers `bestmove` without searching and fakes a
+     result.
+  4. Check a game-level null result (contempt "no effect") with a direct probe before believing it.
+- **Open:**
+  - In long games the thinking pause runs the clock low (95 s left after 47 moves); a gentler curve may feel more
+    human.
+  - The cost model was fitted at one opponent level per personality and assumes costs add up.
+  - Leela and Maia opponents are not yet on the ladder.
