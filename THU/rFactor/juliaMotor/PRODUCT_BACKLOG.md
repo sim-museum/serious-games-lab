@@ -24,7 +24,7 @@ this index was written; that is what it exists to stop.
 | **TRACKSEG-3** | Preferences switch: show/hide the track-section names ("Front Straight", "Big Bend" at WG), default ON (PO 2026-10-06) | ✅ **DONE (S1, 2026-10-06):** launcher Graphics group, "Show track section names", default ON, remembered; OFF = `JM_SEGNAME_SECS=0`, also for replays; gate `segnames_smoke` |
 | **GUI-1** | Redesign the julia racer GUI (`demo/native/juliaRacer.py`) for ease of use per GUI best practices, then restyle it like the PyQt GUIs of pokerIQ and bridgeIQ (`~/sgl/MON/pokerIQ`, `~/sgl/FRI/bridgeIQ`) (PO 2026-10-06) | **S1 (2026-10-06) redesign done:** task-ordered tabs (Race / Results / Replays / Settings / Controller), Session + Car cards, one primary Start button, menus + status bar, log on demand, everything remembered; the sim's environment is identical to before (3 cases). **S2 restyle done:** dark pokerIQ/bridgeIQ theme (`261006/gui/s2_vs_iq.jpg`). 🟡 **AWAITING THE PO's look** |
 | **DOC-RACE-1** | Documentation on how to race, drawing on the docs under `~/sgl/THU` (`DOC/`: GPL manual, setup guides, brake bias, diffs, tyre heat, ...) (PO 2026-10-06) | ✅ **S1 (2026-10-06):** `demo/native/docs/HOW_TO_RACE.md`, in the launcher as Help → How to race…; 🟡 awaiting the PO's read |
-| **REPLAY-2** | A replay is ALWAYS available for the session just exited; add the GPL Replay Analyser's analysis features (gold standard: `~/sgl/THU/WP/drive_c/Program Files/GPL Replay Analyser`) alongside replaying the video; optional Claude Code analysis of the replay with how-to-improve advice (PO 2026-10-06) | **S1 (2026-10-07) always-a-replay DONE:** every session records (practice, any field), autosaved every 20 s (survives a kill), analysis channels + a Python-readable `.jrt`; the Replays tab pre-selects the session just finished. Next: S2 the analyser |
+| **REPLAY-2** | A replay is ALWAYS available for the session just exited; add the GPL Replay Analyser's analysis features (gold standard: `~/sgl/THU/WP/drive_c/Program Files/GPL Replay Analyser`) alongside replaying the video; optional Claude Code analysis of the replay with how-to-improve advice (PO 2026-10-06) | **S1 (2026-10-07) always-a-replay DONE:** every session records (practice, any field), autosaved every 20 s (survives a kill), analysis channels + a Python-readable `.jrt`; the Replays tab pre-selects the session just finished. **S2 (2026-10-07) the analyser:** Replays → Analyse… -- laps, track map with racing lines, graphs vs distance, time difference, split times + theoretical best. Next: S3 reports |
 | **COCKPIT-GOLD-1** | Cockpit mirrors closer but still not right -- they look tilted slightly up; match the gold. The windscreen/canopy is solid where GPL's is almost transparent -- match the gold (PO 2026-10-06) | open |
 | **HANDS-2** | Restore the arms and gloves in the cockpit view AND on the AI cars' external views, per the gold; watch for sleeves going upward ("rabbit ears") from outside the car instead of running from the driver to the gloves (PO 2026-10-06; supersedes HANDS-1's "hidden by default") | open |
 | **E107** | **EPIC (PO priority): Julia AI as close as possible to GPL AI** | **AIGPL-2 (2026-10-04): GPL's own AI algorithm, reverse-engineered from gpl.exe** -- the PO: *"The AI cars worked perfectly in the WG race!"*; E107-S11 GPL's passing rails pass the graded test. Open: per-track confirmation by the PO on the other four tracks. |
@@ -23197,3 +23197,31 @@ to `show_latest`, which pre-selects that session's recording and says so; the st
   the Race tab → Replays wiring, and Watch launching the selected file with its track and field.
 
 * **Gates** (`GATES_SKIP=road_clear_smoke`): 46/46 pass (now including `launcher_smoke`).
+
+### REPLAY-2 S2 (2026-10-07): the analyser -- GPL Replay Analyser's core views on the `.jrt`
+* **`demo/native/analyser.py`** (pure Python + PyQt6, no numpy: it runs from the AppImage), opened by **Replays →
+  Analyse…** (enabled when the recording has its `.jrt`; older replays say why not). As GPL Replay Analyser:
+  * **Laps**: every complete timed lap of every car (the out-lap and laps cut by a restart are not timed), lap times
+    from the exact line crossing (interpolated between frames), "(off track)" when the player left the road; tick up to
+    **five**; the window opens on a comparison (the player's best + the fastest other lap).
+  * **Graphs against distance** (one shared distance grid, 5 m): speed, **time difference** (lap 2 − lap 1), throttle,
+    brake, steering, gear, rpm (player), lateral and longitudinal g (every car, from speed and heading), position
+    across the road; a **Show:** row picks the channels; the mouse is a shared cursor with read-outs and a marker on the
+    map; wheel zooms, drag pans, double-click resets.
+  * **Track map**: the circuit (the centreline) with each lap's racing line in its colour; zoom/pan. Handedness
+    checked: Zandvoort's Tarzan draws as the right-hander it is, and the lap runs clockwise.
+  * **Split times** at 25/50/75 % (the Analyser's split points): four sectors per lap and each driver's **theoretical
+    best** (sum of best sectors).
+* The replay's names are now the drivers ("You", "J Clark (Lotus)", ...) -- the playback HUD shows them too; the
+  chassis-only names made two Lotus laps indistinguishable.
+* The theme gained table/header/splitter styles (the lap table rendered white on the dark theme).
+* **Verified:** `tests/analyser_test.py` on a synthetic recording with exact answers (1000 m circle, 50 and 40 m/s,
+  crossings between frames): lap times 20.000/25.000 s, splits 5/10/15 s, delta at 500 m = 2.500 s, lateral g = v²/R,
+  the window opens on two laps and paints. **Known positive:** forcing the crossing fraction to 0.5 shifts the splits by
+  0.027 s and the test FAILS. Real recordings (`261007/analyser/`): a 3-AI Zandvoort race (AI laps 2:24.9/2:25.2/2:38.8)
+  and an autodriven race with player laps (`player2_graphs.png`: You 4:02.3 vs Clark 3:41.3, every channel).
+* Found on the way (not a recorder bug): `JM_AUTODRIVE` drives at ONE target speed (45 m/s default) with no traffic
+  awareness -- it rear-ended a 62 %-pace AI car at 156 km/h at s=313, and alone it arrives at Tarzan flat out. Test
+  recordings used `JM_AUTODRIVE_V=22`.
+* `launcher_smoke` now runs three tests (launcher, analyser, section names): PASS.
+

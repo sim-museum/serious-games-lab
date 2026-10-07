@@ -290,6 +290,9 @@ GRAPH_CHANNELS = [  # (key, title, unit, player-only) -- titles fit the 80 px la
 ]
 
 
+DEFAULT_CHANNELS = ("kmh", "delta", "throttle", "brake", "steer", "glat")
+
+
 class Graphs(QWidget):
     """Stacked channel plots against lap distance; the mouse sets a shared cursor (read-outs + map marker).
     Wheel = zoom the distance axis around the mouse, drag = pan, double-click = whole lap."""
@@ -298,7 +301,8 @@ class Graphs(QWidget):
     def __init__(self):
         super().__init__()
         self.setMinimumSize(480, 300); self.setMouseTracking(True)
-        self.laps = []; self.chans = [c for c in GRAPH_CHANNELS]; self.enabled = {c[0]: True for c in GRAPH_CHANNELS}
+        self.laps = []; self.chans = [c for c in GRAPH_CHANNELS]
+        self.enabled = {c[0]: c[0] in DEFAULT_CHANNELS for c in GRAPH_CHANNELS}
         self.x0 = 0.0; self.x1 = 1.0; self.cursor = None; self._drag = None; self.L = 1.0
 
     def set_data(self, laps, laplen):
@@ -448,7 +452,14 @@ class AnalyserWindow(QDialog):
         split.addWidget(left)
         self.tabs = QTabWidget(); split.addWidget(self.tabs)
         self.map = TrackMap(); self.graphs = Graphs()
-        both = QSplitter(Qt.Orientation.Vertical); both.addWidget(self.graphs); both.addWidget(self.map)
+        gbox = QWidget(); gv = QVBoxLayout(gbox); gv.setContentsMargins(0, 0, 0, 0)
+        crow = QHBoxLayout(); crow.addWidget(QLabel("Show:"))
+        self.chan_boxes = {}
+        for key, title, _u, _po in GRAPH_CHANNELS:                 # the channels to plot, as the Analyser's graph menu
+            cb = QCheckBox(title); cb.setChecked(self.graphs.enabled[key])
+            cb.toggled.connect(lambda on, k=key: self._chan(k, on)); crow.addWidget(cb); self.chan_boxes[key] = cb
+        crow.addStretch(1); gv.addLayout(crow); gv.addWidget(self.graphs, 1)
+        both = QSplitter(Qt.Orientation.Vertical); both.addWidget(gbox); both.addWidget(self.map)
         both.setSizes([560, 260])
         self.tabs.addTab(both, "Graphs + map")
         self.map_full = TrackMap(); self.tabs.addTab(self.map_full, "Track map")
@@ -487,6 +498,9 @@ class AnalyserWindow(QDialog):
         self.map.set_data(self.rep, sel); self.map_full.set_data(self.rep, sel)
         self.hint.setText(("Time difference is lap 2 minus lap 1 (above zero: lap 2 behind). " if len(sel) >= 2 else "")
                           + "Tick up to five laps. Wheel zooms, drag pans, double-click resets.")
+
+    def _chan(self, key, on):
+        self.graphs.enabled[key] = on; self.graphs.update()
 
     def _cursor(self, d):
         self.map.cursor_d = d; self.map.update()
