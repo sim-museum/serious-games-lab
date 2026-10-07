@@ -148,6 +148,58 @@ class PostGame(unittest.TestCase):                # CM-20: Chessmaster's Post-Ga
         self.assertLess(d.suggested.rating, w._opponent().rating + 1)
 
 
+class TournamentFlow(unittest.TestCase):          # CM-22: a whole round robin through the windows
+    def setUp(self):
+        self.home = tempfile.mkdtemp(prefix="chessiq-test-")
+        os.environ["CHESSIQ_HOME"] = self.home
+        os.environ["CHESSIQ_POSTGAME"] = "0"
+        from PyQt6.QtWidgets import QApplication, QMessageBox
+        from chessiq import app as A, rating as R
+        self.A, self.qa = A, QApplication.instance() or QApplication([])
+        QMessageBox.question = staticmethod(lambda *a, **k: QMessageBox.StandardButton.No)
+        R.Profile("Tester", 1300).save()
+
+    def tearDown(self):
+        os.environ.pop("CHESSIQ_POSTGAME", None)
+        self.w.close()
+        shutil.rmtree(self.home, ignore_errors=True)
+
+    def run_until(self, cond, secs=180):
+        import time
+        t = time.monotonic()
+        while not cond() and time.monotonic() - t < secs:
+            self.qa.processEvents()
+            time.sleep(0.05)
+
+    @unittest.skipUnless(os.access(FSF, os.X_OK), "Kramnik Fairy-Stockfish missing")
+    def test_round_robin_through_the_windows(self):
+        from chessiq import tourney_ui
+        self.w = w = self.A.MainWindow()
+        w.people = [p for p in w.people if p.engine == "fsf"]          # engine opponents only, for speed
+        tw = tourney_ui.start(w, "rr", 3, 0, 1100, 1500, 0, False, seed=3)
+        w.tourney = tw
+        t = tw.t
+        while True:
+            if tw.my_game() is not None:
+                tw.play_mine()
+                self.assertIsNotNone(w.tourney_game)
+                self.run_until(lambda: w.game.local_to_move())
+                w.resign(confirm=False)
+                self.run_until(lambda: tw.my_game() is None)
+            tw.quick_results()
+            self.run_until(lambda: not t.pending())
+            self.assertEqual(t.pending(), [])
+            if len(t.rounds) == t.n_rounds:
+                break
+            tw.next_round()
+        self.assertTrue(t.finished())
+        self.assertEqual(t.points(t.human), 0.0)                          # every game resigned
+        self.assertEqual(len(t.standings()), 4)
+        again = tourney_ui.resume(w)
+        self.assertEqual(again.t.standings(), t.standings())
+        again.close()
+
+
 class LeelaOnlyWhenRunnable(unittest.TestCase):    # a missing lc0 must not leave "Leela 1370" played by a stand-in
     @unittest.skipUnless(os.access(FSF, os.X_OK), "Kramnik Fairy-Stockfish missing")
     def test_no_leela_without_lc0(self):

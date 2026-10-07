@@ -815,3 +815,18 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
     - Swiss over 20 seeds: no rematches and at most one bye. The leaders meet, colours balance, and you never get
       the bye.
     - Sonneborn–Berger against hand-computed values, and a played-out engine game.
+- **CM-22 (10-07): done. Tournament windows** (`chessiq/tourney_ui.py`; Tournament menu: New, Resume, Show).
+  - **New tournament:** round robin, double round robin or Swiss (3–9 rounds); 3–11 opponents drawn from a rating
+    range around yours (widened if too few qualify); the time control for your games; rated or not.
+  - **The window** (non-modal) shows:
+    - this round's games and results;
+    - **Play my game**, which sets up the main board (opponent, colour, clock, rated) and records your result when
+      the game ends;
+    - **Quick results**, which plays out the computer games with their engines in a thread;
+    - **Next round**;
+    - standings with tie-breaks and a crosstable, your row highlighted.
+  - The event is saved after every result (`tournament.json` beside your profile), and Resume reloads it.
+  - A manual New Game unlinks the tournament game, so an unrelated game is never scored as a tournament result.
+  - Off-screen test: a whole 4-player round robin through the windows (your games resigned, computer games played
+    out), finished, saved and resumed identically.
+  - Full suite: 70 tests pass.

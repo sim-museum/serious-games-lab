@@ -177,3 +177,19 @@ def play_out(white_engine, black_engine, max_plies=300):
         half = 0 if (b[m.frm][1] == "p" or m.kind != "move") else half + 1
         b, ep, turn = E.apply_move(b, m), E.ep_after(m), E.opp(turn)
         moves.append(E.sqname(m.frm) + E.sqname(m.to) + (m.promo or ""))
+
+
+def to_dict(t, extra=None):
+    """A JSON-able snapshot (the tournament in progress is saved after every result)."""
+    return {"players": t.players, "kind": t.kind, "double": t.double, "rated": t.rated, "n_rounds": t.n_rounds,
+            "human": t.human, "rounds": [[[w, b] for w, b in rp] for rp in t.rounds],
+            "results": [[r, w, b, s] for (r, w, b), s in t.results.items()], "extra": extra or {}}
+
+
+def from_dict(d):
+    t = Tournament([tuple(p) for p in d["players"]], d["kind"], rounds=d["n_rounds"], double=d["double"],
+                   rated=d["rated"], human=d.get("human"))
+    t.n_rounds = d["n_rounds"]
+    t.rounds = [[(w, b) for w, b in rp] for rp in d["rounds"]]
+    t.results = {(r, w, b): s for r, w, b, s in d["results"]}
+    return t, d.get("extra", {})

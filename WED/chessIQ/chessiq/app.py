@@ -16,7 +16,7 @@ from . import VERSION
 from . import engine as E
 from . import serious_games_week
 from .game import AI_NAME, MAX_DEPTH, THINK_S, Game, load_pgn
-from . import analysis, clock as clocks, cmbook, personalities, postgame, rating, uci_engine
+from . import analysis, clock as clocks, cmbook, personalities, postgame, rating, tourney_ui, uci_engine
 from .net import DEFAULT_PORT, Link
 
 LIGHT, DARK = QColor("#f0d9b5"), QColor("#b58863")
@@ -320,6 +320,7 @@ class MainWindow(QMainWindow):
         self.threads = []
         self._restarts = 0              # engine restarts in this game (one is allowed; never a stand-in engine)
         self._postgame_done, self.postgame = False, None   # the Post-Game Analysis window (CM-20)
+        self.tourney, self.tourney_game = None, None      # the tournament window, and your game in it (CM-22)
         self.engine = None                  # the chosen personality's engine process (EPIC CM)
         self.profile = rating.Profile.load()  # your rating (CM-4); None until your first rated game
         self.rated = None                   # the rated game in progress: {opponent, rating, colour, recorded}
@@ -487,6 +488,13 @@ class MainWindow(QMainWindow):
         self.leave_act.setEnabled(False)
         for a in (self.host_act, self.join_act, self.leave_act):
             net.addAction(a)
+        tm = self.menuBar().addMenu("&Tournament")
+        for label, fn in (("&New tournament...", self.tournament_new), ("&Resume the saved tournament",
+                                                                          self.tournament_resume),
+                          ("&Show the tournament window", self.tournament_show)):
+            act = QAction(label, self)
+            act.triggered.connect(fn)
+            tm.addAction(act)
         self.resize(1000, 680)
 
     # ---------------- game flow ----------------
@@ -706,6 +714,7 @@ class MainWindow(QMainWindow):
         self.review = None
         self._restarts = 0
         self._postgame_done = False
+        self.tourney_game = None                    # a tournament game is linked after it starts (play_mine)
         self._start_engine()
         self.game = Game(self.mode.currentData(), self.side.currentData())
         self.game.opp_book = self._opponent_book()
@@ -1151,6 +1160,8 @@ class MainWindow(QMainWindow):
         self.token += 1
         if self.postgame is not None:
             self.postgame.close()
+        if self.tourney is not None:
+            self.tourney.close()
         if self.announcer:
             self.announcer.stop()
         if self.link:
@@ -1198,9 +1209,37 @@ class MainWindow(QMainWindow):
             self._record_rated(0.5 if w is None else 1.0 if w == self.rated["colour"] else 0.0)
             self.status.setText(self._status_html(thinking))
         self.undo_btn.setEnabled(not self._rated_in_progress())
+        if g.over and self.tourney_game is not None and self.tourney is not None:
+            w = g.over.get("winner")
+            self.tourney.game_over(0.5 if w is None else 1.0 if w == "w" else 0.0)
         if g.over and g.mode == "ai" and not self._postgame_done and g.history:
             self._postgame_done = True
             self._show_postgame()
+
+    def tournament_new(self):
+        if not self.people:
+            return
+        w = tourney_ui.new_tournament(self)
+        if w is not None:
+            if self.tourney is not None:
+                self.tourney.close()
+            self.tourney = w
+            w.show()
+
+    def tournament_resume(self):
+        w = tourney_ui.resume(self)
+        if w is None:
+            self.note = "No saved tournament."
+            self.render()
+            return
+        if self.tourney is not None:
+            self.tourney.close()
+        self.tourney = w
+        w.show()
+
+    def tournament_show(self):
+        if self.tourney is not None:
+            self.tourney.show(); self.tourney.raise_()
 
     def _show_postgame(self):
         """Chessmaster's Post-Game Analysis after a game against the computer (CM-20); CHESSIQ_POSTGAME=0 turns it off."""
