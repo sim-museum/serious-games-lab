@@ -108,6 +108,46 @@ class EngineFailure(unittest.TestCase):           # a dead engine process must n
         self.assertIn("failed again", w.note)
 
 
+class PostGame(unittest.TestCase):                # CM-20: Chessmaster's Post-Game Analysis after a computer game
+    def setUp(self):
+        self.home = tempfile.mkdtemp(prefix="chessiq-test-")
+        os.environ["CHESSIQ_HOME"] = self.home
+        from PyQt6.QtWidgets import QApplication, QMessageBox
+        from chessiq import app as A
+        self.A, self.qa = A, QApplication.instance() or QApplication([])
+        QMessageBox.question = staticmethod(lambda *a, **k: QMessageBox.StandardButton.No)
+
+    def tearDown(self):
+        self.w.close()
+        shutil.rmtree(self.home, ignore_errors=True)
+
+    def run_until(self, cond, secs=60):
+        import time
+        t = time.monotonic()
+        while not cond() and time.monotonic() - t < secs:
+            self.qa.processEvents()
+            time.sleep(0.05)
+
+    @unittest.skipUnless(os.access(FSF, os.X_OK), "Kramnik Fairy-Stockfish missing")
+    def test_window_after_a_game(self):
+        self.w = w = self.A.MainWindow()
+        w.who.setCurrentIndex(w.who.findData("Tasha"))
+        w.mode.setCurrentIndex(w.mode.findData("ai"))
+        w.side.setCurrentIndex(w.side.findData("w"))
+        w.new_game()
+        w.do_move(w.game.move_from_san("e4"))
+        self.run_until(lambda: len(w.game.history) >= 2)
+        w.resign(confirm=False)
+        self.run_until(lambda: w.postgame is not None and w.postgame.evals is not None)
+        d = w.postgame
+        self.assertFalse(d.isModal())
+        self.assertEqual(len(d.evals), len(w.game.history) + 1)
+        self.assertIn(d.kind, ("Blunder", "Dominated", "Disputed", "Balanced"))
+        self.assertIn("Game type", d.head.text())
+        self.assertTrue(d.suggest_btn.isEnabled())                          # a loss: someone a little weaker
+        self.assertLess(d.suggested.rating, w._opponent().rating + 1)
+
+
 class LeelaOnlyWhenRunnable(unittest.TestCase):    # a missing lc0 must not leave "Leela 1370" played by a stand-in
     @unittest.skipUnless(os.access(FSF, os.X_OK), "Kramnik Fairy-Stockfish missing")
     def test_no_leela_without_lc0(self):

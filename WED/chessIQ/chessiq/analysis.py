@@ -88,6 +88,11 @@ def evaluate_game(uci_moves, nodes=50000, progress=None, cancel=None):
             send("quit"); p.wait(timeout=3)
         except Exception:
             p.kill()
+        for f in (p.stdin, p.stdout):
+            try:
+                f.close()
+            except Exception:
+                pass
 
 
 DECIDED = 1000                     # beyond ten pawns (or a mate) the game is decided: no move there "throws" it

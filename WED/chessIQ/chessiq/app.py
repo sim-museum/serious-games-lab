@@ -16,7 +16,7 @@ from . import VERSION
 from . import engine as E
 from . import serious_games_week
 from .game import AI_NAME, MAX_DEPTH, THINK_S, Game, load_pgn
-from . import clock as clocks, cmbook, personalities, rating, uci_engine
+from . import analysis, clock as clocks, cmbook, personalities, postgame, rating, uci_engine
 from .net import DEFAULT_PORT, Link
 
 LIGHT, DARK = QColor("#f0d9b5"), QColor("#b58863")
@@ -319,6 +319,7 @@ class MainWindow(QMainWindow):
         self.token = 0                  # bumps cancel any thinking or pending book move
         self.threads = []
         self._restarts = 0              # engine restarts in this game (one is allowed; never a stand-in engine)
+        self._postgame_done, self.postgame = False, None   # the Post-Game Analysis window (CM-20)
         self.engine = None                  # the chosen personality's engine process (EPIC CM)
         self.profile = rating.Profile.load()  # your rating (CM-4); None until your first rated game
         self.rated = None                   # the rated game in progress: {opponent, rating, colour, recorded}
@@ -611,6 +612,7 @@ class MainWindow(QMainWindow):
         pgn = self.game.pgn(*((me, them) if r["colour"] == "w" else (them, me)))
         d = self.profile.record(r["opponent"], r["rating"], score, r["colour"], len(self.game.history), pgn)
         self.note = "Rated%s: your rating %+d → %d." % (" (" + why + ")" if why else "", d, self.profile.rating)
+        r["line"] = "Your rating: %+d → %d." % (d, self.profile.rating)
         self._show_opponent()
 
     def _ensure_profile(self):
@@ -703,6 +705,7 @@ class MainWindow(QMainWindow):
         self.token += 1
         self.review = None
         self._restarts = 0
+        self._postgame_done = False
         self._start_engine()
         self.game = Game(self.mode.currentData(), self.side.currentData())
         self.game.opp_book = self._opponent_book()
@@ -1146,6 +1149,8 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, ev):
         self.token += 1
+        if self.postgame is not None:
+            self.postgame.close()
         if self.announcer:
             self.announcer.stop()
         if self.link:
@@ -1193,6 +1198,27 @@ class MainWindow(QMainWindow):
             self._record_rated(0.5 if w is None else 1.0 if w == self.rated["colour"] else 0.0)
             self.status.setText(self._status_html(thinking))
         self.undo_btn.setEnabled(not self._rated_in_progress())
+        if g.over and g.mode == "ai" and not self._postgame_done and g.history:
+            self._postgame_done = True
+            self._show_postgame()
+
+    def _show_postgame(self):
+        """Chessmaster's Post-Game Analysis after a game against the computer (CM-20); CHESSIQ_POSTGAME=0 turns it off."""
+        if not analysis.available() or os.environ.get("CHESSIQ_POSTGAME", "1") == "0":
+            return
+        g = self.game
+        w = g.over.get("winner")
+        result = 0.5 if w is None else 1.0 if w == "w" else 0.0
+        opp = self._opp_name()
+        white, black = (player_name(), opp) if g.human == "w" else (opp, player_name())
+        moves = [E.sqname(h["m"].frm) + E.sqname(h["m"].to) + (h["m"].promo or "") for h in g.history]
+        sans = [h["san"] for h in g.history]
+        mine = self.profile.rating if self.profile is not None else (self._opponent().rating if self._opponent() else 1400)
+        line = self.rated.get("line", "") if self.rated else ""
+        if self.postgame is not None:
+            self.postgame.close()
+        self.postgame = postgame.PostGameDialog(self, moves, sans, result, white, black, self.people, opp, mine, line)
+        self.postgame.show()
 
     def _status_html(self, thinking):
         g = self.game

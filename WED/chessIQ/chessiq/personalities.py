@@ -158,7 +158,8 @@ def _cstr(b):
 
 
 def read_cmp(path):
-    b = open(path, "rb").read()
+    with open(path, "rb") as f:
+        b = f.read()
     if len(b) < 0x1E4 or not b.startswith(b"Chessmaster"):
         raise ValueError("not a Chessmaster personality: " + path)
     v = struct.unpack_from("<38i", b, 0x20)
