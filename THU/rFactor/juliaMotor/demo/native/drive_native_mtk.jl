@@ -5230,13 +5230,21 @@ function twinboard_classify!(nm, parts)
         push!(Nn, n ./ l); push!(Cc, (a .+ b .+ c) ./ 3); push!(Ar, l/2); push!(Tx, pp.tex)
     end
     n = length(Ar); (2 <= n <= 400) || return
-    tot = sum(Ar); paired = falses(n)
+    tot = sum(Ar); paired = falses(n); copl = falses(n)
     for i in 1:n, j in i+1:n
         (Tx[i] == Tx[j] && Ar[i] > 0.05 && Ar[j] > 0.05) || continue
         sum(Nn[i] .* Nn[j]) < -0.99 || continue
-        d = Cc[j] .- Cc[i]; sep = sum(d .* Nn[i]); 0.2 < abs(sep) < 3.0 || continue
-        sqrt(max(sum(d .^ 2) - sep^2, 0.0)) < 2.0 || continue
+        d = Cc[j] .- Cc[i]; sep = sum(d .* Nn[i])
+        # GPLBOARD-1 (2026-10-06): COPLANAR back-to-back faces too (|sep| <= 0.2) -- Zandvoort's MARTINI board `bigbosch`
+        # carries its front (full UVs) and a reverse-wound back (every UV at one texel) on the SAME vertices; GPL culls
+        # back faces, so each side shows one. Drawn two-sided both land at the same depth and the back, drawn later, won:
+        # a blank grey board from both sides where the gold shows MARTINI.
+        abs(sep) < 3.0 || continue
+        # in-plane centroid offset: a big board's front and back may be triangulated differently (bigbosch: 12 x 6 m,
+        # matching triangles' centroids 2.0 m apart), so the limit grows with the triangles' size
+        sqrt(max(sum(d .^ 2) - sep^2, 0.0)) < max(2.0, sqrt(max(Ar[i], Ar[j]))) || continue
         paired[i] = paired[j] = true
+        abs(sep) <= 0.2 && (copl[i] = copl[j] = true)
     end
     frac = sum(Ar[paired]) / tot
     ctr = (sum(Cc[i][1]*Ar[i] for i in 1:n), sum(Cc[i][2]*Ar[i] for i in 1:n), sum(Cc[i][3]*Ar[i] for i in 1:n)) ./ tot
@@ -5245,7 +5253,8 @@ function twinboard_classify!(nm, parts)
     get(ENV, "JM_TWINBOARD_DIAG", "0") != "0" && frac > 0 &&
         println("  [twinboard] ", rpad(nm, 12), " tris ", n, "  back-to-back area ", round(frac, digits=2),
                 "  outward(CCW) ", round(outw / max(sum(Ar[paired]), 1e-9), digits=2), istwin ? "  -> CULLED" : "")
-    istwin && (TWINBOARD[nm] = outw >= 0)
+    # coplanar pairs have no "outward" side: keep the faces whose OWN winding faces the viewer (GPL's back-face culling)
+    istwin && (TWINBOARD[nm] = (sum(Ar[copl]; init = 0.0) > 0.5*sum(Ar[paired])) ? true : outw >= 0)
     nothing
 end
 const OBJ_FF_CW    = get(ENV,"JM_OBJ_FF","cw") == "cw"
@@ -6471,6 +6480,8 @@ let objnames=Set{String}()
                 # the bilbrd01 ad sheet, with per-face winding INCONSISTENT inside the object (Castrol
                 # correct while MARTINI flips in every config).  Full closure needs per-face
                 # track-aware face selection at scenery-build time (instance transform × centreline).
+                # SUPERSEDED (E60-S4, 2026-10-06): MARTINI is `bigbosch` (sheet kendl03), not chmp4-1 (an A-frame with no
+                # placement among the 247 decoded); its blank was a coplanar reverse-wound back -- fixed by twinboard_classify!.
                 parts = Render.extract_gpl_car(p; track=true, mirror=OBJ_MIRROR, dedup=(get(ENV,"JM_OBJ_DEDUP","old")=="orient" ? :orient : true), exclude=(CROWD_TEX..., obj_extra_excl(inst.name)...))  # strip painted-on crowds + per-object roadward parts (E58 startbox)
                 if isempty(parts); objmesh[inst.name]=nothing    # was an all-crowd object → drop (NOT a billboard)
                 else

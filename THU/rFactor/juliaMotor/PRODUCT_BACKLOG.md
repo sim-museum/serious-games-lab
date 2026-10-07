@@ -22942,3 +22942,35 @@ objects were turned the wrong way; the shipped build had a huge YELLOW SLAB over
   a stone farmhouse on the left at the road, houses right) — ours at s 2900–3250 has houses either side
   (`gold_house.jpg` vs `jr_house.jpg`); matching individual houses needs a tighter s↔t alignment than this sprint had.
 * **For the PO:** on the new build, is the corner house still missing (and which corner), and is the yellow polygon gone?
+
+### E60 — retrospective + S4 (2026-10-06): Zandvoort's Tarzan boards were blank backs drawn over their fronts — MARTINI and CALTEX restored
+**Retrospective.** E60 last moved on 2026-08-01 (S3); its open D6 ("Tarzan board wall") was blamed on inconsistent
+winding in `chmp4-1.3do`. A fresh look at Tarzan (s 250–400, `261006/zandmap/tarzan_gold_vs_ours.jpg`) against the
+cockpit gold t=16…22 found a different, larger defect: the gold's three big hoardings across the bend (CASTROL,
+MARTINI, CALTEX) were in ours one Castrol plus two large **plain grey-white boards**.
+* Not yaw: flipping `bigbosch`'s yaw (`flip_bigbosch_ab.jpg`) only turned the board; still blank. `JM_PLACE_HIDE` is the
+  Ring scenery path only; `JM_DROPTEST` (the generic object path) attributed the boards: `bigbosch` (12 × 6 m, the
+  MARTINI sheet `kendl03`) and `kendl03` (the CALTEX board) — `drop_ab.jpg`.
+* Not the textures: `kendl03.mip`, `caltex.mip`, `cast.mip` decode correctly (`board_textures.png`).
+* **The cause:** `bigbosch.3do` carries its front (full UVs) and a reverse-wound back whose UVs are all one texel, on
+  the **same vertices**. GPL culls back faces, so one side shows from each direction. We draw objects two-sided, so
+  both land at the same depth and the back (drawn second) wins — a blank board from both sides. OBJDUP-2's twin-board
+  rule only paired back-to-back faces 0.2–3 m apart; it skipped coplanar pairs, and its in-plane test (centroids within
+  2 m) missed a 12 m board whose front and back are triangulated differently.
+* **Fix (default):** `twinboard_classify!` also pairs coplanar back-to-back faces (|sep| ≤ 0.2 m), with the in-plane
+  limit grown to √(triangle area); an object paired mostly coplanar keeps the faces whose own winding faces the viewer
+  (GPL's back-face cull). `JM_TWINBOARD_CULL=0` still reverts the whole rule.
+* **Verified:** Zandvoort sweep s 250/350/1100/2200/3300/4000 before/after (`coplanar_sweep_ab.jpg`): MARTINI and
+  CALTEX appear at Tarzan as in the gold; 18 objects now classified (13 before) -- the five new are all single-sheet
+  boards built the same way: `bigbosch`, `castrol1`, `pepsi2`, `gyr` (Goodyear), `cok` (Coca-Cola); views without boards change only at
+  the noise level. Cross-track A/B at HEAD vs fix (`261006/coplanar/`): Watkins Glen 0.18/0.07 %, Spa 0.35/0.30 %, Monza
+  0.03/0.20 %, the Ring 0.02/0.00 % of pixels differ — noise level. The one concentrated change (Spa b, `spa_b_diffzoom.png`)
+  is a coplanar two-faced bush sprite now showing its viewer-facing side (darker) instead of its back — GPL's rule.
+* **Left for E60:** the gold's Tarzan crowd lines and spectator billboards behind the fence; D6's `chmp4-1` (inside `zandvort.dat`) is a 4 m
+  A-frame: two `bilbrd01` panels leaning ~12° outward, both textured, both facing out -- not a twin board, and from either
+  side the outer panel covers the inner one, and it is not among the 247 placements decoded from
+  `zandvort.3do`. D6's August symptom was "MARTINI blank in every config" -- MARTINI is `bigbosch`, fixed above, so
+  **D6 is closed**; the August attribution to `chmp4-1` was wrong (comment at the A/B matrix in drive_native_mtk.jl updated).
+* **Gates:** 45/45 pass. road_clear_smoke was started by mistake (the bare `gates.sh` includes it; it is run only on
+  the PO's request) and hit its 1800 s cap (rc 124) -- not a verdict on this change. `gates.sh` now takes
+  `GATES_SKIP="..."` (listed as SKIPPED, never counted as passes); autonomous sprints run `GATES_SKIP=road_clear_smoke`.

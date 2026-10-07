@@ -16,6 +16,9 @@ set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PROJ="$(cd "$HERE/.." && pwd)"
 FILTER="${1:-}"
+# GATES_SKIP="a b": gates NOT run, listed as SKIPPED (never counted as passes). road_clear_smoke is run only on the
+# PO's request (it has run the machine out of memory), so autonomous sprints use GATES_SKIP=road_clear_smoke.
+SKIP=" ${GATES_SKIP:-} "; skipped=""
 SMOKES="parse_smoke gplwall_smoke wreck_smoke contact_smoke stacked_contact_smoke solid_box_smoke ai_parked_susp_smoke boundary3d_smoke extforce3d_smoke wheelmu_smoke drive3d_smoke stall_smoke transmission_smoke controls_smoke people_smoke damage_smoke mipcolor_smoke ai_field_smoke susp_pose_smoke netplay_smoke setup_tab_smoke offroad_smoke wreck_seal_smoke reground_smoke netplay_dr_smoke netplay_dr2_smoke hat_hole_smoke clutchgate_smoke contact_geom_smoke lapprog_smoke restart_smoke softband_smoke vtbrake_smoke netai_smoke netai_host_smoke racestart_smoke step_guard_smoke road_clear_smoke telemetry_rpm_smoke wheel_hubs_smoke seam_smoke gplroad_smoke gpldlat_smoke gplplan_smoke carsetup_smoke netcollide_smoke"
 
 # OFFROAD-1 (S12, 2026-09-17): offroad_track_smoke is in the gproj list above but deliberately NOT
@@ -50,6 +53,7 @@ echo "JuliaMotorMTK gates  (project: $PROJ)"
 [ -n "$unlisted" ] && echo "  NOTE: in tools/ but not in SMOKES, so NOT run by this suite:$unlisted"
 for g in $SMOKES; do
   [ -n "$FILTER" ] && case "$g" in *"$FILTER"*) ;; *) continue ;; esac
+  case "$SKIP" in *" $g "*) printf "  %-22s SKIPPED (GATES_SKIP)\n" "$g"; skipped="$skipped $g"; continue ;; esac
   [ -f "$HERE/$g.jl" ] || { echo "  MISSING  $g.jl"; fail=$((fail+1)); failed="$failed $g(missing)"; continue; }
   log="/tmp/jm_gate_$g.log"
   printf "  %-22s " "$g"
@@ -82,5 +86,6 @@ for g in $SMOKES; do
   fi
 done
 echo "----------------------------------------"
+[ -n "$skipped" ] && echo "SKIPPED (not run):$skipped"
 if [ "$fail" -eq 0 ]; then echo "ALL GATES PASS ($pass)"; exit 0
 else echo "GATES FAILED ($fail of $((pass+fail))):$failed"; exit 1; fi
