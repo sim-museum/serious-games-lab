@@ -22643,6 +22643,21 @@ each tyre threw no shadow and the shadow began a hand's width from the tyre.
   shadow at all and the new one has one under each tyre. `JM_SHADOW_NOFS=0 JM_SHADOW_BIASK=1` restores the old shading.
 * **For the PO:** does the car still look like it floats ~10 cm? (The physics gap was always ~0.)
 
+### HANDS-1 S1 (2026-10-06) — the cockpit arms/gloves (hidden since E106-S7) re-examined after CARHAND-1
+E106-S7 hid the gloves + sleeves (`JM_HANDS=0` default: "an absent arm is a smaller lie than a detached one") until the
+hands item ran; it never did, and CARHAND-1 has since reflected the car. Captures (`261006/hands/arms_sz_ab.jpg`, WG s=600
+cockpit, `JM_HANDS=1`) vs the gold cockpit (Ring S/F, `260802_nurburgring_cockpit.mp4` t=60):
+* **Sleeve angle:** ARMFIX's lateral squash `JM_ARM_SZ` 0.55 leaned each sleeve INWARD going up (crossing toward the hub);
+  gold's lean OUTWARD to the frame's lower corners. **1.0 matches the gold's lean -- now the default** (only used with
+  `JM_HANDS=1`).
+* **Sleeve colour:** they read as CHROME -- `lotarms.mip` decodes to high-contrast greyscale wrinkles; gold's sleeves are soft
+  white with a RED cuff stripe. The red is most likely GPL's palette remap of the driver's suit colours (our decode uses a
+  fixed CMAP), not a separate mesh. Next: find the palette indices GPL remaps for the driver (helmet/suit) and apply Clark's.
+* **Gloves:** they show the dark PALM side, with the red rim visible through gaps; gold shows the white BACK of each hand
+  over the rim at ~9 and 3 o'clock. The fist orientation (split_fists + gripmat) is wrong after the reflection.
+**Stays hidden by default** until the gloves and sleeve colour are right (the E106-S7 principle). Next sprint: glove
+orientation, then the palette remap.
+
 ### HOCHEICHEN-BB (Ring billboards "set back on the left in the forest near high oaks", PO 2026-10-05) — S1: not located; SHELVED for the PO's location
 * Real-world Hocheichen lies between Hatzenbach and Quiddelbacher Höhe; GPL has no board for it, so our s≈2700–3900
   (Hatzenbach 2571 … Flugplatz 3984). Chase views at s 2700/2950/3200/3450/3700/3900 and cockpit views at 3000–3750
