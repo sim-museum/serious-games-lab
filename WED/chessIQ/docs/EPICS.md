@@ -723,3 +723,26 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
   uses `kramnik-t40a1` when the GPU build is present (Nibbler: 152k nodes in 22 s on the self-capture position, both
   top lines winning for Black), and `kramnik-sp1` on the CPU. chessIQ's opponents keep sp1 (fast; their ratings
   were measured with it). `KRAMNIK_NET` overrides.
+- **NN-16 (10-07): done.** The strongest network against the strongest engine: **`kramnik-t40a1` (GPU) vs
+  full-strength Fairy-Stockfish (Kramnik patch, 2 threads, 256 MB hash), both at 1 s a move: 17.5/40 (44%), −44 ±
+  109, even.** The neural network is level with the strongest Kramnik engine on this machine. Both are far beyond
+  the ladder's top (65,536 nodes, about 3,300), so there is no honest absolute number. "Champion strength" stays
+  unmeasured, since no outside field exists.
+- **NN-17: done in NN-16 part 1** (Nibbler uses `kramnik-t40a1` on the GPU and `kramnik-sp1` on the CPU; chessIQ's
+  opponents use sp1 with measured club levels).
+
+## EPIC NN, retrospective 5 (2026-10-07, end of NN-13..NN-18)
+- **Delivered:**
+  - The 20x256 network loads, trains and exports exactly.
+  - One self-play adaptation step gives +36 (95% −2 to +75) over untouched T40.
+  - At 1 s a move it is +58 ± 89 over sp1 and level with full-strength Fairy-Stockfish.
+  - Nibbler picks the network by hardware.
+- **Lessons:**
+  1. Scale the learning rate to the network: sp1's rate damaged T40 (−160).
+  2. Falling held-out agreement with the search's own move is a stop signal before any match.
+  3. Compare networks at equal *time*, not equal nodes. +277 at equal nodes became even at equal time.
+- **Open, for a later block:**
+  - More self-play generations from t40a1. At about 2.5 h each on this GPU, a few Elo per step needs 400-game
+    gates.
+  - A longer-time reference match (10 s a move) to see whether the network's lead grows with time.
+  - Distilling t40a1 into a 10x128 network for CPU-only machines.
