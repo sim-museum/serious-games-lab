@@ -22,9 +22,15 @@ w.mode.setCurrentIndex(w.mode.findData('ai')); w.side.setCurrentIndex(w.side.fin
 w.rated_box.setChecked(True); w.tc.setCurrentIndex(1)                         # Fischer 10+3
 w.new_game()
 print('rated game vs', w.rated['opponent'], w.rated['rating'], '| nodes', getattr(w.engine, 'nodes', w.engine.p.nodes), 'multipv', w.engine.multipv, 'randomness', w.engine.p.randomness, '| clock', w.clock.kind, w.clock.args, flush=True)
+END = {}
+
+
 def tick():
     g = w.game
-    if g.over:
+    if g.over:                                   # keep the event loop running until the post-game analysis is in,
+        pg = w.postgame                          # as it is for a player (quitting the loop drops its signal)
+        if pg is not None and pg.evals is None and __import__('time').time() - END.setdefault('t', __import__('time').time()) < 300:
+            QTimer.singleShot(100, tick); return
         qa.quit(); return
     if g.turn == g.human and w.review is None:
         uci = [E.sqname(h['m'].frm) + E.sqname(h['m'].to) + (h['m'].promo or '') for h in g.history]
@@ -40,4 +46,8 @@ prof = json.load(open(os.path.join(os.environ['CHESSIQ_HOME'], 'profile.json')))
 print('over:', g.over, '| plies', len(g.history), '| clocks W %.0f s, B %.0f s' % (w.clock.left['w'] / 1000, w.clock.left['b'] / 1000))
 print('rating 1400 ->', prof['rating'], '| games', prof['games'], '| note:', w.note)
 print('pgn tail:', ' '.join(prof['history'][-1]['pgn'].split())[-80:] if prof['history'] else '-')
+if w.postgame is not None:                       # CM-20: the Post-Game Analysis window
+    print('post-game:', ' '.join(w.postgame.head.text().replace('<br>', ' | ').split()))
+w.rating_history()                               # CM-23
+print('rating history points:', w.history_dlg.points, '| rows', w.history_dlg.table.rowCount())
 w.close(); send('quit')

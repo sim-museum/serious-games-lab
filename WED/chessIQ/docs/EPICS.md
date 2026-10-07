@@ -836,3 +836,32 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
   - A table of your rated games, newest first: date, opponent and rating, colour, result, and the change.
   - Test: three recorded games give four chart points, end at the profile's rating, and list three rows, newest
     first. Full suite: 71 tests pass.
+- **CM-24 (10-07): done. End to end** (`tools/ranked_game_check.py`, Leela 1150): a rated 10+3 game, then the
+  Post-Game Analysis ("admin won in 32 moves. Game type: Dominated. Costliest moves: 28... Rxe6 (−5.7). Opening:
+  followed grandmaster games for 10 plies. | Your rating: +153 → 1553. | Suggested opponent: Odile (1655)."), then
+  the rating history (two points, one row).
+  - Found on the way: the first run showed the analysis stuck at "Analysing the game…". The cause is in the
+    script, not the app. The script quit Qt's event loop the moment the game ended, and a worker thread's signal
+    sent across that quit is never delivered, even when events are pumped afterwards (reproduced in isolation).
+    The app never quits its loop at game end. The check now keeps the loop running until the analysis is in, as a
+    player's session does.
+
+## EPIC CM, retrospective 6 (2026-10-07, end of CM-19..CM-24)
+- **Delivered:**
+  - Chessmaster's Post-Game Analysis: game type, costliest moves, opening, rating change, chart, and suggested
+    opponent.
+  - Tournaments: round robin, double round robin and Swiss, with quick results, standings, crosstable, and
+    save/resume.
+  - Rating history.
+  - Club-level Leela and Maia opponents with measured ratings (done during a GPU wait).
+  - Robustness: a dead engine restarts once, and no stand-in engine ever plays under an opponent's name.
+- **Against the gold standard,** what Chessmaster has that chessIQ still lacks: the predefined tournament series
+  with hidden events, ladders and simultaneous exhibitions, training courses and mini-games, and opening names.
+  The first is content; the rest are outside this epic's scope ("play opponents at measured strength and style,
+  rated, at 10+3, under Kramnik rules").
+- **Lessons:**
+  1. Test a GUI flow the way a player drives it, with the event loop running. A harness that stops the loop can
+     invent faults (lost signals) or hide them.
+  2. State the thresholds the manual omits (game types) in code and documentation, so they can be argued with.
+- **Status:** the epic's stated goal is met and verified end to end. Further CM work is optional polish: predefined
+  tournaments, and opening names if a Kramnik-legal naming source can be found.
