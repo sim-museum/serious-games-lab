@@ -22681,6 +22681,19 @@ orientation, then the palette remap.
   family) -- in GPL that positioner is almost certainly steering-driven. Next (S4): decode lotarms' positioner chain in
   lotus.3do / gpl.exe's driver-arm matrix, place the mesh as GPL does, animate with steer. Until then `JM_HANDS` stays 0.
 
+### HANDS-1 S4 (2026-10-06) — the arms hang off the steering-wheel assembly in lotus.3do; raw they point up-and-forward (4 sprints — ROTATING)
+* The 24 `lotarms` tris and 38 `lohand` tris are placed by the SAME two positioners (nodes 11416 / 14404: d (0, ±0.126, 0.1),
+  rot (∓5°, −11°, 0)), whose chain runs 0x0B ← two 0x05 nodes ← group ← 0x0A ← **positioner 15060 at d (0.75, 0.032, 0.218)
+  = the steering-wheel centre**. So in GPL the arms move WITH the hands and the wheel -- the gold's left arm rises over the
+  rim on a left turn. Ours drew the arms static (bodyModel·ARMFIX).
+* The two 0x05 nodes are NOT transforms: gpl.exe's table (0x570220) gives FUN_004cd300 / FUN_004cd190, render-state selectors
+  that set the current material (`DAT_00570218`) and draw the child only under a visibility bit (cockpit-only etc.).
+* A/B `JM_ARMS_ON_WHEEL=1` (the gloves' wheel transform, no ARMFIX; default off): the raw arms point UP-AND-FORWARD from the
+  wheel (`261006/hands/onwheel/cockpit.png`) -- the inversion ARMFIX was invented for. The gloves are right under the same
+  chain, so GPL must treat this mesh (or its vertices/poly type) differently from our reading. **Revisit:** read gpl.exe's
+  handling of the arm polys (poly type, vertex flags) and the positioner rotation applied at runtime for the driver figure.
+* Kept: sleeves from the suit folder (S3), V-flip (S2), SZ 1.0 (S1). `JM_HANDS` stays 0 until the arms match the gold.
+
 ### HOCHEICHEN-BB (Ring billboards "set back on the left in the forest near high oaks", PO 2026-10-05) — S1: not located; SHELVED for the PO's location
 * Real-world Hocheichen lies between Hatzenbach and Quiddelbacher Höhe; GPL has no board for it, so our s≈2700–3900
   (Hatzenbach 2571 … Flugplatz 3984). Chase views at s 2700/2950/3200/3450/3700/3900 and cockpit views at 3000–3750

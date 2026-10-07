@@ -9630,6 +9630,7 @@ function split_fists(parts, tex)
 end
 handLR = isempty(handItems) ? Render.Item[] : split_fists(HANDP, handItems[1].tex)
 const HAND_GRIP = deg2rad(parse(Float32, get(ENV,"JM_HAND_GRIP","30")))
+const ARMS_ON_WHEEL = get(ENV, "JM_ARMS_ON_WHEEL", "0") != "0"
 const HAND_CULL = get(ENV, "JM_HAND_CULL", "1") != "0"   # HANDS-1 S2: 0 draws the gloves/sleeves two-sided (A/B)
 gripmat(sgn) = Render.translate(SWCENTER) * Render.rotaxis(SWAXIS, Float32(sgn*HAND_GRIP)) * Render.translate(-SWCENTER)
 # E64 S2: corrective transform for the positioner-orphaned lotarms mesh (see the draw site).
@@ -14190,7 +14191,10 @@ function main()
             _hcull = glIsEnabled(GL_CULL_FACE) == GL_TRUE
             HAND_CULL || glDisable(GL_CULL_FACE)          # HANDS-1 S2: A/B the gloves two-sided (inside-out fists?)
             if ARMS
-                for it in armItems;  Render.draw(prog, it, vp, bodyModel*ARMFIX; bright=1.15, spec=0.05, ambfill=0.60); end
+                # HANDS-1 S4: in lotus.3do the arms and gloves share the steering-wheel assembly's positioner (node 15060), so
+                # GPL turns the arms with the wheel; JM_ARMS_ON_WHEEL=1 draws them with the gloves' transform, no ARMFIX (A/B).
+                _amod = ARMS_ON_WHEEL ? swModel : bodyModel*ARMFIX
+                for it in armItems;  Render.draw(prog, it, vp, _amod; bright=1.15, spec=0.05, ambfill=0.60); end
             end
             if length(handLR) == 2                      # left fist +grip, right fist −grip → gold's 10-and-2
                 Render.draw(prog, handLR[1], vp, swModel*gripmat(+1); bright=1.15, spec=0.05, ambfill=0.60)
