@@ -21601,6 +21601,15 @@ conifer stretches (gold t≈257/662/716 have tall dense conifers close to the ro
   varies (incidents, traffic), so a ±6 s window can still be ±200 m. **Use only stations within ~300 m of an anchor for
   defect calls**, and grow anchors at landmarks (bridges, banners, the Karussell-style features).
 
+* **Near-anchor checks (S8), full resolution (`261006/ringmap/anchors_hr_compare.jpg`):** Wehrseifen (s 9200 / t 438–440) --
+  chequered barrier, Coca-Cola banner, hill fence, tyre stack, hedge left: all present. Karussell (s 13900 / t 594–596) --
+  the concrete banking with tall trees behind: present.
+* **The sky is NOT a defect** (it looked grey-blue against the gold's deep blue in half-size montages). The Ring draws GPL's own
+  `horiz.3do`: 12 panels at −2.4°…+23.5° elevation carrying a photographic panorama -- blue sky with white cumulus above the
+  hills -- plus a `sky` dome cap above 23.5° (a storm-cloud centre, which is why older notes call the Ring "stormy"). Clear-sky
+  pixels (B > R + 12) in the low sky band: gold (133–144, 151–162, 169–179) vs ours (140–151, 163–176, 164–183) -- within ~5 %
+  per channel, same clouds. The impression came from downscaled frames with different pitch and cloud cover: MEASURE first.
+
 ### AI-CARGFX-S7 — `JM_AIPLACE`; the dark engine bay is GPL's FLAT-COLOUR polygons drawn grey over the textured engine
 * `JM_AIPLACE="<slot>:<s>:<lane>"` (new) stands an AI car at a station (headless, never released); `JM_FINDTEX=<prefix>`
   (new) lists where a texture is used (WG BOAC boards: s 594 L, 1872 R, 2688 L). The gold still's exact corner is not yet
