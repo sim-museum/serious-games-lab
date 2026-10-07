@@ -22,7 +22,7 @@ this index was written; that is what it exists to stop.
 | item | what | state |
 |---|---|---|
 | **TRACKSEG-3** | Preferences switch: show/hide the track-section names ("Front Straight", "Big Bend" at WG), default ON (PO 2026-10-06) | ✅ **DONE (S1, 2026-10-06):** launcher Graphics group, "Show track section names", default ON, remembered; OFF = `JM_SEGNAME_SECS=0`, also for replays; gate `segnames_smoke` |
-| **GUI-1** | Redesign the julia racer GUI (`demo/native/juliaRacer.py`) for ease of use per GUI best practices, then restyle it like the PyQt GUIs of pokerIQ and bridgeIQ (`~/sgl/MON/pokerIQ`, `~/sgl/FRI/bridgeIQ`) (PO 2026-10-06) | **S1 (2026-10-06) redesign done:** task-ordered tabs (Race / Results / Replays / Settings / Controller), Session + Car cards, one primary Start button, menus + status bar, log on demand, everything remembered; the sim's environment is identical to before (3 cases). Next: S2 restyle |
+| **GUI-1** | Redesign the julia racer GUI (`demo/native/juliaRacer.py`) for ease of use per GUI best practices, then restyle it like the PyQt GUIs of pokerIQ and bridgeIQ (`~/sgl/MON/pokerIQ`, `~/sgl/FRI/bridgeIQ`) (PO 2026-10-06) | **S1 (2026-10-06) redesign done:** task-ordered tabs (Race / Results / Replays / Settings / Controller), Session + Car cards, one primary Start button, menus + status bar, log on demand, everything remembered; the sim's environment is identical to before (3 cases). **S2 restyle done:** dark pokerIQ/bridgeIQ theme (`261006/gui/s2_vs_iq.jpg`). 🟡 **AWAITING THE PO's look** |
 | **DOC-RACE-1** | Documentation on how to race, drawing on the docs under `~/sgl/THU` (`DOC/`: GPL manual, setup guides, brake bias, diffs, tyre heat, ...) (PO 2026-10-06) | open |
 | **REPLAY-2** | A replay is ALWAYS available for the session just exited; add the GPL Replay Analyser's analysis features (gold standard: `~/sgl/THU/WP/drive_c/Program Files/GPL Replay Analyser`) alongside replaying the video; optional Claude Code analysis of the replay with how-to-improve advice (PO 2026-10-06) | open |
 | **COCKPIT-GOLD-1** | Cockpit mirrors closer but still not right -- they look tilted slightly up; match the gold. The windscreen/canopy is solid where GPL's is almost transparent -- match the gold (PO 2026-10-06) | open |
@@ -23123,3 +23123,23 @@ progressive disclosure, group by task, plain language, feedback for long operati
   matched HEAD) and **a `last_race_result.txt` from an earlier race, if one existed, was deleted** (it is gitignored, so
   this cannot be checked; it held only the most recent race's result, which the next launch deletes anyway). The test now
   points `HERE` at a scratch directory and asserts the sim's working directory is that scratch path.
+
+### GUI-1 S2 (2026-10-06): the restyle -- the launcher in pokerIQ/bridgeIQ's look; AWAITING THE PO's look
+* **Reference taken from the running apps**, not their source alone: both grabbed offscreen from a scratch directory
+  (pokerIQ's resolution prompt stubbed; `261006/gui/ref_pokerIQ.png`, `ref_bridgeIQ.png`). Shared vocabulary: dark
+  navy/charcoal background (bridgeIQ's gradient), flat slate buttons (#2a3a4a, hover #3a4a5a), ONE green primary
+  action (bridgeIQ "First deal"), green-outlined panels (pokerIQ), bold white Arial, a near-black status strip with
+  green text ("Ready").
+* **`THEME`** (one application stylesheet in `juliaRacer.py`, applied by `apply_theme` under the Fusion style, which
+  honours every rule): navy gradient windows, green-outlined group cards with green titles, tabs with a green
+  underline on the selected one, slate buttons, **Start** as the green primary (`objectName "primary"`), dark inputs
+  with a green focus/hover border, a green progress chunk, a monospace log, a dark menu bar, and the status bar in green.
+  Spin-box arrows and the check mark are three small PNGs in `demo/native/assets/ui/` (Qt draws the CSS triangle trick
+  as bars); their directory is the module's own (`UI_DIR`), fixed even when a test redirects `HERE`.
+  `JR_THEME=classic` keeps the platform look.
+* **Checked**: every tab rendered themed (`261006/gui/s2/`) -- Race, Results, Replays, Settings, Controller (axis bars
+  and wizard readable); no stylesheet parse warnings; `s2_vs_iq.jpg` puts it beside bridgeIQ and pokerIQ.
+* `launcher_test.py` adds: the theme applies, every image it references exists, Start is the primary button, and
+  `JR_THEME=classic` opts out. `launcher_smoke` PASS. The AppImage copies the whole `demo` tree, so `assets/ui` ships.
+* **For the PO:** is this the look you meant, and is anything in the new layout harder to find than before?
+

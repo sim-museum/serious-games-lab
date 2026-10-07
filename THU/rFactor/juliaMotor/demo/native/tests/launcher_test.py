@@ -52,4 +52,13 @@ check(d2.mute.isChecked() and not d2.replay.isChecked(), "preferences remembered
 real = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 check(os.path.realpath(started[0][0].workingDirectory()) == os.path.realpath(jr.HERE), "the sim's working dir is the scratch HERE")
 check(not os.path.exists(os.path.join(jr.HERE, "last_race_result.txt")), "launch clears the (scratch) stale result")
+# GUI-1 S2: the IQ-style theme loads, references only images that ship, and JR_THEME=classic opts out
+import re as _re
+jr.apply_theme(app); qss = app.styleSheet()
+check(len(qss) > 1000 and "@UI@" not in qss, "theme applied")
+imgs = _re.findall(r"url\(([^)]+)\)", qss)
+check(imgs and all(os.path.exists(f) for f in imgs), f"theme images exist ({len(imgs)})")
+check("QPushButton#primary" in qss and w.drive.launch_b.objectName() == "primary", "Start is the primary button")
+app.setStyleSheet(""); os.environ["JR_THEME"] = "classic"; jr.apply_theme(app)
+check(app.styleSheet() == "", "JR_THEME=classic keeps the platform look")
 print("LAUNCHER:", "PASS" if ok else "FAIL"); sys.exit(0 if ok else 1)

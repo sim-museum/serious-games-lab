@@ -33,6 +33,7 @@ from PyQt6.QtWidgets import (
 )
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+UI_DIR = os.path.join(HERE, "assets", "ui")    # the theme's glyphs ship with the module (fixed even if HERE is redirected)
 CONF = os.path.join(HERE, "joystick.conf")
 PROFILE_DIR = os.path.join(HERE, "joystick_profiles")
 
@@ -1560,8 +1561,74 @@ class Main(QMainWindow):
         super().closeEvent(e)
 
 
+# GUI-1 S2 (PO 2026-10-06: "restyle the GUI to be similar to the PyQt GUI's of pokerIQ and bridgeIQ"). Their shared look,
+# taken from the running apps (offscreen grabs, 261006/gui/): a dark navy/charcoal background, flat slate buttons, ONE
+# green primary action (bridgeIQ "First deal", pokerIQ "New Hand"), green-outlined panels, bold white Arial, and a
+# near-black status strip with green text. JR_THEME=classic keeps the platform look (A/B).
+THEME = """
+QMainWindow, QDialog { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #0e1a24, stop:1 #1a2834); }
+QWidget { color: #e8eef3; font-family: Arial; font-size: 11pt; }
+QTabWidget::pane { border: 1px solid #2c3e50; border-radius: 6px; background: rgba(10, 18, 26, 120); top: -1px; }
+QTabBar::tab { background: #1b2733; color: #b9c7d3; padding: 8px 18px; border: 1px solid #2c3e50;
+               border-bottom: none; border-top-left-radius: 6px; border-top-right-radius: 6px; margin-right: 2px; }
+QTabBar::tab:selected { background: #24384a; color: #ffffff; font-weight: bold; border-bottom: 3px solid #3fa86a; }
+QTabBar::tab:hover:!selected { background: #22313f; }
+QGroupBox { background: rgba(255, 255, 255, 10); border: 1px solid #2f6f4f; border-radius: 6px;
+            margin-top: 14px; padding: 12px 10px 10px 10px; font-weight: bold; }
+QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 6px; color: #7fd1ae; }
+QLabel { background: transparent; }
+QLabel#hint { color: #8aa0b2; font-size: 9pt; font-weight: normal; }
+QPushButton { background: #2a3a4a; color: #dde6ee; border: 1px solid #3e5468; border-radius: 4px; padding: 6px 14px; }
+QPushButton:hover { background: #34495c; }
+QPushButton:pressed { background: #22303d; }
+QPushButton:checked { background: #24384a; border-color: #3fa86a; }
+QPushButton:disabled { background: #1c2731; color: #5f6f7e; border-color: #2a3742; }
+QPushButton#primary { background: #2e7d4f; border: 1px solid #3fa86a; color: #ffffff; font-size: 13pt; font-weight: bold; }
+QPushButton#primary:hover { background: #379160; }
+QPushButton#primary:pressed { background: #276b43; }
+QPushButton#primary:disabled { background: #1f3a2b; color: #6f8f7d; border-color: #2a4a38; }
+QComboBox, QSpinBox, QLineEdit { background: #0f1922; color: #e8eef3; border: 1px solid #34495e; border-radius: 3px;
+                                 padding: 4px 6px; selection-background-color: #2e7d4f; }
+QComboBox:hover, QSpinBox:hover, QLineEdit:hover { border-color: #3fa86a; }
+QComboBox:disabled, QSpinBox:disabled, QLineEdit:disabled { color: #5f6f7e; border-color: #26333f; }
+QComboBox QAbstractItemView { background: #0f1922; color: #e8eef3; border: 1px solid #34495e;
+                              selection-background-color: #2e7d4f; selection-color: #ffffff; }
+QSpinBox { padding-right: 22px; }
+QSpinBox::up-button, QSpinBox::down-button { subcontrol-origin: border; width: 20px; background: #1f2c38;
+                                             border-left: 1px solid #34495e; }
+QSpinBox::up-button { subcontrol-position: top right; border-top-right-radius: 3px; }
+QSpinBox::down-button { subcontrol-position: bottom right; border-bottom-right-radius: 3px; }
+QSpinBox::up-button:hover, QSpinBox::down-button:hover { background: #2e7d4f; }
+QSpinBox::up-arrow { image: url(@UI@/arrow_up.png); width: 10px; height: 6px; }
+QSpinBox::down-arrow { image: url(@UI@/arrow_down.png); width: 10px; height: 6px; }
+QCheckBox { spacing: 8px; }
+QCheckBox::indicator { width: 16px; height: 16px; border: 1px solid #4a6276; border-radius: 3px; background: #0f1922; }
+QCheckBox::indicator:checked { background: #2e7d4f; border-color: #3fa86a; image: url(@UI@/check.png); }
+QCheckBox::indicator:hover { border-color: #3fa86a; }
+QProgressBar { background: #0f1922; border: 1px solid #34495e; border-radius: 4px; color: #e8eef3; text-align: center; }
+QProgressBar::chunk { background: #2e7d4f; border-radius: 3px; }
+QPlainTextEdit, QTextEdit { background: #0b1218; color: #b8c7d3; border: 1px solid #2c3e50; border-radius: 4px;
+                            font-family: monospace; font-size: 9pt; }
+QMenuBar { background: #0b1218; color: #dde6ee; }
+QMenuBar::item:selected { background: #24384a; }
+QMenu { background: #16222d; color: #e8eef3; border: 1px solid #34495e; }
+QMenu::item:selected { background: #2e7d4f; }
+QStatusBar { background: #0b1218; color: #5fd38d; font-weight: bold; }
+QToolTip { background: #16222d; color: #e8eef3; border: 1px solid #3fa86a; }
+QScrollBar:vertical { background: #0f1922; width: 12px; }
+QScrollBar::handle:vertical { background: #34495e; border-radius: 5px; min-height: 24px; }
+"""
+
+
+def apply_theme(app):
+    if os.environ.get("JR_THEME", "") != "classic":
+        app.setStyle("Fusion")             # the platform style ignores parts of a stylesheet; Fusion honours all of it
+        app.setStyleSheet(THEME.replace("@UI@", UI_DIR.replace(os.sep, "/")))
+
+
 def main():
     app = QApplication(sys.argv)
+    apply_theme(app)
     w = Main()
     w.show()
     sys.exit(app.exec())
