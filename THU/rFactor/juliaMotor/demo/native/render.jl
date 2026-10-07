@@ -1277,7 +1277,7 @@ function _clip_lat(t, maxlat::Float32)
                 t.tex, t.col, t.flat, t.ptype) for i in 2:length(verts)-1]   # a clipped piece keeps the original's shading kind
 end
 
-function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0.72f0,0.74f0,0.76f0), smooth=true, tint=nothing, track=false, mirror=false, exclude_groups=(), include_groups=(), cockpit_clean=false, maxedge=Inf32, uflip=nothing, vflip=nothing, maxlat=Inf32, trim=false, dedup=nothing, drop_green=false, min_component=0, min_component_tex=(), wheel_dress=nothing, cockpit_dress=nothing, skip_ptypes_kw=nothing, visor=false)
+function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0.72f0,0.74f0,0.76f0), smooth=true, tint=nothing, track=false, mirror=false, exclude_groups=(), include_groups=(), cockpit_clean=false, maxedge=Inf32, uflip=nothing, vflip=nothing, maxlat=Inf32, trim=false, dedup=nothing, drop_green=false, min_component=0, min_component_tex=(), wheel_dress=nothing, cockpit_dress=nothing, skip_ptypes_kw=nothing, visor=false, skin=nothing)
     livery = lowercase(first(splitext(basename(String(path3do)))))   # S7: the wrapper's own texture name (lotd, ferd, ...) = the livery
     # text reads right when the texture mapping preserves handedness: the mirror=true
     # remap (gx,gz,-gy) is a rotation (no flip needed); mirror=false is a reflection
@@ -1598,7 +1598,13 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
         FLATPOLY_GLASS && liv_flat && continue
         flatpoly = !isvisor && FLATPOLY_FIX && !FLATPOLY_PLANAR && liv_flat
         planar   = !isvisor && FLATPOLY_PLANAR && liv_flat
-        v = get!(groups, isvisor ? "__visor__" : (flatpoly ? "" : t.tex), Float32[])
+        # AIHELMET-1: GPL's helmet SHELL is untextured-with-UVs -- the per-driver skin slot bound at runtime (E106-S3 for the
+        # player). `skin = (texture, xlo, xhi, zmin, ylim)` (GPL frame: x fwd, y lat, z up) gives those triangles inside the
+        # head box the driver's skin; elsewhere untextured stays untextured.
+        skinned = skin !== nothing && t.tex == "" && !t.flat &&
+                  (cx = (t.p[1][1] + t.p[2][1] + t.p[3][1])/3; cy = (t.p[1][2] + t.p[2][2] + t.p[3][2])/3; cz = (t.p[1][3] + t.p[2][3] + t.p[3][3])/3;
+                   skin[2] < cx < skin[3] && cz > skin[4] && abs(cy) < skin[5])
+        v = get!(groups, skinned ? skin[1] : isvisor ? "__visor__" : (flatpoly ? "" : t.tex), Float32[])
         mz = mirror ? -1f0 : 1f0   # negate render-Z → right-handed track frame (gx,gz,-gy)
         for i in 1:3
             p=t.p[i]; n = smooth ? sm(p, t.n[i]) : t.n[i]; uv=t.uv[i]
@@ -2354,7 +2360,7 @@ function load_gpl_car(name, dir, body3do, wheelspec;
                       exclude=("ltraymap","lshad"), maxlat=Inf32, exclude_groups=(),
                       body_floor=0.0f0, wheeltint=(0.12f0,0.12f0,0.13f0),
                       rear_groups=(), rear_lat=0.66f0, rear_ymin=-0.12f0, hub3do=nothing, skip_ptypes=nothing,
-                      sleeves=nothing)
+                      sleeves=nothing, skin=nothing)
     tex   = gpl_texture_index(dir)
     # E106-S25 (PO: "3 out-ward facing metal rods attached to each rear tire"). Proven by shooting
     # the SAME replay frame with the wheel items suppressed (JM_NO_AI_WHEELS=1): a complete, better
@@ -2380,7 +2386,7 @@ function load_gpl_car(name, dir, body3do, wheelspec;
         end
     end
     parts = extract_gpl_car(joinpath(dir, body3do); exclude=(exclude..., wheeltex...), maxlat=maxlat, skip_ptypes_kw=skip_ptypes,
-                            exclude_groups=(exclude_groups..., rear_groups...), drop_green=true)
+                            exclude_groups=(exclude_groups..., rear_groups...), drop_green=true, skin=skin)
     # AI-CHAIN-1 S2: the rear-suspension halves, the PLAYER LOTUS's way. Measured (2026-09-06): on
     # Eagle/Brabham/Cooper these groups sit exactly where the Lotus's do (x -2.5..-0.8, |lat|
     # 0.36..1.14, hub height) -- correctly posed. What read as a flat "blade" beside the rear wheel

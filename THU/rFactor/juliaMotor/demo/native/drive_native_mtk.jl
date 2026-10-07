@@ -9898,6 +9898,16 @@ const AI_ARM_NAMES = ("arml", "armr", "arms", "ferarms", "braarms", "frarm", "fr
 const AI_HAND_NAMES = ("fehand", "brhand", "bmhand", "eahand", "cohand", "lohand")
 const AI_SHOULDER = (parse(Float64, get(ENV, "JM_AI_SHOULDER_DX", "-0.56")), parse(Float64, get(ENV, "JM_AI_SHOULDER_DY", "0.10")),
                      parse(Float64, get(ENV, "JM_AI_SHOULDER_Z", "0.26")), parse(Float64, get(ENV, "JM_AI_ARM_THICK", "1.2")))
+# AIHELMET-1 (2026-10-07): the AI drivers' helmets drew as dark domes -- the shell is GPL's untextured skin slot. Each driver
+# ships a skin named after the wrapper (CLA5A -> clahelm, hil6a -> hilhelm, bon11a -> bonhelm, amo3a -> amohelm,
+# bra1a -> brahelm); bind it to the shell triangles in the head box (x -0.6..0.6, above z 0.28, |y| < 0.2: 312-569
+# triangles per wrapper). JM_AI_HELMET=0 reverts.
+function ai_helmet_skin(dir, wrapname)
+    get(ENV, "JM_AI_HELMET", "1") == "0" && return nothing
+    nm = lowercase(first(wrapname, 3)) * "helm"
+    any(f -> lowercase(f) == nm * ".mip", readdir(joinpath(AIBASE, dir))) || return nothing
+    (nm, -0.6, 0.6, 0.28, 0.2)
+end
 AICARMODELS = Render.GPLCarModel[]
 tstamp("  [E80] AI car models begin")
 # E85-S5: netplay needs a chassis to draw the remote car with, even when there is no AI field.
@@ -9965,7 +9975,8 @@ if !SKIDPAD && _ncars > 0
                               body_floor=BODY_FLOOR,
                               rear_groups=(_amode === :pose ? collect(_rg) : Int[]),
                               rear_lat=parse(Float32, get(ENV, "JM_AI_REAR_LAT", "0.66")),
-                              sleeves=AI_SLEEVES_ON ? (AI_ARM_NAMES, AI_HAND_NAMES, AI_SHOULDER) : nothing))
+                              sleeves=AI_SLEEVES_ON ? (AI_ARM_NAMES, AI_HAND_NAMES, AI_SHOULDER) : nothing,
+                              skin=ai_helmet_skin(dir, wrapname)))
         println("$(length(AICARMODELS[end].body)) parts")
         if haskey(ENV, "JM_AITEX")          # AI-CARGFX probe: parts drawn with no texture (flat colour)
             let b = AICARMODELS[end].body, u = [it for it in b if it.tex == 0]

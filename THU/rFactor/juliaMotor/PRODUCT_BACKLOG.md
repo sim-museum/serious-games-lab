@@ -21,7 +21,7 @@ this index was written; that is what it exists to stop.
 
 | item | what | state |
 |---|---|---|
-| **AIHELMET-1** | The AI drivers' helmets render as a dark dome (black lobes from the front) where GPL's are the driver's skin (Clark: a blue dome with a chequered band) -- found 2026-10-07 during HANDS-2 | open -- lead below |
+| **AIHELMET-1** | The AI drivers' helmets render as a dark dome (black lobes from the front) where GPL's are the driver's skin -- found 2026-10-07 during HANDS-2 | ✅ **S1 (2026-10-07):** each AI driver's own helmet skin bound to the shell (`261007/helmet/`) |
 | **TRACKSEG-3** | Preferences switch: show/hide the track-section names ("Front Straight", "Big Bend" at WG), default ON (PO 2026-10-06) | ✅ **DONE (S1, 2026-10-06):** launcher Graphics group, "Show track section names", default ON, remembered; OFF = `JM_SEGNAME_SECS=0`, also for replays; gate `segnames_smoke` |
 | **GUI-1** | Redesign the julia racer GUI (`demo/native/juliaRacer.py`) for ease of use per GUI best practices, then restyle it like the PyQt GUIs of pokerIQ and bridgeIQ (`~/sgl/MON/pokerIQ`, `~/sgl/FRI/bridgeIQ`) (PO 2026-10-06) | **S1 (2026-10-06) redesign done:** task-ordered tabs (Race / Results / Replays / Settings / Controller), Session + Car cards, one primary Start button, menus + status bar, log on demand, everything remembered; the sim's environment is identical to before (3 cases). **S2 restyle done:** dark pokerIQ/bridgeIQ theme (`261006/gui/s2_vs_iq.jpg`). 🟡 **AWAITING THE PO's look** |
 | **DOC-RACE-1** | Documentation on how to race, drawing on the docs under `~/sgl/THU` (`DOC/`: GPL manual, setup guides, brake bias, diffs, tyre heat, ...) (PO 2026-10-06) | ✅ **S1 (2026-10-06):** `demo/native/docs/HOW_TO_RACE.md`, in the launcher as Help → How to race…; 🟡 awaiting the PO's read |
@@ -23412,3 +23412,17 @@ Every removal traces to a recorded PO decision or a measured duplicate: **no sta
   colour match to the gold). **Next:** do the same for each AI driver -- find the shell's triangles in the AI wrapper's
   flat group (its placing group), bind the driver's skin (`clahelm`/`hilhelm`/... or the gold-matched one), keep the trim.
 
+### AIHELMET-1 S1 (2026-10-07): each AI driver wears his own helmet skin
+* The shell is the untextured-with-UVs triangles in the head box of each driver wrapper: Clark/Hill 569, Bonnier 312,
+  Amon 376, Brabham 376 (x −0.6…0.6, above z 0.28, |y| < 0.2 in GPL's frame) -- E106-S3's "572-tri untextured shell",
+  the per-driver skin slot GPL binds at runtime.
+* Every driver ships a skin named after his wrapper: `CLA5A` → `clahelm`, `hil6a` → `hilhelm`, `bon11a` → `bonhelm`,
+  `amo3a` → `amohelm`, `bra1a` → `brahelm`. `extract_gpl_car(...; skin=(tex, box))` binds it to the shell; the AI loader
+  passes it when the skin exists (`ai_helmet_skin`). `JM_AI_HELMET=0` reverts.
+* **Result** (`261007/helmet/helmet_ab.png`, `ferrari_zoom.png`): Amon's helmet is his white skin with the red and blue
+  stripes; Clark's is his own `clahelm` -- a dark grey dome (E106-S28 measured it near-neutral: 49,50,51) instead of the
+  black lobes; the black "ears" are gone.
+* Note: the gold Lotus stills show a BLUE helmet; that matches `l10helm` (the player's, E106-S28), not Clark's `clahelm`.
+  The AI drivers use their own named skins -- the naming suggests GPL binds those, but nothing read so far proves it.
+
+* **Gates** (`GATES_SKIP=road_clear_smoke`): 46/46 pass.
