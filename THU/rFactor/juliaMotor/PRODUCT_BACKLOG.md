@@ -22966,7 +22966,7 @@ MARTINI, CALTEX) were in ours one Castrol plus two large **plain grey-white boar
   the noise level. Cross-track A/B at HEAD vs fix (`261006/coplanar/`): Watkins Glen 0.18/0.07 %, Spa 0.35/0.30 %, Monza
   0.03/0.20 %, the Ring 0.02/0.00 % of pixels differ — noise level. The one concentrated change (Spa b, `spa_b_diffzoom.png`)
   is a coplanar two-faced bush sprite now showing its viewer-facing side (darker) instead of its back — GPL's rule.
-* **Left for E60:** the gold's Tarzan crowd lines and spectator billboards behind the fence; D6's `chmp4-1` (inside `zandvort.dat`) is a 4 m
+* **Left for E60:** D6's `chmp4-1` (inside `zandvort.dat`) is a 4 m
   A-frame: two `bilbrd01` panels leaning ~12° outward, both textured, both facing out -- not a twin board, and from either
   side the outer panel covers the inner one, and it is not among the 247 placements decoded from
   `zandvort.3do`. D6's August symptom was "MARTINI blank in every config" -- MARTINI is `bigbosch`, fixed above, so
@@ -22974,3 +22974,15 @@ MARTINI, CALTEX) were in ours one Castrol plus two large **plain grey-white boar
 * **Gates:** 45/45 pass. road_clear_smoke was started by mistake (the bare `gates.sh` includes it; it is run only on
   the PO's request) and hit its 1800 s cap (rc 124) -- not a verdict on this change. `gates.sh` now takes
   `GATES_SKIP="..."` (listed as SKIPPED, never counted as passes); autonomous sprints run `GATES_SKIP=road_clear_smoke`.
+
+### E60 S5 (2026-10-06) — the Tarzan approach's distance boards are complete; the gold's crowds are removed by the PO's order
+* The gold (t=16) shows "100" on BOTH sides of the approach; a cockpit capture at s=220 showed only the right one. JM_OBJNEAR
+  (436,405,60) lists both of every pair loaded and drawn (sign150/100/050 at lat −3.8…−2.2 and +12.2…+13.8, 16 m apart, as
+  GPL places them). At s=220 the left board is 9 m ahead and 13 m left -- outside the field of view. From s=100/150 and in
+  chase from s=200 (`signs2.jpg`) both boards of each pair read 150/100 as in the gold. **Not a defect.**
+* The gold's spectator lines behind the fence and on the inside of Tarzan are absent from ours **by the PO's order**
+  (ZANDCROWD-1: "remove all lines of spectators at Zandvoort"; E101 drops loose people) -- not a parity gap. The "left for
+  E60" line in S4 that listed them is corrected.
+* Noted, not changed: the shot harness teleports the car to GPL's centreline, which on the start straight runs near the
+  RIGHT edge of the drawn road (right wheels on the grass in `c200`), so harness frames sit right of the gold's line.
+
