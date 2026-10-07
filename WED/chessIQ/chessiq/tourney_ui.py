@@ -16,13 +16,71 @@ def save_path():
     return os.path.join(os.path.dirname(rating.profile_path()), "tournament.json")
 
 
-class NewTournamentDialog(QDialog):
-    """Type, field size, rating range, time control, rated."""
+# The tournament series (CM-25), as Chessmaster's predefined events: each opens when you finish in the top half of
+# the one before it. (key, name, type, opponents, Swiss rounds, lowest rating, highest rating, time control index)
+SERIES = [
+    ("club", "Club Swiss", "swiss", 7, 5, 1000, 1500, 1),
+    ("county", "County Championship", "rr", 5, 5, 1300, 1800, 1),
+    ("regional", "Regional Open", "swiss", 9, 7, 1600, 2100, 1),
+    ("national", "National Masters", "rr", 7, 5, 1900, 2400, 3),
+    ("elite", "Elite Invitational", "rr2", 5, 5, 2200, 3000, 3),
+]
 
-    def __init__(self, parent, my_rating):
+
+def series_path():
+    return os.path.join(os.path.dirname(rating.profile_path()), "series.json")
+
+
+def series_passed(path=None):
+    try:
+        with open(path or series_path()) as f:
+            return set(json.load(f).get("passed", []))
+    except (OSError, ValueError, AttributeError):
+        return set()
+
+
+def series_open(passed):
+    """The keys of the events you may enter: the first, and each whose predecessor you passed."""
+    return [e[0] for i, e in enumerate(SERIES) if i == 0 or SERIES[i - 1][0] in passed]
+
+
+def series_place(t):
+    """Your place in a finished tournament, and whether it is in the top half."""
+    place = [p for p, _, _ in t.standings()].index(t.human) + 1
+    return place, place <= len(t.players) // 2
+
+
+def series_record(t, key, path=None):
+    """Record a finished series event; returns (place, passed, the event this opened or None)."""
+    place, ok = series_place(t)
+    passed = series_passed(path)
+    keys = [e[0] for e in SERIES]
+    opened = None
+    if ok and key not in passed:
+        passed.add(key)
+        i = keys.index(key)
+        opened = SERIES[i + 1][1] if i + 1 < len(SERIES) else None
+        with open(path or series_path(), "w") as f:
+            json.dump({"passed": sorted(passed, key=keys.index)}, f)
+    return place, ok, opened
+
+
+class NewTournamentDialog(QDialog):
+    """Event (from the series, or your own), type, field size, rating range, time control, rated."""
+
+    def __init__(self, parent, my_rating, passed=None):
         super().__init__(parent)
         self.setWindowTitle("New tournament")
         f = QFormLayout(self)
+        self.event = QComboBox()
+        self.event.addItem("Your own event", None)
+        is_open = series_open(passed if passed is not None else series_passed())
+        for i, (key, name, *_) in enumerate(SERIES):
+            if key in is_open:
+                self.event.addItem(name, key)
+            else:
+                self.event.addItem("%s (finish in the top half of the %s)" % (name, SERIES[i - 1][1]), None)
+                self.event.model().item(self.event.count() - 1).setEnabled(False)
         self.kind = QComboBox()
         for label, data in (("Round robin", "rr"), ("Double round robin", "rr2"), ("Swiss", "swiss")):
             self.kind.addItem(label, data)
@@ -35,6 +93,8 @@ class NewTournamentDialog(QDialog):
             self.tc.addItem(label, (kind, args))
         self.tc.setCurrentIndex(1)
         self.rated = QCheckBox("Rated (your games change your rating)")
+        self.event.currentIndexChanged.connect(self.fill)
+        f.addRow("Event", self.event)
         f.addRow("Type", self.kind)
         f.addRow("Opponents", self.size)
         f.addRow("Swiss rounds", self.rounds)
@@ -45,6 +105,20 @@ class NewTournamentDialog(QDialog):
         bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         bb.accepted.connect(self.accept); bb.rejected.connect(self.reject)
         f.addRow(bb)
+
+    def fill(self):
+        """A series event sets every field and fixes them (it is rated), so its standard cannot be lowered."""
+        key = self.event.currentData()
+        fields = (self.kind, self.size, self.rounds, self.lo, self.hi, self.tc, self.rated)
+        for w in fields:
+            w.setEnabled(key is None)
+        if key is None:
+            return
+        _, _, kind, n, rounds, lo, hi, tc = next(e for e in SERIES if e[0] == key)
+        self.kind.setCurrentIndex(self.kind.findData(kind))
+        self.size.setValue(n); self.rounds.setValue(rounds); self.lo.setValue(lo); self.hi.setValue(hi)
+        self.tc.setCurrentIndex(tc)
+        self.rated.setChecked(True)
 
 
 def pick_field(people, n, lo, hi, seed=None):
@@ -171,12 +245,30 @@ class TournamentWindow(QDialog):
             self.save()
         self.refresh()
 
+    def series_result(self, event):
+        """Record a finished series event once (CM-25), and say what it means."""
+        if "series" not in self.extra:
+            place, ok, opened = series_record(self.t, event)
+            self.extra["series"] = [place, ok, opened]
+            self.save()
+        place, ok, opened = self.extra["series"]
+        n = len(self.t.players)
+        txt = ", you placed %d of %d" % (place, n)
+        if opened:
+            return txt + ". The %s is now open." % opened
+        return txt + (" (top half)." if ok else ". Finish in the top %d to go on." % (n // 2))
+
     # ---- display -------------------------------------------------------------------------------------------------
     def refresh(self):
         t = self.t
         r = len(t.rounds)
         kind = {"rr": "Double round robin" if t.double else "Round robin", "swiss": "Swiss"}[t.kind]
         state = "finished" if t.finished() else "round %d of %d" % (r, t.n_rounds)
+        event = self.extra.get("event")
+        if event is not None:
+            kind = next(e[1] for e in SERIES if e[0] == event) + ", " + kind.lower()
+            if t.finished():
+                state += self.series_result(event)
         self.title.setText("<b>%s</b>, %d players%s — %s" % (kind, len(t.players), ", rated" if t.rated else "", state))
         pairs = t.rounds[-1] if t.rounds else []
         self.games.setRowCount(len(pairs))
@@ -224,10 +316,10 @@ def new_tournament(main):
     if not d.exec():
         return None
     return start(main, d.kind.currentData(), d.size.value(), d.rounds.value(), d.lo.value(), d.hi.value(),
-                 d.tc.currentIndex(), d.rated.isChecked())
+                 d.tc.currentIndex(), d.rated.isChecked(), event=d.event.currentData())
 
 
-def start(main, kind, n, rounds, lo, hi, tc_index, rated, seed=None):
+def start(main, kind, n, rounds, lo, hi, tc_index, rated, seed=None, event=None):
     from .app import player_name
     me = player_name()
     my = main.profile.rating if main.profile is not None else 1400
@@ -236,7 +328,10 @@ def start(main, kind, n, rounds, lo, hi, tc_index, rated, seed=None):
     t = T.Tournament(players, "swiss" if kind == "swiss" else "rr", rounds=rounds, double=(kind == "rr2"),
                      rated=rated, seed=seed, human=me)
     t.pair_next()
-    w = TournamentWindow(main, t, {"tc": tc_index})
+    extra = {"tc": tc_index}
+    if event is not None:
+        extra["event"] = event
+    w = TournamentWindow(main, t, extra)
     w.save()
     return w
 
