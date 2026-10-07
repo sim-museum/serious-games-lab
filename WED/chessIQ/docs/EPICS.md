@@ -802,3 +802,16 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
   - The rated-game check still completes (against Leela 1150).
   - Tidied on the way: engine pipes are closed explicitly, so a dead engine's pipe is not flushed by the garbage
     collector, and `.CMP` files are read with `with`. The full suite (60 tests) passes.
+- **CM-21 (10-07): done. Tournament core** (`chessiq/tournament.py`), as Chessmaster's Play/Tournaments.
+  - Round robin by Berger tables (single or double, with a bye in odd fields) and Swiss: score groups split top
+    half against bottom half, no rematches (backtracking), colour balance, and the bye to the lowest-ranked computer
+    entrant who has not had one, so you always get to play.
+  - Standings: points, then Sonneborn–Berger (round robin) or Buchholz (Swiss), then rating. A crosstable is kept.
+  - Computer-vs-computer games are played out by their engines at their own strength. A failed engine scores a
+    draw rather than an invented result.
+  - Tests:
+    - Round robin: everyone meets once (twice in a double), nobody appears twice in a round, colours within one,
+      one bye each in an odd field.
+    - Swiss over 20 seeds: no rematches and at most one bye. The leaders meet, colours balance, and you never get
+      the bye.
+    - Sonneborn–Berger against hand-computed values, and a played-out engine game.
