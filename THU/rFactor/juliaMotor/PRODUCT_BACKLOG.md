@@ -25,8 +25,8 @@ this index was written; that is what it exists to stop.
 | **GUI-1** | Redesign the julia racer GUI (`demo/native/juliaRacer.py`) for ease of use per GUI best practices, then restyle it like the PyQt GUIs of pokerIQ and bridgeIQ (`~/sgl/MON/pokerIQ`, `~/sgl/FRI/bridgeIQ`) (PO 2026-10-06) | **S1 (2026-10-06) redesign done:** task-ordered tabs (Race / Results / Replays / Settings / Controller), Session + Car cards, one primary Start button, menus + status bar, log on demand, everything remembered; the sim's environment is identical to before (3 cases). **S2 restyle done:** dark pokerIQ/bridgeIQ theme (`261006/gui/s2_vs_iq.jpg`). 🟡 **AWAITING THE PO's look** |
 | **DOC-RACE-1** | Documentation on how to race, drawing on the docs under `~/sgl/THU` (`DOC/`: GPL manual, setup guides, brake bias, diffs, tyre heat, ...) (PO 2026-10-06) | ✅ **S1 (2026-10-06):** `demo/native/docs/HOW_TO_RACE.md`, in the launcher as Help → How to race…; 🟡 awaiting the PO's read |
 | **REPLAY-2** | A replay is ALWAYS available for the session just exited; add the GPL Replay Analyser's analysis features (gold standard: `~/sgl/THU/WP/drive_c/Program Files/GPL Replay Analyser`) alongside replaying the video; optional Claude Code analysis of the replay with how-to-improve advice (PO 2026-10-06) | **S1 (2026-10-07) always-a-replay DONE:** every session records (practice, any field), autosaved every 20 s (survives a kill), analysis channels + a Python-readable `.jrt`; the Replays tab pre-selects the session just finished. **S2 (2026-10-07) the analyser:** Replays → Analyse… -- laps, track map with racing lines, graphs vs distance, time difference, split times + theoretical best. **S3 (2026-10-07):** reports (session summary, lap chart, lap by lap, speed report; export), traction circle, speed-difference map. **S4 (2026-10-07):** optional Claude Code coaching (shows the summary, sends only on Send; real call verified). 🟡 **All four parts done -- AWAITING THE PO's look** |
-| **COCKPIT-GOLD-1** | Cockpit mirrors closer but still not right -- they look tilted slightly up; match the gold. The windscreen/canopy is solid where GPL's is almost transparent -- match the gold (PO 2026-10-06) | **S1 (2026-10-07) windscreen DONE:** the "solid green" panels were GPL's yellow perspex screen painted with the livery; now drawn as tinted glass (`261007/cockpit/visor_gold_before_after.jpg`). Next: S2 mirrors |
-| **HANDS-2** | Restore the arms and gloves in the cockpit view AND on the AI cars' external views, per the gold; watch for sleeves going upward ("rabbit ears") from outside the car instead of running from the driver to the gloves (PO 2026-10-06; supersedes HANDS-1's "hidden by default") | open |
+| **COCKPIT-GOLD-1** | Cockpit mirrors closer but still not right -- they look tilted slightly up; match the gold. The windscreen/canopy is solid where GPL's is almost transparent -- match the gold (PO 2026-10-06) | **S1 (2026-10-07) windscreen DONE:** the "solid green" panels were GPL's yellow perspex screen painted with the livery; now drawn as tinted glass (`261007/cockpit/visor_gold_before_after.jpg`). **S2 mirrors:** live glass built on GPL's chrome ring (concentric), GPL's own disc orientation (no -25° tilt), lowered to the gold's height, view aimed lower/outward (`mir2/rt_vs.jpg`, `aim_vs.jpg`). 🟡 **AWAITING THE PO's look** |
+| **HANDS-2** | Restore the arms and gloves in the cockpit view AND on the AI cars' external views, per the gold; watch for sleeves going upward ("rabbit ears") from outside the car instead of running from the driver to the gloves (PO 2026-10-06; supersedes HANDS-1's "hidden by default") | **S1 (2026-10-07) cockpit arms ON:** each sleeve laid from the shoulder to its glove (follows the wheel; no rabbit ears), gloves at 9 and 3 (`261007/hands/arms_final_vs_gold.jpg`). Open: sleeve shading/width, a flat "sail" in sharp turns, the AI cars' arms |
 | **E107** | **EPIC (PO priority): Julia AI as close as possible to GPL AI** | **AIGPL-2 (2026-10-04): GPL's own AI algorithm, reverse-engineered from gpl.exe** -- the PO: *"The AI cars worked perfectly in the WG race!"*; E107-S11 GPL's passing rails pass the graded test. Open: per-track confirmation by the PO on the other four tracks. |
 | **E108** | **EPIC (PO priority): tracks as close as possible to GPL** | **S5–S8 (2026-09-30):** flat shading (100 % of road polys lack normals) refuted as the visible cause (A/B < 0.3 % of pixels); finer rounding (4× tris) invisible at WG's gentle curves. **Needs the PO: the track + station where the faceting shows.** |
 | **E109** | Nürburgring tree "curtains" across the road + individual trees intruding | ✅ curtains FIXED (S6); veils under GPL's window (S15). **GPLVIS-1 S1–S4 (2026-10-06):** gpl.exe's track renderer decoded (segment range, 117/312/914 m bands, per-cell CLIP PLANES) and per-cell clipping implemented (`JM_GPLCLIP`, off); the remaining tall walls at Döttinger Höhe are the SCENERY copy -- next: scenery copies under the cell rule. |
@@ -23301,3 +23301,57 @@ reverts. 0.22 read neutral grey; 0.35 gives the gold's olive-yellow cast (`visor
 wedges in the bottom corners where the gold shows green bodywork under the screen.
 
 * **Gates** (`GATES_SKIP=road_clear_smoke`): 46/46 pass (with REPLAY-2 S4 and this sprint's visor).
+
+### COCKPIT-GOLD-1 S2 (2026-10-07): the mirrors -- round, upright chrome rings with the live view inside them; AWAITING THE PO
+Against the gold at the same spot (Zandvoort t=16 vs ours s=100, `261007/cockpit/mir2/`):
+* **What was off.** The gold's mirrors are upright round chrome rings with the live view concentric inside them, sitting
+  low and outboard; ours were leaning ellipses -- a chrome crescent on one side and the live view spilling out past the
+  ring on the other -- and higher. That is the PO's "tilted slightly up, not sure what else is off".
+* **GPL's mirror, dumped** (`lotus.3do`, GPL frame x fwd / y lat / z up): `mirror` -- the untextured glass disc, round
+  (9.8 cm), facing rearward, normal 9° up; `lrm` -- a quad whose texture is the **chrome ring** (transparent inside);
+  `lrimext` -- the mirror's back shell; `lotmirt` -- cup body and stalk; `lotubase` -- the stalk foot. We draw `mirror`
+  + `lrm` (the shell was dropped long ago as a "torpedo tub").
+* **The live glass did not sit on the ring.** It was a quad sized from the bounding box of the drawn mirror parts and
+  came out larger than the ring and outboard of it on screen. It is now built **on `lrm`'s own triangles**, its UVs as
+  the round mask (shrunk to 0.88 so the chrome band shows): concentric and the same size by construction. The first ring
+  build mirrored the image left-right; reverted to the old orientation, which agrees with the gold (own rear tyre at the
+  outer edge).
+  `JM_MIRROR_GLASS_RING=0` restores the bbox quad.
+* **The tilt.** `JM_MIRROR_TILT` −25° (E48) on top of GPL's authored orientation was the lean; **0** -- GPL's own -- gives
+  upright round rings like the gold (`rt_vs.jpg`; +10° squashes them again).
+* **Height.** Relative to the steering wheel the gold's rings sit lower; `JM_MIRROR_Y` 0.022 → **0.005**.
+* **The view inside.** The gold shows the horizon about mid-glass and the world behind, ours more sky and more of our own
+  car: the mirror camera now looks a little lower and further out (`JM_MIRROR_DROP` −0.2 → **−0.45**, `JM_MIRROR_YAWOUT`
+  0.5 → **0.8**). Our own car still fills more of the glass than in the gold (the mirror camera sits close inboard) --
+  a refinement for the next pass.
+* **Verified:** the defaults reproduce the chosen capture (0.07 % px); Watkins Glen cockpit (`def_wg.jpg`): round rings,
+  live glass inside, the tinted screen. Also new: `JM_MIRROR_DRAW` (which mirror parts to draw) and `JM_MIRROR_DIAG`.
+* **For the PO:** a drive in cockpit view -- do the mirrors and the screen now read like GPL's?
+
+
+
+### HANDS-2 — retrospective + S1 (2026-10-07): the cockpit arms are back, running from the driver to the gloves
+**Retrospective (HANDS-1 S1–S4).** The arms were hidden (E106-S7: "an absent arm is a smaller lie than a detached one").
+HANDS-1 found the gold's sleeve texture (the JackSeller suit, S3), the gloves' V-flip (S2), and (S4) that `lotarms`
+hangs off the steering-wheel positioner chain -- placed through it, the raw sleeves point UP AND FORWARD from the wrist:
+exactly the PO's "rabbit ears". ARMFIX folded them back statically, so they could not follow the wheel. Decoding gpl.exe's
+handling of that chain stayed open. **New approach -- place the sleeve by its two ends:** a sleeve must run from the
+driver's shoulder to the glove, whatever GPL's chain does.
+**S1 (implemented, `ARMS2`, default):**
+* Per side, the sleeve's long axis (PCA of its vertices): wrist end (the lower end) and far end.
+* Every frame the wrist end goes to the glove's wrist -- the same transform as the glove (`swRel·gripmat`), so the arm
+  follows the steering -- and the far end to a fixed SHOULDER beside and below the eye; the mesh is stretched along its
+  axis to that length and scaled `JM_ARM_THICK` (1.2) across. `JM_ARMS2=0` restores ARMFIX.
+* Fitted to the gold cockpit (Zandvoort t=16 straight, t=22 Tarzan): shoulder (0.18, 0.22, ±0.26) -- a lower shoulder
+  ran the sleeve under the dash top, out of sight; **`JM_HAND_GRIP` 0** (gloves at 9 and 3 like the gold, HANDS-1 S2).
+* **`JM_HANDS` is now ON by default** (the PO asked to restore them; the sleeves are attached and point the right way).
+* Tried and kept off: rolling the strip to face the eye (`JM_ARM_ROLL=1`) -- face-on the `lotarms` strip is a broad
+  sheet, not one tube.
+**Verified** (`261007/hands/arms_final_vs_gold.jpg`): straight -- sleeves rise from the bottom of the frame to the
+gloves at 9 and 3, no rabbit ears; in Tarzan (autodriven steer) the left arm rises over the top of the rim as the gold's
+does.
+**Open (next sprint):** (1) the sleeves read greyer and narrower than the gold's white tubes with the red stripe;
+(2) in a sharp turn the near end of the left sleeve fans into a flat white "sail" (the strip is not a simple tube -- split
+it into forearm/upper arm, or build a tube along the same two points); (3) the AI cars' drivers' arms in the external
+views (the second half of the PO's request).
+* **Gates** (`GATES_SKIP=road_clear_smoke`): 46/46 pass with the arms ON (and COCKPIT-GOLD-1 S2's mirrors).

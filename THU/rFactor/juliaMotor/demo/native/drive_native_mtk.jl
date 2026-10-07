@@ -3600,7 +3600,7 @@ const LOT3DO = joinpath(LOTDIR,"lotus.3do")
 # — the bulky chrome HOUSING (lotmirt) + stalk (lotubase/lotubas2) read as a "chrome torpedo" (no RTT),
 # so dropping them leaves a clean round disc on the cowl like the GPL gold standard.
 const MIRROR_TEX  = ("mirror","lotmirt","lrm","lrimext","lotubase","lotubas2")   # excluded from CARP
-const MIRROR_DRAW = ("mirror","lrm")                                             # actually drawn (glass disc only — the chrome rim "lrimext" sat in front of the glass and read as a torpedo TUBE, so it's dropped)
+const MIRROR_DRAW = Tuple(split(get(ENV, "JM_MIRROR_DRAW", "mirror,lrm"), ","; keepempty = false))                                             # actually drawn (glass disc only — the chrome rim "lrimext" sat in front of the glass and read as a torpedo TUBE, so it's dropped)
 const TUB_GREY = parse(Float32, get(ENV,"JM_TUB_GREY","0.11"))   # untextured cockpit-tub shade (raise to lift the dark coaming "black band" toward the GPL aluminium tub)
 # GPL gold standard shows the gloved hands/forearms filling the lower cockpit (where we otherwise
 # see a black band).  E64 S2 (Z-CK4): the old JM_HANDS=1 kept lohand+lotarms inside CARP, where the
@@ -3612,7 +3612,7 @@ const TUB_GREY = parse(Float32, get(ENV,"JM_TUB_GREY","0.11"))   # untextured co
 # wheel. The hands/arms ITEM is last in the PO's priority order, so until it runs the broken
 # display is HIDDEN rather than shown wrong: an absent arm is a smaller lie than a detached one
 # (the same principle as the netplay ghost cars). JM_HANDS=1 restores the old display.
-const HANDS = get(ENV,"JM_HANDS","0") != "0"
+const HANDS = get(ENV,"JM_HANDS","1") != "0"   # HANDS-2 (PO 2026-10-06: "restore the arms and gloves"): on -- the sleeves now run from the driver to the gloves (two-point placement, see ARMS2)
 const _HAND_EXC = ("ltraymap","lshad","lohand","lotarms","dash7a","windlot")
 # E36 black band: `lotblack` is the matte-black cockpit surround/dash that fills the lower view as a
 # full-width band — the angular black "plywood" facets the PO flagged.  DROPPED by default now that the
@@ -4623,9 +4623,11 @@ const MCEN = (b = Render.parts_bbox(MIRRORP); Float32[(b.xmin+b.xmax)/2, (b.ymin
 # panel beside the cockpit (Watkins s=300, 1280x1024). At 0.06 the whole disc and its live view clear it,
 # centred x~98 px of 1280 (gold: ~105). JM_WIND_ALPHA=0 left that panel in place, so it is body, not the
 # windscreen; the gold shows the lower half of its discs through the tinted screen instead.
-const MIRROR_DY   = parse(Float32, get(ENV,"JM_MIRROR_Y","0.022"))  # MIRROR-GOLD-1 (2026-10-05): fitted to gold_wg_200 with SCALE 1.10, SPREAD 1.07 (disc centres 8%/91% x, 61% y)
+const MIRROR_DY   = parse(Float32, get(ENV,"JM_MIRROR_Y","0.005"))  # COCKPIT-GOLD-1 S2: 0.022 -> 0.005, the gold's height relative to the dash (Zandvoort t=16)  # MIRROR-GOLD-1 (2026-10-05): fitted to gold_wg_200 with SCALE 1.10, SPREAD 1.07 (disc centres 8%/91% x, 61% y)
 const MIRROR_DX   = parse(Float32, get(ENV,"JM_MIRROR_X","0.075"))
-const MIRROR_TILT = deg2rad(parse(Float32, get(ENV,"JM_MIRROR_TILT","-25")))   # E48: stand the discs UPRIGHT facing the eye (+22 read as "angled down" — we saw the top faces)
+# COCKPIT-GOLD-1 S2 (PO 2026-10-06: "they seem to be tilted slightly up"): -25 on top of GPL's own disc orientation drew the
+# rings as leaning ellipses; 0 = GPL's authored orientation, upright round rings as in the gold (rt_vs.jpg).
+const MIRROR_TILT = deg2rad(parse(Float32, get(ENV,"JM_MIRROR_TILT","0")))   # E48: stand the discs UPRIGHT facing the eye (+22 read as "angled down" — we saw the top faces)
 const MIRROR_SCALE = parse(Float32, get(ENV,"JM_MIRROR_SCALE","1.10"))    # disc SIZE (round-mirror size)
 const MIRROR_SPREAD = parse(Float32, get(ENV,"JM_MIRROR_SPREAD","1.07"))   # lateral separation multiplier — push the pair out to the screen edges
 # E106-S10 (PO, Zandvoort video: "make visor more transluscent"). The opaque 1.0 came from an
@@ -9356,6 +9358,8 @@ function mirror_glass_quads(parts, tex)
         # side's view, plausible only because the car is symmetric. Reflected back, the screen-left disc is mesh z > 0 and
         # samples (0.5, 1), the LEFT camera; the reflection's left-right flip keeps the car's own body at the inner edge.
         u0, u1 = side < 0 ? (0f0, 0.5f0) : (0.5f0, 1f0)
+        get(ENV, "JM_MIRROR_DIAG", "0") != "0" && println("  [mirglass] side ", side, " c ", round.(c, digits=3), " e ", round.(e, digits=3),
+                                                         " normal axis ", na, " ns ", ns, " half ", round(hu, digits=3), "x", round(hv, digits=3))
         q = Float32[]
         corner(mu, mv) = begin
             p = copy(c); p[na] += ns*(e[na]/2 + 0.004f0)
@@ -9368,7 +9372,46 @@ function mirror_glass_quads(parts, tex)
     end
     items
 end
-mirGlassItems = MIRROR_RTT ? mirror_glass_quads(MIRRORP, mirtex) : Render.Item[]
+# COCKPIT-GOLD-1 S2: the glass is the DISC (`mirror`/`lrm`), not the bbox of everything drawn -- with GPL's rim and cup
+# drawn too (JM_MIRROR_DRAW) the bbox is the whole cup.
+if get(ENV, "JM_MIRROR_DIAG", "0") != "0"
+    for p in MIRRORP
+        v = p.verts; xs = v[1:11:end]; ys = v[2:11:end]; zs = v[3:11:end]
+        println("  [mirpart] ", rpad(p.tex, 9), " n ", length(xs), " x ", round.(extrema(xs), digits=3), " y ", round.(extrema(ys), digits=3), " z ", round.(extrema(zs), digits=3))
+    end
+end
+# The glass on the RING's own triangles. `lrm` is GPL's chrome mirror ring (a quad whose texture is the ring, transparent
+# inside); the bbox-built quad came out larger than the ring and outboard of it on screen (the PO's "not quite right": a
+# chrome crescent on one side, the live view spilling past the other). Built from lrm's vertices with its UVs as the mask
+# coordinates, the glass IS the ring's surface: concentric and the same size by construction, the mask shrunk to
+# MIRROR_GLASS_FRAC so the chrome band stays visible. JM_MIRROR_GLASS_RING=0 restores the bbox quads.
+function mirror_glass_ring(parts, tex)
+    items = Render.Item[]
+    rings = filter(p -> lowercase(p.tex) == "lrm", parts)
+    for side in (-1, 1)
+        u0, u1 = side < 0 ? (0f0, 0.5f0) : (0.5f0, 1f0)
+        q = Float32[]
+        for p in rings
+            v = p.verts; nv = length(v) ÷ 11
+            for t in 0:3:nv-3
+                base = (t*11 + 1, (t+1)*11 + 1, (t+2)*11 + 1)
+                sign(v[base[1]+2] + v[base[2]+2] + v[base[3]+2]) == side || continue
+                for b in base
+                    uu, vv = v[b+9], v[b+10]
+                    mu = 0.5f0 + (uu - 0.5f0)/MIRROR_GLASS_FRAC; mv = 0.5f0 + (vv - 0.5f0)/MIRROR_GLASS_FRAC
+                    append!(q, v[b:b+5]); push!(q, mu, mv, 0f0, u0 + (u1 - u0)*clamp(uu, 0f0, 1f0), 1f0 - vv)
+                end
+            end
+        end
+        isempty(q) && continue
+        vao, n = Render.upload(q)
+        push!(items, Render.Item(vao, n, tex, (1f0,1f0,1f0)))
+    end
+    items
+end
+mirGlassItems = !MIRROR_RTT ? Render.Item[] :
+    (get(ENV, "JM_MIRROR_GLASS_RING", "1") != "0" && any(p -> lowercase(p.tex) == "lrm", MIRRORP)) ?
+        mirror_glass_ring(MIRRORP, mirtex) : mirror_glass_quads(filter(p -> lowercase(p.tex) in ("mirror", "lrm"), MIRRORP), mirtex)
 # E75-S16: ONE lateral correction, tested against BOTH ends of the car at once.
 # E75-S15 established that this is a placement problem, not a content one: 14 of 17 rear parts sit
 # outboard of the hub line (0.772 m), and the FRONT assembly -- different parts entirely -- reaches
@@ -9712,7 +9755,7 @@ function split_fists(parts, tex)
     [Render.Item(Render.upload(a)..., tex, (1f0,1f0,1f0)) for a in (L, R)]
 end
 handLR = isempty(handItems) ? Render.Item[] : split_fists(HANDP, handItems[1].tex)
-const HAND_GRIP = deg2rad(parse(Float32, get(ENV,"JM_HAND_GRIP","30")))
+const HAND_GRIP = deg2rad(parse(Float32, get(ENV,"JM_HAND_GRIP","0")))    # HANDS-2: 0 = the gold's 9-and-3 (HANDS-1 S2)
 const ARMS_ON_WHEEL = get(ENV, "JM_ARMS_ON_WHEEL", "0") != "0"
 const HAND_CULL = get(ENV, "JM_HAND_CULL", "1") != "0"   # HANDS-1 S2: 0 draws the gloves/sleeves two-sided (A/B)
 gripmat(sgn) = Render.translate(SWCENTER) * Render.rotaxis(SWAXIS, Float32(sgn*HAND_GRIP)) * Render.translate(-SWCENTER)
@@ -9733,6 +9776,61 @@ const ARMFIX = begin
     dx, dy = parse(Float32, get(ENV,"JM_ARM_DX","-0.02")), parse(Float32, get(ENV,"JM_ARM_DY","-0.06"))   # E68 S5 re-tune: junction closed (was fix4 -0.05)
     Render.translate(Float32[dx, dy, 0]) *
         Render.translate(Float32[px, py, 0]) * Render.scalexyz(-1f0, -sy, sz) * Render.translate(Float32[-px, -py, 0])
+end
+# HANDS-2 (PO 2026-10-06: "restore the arms and gloves in the julia cockpit view ... Watch out for sleeves going upward
+# 'rabbit ear' effect from outside the car, rather than from the driver to the gloves"). GPL places lotarms through the
+# steering-wheel positioner chain (HANDS-1 S4) in a way our parse does not reproduce -- raw, each sleeve points UP AND
+# FORWARD from its wrist: the rabbit ears; ARMFIX folded it back statically. Instead, each sleeve is laid along the line it
+# must occupy: its WRIST end on the glove (moving with the wheel and the grip, exactly as the gloves do) and its far end at
+# the driver's SHOULDER beside and below the eye, stretched along its own axis -- so it always runs from the driver to the
+# glove, and the arm rises over the rim when the wheel turns, as the gold's does. JM_ARMS2=0 restores ARMFIX.
+const ARMS2 = get(ENV, "JM_ARMS2", "1") != "0"
+# fitted to the gold cockpit (Zandvoort t=16/22): a lower shoulder ran the sleeve under the dash top, out of sight
+const SHOULDER = (parse(Float32, get(ENV, "JM_SHOULDER_X", "0.18")), parse(Float32, get(ENV, "JM_SHOULDER_Y", "0.22")),
+                  parse(Float32, get(ENV, "JM_SHOULDER_Z", "0.26")))
+const ARM_THICK = parse(Float32, get(ENV, "JM_ARM_THICK", "1.2"))
+"""Per side (+1 = mesh z > 0): the sleeve's (wrist, far-end) points -- the ends of its principal axis, the wrist the lower."""
+function sleeve_ends(parts, side)
+    P = NTuple{3,Float64}[]
+    for p in parts, i in 1:11:length(p.verts)-10
+        v = p.verts; sign(v[i+2]) == side && push!(P, (v[i], v[i+1], v[i+2]))
+    end
+    isempty(P) && return nothing
+    c = (sum(p[1] for p in P), sum(p[2] for p in P), sum(p[3] for p in P)) ./ length(P)
+    C = zeros(3, 3)
+    for p in P, a in 1:3, b in 1:3; C[a, b] += (p[a] - c[a]) * (p[b] - c[b]); end
+    F = eigen(Symmetric(C))
+    ax = F.vectors[:, 3]; nf = F.vectors[:, 1]                              # long axis; the strip's face normal (least spread)
+    pr = [sum((p .- c) .* ax) for p in P]
+    a = c .+ Tuple(ax .* minimum(pr)); b = c .+ Tuple(ax .* maximum(pr))
+    a[2] <= b[2] ? (a, b, nf) : (b, a, nf)                                  # (wrist, far end, face normal)
+end
+const SLEEVE_ENDS = ARMS2 ? (sleeve_ends(ARMP, 1), sleeve_ends(ARMP, -1)) : (nothing, nothing)
+armLR = (ARMS2 && !isempty(armItems)) ? split_fists(ARMP, armItems[1].tex) : Render.Item[]   # [z > 0, z < 0], as the gloves
+"""The raw-frame matrix that puts the sleeve's wrist W on H and its far end E on the shoulder S: a rotation of the axis
+E->W onto S->H, stretched along it to length |S-H| and scaled ARM_THICK across."""
+const EYE_RAW = (parse(Float64, get(ENV, "JM_EYE_X", "0.25")), parse(Float64, get(ENV, "JM_EYE_Y", "0.40")), 0.0)
+const ARM_ROLL = get(ENV, "JM_ARM_ROLL", "0") != "0"
+function sleeve_mat(W, E, H, S, nf)
+    a = collect(W .- E); la = sqrt(sum(a .^ 2)); a ./= la
+    b = collect(H .- S); lb = sqrt(sum(b .^ 2)); b ./= lb
+    v = [a[2]*b[3]-a[3]*b[2], a[3]*b[1]-a[1]*b[3], a[1]*b[2]-a[2]*b[1]]; cth = sum(a .* b); sv = sqrt(sum(v .^ 2))
+    K = [0 -v[3] v[2]; v[3] 0 -v[1]; -v[2] v[1] 0]
+    R = sv < 1e-9 ? (cth > 0 ? Matrix(1.0I, 3, 3) : -Matrix(1.0I, 3, 3)) : Matrix(1.0I, 3, 3) + K + K*K*((1 - cth)/sv^2)
+    Sx = ARM_THICK .* Matrix(1.0I, 3, 3) .+ (lb/la - ARM_THICK) .* (a * a')    # along the axis: stretch; across: thicken
+    # the sleeve is a flat STRIP: roll it about its new axis so its face looks at the eye (the gold's sleeves always show
+    # their face; an arbitrary roll turned the near end into a broad flat "sail" in a turn)
+    n1 = R * collect(nf); n1 .-= b .* sum(n1 .* b)
+    d = collect(EYE_RAW) .- (collect(H) .+ collect(S)) ./ 2; d .-= b .* sum(d .* b)
+    # (tried as the default: face-on, the lotarms strip is a broad SHEET -- it is not one tube; kept as an A/B, JM_ARM_ROLL=1)
+    if ARM_ROLL && sqrt(sum(n1 .^ 2)) > 1e-6 && sqrt(sum(d .^ 2)) > 1e-6
+        n1 ./= sqrt(sum(n1 .^ 2)); d ./= sqrt(sum(d .^ 2))
+        φ = atan(sum(b .* [n1[2]*d[3]-n1[3]*d[2], n1[3]*d[1]-n1[1]*d[3], n1[1]*d[2]-n1[2]*d[1]]), sum(n1 .* d))
+        Kb = [0 -b[3] b[2]; b[3] 0 -b[1]; -b[2] b[1] 0]
+        R = (Matrix(1.0I, 3, 3) + sin(φ)*Kb + (1 - cos(φ))*Kb*Kb) * R
+    end
+    L = R * Sx; t = collect(H) .- L * collect(W)
+    Render.M4(L[1,1], L[2,1], L[3,1], 0, L[1,2], L[2,2], L[3,2], 0, L[1,3], L[2,3], L[3,3], 0, t[1], t[2], t[3], 1)
 end
 println(count(it->it.tex!=0, trackItems), "/", length(trackItems), " track + ",
         count(it->it.tex!=0, carItems), "/", length(carItems), " Lotus parts textured")
@@ -10158,7 +10256,9 @@ function mirror_camera(cs, pitch=0.0, roll=0.0, side=1)
     R3(a,b,c) = (w = R * Float32[a,b,c,0f0]; Float32[w[1],w[2],w[3]])
     mx = parse(Float32,get(ENV,"JM_MIRCAM_X","0.55")); my = parse(Float32,get(ENV,"JM_MIRCAM_Y","0.33")); mz = parse(Float32,get(ENV,"JM_MIRCAM_Z","0.31"))
     eye = Float32[wx,wy,wz] + R3(BODY_OFF[1]+mx, BODY_OFF[2]+my, side*mz)
-    drop = parse(Float32, get(ENV,"JM_MIRROR_DROP","-0.2")); yawout = parse(Float32, get(ENV,"JM_MIRROR_YAWOUT","0.5"))
+    # COCKPIT-GOLD-1 S2: aimed a little lower and further out (was -0.2 / 0.5) -- the gold's mirror shows the horizon at
+    # about mid-glass and the world behind, ours showed more sky and more of our own car
+    drop = parse(Float32, get(ENV,"JM_MIRROR_DROP","-0.45")); yawout = parse(Float32, get(ENV,"JM_MIRROR_YAWOUT","0.8"))
     ctr = eye + R3(-4f0, drop, side*yawout)
     PROJ_MIRROR * Render.lookat(eye, ctr, R3(0f0,1f0,0f0)), eye
 end
@@ -14299,8 +14399,18 @@ function main()
             if ARMS
                 # HANDS-1 S4: in lotus.3do the arms and gloves share the steering-wheel assembly's positioner (node 15060), so
                 # GPL turns the arms with the wheel; JM_ARMS_ON_WHEEL=1 draws them with the gloves' transform, no ARMFIX (A/B).
-                _amod = ARMS_ON_WHEEL ? swModel : bodyModel*ARMFIX
-                for it in armItems;  Render.draw(prog, it, vp, _amod; bright=1.15, spec=0.05, ambfill=0.60); end
+                if ARMS2 && length(armLR) == 2 && SLEEVE_ENDS[1] !== nothing && SLEEVE_ENDS[2] !== nothing
+                    swRel = Render.translate(SWCENTER) * Render.rotaxis(SWAXIS, Float32(HSIGN*inp.steer*2.5 + SW_ROT)) * Render.translate(-SWCENTER[1], -SWCENTER[2], -SWCENTER[3])
+                    for (k, sgn) in ((1, 1), (2, -1))          # armLR[1] = z > 0 with gripmat(+1), as handLR
+                        W, E, nf = SLEEVE_ENDS[k]
+                        h = swRel * gripmat(sgn) * Float32[W[1], W[2], W[3], 1f0]
+                        S = (SHOULDER[1], SHOULDER[2], sgn*SHOULDER[3])
+                        Render.draw(prog, armLR[k], vp, bodyModel * sleeve_mat(W, E, (h[1], h[2], h[3]), S, nf); bright=1.15, spec=0.05, ambfill=0.60)
+                    end
+                else
+                    _amod = ARMS_ON_WHEEL ? swModel : bodyModel*ARMFIX
+                    for it in armItems;  Render.draw(prog, it, vp, _amod; bright=1.15, spec=0.05, ambfill=0.60); end
+                end
             end
             if length(handLR) == 2                      # left fist +grip, right fist −grip → gold's 10-and-2
                 Render.draw(prog, handLR[1], vp, swModel*gripmat(+1); bright=1.15, spec=0.05, ambfill=0.60)
