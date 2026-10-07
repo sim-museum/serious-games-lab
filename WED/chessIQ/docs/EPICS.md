@@ -894,3 +894,13 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
   search better (top-1 49.9% → 52.4%, policy loss 1.990 → 1.891), but held-out value loss rose (0.554 → 0.567).
   **Against sp1: 78/160 (49%), −9 ± 54.** Imitation without strength again. Retry once with T40 generations 1 and
   2 together (about 300,000 positions) when generation 2's self-play finishes.
+- **NN-19 retry (10-07): no gain.** Distilled on T40 generations 1 and 2 together (307,803 positions): top-1 52.3%
+  → 56.3%, value loss 0.568 → 0.584. **Against sp1: 72.5/160, −33 ± 54.** The 10x128 CPU network stays sp1.
+  **NN-20 lapses**, since there is no new CPU network to re-measure.
+- **NN-21 (10-07): no gain.** T40 generation 2: 2,000 games from t40a1 (167,227 plies, 0 illegal), trained from
+  t40a1 on generations 1 and 2 at lr 2e-5. Held-out results flat. **Against t40a1: 144.5/320 (45%), −34 ± 38.**
+- **NN-22: keep t40a1 and sp1.** The pattern now holds for both network sizes: the first self-play step (adapting a
+  standard-chess network to Kramnik chess) gains (+59, +36), and later steps with this recipe do not (+9, −34). The
+  held-out value loss drifts up in each of them. Likely causes: too little data per generation (150,000–300,000
+  positions, where lc0's own runs use millions per network), and value targets from a 400-visit search. A real loop
+  would need far more self-play per step than one GPU night gives.
