@@ -126,14 +126,15 @@ class BoardWidget(QWidget):
 
 def think_time(clk, turn, ply, u):
     """Seconds a personality spends on a move (CM-15). Strength is set by search nodes, so this is only the pause a
-    player would take: on a clock, its remaining time over the moves still to play plus most of the increment, varied
-    by u in [0, 1) between 0.4x and 1.6x, and never more than 8% of what is left; untimed, 0.8-3 s."""
+    player would take: on a clock, its remaining time over the moves it still expects (50 at the start, never fewer than
+    30, so a long game keeps a reserve) plus 60% of the increment, varied by u in [0, 1) between 0.4x and 1.6x, and
+    never more than 8% of what is left; untimed, 0.8-3 s. At 10+3: about 13 s a move early, ~2.4 min left at move 60."""
     if not clk:
         return 0.8 + 2.2 * u
     rem = clk["wtime" if turn == "w" else "btime"] / 1000.0
     inc = clk["winc" if turn == "w" else "binc"] / 1000.0
-    to_go = max(12, 35 - ply // 4)
-    return max(0.4, min((rem / to_go + 0.75 * inc) * (0.4 + 1.2 * u), 0.08 * rem))
+    to_go = max(30, 50 - ply // 4)
+    return max(0.4, min((rem / to_go + 0.6 * inc) * (0.4 + 1.2 * u), 0.08 * rem))
 
 
 class ThinkThread(QThread):
