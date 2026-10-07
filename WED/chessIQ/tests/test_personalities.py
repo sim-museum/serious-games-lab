@@ -104,5 +104,20 @@ class Roster(unittest.TestCase):
         self.assertTrue(all(p.engine == "leela" and p.net for p in r[len(own):]))
 
 
+class LeelaAndMaiaRatings(unittest.TestCase):    # measured, not labels (CM, 10-07)
+    def test_maia_ratings_are_measured(self):
+        self.assertEqual(P.maia_rating(1100), 1219)
+        self.assertEqual(P.maia_rating(1500), 1483)
+        self.assertLess(P.maia_rating(1900), 1500)                                  # compressed in Kramnik chess
+        self.assertTrue(1219 < P.maia_rating(1200) < 1385)
+
+    def test_leela_levels_get_weaker_with_temperature(self):
+        ratings = [r for r, _ in P.LEELA_LEVELS]
+        temps = [t for _, t in P.LEELA_LEVELS]
+        self.assertEqual(ratings, sorted(ratings, reverse=True))
+        self.assertEqual(temps, sorted(temps))
+        self.assertLessEqual(max(temps), 0.7)                                       # beyond 0.7 it collapses
+
+
 if __name__ == "__main__":
     unittest.main()

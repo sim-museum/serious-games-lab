@@ -210,20 +210,46 @@ ROSTER = [
 ]
 
 
+# Measured on the ladder (docs/calibration/leela_maia_ladder.txt), 60 games each against Fairy-Stockfish ladder levels.
+# The Kramnik network at one node: its first instinct, made weaker by sampling (lc0 temperature). Temperature is
+# harsh in Kramnik chess -- the network's long tail includes ruinous self-captures -- so the useful range is 0-1.
+# (rating, temperature), each from 120 games through LeelaEngine against the nearest exact ladder point.
+LEELA_LEVELS = [(1910, 0.3), (1650, 0.5), (1370, 0.6), (1150, 0.7)]
+# Maia, by the human rating band it learned from -> measured Kramnik rating. Compressed: from 1500 up they play alike.
+MAIA_MEASURED = [(1100, 1219), (1300, 1385), (1500, 1483), (1700, 1477), (1900, 1484)]
+BEST_NET = "kramnik-sp1.pb.gz"         # the strongest Kramnik network measured (NN-10); the Nibbler launcher's default
+
+
+def maia_rating(band):
+    pts = MAIA_MEASURED
+    if band <= pts[0][0]:
+        return pts[0][1]
+    for (b0, r0), (b1, r1) in zip(pts, pts[1:]):
+        if band <= b1:
+            return round(r0 + (r1 - r0) * (band - b0) / (b1 - b0))
+    return pts[-1][1]
+
+
 def leela_roster():
-    """Opponents played by the Kramnik lc0 (EPIC NN): the Kramnik network trained here, and the Maia networks --
-    human-like play learned from rated human games, one node a move, at the rating band each was trained on. Maia
-    learned ordinary chess, so it plays Kramnik chess legally but rarely thinks of a self-capture."""
+    """Opponents played by the Kramnik lc0 (EPIC NN): the Kramnik network trained here -- at full search, and at one
+    node with temperature for club-level play -- and the Maia networks, human-like play learned from rated human
+    games. All rated by measurement in Kramnik chess, not by label."""
     out = []
     nets = os.path.join(HERE and os.path.dirname(HERE), "engine", "nets")
-    kr = sorted(glob.glob(os.path.join(nets, "kramnik-*.pb.gz")))
+    best = os.path.join(nets, BEST_NET)
+    kr = [best] if os.path.exists(best) else sorted(glob.glob(os.path.join(nets, "kramnik-*.pb.gz")))[-1:]
     if kr:
         out.append(Personality("Leela (Kramnik network)", 2850, "a neural network trained on Kramnik chess", engine="leela",
-                               net=kr[-1], nodes=800))
+                               net=kr[0], nodes=800))
+        for rating, t in LEELA_LEVELS:
+            out.append(Personality("Leela %d" % rating, rating, "the Kramnik network's first instinct, one node, "
+                                   "temperature %.1f (measured %d)" % (t, rating), engine="leela", net=kr[0], nodes=1,
+                                   randomness=round(100 * t)))
     maia = os.path.join(WED, "INSTALL", "maia_weights")
     for f in sorted(glob.glob(os.path.join(maia, "maia-*.pb.gz"))):
-        r = int(re.findall(r"maia-(\d+)", f)[0])
-        out.append(Personality("Maia %d" % r, r, "plays like a human rated about %d (human games, one node)" % r,
+        band = int(re.findall(r"maia-(\d+)", f)[0])
+        out.append(Personality("Maia %d" % band, maia_rating(band), "human-like play learned from games of players rated "
+                               "about %d; measured %d in Kramnik chess (one node)" % (band, maia_rating(band)),
                                engine="leela", net=f, nodes=1))
     return out
 
@@ -234,7 +260,8 @@ def roster():
 
 
 def by_name():
-    """Every personality by name, Chessmaster's and chessIQ's own (for tools and tests)."""
+    """Every personality by name, Chessmaster's, chessIQ's own and the Leela opponents (for tools and tests)."""
     out = {p.name: p for p in ROSTER}
     out.update({p.name: p for p in load_chessmaster()})
+    out.update({p.name: p for p in leela_roster()})
     return out

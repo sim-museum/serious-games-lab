@@ -1,0 +1,6 @@
+# Leela (kramnik-sp1, one node, lc0 temperature) and Maia on chessIQ's ladder (60-120 games each; CPU/GPU lc0).
+# Ratings from far-off opponents (scores < 30%) proved unreliable; the roster uses near-neighbour results.
+Leela T0 (1 node) vs fsf1024 (1983): 18.5/40 -> ~1957
+first pass, distant opponents: T0.3 vs fsf600 36.0/60; T0.5 vs fsf256 26.0/60; T0.7 vs fsf128 17.5/60 (GPU build: 14.0/60); T1.0 vs fsf256 3.5/60; T2.0, T3.0: 0/60
+near neighbours, through LeelaEngine, 120 games: T0.3 vs 1983 47.5 -> 1910; T0.5 vs 1691 52.5 -> 1647; T0.6 vs 1493 40.0 -> 1373; T0.7 vs 1272 40.0 -> 1152; T1.0 vs 1163 6.0 -> ~650 (dropped)
+Maia (1 node): 1100 vs fsf64 25.5/60 -> 1219; 1300 vs fsf128 21.0/60 -> 1385; 1500 vs fsf181 20.5/60 -> 1483; 1700 vs fsf181 20.0/60 -> 1477; 1900 vs fsf256 14.0/60 -> 1484
