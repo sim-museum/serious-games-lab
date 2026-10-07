@@ -142,11 +142,14 @@ def _convention_card(rec: dict, hand_at_trick: set) -> Optional[int]:
         high = (like != udca)
     else:
         if signals._SELECTIVE and rec.get("dummy_known"):
-            seen = rec["seen"] | set(hand_at_trick)
+            seen = rec["seen"] if signals._QP else rec["seen"] | set(hand_at_trick)
             hidden = sum(1 for r in (0, 1) if suit * 13 + r not in seen)
             if not signals.count_wanted(hidden):
                 return sorted(spots, key=_rank_i)[-1]       # no signal: lowest
         high = ((len(in_suit) % 2 == 0) != udca)             # count: even -> high
+        if signals._QP and high and len(rec.get("before", [])) < 3 \
+                and any(_rank_i(c) != 5 for c in spots):
+            spots = [c for c in spots if _rank_i(c) != 5]    # keep the 9
     spots = sorted(spots, key=_rank_i)                       # high card first
     return spots[0] if high else spots[-1]
 
