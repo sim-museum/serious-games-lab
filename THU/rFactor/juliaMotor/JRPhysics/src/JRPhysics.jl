@@ -29,6 +29,16 @@ using PrecompileTools
         field = DriveRT3D.build_cars3d([(0.0, 10.0, 0.0, 0.0), (0.0, 20.0, 0.0, 0.0)])
         for f in field, i in 1:10; DriveRT3D.step_car3d!(f, 0.5, 0.0, 0.0, 1/60; manual = false, groundz = flat); end
         DriveRT3D.damage_reset!()
+        # WWSETUP-1 / CAMBER-1 (2026-10-06): the game builds the SESSION's chassis -- a ramp LSD (per-wheel rear speeds),
+        # camber, toe, bars -- a different equation system from the default above. Measured at launch (JM_TIMING, WG):
+        # physics build 15.7 s with only the default cached (PHYSPRE-1's cached default: ~5 s). Build and step one here so
+        # those code paths are in the package image too; then restore the default chassis.
+        DriveRT3D.set_chassis!(DriveRT3D.Chassis(diff = (41.0, 75.0, 60.0, 4.0), toe = (-0.0017, 0.0015), karb = (1121.0, 12714.0),
+                                                 camber = (-0.0087, -0.0070, -0.0070, -0.0087)))
+        cs = DriveRT3D.build_car3d(x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0, y0 = 0.0)
+        for i in 1:30; DriveRT3D.step_car3d!(cs, 0.6, 0.0, 0.05, 1/60; manual = false, groundz = flat); end
+        DriveRT3D.telemetry3d(cs)
+        DriveRT3D.set_chassis!(DriveRT3D.Chassis())
     end
 end
 end # module
