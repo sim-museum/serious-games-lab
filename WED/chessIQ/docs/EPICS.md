@@ -865,3 +865,27 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
   2. State the thresholds the manual omits (game types) in code and documentation, so they can be argued with.
 - **Status:** the epic's stated goal is met and verified end to end. Further CM work is optional polish: predefined
   tournaments, and opening names if a Kramnik-legal naming source can be found.
+
+## EPIC NN, retrospective 6 (2026-10-07, before sprints NN-19..NN-24)
+- **Where it stands:** `kramnik-t40a1` (20x256) is level with full-strength Fairy-Stockfish at 1 s a move and is
+  Nibbler's default on the GPU. `kramnik-sp1` (10x128) is the CPU network and chessIQ's opponent network. One T40
+  self-play generation gave +36 (95% −2 to +75). Generation 2's self-play is running on the GPU now.
+- **Stepping back, three directions:**
+  1. *Keep climbing* with T40 generations gated by matches. Slow (about 2.5 h of self-play a generation), small
+     steps, and needs about 320 games a gate to see +30.
+  2. *Bring the strength to CPU-only machines.* Most players will not have the GPU build. T40's self-play data
+     (400-visit search targets from a much stronger network) can train the 10x128 network (distillation from a
+     stronger teacher, this time genuinely stronger), which is fast on any CPU.
+  3. *Measure at analysis length.* Is the network's edge over Fairy-Stockfish larger at 5–10 s a move, where
+     Nibbler is used? That is expensive: about 5 hours for 40 games at 5 s.
+- **Chosen:** 2 first (it helps every player, and the data already exists), then one generation of 1, then 3 at
+  the end if time allows.
+- **Sprints:**
+  - **NN-19.** Distil T40's self-play into 10x128 (from sp1). Check: against sp1 at equal nodes and at equal CPU
+    time.
+  - **NN-20.** If it wins, it becomes the CPU and chessIQ network. Check: the club levels (temperature) re-measured,
+    since a new network shifts them.
+  - **NN-21.** T40 generation 2 trained on generations 1 and 2 at lr 2e-5. Check: 320 games against t40a1.
+  - **NN-22.** Promote or keep, by NN-21's result.
+  - **NN-23.** A longer-time reference against Fairy-Stockfish, if the GPU is free.
+  - **NN-24.** Retrospective.
