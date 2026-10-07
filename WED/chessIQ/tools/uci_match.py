@@ -117,6 +117,7 @@ def main():
         a.new_game(); b.new_game()
         r = play(a, b, start) if g % 2 == 0 else 1 - play(b, a, start)
         score += r
+        print("game %d: %s %.1f, total %.1f / %d" % (g + 1, a.name, r, score, g + 1), flush=True)
     d, ci = elo(score / games, games)
     print("%s vs %s: %.1f / %d (%.0f%%), Elo difference %+.0f +/- %.0f" % (a.name, b.name, score, games,
                                                                          100 * score / games, d, ci))
