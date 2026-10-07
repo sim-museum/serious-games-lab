@@ -9811,7 +9811,10 @@ armLR = (ARMS2 && !isempty(armItems)) ? split_fists(ARMP, armItems[1].tex) : Ren
 E->W onto S->H, stretched along it to length |S-H| and scaled ARM_THICK across."""
 const EYE_RAW = (parse(Float64, get(ENV, "JM_EYE_X", "0.25")), parse(Float64, get(ENV, "JM_EYE_Y", "0.40")), 0.0)
 const ARM_ROLL = get(ENV, "JM_ARM_ROLL", "0") != "0"
-function sleeve_mat(W, E, H, S, nf)
+const SLEEVE_LASTR = Ref(Matrix(1.0I, 3, 3))
+const SLEEVE_HOLD = get(ENV, "JM_ARM_HOLDROLL", "1") != "0"
+const SLEEVE_NREF = Any[nothing, nothing]          # per side: the face normal with the wheel straight (set on first draw)
+function sleeve_mat(W, E, H, S, nf; target = nothing)
     a = collect(W .- E); la = sqrt(sum(a .^ 2)); a ./= la
     b = collect(H .- S); lb = sqrt(sum(b .^ 2)); b ./= lb
     v = [a[2]*b[3]-a[3]*b[2], a[3]*b[1]-a[1]*b[3], a[1]*b[2]-a[2]*b[1]]; cth = sum(a .* b); sv = sqrt(sum(v .^ 2))
@@ -9821,15 +9824,18 @@ function sleeve_mat(W, E, H, S, nf)
     # the sleeve is a flat STRIP: roll it about its new axis so its face looks at the eye (the gold's sleeves always show
     # their face; an arbitrary roll turned the near end into a broad flat "sail" in a turn)
     n1 = R * collect(nf); n1 .-= b .* sum(n1 .* b)
-    d = collect(EYE_RAW) .- (collect(H) .+ collect(S)) ./ 2; d .-= b .* sum(d .* b)
-    # (tried as the default: face-on, the lotarms strip is a broad SHEET -- it is not one tube; kept as an A/B, JM_ARM_ROLL=1)
-    if ARM_ROLL && sqrt(sum(n1 .^ 2)) > 1e-6 && sqrt(sum(d .^ 2)) > 1e-6
+    # HANDS-2 S3: the roll target. By default (`target`) the face normal the strip has with the wheel STRAIGHT: the minimal
+    # rotation re-rolls the strip as the glove moves round the rim, and in a sharp turn swung its face broad-on to the eye --
+    # the flat white "sail". JM_ARM_ROLL=1 targets the eye instead (tried: face-on the strip is a broad sheet).
+    d = target !== nothing ? collect(target) : collect(EYE_RAW) .- (collect(H) .+ collect(S)) ./ 2; d .-= b .* sum(d .* b)
+    if (ARM_ROLL || target !== nothing) && sqrt(sum(n1 .^ 2)) > 1e-6 && sqrt(sum(d .^ 2)) > 1e-6
         n1 ./= sqrt(sum(n1 .^ 2)); d ./= sqrt(sum(d .^ 2))
         φ = atan(sum(b .* [n1[2]*d[3]-n1[3]*d[2], n1[3]*d[1]-n1[1]*d[3], n1[1]*d[2]-n1[2]*d[1]]), sum(n1 .* d))
         Kb = [0 -b[3] b[2]; b[3] 0 -b[1]; -b[2] b[1] 0]
         R = (Matrix(1.0I, 3, 3) + sin(φ)*Kb + (1 - cos(φ))*Kb*Kb) * R
     end
     L = R * Sx; t = collect(H) .- L * collect(W)
+    SLEEVE_LASTR[] = R
     Render.M4(L[1,1], L[2,1], L[3,1], 0, L[1,2], L[2,2], L[3,2], 0, L[1,3], L[2,3], L[3,3], 0, t[1], t[2], t[3], 1)
 end
 println(count(it->it.tex!=0, trackItems), "/", length(trackItems), " track + ",
@@ -14418,7 +14424,14 @@ function main()
                         W, E, nf = SLEEVE_ENDS[k]
                         h = swRel * gripmat(sgn) * Float32[W[1], W[2], W[3], 1f0]
                         S = (SHOULDER[1], SHOULDER[2], sgn*SHOULDER[3])
-                        Render.draw(prog, armLR[k], vp, bodyModel * sleeve_mat(W, E, (h[1], h[2], h[3]), S, nf); bright=1.15, spec=0.05, ambfill=0.60)
+                        if SLEEVE_HOLD && SLEEVE_NREF[k] === nothing    # the straight-wheel face normal, once
+                            sw0 = Render.translate(SWCENTER) * Render.rotaxis(SWAXIS, Float32(SW_ROT)) * Render.translate(-SWCENTER[1], -SWCENTER[2], -SWCENTER[3])
+                            h0 = sw0 * gripmat(sgn) * Float32[W[1], W[2], W[3], 1f0]
+                            sleeve_mat(W, E, (h0[1], h0[2], h0[3]), S, nf); SLEEVE_NREF[k] = SLEEVE_LASTR[] * collect(nf)
+                        end
+                        # HANDS-2 S3: lit toward the gold's white sleeve (it read grey at 1.15 / 0.60)
+                        Render.draw(prog, armLR[k], vp, bodyModel * sleeve_mat(W, E, (h[1], h[2], h[3]), S, nf; target = SLEEVE_HOLD ? SLEEVE_NREF[k] : nothing);
+                                    bright=1.35, spec=0.05, ambfill=0.85)
                     end
                 else
                     _amod = ARMS_ON_WHEEL ? swModel : bodyModel*ARMFIX

@@ -21,6 +21,7 @@ this index was written; that is what it exists to stop.
 
 | item | what | state |
 |---|---|---|
+| **AIHELMET-1** | The AI drivers' helmets render as a dark dome (black lobes from the front) where GPL's are the driver's skin (Clark: a blue dome with a chequered band) -- found 2026-10-07 during HANDS-2 | open -- lead below |
 | **TRACKSEG-3** | Preferences switch: show/hide the track-section names ("Front Straight", "Big Bend" at WG), default ON (PO 2026-10-06) | ✅ **DONE (S1, 2026-10-06):** launcher Graphics group, "Show track section names", default ON, remembered; OFF = `JM_SEGNAME_SECS=0`, also for replays; gate `segnames_smoke` |
 | **GUI-1** | Redesign the julia racer GUI (`demo/native/juliaRacer.py`) for ease of use per GUI best practices, then restyle it like the PyQt GUIs of pokerIQ and bridgeIQ (`~/sgl/MON/pokerIQ`, `~/sgl/FRI/bridgeIQ`) (PO 2026-10-06) | **S1 (2026-10-06) redesign done:** task-ordered tabs (Race / Results / Replays / Settings / Controller), Session + Car cards, one primary Start button, menus + status bar, log on demand, everything remembered; the sim's environment is identical to before (3 cases). **S2 restyle done:** dark pokerIQ/bridgeIQ theme (`261006/gui/s2_vs_iq.jpg`). 🟡 **AWAITING THE PO's look** |
 | **DOC-RACE-1** | Documentation on how to race, drawing on the docs under `~/sgl/THU` (`DOC/`: GPL manual, setup guides, brake bias, diffs, tyre heat, ...) (PO 2026-10-06) | ✅ **S1 (2026-10-06):** `demo/native/docs/HOW_TO_RACE.md`, in the launcher as Help → How to race…; 🟡 awaiting the PO's read |
@@ -23377,3 +23378,37 @@ views (the second half of the PO's request).
   while the client sim ran; that gate runs with `JM_AI=0`, so the AI-arms code is not on its path). No stray process held
   the UDP port afterwards; rerun alone it PASSES 4/4 (rx=228, a contact, closest approach 2.68 m). Recorded as a transient
   hang, not a verdict on this change.
+
+### HANDS-2 S3 (2026-10-07): the cockpit sleeves -- brighter, the roll held; the near-camera "sail" is closer to the gold than it looked
+* **Lit toward the gold's white** (bright 1.35, fill 0.85; they read grey at 1.15/0.60).
+* **The roll is held** at the straight-wheel orientation (`JM_ARM_HOLDROLL`, default on): the minimal rotation re-rolled
+  the flat strip as the glove went round the rim. Measured effect in Tarzan: small.
+* **The "sail", re-judged against the gold turning frame** (`261007/hands/s3_vs.jpg`, gold t=22): the gold's left sleeve
+  ALSO fills the bottom-left corner in a turn -- a broad white band with the red stripe, running out of the frame, because
+  the arm passes close to the eye. Ours is about that size; what differs is its silhouette (a flat white triangle) and the
+  missing stripe in that region -- the shape of `lotarms` near the shoulder, not the placement.
+* **HANDS-2 after S1–S3 (3 sprints this pass): AWAITING THE PO's look.** On the next pass, if the PO wants more: give the
+  near-shoulder part of the sleeve a tube cross-section (or clip what lies within ~0.15 m of the eye) and carry the stripe.
+* **Gates** (`GATES_SKIP=road_clear_smoke`): 46/46 pass.
+
+### E78 — retrospective + S9 (2026-10-07): the drop-rule audit finds no stale rule outside Zandvoort
+**Retrospective.** E60-S6/S7 found two unrecorded or outdated name rules in `drop()` hiding real scenery at Zandvoort
+(`hotels`, `tent*`). The same audit, every other track (`JM_OBJDIAG_AT` over the whole lap, `261007/drops/`):
+* **Watkins Glen:** `grndpe*` standing crowd rows (43) -- the PO's E88 order (all crowd rows, every track); `starter`.
+* **Monza:** `trbk1–8`, `brbk1–3`, `tuntbk1–2` -- the underpass tree banks, the PO's round-4 "7 stands of trees across the
+  track near the underpass"; `starter`.
+* **Spa:** `pelfspa` (594), `peprow` (244), `plrow` (10) crowd rows and `pform` loose people -- PO orders (E88/E101); `starter`.
+* **Nürburgring:** `trow_` (84) -- drawn a second time by the scenery groups (E109/FLOAT-2); `people*` -- PO orders; `grass`.
+Every removal traces to a recorded PO decision or a measured duplicate: **no stale rule to lift** on these four tracks.
+
+### AIHELMET-1 (found 2026-10-07, during HANDS-2 S2): the AI drivers' helmets are dark domes
+* Gold (`gold standard/julia racer/lotus49`, chase and rear-high stills): GPL's Lotus helmet is a BLUE dome with a black-
+  and-white chequered band. Ours, on the AI Lotuses: a black dome from behind, black lobes beside a white face from the
+  front (`261007/hands/ai2/driver_zoom.png`) -- the lobes are NOT sleeves (they are there with the sleeves removed).
+* The AI wrappers (`CLA5A.3DO`, `hil6a.3DO`) give `clahelm`/`hilhelm` only 6 triangles (y 0.44–0.48); nothing above
+  y 0.52 is textured -- the dome is in the 896-triangle flat-colour group (`JM_AITEX`).
+* The player's chase helmet had the same fault and was fixed by E106-S3/S28: `helmeg.3do` is a 176-tri `helblack` trim plus
+  a 572-tri UNTEXTURED shell -- the per-driver skin slot GPL binds at runtime; we skin the shell (`l10helm`, the closest
+  colour match to the gold). **Next:** do the same for each AI driver -- find the shell's triangles in the AI wrapper's
+  flat group (its placing group), bind the driver's skin (`clahelm`/`hilhelm`/... or the gold-matched one), keep the trim.
+
