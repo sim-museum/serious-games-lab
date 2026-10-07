@@ -699,3 +699,19 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
   Now moves-to-go starts at 50 and never falls below 30, and 60% of the increment is spent (was 75%). Result: about
   13 s a move over moves 1–20, 143 s left at move 60, 91 s at move 80. The unit test plays out 60 moves and requires
   more than 120 s left (the old curve leaves about 60).
+- **Leela and Maia opponents at measured ratings (10-07, CM, done during the NN GPU wait).**
+  - **Leela at human levels.** At one node, the Kramnik network's first instinct already plays at about 1,960, so
+    fewer nodes cannot reach club level. lc0's temperature (sampling from the network's preferences) can. Strength
+    collapses past 0.7, because the network's long tail includes ruinous self-captures (1.0 scores 5% against the
+    16-node floor, about 650). New opponents, each from 120 games through the app's own `LeelaEngine` against the
+    nearest exact ladder point (`tools/leela_levels.py`): **Leela 1910 (temperature 0.3), 1650 (0.5), 1370 (0.6),
+    1150 (0.7).**
+  - **Maia rated by measurement, not label:** 1100 → 1,219; 1300 → 1,385; 1500 → 1,483 (consistent with the CM-8
+    anchor); 1700 → 1,477; 1900 → 1,484. From 1500 up the Maia models play alike in Kramnik chess. Rated games now
+    use the measured numbers.
+  - **Lesson:** a first pass against distant opponents (scores of 6–29%) put temperature 0.7 at 1,339 and 1.0 at
+    1,208, both far too high. Only near-50% scores against close neighbours are trustworthy, as CM-8's ladder
+    already assumed.
+  - **Fixed:** the Leela opponent picked the alphabetically last network (it had become the experimental 20x256).
+    It now uses `kramnik-sp1`, as the Nibbler launcher does. `by_name()` includes the Leela opponents.
+  - Data: `docs/calibration/leela_maia_ladder.txt`.
