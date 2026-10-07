@@ -904,3 +904,8 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
   held-out value loss drifts up in each of them. Likely causes: too little data per generation (150,000–300,000
   positions, where lc0's own runs use millions per network), and value targets from a 400-visit search. A real loop
   would need far more self-play per step than one GPU night gives.
+- **NN-23, attempt 1 (10-07): lost to an NVIDIA driver fault.** t40a1 against full-strength Fairy-Stockfish at
+  3 s a move. At 08:07 the driver (open kernel module 595.91.07) failed a GPU watchdog assertion and lost contact
+  with the GPU firmware. lc0 died, Xwayland and logind hung, and the desktop needed a hard reboot. The match
+  script printed only a final total, so the finished games were lost; it now prints each game's result as it goes.
+  **Attempt 2** started 12:28 with a guard that kills lc0 at the first `NVRM` kernel message.
