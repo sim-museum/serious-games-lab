@@ -718,3 +718,8 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
 - **Rated 10+3 game against Leela 1370 (10-07):** passes end to end through the app (1 node, temperature 0.6, about
   11 s a move on the clock; mate in 37 plies by the full-strength player side; rating moved once).
   `tools/ranked_game_check.py` handles Leela opponents.
+- **NN-16 part 1 (10-07): the adapted T40 against sp1 at 1 s a move: 35/60 (58%), +58 ± 89.** Not significant on
+  its own, but consistent with the trend (untouched T40 −35 at 0.3 s; adapting adds +36). `kramnikNibbler.sh` now
+  uses `kramnik-t40a1` when the GPU build is present (Nibbler: 152k nodes in 22 s on the self-capture position, both
+  top lines winning for Black), and `kramnik-sp1` on the CPU. chessIQ's opponents keep sp1 (fast; their ratings
+  were measured with it). `KRAMNIK_NET` overrides.
