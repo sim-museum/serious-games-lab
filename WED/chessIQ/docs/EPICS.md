@@ -680,3 +680,16 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
 - **NN-14 (10-06): done.** `LeelaNet` takes the value-head width (32 in LD2, 128 in T40). `load_lc0` reads it, and
   `verify_export.py` infers every shape from the saved weights. Identity checks inside lc0 over 59 positions, for
   the loaded T40 and for its export round trip: largest policy difference 0.065 percentage points, W−L/D 0.0030.
+- **NN-15 (10-06): done, with a probable small gain.** T40 self-play: 2,000 games at 400 visits in about 2.5 hours
+  (156,972 plies, 0 illegal; untouched T40 self-captures in 5.9% of its moves, against LD2's 1.5%).
+  - At sp1's learning rate (1e-4) the adaptation **damaged** the network. Held-out top-move agreement fell (55.9% →
+    54.1%), and the result scored **45.5/160 against untouched T40, −160 ± 60.** A 20x256 network with 149,000
+    positions drifts too fast at that rate.
+  - At a fifth of the rate (2e-5): top-move agreement rose to 58.1%, policy loss fell from 1.846 to 1.739, and it
+    passes the identity check.
+  - **Adapted vs untouched T40: 176.5/320 (55.2%), +36 Elo, 95% −2 to +75** (seed 51: 88.0/160; seed 53:
+    88.5/160). Probably real, but just short of 95%.
+  - Saved as `engine/nets/kramnik-t40a1.pb.gz`, not yet the default. NN-16 decides between it and sp1 at an
+    analysis-like time.
+  - Lesson: scale the learning rate to the network and the data, and treat falling held-out agreement with the
+    search's own move as a stop signal before any match.
