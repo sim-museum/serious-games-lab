@@ -22,7 +22,7 @@ this index was written; that is what it exists to stop.
 | item | what | state |
 |---|---|---|
 | **TRACKSEG-3** | Preferences switch: show/hide the track-section names ("Front Straight", "Big Bend" at WG), default ON (PO 2026-10-06) | ✅ **DONE (S1, 2026-10-06):** launcher Graphics group, "Show track section names", default ON, remembered; OFF = `JM_SEGNAME_SECS=0`, also for replays; gate `segnames_smoke` |
-| **GUI-1** | Redesign the julia racer GUI (`demo/native/juliaRacer.py`) for ease of use per GUI best practices, then restyle it like the PyQt GUIs of pokerIQ and bridgeIQ (`~/sgl/MON/pokerIQ`, `~/sgl/FRI/bridgeIQ`) (PO 2026-10-06) | open |
+| **GUI-1** | Redesign the julia racer GUI (`demo/native/juliaRacer.py`) for ease of use per GUI best practices, then restyle it like the PyQt GUIs of pokerIQ and bridgeIQ (`~/sgl/MON/pokerIQ`, `~/sgl/FRI/bridgeIQ`) (PO 2026-10-06) | **S1 (2026-10-06) redesign done:** task-ordered tabs (Race / Results / Replays / Settings / Controller), Session + Car cards, one primary Start button, menus + status bar, log on demand, everything remembered; the sim's environment is identical to before (3 cases). Next: S2 restyle |
 | **DOC-RACE-1** | Documentation on how to race, drawing on the docs under `~/sgl/THU` (`DOC/`: GPL manual, setup guides, brake bias, diffs, tyre heat, ...) (PO 2026-10-06) | open |
 | **REPLAY-2** | A replay is ALWAYS available for the session just exited; add the GPL Replay Analyser's analysis features (gold standard: `~/sgl/THU/WP/drive_c/Program Files/GPL Replay Analyser`) alongside replaying the video; optional Claude Code analysis of the replay with how-to-improve advice (PO 2026-10-06) | open |
 | **COCKPIT-GOLD-1** | Cockpit mirrors closer but still not right -- they look tilted slightly up; match the gold. The windscreen/canopy is solid where GPL's is almost transparent -- match the gold (PO 2026-10-06) | open |
@@ -23075,4 +23075,45 @@ sprints before rotating, as before.
   throw-away settings directory -- default ON; ON leaves the sim's default; OFF → `JM_SEGNAME_SECS=0`; OFF remembered;
   a new launcher starts OFF; the replay path honours OFF. 6/6 PASS. **Validated against a known positive:** a copy of the
   launcher with the default flipped to OFF makes the gate FAIL. `setup_tab_smoke` still passes.
+
+### GUI-1 — retrospective + S1 (2026-10-06): the launcher redesigned for ease of use (structure; the restyle is S2)
+**Audit of the old launcher** (`261006/gui/tab*.png`), against common GUI guidance (one primary action per screen,
+progressive disclosure, group by task, plain language, feedback for long operations, recognition over recall):
+1. The primary action, **Launch**, was a small default button bottom-left under a 12-row form; Stop beside it.
+2. **Developer jargon in labels**: "Mute engine audio (JM_NOSOUND)", "Force feedback off (JM_NOFFB)", "(JM_2D)".
+3. **One flat form mixed every concern**: session, car, audio/FFB, recording, physics model, graphics, multiplayer --
+   rarely-changed preferences sat between the per-session choices; the window's natural height (885 px) exceeded its
+   default (640), so the bottom was clipped on first open.
+4. The **controls** were a run-on sentence under the button; there was no Help menu or About.
+5. An **empty log pane** took a third of the window at all times.
+6. The **default track was the Skidpad** (a test area), and nothing but the car setup and graphics was remembered.
+7. The **multiplayer group** always showed a disabled port row, with its own "Session:" label next to the real one.
+8. No status line: after Launch the only feedback was the progress bar; a crash showed only in the log pane.
+
+**Redesign (implemented):**
+* **Tabs in task order**: *Race* (set up and start), *Results*, *Replays*, then the once-off *Settings* and
+  *Controller* (was "Calibrate controller").
+* **Race tab**: a *Session* card (Track, Session, and -- for a race only -- Laps, Opponents, Opponent pace with its
+  derivation, Qualifying first) beside a *Car — Lotus 49* card (Setup, Gearbox); the LAN card shows only "Players:
+  Single player / Host a LAN race / Join a LAN race" until a LAN mode is picked. One large primary button whose label
+  says what it does (**Start practice** / **Start race**), Stop beside it; *Controls…* and *Show log* at the right.
+* **Settings tab**: Graphics (resolution, full screen, anti-aliasing, section names -- TRACKSEG-3), Sound and force
+  feedback, Recording (replay, telemetry), Advanced (2-D physics). Plain-language labels; the env names moved to
+  tooltips.
+* **Menus**: Game (Start Ctrl+Enter, Stop, Quit Ctrl+Q), Help (Controls… F1, About). The controls are a two-column table.
+* **Status bar**: "Ready" → "Starting race at Watkins Glen…" → "Loading: decoding textures…" → "Session ended. Ready."
+  A failed sim says so and **opens the log by itself**; a requested Stop is not called a failure.
+* **Everything is remembered** (track, session, laps, opponents, qualifying, gearbox, setup, every preference); a first
+  run opens on Zandvoort, Practice. The Skidpad is labelled "Skidpad (test area)".
+* Widget names and the track/mode index order are unchanged, so `launch()`, the LAN lobby protocol and the replay
+  path read the same attributes.
+
+**Verified:**
+* **The sim's environment is identical** to the old launcher's for three sessions (Skidpad practice; Watkins Glen race,
+  7 laps, 4 AI, manual, WW103, muted, no replay, qualifying; Spa race hosting a LAN game with FFB off, no telemetry,
+  2-D physics) -- old (HEAD) and new launchers driven headless with `QProcess.start` stubbed, settings cleared per case.
+* New `demo/native/tests/launcher_test.py` (tabs, first-run defaults, race-only rows, labels, hidden log/LAN details,
+  the env of a configured race, persistence across launches); the gate `segnames_smoke` became **`launcher_smoke`**,
+  which runs every `tests/*_test.py` with its own throw-away settings directory. 2/2 PASS.
+* Screens: `261006/gui/s1/` (practice), `261006/gui/s1r/` (race, hosting).
 

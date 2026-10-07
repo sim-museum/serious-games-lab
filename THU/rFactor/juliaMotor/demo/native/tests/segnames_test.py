@@ -1,5 +1,5 @@
 # TRACKSEG-3 (PO 2026-10-06): the launcher's "Show track section names" switch -- default ON, OFF -> JM_SEGNAME_SECS=0,
-# remembered, honoured by the replay path. Run headless by JuliaMotorMTK/tools/segnames_smoke.jl (own XDG config dir).
+# remembered, honoured by the replay path. Run headless by JuliaMotorMTK/tools/launcher_smoke.jl (own XDG config dir).
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from PyQt6.QtWidgets import QApplication

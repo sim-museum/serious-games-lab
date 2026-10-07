@@ -107,6 +107,32 @@ def find_julia():
 # and the file we write is byte-compatible with what JoyCfg.loadmap expects.
 # ---------------------------------------------------------------------------
 
+CONTROLS = [
+    ("Throttle / brake", "W / S  (or your pedals)"),
+    ("Steer", "A / D  (or your wheel)"),
+    ("Shift up / down", "E / Q  (or the paddles)"),
+    ("Clutch", "C  (or the clutch pedal)"),
+    ("Automatic / manual gearbox", "G"),
+    ("Change view (cockpit, chase, ...)", "V"),
+    ("Restart the race", "R"),
+    ("Mute the engine", "M"),
+    ("Leave the session", "Esc"),
+]
+
+
+def show_controls(parent):
+    """GUI-1: the key list as a table in a dialog (it was a run-on sentence under the Launch button)."""
+    d = QDialog(parent); d.setWindowTitle("Controls"); v = QVBoxLayout(d)
+    g = QGridLayout(); v.addLayout(g)
+    for i, (what, keys) in enumerate(CONTROLS):
+        g.addWidget(QLabel(what), i, 0); g.addWidget(QLabel(f"<b>{keys}</b>"), i, 1)
+    note = QLabel("A calibrated wheel and pedals work directly (Controller tab). The first start compiles and loads "
+                  "the game: the window can take a few minutes to appear.")
+    note.setWordWrap(True); note.setObjectName("hint"); v.addWidget(note)
+    ok = QPushButton("Close"); ok.clicked.connect(d.accept); v.addWidget(ok, 0, Qt.AlignmentFlag.AlignRight)
+    d.exec()
+
+
 def segnames_env(qenv, on):
     """TRACKSEG-3: the track-section names are on by default; off = the sim's JM_SEGNAME_SECS=0."""
     if not on:
@@ -604,78 +630,101 @@ class DriveTab(QWidget):
         self.proc = None
         self.on_result = on_result   # PO: callback(path) to show the result in a TAB (not a modal)
         root = QVBoxLayout(self)
+        # GUI-1 S1 (PO 2026-10-06: "redesign the julia GUI for ease of use, following GUI best practices"). One screen
+        # per task: this tab only sets up and starts a session; preferences that rarely change moved to the Settings
+        # tab (settings_page()), the key list to Help > Controls. Widget names are unchanged, so launch(), the LAN
+        # lobby and the tests read the same attributes. Every choice is remembered (QSettings juliaRacer/launcher).
+        self._settings = QSettings("juliaRacer", "launcher")
+        st = self._settings
+        cols = QHBoxLayout(); root.addLayout(cols)
 
-        form = QGridLayout()
+        # ---- Session: where, what kind, against whom ----
+        sess = QGroupBox("Session"); form = QGridLayout(sess); cols.addWidget(sess, 3)
         form.addWidget(QLabel("Track:"), 0, 0)
         self.track = QComboBox()
-        self.track.addItems(["Zandvoort", "Skidpad", "Nürburgring", "Watkins Glen", "Monza", "Spa"])
-        self.track.setCurrentIndex(1)        # Skidpad default
-        form.addWidget(self.track, 0, 1)
-        form.addWidget(QLabel("Mode:"), 1, 0)
+        self.track.addItems(["Zandvoort", "Skidpad (test area)", "Nürburgring", "Watkins Glen", "Monza", "Spa"])
+        self.track.setCurrentIndex(min(max(int(st.value("session/track", 0)), 0), 5))   # first run: Zandvoort
+        form.addWidget(self.track, 0, 1, 1, 2)
+        form.addWidget(QLabel("Session:"), 1, 0)
         self.mode = QComboBox()
         self.mode.addItems(["Practice", "Race"])   # Practice = lone car; Race = AI grid
-        form.addWidget(self.mode, 1, 1)
-        # Race-only fields (Laps / AI cars / AI speed) — hidden in Practice (a lone car has none)
-        self.laps_l = QLabel("Laps (race):")
+        self.mode.setToolTip("Practice: you alone on the track. Race: a standing start against the AI field.")
+        self.mode.setCurrentIndex(min(max(int(st.value("session/mode", 0)), 0), 1))
+        form.addWidget(self.mode, 1, 1, 1, 2)
+        # Race-only fields (Laps / AI cars / AI speed / qualifying) -- hidden in Practice (a lone car has none)
+        self.laps_l = QLabel("Laps:")
         form.addWidget(self.laps_l, 2, 0)
-        self.laps = QSpinBox(); self.laps.setRange(1, 99); self.laps.setValue(3)
+        self.laps = QSpinBox(); self.laps.setRange(1, 99); self.laps.setValue(int(st.value("session/laps", 3)))
         form.addWidget(self.laps, 2, 1)
-        self.ai_l = QLabel("AI cars:")
+        self.ai_l = QLabel("Opponents:")
         form.addWidget(self.ai_l, 3, 0)
-        self.ai = QSpinBox(); self.ai.setRange(0, 5); self.ai.setValue(5)   # default to a full grid (PO)
+        self.ai = QSpinBox(); self.ai.setRange(0, 5); self.ai.setValue(int(st.value("session/ai", 5)))   # full grid (PO)
+        self.ai.setToolTip("Number of AI cars on the grid (up to 5).")
         form.addWidget(self.ai, 3, 1)
-        self.ai_pct_l = QLabel("AI speed %:")
+        self.ai_pct_l = QLabel("Opponent pace:")
         form.addWidget(self.ai_pct_l, 4, 0)
         self.ai_pct = QSpinBox(); self.ai_pct.setRange(30, 200); self.ai_pct.setValue(60)   # PO 2026-09-05: 60% default
+        self.ai_pct.setSuffix(" %")
         self.ai_pct.setToolTip("Field pace as a % of the track's GPLrank reference lap time: 100% = the "
                                "fastest AI car hits the GPLrank time for this circuit. Auto-preset when you "
                                "pick a track to GPLrank/your-best-lap·100 (so the fastest AI matches your "
                                "best lap); 50% if you've no recorded lap yet. Edit it freely.")
         form.addWidget(self.ai_pct, 4, 1)
         self.ai_pct_note = QLabel("")          # A3: shows how the preset was derived (your best vs GPLrank)
-        self.ai_pct_note.setStyleSheet("color:#888;font-size:10px")
-        form.addWidget(self.ai_pct_note, 4, 2)
+        self.ai_pct_note.setObjectName("hint")
+        self.ai_pct_note.setWordWrap(True)
+        form.addWidget(self.ai_pct_note, 5, 1, 1, 2)
+        self.qual = QCheckBox("Qualifying session first (your hot lap sets the grid)")
+        self.qual.setChecked(str(st.value("session/qual", "false")) == "true")   # default OFF: straight to the grid
+        self.qual.setToolTip("Off (default): start on the grid, floor it to launch the field. On: a practice/qualifying session sets your grid slot first (press T to end it).")
+        form.addWidget(self.qual, 6, 0, 1, 3)
+        form.setColumnStretch(1, 1)
+        form.setRowStretch(7, 1)
+
+        # ---- Car: which setup, how you shift ----
+        car = QGroupBox("Car — Lotus 49"); cform = QGridLayout(car); cols.addWidget(car, 2)
         # WWSETUP-1 (PO 2026-10-05): "The julia user can then choose which setup to use - default iracing, or ww".
         # Each choice is an iRacing session the car physics is locked to (JM_CARSETUP; see drive_native_mtk.jl).
-        form.addWidget(QLabel("Car setup:"), 11, 0)
+        cform.addWidget(QLabel("Setup:"), 0, 0)
         self.carsetup = QComboBox()
         self.carsetup.addItems(["iRacing default", "WW103 fast loose (Wolfgang Wagner)"])
         self.carsetup.setToolTip("iRacing default: the Lotus 49 setup Julia has always raced.\n"
                                  "WW103 fast loose: Wolfgang Wagner's GPL Watkins Glen setup, driven in iRacing "
                                  "(session 261005) -- soft front springs, stiff rear bar, 35° drive ramp (the diff "
                                  "locks under power), front toe-out, long gearing. Loose on power, controllable at speed.")
-        _cs = QSettings("juliaRacer", "launcher")             # remembered across launches, like the graphics choices
-        self.carsetup.setCurrentIndex(min(max(int(_cs.value("car/setup", 0)), 0), 1))
+        self.carsetup.setCurrentIndex(min(max(int(st.value("car/setup", 0)), 0), 1))
         self.carsetup.currentIndexChanged.connect(lambda i: QSettings("juliaRacer", "launcher").setValue("car/setup", i))
-        form.addWidget(self.carsetup, 11, 1)
-        form.addWidget(QLabel("Gearbox:"), 5, 0)
+        cform.addWidget(self.carsetup, 0, 1)
+        cform.addWidget(QLabel("Gearbox:"), 1, 0)
         self.gearbox = QComboBox()
-        self.gearbox.addItems(["Automatic (auto-clutch + auto-shift)", "Manual (clutch C + shift E/Q)"])
-        self.gearbox.setToolTip("Automatic shifts up/down by speed and needs no clutch; Manual = work the clutch (G also toggles in-game).")
-        form.addWidget(self.gearbox, 5, 1)
-        self.mute = QCheckBox("Mute engine audio (JM_NOSOUND)")
+        self.gearbox.addItems(["Automatic", "Manual (clutch + shift)"])
+        self.gearbox.setToolTip("Automatic shifts up/down by speed and needs no clutch; Manual = work the clutch "
+                                "(C) and shift (E/Q or the paddles). G toggles in-game.")
+        self.gearbox.setCurrentIndex(min(max(int(st.value("car/gearbox", 0)), 0), 1))
+        cform.addWidget(self.gearbox, 1, 1)
+        cform.setColumnStretch(1, 1)
+        cform.setRowStretch(2, 1)
+
+        # Settings-tab widgets (built here so launch() keeps reading them; shown by settings_page())
+        self.mute = QCheckBox("Mute the engine sound")
+        self.mute.setToolTip("JM_NOSOUND")
         # 2026-10-03: an FFB on/off A/B for the PO's "side-to-side rocking that won't settle" -- the
         # sim car alone settles a steering pulse with no overshoot, so the open question is whether
         # the wheel's force feedback sustains the ~1 Hz shuttle. JM_NOFFB existed but was unreachable.
-        self.noffb = QCheckBox("Force feedback off (JM_NOFFB)")
-        _row = QHBoxLayout(); _row.addWidget(self.mute); _row.addWidget(self.noffb); _row.addStretch(1)
-        _roww = QWidget(); _roww.setLayout(_row); _row.setContentsMargins(0, 0, 0, 0)
-        form.addWidget(_roww, 6, 1)
-        self.ibt = QCheckBox("Record iRacing .ibt telemetry → data/juliaracer/")
-        self.ibt.setChecked(True)        # on by default
-        form.addWidget(self.ibt, 7, 1)
-        self.replay = QCheckBox("Record race replay (all cars) → data/juliaracer/")
-        self.replay.setChecked(True)     # on by default (PO); untick to skip recording
-        self.replay.setToolTip("Saves a .jmr recording of every car each race — replay it from the Replay tab.")
-        form.addWidget(self.replay, 8, 1)
-        self.qual = QCheckBox("Qualifying session first (your hot lap sets the grid)")
-        self.qual.setChecked(False)      # default OFF: Race goes straight to the grid with the AI visible
-        self.qual.setToolTip("Off (default): start on the grid, floor it to launch the field. On: a practice/qualifying session sets your grid slot first (press T to end it).")
-        form.addWidget(self.qual, 9, 1)
-        self.d2 = QCheckBox("Simplified 2-D physics (no jumps, lighter; JM_2D)")
-        form.addWidget(self.d2, 10, 1)   # 3-D is the default; tick this only to fall back to planar
-        root.addLayout(form)
-        root.addWidget(self._build_gfx_group())
+        self.noffb = QCheckBox("Turn force feedback off")
+        self.noffb.setToolTip("JM_NOFFB")
+        self.ibt = QCheckBox("Record iRacing-format telemetry (.ibt) to data/juliaracer/")
+        self.replay = QCheckBox("Record a replay of every session (all cars) to data/juliaracer/")
+        self.replay.setToolTip("Saves a .jmr recording of every car each session -- watch it from the Replays tab.")
+        self.d2 = QCheckBox("Simplified 2-D physics (no jumps, lighter on slow PCs)")
+        self.d2.setToolTip("JM_2D -- the full 3-D model is the default")
+        for w, key, dflt in ((self.mute, "pref/mute", "false"), (self.noffb, "pref/noffb", "false"),
+                             (self.ibt, "pref/ibt", "true"), (self.replay, "pref/replay", "true"),
+                             (self.d2, "pref/d2", "false")):
+            w.setChecked(str(st.value(key, dflt)) == "true")
+            w.toggled.connect(lambda on, k=key: QSettings("juliaRacer", "launcher").setValue(k, "true" if on else "false"))
+        self._gfx_group = self._build_gfx_group()
+
         root.addWidget(self._build_net_group())
 
         # a race needs opponents and can't run on the skidpad — keep the form coherent as the mode changes
@@ -685,24 +734,31 @@ class DriveTab(QWidget):
         self.track.currentIndexChanged.connect(self._track_changed)
         self._track_changed(self.track.currentIndex())
 
+        # ---- the one primary action ----
         brow = QHBoxLayout()
-        self.launch_b = QPushButton("Launch")
+        self.launch_b = QPushButton("Start")
+        self.launch_b.setObjectName("primary")
+        self.launch_b.setMinimumHeight(44); self.launch_b.setMinimumWidth(220)
+        self.launch_b.setDefault(True)
         self.launch_b.clicked.connect(self.launch)
         self.stop_b = QPushButton("Stop")
+        self.stop_b.setMinimumHeight(44)
+        self.stop_b.setToolTip("End the session (Esc in the game window does the same)")
         self.stop_b.clicked.connect(self.stop)
         self.stop_b.setEnabled(False)
+        self.keys_b = QPushButton("Controls…")
+        self.keys_b.setToolTip("The keyboard and wheel controls")
+        self.keys_b.clicked.connect(lambda: show_controls(self))
+        self.log_b = QPushButton("Show log")
+        self.log_b.setCheckable(True)
+        self.log_b.toggled.connect(self._toggle_log)
         brow.addWidget(self.launch_b)
         brow.addWidget(self.stop_b)
         brow.addStretch(1)
+        brow.addWidget(self.keys_b)
+        brow.addWidget(self.log_b)
         root.addLayout(brow)
-
-        note = QLabel("First launch compiles & loads assets — the window can take "
-                      "~3–4 min to appear. Controls: W/S gas·brake, A/D steer, E/Q shift, "
-                      "C clutch, G auto⇄manual, V view, R restart race, M mute, Esc quit. "
-                      "Your calibrated wheel/pedals work natively.")
-        note.setWordWrap(True)
-        note.setStyleSheet("color:#888")
-        root.addWidget(note)
+        self._mode_label()
 
         self.progress = QProgressBar()
         self.progress.setVisible(False)
@@ -712,8 +768,37 @@ class DriveTab(QWidget):
 
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
-        self.log.setStyleSheet("font-family:monospace;font-size:11px")
+        self.log.setObjectName("log")
+        self.log.setVisible(False)              # details on demand ("Show log"); shown by itself if the sim fails
         root.addWidget(self.log, 1)
+        self._spacer = QWidget(); self._spacer.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+        root.addWidget(self._spacer, 1)
+
+    def settings_page(self):
+        """GUI-1: the rarely changed preferences, on their own tab (Main adds it)."""
+        page = QWidget(); v = QVBoxLayout(page)
+        v.addWidget(self._gfx_group)
+        snd = QGroupBox("Sound and force feedback"); sv = QVBoxLayout(snd)
+        sv.addWidget(self.mute); sv.addWidget(self.noffb); v.addWidget(snd)
+        rec = QGroupBox("Recording"); rv = QVBoxLayout(rec)
+        rv.addWidget(self.replay); rv.addWidget(self.ibt); v.addWidget(rec)
+        adv = QGroupBox("Advanced"); av = QVBoxLayout(adv)
+        av.addWidget(self.d2); v.addWidget(adv)
+        v.addStretch(1)
+        return page
+
+    def _toggle_log(self, on):
+        self.log.setVisible(on); self._spacer.setVisible(not on)
+        self.log_b.setText("Hide log" if on else "Show log")
+
+    def _mode_label(self):
+        race = self.mode.currentIndex() == 1
+        self.launch_b.setText("Start race" if race else "Start practice")
+
+    def _status(self, msg):
+        w = self.window()
+        if isinstance(w, QMainWindow) and w.statusBar() is not None:
+            w.statusBar().showMessage(msg)
 
     # PO 2026-09-03: "julia racer appImage needs some kind of graphical display showing that
     # it's compiling, and how long it will take. Users are used to compiled binaries."
@@ -830,9 +915,9 @@ class DriveTab(QWidget):
             self._settings = QSettings("juliaRacer", "launcher")
         g = QGroupBox("Multiplayer (LAN)")
         lay = QGridLayout(g)
-        lay.addWidget(QLabel("Session:"), 0, 0)
+        lay.addWidget(QLabel("Players:"), 0, 0)
         self.net_mode = QComboBox()
-        self.net_mode.addItems(["Off (single player)", "Host a race", "Join a race"])
+        self.net_mode.addItems(["Single player", "Host a LAN race", "Join a LAN race"])
         self.net_mode.setToolTip("Host: this PC runs the AI field and sends it to the other player.\n"
                                  "Join: connect to a host on your network; its AI cars are drawn here.")
         lay.addWidget(self.net_mode, 0, 1, 1, 2)
@@ -845,7 +930,8 @@ class DriveTab(QWidget):
         self.net_fetch.setToolTip("Ask the host's launcher for its track, mode, laps and AI cars and use them here.")
         self.net_fetch.clicked.connect(self._lobby_fetch)
         lay.addWidget(self.net_fetch, 1, 2)
-        lay.addWidget(QLabel("Port (UDP):"), 2, 0)
+        self.net_port_l = QLabel("Port (UDP):")
+        lay.addWidget(self.net_port_l, 2, 0)
         self.net_port = QSpinBox(); self.net_port.setRange(1024, 65534)
         self.net_port.setValue(int(self._settings.value("net/port", self.NET_PORT_DEFAULT)))
         self.net_port.setToolTip("The race uses this UDP port and the launcher lobby the next one; "
@@ -888,12 +974,13 @@ class DriveTab(QWidget):
         join, host = idx == 2, idx == 1
         for w in (self.net_host_l, self.net_host, self.net_fetch):
             w.setVisible(join)
-        self.net_port.setEnabled(idx != 0)
+        for w in (self.net_port_l, self.net_port, self.net_info):   # GUI-1: LAN details only when playing over LAN
+            w.setVisible(idx != 0)
         self._lobby_close()
         port = self.net_port.value()
         if host:
             ips = self._lan_addresses()
-            txt = ("Tell the other player to choose <b>Join a race</b> with address <b>"
+            txt = ("Tell the other player to choose <b>Join a LAN race</b> with address <b>"
                    + (" or ".join(ips) if ips else "this PC's LAN IP") + f"</b> and port <b>{port}</b>. ")
             try:
                 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -964,7 +1051,7 @@ class DriveTab(QWidget):
             self.net_info.setText(f"<span style='color:#c80'>Could not reach {host}: {e}</span>"); return
         if not st:
             self.net_info.setText(f"<span style='color:#c80'>No answer from {host}:{port}. Is its launcher "
-                                  "open with <b>Host a race</b> selected, and is the port allowed?</span>"); return
+                                  "open with <b>Host a LAN race</b> selected, and is the port allowed?</span>"); return
         if int(st.get("port", self.net_port.value())) != self.net_port.value():
             self.net_port.setValue(int(st["port"]))
         self.net_info.setText("Host's settings applied: <b>" + self._lobby_apply(st) + "</b>. Launch when ready.")
@@ -988,8 +1075,10 @@ class DriveTab(QWidget):
         """Race (idx 1) needs opponents and can't run on the skidpad; Practice is a lone car
         (no Laps / AI cars / AI speed — those rows are hidden)."""
         is_race = (idx == 1)
-        for w in (self.laps_l, self.laps, self.ai_l, self.ai, self.ai_pct_l, self.ai_pct):
+        for w in (self.laps_l, self.laps, self.ai_l, self.ai, self.ai_pct_l, self.ai_pct, self.ai_pct_note, self.qual):
             w.setVisible(is_race)                # race-only fields: hidden in Practice
+        if hasattr(self, "launch_b"):
+            self._mode_label()
         skid = self.track.model().item(1)        # "Skidpad" entry
         if skid is not None:
             skid.setEnabled(not is_race)         # grey it out for races (no race at the skidpad)
@@ -1025,8 +1114,16 @@ class DriveTab(QWidget):
         if self.proc and self.proc.state() != QProcess.ProcessState.NotRunning:
             return
         if self.net_mode.currentIndex() == 2 and not self.net_host.text().strip():
-            QMessageBox.warning(self, "Join a race", "Enter the host's address (shown on the host's launcher).")
+            QMessageBox.warning(self, "Join a LAN race", "Enter the host's address (shown on the host's launcher).")
             return
+        # GUI-1: remember the session so the next launch opens where this one left off
+        st = self._settings
+        st.setValue("session/track", self.track.currentIndex()); st.setValue("session/mode", self.mode.currentIndex())
+        st.setValue("session/laps", self.laps.value()); st.setValue("session/ai", self.ai.value())
+        st.setValue("session/qual", "true" if self.qual.isChecked() else "false")
+        st.setValue("car/gearbox", self.gearbox.currentIndex())
+        self._status(f"Starting {self.mode.currentText().lower()} at {self.track.currentText()}… "
+                     "(the game window opens when loading finishes)")
         # free the device so the game's GLFW owns joystick #1 cleanly
         self.joy.stop_reader()
         qenv = QProcessEnvironment.systemEnvironment()
@@ -1095,6 +1192,7 @@ class DriveTab(QWidget):
 
     def stop(self):
         if self.proc:
+            self._stopping = True               # a requested stop is not a failure
             self.proc.terminate()
             if not self.proc.waitForFinished(2000):
                 self.proc.kill()
@@ -1148,6 +1246,7 @@ class DriveTab(QWidget):
                 self._stage = pct
                 self.progress.setValue(pct)
                 self.progress.setFormat(f"{label}  %p%")
+                self._status("Loading: " + label)
 
     def _done(self):
         self.log.appendPlainText("\n— game exited —")
@@ -1165,6 +1264,15 @@ class DriveTab(QWidget):
         self.launch_b.setEnabled(True)
         self.stop_b.setEnabled(False)
         self.progress.setVisible(False)
+        # GUI-1: say how it ended; a failure opens the log by itself (the stacktrace is the diagnosis)
+        failed = (self.proc.exitStatus() != QProcess.ExitStatus.NormalExit or self.proc.exitCode() != 0) \
+            and not getattr(self, "_stopping", False)
+        self._stopping = False
+        if failed:
+            self.log_b.setChecked(True)
+            self._status("The game stopped with an error -- the log below has the details (also last_sim_run.log).")
+        else:
+            self._status("Session ended. Ready.")
         self.progress.setRange(0, 100)
         self.progress.setValue(0)
         self.progress.setFormat("")
@@ -1191,7 +1299,7 @@ class ResultTab(QWidget):
         super().__init__()
         self._on_again = on_again
         v = QVBoxLayout(self)
-        self.head = QLabel("<i>No race yet — start one from the Drive tab.</i>")
+        self.head = QLabel("<i>No race yet — start one from the Race tab.</i>")
         self.head.setTextFormat(Qt.TextFormat.RichText)
         v.addWidget(self.head)
         self.tabs = QTabWidget()
@@ -1382,8 +1490,8 @@ class ReplayTab(QWidget):
 class Main(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("juliaMotor — Lotus 49")
-        self.resize(900, 640)
+        self.setWindowTitle("Julia Racer — Lotus 49")
+        self.resize(980, 700)
         self.joy = JoyReader(self)
         tabs = QTabWidget()
         self.tabs = tabs
@@ -1391,13 +1499,38 @@ class Main(QMainWindow):
         self.result = ResultTab(self._race_again)
         self.drive = DriveTab(self.joy, on_result=self._show_result_tab)
         self.replay = ReplayTab(self.joy)
-        tabs.addTab(self.drive, "Drive")
-        tabs.addTab(self.result, "Race Result")
-        tabs.addTab(self.replay, "Replay")
-        tabs.addTab(self.cal, "Calibrate controller")
+        # GUI-1: tabs named for the task, in the order a session runs: set up and start, read the result,
+        # watch it back; then the things changed once (Settings, Controller).
+        tabs.addTab(self.drive, "Race")
+        tabs.addTab(self.result, "Results")
+        tabs.addTab(self.replay, "Replays")
+        tabs.addTab(self.drive.settings_page(), "Settings")
+        tabs.addTab(self.cal, "Controller")
         tabs.currentChanged.connect(self._tab)
         self.setCentralWidget(tabs)
+        self._build_menus()
+        self.statusBar().showMessage("Ready")
         self.joy.start_reader(1)
+
+    def _build_menus(self):
+        mb = self.menuBar()
+        game = mb.addMenu("&Game")
+        a = game.addAction("&Start"); a.setShortcut("Ctrl+Return"); a.triggered.connect(self._start)
+        a = game.addAction("S&top"); a.triggered.connect(self.drive.stop)
+        game.addSeparator()
+        a = game.addAction("&Quit"); a.setShortcut("Ctrl+Q"); a.triggered.connect(self.close)
+        hlp = mb.addMenu("&Help")
+        a = hlp.addAction("&Controls…"); a.setShortcut("F1"); a.triggered.connect(lambda: show_controls(self))
+        a = hlp.addAction("&About Julia Racer"); a.triggered.connect(self._about)
+
+    def _start(self):
+        self.tabs.setCurrentWidget(self.drive)
+        self.drive.launch()
+
+    def _about(self):
+        QMessageBox.about(self, "About Julia Racer",
+                          "<b>Julia Racer</b><br>The 1967 Lotus 49 on GPL's circuits, with physics fitted to iRacing "
+                          "telemetry (ModelingToolkit) and an AI field that drives like GPL's.")
 
     def _show_result_tab(self, path):
         """PO: after a race, populate the Race Result tab and switch to it (no modal popup)."""
