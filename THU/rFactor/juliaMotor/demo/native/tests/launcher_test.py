@@ -7,6 +7,11 @@ from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import QProcess, QSettings
 app = QApplication([])
 import juliaRacer as jr
+import tempfile
+# launch() writes last_sim_run.log and DELETES last_race_result.txt in HERE: point it at a scratch directory so the test
+# can never touch the real demo/native (a first version of this test clobbered the tracked log).
+jr.HERE = tempfile.mkdtemp(prefix="jr_launcher_test_")
+open(os.path.join(jr.HERE, "last_race_result.txt"), "w").write("sentinel")
 jr.JoyReader.start_reader = lambda self, *a, **k: None
 jr.JoyReader.stop_reader = lambda self, *a, **k: None
 started = []
@@ -44,4 +49,7 @@ w2 = jr.Main(); d2 = w2.drive
 check((d2.track.currentIndex(), d2.mode.currentIndex(), d2.laps.value(), d2.ai.value(), d2.gearbox.currentIndex(),
        d2.carsetup.currentIndex()) == (3, 1, 7, 4, 1, 1), "session and car remembered")
 check(d2.mute.isChecked() and not d2.replay.isChecked(), "preferences remembered")
+real = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+check(os.path.realpath(started[0][0].workingDirectory()) == os.path.realpath(jr.HERE), "the sim's working dir is the scratch HERE")
+check(not os.path.exists(os.path.join(jr.HERE, "last_race_result.txt")), "launch clears the (scratch) stale result")
 print("LAUNCHER:", "PASS" if ok else "FAIL"); sys.exit(0 if ok else 1)

@@ -23117,3 +23117,9 @@ progressive disclosure, group by task, plain language, feedback for long operati
   which runs every `tests/*_test.py` with its own throw-away settings directory. 2/2 PASS.
 * Screens: `261006/gui/s1/` (practice), `261006/gui/s1r/` (race, hosting).
 
+* **Side effect found and fixed (same day):** `launch()` writes `last_sim_run.log` and deletes `last_race_result.txt` in
+  the launcher's directory, and the first version of `launcher_test.py` (and the old-vs-new environment comparison) ran
+  `launch()` against the real `demo/native`: the tracked `last_sim_run.log` was overwritten (restored from git, it
+  matched HEAD) and **a `last_race_result.txt` from an earlier race, if one existed, was deleted** (it is gitignored, so
+  this cannot be checked; it held only the most recent race's result, which the next launch deletes anyway). The test now
+  points `HERE` at a scratch directory and asserts the sim's working directory is that scratch path.
