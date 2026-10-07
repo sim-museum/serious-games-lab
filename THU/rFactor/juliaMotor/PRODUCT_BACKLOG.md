@@ -23434,3 +23434,31 @@ folders, `assets/ui` and `docs/HOW_TO_RACE.md` included). Verified by mounting t
 installed -- the PO's `~/.local/share/julia-racer` untouched) and running the SHIPPED `launcher_test`, `analyser_test`,
 `coach_test`, `segnames_test` from inside it: 4/4 PASS. The sim code is the gated repo state (46/46).
 
+### COCKPIT-GOLD-1 S3 (2026-10-07): the mirror view -- the world behind, not our own car
+* S2 left our own car filling much of the glass (gold: the world behind, our rear tyre small at the outer edge). The mirror
+  camera stood at the mirror itself (y 0.33, z 0.31) -- beside our bodywork. Sweep (`261007/cockpit/mir3/`):
+  z 0.45 / 0.55 push the body to the inner edge; y 0.45 hides more of it; aiming less outward (yawout 0.3) brought MORE of
+  the car back (kept 0.8); a wider field of view (95° vs 78°) shrinks the tyre to the edge and fills the glass with the
+  grandstand and the track, as the gold does (`mircam_zyf.jpg`).
+* **Defaults:** `JM_MIRCAM_Y` 0.45, `JM_MIRCAM_Z` 0.55, `JM_MIRROR_FOV` 95. Some of our engine still shows at the inner
+  edge. COCKPIT-GOLD-1 after S1–S3: **AWAITING THE PO's look** (screen, rings, view).
+* **Gates** (`GATES_SKIP=road_clear_smoke`): 46/46 pass.
+
+### E78 S10 (2026-10-07): Monza lap sweep against the cockpit gold -- matches; the one difference is a PO decision
+* Ours every 100 m (58 stations, 5761 m) vs `260802_monza_cockpit.mp4` at 1 fps (`261007/monza/gold_sheet.jpg`,
+  `ours_sheet.jpg`): the start/finish boards and timing tower, SHELL/CYNAR before Curva Grande, the big COCA-COLA board,
+  the walls and forest of the Lesmos, the Serraglio underpass, the AGIP sign and the grandstands into Parabolica line up.
+* **The underpass:** our dark grey concrete span (s=3300) is GPL's own (gold t=101) -- not a defect. On the approach
+  (gold t=97/99) GPL has dense TREE ROWS at the roadside where ours shows the stone wall with the forest behind: those are
+  `trbk1–8`/`brbk1–3`/`tuntbk1–2`, removed by the PO's round-4 order ("7 stands of trees across the track near the
+  underpass", E78-S9 audit). Left as decided; a question for the PO if the gold look is now wanted there.
+
+### E78 S11 (2026-10-07): Spa lap sweep against the cockpit gold -- landmarks match; nothing new to fix
+* Ours every 250 m (57 stations) vs `260802_spa_cockpit.mp4` at 0.5 fps (`261007/spa/gold_sheet.jpg`, `ours_sheet.jpg`):
+  the pits and La Source, Eau Rouge, the Combes forest, the houses of Burnenville and Masta, the Stavelot/La Carrière
+  farms, Blanchimont's forest and the finishing straight's boards line up.
+* Checked: the red fire engine, ambulance and marshal at the roadside at s≈10750 are GPL's -- the gold shows red vehicles
+  and people at the roadside by a white building on the same stretch (t≈289, `firetruck_cmp.jpg`).
+* Harness note: from s≈8500 the HUD shows the parked car ROLLING between shots on the long descent (rpm/speed digits); it
+  does not affect the scenery comparison.
+

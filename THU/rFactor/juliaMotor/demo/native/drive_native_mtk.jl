@@ -10279,12 +10279,14 @@ end
 # Aspect is per-half (square).  JM_MIRCAM_X/Y/Z = camera rig position (z mirrored per side),
 # JM_MIRROR_YAWOUT = outward look component, JM_MIRROR_DROP = downward look component.
 const PROJ_MIRROR = Render.scalexyz(-1f0,1f0,1f0) *
-                    Render.perspective_revz(deg2rad(parse(Float32,get(ENV,"JM_MIRROR_FOV","78"))), Float32(MIRW÷2)/Float32(MIRH), 0.35f0, 3000f0)
+                    Render.perspective_revz(deg2rad(parse(Float32,get(ENV,"JM_MIRROR_FOV","95"))), Float32(MIRW÷2)/Float32(MIRH), 0.35f0, 3000f0)
 function mirror_camera(cs, pitch=0.0, roll=0.0, side=1)
     wx,wy,wz = cs.x, cs.y, -cs.z
     R = Render.roty(Float32(cs.θ)) * Render.rotz(Float32(pitch)) * Render.rotx(Float32(roll))
     R3(a,b,c) = (w = R * Float32[a,b,c,0f0]; Float32[w[1],w[2],w[3]])
-    mx = parse(Float32,get(ENV,"JM_MIRCAM_X","0.55")); my = parse(Float32,get(ENV,"JM_MIRCAM_Y","0.33")); mz = parse(Float32,get(ENV,"JM_MIRCAM_Z","0.31"))
+    # COCKPIT-GOLD-1 S3: further out and higher (were y 0.33 / z 0.31): at the mirror itself the camera sat beside our own
+    # bodywork, which filled the glass; the gold's mirror shows the world with the rear tyre small at the edge (mir3/)
+    mx = parse(Float32,get(ENV,"JM_MIRCAM_X","0.55")); my = parse(Float32,get(ENV,"JM_MIRCAM_Y","0.45")); mz = parse(Float32,get(ENV,"JM_MIRCAM_Z","0.55"))
     eye = Float32[wx,wy,wz] + R3(BODY_OFF[1]+mx, BODY_OFF[2]+my, side*mz)
     # COCKPIT-GOLD-1 S2: aimed a little lower and further out (was -0.2 / 0.5) -- the gold's mirror shows the horizon at
     # about mid-glass and the world behind, ours showed more sky and more of our own car
