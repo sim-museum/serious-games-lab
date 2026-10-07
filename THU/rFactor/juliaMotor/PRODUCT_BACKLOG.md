@@ -21574,6 +21574,24 @@ walls register (98.8 %) and the obstacles load inside the image.
 `JM_PICK` on the pit wall at s~1350: `bannr_s` is the nearest hit at two pixels (72-84 m, ~1 m above the road), behind a
 bush billboard at one. The S1 question is answered; matching against the gold frame stays open.
 
+### E78 — retrospective + S7 (2026-10-06): a landmark-anchored gold map for the Ring; image matching alone cannot place race footage
+Retrospective: every visual comparison this cycle hinged on the s ↔ gold-time alignment, and a lap-time line is ±30 s
+(±1 km at the Ring). The QA method asks for a committed time → lapdist → landmark map per track; none existed.
+* `tools/goldsweep/anchor_align.py`: a piecewise-linear t(s) through LANDMARK anchors seen by eye in both, then each station
+  (our chase captures every 100 m) refined within ±W s by edge-map similarity (car masked), on a MONOTONE path (DP).
+* Ring, gold = the PO's GPL race `261003_ring.mp4` at 1 fps: anchors **s 0 ↔ t 110** (start/finish, grandstand + pit
+  buildings), **s 1500 ↔ t 161** (the long grey wall with the Continental banner), **s 21330 ↔ t 836** (the bridge at the end
+  of Döttinger Höhe). Map: `tools/goldsweep/ring_gold_map_261003.json` (228 stations, median refined cost 0.53).
+* **Caveat, by eye (`261006/ringmap/ring_map_pairs_2km.jpg`):** between anchors the refinement is NOT reliable on race
+  footage -- the PO's line and speed differ, and the race has incidents (t≈783 the car is on the grass, t≈530 a marshal
+  at the roadside). Treat `t_line` (anchor line) as ±15 s and `t` as a hint; add an anchor for every landmark confirmed by
+  eye (the bridge-style rule from GPLVIS-1 cycle 2) before calling any station a defect.
+* Not a defect: at s=0 the chase camera sits behind the painted start line, which reads as a white band across the bottom
+  of the frame.
+**Next (revisit):** grow the anchor list by eye (Hatzenbach, Flugplatz, Adenau bridge, Karussell, Pflanzgarten) -- each
+anchor turns ~1 km either side into a trustworthy comparison -- then sweep for the tree density the gold shows at the
+conifer stretches (gold t≈257/662/716 have tall dense conifers close to the road).
+
 ### AI-CARGFX-S7 — `JM_AIPLACE`; the dark engine bay is GPL's FLAT-COLOUR polygons drawn grey over the textured engine
 * `JM_AIPLACE="<slot>:<s>:<lane>"` (new) stands an AI car at a station (headless, never released); `JM_FINDTEX=<prefix>`
   (new) lists where a texture is used (WG BOAC boards: s 594 L, 1872 R, 2688 L). The gold still's exact corner is not yet
