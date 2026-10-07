@@ -23426,3 +23426,11 @@ Every removal traces to a recorded PO decision or a measured duplicate: **no sta
   The AI drivers use their own named skins -- the naming suggests GPL binds those, but nothing read so far proves it.
 
 * **Gates** (`GATES_SKIP=road_clear_smoke`): 46/46 pass.
+
+### AppImage 261007 (2026-10-07)
+`~/Documents/261007/JuliaRacer-x86_64-261007.AppImage` (1,677,715,960 bytes; SHA256SUMS + STATUS_2026-10-07.md beside it),
+built on this box with the `jr-appimage-build` recipe (base runtime + Qt libs reused; AppDir 6.4 GB, no dated capture
+folders, `assets/ui` and `docs/HOW_TO_RACE.md` included). Verified by mounting the image (outside any sandbox, not
+installed -- the PO's `~/.local/share/julia-racer` untouched) and running the SHIPPED `launcher_test`, `analyser_test`,
+`coach_test`, `segnames_test` from inside it: 4/4 PASS. The sim code is the gated repo state (46/46).
+
