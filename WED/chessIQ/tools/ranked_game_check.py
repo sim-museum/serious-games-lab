@@ -21,7 +21,7 @@ w.who.setCurrentIndex(w.who.findData(OPP))
 w.mode.setCurrentIndex(w.mode.findData('ai')); w.side.setCurrentIndex(w.side.findData('w'))
 w.rated_box.setChecked(True); w.tc.setCurrentIndex(1)                         # Fischer 10+3
 w.new_game()
-print('rated game vs', w.rated['opponent'], w.rated['rating'], '| nodes', w.engine.nodes, 'multipv', w.engine.multipv, '| clock', w.clock.kind, w.clock.args, flush=True)
+print('rated game vs', w.rated['opponent'], w.rated['rating'], '| nodes', getattr(w.engine, 'nodes', w.engine.p.nodes), 'multipv', w.engine.multipv, 'randomness', w.engine.p.randomness, '| clock', w.clock.kind, w.clock.args, flush=True)
 def tick():
     g = w.game
     if g.over:
