@@ -9880,6 +9880,18 @@ const AI_SLEEVE_EXC = get(ENV,"JM_AI_SLEEVES","0") != "0" ? () :
     ("arml","armr","arms","ferarms","fersho","fehand","braarms","brasho","brhand",
      "frarm","frarm2","frarm3","drvarms","bmhand","sho128","eagarm","eagarms","eahand",
      "coparms","copsho","cohand","lotarms","lotsho","lohand")   # AISLEEVE-1: see the AI loader below
+# HANDS-2 S2: the AI drivers' arms and gloves come back, laid from the shoulder to the glove (Render.load_gpl_car
+# `sleeves`). The shoulder sits 0.56 behind the glove, ±0.26 out, and 0.10 ABOVE it: the AI meshes' frame puts the glove at
+# y≈0.19, and the cockpit offset (0.04 below) buried the whole arm under the cockpit rim; +0.18 stuck the sleeves out
+# sideways like wings (261007/hands/ai3/dy_cmp.jpg). The gold's AI drivers show white-and-red sleeves low beside the
+# helmet running forward to the wheel. Strip scaled 1.2 across. JM_AI_ARMS=0 hides them again (AISLEEVE-1); the shoulder
+# meshes (*sho*) stay out. JM_AI_ARMS_DIAG=1 prints each car's sleeve ends.
+const AI_SLEEVES_ON = get(ENV, "JM_AI_ARMS", "1") != "0" && get(ENV, "JM_AI_SLEEVES", "0") == "0"
+const AI_ARM_NAMES = ("arml", "armr", "arms", "ferarms", "braarms", "frarm", "frarm2", "frarm3", "drvarms", "eagarm", "eagarms",
+                      "coparms", "lotarms")
+const AI_HAND_NAMES = ("fehand", "brhand", "bmhand", "eahand", "cohand", "lohand")
+const AI_SHOULDER = (parse(Float64, get(ENV, "JM_AI_SHOULDER_DX", "-0.56")), parse(Float64, get(ENV, "JM_AI_SHOULDER_DY", "0.10")),
+                     parse(Float64, get(ENV, "JM_AI_SHOULDER_Z", "0.26")), parse(Float64, get(ENV, "JM_AI_ARM_THICK", "1.2")))
 AICARMODELS = Render.GPLCarModel[]
 tstamp("  [E80] AI car models begin")
 # E85-S5: netplay needs a chassis to draw the remote car with, even when there is no AI field.
@@ -9946,7 +9958,8 @@ if !SKIDPAD && _ncars > 0
                               maxlat=parse(Float32, get(ENV,"JM_AI_MAXLAT", string(CARP_MAXLAT))),
                               body_floor=BODY_FLOOR,
                               rear_groups=(_amode === :pose ? collect(_rg) : Int[]),
-                              rear_lat=parse(Float32, get(ENV, "JM_AI_REAR_LAT", "0.66"))))
+                              rear_lat=parse(Float32, get(ENV, "JM_AI_REAR_LAT", "0.66")),
+                              sleeves=AI_SLEEVES_ON ? (AI_ARM_NAMES, AI_HAND_NAMES, AI_SHOULDER) : nothing))
         println("$(length(AICARMODELS[end].body)) parts")
         if haskey(ENV, "JM_AITEX")          # AI-CARGFX probe: parts drawn with no texture (flat colour)
             let b = AICARMODELS[end].body, u = [it for it in b if it.tex == 0]

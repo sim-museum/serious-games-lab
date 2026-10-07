@@ -26,7 +26,7 @@ this index was written; that is what it exists to stop.
 | **DOC-RACE-1** | Documentation on how to race, drawing on the docs under `~/sgl/THU` (`DOC/`: GPL manual, setup guides, brake bias, diffs, tyre heat, ...) (PO 2026-10-06) | ✅ **S1 (2026-10-06):** `demo/native/docs/HOW_TO_RACE.md`, in the launcher as Help → How to race…; 🟡 awaiting the PO's read |
 | **REPLAY-2** | A replay is ALWAYS available for the session just exited; add the GPL Replay Analyser's analysis features (gold standard: `~/sgl/THU/WP/drive_c/Program Files/GPL Replay Analyser`) alongside replaying the video; optional Claude Code analysis of the replay with how-to-improve advice (PO 2026-10-06) | **S1 (2026-10-07) always-a-replay DONE:** every session records (practice, any field), autosaved every 20 s (survives a kill), analysis channels + a Python-readable `.jrt`; the Replays tab pre-selects the session just finished. **S2 (2026-10-07) the analyser:** Replays → Analyse… -- laps, track map with racing lines, graphs vs distance, time difference, split times + theoretical best. **S3 (2026-10-07):** reports (session summary, lap chart, lap by lap, speed report; export), traction circle, speed-difference map. **S4 (2026-10-07):** optional Claude Code coaching (shows the summary, sends only on Send; real call verified). 🟡 **All four parts done -- AWAITING THE PO's look** |
 | **COCKPIT-GOLD-1** | Cockpit mirrors closer but still not right -- they look tilted slightly up; match the gold. The windscreen/canopy is solid where GPL's is almost transparent -- match the gold (PO 2026-10-06) | **S1 (2026-10-07) windscreen DONE:** the "solid green" panels were GPL's yellow perspex screen painted with the livery; now drawn as tinted glass (`261007/cockpit/visor_gold_before_after.jpg`). **S2 mirrors:** live glass built on GPL's chrome ring (concentric), GPL's own disc orientation (no -25° tilt), lowered to the gold's height, view aimed lower/outward (`mir2/rt_vs.jpg`, `aim_vs.jpg`). 🟡 **AWAITING THE PO's look** |
-| **HANDS-2** | Restore the arms and gloves in the cockpit view AND on the AI cars' external views, per the gold; watch for sleeves going upward ("rabbit ears") from outside the car instead of running from the driver to the gloves (PO 2026-10-06; supersedes HANDS-1's "hidden by default") | **S1 (2026-10-07) cockpit arms ON:** each sleeve laid from the shoulder to its glove (follows the wheel; no rabbit ears), gloves at 9 and 3 (`261007/hands/arms_final_vs_gold.jpg`). Open: sleeve shading/width, a flat "sail" in sharp turns, the AI cars' arms |
+| **HANDS-2** | Restore the arms and gloves in the cockpit view AND on the AI cars' external views, per the gold; watch for sleeves going upward ("rabbit ears") from outside the car instead of running from the driver to the gloves (PO 2026-10-06; supersedes HANDS-1's "hidden by default") | **S1 (2026-10-07) cockpit arms ON:** each sleeve laid from the shoulder to its glove (follows the wheel; no rabbit ears), gloves at 9 and 3 (`261007/hands/arms_final_vs_gold.jpg`). **S2 (2026-10-07) AI drivers' arms + gloves back** (laid shoulder-to-glove at load; `261007/hands/ai3/dy_cmp.jpg`). 🟡 **AWAITING THE PO's look.** Open: cockpit sleeve shading/width, a flat "sail" in sharp turns |
 | **E107** | **EPIC (PO priority): Julia AI as close as possible to GPL AI** | **AIGPL-2 (2026-10-04): GPL's own AI algorithm, reverse-engineered from gpl.exe** -- the PO: *"The AI cars worked perfectly in the WG race!"*; E107-S11 GPL's passing rails pass the graded test. Open: per-track confirmation by the PO on the other four tracks. |
 | **E108** | **EPIC (PO priority): tracks as close as possible to GPL** | **S5–S8 (2026-09-30):** flat shading (100 % of road polys lack normals) refuted as the visible cause (A/B < 0.3 % of pixels); finer rounding (4× tris) invisible at WG's gentle curves. **Needs the PO: the track + station where the faceting shows.** |
 | **E109** | Nürburgring tree "curtains" across the road + individual trees intruding | ✅ curtains FIXED (S6); veils under GPL's window (S15). **GPLVIS-1 S1–S4 (2026-10-06):** gpl.exe's track renderer decoded (segment range, 117/312/914 m bands, per-cell CLIP PLANES) and per-cell clipping implemented (`JM_GPLCLIP`, off); the remaining tall walls at Döttinger Höhe are the SCENERY copy -- next: scenery copies under the cell rule. |
@@ -23355,3 +23355,25 @@ does.
 it into forearm/upper arm, or build a tube along the same two points); (3) the AI cars' drivers' arms in the external
 views (the second half of the PO's request).
 * **Gates** (`GATES_SKIP=road_clear_smoke`): 46/46 pass with the arms ON (and COCKPIT-GOLD-1 S2's mirrors).
+
+### HANDS-2 S2 (2026-10-07): the AI drivers' arms and gloves are back -- from the shoulder to the wheel, not rabbit ears
+* AISLEEVE-1 (2026-09-19) had removed every AI chassis's sleeves, shoulders and gloves (`*arms`, `*sho*`, `*hand`):
+  placed raw they rose from the glove UP past the helmet -- the PO's "rabbit ears" at the front of each cockpit.
+* **Restored with the cockpit's two-point rule, baked at load** (`Render.load_gpl_car(...; sleeves=...)`): the gloves as
+  GPL authored them (on the wheel); each sleeve kept at its wrist (the glove) with its far end laid at the driver's
+  shoulder; the car's centring is taken before the arms are added. `JM_AI_ARMS=0` hides them again; `JM_AI_ARMS_DIAG=1`
+  prints each car's sleeve ends. The shoulder meshes stay out.
+* **The shoulder** (per car, from its own glove): 0.56 behind, ±0.26 out and **0.10 above** the glove. The AI meshes put
+  the glove at y≈0.19 (`[ai arms]` diag: Lotus/Cooper/Ferrari/Brabham wrists 0.16–0.20), so the cockpit's offset (0.04
+  below) buried the arms under the cockpit rim -- invisible even from close above; +0.18 stuck them out sideways like wings.
+  At +0.10 the white-and-red sleeves show low beside the helmet running forward to the wheel, as the gold's Cooper stills
+  show (`gold_cooper_sheet.jpg` panels 2 and 5 vs `ai3/dy_cmp.jpg`).
+* From the front (nose camera) the arms are behind the screen, as they should be; nothing rises above the helmet.
+  (The two black lobes on the AI helmets are NOT sleeves -- they are there with the sleeves removed too; a lead for later.)
+* Each AI model gains 3 parts (the load log's part counts 37/37/41/37 → 40/40/44/40).
+* **For the PO (HANDS-2):** the cockpit arms (S1) and the AI drivers' arms (S2) -- do they read as GPL's?
+
+* **Gates** (`GATES_SKIP=road_clear_smoke`): 45/46 on the full run -- `netcollide_smoke` hit its 1800 s cap (signal 15
+  while the client sim ran; that gate runs with `JM_AI=0`, so the AI-arms code is not on its path). No stray process held
+  the UDP port afterwards; rerun alone it PASSES 4/4 (rx=228, a contact, closest approach 2.68 m). Recorded as a transient
+  hang, not a verdict on this change.

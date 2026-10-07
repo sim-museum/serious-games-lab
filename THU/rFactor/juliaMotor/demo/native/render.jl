@@ -2353,7 +2353,8 @@ end
 function load_gpl_car(name, dir, body3do, wheelspec;
                       exclude=("ltraymap","lshad"), maxlat=Inf32, exclude_groups=(),
                       body_floor=0.0f0, wheeltint=(0.12f0,0.12f0,0.13f0),
-                      rear_groups=(), rear_lat=0.66f0, rear_ymin=-0.12f0, hub3do=nothing, skip_ptypes=nothing)
+                      rear_groups=(), rear_lat=0.66f0, rear_ymin=-0.12f0, hub3do=nothing, skip_ptypes=nothing,
+                      sleeves=nothing)
     tex   = gpl_texture_index(dir)
     # E106-S25 (PO: "3 out-ward facing metal rods attached to each rear tire"). Proven by shooting
     # the SAME replay frame with the wheel items suppressed (JM_NO_AI_WHEELS=1): a complete, better
@@ -2400,8 +2401,40 @@ function load_gpl_car(name, dir, body3do, wheelspec;
             isempty(keep) || push!(parts, TrackPart(keep, p.tex, p.col))
         end
     end
+    bb    = parts_bbox(parts)          # the car's centring is taken BEFORE the driver's arms are added (they cannot move it)
+    # HANDS-2 S2 (PO 2026-10-06: "restore arms and gloves in the AI car external views too ... Watch out for sleeves going
+    # upward 'rabbit ear' effect"): AISLEEVE-1 removed them because, placed raw, each sleeve rose from its glove UP past the
+    # helmet. `sleeves = (arm texture names, glove texture names, shoulder offset)` puts them back the cockpit's way (ARMS2):
+    # the gloves as authored (on the wheel), each sleeve kept at its wrist (the glove) with its far end laid at the driver's
+    # shoulder -- so the arm runs from the driver to the wheel.
+    if sleeves !== nothing
+        arm_names, hand_names, sh = sleeves
+        for p in extract_gpl_car(joinpath(dir, body3do); only=hand_names, maxlat=maxlat, skip_ptypes_kw=skip_ptypes,
+                                 exclude_groups=(exclude_groups..., rear_groups...))
+            push!(parts, p)
+        end
+        arms = extract_gpl_car(joinpath(dir, body3do); only=arm_names, maxlat=maxlat, skip_ptypes_kw=skip_ptypes,
+                               exclude_groups=(exclude_groups..., rear_groups...))
+        for side in (-1, 1)
+            ends = sleeve_axis_ends(arms, side)
+            ends === nothing && continue
+            W, E = ends
+            S = (W[1] + sh[1], W[2] + sh[2], side * sh[3])
+            get(ENV, "JM_AI_ARMS_DIAG", "0") != "0" && println("    [ai arms] ", name, " side ", side, " wrist ", round.(W, digits=2),
+                " far ", round.(E, digits=2), " shoulder ", round.(S, digits=2), " arm parts ", length(arms), " (", join(unique(p.tex for p in arms), ","), ")")
+            for p in arms
+                v = p.verts; keep = Float32[]
+                for t in 0:(length(v) ÷ 33)-1
+                    b = t*33
+                    sign(v[b+3] + v[b+14] + v[b+25]) == side || continue
+                    append!(keep, @view v[b+1:b+33])
+                end
+                isempty(keep) && continue
+                push!(parts, TrackPart(lay_along!(keep, W, E, W, S, sh[4]), p.tex, p.col))
+            end
+        end
+    end
     body  = build_gpl(parts, tex)
-    bb    = parts_bbox(parts)
     off_x = -(bb.xmin + bb.xmax) / 2f0
     off_z = -(bb.zmin + bb.zmax) / 2f0
     off_y = body_floor - bb.ymin
@@ -2435,6 +2468,39 @@ function load_gpl_car(name, dir, body3do, wheelspec;
     end
     GPLCarModel(name, body, wheels, (Float32(off_x), Float32(off_y), Float32(off_z)),
                 Vector{Tuple{Float32,Float32,Bool,Float32,String}}(wheelspec))
+end
+
+"""HANDS-2: the (wrist, far end) of a sleeve strip on one side (mesh z sign): the ends of its long axis, the wrist the lower."""
+function sleeve_axis_ends(parts, side)
+    P = NTuple{3,Float64}[]
+    for p in parts, i in 1:11:length(p.verts)-10
+        v = p.verts; sign(v[i+2]) == side && push!(P, (v[i], v[i+1], v[i+2]))
+    end
+    length(P) < 3 && return nothing
+    c = (sum(p[1] for p in P), sum(p[2] for p in P), sum(p[3] for p in P)) ./ length(P)
+    C = zeros(3, 3)
+    for p in P, a in 1:3, b in 1:3; C[a, b] += (p[a] - c[a]) * (p[b] - c[b]); end
+    ax = eigen(Symmetric(C)).vectors[:, 3]
+    pr = [sum((p .- c) .* ax) for p in P]
+    a = c .+ Tuple(ax .* minimum(pr)); b = c .+ Tuple(ax .* maximum(pr))
+    a[2] <= b[2] ? (a, b) : (b, a)
+end
+
+"""HANDS-2: re-lay an interleaved vertex strip so its axis E->W runs S->H (stretched along, `thick` across), in place."""
+function lay_along!(v, W, E, H, S, thick)
+    a = collect(W .- E); la = sqrt(sum(a .^ 2)); a ./= la
+    b = collect(H .- S); lb = sqrt(sum(b .^ 2)); b ./= lb
+    x = [a[2]*b[3]-a[3]*b[2], a[3]*b[1]-a[1]*b[3], a[1]*b[2]-a[2]*b[1]]; cth = sum(a .* b); sx = sqrt(sum(x .^ 2))
+    K = [0 -x[3] x[2]; x[3] 0 -x[1]; -x[2] x[1] 0]
+    R = sx < 1e-9 ? (cth > 0 ? Matrix(1.0I, 3, 3) : -Matrix(1.0I, 3, 3)) : Matrix(1.0I, 3, 3) + K + K*K*((1 - cth)/sx^2)
+    L = R * (thick .* Matrix(1.0I, 3, 3) .+ (lb/la - thick) .* (a * a'))
+    Ln = transpose(inv(L))                     # normals transform by the inverse transpose
+    for i in 1:11:length(v)-10
+        q = L * (Float64[v[i], v[i+1], v[i+2]] .- collect(W)) .+ collect(H)
+        n = Ln * Float64[v[i+3], v[i+4], v[i+5]]; ln = sqrt(sum(n .^ 2)); ln > 0 && (n ./= ln)
+        v[i] = q[1]; v[i+1] = q[2]; v[i+2] = q[3]; v[i+3] = n[1]; v[i+4] = n[2]; v[i+5] = n[3]
+    end
+    v
 end
 
 function upload(interleaved)
