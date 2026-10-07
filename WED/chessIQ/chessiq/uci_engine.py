@@ -3,8 +3,10 @@
 One engine process per opponent. Rating, style, contempt and material go in as UCI options
 (Personality.engine_options); two Chessmaster knobs are applied here instead:
   * randomness (0..100): the engine reports its best few moves (MultiPV), and with probability randomness/200 a
-    move within (10 + 2 x randomness) centipawns of the best is played instead of the best; at 100 ("completely
-    random", Chessmaster's Stanley) every legal move is listed and one is drawn at random;
+    move within (10 + 2 x randomness) centipawns of the best is played instead of the best. Randomness is variety,
+    never chaos (CM-17): at 100 half the moves are drawn from the lines within about two pawns. Weakness below the
+    ladder's floor comes from the measured blunder rate (CM-14), and a style's cost in strength is paid back in
+    search nodes (Personality.search_nodes);
   * max depth (< 99): the search is limited to that many plies.
 available() is False when the binary has not been built (engine/build_engine.sh); chessIQ then falls back to its
 own Python engine.
@@ -38,7 +40,7 @@ class PersonalityEngine:
         self.rnd_level = personality.total_randomness() if hasattr(personality, "total_randomness") else personality.randomness
         self.blunder = personality.blunder_rate() if hasattr(personality, "blunder_rate") else 0.0
         self.nodes = personality.search_nodes() if hasattr(personality, "search_nodes") else 0
-        self.multipv = 500 if self.rnd_level >= 100 else 4 if self.rnd_level > 0 else 1
+        self.multipv = 4 if self.rnd_level > 0 else 1
         self._send("setoption name MultiPV value %d" % self.multipv)
         self._send("isready"); self._wait("readyok")
 
@@ -71,7 +73,7 @@ class PersonalityEngine:
             if self.p.max_depth and self.p.max_depth < 99:
                 go += " depth %d" % self.p.max_depth
             if self.nodes:                  # the measured strength ladder (CM-8): a fixed node count per rating
-                go += " nodes %d" % self.nodes
+                go += " nodes %d" % (self.nodes * self.multipv)   # CM-17: each listed line gets the full search
             elif clock:
                 go += " wtime %d btime %d winc %d binc %d" % (clock["wtime"], clock["btime"], clock["winc"], clock["binc"])
             elif movetime_ms:
@@ -97,8 +99,6 @@ class PersonalityEngine:
             if root:
                 return self.rand.choice(sorted(root))
         r = self.rnd_level
-        if r >= 100 and lines:
-            return self.rand.choice([mv for _, mv in lines.values()])
         if r > 0 and len(lines) > 1 and self.rand.random() < r / 200:
             top = max(cp for cp, _ in lines.values())
             near = [mv for cp, mv in lines.values() if top - cp <= 10 + 2 * r and mv != best]

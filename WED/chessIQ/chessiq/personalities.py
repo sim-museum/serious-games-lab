@@ -55,6 +55,26 @@ def blunder_for(rating):
     return BLUNDER_LADDER[-1][0]
 
 
+def style_features(p):
+    """How far a personality's knobs sit from neutral: attack, positional, material, randomness (CM-17)."""
+    pos = sum(abs(a - 100) + abs(b - 100) for a, b in p.positional.values()) / 100
+    mat = sum(abs(a - BASE[q]) / BASE[q] + abs(b - BASE[q]) / BASE[q] for q, (a, b) in p.material.items())
+    return abs(p.attack) / 100, pos, mat, min(100, p.randomness) / 100
+
+
+# Elo a style costs per unit of each feature, measured (CM-17): 16 Chessmaster personalities, 100 games each against a
+# neutral opponent of the same rating, weighted non-negative least squares, chi2/dof 0.70
+# (docs/calibration/style_costs.txt). Attack is free; any randomness at all switches the engine to four lines at four
+# times the nodes, which plays better (STYLE_RANDOM_ON), while the deliberate deviations cost in proportion.
+STYLE_COST = (0.0, 11.0, 113.0, 387.0)
+STYLE_RANDOM_ON = -236.0
+
+
+def style_cost(p):
+    f = style_features(p)
+    return sum(c * x for c, x in zip(STYLE_COST, f)) + (STYLE_RANDOM_ON if f[3] > 0 else 0.0)
+
+
 def level_for(rating):
     """(nodes, blunder probability) that play at `rating`: nodes on the measured ladder above the floor; below it 16
     nodes and a measured rate of random moves (CM-14)."""
@@ -90,6 +110,7 @@ class Personality:
     net: str = ""                # Leela network file (engine "leela")
     nodes: int = 0               # Leela: nodes per move (0 = use the clock)
     blunder: float = -1.0        # probability of a random legal move; -1 = from the rating (below the ladder's floor)
+    compensate: bool = True      # pay a style's measured cost in strength back in search (CM-17)
 
     def engine_options(self):
         """UCI options for the Kramnik Fairy-Stockfish (engine/kramnik-selfcapture.patch)."""
@@ -106,14 +127,18 @@ class Personality:
         o["UCI_LimitStrength"] = "false"             # strength comes from search nodes (level_for), not the limiter
         return o
 
+    def effective_rating(self):
+        """The ladder rating the engine must play at so that this style, with its cost, plays at `rating` (CM-17)."""
+        return self.rating + (style_cost(self) if self.compensate else 0)
+
     def search_nodes(self):
-        return level_for(self.rating)[0] if self.rating < 2850 else 0          # 0 = full strength on the clock
+        return level_for(self.effective_rating())[0] if self.rating < 2850 else 0   # 0 = full strength on the clock
 
     def total_randomness(self):
         return min(100, self.randomness)
 
     def blunder_rate(self):
-        return self.blunder if self.blunder >= 0 else level_for(self.rating)[1]
+        return self.blunder if self.blunder >= 0 else level_for(self.effective_rating())[1]
 
 
 def chessmaster_dir():
