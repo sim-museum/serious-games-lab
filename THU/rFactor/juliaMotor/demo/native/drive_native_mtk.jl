@@ -4010,7 +4010,10 @@ if get(ENV,"JM_RSUSP2_DIAG","") != ""
     flush(stdout)
 end
 const MIRRORP = Render.extract_gpl_car(LOT3DO; only=MIRROR_DRAW, maxlat=0.95f0)  # rear-view mirrors — clean disc, re-placed on the cowl (see MIRRORMAT)
-const HANDP  = Render.extract_gpl_car(LOT3DO; only=("lohand",),  maxlat=0.95f0)  # E64 S2: gloved hands on the rim — ride the wheel rotation
+# HANDS-1 S2: the glove + sleeve meshes take V FLIPPED (A/B `261006/hands/vflip_ab.jpg`: the gloves then show the light
+# knuckle side, as gold's white gloves, instead of the dark palm with holes). JM_HAND_VFLIP=0 restores the car's own UVs.
+const HAND_VFLIP = get(ENV, "JM_HAND_VFLIP", "1") != "0"
+const HANDP  = Render.extract_gpl_car(LOT3DO; only=("lohand",),  maxlat=0.95f0, vflip = HAND_VFLIP)  # E64 S2: gloved hands on the rim — ride the wheel rotation
 # E64 S7 (D12 residual): the runtime-hidden HIGH-DETAIL rear-suspension assemblies (groups
 # 27288/39792 — the S4 exclusions).  S4 mis-read their raw GPL coords as displaced (raw y is
 # LATERAL, not up): they are near-correctly authored left/right halves — arms/driveshafts/
@@ -4486,7 +4489,7 @@ function _shear_pipes(parts, k::Float32)
     out
 end
 const PIPEP  = _shear_pipes(_scale_pipes_lat(get(ENV, "JM_PIPE_MIRROR", "1") != "0" ? _mirror_pipes(_PIPES_RAW) : _PIPES_RAW, PIPE_LAT), PIPE_TIPLIFT)
-const ARMP   = Render.extract_gpl_car(LOT3DO; only=("lotarms",), maxlat=0.95f0)  # forearms/upper arms — static (their wheel-side ends are what the eye sees)
+const ARMP   = Render.extract_gpl_car(LOT3DO; only=("lotarms",), maxlat=0.95f0, vflip = HAND_VFLIP)  # forearms/upper arms — static (their wheel-side ends are what the eye sees)
 # The dash panel's normal faces DOWN, so from the driver's eye (above) we see its back → the dials read
 # upside-down.  Mirror the gauge in height about its own centre so the dial face turns up toward the eye.
 const GCY = (b = Render.parts_bbox(GAUGEP); Float32((b.ymin + b.ymax)/2))
@@ -9617,6 +9620,7 @@ function split_fists(parts, tex)
 end
 handLR = isempty(handItems) ? Render.Item[] : split_fists(HANDP, handItems[1].tex)
 const HAND_GRIP = deg2rad(parse(Float32, get(ENV,"JM_HAND_GRIP","30")))
+const HAND_CULL = get(ENV, "JM_HAND_CULL", "1") != "0"   # HANDS-1 S2: 0 draws the gloves/sleeves two-sided (A/B)
 gripmat(sgn) = Render.translate(SWCENTER) * Render.rotaxis(SWAXIS, Float32(sgn*HAND_GRIP)) * Render.translate(-SWCENTER)
 # E64 S2: corrective transform for the positioner-orphaned lotarms mesh (see the draw site).
 # JM_ARM_* iterate it from captures without a code edit: FLIP = 180° yaw about the wheel-plane
@@ -14173,6 +14177,8 @@ function main()
         # sits FORWARD of the wheel (x 0.68…1.01) and too high (y→0.52) → the old "giant silver arms".
         # ARMFIX mirrors it back through the wheel plane toward the driver + squashes it under the eye.
         if HANDS && CTL.view == 0
+            _hcull = glIsEnabled(GL_CULL_FACE) == GL_TRUE
+            HAND_CULL || glDisable(GL_CULL_FACE)          # HANDS-1 S2: A/B the gloves two-sided (inside-out fists?)
             if ARMS
                 for it in armItems;  Render.draw(prog, it, vp, bodyModel*ARMFIX; bright=1.15, spec=0.05, ambfill=0.60); end
             end
@@ -14182,6 +14188,7 @@ function main()
             else
                 for it in handItems; Render.draw(prog, it, vp, swModel; bright=1.15, spec=0.05, ambfill=0.60); end
             end
+            (!HAND_CULL && _hcull) && glEnable(GL_CULL_FACE)
         end
         # plexiglass WINDSCREEN — drawn LAST, FAINTLY VISIBLE glass (PO: it had vanished at 0.16), depth-write
         # OFF so the front suspension + track read through it (GPL gold standard) but the screen still reads as

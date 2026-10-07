@@ -22658,6 +22658,15 @@ cockpit, `JM_HANDS=1`) vs the gold cockpit (Ring S/F, `260802_nurburgring_cockpi
 **Stays hidden by default** until the gloves and sleeve colour are right (the E106-S7 principle). Next sprint: glove
 orientation, then the palette remap.
 
+### HANDS-1 S2 (2026-10-06) — the gloves' dark "palm with holes" was upside-down UVs; still hidden by default
+* `JM_HAND_GRIP` 0 / ±30: 0 puts the gloves at ~9 and 3 o'clock like the gold; the hollow look stays in every case.
+* Two-sided drawing (`JM_HAND_CULL=0`): identical -- not culling.
+* **V-flip of the glove + sleeve meshes only (`JM_HAND_VFLIP`, now default for `JM_HANDS=1`):** the gloves show the light
+  knuckle side (gold: white gloves) instead of the dark palm with the rim showing through (`261006/hands/vflip_ab.jpg`).
+* Left: the gloves are still blocky and slightly holed at the bottom; the sleeves read as chrome (palette remap, S1).
+  `JM_HANDS` stays 0 by default (E106-S7's rule). Rotating; next on revisit: the GPL driver-colour palette remap for
+  `lotarms` (red cuff stripe, softer white), then turn `JM_HANDS` on if it matches the gold.
+
 ### HOCHEICHEN-BB (Ring billboards "set back on the left in the forest near high oaks", PO 2026-10-05) — S1: not located; SHELVED for the PO's location
 * Real-world Hocheichen lies between Hatzenbach and Quiddelbacher Höhe; GPL has no board for it, so our s≈2700–3900
   (Hatzenbach 2571 … Flugplatz 3984). Chase views at s 2700/2950/3200/3450/3700/3900 and cockpit views at 3000–3750
