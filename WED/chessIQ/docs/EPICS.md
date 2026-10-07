@@ -889,3 +889,8 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
   - **NN-22.** Promote or keep, by NN-21's result.
   - **NN-23.** A longer-time reference against Fairy-Stockfish, if the GPU is free.
   - **NN-24.** Retrospective.
+- **NN-19, attempt 1 (10-07): no gain.** The 10x128 network trained from sp1 on T40 generation 1's self-play
+  (149,121 positions with 400-visit T40 search targets; lr 1e-4, 1 epoch, search-value targets). It imitated T40's
+  search better (top-1 49.9% → 52.4%, policy loss 1.990 → 1.891), but held-out value loss rose (0.554 → 0.567).
+  **Against sp1: 78/160 (49%), −9 ± 54.** Imitation without strength again. Retry once with T40 generations 1 and
+  2 together (about 300,000 positions) when generation 2's self-play finishes.
