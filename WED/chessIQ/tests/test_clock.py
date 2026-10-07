@@ -83,6 +83,10 @@ class ThinkTime(unittest.TestCase):              # CM-15: personalities pause li
         low = {"wtime": 5000, "btime": 5000, "winc": 3000, "binc": 3000}
         self.assertLessEqual(think_time(low, "b", 80, 0.99), 0.4 + 1e-9)         # 8% of 5 s, floored at 0.4 s
         self.assertTrue(0.8 <= think_time(None, "w", 10, 0.5) <= 3.0)            # untimed
+        rem = 600.0                                                             # a long 10+3 game keeps a reserve
+        for mv in range(1, 61):
+            rem += 3 - think_time({"btime": rem * 1000, "binc": 3000}, "b", 2 * mv - 1, 0.5)
+        self.assertGreater(rem, 120)
 
 
 if __name__ == "__main__":

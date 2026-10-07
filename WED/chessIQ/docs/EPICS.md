@@ -693,3 +693,9 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
     analysis-like time.
   - Lesson: scale the learning rate to the network and the data, and treat falling held-out agreement with the
     search's own move as a stop signal before any match.
+- **CM open item: thinking pause in long games (10-06, done during a GPU wait).** In a simulated 10+3 game with the
+  real `think_time` (20 seeds), the CM-15 curve left 59 s at move 60 and 43 s at move 80, matching Dave's 95 s
+  after 47 moves. The cause: the moves-to-go estimate fell to 12, so each pause took a twelfth of what was left.
+  Now moves-to-go starts at 50 and never falls below 30, and 60% of the increment is spent (was 75%). Result: about
+  13 s a move over moves 1–20, 143 s left at move 60, 91 s at move 80. The unit test plays out 60 moves and requires
+  more than 120 s left (the old curve leaves about 60).
