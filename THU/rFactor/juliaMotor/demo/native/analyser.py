@@ -37,7 +37,7 @@ def jrt_path(jmr):
 # ---------------------------------------------------------------------------------------------------------------
 class Lap:
     """One timed lap of one car, resampled onto a common distance grid (metres along the player's lap)."""
-    __slots__ = ("car", "driver", "num", "t0", "t1", "time", "i0", "i1", "dist", "ch", "xs", "zs", "splits", "clean")
+    __slots__ = ("car", "driver", "num", "t0", "t1", "time", "i0", "i1", "dist", "ch", "xs", "zs", "ds", "splits", "clean")
 
     def label(self):
         return f"{self.driver} — lap {self.num}  {fmt_time(self.time)}"
@@ -113,7 +113,9 @@ class Replay:
             if ta is None or tb is None or k1 - k0 < 10:
                 continue
             lp = Lap()
-            lp.car = c; lp.driver = self.names[c] if c < len(self.names) else f"car {c}"; lp.num = la
+            # numbered as racing does: the lap completed at its END (the line-to-line lap after the first crossing is
+            # lap 2; lap 1, from the start, has no line crossing to time it from)
+            lp.car = c; lp.driver = self.names[c] if c < len(self.names) else f"car {c}"; lp.num = la + 1
             lp.t0 = ta; lp.t1 = tb; lp.time = tb - ta; lp.i0 = k0; lp.i1 = k1
             self._resample(lp, car)
             laps.append(lp)
@@ -141,7 +143,7 @@ class Replay:
             lp.ch["kmh"] = [v * 3.6 for v in lp.ch["speed"]]
         if "lane" in lp.ch and "lateral" not in lp.ch:
             lp.ch["lateral"] = lp.ch["lane"]
-        lp.xs = [car["x"][k] for k in idx]; lp.zs = [car["z"][k] for k in idx]
+        lp.xs = [car["x"][k] for k in idx]; lp.zs = [car["z"][k] for k in idx]; lp.ds = ds
         lp.splits = [_interp(ds, ts, [s * self.laplen])[0] for s in SPLITS]
         lp.clean = ("ontrack" not in car) or all(car["ontrack"][k] > 0.5 for k in idx)
 
@@ -186,6 +188,139 @@ def delta(a, b):
 
 
 # ---------------------------------------------------------------------------------------------------------------
+# REPLAY-2 S3: reports (GPL Replay Analyser's race/practice report, lap chart, lap by lap, speed report)
+# ---------------------------------------------------------------------------------------------------------------
+def _cum(rep, c):
+    """Race distance covered by car c at every frame, in the player's metres: laps * L + distance into the lap.
+    A car on the grid BEHIND the line (lap 0, more than half a lap 'into' it) is just short of zero."""
+    car = rep.cars[c]; L = car["L"]; s = rep.laplen / L if L > 0 else 1.0; d = car["dist"]
+    if not d:
+        return []
+    # the start position decides once whether the car began behind the line; after that the distance is UNWRAPPED
+    # frame to frame (a line crossing is a step of about -L), so a car halfway round lap 1 is not mistaken for one
+    # still on the grid (the first version did exactly that and invented passes)
+    x = d[0] - L if car["lap"][0] == 0 and d[0] > 0.5 * L else d[0] + car["lap"][0] * L
+    out = [x * s]
+    for k in range(1, len(d)):
+        step = (d[k] - d[k - 1] + 0.5 * L) % L - 0.5 * L
+        x += step; out.append(x * s)
+    return out
+
+
+def _order(cums, k):
+    return sorted(range(len(cums)), key=lambda c: -cums[c][k])
+
+
+def race_summary(rep):
+    """Results (order at the end of the recording, gap in time), each car's laps, best and consistency."""
+    cums = [_cum(rep, c) for c in range(rep.ncar)]; last = rep.n - 1
+    order = _order(cums, last); lead = cums[order[0]]
+    rows = []
+    for pos, c in enumerate(order, 1):
+        laps = [lp for lp in rep.laps if lp.car == c]
+        times = [lp.time for lp in laps]
+        best = min(times) if times else None
+        avg = sum(times) / len(times) if times else None
+        sd = (sum((t - avg) ** 2 for t in times) / len(times)) ** 0.5 if len(times) > 1 else None
+        if pos == 1:
+            gap = "—"
+        else:                                             # when did the leader cover this car's final distance?
+            target = cums[c][last]; k = next((k for k in range(rep.n) if lead[k] >= target), last)
+            g = rep.t[last] - rep.t[k]
+            lapsdown = int((lead[last] - target) // rep.laplen)
+            gap = f"+{lapsdown} lap{'s' if lapsdown > 1 else ''}" if lapsdown >= 1 else f"+{g:.1f} s"
+        rows.append((pos, rep.names[c], int(rep.cars[c]["lap"][last]), fmt_time(best), gap,
+                     fmt_time(avg), f"{sd:.3f} s" if sd is not None else "—"))
+    fast = sorted(rep.laps, key=lambda lp: lp.time)[:10]
+    h = ["<h2>Session summary</h2>",
+         f"<p>{_track_name(rep)} · {rep.ncar} car(s) · {fmt_time(rep.t[last])} recorded</p>",
+         "<h3>Classification</h3>", _table(["Pos", "Driver", "Laps", "Best lap", "Gap", "Average lap", "Consistency (σ)"], rows),
+         "<h3>Fastest laps</h3>", _table(["#", "Driver", "Lap", "Time"],
+                                         [(i + 1, lp.driver, lp.num, fmt_time(lp.time)) for i, lp in enumerate(fast)])]
+    return "\n".join(h)
+
+
+def lap_chart(rep):
+    """Each lap's running order: cars ranked by the moment they completed that lap."""
+    by = {}
+    for lp in rep.laps:
+        by.setdefault(lp.num, []).append((lp.t1, lp.driver))
+    for c in range(rep.ncar):                              # the lap a car is completing when its first timed lap starts
+        car = rep.cars[c]
+        for k in range(1, rep.n):
+            if car["lap"][k] == car["lap"][k - 1] + 1:
+                n = int(car["lap"][k])                     # the lap this crossing completes
+                if n >= 1 and not any(d == rep.names[c] for _t, d in by.get(n, [])):
+                    by.setdefault(n, []).append((rep.t[k], rep.names[c]))
+    rows = []
+    for n in sorted(by):
+        rows.append([f"Lap {n}"] + [d for _t, d in sorted(by[n])])
+    w = max((len(r) for r in rows), default=1)
+    return "<h2>Lap chart</h2><p>Order in which the cars completed each lap.</p>" + \
+        _table(["Lap"] + [f"P{i}" for i in range(1, w)], [r + [""] * (w - len(r)) for r in rows])
+
+
+def lap_by_lap(rep):
+    """A running account: the start order, then every change of position (sampled each second, held 2 s so a
+    side-by-side moment is not counted twice), with where on the lap it happened."""
+    cums = [_cum(rep, c) for c in range(rep.ncar)]
+    step = max(1, int(rep.h.get("fps", 15)))
+    ks = list(range(0, rep.n, step))
+    if len(ks) < 3:
+        return "<h2>Lap by lap</h2><p>The recording is too short.</p>"
+    lines = ["<h2>Lap by lap</h2>", "<p><b>Start:</b> " + ", ".join(f"P{i + 1} {rep.names[c]}" for i, c in enumerate(_order(cums, ks[0]))) + "</p>"]
+    prev = _order(cums, ks[0]); events = 0
+    for a, b in zip(ks[1:], ks[2:]):
+        cur = _order(cums, a)
+        if cur != prev and _order(cums, b) == cur:         # held for the next sample too
+            for i, c in enumerate(cur):
+                j = prev.index(c)
+                if j > i:                                  # c moved up: it passed the cars it is now ahead of
+                    passed = [rep.names[x] for x in prev[i:j] if cur.index(x) > i]
+                    if passed:
+                        lap = int(rep.cars[c]["lap"][a]) + 1; d = cums[c][a] % rep.laplen     # on lap N = N-1 completed
+                        lines.append(f"<p>{fmt_time(rep.t[a])} · lap {lap}, {d:.0f} m: <b>{rep.names[c]}</b> passes "
+                                     + ", ".join(passed) + f" for P{i + 1}</p>")
+                        events += 1
+            prev = cur
+    lines.append("<p><b>Order at the end:</b> " + ", ".join(f"P{i + 1} {rep.names[c]}" for i, c in enumerate(_order(cums, rep.n - 1))) + "</p>")
+    if events == 0:
+        lines.insert(2, "<p>No changes of position.</p>")
+    return "\n".join(lines)
+
+
+def speed_report(rep):
+    """Per driver: top speed in each of the four sectors, overall top, lowest and average while moving (km/h)."""
+    rows = []
+    for c in range(rep.ncar):
+        car = rep.cars[c]; L = car["L"]; v = car["speed"]
+        sect = [0.0] * 4; vals = []
+        for k in range(rep.n):
+            if v[k] < 1.0:
+                continue
+            f = (car["dist"][k] % L) / L if L > 0 else 0.0
+            j = sum(1 for sp in SPLITS if f >= sp); sect[j] = max(sect[j], v[k] * 3.6); vals.append(v[k] * 3.6)
+        if not vals:
+            continue
+        rows.append([rep.names[c]] + [f"{x:.0f}" for x in sect] + [f"{max(vals):.0f}", f"{min(vals):.0f}", f"{sum(vals) / len(vals):.0f}"])
+    return "<h2>Speed report (km/h)</h2>" + _table(["Driver", "S1 top", "S2 top", "S3 top", "S4 top", "Top", "Lowest", "Average"], rows)
+
+
+REPORTS = [("Session summary", race_summary), ("Lap chart", lap_chart), ("Lap by lap", lap_by_lap), ("Speed report", speed_report)]
+
+
+def _track_name(rep):
+    return {"zandvoort": "Zandvoort", "nurburgring": "Nürburgring", "watglen": "Watkins Glen", "monza": "Monza",
+            "spa": "Spa", "skidpad": "Skidpad"}.get(rep.h.get("track", ""), rep.h.get("track", ""))
+
+
+def _table(heads, rows):
+    th = "".join(f"<th style='text-align:left;padding:4px 10px;border-bottom:1px solid #3e5468'>{h}</th>" for h in heads)
+    tr = "".join("<tr>" + "".join(f"<td style='padding:3px 10px'>{v}</td>" for v in r) + "</tr>" for r in rows)
+    return f"<table cellspacing='0'>{'<tr>' + th + '</tr>'}{tr}</table>"
+
+
+# ---------------------------------------------------------------------------------------------------------------
 # widgets
 # ---------------------------------------------------------------------------------------------------------------
 class TrackMap(QWidget):
@@ -195,7 +330,7 @@ class TrackMap(QWidget):
     def __init__(self):
         super().__init__()
         self.setMinimumSize(320, 260); self.setMouseTracking(True)
-        self.rep = None; self.laps = []; self.cursor_d = None
+        self.rep = None; self.laps = []; self.cursor_d = None; self.speed_diff = False
         self.zoom = 1.0; self.pan = QPointF(0, 0); self._drag = None
 
     def set_data(self, rep, laps):
@@ -234,6 +369,8 @@ class TrackMap(QWidget):
             p.drawPath(path)
             p.setPen(QPen(QColor("#3e5468"), 1.0)); p.drawPath(path)
             a = f(*self.rep.refline[0]); p.setPen(QPen(QColor("#ffffff"), 2.0)); p.drawEllipse(a, 4, 4)
+        if self.speed_diff and len(self.laps) >= 2:          # GPL Replay Analyser's "Speedtrack"
+            self._speed_track(p, f); return
         for i, lp in enumerate(self.laps):
             col = QColor(LAP_COLOURS[i % len(LAP_COLOURS)])
             path = QPainterPath(); first = True
@@ -247,6 +384,19 @@ class TrackMap(QWidget):
                 c = self.rep.cars[lp.car]
                 p.setBrush(QBrush(col)); p.setPen(QPen(QColor("#000000"), 1.0)); p.drawEllipse(f(c["x"][j], c["z"][j]), 5, 5)
                 p.setBrush(Qt.BrushStyle.NoBrush)
+
+    def _speed_track(self, p, f):
+        """Lap 1's line coloured by the speed difference to lap 2 at the same distance: green where lap 1 is
+        faster, red where lap 2 is, full colour at 20 km/h."""
+        a, b = self.laps[0], self.laps[1]
+        for k in range(1, len(a.xs)):
+            g = min(len(a.dist) - 1, max(0, int(a.ds[k] / GRID_M)))
+            dv = a.ch["kmh"][g] - b.ch["kmh"][g]; m = min(1.0, abs(dv) / 20.0)
+            col = QColor.fromRgbF(0.25 + 0.75 * m, 0.35, 0.3) if dv < 0 else QColor.fromRgbF(0.3, 0.35 + 0.65 * m, 0.4)
+            p.setPen(QPen(col, 4.0, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            p.drawLine(f(a.xs[k - 1], a.zs[k - 1]), f(a.xs[k], a.zs[k]))
+        p.setPen(QColor("#b9c7d3"))
+        p.drawText(QPointF(10, 18), f"green: {a.driver} lap {a.num} faster   ·   red: {b.driver} lap {b.num} faster")
 
     def wheelEvent(self, e):
         self.zoom = min(40.0, max(0.5, self.zoom * (1.25 if e.angleDelta().y() > 0 else 0.8))); self.update()
@@ -414,6 +564,34 @@ class Graphs(QWidget):
         self.cursor = None; self.cursor_moved.emit(None); self.update()
 
 
+class TractionCircle(QWidget):
+    """Lateral g (x) against longitudinal g (y) for the selected laps -- how much of the tyres' grip each lap used."""
+
+    def __init__(self):
+        super().__init__(); self.setMinimumSize(300, 300); self.laps = []
+
+    def set_data(self, laps):
+        self.laps = laps; self.update()
+
+    def paintEvent(self, _e):
+        p = QPainter(self); p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.fillRect(self.rect(), QColor("#0b1218"))
+        r = 0.45 * min(self.width(), self.height()); cx, cy = self.width() / 2, self.height() / 2; gmax = 2.0
+        p.setPen(QPen(QColor("#2c3e50"), 1.0))
+        for g in (0.5, 1.0, 1.5, 2.0):
+            p.drawEllipse(QPointF(cx, cy), r * g / gmax, r * g / gmax)
+        p.drawLine(QPointF(cx - r, cy), QPointF(cx + r, cy)); p.drawLine(QPointF(cx, cy - r), QPointF(cx, cy + r))
+        p.setPen(QColor("#8aa0b2"))
+        for g in (1.0, 2.0):
+            p.drawText(QPointF(cx + r * g / gmax + 3, cy - 3), f"{g:g} g")
+        p.drawText(QPointF(cx - r, cy - r + 12), "braking ↓  ·  accelerating ↑  ·  left / right")
+        for i, lp in enumerate(self.laps):
+            col = QColor(LAP_COLOURS[i % len(LAP_COLOURS)]); col.setAlpha(150)
+            p.setPen(Qt.PenStyle.NoPen); p.setBrush(col)
+            for gx, gy in zip(lp.ch["glat"], lp.ch["glong"]):
+                p.drawEllipse(QPointF(cx + r * max(-gmax, min(gmax, gx)) / gmax, cy - r * max(-gmax, min(gmax, gy)) / gmax), 1.6, 1.6)
+
+
 class AnalyserWindow(QDialog):
     """REPLAY-2 S2: the analyser for one replay. Laps on the left (tick up to five), then Track / Graphs / Times."""
 
@@ -462,9 +640,23 @@ class AnalyserWindow(QDialog):
         both = QSplitter(Qt.Orientation.Vertical); both.addWidget(gbox); both.addWidget(self.map)
         both.setSizes([560, 260])
         self.tabs.addTab(both, "Graphs + map")
-        self.map_full = TrackMap(); self.tabs.addTab(self.map_full, "Track map")
+        mw = QWidget(); mv = QVBoxLayout(mw); mv.setContentsMargins(0, 0, 0, 0)
+        self.speed_cb = QCheckBox("Colour by speed difference (first two laps)")
+        self.speed_cb.toggled.connect(self._speed_mode); mv.addWidget(self.speed_cb)
+        self.map_full = TrackMap(); mv.addWidget(self.map_full, 1)
+        self.tabs.addTab(mw, "Track map")
+        self.circle = TractionCircle(); self.tabs.addTab(self.circle, "Traction circle")
         self.times = QTableWidget(); self.times.verticalHeader().setVisible(False)
         self.tabs.addTab(self.times, "Split times")
+        from PyQt6.QtWidgets import QComboBox, QTextBrowser
+        rw = QWidget(); rv = QVBoxLayout(rw); rv.setContentsMargins(0, 0, 0, 0); rr = QHBoxLayout()
+        self.rep_combo = QComboBox(); self.rep_combo.addItems([n for n, _f in REPORTS])
+        self.rep_combo.currentIndexChanged.connect(self._report)
+        exp = QPushButton("Export…"); exp.clicked.connect(self._export)
+        rr.addWidget(QLabel("Report:")); rr.addWidget(self.rep_combo); rr.addStretch(1); rr.addWidget(exp); rv.addLayout(rr)
+        self.report = QTextBrowser(); self.report.setObjectName("guide"); rv.addWidget(self.report, 1)
+        self.tabs.addTab(rw, "Reports")
+        self._report(0)
         split.setSizes([330, 950])
         self.graphs.cursor_moved.connect(self._cursor)
         self._fill_times()
@@ -496,8 +688,28 @@ class AnalyserWindow(QDialog):
             it.setForeground(QColor(LAP_COLOURS[k]) if k >= 0 else QColor("#e8eef3"))
         self.graphs.set_data(sel, self.rep.laplen)
         self.map.set_data(self.rep, sel); self.map_full.set_data(self.rep, sel)
+        if hasattr(self, "circle"):
+            self.circle.set_data(sel)
         self.hint.setText(("Time difference is lap 2 minus lap 1 (above zero: lap 2 behind). " if len(sel) >= 2 else "")
                           + "Tick up to five laps. Wheel zooms, drag pans, double-click resets.")
+
+    def _speed_mode(self, on):
+        self.map_full.speed_diff = on; self.map_full.update()
+
+    def _report(self, i):
+        name, fn = REPORTS[i]
+        try:
+            self.report.setHtml(fn(self.rep))
+        except Exception as e:                              # a report must never take the window down
+            self.report.setPlainText(f"{name}: could not be computed ({e})")
+
+    def _export(self):
+        from PyQt6.QtWidgets import QFileDialog
+        base = os.path.splitext(self.rep.path)[0] + " " + self.rep_combo.currentText().lower().replace(" ", "_") + ".html"
+        path, _ = QFileDialog.getSaveFileName(self, "Export report", base, "HTML (*.html);;Text (*.txt)")
+        if path:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(self.report.toPlainText() if path.endswith(".txt") else self.report.toHtml())
 
     def _chan(self, key, on):
         self.graphs.enabled[key] = on; self.graphs.update()

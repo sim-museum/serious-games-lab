@@ -45,7 +45,20 @@ dl = A.delta(pl[0], ai[0]); k = int(500 / A.GRID_M)
 check(abs(dl[k] - (500 / 40 - 500 / 50)) < 0.03, f"time difference at 500 m = 2.5 s ({dl[k]:.3f})")
 check(abs(max(pl[0].ch["kmh"]) - 180.0) < 0.5 and abs(pl[0].ch["glat"][k] - 50 * 50 / R / 9.81) < 0.05,
       f"speed and lateral g on the grid (glat {pl[0].ch['glat'][k]:.3f} vs {50*50/R/9.81:.3f})")
+# S3 reports
+import re as _re
+summ = A.race_summary(rep); plain = _re.sub("<[^>]+>", " ", summ)
+check(plain.index("You") < plain.index("Clark (Lotus)") and "+" in plain, "summary: You P1, Clark behind with a gap")
+check("No changes of position" in A.lap_by_lap(rep), "lap by lap: the faster car started ahead, so no passes")
+sp = _re.sub("<[^>]+>", " ", A.speed_report(rep))
+check(" 180 " in sp and " 144 " in sp, "speed report: top speeds 180 and 144 km/h")
+lc = _re.sub("<[^>]+>", " ", A.lap_chart(rep))
+check("Lap 1" in lc and "Lap 2" in lc, "lap chart lists the completed laps")
+check([lp.num for lp in pl] == [2, 3], f"laps numbered as racing does ({[lp.num for lp in pl]})")
 w = A.AnalyserWindow(path); w.show(); app.processEvents()
+for i in range(w.rep_combo.count()):
+    w.rep_combo.setCurrentIndex(i); app.processEvents()
+    check("could not be computed" not in w.report.toPlainText(), f"report '{w.rep_combo.currentText()}' renders")
 check(len(w.selected()) == 2, "the window opens on a two-lap comparison")
 check(w.times.rowCount() == len(rep.laps) + 2, "split-time table: every lap + each driver's best sectors")
 w.grab()                                            # paints every widget once (an exception would fail the test)

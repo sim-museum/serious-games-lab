@@ -24,7 +24,7 @@ this index was written; that is what it exists to stop.
 | **TRACKSEG-3** | Preferences switch: show/hide the track-section names ("Front Straight", "Big Bend" at WG), default ON (PO 2026-10-06) | ✅ **DONE (S1, 2026-10-06):** launcher Graphics group, "Show track section names", default ON, remembered; OFF = `JM_SEGNAME_SECS=0`, also for replays; gate `segnames_smoke` |
 | **GUI-1** | Redesign the julia racer GUI (`demo/native/juliaRacer.py`) for ease of use per GUI best practices, then restyle it like the PyQt GUIs of pokerIQ and bridgeIQ (`~/sgl/MON/pokerIQ`, `~/sgl/FRI/bridgeIQ`) (PO 2026-10-06) | **S1 (2026-10-06) redesign done:** task-ordered tabs (Race / Results / Replays / Settings / Controller), Session + Car cards, one primary Start button, menus + status bar, log on demand, everything remembered; the sim's environment is identical to before (3 cases). **S2 restyle done:** dark pokerIQ/bridgeIQ theme (`261006/gui/s2_vs_iq.jpg`). 🟡 **AWAITING THE PO's look** |
 | **DOC-RACE-1** | Documentation on how to race, drawing on the docs under `~/sgl/THU` (`DOC/`: GPL manual, setup guides, brake bias, diffs, tyre heat, ...) (PO 2026-10-06) | ✅ **S1 (2026-10-06):** `demo/native/docs/HOW_TO_RACE.md`, in the launcher as Help → How to race…; 🟡 awaiting the PO's read |
-| **REPLAY-2** | A replay is ALWAYS available for the session just exited; add the GPL Replay Analyser's analysis features (gold standard: `~/sgl/THU/WP/drive_c/Program Files/GPL Replay Analyser`) alongside replaying the video; optional Claude Code analysis of the replay with how-to-improve advice (PO 2026-10-06) | **S1 (2026-10-07) always-a-replay DONE:** every session records (practice, any field), autosaved every 20 s (survives a kill), analysis channels + a Python-readable `.jrt`; the Replays tab pre-selects the session just finished. **S2 (2026-10-07) the analyser:** Replays → Analyse… -- laps, track map with racing lines, graphs vs distance, time difference, split times + theoretical best. Next: S3 reports |
+| **REPLAY-2** | A replay is ALWAYS available for the session just exited; add the GPL Replay Analyser's analysis features (gold standard: `~/sgl/THU/WP/drive_c/Program Files/GPL Replay Analyser`) alongside replaying the video; optional Claude Code analysis of the replay with how-to-improve advice (PO 2026-10-06) | **S1 (2026-10-07) always-a-replay DONE:** every session records (practice, any field), autosaved every 20 s (survives a kill), analysis channels + a Python-readable `.jrt`; the Replays tab pre-selects the session just finished. **S2 (2026-10-07) the analyser:** Replays → Analyse… -- laps, track map with racing lines, graphs vs distance, time difference, split times + theoretical best. **S3 (2026-10-07):** reports (session summary, lap chart, lap by lap, speed report; export), traction circle, speed-difference map. Next: S4 Claude analysis |
 | **COCKPIT-GOLD-1** | Cockpit mirrors closer but still not right -- they look tilted slightly up; match the gold. The windscreen/canopy is solid where GPL's is almost transparent -- match the gold (PO 2026-10-06) | open |
 | **HANDS-2** | Restore the arms and gloves in the cockpit view AND on the AI cars' external views, per the gold; watch for sleeves going upward ("rabbit ears") from outside the car instead of running from the driver to the gloves (PO 2026-10-06; supersedes HANDS-1's "hidden by default") | open |
 | **E107** | **EPIC (PO priority): Julia AI as close as possible to GPL AI** | **AIGPL-2 (2026-10-04): GPL's own AI algorithm, reverse-engineered from gpl.exe** -- the PO: *"The AI cars worked perfectly in the WG race!"*; E107-S11 GPL's passing rails pass the graded test. Open: per-track confirmation by the PO on the other four tracks. |
@@ -23224,4 +23224,26 @@ to `show_latest`, which pre-selects that session's recording and says so; the st
   awareness -- it rear-ended a 62 %-pace AI car at 156 km/h at s=313, and alone it arrives at Tarzan flat out. Test
   recordings used `JM_AUTODRIVE_V=22`.
 * `launcher_smoke` now runs three tests (launcher, analyser, section names): PASS.
+
+### REPLAY-2 S3 (2026-10-07): the Analyser's reports, traction circle and speed map
+* **Reports tab** (choose, read, **Export…** to HTML or text), after GPL Replay Analyser's report set:
+  * **Session summary** -- classification at the end of the recording (laps, best, **gap in time**: when the leader
+    covered the same distance; "+N laps" when lapped), average lap and **consistency** (σ of lap times), fastest laps.
+  * **Lap chart** -- each lap's running order (cars ranked by the moment they completed it).
+  * **Lap by lap** -- the start order, every change of position with the time, lap and metre where it happened (sampled
+    each second and held for the next sample, so a side-by-side moment is not counted twice), the final order.
+  * **Speed report** -- per driver: top speed in each quarter of the lap, overall top, lowest and average (km/h).
+* **Traction circle** -- lateral against longitudinal g for the ticked laps, rings at 0.5/1/1.5/2 g.
+* **Speed map** ("Colour by speed difference" on the Track map tab, the Analyser's *Speedtrack*): lap 1's line green
+  where it is faster than lap 2, red where slower, full colour at 20 km/h. On the test race: the autodriven player is
+  faster through the corners (the AI were at 40 % pace), Clark down the straights -- as the speed graph says.
+* **Laps are numbered as racing does** (by the lap completed at the end: the first line-to-line lap is lap 2; lap 1
+  from the start has no crossing to time it from -- GPL times it from the green; ours does not yet).
+* **Bug found by the test and fixed:** race distance first treated any lap-0 car more than half a lap in as "behind the
+  line" -- a car halfway round lap 1 dropped a lap, and the lap-by-lap report invented passes (three on the test race,
+  at 1612/2044/2693 m). Now the start offset is decided once and the distance is unwrapped frame to frame. The player's
+  and the AI's distance origins agree (44 close encounters: median −1.8 m, within a car length).
+* `analyser_test.py` adds: summary order and gap, no passes when the faster car starts ahead (it FAILED on the first
+  version -- the known positive), speed report 180/144 km/h, lap chart, racing lap numbers, every report renders.
+  `launcher_smoke` PASS. Screens: `261007/analyser/s3_*.png`, `s3_views.png`.
 
