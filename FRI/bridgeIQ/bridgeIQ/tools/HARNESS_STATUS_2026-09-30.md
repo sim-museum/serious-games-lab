@@ -817,3 +817,53 @@ Open: slam tries after partner's 4M in a game force (board 4, 7H missed;
 the slam trigger counts partner's floor, 15+11); biq passes a 12-count in
 the balancing seat over 3m; the simulation never considers slams (level
 cap 5).
+
+## Controlled probes of Q-Plus's defence (2026-10-05/07)
+
+biq_bluechip_tm.py --script plays biq's seats (N/S) from a per-board script
+(calls, leads, follows); Q-Plus defends E/W. tools/qplus_probe.py builds deal
+families that change one thing at a time, tools/qplus_probe_read.py reads the
+probe trick. One room, ~25-35 s a board (a match deal is ~70 s, x2 rooms).
+Runs: tools/runs/bluechip/probe_count1, probe_count2, probe_all1 (1206 of
+1239 boards; East's window hung at boards 403, 805 and 1207, each resumed
+with --start into the same --out). Q-Plus is deterministic (96/96 repeats).
+
+Count (declarer leads dummy's long suit), checked in this order:
+1. 4th seat, declarer's side winning: win with the cheapest SPOT (never an
+   honour: K65 ducks with the 5).
+2. 2nd seat, dummy led a spot: cover with the cheapest higher spot.
+3. A and K both in the common view (dummy or played, incl. this trick):
+   lowest. An honour in the signaller's own hand does not count as seen.
+4. Otherwise count: even -> highest spot keeping the 9 (not in 4th seat),
+   odd -> lowest; also when partner is winning the trick.
+count2 283/290, count3 227/240, random frames count1 162/190. Misses: holding
+A/K in 4th seat with dummy missing both (plays low), A-x-x-x in 2nd seat.
+
+Attitude (partner's opening lead), 332/353: singleton -> it; honour lead +
+no honour -> lowest; + A/K/Q/J -> highest spot (J-x-x-x -> lowest);
+doubleton A (or K with dummy's A, suit contract) unblocks; AK -> K (suit:
+AKx -> spot); Q led and A held -> win the A; low lead -> third hand high,
+top of touching honours. No doubleton ruff signal.
+
+Lead card, 405/419: top of sequence (in suit contracts two touching honours
+suffice; vs NT 3-card or QJ9/JT, else 4th best except AKxx/KQxx), interior
+from AJT/KJT/QT9, 4th best from an honour, top of spot suits, middle from
+Txx, lowest trump (top of a trump sequence). Suit choice: a linear model
+(sequences, length except vs 6NT, singletons vs suits, avoid unsupported
+A/K/Q, majors vs 1NT-3NT) matches ~80%.
+
+biq vs Q-Plus in the same positions (nopeek.decide replay): attitude 87-89%
+same card, count 86-87%, leads 32% (same suit 43%). Leads scored on fresh
+auction-consistent layouts (biq's sampler, DD, 64 per board): Q-Plus's lead
+vs biq's +0.025 IMP/board (SE 0.027) -- equal; biq's rule lead without the
+simulation -0.088 (SE 0.037), -0.49 vs 6NT, but +0.15 (SE 0.07) vs
+1C-1H-1NT-3NT; best card on the layouts +0.245 (the ceiling).
+
+Committed BIQ_SIGNAL_QP=1 (c7d7c885): no doubleton signal, J encourages
+under K, count from the common view, keep the 9. Same-card agreement
+attitude 89->92%, 5C 87->96%. Paired defence vs DD declarer, 160 deals:
+-0.069 tricks/deal given (SE 0.045).
+
+Open: biq's second-seat rise with A/K on declarer's low lead is unstable
+run to run (search budget) where Q-Plus always ducks; the probe design gave
+East a spade sequence, so low-card heart holdings were led away from.
