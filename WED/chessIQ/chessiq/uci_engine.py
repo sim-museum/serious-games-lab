@@ -126,6 +126,11 @@ class PersonalityEngine:
             self.proc.wait(timeout=3)
         except Exception:
             self.proc.kill()
+        for f in (self.proc.stdin, self.proc.stdout):      # closed explicitly: a dead engine's pipe must not be
+            try:                                           # flushed later by the garbage collector
+                f.close()
+            except Exception:
+                pass
 
 
 # ---- Leela (lc0) opponents: the Kramnik lc0 with a network (EPIC NN, sprint NN-6) ---------------------------------

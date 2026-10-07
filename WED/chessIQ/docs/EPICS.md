@@ -790,3 +790,15 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
   - Tests: constructed sequences for each type, the winner's own blunder (not the cause), moves in a decided game,
     the suggestion rule, and a real decisive engine game. Example: "Rated-1700 won in 45 moves. Game type:
     Dominated. Costliest moves: 30... Rb5 (−4.0). Opening: followed grandmaster games for 3 plies."
+- **CM-20 (10-07): done. The Post-Game Analysis window** (`chessiq/postgame.py`), shown after every game against the
+  computer.
+  - Contents: the game type and summary, your rating change for rated games, the costliest moves, how far the game
+    followed grandmaster practice, a chart of the evaluation after each move (hover for the move and the value;
+    above the line is good for White), and "Play <suggested opponent>".
+  - Non-modal: it never blocks the board. The analysis runs in a thread with progress, and closing the window (or
+    the main window) cancels it and waits for the thread. `CHESSIQ_POSTGAME=0` turns it off.
+  - Off-screen test: play a move, the computer replies, resign. The window is non-modal, evaluates every position,
+    shows the type, and suggests a weaker opponent after the loss.
+  - The rated-game check still completes (against Leela 1150).
+  - Tidied on the way: engine pipes are closed explicitly, so a dead engine's pipe is not flushed by the garbage
+    collector, and `.CMP` files are read with `with`. The full suite (60 tests) passes.
