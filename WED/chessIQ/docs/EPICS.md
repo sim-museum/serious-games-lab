@@ -649,3 +649,34 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
     human.
   - The cost model was fitted at one opponent level per personality and assumes costs add up.
   - Leela and Maia opponents are not yet on the ladder.
+
+## EPIC NN, retrospective 4 (2026-10-06, before sprints NN-13..NN-18)
+- **Where it stands:** a Kramnik-trained network (`kramnik-sp1`, 10x128) beats its standard-chess starting point by
+  +59 (95% +6 to +116), runs in Nibbler and chessIQ on the GPU, and the self-play loop is proven. A second loop step
+  gained nothing measurable (+9 ± 54).
+- **Stepping back.** The loop's later steps are small, and a 10x128 network has a low ceiling. Approaches:
+  1. *Many more loop generations at 10x128,* gated by 400-game matches. Steady but slow: about 2 hours a
+     generation for a few Elo each.
+  2. *A larger starting point.* `256x20-t40-1541` (20x256, Leela's T40 run) is on this machine. In ordinary chess it
+     is far stronger than LD2, at about eight times the compute per node. If its strength carries into Kramnik
+     chess at equal time, one adaptation step from it (as LD2 → sp1) may beat many 10x128 generations.
+  3. *Distil the large network into the small one* for speed. Later, if the large one wins.
+- **Chosen:** measure 2 first, since it is cheap. If it wins at equal time, adapt it with self-play.
+- **Sprints:**
+  - **NN-13.** The T40 network in Kramnik chess against sp1, at equal nodes and at equal time. Check: two matches
+    with intervals.
+  - **NN-14.** The loader and exporter for 20x256 (identity check inside lc0).
+  - **NN-15.** One self-play adaptation step from T40. Check: adapted vs untouched T40, 160 games.
+  - **NN-16.** The strongest network on chessIQ's rating scale (against the Fairy-Stockfish ladder's top).
+  - **NN-17.** Delivery to Nibbler and chessIQ.
+  - **NN-18.** Retrospective.
+- **NN-13 (10-06): done.** The 20x256 T40 network (`256x20-t40-1541`, untouched) in Kramnik chess against sp1, on
+  the GPU, 80 games each. T40 runs at about 8,650 nodes/s, sp1 at 44,900.
+  - **Equal nodes (800): T40 66.5/80 (83%), +277 ± 102.** Its standard-chess strength carries over.
+  - **Equal time (300 ms a move): T40 36/80 (45%), −35 ± 77, even.** Its per-node advantage is spent on being 5x
+    slower on this GPU.
+  - Kept as the next base: it is unadapted (LD2 gained +59 from one step), and large networks gain more from
+    longer analysis, which is what Nibbler is for.
+- **NN-14 (10-06): done.** `LeelaNet` takes the value-head width (32 in LD2, 128 in T40). `load_lc0` reads it, and
+  `verify_export.py` infers every shape from the saved weights. Identity checks inside lc0 over 59 positions, for
+  the loaded T40 and for its export round trip: largest policy difference 0.065 percentage points, W−L/D 0.0030.

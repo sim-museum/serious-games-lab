@@ -41,8 +41,14 @@ def main():
     if pt.endswith(".pb.gz"):               # an lc0 network read by load_lc0 (checks the loader)
         net = L.load_lc0(pt)
     else:
-        net = L.LeelaNet(int(blocks), int(channels), policy=os.environ.get("POLICY", "classical")).eval()
-        net.load_state_dict(torch.load(pt))
+        sd = torch.load(pt)                 # the shape comes from the weights themselves (NN-14)
+        blocks = 1 + max(int(k.split(".")[1]) for k in sd if k.startswith("tower."))
+        channels = next(v.shape[0] for k, v in sd.items() if k.startswith("input.") and v.dim() == 4)
+        vf = next(v.shape[0] for k, v in sd.items() if k.startswith("val_conv.") and v.dim() == 4)
+        se = next(v.shape[0] for k, v in sd.items() if k.startswith("tower.0.se.fc1.weight"))
+        net = L.LeelaNet(blocks, channels, channels // se, policy="conv" if any(k.startswith("pol1.") for k in sd)
+                         else "classical", value_filters=vf).eval()
+        net.load_state_dict(sd)
     proc = subprocess.Popen([LC0, "--weights=" + pb, "--backend=blas", "--threads=1", "--policy-softmax-temp=1.0",
                              "--verbose-move-stats"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                             stderr=subprocess.DEVNULL, text=True, bufsize=1)

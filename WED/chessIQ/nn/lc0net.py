@@ -7,7 +7,7 @@ Structure = lc0's NETWORK_SE_WITH_HEADFORMAT with the classical heads, ReLU thro
   policy classical: 1x1 conv C -> 32 (+BN) ReLU, FC 32*64 -> 1858 (lc0's move index order: POLICY_CLASSICAL)
          conv:      3x3 conv C -> C (+BN) ReLU, 3x3 conv C -> 80 (+bias), lc0's fixed map of 73x64 -> 1858
                     (POLICY_CONVOLUTION, as in Leela's own networks -- load_lc0() reads those for fine-tuning)
-  value  1x1 conv C -> 32 (+BN) ReLU, FC 32*64 -> 128 ReLU, FC 128 -> 3 (win/draw/loss: VALUE_WDL)
+  value  1x1 conv C -> V (+BN) ReLU, FC V*64 -> 128 ReLU, FC 128 -> 3 (win/draw/loss: VALUE_WDL); V = 32 or 128
 Batch norm is stored alongside each convolution, as in lc0's own networks; lc0 folds it at load time.
 Inputs: lc0's INPUT_CLASSICAL_112_PLANE, square index a1=0 .. h8=63 as row*8+file on an 8x8 grid.
 """
@@ -67,7 +67,7 @@ CONV_MAP = np.load(os.path.join(os.path.dirname(os.path.abspath(__file__)), "con
 
 
 class LeelaNet(nn.Module):
-    def __init__(self, blocks=6, channels=64, se_ratio=4, policy="classical"):
+    def __init__(self, blocks=6, channels=64, se_ratio=4, policy="classical", value_filters=32):
         super().__init__()
         self.blocks, self.channels, self.se_ratio, self.policy = blocks, channels, se_ratio, policy
         self.input = ConvBN(112, channels, 3)
@@ -83,8 +83,9 @@ class LeelaNet(nn.Module):
         else:
             self.pol_conv = ConvBN(channels, 32, 1)
             self.pol_fc = nn.Linear(32 * 64, 1858)
-        self.val_conv = ConvBN(channels, 32, 1)
-        self.val_fc1 = nn.Linear(32 * 64, 128)
+        self.value_filters = value_filters          # 32 in LD2, 128 in the 20x256 T40 network (NN-14)
+        self.val_conv = ConvBN(channels, value_filters, 1)
+        self.val_fc1 = nn.Linear(value_filters * 64, 128)
         self.val_fc2 = nn.Linear(128, 3)
 
     def forward(self, x):
@@ -193,7 +194,8 @@ def load_lc0(path):
     blocks = len(w.residual)
     c = len(_dq(w.input.biases)) if w.input.biases.params else len(_dq(w.input.bn_means))
     se_ch = len(_dq(w.residual[0].se.b1))
-    net = LeelaNet(blocks, c, c // se_ch, policy="conv")
+    vc = len(_dq(w.value.biases)) if w.value.biases.params else len(_dq(w.value.bn_means))
+    net = LeelaNet(blocks, c, c // se_ch, policy="conv", value_filters=vc)
     _set_convbn(net.input, w.input, (c, 112, 3, 3))
     for blk, r in zip(net.tower, w.residual):
         _set_convbn(blk.c1, r.conv1, (c, c, 3, 3))
@@ -210,11 +212,8 @@ def load_lc0(path):
         pw, pbias = pw * g[:, None, None, None], (pbias - _dq(w.policy.bn_means)) * g + \
             (_dq(w.policy.bn_betas) if w.policy.bn_betas.params else 0)
     net.pol2.weight.data, net.pol2.bias.data = torch.from_numpy(pw.astype(np.float32)), torch.from_numpy(pbias.astype(np.float32))
-    vc = len(_dq(w.value.biases)) if w.value.biases.params else len(_dq(w.value.bn_means))
-    if vc != 32:
-        raise ValueError("value head has %d filters (expected 32)" % vc)
-    _set_convbn(net.val_conv, w.value, (32, c, 1, 1))
-    net.val_fc1.weight.data = torch.from_numpy(_dq(w.ip1_val_w).reshape(128, 2048))
+    _set_convbn(net.val_conv, w.value, (vc, c, 1, 1))
+    net.val_fc1.weight.data = torch.from_numpy(_dq(w.ip1_val_w).reshape(128, vc * 64))
     net.val_fc1.bias.data = torch.from_numpy(_dq(w.ip1_val_b))
     net.val_fc2.weight.data = torch.from_numpy(_dq(w.ip2_val_w).reshape(3, 128))
     net.val_fc2.bias.data = torch.from_numpy(_dq(w.ip2_val_b))
