@@ -746,3 +746,35 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
     gates.
   - A longer-time reference match (10 s a move) to see whether the network's lead grows with time.
   - Distilling t40a1 into a 10x128 network for CPU-only machines.
+
+## EPIC CM, retrospective 5 (2026-10-07, before sprints CM-19..CM-24)
+- **The epic's original promise is met:**
+  - Chessmaster's opponents, styles and ratings, all measured.
+  - Rated play at Fischer 10+3, with no advice.
+  - Adjourning, the opening helper, clocks, and Kramnik rules throughout.
+  - Club-level Leela and Maia opponents with measured ratings.
+- **Gold-standard gaps left (manual):**
+  1. **Post-Game Analysis.** After each game Chessmaster summarises it: a type (*Dominated*: the winner never lost
+     the advantage; *Blunder*: one blunder decided it; *Balanced*: more than 40% of the game was about even;
+     *Disputed*: the advantage went to both sides), the opening, a suggested next opponent, the rating change, and
+     a chart of the evaluation after each move. This is the most useful missing piece for a club player learning
+     the variant.
+  2. **Tournaments.** Round robin or Swiss against personalities, rated or not, with a schedule, standings and a
+     crosstable, and quick results for computer-vs-computer games.
+  3. **Rating history.** A record of how your rating moved over time.
+- **Approaches for analysis:**
+  - Leela gives the best judgement, but it needs the GPU for speed and is busy there with NN work.
+  - Fairy-Stockfish at a fixed node count per position is fast on the CPU and deterministic.
+  - **Chosen:** Fairy-Stockfish for the chart and classification (one engine, testable thresholds). The Nibbler
+    launcher remains the place for deep analysis.
+- **Sprints:**
+  - **CM-19.** Post-game analysis core: per-move evaluation, the four game types (thresholds stated, since the
+    manual gives none), opening line, suggested opponent. Check: unit tests on constructed evaluation sequences,
+    plus a real game.
+  - **CM-20.** Post-game window with the game chart. Check: an off-screen test after a game.
+  - **CM-21.** Tournament core: round robin and Swiss pairings, scoring, tie-breaks, quick results for engine
+    games. Check: pairing tests (no repeat pairings in Swiss; everyone meets in round robin).
+  - **CM-22.** Tournament window: schedule, play your game, standings and crosstable, optional rating. Check: an
+    off-screen tournament.
+  - **CM-23.** Rating history graph.
+  - **CM-24.** Retrospective and an end-to-end check.
