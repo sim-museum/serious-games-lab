@@ -9369,8 +9369,18 @@ load_wheel(nm) = haskey(WHEEL_WRAP, nm) ?
 const WHEELITEMS = Dict(nm => load_wheel(nm) for nm in ("lotwlf","lotwrf","lotwlr","lotwrr"))
 tstamp("  [E80] wheel models loaded")
 swItems = Render.build_gpl(SWPARTS, GPLTEX)        # steering wheel (rotated with steer)
+# HANDS-1 S3 (2026-10-06): the gold's cockpit sleeves are WHITE with a RED stripe (260801 Zandvoort, 260802 Ring cockpit
+# videos) -- that is the "JackSeller 16-bit Driving Suits" lotarms in the PO's GPL install, not the base greyscale
+# cars67/lotus/lotarms.mip. When that folder exists the gloves + sleeves take their textures from it (its own decoded-texture
+# cache, so the base names stay intact). JM_SUIT=0 uses the base textures; JM_SUIT=<dir> picks another suit folder.
+# Only the SLEEVES: the suit folder's gloves are brown leather, the gold's are the base white/grey `lohand`.
+const SUITDIR = let d = get(ENV, "JM_SUIT", joinpath(dirname(LOTDIR), "murasama", "JackSeller 16-bit Driving Suits", "lotus"))
+    (d != "0" && isfile(joinpath(d, "lotarms.mip"))) ? d : ""
+end
+const SUITTEX = SUITDIR == "" ? GPLTEX : Render.gpl_texture_index(SUITDIR)
+println("  driver suit: ", SUITDIR == "" ? "base lotus textures" : SUITDIR)
 handItems = Render.build_gpl(HANDP, GPLTEX)        # E64 S2: gloved hands (cockpit view, rotate with the wheel)
-armItems  = Render.build_gpl(ARMP, GPLTEX)         # E64 S2: forearms (cockpit view, static)
+armItems  = Render.build_gpl(ARMP, SUITTEX)        # E64 S2: forearms (cockpit view, static)
 rsusp2Items = Render.build_gpl(RSUSPP2, GPLTEX; tag="rsusp2")     # E75-S8: rear suspension taken directly, no fold
 rsuspItemsA = Render.build_gpl(susp_inboard(RSUSPP_A), GPLTEX; tag="rsuspa")   # E64 S7: high-detail rear suspension halves (chase view)
 rsuspItemsB = Render.build_gpl(susp_inboard(RSUSPP_B), GPLTEX; tag="rsuspb")

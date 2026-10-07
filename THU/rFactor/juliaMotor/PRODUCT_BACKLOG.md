@@ -22667,6 +22667,20 @@ orientation, then the palette remap.
   `JM_HANDS` stays 0 by default (E106-S7's rule). Rotating; next on revisit: the GPL driver-colour palette remap for
   `lotarms` (red cuff stripe, softer white), then turn `JM_HANDS` on if it matches the gold.
 
+### HANDS-1 S3 (2026-10-06) — the gold's red-striped sleeves are the "JackSeller 16-bit Driving Suits" texture; geometry is the remaining gap
+* The gold cockpit (every frame of `260801_zandervoort_cockpit.mp4`, `260802_nurburgring_cockpit.mp4`) shows the driver's
+  arms prominently: **white sleeves with a red stripe** from the lower corners to the gloves, white/grey gloves -- so the
+  hidden arms are a large visible gap in EVERY cockpit frame, on every track.
+* Not a palette remap (S1's guess): `cars67/lotus/lotarms.mip` is plain greyscale, but the PO's install also has
+  `cars67/murasama/JackSeller {4-Bit,16-bit} Driving Suits/lotus/lotarms.mip` -- white with a red stripe, the gold's sleeve.
+  Its `lohand` is BROWN leather; the gold's gloves are the base white `lohand`. So: sleeves from the suit folder (own
+  texture index + cache; `JM_SUIT=0` base, `JM_SUIT=<dir>` another), gloves from the base. (`261006/hands/suit2_vs_gold.jpg`)
+* **Geometry is what is left:** the gold's sleeves are long tubes close to the eye, and they FOLLOW the steering (left arm up
+  over the top of the rim on a left turn); ours are short flat strips that fold, and static. `JM_ARM_SY` 0.62/0.85/1.0 barely
+  changes it (`sy_ab.jpg`). The lotarms mesh hangs off a GPL positioner our extraction cannot follow (the D12 posmat-clamp
+  family) -- in GPL that positioner is almost certainly steering-driven. Next (S4): decode lotarms' positioner chain in
+  lotus.3do / gpl.exe's driver-arm matrix, place the mesh as GPL does, animate with steer. Until then `JM_HANDS` stays 0.
+
 ### HOCHEICHEN-BB (Ring billboards "set back on the left in the forest near high oaks", PO 2026-10-05) — S1: not located; SHELVED for the PO's location
 * Real-world Hocheichen lies between Hatzenbach and Quiddelbacher Höhe; GPL has no board for it, so our s≈2700–3900
   (Hatzenbach 2571 … Flugplatz 3984). Chase views at s 2700/2950/3200/3450/3700/3900 and cockpit views at 3000–3750
