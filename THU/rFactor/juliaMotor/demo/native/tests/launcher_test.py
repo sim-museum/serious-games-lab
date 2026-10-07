@@ -52,6 +52,11 @@ check(d2.mute.isChecked() and not d2.replay.isChecked(), "preferences remembered
 real = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 check(os.path.realpath(started[0][0].workingDirectory()) == os.path.realpath(jr.HERE), "the sim's working dir is the scratch HERE")
 check(not os.path.exists(os.path.join(jr.HERE, "last_race_result.txt")), "launch clears the (scratch) stale result")
+# DOC-RACE-1: Help > How to race opens the shipped guide
+acts = [a.text() for m in w.menuBar().actions() for a in (m.menu().actions() if m.menu() else [])]
+check("&How to race…" in acts, "Help menu has How to race")
+g = jr.guide_dialog(w); txt = g.findChild(jr.QWidget, "guide").toPlainText()
+check(os.path.exists(jr.GUIDE) and "Smoothness + balance = speed" in txt and "Shift + R" in txt, "the guide loads and renders")
 # GUI-1 S2: the IQ-style theme loads, references only images that ship, and JR_THEME=classic opts out
 import re as _re
 jr.apply_theme(app); qss = app.styleSheet()

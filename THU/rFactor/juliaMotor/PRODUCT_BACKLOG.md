@@ -23,7 +23,7 @@ this index was written; that is what it exists to stop.
 |---|---|---|
 | **TRACKSEG-3** | Preferences switch: show/hide the track-section names ("Front Straight", "Big Bend" at WG), default ON (PO 2026-10-06) | ✅ **DONE (S1, 2026-10-06):** launcher Graphics group, "Show track section names", default ON, remembered; OFF = `JM_SEGNAME_SECS=0`, also for replays; gate `segnames_smoke` |
 | **GUI-1** | Redesign the julia racer GUI (`demo/native/juliaRacer.py`) for ease of use per GUI best practices, then restyle it like the PyQt GUIs of pokerIQ and bridgeIQ (`~/sgl/MON/pokerIQ`, `~/sgl/FRI/bridgeIQ`) (PO 2026-10-06) | **S1 (2026-10-06) redesign done:** task-ordered tabs (Race / Results / Replays / Settings / Controller), Session + Car cards, one primary Start button, menus + status bar, log on demand, everything remembered; the sim's environment is identical to before (3 cases). **S2 restyle done:** dark pokerIQ/bridgeIQ theme (`261006/gui/s2_vs_iq.jpg`). 🟡 **AWAITING THE PO's look** |
-| **DOC-RACE-1** | Documentation on how to race, drawing on the docs under `~/sgl/THU` (`DOC/`: GPL manual, setup guides, brake bias, diffs, tyre heat, ...) (PO 2026-10-06) | open |
+| **DOC-RACE-1** | Documentation on how to race, drawing on the docs under `~/sgl/THU` (`DOC/`: GPL manual, setup guides, brake bias, diffs, tyre heat, ...) (PO 2026-10-06) | ✅ **S1 (2026-10-06):** `demo/native/docs/HOW_TO_RACE.md`, in the launcher as Help → How to race…; 🟡 awaiting the PO's read |
 | **REPLAY-2** | A replay is ALWAYS available for the session just exited; add the GPL Replay Analyser's analysis features (gold standard: `~/sgl/THU/WP/drive_c/Program Files/GPL Replay Analyser`) alongside replaying the video; optional Claude Code analysis of the replay with how-to-improve advice (PO 2026-10-06) | open |
 | **COCKPIT-GOLD-1** | Cockpit mirrors closer but still not right -- they look tilted slightly up; match the gold. The windscreen/canopy is solid where GPL's is almost transparent -- match the gold (PO 2026-10-06) | open |
 | **HANDS-2** | Restore the arms and gloves in the cockpit view AND on the AI cars' external views, per the gold; watch for sleeves going upward ("rabbit ears") from outside the car instead of running from the driver to the gloves (PO 2026-10-06; supersedes HANDS-1's "hidden by default") | open |
@@ -23142,4 +23142,24 @@ progressive disclosure, group by task, plain language, feedback for long operati
 * `launcher_test.py` adds: the theme applies, every image it references exists, Start is the primary button, and
   `JR_THEME=classic` opts out. `launcher_smoke` PASS. The AppImage copies the whole `demo` tree, so `assets/ui` ships.
 * **For the PO:** is this the look you meant, and is anything in the new layout harder to find than before?
+
+### DOC-RACE-1 — retrospective + S1 (2026-10-06): "How to race" written and built into the launcher
+* **Sources read** (`~/sgl/THU/DOC`): Jim Pearson's *GPL Driving Course* (GPL-W Driving School, 2002, 25 pp -- the
+  core: smoothness + balance = speed, the three marks, progressive vs stab braking, trail braking, downshift timing,
+  throttle roll-on, short-shifting, understeer/oversteer correction, the centre-the-wheel last-resort save, racecraft);
+  the *Four-Wheel Drift* overview (`GPLmanual_overview.md`); the community notes on tyre heat / drifting (the Zandvoort
+  dunes lift-off exercise), brake bias, differential ramps, engine braking, and joystick vs wheel.
+* **Julia-specific facts checked in the code**, not assumed: the key bindings (`drive_native_mtk.jl` -- R restarts the
+  session since 2026-10-03, Shift+R recovers in place, T/Enter ends practice/qualifying, any key arms the 5 s countdown,
+  M, G, V, Esc), the replay keys (Space, ←/→, ↑/↓, V, C), the two setups (launcher tooltip / WWSETUP-1), the opponent-pace
+  preset (GPLrank / your laps, 50 % fallback).
+* **Left out on purpose:** GPL behaviours not verified in Julia Racer (engine over-rev damage, slipstream, tyre
+  temperatures) -- the guide does not promise what the sim may not model.
+* **`demo/native/docs/HOW_TO_RACE.md`** (our own words; sources credited at the end): first session, sessions and the
+  start, a controls table, the car and its two setups, the line, braking, throttle and gears, balance/sliding/the
+  four-wheel drift, racing the field, getting faster (consistency, replays, braking practice), notes per circuit.
+* **In the launcher:** Help → **How to race…** opens it in a themed reader (`QTextBrowser.setMarkdown`); it ships inside
+  `demo/` (the AppImage rule: nothing under `~/sgl` at run time). `launcher_test.py` checks the menu entry and that
+  the guide loads and renders. Screens: `261006/gui/doc/guide_pair.png`.
+* **For the PO:** a read for tone and anything you would add from your own GPL experience.
 

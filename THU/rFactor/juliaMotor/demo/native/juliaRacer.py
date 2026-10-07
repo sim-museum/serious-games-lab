@@ -33,7 +33,8 @@ from PyQt6.QtWidgets import (
 )
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-UI_DIR = os.path.join(HERE, "assets", "ui")    # the theme's glyphs ship with the module (fixed even if HERE is redirected)
+UI_DIR = os.path.join(HERE, "assets", "ui")
+GUIDE = os.path.join(HERE, "docs", "HOW_TO_RACE.md")    # DOC-RACE-1: ships with the launcher (AppImage rule)    # the theme's glyphs ship with the module (fixed even if HERE is redirected)
 CONF = os.path.join(HERE, "joystick.conf")
 PROFILE_DIR = os.path.join(HERE, "joystick_profiles")
 
@@ -132,6 +133,21 @@ def show_controls(parent):
     note.setWordWrap(True); note.setObjectName("hint"); v.addWidget(note)
     ok = QPushButton("Close"); ok.clicked.connect(d.accept); v.addWidget(ok, 0, Qt.AlignmentFlag.AlignRight)
     d.exec()
+
+
+def guide_dialog(parent):
+    """DOC-RACE-1 (PO 2026-10-06: "create documentation about how to race"): docs/HOW_TO_RACE.md in a reader."""
+    from PyQt6.QtWidgets import QTextBrowser
+    d = QDialog(parent); d.setWindowTitle("How to race"); d.resize(820, 760); v = QVBoxLayout(d)
+    t = QTextBrowser(); t.setOpenExternalLinks(True); t.setObjectName("guide")
+    try:
+        with open(GUIDE, encoding="utf-8") as f:
+            t.setMarkdown(f.read())
+    except OSError as e:
+        t.setPlainText(f"The guide could not be opened ({e}).")
+    v.addWidget(t)
+    ok = QPushButton("Close"); ok.clicked.connect(d.accept); v.addWidget(ok, 0, Qt.AlignmentFlag.AlignRight)
+    return d
 
 
 def segnames_env(qenv, on):
@@ -1521,6 +1537,7 @@ class Main(QMainWindow):
         game.addSeparator()
         a = game.addAction("&Quit"); a.setShortcut("Ctrl+Q"); a.triggered.connect(self.close)
         hlp = mb.addMenu("&Help")
+        a = hlp.addAction("&How to race…"); a.triggered.connect(lambda: guide_dialog(self).exec())
         a = hlp.addAction("&Controls…"); a.setShortcut("F1"); a.triggered.connect(lambda: show_controls(self))
         a = hlp.addAction("&About Julia Racer"); a.triggered.connect(self._about)
 
@@ -1607,6 +1624,8 @@ QCheckBox::indicator:checked { background: #2e7d4f; border-color: #3fa86a; image
 QCheckBox::indicator:hover { border-color: #3fa86a; }
 QProgressBar { background: #0f1922; border: 1px solid #34495e; border-radius: 4px; color: #e8eef3; text-align: center; }
 QProgressBar::chunk { background: #2e7d4f; border-radius: 3px; }
+QTextBrowser#guide { background: #101a23; color: #e8eef3; border: 1px solid #2c3e50; border-radius: 4px;
+                     font-family: Arial; font-size: 11pt; padding: 10px; }
 QPlainTextEdit, QTextEdit { background: #0b1218; color: #b8c7d3; border: 1px solid #2c3e50; border-radius: 4px;
                             font-family: monospace; font-size: 9pt; }
 QMenuBar { background: #0b1218; color: #dde6ee; }
