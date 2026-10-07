@@ -909,3 +909,10 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
   with the GPU firmware. lc0 died, Xwayland and logind hung, and the desktop needed a hard reboot. The match
   script printed only a final total, so the finished games were lost; it now prints each game's result as it goes.
   **Attempt 2** started 12:28 with a guard that kills lc0 at the first `NVRM` kernel message.
+- **CM-25 (10-07, done during a GPU wait): the tournament series.** The first item of the optional polish, after
+  Chessmaster's predefined tournaments with hidden events. Five events of rising strength: the Club Swiss
+  (1000–1500), County Championship, Regional Open, National Masters and Elite Invitational (2200–3000). Each opens
+  when you finish in the top half of the one before it. A series event fixes its settings (rated, its range and
+  time control), so its standard can't be lowered. Progress is kept in `series.json` beside the profile. Check: 8
+  tests (`tests/test_series.py`); with the top-half rule loosened by one place, 2 of them fail. Every event's
+  range holds 18–62 roster opponents for the 5–9 it needs.
