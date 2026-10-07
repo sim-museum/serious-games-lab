@@ -22295,6 +22295,21 @@ angle, rear wheel slip κ, diff split ρ).
 **Still open in TYRE-2 (low priority):** the gold's diff is ~half open under LIGHT steady power (ρ ≈ 0.5) where the sim's
 is locked; it moves the balance ≤ 0.1° (CAMBER-1 S2), so it is parked.
 
+### LSD-2 S1 (2026-10-06) — preload and k fitted on BOTH regimes: the shipped diff (garage preload, k 0.20) is already the best
+`tools/lsd2fit_261005.jl`: (a) the power-squeeze breakaway (lsdfit's measure, now with the rate-limited settle) and (b) the
+steady skidpad cells' ρ (acceleration-matched, gold direction-averaged), on a grid preload × {0.25, 0.5, 0.75, 1.0} of the
+garage value and k ∈ {0.15, 0.20, 0.25}, all three skidpad setups' cars:
+| preload | k 0.15 power / cells | k 0.20 | k 0.25 |
+|---|---|---|---|
+| ×0.25 | 288 / 0.335 | 154 / 0.309 | 98 / 0.300 |
+| ×0.50 | 219 / 0.281 | 115 / 0.269 | 99 / 0.267 |
+| ×0.75 | 167 / 0.242 | 98 / 0.240 | 105 / 0.243 |
+| **×1.00** | 134 / **0.217** | **91 / 0.222** | 118 / 0.227 |
+Lowering preload (which opened the default's light-power cells, CAMBER-1 S2) opens WW's COASTING cells far more than the
+gold (ρ 1.1–1.2 vs 0.1–0.5), so both scores get worse. **The shipped diff stays.** The residual cell ρ error (rms 0.22: the
+gold half open under light power, the sim locked) is outside this ramp model's two constants -- the gold's direction
+asymmetry (the 152/207 kPa inside wheel) and the tyre's combined slip remain the candidates. Parked.
+
 ### IRFIT-261004 TORQUE (test 4) — measured to 8,900 rpm
 `tools/torquefit_261004.jl`. The 3rd/4th-gear pulls run 4–13 % rear wheelspin, which `longfit_261002` rejected (> 5 %), so its
 torque stopped at 7,775 rpm and the parabola was extrapolated (299 N·m at 9,000). With the engine and wheels accelerating at the
