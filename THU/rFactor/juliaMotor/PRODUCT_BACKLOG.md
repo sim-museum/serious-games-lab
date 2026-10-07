@@ -22715,6 +22715,11 @@ yellow DUNLOP sign on a lattice gantry with figures on top, the grandstand board
 flag-wavers on the gantry and hay bales at its foot (ours: one figure); **ours has TWO tall dark poles flanking the road
 (they carry the KENDALL banner), where the gold shows ONE pole beside the gantry** -- the likeliest "drawn twice" candidate.
 **For the PO:** is it the pair of poles?
+* Named (`JM_OBJNEAR="-47,755,90"`): the pair is ONE object, **`tpole3`** -- two telegraph poles (`telepole`, 11.8 m) carrying
+  the KENDALL banner (`kenban`, 7.5–10.6 m up) across the road at s 5–9, lat −10.8…+12.4. It is GPL's own placement (the
+  gold's left pole is just out of frame), so GPL also shows TWO spans at the line: the DUNLOP `startbox` gantry and this
+  KENDALL banner gantry. Other poles nearby are parts of the buildings (`office`/`bld2` → `telepole`/`rtpole`, right side).
+  If the PO's "twice" is these two spans, ours matches GPL and E110 can close.
 
 ### E111 — retrospective + S3/S4 (2026-10-05): sprite trees were drawn 2.5 m tall on EVERY track — their height lives in a PRIM sprite node
 * Retrospective: S1 proved every placement at the corner has a mesh or stub; S2 built `JM_OBJDIAG_AT`; both stopped at "needs
