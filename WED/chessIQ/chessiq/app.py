@@ -137,6 +137,9 @@ def think_time(clk, turn, ply, u):
     return max(0.4, min((rem / to_go + 0.6 * inc) * (0.4 + 1.2 * u), 0.08 * rem))
 
 
+ENGINE_FAILED = object()            # the opponent's engine process died or stopped answering mid-search
+
+
 class ThinkThread(QThread):
     """The search, off the UI thread (the GIL is shared, but Python switches often enough to keep the board live)."""
     done = pyqtSignal(int, object)
@@ -315,6 +318,7 @@ class MainWindow(QMainWindow):
         self.review = None              # None = live; else showing the position after this many plies
         self.token = 0                  # bumps cancel any thinking or pending book move
         self.threads = []
+        self._restarts = 0              # engine restarts in this game (one is allowed; never a stand-in engine)
         self.engine = None                  # the chosen personality's engine process (EPIC CM)
         self.profile = rating.Profile.load()  # your rating (CM-4); None until your first rated game
         self.rated = None                   # the rated game in progress: {opponent, rating, colour, recorded}
@@ -537,8 +541,16 @@ class MainWindow(QMainWindow):
             except OSError:
                 self.engine = None
         elif self.engine is not None:
-            self.engine.stop()
-            self.engine.new_game()
+            try:
+                self.engine.stop()
+                self.engine.new_game()
+            except (OSError, RuntimeError, ValueError):     # it died between games: start a fresh one
+                try:
+                    self.engine.close()
+                except Exception:
+                    pass
+                self.engine = None
+                self._start_engine()
 
     def _on_tick(self):
         g, c = self.game, self.clock
@@ -690,6 +702,7 @@ class MainWindow(QMainWindow):
             return
         self.token += 1
         self.review = None
+        self._restarts = 0
         self._start_engine()
         self.game = Game(self.mode.currentData(), self.side.currentData())
         self.game.opp_book = self._opponent_book()
@@ -794,7 +807,12 @@ class MainWindow(QMainWindow):
 
             def think():                    # the chosen personality (EPIC CM)
                 t0 = time.monotonic()
-                u = eng.choose(moves, clock=clk) if clk else eng.choose(moves, movetime_ms=int(THINK_S * 1000))
+                try:
+                    u = eng.choose(moves, clock=clk) if clk else eng.choose(moves, movetime_ms=int(THINK_S * 1000))
+                except (OSError, RuntimeError, ValueError):
+                    return ENGINE_FAILED
+                if u is None and legal:     # closed under us, or died: not "no legal move"
+                    return ENGINE_FAILED
                 while time.monotonic() - t0 < target and self.token == tok:   # CM-15: think like a player
                     time.sleep(0.05)
                 return next((m for m in legal if E.sqname(m.frm) + E.sqname(m.to) + (m.promo or "") == u), None)
@@ -813,6 +831,22 @@ class MainWindow(QMainWindow):
     def _thought(self, tok, m):
         g = self.game
         if tok != self.token or g.over:
+            return
+        if m is ENGINE_FAILED:
+            if self._restarts < 1:          # restart the same opponent once and carry on
+                self._restarts += 1
+                name = self._opp_name()
+                try:
+                    self.engine.close()
+                except Exception:
+                    pass
+                self.engine = None
+                self._start_engine()
+                self.note = "%s's engine stopped and was restarted." % name
+                self.maybe_ai()
+            else:
+                self.note = "The opponent's engine failed again. Save the game (Save PGN) and start a new one."
+                self.render()
             return
         if m is None:
             g.check_end()

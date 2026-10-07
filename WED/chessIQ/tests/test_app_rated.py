@@ -49,6 +49,65 @@ class RatedGivesNoAdvice(unittest.TestCase):
         self.assertIn("No advice during a rated game", self.w.openings.text())
 
 
+class EngineFailure(unittest.TestCase):           # a dead engine process must not stall the game silently
+    def setUp(self):
+        self.home = tempfile.mkdtemp(prefix="chessiq-test-")
+        os.environ["CHESSIQ_HOME"] = self.home
+        from PyQt6.QtWidgets import QApplication, QMessageBox
+        from chessiq import app as A, game as G
+        self.A, self.qa = A, QApplication.instance() or QApplication([])
+        QMessageBox.question = staticmethod(lambda *a, **k: QMessageBox.StandardButton.No)
+        self.saved_book = G.Game.book_move
+        G.Game.book_move = lambda self: None               # out of book at once, so the engine must answer
+        self.G = G
+
+    def tearDown(self):
+        self.G.Game.book_move = self.saved_book
+        self.w.close()
+        shutil.rmtree(self.home, ignore_errors=True)
+
+    def run_until(self, cond, secs=40):
+        import time
+        t = time.monotonic()
+        while not cond() and time.monotonic() - t < secs:
+            self.qa.processEvents()
+            time.sleep(0.05)
+
+    def play_with_kills(self, kills):
+        A = self.A
+        orig, count = A.MainWindow._start_engine, [0]
+
+        def start_and_kill(win):
+            orig(win)
+            if win.engine is not None and count[0] < kills:
+                count[0] += 1
+                win.engine.proc.kill(); win.engine.proc.wait()
+        A.MainWindow._start_engine = start_and_kill
+        try:
+            self.w = w = A.MainWindow()
+            w.who.setCurrentIndex(w.who.findData("Tasha"))
+            w.mode.setCurrentIndex(w.mode.findData("ai"))
+            w.side.setCurrentIndex(w.side.findData("b"))       # the computer (White) moves first
+            count[0] = 0
+            w.new_game()
+            self.run_until(lambda: w.game.history or "failed again" in (w.note or ""))
+        finally:
+            A.MainWindow._start_engine = orig
+        return w
+
+    @unittest.skipUnless(os.access(FSF, os.X_OK), "Kramnik Fairy-Stockfish missing")
+    def test_one_failure_restarts_and_plays(self):
+        w = self.play_with_kills(1)
+        self.assertEqual(len(w.game.history), 1)                # it restarted and played (the move clears the note)
+        self.assertEqual(w._restarts, 1)
+
+    @unittest.skipUnless(os.access(FSF, os.X_OK), "Kramnik Fairy-Stockfish missing")
+    def test_repeated_failure_says_so(self):
+        w = self.play_with_kills(5)
+        self.assertEqual(len(w.game.history), 0)
+        self.assertIn("failed again", w.note)
+
+
 class LeelaOnlyWhenRunnable(unittest.TestCase):    # a missing lc0 must not leave "Leela 1370" played by a stand-in
     @unittest.skipUnless(os.access(FSF, os.X_OK), "Kramnik Fairy-Stockfish missing")
     def test_no_leela_without_lc0(self):
