@@ -23462,3 +23462,12 @@ installed -- the PO's `~/.local/share/julia-racer` untouched) and running the SH
 * Harness note: from s≈8500 the HUD shows the parked car ROLLING between shots on the long descent (rpm/speed digits); it
   does not affect the scenery comparison.
 
+### E78 S12 (2026-10-07): Watkins Glen lap sweep against the cockpit gold -- matches; E78 ROTATES
+* Ours every 100 m (38 stations, 3751 m) vs `260802_watkinsGlen_cockpit.mp4` at 1 fps (`261007/wg/gold_sheet.jpg`,
+  `ours_sheet.jpg`): the Esses, the long front straight with the autumn forest both sides, the Loop, the back straight,
+  the Big Bend's fences and the start/finish buildings with the KENDALL gantry line up.
+* The visible difference is the spectators behind the fences in the gold (t≈6–9, 60, 81): removed on all tracks by the
+  PO's E88 order. Nothing new to fix.
+* **E78 after S9–S12 (4 sprints this pass -- ROTATING):** the drop-rule audit is clean and Monza, Spa and Watkins Glen
+  match their cockpit golds landmark for landmark (Zandvoort: E60; the Ring: E78 S1–S8, GPLVIS-1).
+
