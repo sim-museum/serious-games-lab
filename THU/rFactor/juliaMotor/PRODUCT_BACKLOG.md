@@ -24,7 +24,7 @@ this index was written; that is what it exists to stop.
 | **E107** | **EPIC (PO priority): Julia AI as close as possible to GPL AI** | **AIGPL-2 (2026-10-04): GPL's own AI algorithm, reverse-engineered from gpl.exe** -- the PO: *"The AI cars worked perfectly in the WG race!"*; E107-S11 GPL's passing rails pass the graded test. Open: per-track confirmation by the PO on the other four tracks. |
 | **E108** | **EPIC (PO priority): tracks as close as possible to GPL** | **S5–S8 (2026-09-30):** flat shading (100 % of road polys lack normals) refuted as the visible cause (A/B < 0.3 % of pixels); finer rounding (4× tris) invisible at WG's gentle curves. **Needs the PO: the track + station where the faceting shows.** |
 | **E109** | Nürburgring tree "curtains" across the road + individual trees intruding | ✅ curtains FIXED (S6); veils under GPL's window (S15). **GPLVIS-1 S1–S4 (2026-10-06):** gpl.exe's track renderer decoded (segment range, 117/312/914 m bands, per-cell CLIP PLANES) and per-cell clipping implemented (`JM_GPLCLIP`, off); the remaining tall walls at Döttinger Höhe are the SCENERY copy -- next: scenery copies under the cell rule. |
-| **E110** | Watkins Glen start/finish gantry drawn twice | 🟡 **AWAITING THE PO** (S3/S4, 2026-10-05): the start-box exclusion is not it; which two elements read as "the gantry drawn twice"? |
+| **E110** | Watkins Glen start/finish gantry drawn twice | 🟡 **AWAITING THE PO** (S3/S4, 2026-10-05): the start-box exclusion is not it. 2026-10-06 gold comparison at the grid: ours has TWO tall poles flanking the road where the gold has one -- is that the "twice"? (`261006/evidence/e110_wg_gantry_gold_vs_ours.jpg`) |
 | **E111** | Spa: missing corner house before the 90° left; bright yellow polygon over the road after it | 🟡 **AWAITING THE PO** (S5, 2026-10-05): the Spa corner on HEAD matches gold and the yellow slab is gone (YAWSIGN-1); is the house still missing, and where? |
 | **E85** | EPIC: multiplayer, the way GPL did it | ✅ **S1–S7, MP-4, MP-5 done** (poses, dead reckoning, loss/jitter, host-authoritative AI); **two-PC race confirmed by the PO 2026-09-19** ("cars can see each other but drive through each other"). Open: **MP-COLLIDE-1** (below). |
 | **MP-COLLIDE-1** | remote cars (human + host-AI) must COLLIDE on the client, not drive through (PO 2026-09-19) | ✅ **S1 DONE (2026-10-06):** each machine collides its own car with every remote car (local-AI contact model); two-sim A/B: stopped at 2.91 m vs straight through at 1.68 m with it off; gate `netcollide_smoke`. **Awaiting the PO's two-PC race.** |
@@ -22707,6 +22707,14 @@ stands inside it.
 * **For the PO:** after today's WG race on HEAD, is the start/finish still "drawn twice" — and which two: the KENDALL
   banner + the DUNLOP tower, or the two poles? Next sprint: `JM_PICK` on the poles at s=3740 and a gold chase frame at the
   line (the PO's lap-2 crossing, t≈4:36 + one lap).
+
+### E110 — evidence for the PO (2026-10-06): the WG start/finish against the gold at the grid
+`261006/evidence/e110_wg_gantry_gold_vs_ours.jpg` -- gold: the PO's Wine GPL race (`261003_wg_wine_gpl_win.mp4`) t=276, the car
+on the grid in front of the gantry; ours: s=3720/3730/3740 chase. Same elements: the KENDALL banner high over the road, the
+yellow DUNLOP sign on a lattice gantry with figures on top, the grandstand boards. Differences: gold has two or three
+flag-wavers on the gantry and hay bales at its foot (ours: one figure); **ours has TWO tall dark poles flanking the road
+(they carry the KENDALL banner), where the gold shows ONE pole beside the gantry** -- the likeliest "drawn twice" candidate.
+**For the PO:** is it the pair of poles?
 
 ### E111 — retrospective + S3/S4 (2026-10-05): sprite trees were drawn 2.5 m tall on EVERY track — their height lives in a PRIM sprite node
 * Retrospective: S1 proved every placement at the corner has a mesh or stub; S2 built `JM_OBJDIAG_AT`; both stopped at "needs
