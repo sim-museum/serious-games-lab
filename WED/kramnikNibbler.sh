@@ -15,9 +15,12 @@ CONF="${XDG_CONFIG_HOME_KRAMNIK:-$HOME/.config/chessiq-kramnik-nibbler}"
 [ -x "$ENG/lc0-kramnik" ] || { echo "Building lc0 for Kramnik chess (once, a few minutes)..."; bash "$ENG/build_lc0.sh"; }
 [ -x "$ENG/nibbler-kramnik/nibbler" ] || { echo "Making the Kramnik Nibbler (once)..."; bash "$ENG/make_nibbler.sh"; }
 
-# The network that measured strongest at Kramnik chess (docs/EPICS.md): self-play generation 1 (kramnik-sp1) beat the
-# untouched LD2 by about +59 Elo over 160 games (NN-10). KRAMNIK_NET=<file> overrides; else LD2.
-NET="${KRAMNIK_NET:-$ENG/nets/kramnik-sp1.pb.gz}"
+# The network (docs/EPICS.md, EPIC NN): on the GPU, the self-play-adapted 20x256 T40 (kramnik-t40a1; +58 +/- 89 against
+# kramnik-sp1 at 1 s a move, and larger networks gain more from longer analysis); on the CPU, kramnik-sp1 (10x128, beat
+# LD2 by +59) -- a 20x256 network is far too slow there. KRAMNIK_NET=<file> overrides.
+if [ -x "$ENG/lc0-kramnik-gpu" ] && [ -f "$ENG/nets/kramnik-t40a1.pb.gz" ]; then DEFNET="$ENG/nets/kramnik-t40a1.pb.gz"
+else DEFNET="$ENG/nets/kramnik-sp1.pb.gz"; fi
+NET="${KRAMNIK_NET:-$DEFNET}"
 [ -f "$NET" ] || NET="$WED/INSTALL/otherWeights/LD2.pb.gz"
 [ -f "$NET" ] || { echo "No network found ($NET)" >&2; exit 1; }
 
