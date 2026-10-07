@@ -715,3 +715,6 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
   - **Fixed:** the Leela opponent picked the alphabetically last network (it had become the experimental 20x256).
     It now uses `kramnik-sp1`, as the Nibbler launcher does. `by_name()` includes the Leela opponents.
   - Data: `docs/calibration/leela_maia_ladder.txt`.
+- **Rated 10+3 game against Leela 1370 (10-07):** passes end to end through the app (1 node, temperature 0.6, about
+  11 s a move on the clock; mate in 37 plies by the full-strength player side; rating moved once).
+  `tools/ranked_game_check.py` handles Leela opponents.
