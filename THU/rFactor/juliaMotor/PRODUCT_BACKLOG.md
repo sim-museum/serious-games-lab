@@ -21592,6 +21592,15 @@ Retrospective: every visual comparison this cycle hinged on the s ↔ gold-time 
 anchor turns ~1 km either side into a trustworthy comparison -- then sweep for the tree density the gold shows at the
 conifer stretches (gold t≈257/662/716 have tall dense conifers close to the road).
 
+### E78 S8 (2026-10-06) — five Ring anchors confirmed by eye; between them race footage still will not pin a station
+* New anchors (gold `261003_ring.mp4` second ↔ our s): **t 439 ↔ s 9200** -- the black/white chequered barrier with the red
+  Coca-Cola banner, in both; **t 596 ↔ s 13900** -- the car on the Karussell's concrete banking (gold enters it at t 593).
+  The old two-anchor line was 16 s / 13 s early there. Anchor set now: 0↔110, 1500↔161, 9200↔439, 13900↔596, 21330↔836
+  (`tools/goldsweep/ring_gold_map_261003.json`, ±6 s refinement, median cost 0.54).
+* Pairs between anchors (`261006/ringmap/ring_map5_pairs.jpg`) still do not match corner for corner: the PO's race pace
+  varies (incidents, traffic), so a ±6 s window can still be ±200 m. **Use only stations within ~300 m of an anchor for
+  defect calls**, and grow anchors at landmarks (bridges, banners, the Karussell-style features).
+
 ### AI-CARGFX-S7 — `JM_AIPLACE`; the dark engine bay is GPL's FLAT-COLOUR polygons drawn grey over the textured engine
 * `JM_AIPLACE="<slot>:<s>:<lane>"` (new) stands an AI car at a station (headless, never released); `JM_FINDTEX=<prefix>`
   (new) lists where a texture is used (WG BOAC boards: s 594 L, 1872 R, 2688 L). The gold still's exact corner is not yet
