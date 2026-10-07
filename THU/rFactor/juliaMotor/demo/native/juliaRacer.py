@@ -106,6 +106,12 @@ def find_julia():
 # JoyCfg model — mirrors joycfg.jl so the live preview matches the game exactly
 # and the file we write is byte-compatible with what JoyCfg.loadmap expects.
 # ---------------------------------------------------------------------------
+
+def segnames_env(qenv, on):
+    """TRACKSEG-3: the track-section names are on by default; off = the sim's JM_SEGNAME_SECS=0."""
+    if not on:
+        qenv.insert("JM_SEGNAME_SECS", "0")
+
 class Ctrl:
     def __init__(self, axis=0, a=0.0, b=1.0):
         self.axis, self.a, self.b = int(axis), float(a), float(b)
@@ -799,6 +805,12 @@ class DriveTab(QWidget):
         sm = str(self._settings.value("gfx/msaa", "8"))
         self.gfx_msaa.setCurrentIndex(self._msaa_values.index(sm) if sm in self._msaa_values else 0)
         lay.addWidget(self.gfx_msaa, 1, 1)
+        # TRACKSEG-3 (PO 2026-10-06): the section names ("Front Straight", "The Big Bend" at Watkins Glen) can be turned
+        # off; ON is the default. Remembered like the graphics choices, and honoured by replays too (JM_SEGNAME_SECS=0).
+        self.gfx_segnames = QCheckBox("Show track section names (e.g. \"Front Straight\")")
+        self.gfx_segnames.setChecked(str(self._settings.value("hud/segnames", "true")) == "true")
+        self.gfx_segnames.setToolTip("Shows each section's name above the 3-D view for a few seconds as you enter it.")
+        lay.addWidget(self.gfx_segnames, 2, 0, 1, 3)
         return g
 
     def _gfx_env(self, qenv):
@@ -809,6 +821,9 @@ class DriveTab(QWidget):
         qenv.insert("JM_RES", res); qenv.insert("JM_MSAA", msaa)
         if full:
             qenv.insert("JM_FULLSCREEN", "1")
+        segnames = self.gfx_segnames.isChecked()
+        self._settings.setValue("hud/segnames", "true" if segnames else "false")
+        segnames_env(qenv, segnames)
 
     def _build_net_group(self):
         if not hasattr(self, "_settings"):
@@ -1305,6 +1320,7 @@ class ReplayTab(QWidget):
         qenv.insert("JM_AI", nai)
         qenv.insert("JM_REPLAY", os.path.join(self.dir, name))
         qenv.insert("JM_VIEW", "0")
+        segnames_env(qenv, str(QSettings("juliaRacer", "launcher").value("hud/segnames", "true")) == "true")   # TRACKSEG-3
         self.proc = QProcess(self)
         self.proc.setProcessEnvironment(qenv)
         self.proc.setWorkingDirectory(HERE)

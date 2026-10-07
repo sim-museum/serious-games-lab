@@ -21,7 +21,7 @@ this index was written; that is what it exists to stop.
 
 | item | what | state |
 |---|---|---|
-| **TRACKSEG-3** | Preferences switch: show/hide the track-section names ("Front Straight", "Big Bend" at WG), default ON (PO 2026-10-06) | open -- next, small |
+| **TRACKSEG-3** | Preferences switch: show/hide the track-section names ("Front Straight", "Big Bend" at WG), default ON (PO 2026-10-06) | ✅ **DONE (S1, 2026-10-06):** launcher Graphics group, "Show track section names", default ON, remembered; OFF = `JM_SEGNAME_SECS=0`, also for replays; gate `segnames_smoke` |
 | **GUI-1** | Redesign the julia racer GUI (`demo/native/juliaRacer.py`) for ease of use per GUI best practices, then restyle it like the PyQt GUIs of pokerIQ and bridgeIQ (`~/sgl/MON/pokerIQ`, `~/sgl/FRI/bridgeIQ`) (PO 2026-10-06) | open |
 | **DOC-RACE-1** | Documentation on how to race, drawing on the docs under `~/sgl/THU` (`DOC/`: GPL manual, setup guides, brake bias, diffs, tyre heat, ...) (PO 2026-10-06) | open |
 | **REPLAY-2** | A replay is ALWAYS available for the session just exited; add the GPL Replay Analyser's analysis features (gold standard: `~/sgl/THU/WP/drive_c/Program Files/GPL Replay Analyser`) alongside replaying the video; optional Claude Code analysis of the replay with how-to-improve advice (PO 2026-10-06) | open |
@@ -23065,4 +23065,14 @@ PO: *"keep going on the backlog, don't stop."* Then, in order:
    car, rather than from the driver to the gloves"*.
 Queue: TRACKSEG-3 first (small, direct), then the items in the PO's order; each opens with a retrospective and gets ≤ 4
 sprints before rotating, as before.
+
+### TRACKSEG-3 S1 (2026-10-06) — DONE: a launcher switch for the section names, default ON
+* The sim already had the off switch (`JM_SEGNAME_SECS=0`, TRACKSEG-1); the launcher could not reach it. Now the Drive
+  tab's Graphics group has **"Show track section names (e.g. "Front Straight")"**, ticked by default, remembered with the
+  graphics choices (`QSettings juliaRacer/launcher`, key `hud/segnames`). Unticked, `_gfx_env` passes `JM_SEGNAME_SECS=0`;
+  the Replay tab's launch reads the same setting (`segnames_env`), so a replay follows it too.
+* **Gate `segnames_smoke`** (added to `gates.sh`): `demo/native/tests/segnames_test.py`, headless (Qt offscreen) with a
+  throw-away settings directory -- default ON; ON leaves the sim's default; OFF → `JM_SEGNAME_SECS=0`; OFF remembered;
+  a new launcher starts OFF; the replay path honours OFF. 6/6 PASS. **Validated against a known positive:** a copy of the
+  launcher with the default flipped to OFF makes the gate FAIL. `setup_tab_smoke` still passes.
 
