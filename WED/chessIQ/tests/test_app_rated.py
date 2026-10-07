@@ -200,6 +200,30 @@ class TournamentFlow(unittest.TestCase):          # CM-22: a whole round robin t
         again.close()
 
 
+class RatingHistory(unittest.TestCase):            # CM-23
+    def test_history_window(self):
+        home = tempfile.mkdtemp(prefix="chessiq-test-")
+        os.environ["CHESSIQ_HOME"] = home
+        try:
+            from PyQt6.QtWidgets import QApplication
+            from chessiq import app as A, rating as R
+            self.qa = QApplication.instance() or QApplication([])     # keep a reference, or it is collected
+            p = R.Profile("Tester", 1300)
+            for opp, r, s in (("A", 1250, 1.0), ("B", 1400, 0.5), ("C", 1350, 0.0)):
+                p.record(opp, r, s, "w", 40)
+            w = A.MainWindow()
+            w.rating_history()
+            d = w.history_dlg
+            self.assertEqual(d.points[0], 1300)
+            self.assertEqual(len(d.points), 4)
+            self.assertEqual(d.points[-1], p.rating)
+            self.assertEqual(d.table.rowCount(), 3)
+            self.assertIn("C (1350)", d.table.item(0, 1).text())            # newest first
+            d.close(); w.close()
+        finally:
+            shutil.rmtree(home, ignore_errors=True)
+
+
 class LeelaOnlyWhenRunnable(unittest.TestCase):    # a missing lc0 must not leave "Leela 1370" played by a stand-in
     @unittest.skipUnless(os.access(FSF, os.X_OK), "Kramnik Fairy-Stockfish missing")
     def test_no_leela_without_lc0(self):

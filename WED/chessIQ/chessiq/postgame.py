@@ -136,3 +136,68 @@ class PostGameDialog(QDialog):
         self.thread.cancelled = True
         self.thread.wait(10000)
         super().closeEvent(e)
+
+
+class RatingChart(QWidget):
+    """Your rating after each rated game (the first point is where you started); provisional games are hollow."""
+
+    def __init__(self, points, provisional, parent=None):
+        super().__init__(parent)
+        self.points, self.provisional = points, provisional
+        self.setMinimumSize(520, 200)
+
+    def _pt(self, i, v):
+        lo, hi = min(self.points) - 50, max(self.points) + 50
+        w, h, n = self.width() - 60, self.height() - 30, max(1, len(self.points) - 1)
+        return QPointF(50 + w * i / n, 15 + h * (1 - (v - lo) / max(1, hi - lo)))
+
+    def paintEvent(self, _):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.fillRect(self.rect(), QColor("#fbfbf8"))
+        if len(self.points) >= 2:
+            p.setPen(QPen(QColor("#2f7de1"), 2))
+            p.drawPolyline(QPolygonF([self._pt(i, v) for i, v in enumerate(self.points)]))
+        for i, v in enumerate(self.points):
+            hollow = 0 < i <= self.provisional
+            p.setPen(QPen(QColor("#2f7de1"), 2))
+            p.setBrush(QColor("#fbfbf8") if hollow else QColor("#2f7de1"))
+            p.drawEllipse(self._pt(i, v), 3.5, 3.5)
+        p.setPen(QColor("#555555"))
+        for v in (min(self.points), max(self.points)):
+            p.drawText(QPointF(4, self._pt(0, v).y() + 4), str(v))
+        p.end()
+
+
+class RatingHistoryDialog(QDialog):
+    """Rating history (CM-23): the chart and your rated games, newest first."""
+
+    def __init__(self, parent, profile, provisional_games):
+        super().__init__(parent)
+        from PyQt6.QtWidgets import QTableWidget, QTableWidgetItem
+        import time as _t
+        self.setWindowTitle("Rating history")
+        self.resize(640, 520)
+        v = QVBoxLayout(self)
+        h = profile.history
+        start = h[0]["before"] if h else profile.rating
+        self.points = [start] + [e["after"] for e in h]
+        v.addWidget(QLabel("<b>%s</b>: %d after %d rated game%s%s" % (
+            profile.name, profile.rating, profile.games, "" if profile.games == 1 else "s",
+            " (provisional)" if profile.provisional else "")))
+        self.chart = RatingChart(self.points, provisional_games, self)
+        v.addWidget(self.chart)
+        self.table = QTableWidget(len(h), 5)
+        self.table.setHorizontalHeaderLabels(["Date", "Opponent", "Colour", "Result", "Rating"])
+        for i, e in enumerate(reversed(h)):
+            res = {1.0: "won", 0.5: "drew", 0.0: "lost"}.get(e["result"], str(e["result"]))
+            cells = [_t.strftime("%Y-%m-%d", _t.localtime(e["time"])), "%s (%d)" % (e["opponent"], e["opponent_rating"]),
+                     {"w": "White", "b": "Black"}.get(e.get("colour"), ""), res,
+                     "%d → %d (%+d)" % (e["before"], e["after"], e["after"] - e["before"])]
+            for j, c in enumerate(cells):
+                self.table.setItem(i, j, QTableWidgetItem(c))
+        self.table.resizeColumnsToContents()
+        v.addWidget(self.table)
+        close = QPushButton("Close")
+        close.clicked.connect(self.close)
+        v.addWidget(close)
