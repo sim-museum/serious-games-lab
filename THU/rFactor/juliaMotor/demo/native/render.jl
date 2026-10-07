@@ -1277,7 +1277,7 @@ function _clip_lat(t, maxlat::Float32)
                 t.tex, t.col, t.flat, t.ptype) for i in 2:length(verts)-1]   # a clipped piece keeps the original's shading kind
 end
 
-function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0.72f0,0.74f0,0.76f0), smooth=true, tint=nothing, track=false, mirror=false, exclude_groups=(), include_groups=(), cockpit_clean=false, maxedge=Inf32, uflip=nothing, vflip=nothing, maxlat=Inf32, trim=false, dedup=nothing, drop_green=false, min_component=0, min_component_tex=(), wheel_dress=nothing, cockpit_dress=nothing, skip_ptypes_kw=nothing)
+function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0.72f0,0.74f0,0.76f0), smooth=true, tint=nothing, track=false, mirror=false, exclude_groups=(), include_groups=(), cockpit_clean=false, maxedge=Inf32, uflip=nothing, vflip=nothing, maxlat=Inf32, trim=false, dedup=nothing, drop_green=false, min_component=0, min_component_tex=(), wheel_dress=nothing, cockpit_dress=nothing, skip_ptypes_kw=nothing, visor=false)
     livery = lowercase(first(splitext(basename(String(path3do)))))   # S7: the wrapper's own texture name (lotd, ferd, ...) = the livery
     # text reads right when the texture mapping preserves handedness: the mirror=true
     # remap (gx,gz,-gy) is a rotation (no flip needed); mirror=false is a reflection
@@ -1586,10 +1586,19 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
         # height/FOV (CARGOLD-1 S8). DEFAULT stays planar; every other flat textured poly keeps its
         # authored draw (its own UVs, as before S5): that is what puts the dash and the suspension back.
         liv_flat = t.flat && t.tex != "" && t.tex == livery
+        # COCKPIT-GOLD-1 (PO 2026-10-06: "the julia cockpit windscreen/canopy is solid, while GPL's windscreen is almost
+        # transparent"). S7 above concluded these polys were the scuttle; the glass probe vs the 260801 cockpit gold says
+        # otherwise -- with them gone the frame matches the gold's geometry, the road and front tyres showing where the
+        # gold shows its tinted screen. GPL authors them FLAT in one colour, (0.75,0.64,0.22) -- the gold's yellow perspex
+        # tint -- across the cockpit front (x -0.06..0.99, z 0.23..0.34, never vertical); we painted them with the green
+        # livery, opaque. visor=true (the player car) routes exactly those to "__visor__" in their own colour, for the
+        # app to draw as glass; the silver/black flat polys (mirror stalks) keep their path. JM_VISOR=0 reverts.
+        isvisor = visor && VISOR_ON && liv_flat && abs(t.col[1] - 0.75f0) < 0.04f0 && abs(t.col[2] - 0.64f0) < 0.04f0 &&
+                  abs(t.col[3] - 0.22f0) < 0.04f0
         FLATPOLY_GLASS && liv_flat && continue
-        flatpoly = FLATPOLY_FIX && !FLATPOLY_PLANAR && liv_flat
-        planar   = FLATPOLY_PLANAR && liv_flat
-        v = get!(groups, flatpoly ? "" : t.tex, Float32[])
+        flatpoly = !isvisor && FLATPOLY_FIX && !FLATPOLY_PLANAR && liv_flat
+        planar   = !isvisor && FLATPOLY_PLANAR && liv_flat
+        v = get!(groups, isvisor ? "__visor__" : (flatpoly ? "" : t.tex), Float32[])
         mz = mirror ? -1f0 : 1f0   # negate render-Z → right-handed track frame (gx,gz,-gy)
         for i in 1:3
             p=t.p[i]; n = smooth ? sm(p, t.n[i]) : t.n[i]; uv=t.uv[i]
@@ -1664,6 +1673,7 @@ end
 # yellow stripe in the cockpit view and a green surround in the chase view, i.e. the gold look.
 # JM_FLATPOLY=0 restores the old draw; =1 the colour-word draw.
 const FLATPOLY_FIX = get(ENV,"JM_FLATPOLY","planar") != "0"
+const VISOR_ON = get(ENV, "JM_VISOR", "1") != "0"     # COCKPIT-GOLD-1: the yellow flat livery polys are the windscreen
 const FLATPOLY_GLASS = lowercase(get(ENV,"JM_FLATPOLY","planar")) == "glass"   # S7 probe: =glass draws NO livery-bound flat poly -- the capture showed nothing ahead of the dash, so they are the SCUTTLE, not a perspex
 # CARGOLD-1 S5 (2026-09-06): a THIRD way to draw a flat-typed poly that carries a bound texture --
 # PLANAR projection of that texture. lotd.3DO's scuttle (60 of its 88 0x81D polys) has no textured

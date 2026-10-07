@@ -627,6 +627,9 @@ class AnalyserWindow(QDialog):
         lv.addWidget(self.table, 1)
         self.hint = QLabel("Tick up to five laps. Wheel zooms, drag pans, double-click resets."); self.hint.setObjectName("hint")
         self.hint.setWordWrap(True); lv.addWidget(self.hint)
+        coach_b = QPushButton("Coaching (Claude)…")          # REPLAY-2 S4: optional, shows what it sends first
+        coach_b.setToolTip("An optional analysis of your laps by Claude, with what to change; you see the summary before anything is sent")
+        coach_b.clicked.connect(self._coach); lv.addWidget(coach_b)
         split.addWidget(left)
         self.tabs = QTabWidget(); split.addWidget(self.tabs)
         self.map = TrackMap(); self.graphs = Graphs()
@@ -692,6 +695,10 @@ class AnalyserWindow(QDialog):
             self.circle.set_data(sel)
         self.hint.setText(("Time difference is lap 2 minus lap 1 (above zero: lap 2 behind). " if len(sel) >= 2 else "")
                           + "Tick up to five laps. Wheel zooms, drag pans, double-click resets.")
+
+    def _coach(self):
+        import coach
+        self._coach_dlg = coach.CoachDialog(self.rep, self); self._coach_dlg.show()
 
     def _speed_mode(self, on):
         self.map_full.speed_diff = on; self.map_full.update()

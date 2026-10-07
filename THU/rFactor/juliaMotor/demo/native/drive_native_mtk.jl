@@ -570,6 +570,9 @@ function write_replay(out, buf, tele, ncar, names, line; final = true)
               ",\"line_total\":" * string(line === nothing ? 0.0 : round(line.total, digits=1)) * ",\"fps\":15,\"ncar\":" * string(ncar) *
               ",\"nframes\":" * string(nf) * ",\"names\":" * _jarr(names) * ",\"pose\":[\"t\",\"x\",\"y\",\"z\",\"heading\"]" *
               ",\"tele_player\":" * _jarr(REPLAY_TELE_P) * ",\"tele_ai\":" * _jarr(REPLAY_TELE_AI) * ",\"final\":" * string(final) *
+              # REPLAY-2 S4: what the coaching analysis needs to talk like a driver -- the section names, the setup
+              ",\"sections\":[" * join(("[$(round(sec[1], digits=1)),$(_jstr(sec[2]))]" for sec in SECTIONS), ",") * "]" *
+              ",\"carsetup\":" * _jstr(get(ENV, "JM_CARSETUP", "default")) * ",\"gearbox\":" * _jstr(get(ENV, "ZAND_SHIFT", "auto")) *
               ",\"refline\":[" * join(("[$(p[1]),$(p[2])]" for p in ref), ",") * "]}"
         open(jrt * ".tmp", "w") do io
             write(io, hdr, "\n")
@@ -3673,7 +3676,7 @@ const _COCKPIT_ONLY = ("dash7","dash7a","ldashr")   # dial faces only; lotinsa/l
 # only when moving)"); :orient collapses same-facing stacks while KEEPING opposite-facing pairs,
 # so double-sided panels still read correctly from each side. JM_CAR_DEDUP=0 reverts.
 const _CAR_DEDUP = get(ENV,"JM_CAR_DEDUP","1") != "0" ? :orient : false
-const CARP   = Render.extract_gpl_car(_CARP_SRC; exclude=(_HAND_EXC...,_LOTBLACK_EXC...,_EXTRA_EXC...,_GARBAGE_EXC...,DRIVER_TEX...,MIRROR_TEX...,Render.STEER_TEX...,"pipe3","plaface","plahelm",_COCKPIT_ONLY...), exclude_groups=Tuple(parse(Int, x) for x in split(get(ENV, "JM_CAR_EXCL_GROUPS", "6600,3560,27288,39792"), ",") if !isempty(strip(x))), cockpit_clean=true, maxlat=CARP_MAXLAT, dedup=_CAR_DEDUP, grey=(TUB_GREY,TUB_GREY+0.01f0,TUB_GREY+0.02f0))   # driver body + gauge + windscreen + mirrors drawn separately; hands kept unless JM_HANDS=0.  E64 S4 (D12): groups 27288/39792 are WHOLE DISPLACED ASSEMBLIES (suspension+exhaust+driver textures at y 0.42…1.16 / −1.12…−0.42, mirror copies) — GPL runtime-hidden branches our positioner walk mis-places; they were the chase view's "chrome spider-legs" through the rear tyres
+const CARP   = Render.extract_gpl_car(_CARP_SRC; exclude=(_HAND_EXC...,_LOTBLACK_EXC...,_EXTRA_EXC...,_GARBAGE_EXC...,DRIVER_TEX...,MIRROR_TEX...,Render.STEER_TEX...,"pipe3","plaface","plahelm",_COCKPIT_ONLY...), exclude_groups=Tuple(parse(Int, x) for x in split(get(ENV, "JM_CAR_EXCL_GROUPS", "6600,3560,27288,39792"), ",") if !isempty(strip(x))), cockpit_clean=true, maxlat=CARP_MAXLAT, dedup=_CAR_DEDUP, grey=(TUB_GREY,TUB_GREY+0.01f0,TUB_GREY+0.02f0), visor=true)   # driver body + gauge + windscreen + mirrors drawn separately; hands kept unless JM_HANDS=0.  E64 S4 (D12): groups 27288/39792 are WHOLE DISPLACED ASSEMBLIES (suspension+exhaust+driver textures at y 0.42…1.16 / −1.12…−0.42, mirror copies) — GPL runtime-hidden branches our positioner walk mis-places; they were the chase view's "chrome spider-legs" through the rear tyres
 # ── NOSE-1 S1: is the "blotchy car front" (PO 2026-09-07) a residual coincident stack? ─────────
 # E106-S10 collapsed 467 coincident SAME-facing triangles with dedup=:orient, which by design KEEPS
 # coincident OPPOSITE-facing pairs (render.jl:1391 -- a double-sided panel must still read from both
@@ -4148,7 +4151,7 @@ const RSUSPP_B = _RSONLY == "" ? Render.extract_gpl_car(LOT3DO; include_groups=(
 # entirely. plaface/plahelm (the player face/helmet the mirrors reflect) are excluded here because
 # the helmet is drawn separately at the head pivot (E60), as are the hands, pipes and windscreen.
 const CARPIN = get(ENV,"JM_COCKPIT_DRESS","1") != "0" ?
-    Render.extract_gpl_car(joinpath(LOTDIR,"lotd.3DO"); exclude=(_HAND_EXC...,_LOTBLACK_EXC...,_EXTRA_EXC...,_GARBAGE_EXC...,DRIVER_TEX...,MIRROR_TEX...,Render.STEER_TEX...,"pipe3","plaface","plahelm"), exclude_groups=Tuple(parse(Int, x) for x in split(get(ENV, "JM_CAR_EXCL_GROUPS", "6600,3560,27288,39792"), ",") if !isempty(strip(x))), cockpit_clean=true, maxlat=parse(Float32,get(ENV,"JM_COCKPIT_MAXLAT","0.30")), dedup=_CAR_DEDUP, grey=(TUB_GREY,TUB_GREY+0.01f0,TUB_GREY+0.02f0)) :   # E106-S10: dedup coincident stacks (visor/mirror flicker)
+    Render.extract_gpl_car(joinpath(LOTDIR,"lotd.3DO"); exclude=(_HAND_EXC...,_LOTBLACK_EXC...,_EXTRA_EXC...,_GARBAGE_EXC...,DRIVER_TEX...,MIRROR_TEX...,Render.STEER_TEX...,"pipe3","plaface","plahelm"), exclude_groups=Tuple(parse(Int, x) for x in split(get(ENV, "JM_CAR_EXCL_GROUPS", "6600,3560,27288,39792"), ",") if !isempty(strip(x))), cockpit_clean=true, maxlat=parse(Float32,get(ENV,"JM_COCKPIT_MAXLAT","0.30")), dedup=_CAR_DEDUP, grey=(TUB_GREY,TUB_GREY+0.01f0,TUB_GREY+0.02f0), visor=true) :   # E106-S10: dedup coincident stacks (visor/mirror flicker)
     Render.TrackPart[]
 
 # NOSE-1 S9 (2026-09-14): apply the grille re-map to CARPIN TOO. S6 (degenerate-UV repair) and S8
@@ -9237,14 +9240,18 @@ if get(ENV,"JM_TEXDIAG","")!=""
     flush(stdout)
 end
 
-const carItems = Render.build_gpl(CARP, GPLTEX; tag="carp")   # Lotus body, GPL .mip textures (E102 S9: tag for JM_TINT_ITEM)
+# COCKPIT-GOLD-1: the windscreen ("__visor__", see extract_gpl_car) is drawn as glass, after everything else
+const VISORP = filter(p -> p.tex == "__visor__", CARP)
+const visorItems = Render.build_gpl(VISORP, GPLTEX)
+const VISOR_ALPHA = parse(Float32, get(ENV, "JM_VISOR_ALPHA", "0.35"))   # "almost transparent" (PO); 0.35 matches the gold's yellow tint (0.22 read neutral)
+const carItems = Render.build_gpl(filter(p -> p.tex != "__visor__", CARP), GPLTEX; tag="carp")   # Lotus body, GPL .mip textures (E102 S9: tag for JM_TINT_ITEM)
 # E102 S12: both tagged "extra" ON PURPOSE. Item indices restart per list, so
 # JM_TINT_ITEM="extra:1-2" covers PIPEP's one item and AXLEP's two in a SINGLE run --
 # three candidates for one four-minute capture. A hit is then bisected with a narrower range.
 pipeItems  = Render.build_gpl(PIPEP, GPLTEX; tag="extra")   # E106-S4: exhausts, drawn lifted (see PIPEP)
 axleItems  = Render.build_gpl(AXLEP, GPLTEX; tag="extra")   # E106-S9: straight synthesized driveshafts
 fsuspSynItems = Render.build_gpl(FSUSP_SYN, GPLTEX; tag="extra")   # CHASE-AXLE-1: built front wishbones
-carItemsIn = isempty(CARPIN) ? Render.Item[] : Render.build_gpl(CARPIN, GPLTEX)  # E106-S5: cockpit-view body
+carItemsIn = isempty(CARPIN) ? Render.Item[] : Render.build_gpl(filter(p -> p.tex != "__visor__", CARPIN), GPLTEX)  # E106-S5: cockpit-view body
 # COCKPIT-TACH-1: the two tachometer needles (white rpm, red tell-tale), built pointing up, untextured.
 # Shapes from the gold crop: both cross the pivot, tip just short of the numerals, a short tail.
 const TACH_ITEMS = TACH_ON ? map(((tip, tail, w0, w1, col, lift),) -> begin
@@ -9332,6 +9339,16 @@ function mirror_glass_quads(parts, tex)
         eyerig = Float32[0.46, 0.40, 0]                    # driver eye in the rig frame (JM_EYE_* defaults)
         ns = Float32(sign(eyerig[na] - c[na])); ns == 0 && (ns = -1f0)   # face the glass toward the eye
         hu = e[ua]/2 * MIRROR_GLASS_FRAC; hv = e[va]/2 * MIRROR_GLASS_FRAC
+        # COCKPIT-GOLD-1 S2: the per-side bbox includes the chrome STALK running inboard from the disc, so the glass came
+        # out a wide ellipse centred toward the stalk -- not on the rim (the gold's glass is a circle inside a concentric
+        # rim). The disc is round: its diameter is the vertical extent (the stalk adds almost none), and its centre is one
+        # radius in from the OUTBOARD edge (the stalk is inboard). JM_MIRROR_GLASS_BBOX=0 turns it on (S2 work in progress; the bbox glass stays the default).
+        if ua == 3 && get(ENV, "JM_MIRROR_GLASS_BBOX", "1") == "0"     # S2 WIP: opt-in until the disc faces the eye
+            R = e[va]/2
+            outer = side < 0 ? zmn : zmx
+            c[3] = outer - side*R
+            hu = R * MIRROR_GLASS_FRAC; hv = hu
+        end
         nrm = Float32[0,0,0]; nrm[na] = ns
         # CARHAND-1: this mapping is the PHYSICAL one only on the un-mirrored car. Render +z is the car's RIGHT (the wheel hub
         # sits at z +0.032 and drew right of centre), so FBO half (0, 0.5) is the RIGHT camera (side +1 below). On the old
@@ -14296,6 +14313,11 @@ function main()
         # plexiglass WINDSCREEN — drawn LAST, FAINTLY VISIBLE glass (PO: it had vanished at 0.16), depth-write
         # OFF so the front suspension + track read through it (GPL gold standard) but the screen still reads as
         # a tinted curved plexiglass, not a bright opaque gold rim.  JM_WIND_ALPHA tunes it.
+        if !isempty(visorItems) && VISOR_ALPHA > 0      # COCKPIT-GOLD-1: the perspex windscreen, every view
+            glDepthMask(GL_FALSE)
+            for it in visorItems; Render.draw(prog, it, vp, bodyModel; bright=1.0, spec=0.35, ambfill=0.7, alpha=VISOR_ALPHA, depthbias=true); end
+            glDepthMask(GL_TRUE)
+        end
         if WIND_ALPHA > 0
             glDepthMask(GL_FALSE)
             # PO: flatter, dimmer lighting so the leather scuttle reads as smooth matte tan — not stark

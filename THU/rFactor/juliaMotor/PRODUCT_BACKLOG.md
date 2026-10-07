@@ -24,8 +24,8 @@ this index was written; that is what it exists to stop.
 | **TRACKSEG-3** | Preferences switch: show/hide the track-section names ("Front Straight", "Big Bend" at WG), default ON (PO 2026-10-06) | ✅ **DONE (S1, 2026-10-06):** launcher Graphics group, "Show track section names", default ON, remembered; OFF = `JM_SEGNAME_SECS=0`, also for replays; gate `segnames_smoke` |
 | **GUI-1** | Redesign the julia racer GUI (`demo/native/juliaRacer.py`) for ease of use per GUI best practices, then restyle it like the PyQt GUIs of pokerIQ and bridgeIQ (`~/sgl/MON/pokerIQ`, `~/sgl/FRI/bridgeIQ`) (PO 2026-10-06) | **S1 (2026-10-06) redesign done:** task-ordered tabs (Race / Results / Replays / Settings / Controller), Session + Car cards, one primary Start button, menus + status bar, log on demand, everything remembered; the sim's environment is identical to before (3 cases). **S2 restyle done:** dark pokerIQ/bridgeIQ theme (`261006/gui/s2_vs_iq.jpg`). 🟡 **AWAITING THE PO's look** |
 | **DOC-RACE-1** | Documentation on how to race, drawing on the docs under `~/sgl/THU` (`DOC/`: GPL manual, setup guides, brake bias, diffs, tyre heat, ...) (PO 2026-10-06) | ✅ **S1 (2026-10-06):** `demo/native/docs/HOW_TO_RACE.md`, in the launcher as Help → How to race…; 🟡 awaiting the PO's read |
-| **REPLAY-2** | A replay is ALWAYS available for the session just exited; add the GPL Replay Analyser's analysis features (gold standard: `~/sgl/THU/WP/drive_c/Program Files/GPL Replay Analyser`) alongside replaying the video; optional Claude Code analysis of the replay with how-to-improve advice (PO 2026-10-06) | **S1 (2026-10-07) always-a-replay DONE:** every session records (practice, any field), autosaved every 20 s (survives a kill), analysis channels + a Python-readable `.jrt`; the Replays tab pre-selects the session just finished. **S2 (2026-10-07) the analyser:** Replays → Analyse… -- laps, track map with racing lines, graphs vs distance, time difference, split times + theoretical best. **S3 (2026-10-07):** reports (session summary, lap chart, lap by lap, speed report; export), traction circle, speed-difference map. Next: S4 Claude analysis |
-| **COCKPIT-GOLD-1** | Cockpit mirrors closer but still not right -- they look tilted slightly up; match the gold. The windscreen/canopy is solid where GPL's is almost transparent -- match the gold (PO 2026-10-06) | open |
+| **REPLAY-2** | A replay is ALWAYS available for the session just exited; add the GPL Replay Analyser's analysis features (gold standard: `~/sgl/THU/WP/drive_c/Program Files/GPL Replay Analyser`) alongside replaying the video; optional Claude Code analysis of the replay with how-to-improve advice (PO 2026-10-06) | **S1 (2026-10-07) always-a-replay DONE:** every session records (practice, any field), autosaved every 20 s (survives a kill), analysis channels + a Python-readable `.jrt`; the Replays tab pre-selects the session just finished. **S2 (2026-10-07) the analyser:** Replays → Analyse… -- laps, track map with racing lines, graphs vs distance, time difference, split times + theoretical best. **S3 (2026-10-07):** reports (session summary, lap chart, lap by lap, speed report; export), traction circle, speed-difference map. **S4 (2026-10-07):** optional Claude Code coaching (shows the summary, sends only on Send; real call verified). 🟡 **All four parts done -- AWAITING THE PO's look** |
+| **COCKPIT-GOLD-1** | Cockpit mirrors closer but still not right -- they look tilted slightly up; match the gold. The windscreen/canopy is solid where GPL's is almost transparent -- match the gold (PO 2026-10-06) | **S1 (2026-10-07) windscreen DONE:** the "solid green" panels were GPL's yellow perspex screen painted with the livery; now drawn as tinted glass (`261007/cockpit/visor_gold_before_after.jpg`). Next: S2 mirrors |
 | **HANDS-2** | Restore the arms and gloves in the cockpit view AND on the AI cars' external views, per the gold; watch for sleeves going upward ("rabbit ears") from outside the car instead of running from the driver to the gloves (PO 2026-10-06; supersedes HANDS-1's "hidden by default") | open |
 | **E107** | **EPIC (PO priority): Julia AI as close as possible to GPL AI** | **AIGPL-2 (2026-10-04): GPL's own AI algorithm, reverse-engineered from gpl.exe** -- the PO: *"The AI cars worked perfectly in the WG race!"*; E107-S11 GPL's passing rails pass the graded test. Open: per-track confirmation by the PO on the other four tracks. |
 | **E108** | **EPIC (PO priority): tracks as close as possible to GPL** | **S5–S8 (2026-09-30):** flat shading (100 % of road polys lack normals) refuted as the visible cause (A/B < 0.3 % of pixels); finer rounding (4× tris) invisible at WG's gentle curves. **Needs the PO: the track + station where the faceting shows.** |
@@ -23247,3 +23247,57 @@ to `show_latest`, which pre-selects that session's recording and says so; the st
   version -- the known positive), speed report 180/144 km/h, lap chart, racing lap numbers, every report renders.
   `launcher_smoke` PASS. Screens: `261007/analyser/s3_*.png`, `s3_views.png`.
 
+### REPLAY-2 S4 (2026-10-07): the optional Claude Code coaching analysis -- REPLAY-2 complete, AWAITING THE PO
+* **`demo/native/coach.py`**, from the analyser's **Coaching (Claude)…** button:
+  * `build_summary` -- a numbers-first text: track, setup, gearbox; your timed laps, best, average, σ; the lap you are
+    compared with (the fastest by anyone else, or your own second best); quarter-lap sectors; then **corner by corner**
+    (corners found from the reference's speed trace, named from the track's sections): minimum speeds, where the
+    slowing starts (brake pedal, or the speed peak for an AI lap -- "n/a" when the peak is only the edge of the lap),
+    gear, throttle pick-up, and the time won or lost; the three biggest losses.
+  * **Every metre belongs to a corner** (from halfway after the previous corner to halfway to the next), so the corner
+    times add up to the lap difference. The first version used ±200 m windows and MISSED the biggest loss on the test
+    race -- a 50 s stall between two windows; now that corner carries it (+21.26 s of the 21.08 s gap).
+  * `CoachDialog` **shows exactly what will be sent** and sends nothing until **Send**: then `claude -p --tools ""
+    --no-session-persistence --output-format text` (no tools, no saved session), the prompt + summary on stdin, the
+    answer rendered as Markdown; 240 s timeout. Without the `claude` CLI the button explains it is unavailable.
+  * The `.jrt` header now carries the track's **sections** (names at distances), the **car setup** and **gearbox**.
+* **Verified:** `tests/coach_test.py` -- a synthetic lap with two corners (the player 10 km/h slower at one): corners
+  found and named, times add up (1.05 vs 1.06 s), the loss lands at the slower corner, min speeds 72 vs 108 km/h; with a
+  **fake `claude`** on PATH: nothing sent before Send, the exact arguments, the prompt carries exactly the shown
+  summary, the answer displayed. **One real call** with the installed CLI on the autodriven test race: exit 0, a
+  ~350-word answer that uses the data correctly -- it puts almost the whole gap on the 905 m stall, spots the constant
+  77 km/h through the late corners, and reads "n/a" honestly (`261007/analyser/coach_prompt.txt`, `coach_answer.md`).
+  A Watkins Glen recording carries 7 sections, `ww103`, and the drivers' names.
+* **For the PO (all of REPLAY-2):** drive a session and exit -- the Replays tab has it selected; *Watch replay*, or
+  *Analyse…* for laps / map / graphs / time difference / splits / reports / traction circle / speed map, and
+  *Coaching (Claude)…* for the optional analysis. Older recordings (before today) play but have no analysis data.
+
+### COCKPIT-GOLD-1 — retrospective + S1 (2026-10-07): the windscreen is GPL's tinted perspex again
+**Retrospective.** The PO: *"the julia cockpit windscreen/canopy is solid, while GPL's windscreen is almost
+transparent"*. History: CARGOLD-1 S7 (2026-09-06) met the same complaint ("visor, which should be almost transparent,
+is a solid object with bright green and gold"), probed it with `JM_FLATPOLY=glass` (the livery-bound flat polys not
+drawn), saw "nothing ahead of the dash but the ground" -- and concluded they were the SCUTTLE, blaming eye height/FOV.
+`windlot` (the tan "scuttle", alpha 0.55) was a separate object; MIRROR-H-1 had noted the green panels survive
+`JM_WIND_ALPHA=0`.
+**This sprint, against the gold at the same spot** (Zandvoort approach, gold 260801 cockpit t=16 vs ours s=100,
+`261007/cockpit/gold_vs_ours.jpg`, `glass_probe.jpg`):
+* The gold has a nearly clear **yellow-tinted perspex** wrapping from mirror to mirror; through it the road and the front
+  tyres; green bodywork only in the bottom corners. Ours had opaque bright-green slabs from the dash up to the tyre tops.
+* The `glass` probe removes exactly those slabs and the frame then has the **gold's geometry** -- road and tyres where the
+  gold shows its screen. "Nothing behind them but the ground" is what a windscreen has behind it: S7's probe was right,
+  its reading was not.
+* **What they are** (`lotd.3DO`'s livery-bound flat polys, dumped): 48 triangles authored FLAT in one colour,
+  **(0.75, 0.64, 0.22)** -- the gold's yellow tint -- at x −0.06…0.99, |y| ≤ 0.25, z 0.23…0.34, sloping (never
+  vertical): the wraparound screen. The other flat polys there are silver (mirror stalks, x≈0.55, |y|≈0.3) and black
+  slivers. GPL draws the yellow ones as translucent perspex; we projected the green livery onto them, opaque.
+**Fix (default):** `extract_gpl_car(...; visor=true)` (the player car's two extractions only) routes the livery-bound
+flat polys in that yellow to a `__visor__` part; the app draws it after everything else as **glass in its own colour**
+(`JM_VISOR_ALPHA` 0.35, depth-write off, every view), keeps it out of the body list and the shadow pass. `JM_VISOR=0`
+reverts. 0.22 read neutral grey; 0.35 gives the gold's olive-yellow cast (`visor35_crop.png`).
+**Verified:** `visor_gold_before_after.jpg` (gold / before / after); the chase view shows a small tinted screen
+(`chase_visor.png`); the body still has its 16 parts (the screen moved out of `lotd`, as its own part).
+**Left for S2 (mirrors):** the gold's discs read as near-circles facing the driver; ours are squashed ellipses (the
+"tilted slightly up" the PO sees) and sit ~7 % of the view height too high relative to the dash. Also: dark grey
+wedges in the bottom corners where the gold shows green bodywork under the screen.
+
+* **Gates** (`GATES_SKIP=road_clear_smoke`): 46/46 pass (with REPLAY-2 S4 and this sprint's visor).
