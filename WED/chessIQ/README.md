@@ -34,7 +34,7 @@ This recasts `../kramnik_chess.html` as a PyQt app. `chessiq/engine.py` is a lin
 perft counts, best move, root score and node count. The port searches ~1.5x slower, so it thinks for 1.8 s where
 the HTML thinks for 1.2 s, and reaches the same depth.
 
-    python3 -m unittest discover -s tests      # 44 tests; engine tests skip when an engine is not built
+    python3 -m unittest discover -s tests      # engine tests skip when an engine is not built
 
 ## Analysis in Nibbler, with a Kramnik neural network
 `../kramnikNibbler.sh [game.pgn]` opens Nibbler with Leela (lc0) playing Kramnik chess (no castling, self-captures)
