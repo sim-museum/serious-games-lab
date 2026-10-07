@@ -778,3 +778,15 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
     off-screen tournament.
   - **CM-23.** Rating history graph.
   - **CM-24.** Retrospective and an end-to-end check.
+- **CM-19 (10-07): done. Post-game analysis core** (`chessiq/analysis.py`).
+  - Fairy-Stockfish evaluates every position at a fixed search, so the same game always reads the same.
+  - The manual's four types with stated thresholds (the manual gives none): advantage 100 cp, about even 50 cp,
+    blunder 300 cp. Precedence: Blunder, Dominated, Disputed, Balanced. A Blunder must be the loser's move from a
+    roughly level position that never recovers.
+  - The costliest moves, measured only while the game was undecided (evaluations clipped at ten pawns). Before the
+    clip, a move in a lost position that allowed mate read as −74.9.
+  - How long the game followed grandmaster games, and a suggested next opponent: about 100 points stronger after a
+    win, weaker after a loss, the same level after a draw.
+  - Tests: constructed sequences for each type, the winner's own blunder (not the cause), moves in a decided game,
+    the suggestion rule, and a real decisive engine game. Example: "Rated-1700 won in 45 moves. Game type:
+    Dominated. Costliest moves: 30... Rb5 (−4.0). Opening: followed grandmaster games for 3 plies."
