@@ -1202,6 +1202,7 @@ class DriveTab(QWidget):
              "(first load ~3–4 min — run build_sysimage.jl once to speed this up)\n"))
         self.launch_b.setEnabled(False)
         self.stop_b.setEnabled(True)
+        self._launched_at = time.time()          # REPLAY-2: the recording written after this is this session's
         self._stage = 0
         self.progress.setRange(0, 0)             # indeterminate "busy" during the Julia/MTK compile (no output yet)
         self.progress.setFormat("compiling…")
@@ -1285,11 +1286,13 @@ class DriveTab(QWidget):
         failed = (self.proc.exitStatus() != QProcess.ExitStatus.NormalExit or self.proc.exitCode() != 0) \
             and not getattr(self, "_stopping", False)
         self._stopping = False
+        rep = self.on_session_end(getattr(self, "_launched_at", None)) if getattr(self, "on_session_end", None) else None
         if failed:
             self.log_b.setChecked(True)
-            self._status("The game stopped with an error -- the log below has the details (also last_sim_run.log).")
+            self._status("The game stopped with an error -- the log below has the details (also last_sim_run.log)."
+                         + ("  Its replay was saved (Replays tab)." if rep else ""))
         else:
-            self._status("Session ended. Ready.")
+            self._status("Session ended." + ("  Its replay is ready on the Replays tab." if rep else "") + "  Ready.")
         self.progress.setRange(0, 100)
         self.progress.setValue(0)
         self.progress.setFormat("")
@@ -1389,17 +1392,24 @@ class ReplayTab(QWidget):
         self.proc = None
         self.dir = os.path.join(os.path.dirname(os.path.dirname(HERE)), "data", "juliaracer")
         v = QVBoxLayout(self)
-        v.addWidget(QLabel("Pick a saved race recording (.jmr) and watch it back:"))
+        v.addWidget(QLabel("Every session is recorded. Pick one and watch it back (newest first):"))
         self.combo = QComboBox()
         v.addWidget(self.combo)
+        self.latest_l = QLabel(""); self.latest_l.setObjectName("hint")
+        v.addWidget(self.latest_l)
         row = QHBoxLayout()
         self.refresh_b = QPushButton("Refresh")
         self.watch_b = QPushButton("Watch replay")
+        self.watch_b.setObjectName("primary")
+        self.analyse_b = QPushButton("Analyse…")          # REPLAY-2 S2: the GPL-Replay-Analyser-style analysis
+        self.analyse_b.setToolTip("Laps, racing lines on the track map, telemetry graphs, time difference and split times")
         self.stop_b = QPushButton("Stop")
         self.stop_b.setEnabled(False)
-        row.addWidget(self.refresh_b)
         row.addWidget(self.watch_b)
+        row.addWidget(self.analyse_b)
         row.addWidget(self.stop_b)
+        row.addStretch(1)
+        row.addWidget(self.refresh_b)
         v.addLayout(row)
         v.addWidget(QLabel("In the replay:  SPACE play/pause · ←/→ scrub · ↑/↓ speed · Esc quit"))
         # REPLAYLOAD-1 (PO 2026-09-19): "the replay takes a very long time to load ... at minimum a
@@ -1416,21 +1426,75 @@ class ReplayTab(QWidget):
         v.addWidget(self.log)
         self.refresh_b.clicked.connect(self.refresh)
         self.watch_b.clicked.connect(self.watch)
+        self.analyse_b.clicked.connect(self.analyse)
+        self.combo.currentIndexChanged.connect(self._can_analyse)
         self.stop_b.clicked.connect(self.stop)
         self.refresh()
 
+    TRACK_NAMES = {"zandvoort": "Zandvoort", "skidpad": "Skidpad", "nurburgring": "Nürburgring",
+                   "watglen": "Watkins Glen", "monza": "Monza", "spa": "Spa"}
+
+    @classmethod
+    def label(cls, name):
+        """REPLAY-2: 'replay_watglen 5ai 2026-10-05 08-54-36.jmr' -> 'Watkins Glen · 5 AI · 2026-10-05 08:54'."""
+        m = re.match(r"replay_(\w+) (\d+)ai (\d{4}-\d\d-\d\d) (\d\d)-(\d\d)", name)
+        if not m:
+            return name
+        n = int(m.group(2))
+        return (f"{cls.TRACK_NAMES.get(m.group(1), m.group(1))}  ·  {'solo' if n == 0 else f'{n} AI'}  ·  "
+                f"{m.group(3)} {m.group(4)}:{m.group(5)}")
+
     def refresh(self):
+        """REPLAY-2: newest first by time (a name sort grouped them by track), readable labels, the file as data."""
         self.combo.clear()
         try:
-            files = sorted((f for f in os.listdir(self.dir) if f.endswith(".jmr")), reverse=True)
+            files = [f for f in os.listdir(self.dir) if f.endswith(".jmr")]
+            files.sort(key=lambda f: os.path.getmtime(os.path.join(self.dir, f)), reverse=True)
         except OSError:
             files = []
-        self.combo.addItems(files)
+        for f in files:
+            self.combo.addItem(self.label(f), f)
+        self.latest_l.setText("" if files else "No recordings yet -- every session you drive is saved here.")
+        return files
+
+    def _current_jrt(self):
+        name = self.combo.currentData() or self.combo.currentText()
+        if not name:
+            return None
+        p = os.path.join(self.dir, name[:-4] + ".jrt")
+        return p if os.path.exists(p) else None
+
+    def _can_analyse(self, *_):
+        ok = self._current_jrt() is not None
+        self.analyse_b.setEnabled(ok)
+        self.analyse_b.setToolTip("Laps, racing lines on the track map, telemetry graphs, time difference and split times"
+                                  if ok else "This recording predates the analysis data (recorded before 2026-10-07).")
+
+    def analyse(self):
+        p = self._current_jrt()
+        if p is None:
+            return
+        import analyser
+        try:
+            self._an = analyser.AnalyserWindow(p, self)
+        except Exception as e:                      # a damaged or truncated file must not take the launcher down
+            QMessageBox.warning(self, "Analyse", f"Could not read {os.path.basename(p)}: {e}")
+            return
+        self._an.show()
+
+    def show_latest(self, since=None):
+        """REPLAY-2: after a session, select its recording (the newest file, if it was written after `since`)."""
+        files = self.refresh()
+        if files and (since is None or os.path.getmtime(os.path.join(self.dir, files[0])) >= since - 1):
+            self.combo.setCurrentIndex(0)
+            self.latest_l.setText("The session you just finished: " + self.label(files[0]))
+            return files[0]
+        return None
 
     def watch(self):
         if self.proc and self.proc.state() != QProcess.ProcessState.NotRunning:
             return
-        name = self.combo.currentText()
+        name = self.combo.currentData() or self.combo.currentText()
         if not name:
             return
         m = re.match(r"replay_(\w+) (\d+)ai", name)
@@ -1516,6 +1580,7 @@ class Main(QMainWindow):
         self.result = ResultTab(self._race_again)
         self.drive = DriveTab(self.joy, on_result=self._show_result_tab)
         self.replay = ReplayTab(self.joy)
+        self.drive.on_session_end = self.replay.show_latest   # REPLAY-2: the session just finished is pre-selected
         # GUI-1: tabs named for the task, in the order a session runs: set up and start, read the result,
         # watch it back; then the things changed once (Settings, Controller).
         tabs.addTab(self.drive, "Race")
@@ -1626,6 +1691,13 @@ QProgressBar { background: #0f1922; border: 1px solid #34495e; border-radius: 4p
 QProgressBar::chunk { background: #2e7d4f; border-radius: 3px; }
 QTextBrowser#guide { background: #101a23; color: #e8eef3; border: 1px solid #2c3e50; border-radius: 4px;
                      font-family: Arial; font-size: 11pt; padding: 10px; }
+QTableWidget, QTableView { background: #0f1922; alternate-background-color: #131f2a; color: #e8eef3;
+                           gridline-color: #26333f; border: 1px solid #2c3e50; border-radius: 4px; }
+QHeaderView::section { background: #1b2733; color: #b9c7d3; border: none; border-right: 1px solid #26333f;
+                       border-bottom: 1px solid #26333f; padding: 4px 6px; font-weight: bold; }
+QTableCornerButton::section { background: #1b2733; border: none; }
+QSplitter::handle { background: #2c3e50; }
+QSplitter::handle:hover { background: #3fa86a; }
 QPlainTextEdit, QTextEdit { background: #0b1218; color: #b8c7d3; border: 1px solid #2c3e50; border-radius: 4px;
                             font-family: monospace; font-size: 9pt; }
 QMenuBar { background: #0b1218; color: #dde6ee; }

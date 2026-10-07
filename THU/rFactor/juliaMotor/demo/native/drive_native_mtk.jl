@@ -545,6 +545,44 @@ include(joinpath(@__DIR__, "roadcurve.jl")); using .RoadCurve   # ROADCURVE-1
 include(joinpath(@__DIR__, "step_guard.jl")); using .StepGuard   # TERRAIN-STEP, see groundz_phys
 include(joinpath(@__DIR__, "solid_geom.jl")); using .SolidGeom   # SOLID-BOX: disc/box gap + normal for every solid
 const REPLAY_FILE = get(ENV, "JM_REPLAY", "")    # E18: if set, PLAY BACK this .jmr recording instead of driving
+# REPLAY-2 S1: the analysis channels recorded per frame beside the poses (see the recorder in main)
+const REPLAY_TELE_P  = ["lap", "lapdist", "speed", "throttle", "brake", "steer", "clutch", "gear", "rpm", "lateral", "ontrack", "race"]
+const REPLAY_TELE_AI = ["s", "speed", "lap", "lane"]
+_jstr(x::AbstractString) = "\"" * replace(x, "\\" => "\\\\", "\"" => "\\\"") * "\""
+_jarr(v) = "[" * join((x isa AbstractString ? _jstr(x) : string(x) for x in v), ",") * "]"
+"""REPLAY-2: write the session's replay -- the .jmr (Julia, played back by the sim) and the .jrt (one JSON header line,
+then float32 frames: poses (1 + 4 ncar) followed by tele (12 + 4 (ncar-1)) per frame), for the launcher's analyser.
+Each write replaces the files whole (temp + rename), so an autosave never leaves a torn file."""
+function write_replay(out, buf, tele, ncar, names, line; final = true)
+    try
+        mkpath(dirname(out))
+        np = 1 + 4*ncar; nt = length(REPLAY_TELE_P) + length(REPLAY_TELE_AI)*(ncar - 1)
+        nf = min(length(buf) ÷ np, length(tele) ÷ nt)
+        tmp = out * ".tmp"
+        serialize(tmp, (track=TRACKSEL, ncar=ncar, names=names, fps=15, nframes=nf, data=buf[1:nf*np], version=2,
+                        tele=tele[1:nf*nt], tele_p=REPLAY_TELE_P, tele_ai=REPLAY_TELE_AI, laplen=Float64(LAPLEN)))
+        mv(tmp, out; force = true)
+        jrt = replace(out, r"\.jmr$" => ".jrt")
+        # the centreline (CLINE) as the map's reference line, ≤ 1500 points; none on the skidpad
+        ref = line === nothing ? Tuple{Float64,Float64}[] :
+              [(round(line.x[i], digits=1), round(line.z[i], digits=1)) for i in 1:max(1, length(line.x) ÷ 1500):length(line.x)]
+        hdr = "{\"format\":\"jrt\",\"version\":1,\"track\":" * _jstr(TRACKSEL) * ",\"laplen\":" * string(round(LAPLEN, digits=1)) *
+              ",\"line_total\":" * string(line === nothing ? 0.0 : round(line.total, digits=1)) * ",\"fps\":15,\"ncar\":" * string(ncar) *
+              ",\"nframes\":" * string(nf) * ",\"names\":" * _jarr(names) * ",\"pose\":[\"t\",\"x\",\"y\",\"z\",\"heading\"]" *
+              ",\"tele_player\":" * _jarr(REPLAY_TELE_P) * ",\"tele_ai\":" * _jarr(REPLAY_TELE_AI) * ",\"final\":" * string(final) *
+              ",\"refline\":[" * join(("[$(p[1]),$(p[2])]" for p in ref), ",") * "]}"
+        open(jrt * ".tmp", "w") do io
+            write(io, hdr, "\n")
+            for f in 0:nf-1                               # frame-interleaved: pose block then tele block
+                write(io, view(buf, f*np+1:(f+1)*np)); write(io, view(tele, f*nt+1:(f+1)*nt))
+            end
+        end
+        mv(jrt * ".tmp", jrt; force = true)
+        final && println("  wrote replay: ", out, "  (", nf, " frames, ", filesize(out)÷1024, " KB) + ", basename(jrt))
+    catch e
+        println("  replay export failed: ", e)
+    end
+end
 # The repo's data/iracing/ holds only the parse/profile scripts — the reference .ibt captures live
 # in the gold-standard store, which is why every session ended with ".ibt export failed ... (2)".
 # Look there first, so the iRacing reference is actually reachable (PO 2026-08-27: the physics is to
@@ -12248,8 +12286,22 @@ function main()
                                           (id <= length(AIDRIVERS) ? AIDRIVERS[id] : AICHASSIS[id].name))
     ibt_samples = IBTREC ? Dict{String,Float64}[] : nothing      # iRacing-format telemetry rows
     # E18: record ALL car poses (player + AI) for replay — a flat Float32 buffer, ~15 Hz, written .jmr at exit
-    REPLAY_REC = IS_RACE && N_AI > 0 && isempty(REPLAY_FILE) && !haskey(ENV,"JM_NOREPLAY") && (!SMOKE || haskey(ENV,"JM_REPLAY_REC"))
+    # REPLAY-2 S1 (PO 2026-10-06: "make sure there is always a replay available for the session the user just exited
+    # from"). The recording was RACES WITH AI only (IS_RACE && N_AI > 0) and was written only on a clean exit, so a
+    # practice session, an empty-grid race or a crash left nothing. Now: EVERY session records (JM_NOREPLAY still opts
+    # out), the file is rewritten every REPLAY_AUTOSAVE s while you drive (a crash loses at most that), and each frame
+    # also carries the analysis channels (`tele`, below) -- kept OUT of `data`, so the playback format is unchanged and
+    # old replays still play. A Python-readable copy (.jrt: one JSON header line + float32 frames) feeds the analyser.
+    REPLAY_REC = isempty(REPLAY_FILE) && !haskey(ENV,"JM_NOREPLAY") && (!SMOKE || haskey(ENV,"JM_REPLAY_REC"))
     replay_buf = REPLAY_REC ? Float32[] : nothing; replay_t = Ref(-1.0); REPLAY_NCAR = 1 + length(AICARS)
+    tele_buf = REPLAY_REC ? Float32[] : nothing
+    REPLAY_AUTOSAVE = parse(Float64, get(ENV, "JM_REPLAY_AUTOSAVE", "20"))
+    replay_saved = Ref(time())
+    replay_names = String[ent_name(i) for i in 0:length(AICARS)]   # REPLAY-2: "You", "Clark (Lotus)" ... (two Lotuses)
+    replay_out = REPLAY_REC ? begin
+            _odir = get(ENV, "JM_IBT_DIR", joinpath(dirname(dirname(@__DIR__)), "data", "juliaracer"))
+            joinpath(_odir, "replay_$(TRACKSEL) $(length(AICARS))ai $(Dates.format(Dates.now(), "yyyy-mm-dd HH-MM-SS")).jmr")
+        end : ""
     IBTREC && println("  recording iRacing .ibt telemetry (JM_IBT) — template: ", basename(IBTTMPL))
     # E18 PLAYBACK: load the recording; the loop sets poses from it instead of simulating (VCR keys below).
     REPLAY = !isempty(REPLAY_FILE)
@@ -13758,10 +13810,19 @@ function main()
             end
         end
         # E18: record all car poses (player + AI) at ~15 Hz once the race is GREEN, for replay
+        cs.t < replay_t[] && (replay_t[] = cs.t - 1.0)   # REPLAY-2: a session restart (R) rewinds the clock -- keep recording
         if replay_buf !== nothing && race_go[] && !rst && length(ai_poses) == length(AICARS) && (cs.t - replay_t[]) >= 1/15
             replay_t[] = cs.t
             push!(replay_buf, Float32(cs.t), Float32(cs.x), Float32(cs.y), Float32(cs.z), Float32(cs.θ))
             for p in ai_poses; push!(replay_buf, Float32(p[1]), Float32(p[2]), Float32(p[3]), Float32(p[4])); end
+            # REPLAY-2: analysis channels, REPLAY_TELE_P for the player then REPLAY_TELE_AI per AI car
+            push!(tele_buf, Float32(cs.laps), Float32(cs.lapdist), Float32(cs.v), Float32(inp.throttle), Float32(inp.brake),
+                  Float32(inp.steer), Float32(inp.clutch), Float32(cs.gear), Float32(cs.rpm), Float32(cs.lateral),
+                  Float32(cs.ontrack ? 1 : 0), Float32(phase[] == :race ? 1 : 0))
+            for a in AICARS; push!(tele_buf, Float32(a.s), Float32(a.v), Float32(a.lap), Float32(a.lane)); end
+            if time() - replay_saved[] > REPLAY_AUTOSAVE           # crash-safe: the session so far is on disk
+                replay_saved[] = time(); write_replay(replay_out, replay_buf, tele_buf, REPLAY_NCAR, replay_names, CLINE; final = false)
+            end
         end
         # PERF-1: one fused matrix per call (was 4 matrices + 3 products), and the body matrix is computed once
         # per car per pass below (it was recomputed for every body PART) -- the top allocation site.
@@ -14658,17 +14719,8 @@ function main()
                            "    VERDICT: $(bad) FAILURE MODE(S) SEEN — see the lines above")
         flush(stdout)
     end
-    if replay_buf !== nothing && !isempty(replay_buf)   # E18: save the all-car replay alongside the .ibt
-        try
-            ts = Dates.format(Dates.now(), "yyyy-mm-dd HH-MM-SS")
-            odir = get(ENV, "JM_IBT_DIR", joinpath(dirname(dirname(@__DIR__)), "data", "juliaracer"))
-            mkpath(odir)
-            out = joinpath(odir, "replay_$(TRACKSEL) $(length(AICARS))ai $(ts).jmr")   # filename encodes track + AI count for the GUI picker
-            names = String["Lotus 49"]; for m in AICHASSIS; push!(names, m.name); end
-            nf = length(replay_buf) ÷ (1 + 4*REPLAY_NCAR)
-            serialize(out, (track=TRACKSEL, ncar=REPLAY_NCAR, names=names, fps=15, nframes=nf, data=replay_buf))
-            println("  wrote replay: ", out, "  (", nf, " frames, ", filesize(out)÷1024, " KB)")
-        catch e; println("  replay export failed: ", e); end
+    if replay_buf !== nothing && !isempty(replay_buf)   # E18: save the all-car replay alongside the .ibt (REPLAY-2: + .jrt)
+        write_replay(replay_out, replay_buf, tele_buf, REPLAY_NCAR, replay_names, CLINE; final = true)
     end
     ffb !== nothing && FFB.close_ffb(ffb)
     EngineAudio.stop!(ENG)

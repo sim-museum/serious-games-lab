@@ -24,7 +24,7 @@ this index was written; that is what it exists to stop.
 | **TRACKSEG-3** | Preferences switch: show/hide the track-section names ("Front Straight", "Big Bend" at WG), default ON (PO 2026-10-06) | ✅ **DONE (S1, 2026-10-06):** launcher Graphics group, "Show track section names", default ON, remembered; OFF = `JM_SEGNAME_SECS=0`, also for replays; gate `segnames_smoke` |
 | **GUI-1** | Redesign the julia racer GUI (`demo/native/juliaRacer.py`) for ease of use per GUI best practices, then restyle it like the PyQt GUIs of pokerIQ and bridgeIQ (`~/sgl/MON/pokerIQ`, `~/sgl/FRI/bridgeIQ`) (PO 2026-10-06) | **S1 (2026-10-06) redesign done:** task-ordered tabs (Race / Results / Replays / Settings / Controller), Session + Car cards, one primary Start button, menus + status bar, log on demand, everything remembered; the sim's environment is identical to before (3 cases). **S2 restyle done:** dark pokerIQ/bridgeIQ theme (`261006/gui/s2_vs_iq.jpg`). 🟡 **AWAITING THE PO's look** |
 | **DOC-RACE-1** | Documentation on how to race, drawing on the docs under `~/sgl/THU` (`DOC/`: GPL manual, setup guides, brake bias, diffs, tyre heat, ...) (PO 2026-10-06) | ✅ **S1 (2026-10-06):** `demo/native/docs/HOW_TO_RACE.md`, in the launcher as Help → How to race…; 🟡 awaiting the PO's read |
-| **REPLAY-2** | A replay is ALWAYS available for the session just exited; add the GPL Replay Analyser's analysis features (gold standard: `~/sgl/THU/WP/drive_c/Program Files/GPL Replay Analyser`) alongside replaying the video; optional Claude Code analysis of the replay with how-to-improve advice (PO 2026-10-06) | open |
+| **REPLAY-2** | A replay is ALWAYS available for the session just exited; add the GPL Replay Analyser's analysis features (gold standard: `~/sgl/THU/WP/drive_c/Program Files/GPL Replay Analyser`) alongside replaying the video; optional Claude Code analysis of the replay with how-to-improve advice (PO 2026-10-06) | **S1 (2026-10-07) always-a-replay DONE:** every session records (practice, any field), autosaved every 20 s (survives a kill), analysis channels + a Python-readable `.jrt`; the Replays tab pre-selects the session just finished. Next: S2 the analyser |
 | **COCKPIT-GOLD-1** | Cockpit mirrors closer but still not right -- they look tilted slightly up; match the gold. The windscreen/canopy is solid where GPL's is almost transparent -- match the gold (PO 2026-10-06) | open |
 | **HANDS-2** | Restore the arms and gloves in the cockpit view AND on the AI cars' external views, per the gold; watch for sleeves going upward ("rabbit ears") from outside the car instead of running from the driver to the gloves (PO 2026-10-06; supersedes HANDS-1's "hidden by default") | open |
 | **E107** | **EPIC (PO priority): Julia AI as close as possible to GPL AI** | **AIGPL-2 (2026-10-04): GPL's own AI algorithm, reverse-engineered from gpl.exe** -- the PO: *"The AI cars worked perfectly in the WG race!"*; E107-S11 GPL's passing rails pass the graded test. Open: per-track confirmation by the PO on the other four tracks. |
@@ -23163,3 +23163,37 @@ progressive disclosure, group by task, plain language, feedback for long operati
   the guide loads and renders. Screens: `261006/gui/doc/guide_pair.png`.
 * **For the PO:** a read for tone and anything you would add from your own GPL experience.
 
+### REPLAY-2 — retrospective + S1 (2026-10-07): a replay of EVERY session, crash-safe, with analysis channels
+**Retrospective / plan.** The gold standard is GPL Replay Analyser 7.9 (`GPL Replay Analyser.txt`): a lap picker (up
+to five laps, any driver), a zoomable track map with racing lines and real-time playback, telemetry graphs against
+distance (speed, gear, rpm, long/lat g, steering, ...), the time difference between two laps, split/sector times with
+a theoretical best, race and practice reports (results, fastest laps, lap chart, consistency, lap-by-lap with
+overtakes), speed reports, a traction circle, a speed-coloured map and a gear-change analyser. Sprints: **S1** always a
+replay with the channels the analysis needs; **S2** the analyser core (laps, map + lines, graphs vs distance, delta,
+sectors); **S3** the reports and the remaining views; **S4** the optional Claude Code analysis.
+**What was missing:** the recorder ran only for `IS_RACE && N_AI > 0`, only after the green flag, and wrote only on a
+clean exit -- practice sessions, empty-grid races and crashed sessions left nothing; and it stored poses only.
+**S1 (implemented, `drive_native_mtk.jl`):**
+* **Every session records** (`JM_NOREPLAY` / the launcher's Recording switch still opt out); a session restart (R)
+  rewinds the clock and recording continues.
+* **Crash-safe:** the session's file is rewritten every `JM_REPLAY_AUTOSAVE` s (20) while you drive -- temp file +
+  rename, so never torn; the final write at exit as before.
+* **Analysis channels** per frame (15 Hz) beside the poses: player `lap, lapdist, speed, throttle, brake, steer,
+  clutch, gear, rpm, lateral, ontrack, race`; each AI `s, speed, lap, lane`. They go in new fields of the `.jmr`
+  (`tele`, `tele_p`, `tele_ai`, `laplen`, `version=2`) -- `data` is untouched, so the playback path and every old
+  replay work as before.
+* **`.jrt` sidecar** for the Python analyser: one JSON header line (track, lap length, names, channel lists, the
+  centreline as the map's reference line, `final`) then float32 frames (pose block + tele block).
+**Launcher:** the Replays tab lists every recording **newest first** (a name sort grouped them by track) with readable
+labels ("Watkins Glen · 5 AI · 2026-10-05 08:54", "solo" for practice); when a session ends, the Race tab hands over
+to `show_latest`, which pre-selects that session's recording and says so; the status bar says the replay is ready.
+**Verified:**
+* Zandvoort practice, 0 AI (smoke, autosave 2 s): `.jmr` + `.jrt` written (151 frames). Watkins Glen race, 2 AI: both
+  written; Python parses the `.jrt` (frames = header count; names; 1251 centreline points; AI `s` 18 → 262 m at 113 km/h).
+* **Kill test:** a practice session SIGKILLed after its first autosaves -- the `.jmr` and `.jrt` are on disk, no
+  `.tmp` left, the `.jmr` deserializes consistently (31 frames, data = nframes·(1+4·ncar), tele present).
+* **Playback:** the new 2-AI replay, the 0-AI practice replay and an OLD (2026-10-05, 5 AI, 361 s) replay all play.
+* `launcher_test.py`: newest-first order, labels, the just-finished session selected (and an old file not claimed),
+  the Race tab → Replays wiring, and Watch launching the selected file with its track and field.
+
+* **Gates** (`GATES_SKIP=road_clear_smoke`): 46/46 pass (now including `launcher_smoke`).

@@ -52,6 +52,23 @@ check(d2.mute.isChecked() and not d2.replay.isChecked(), "preferences remembered
 real = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 check(os.path.realpath(started[0][0].workingDirectory()) == os.path.realpath(jr.HERE), "the sim's working dir is the scratch HERE")
 check(not os.path.exists(os.path.join(jr.HERE, "last_race_result.txt")), "launch clears the (scratch) stale result")
+# REPLAY-2 S1: the Replays tab lists every recording newest first, labels it, and pre-selects the session just finished
+import time as _time
+rd = tempfile.mkdtemp(prefix="jr_replays_"); now = _time.time()
+for name, age in (("replay_watglen 5ai 2026-10-05 08-54-36.jmr", 3000), ("replay_zandvoort 0ai 2026-10-06 23-58-31.jmr", 10),
+                  ("replay_monza 2ai 2026-10-06 12-00-00.jmr", 600)):
+    fp = os.path.join(rd, name); open(fp, "w").write("x"); os.utime(fp, (now - age, now - age))
+rt = w.replay; rt.dir = rd; files = rt.refresh()
+check(files[0].startswith("replay_zandvoort") and files[-1].startswith("replay_watglen"), "replays newest first")
+check(rt.combo.itemText(0) == "Zandvoort  ·  solo  ·  2026-10-06 23:58", f"readable label ({rt.combo.itemText(0)!r})")
+check(rt.show_latest(since=now - 60) == files[0] and rt.combo.currentIndex() == 0, "the session just finished is selected")
+check(rt.show_latest(since=now + 3600) is None, "an old recording is not claimed as this session's")
+check(w.drive.on_session_end == rt.show_latest, "the Race tab hands the end of a session to the Replays tab")
+started.clear(); rt.combo.setCurrentIndex(1); rt.watch()
+env = started[0][0].processEnvironment()
+check(env.value("JM_REPLAY").endswith("replay_monza 2ai 2026-10-06 12-00-00.jmr") and env.value("TRACK") == "monza"
+      and env.value("JM_AI") == "2", "Watch plays the selected file with its track and field")
+rt.proc = None
 # DOC-RACE-1: Help > How to race opens the shipped guide
 acts = [a.text() for m in w.menuBar().actions() for a in (m.menu().actions() if m.menu() else [])]
 check("&How to race…" in acts, "Help menu has How to race")
