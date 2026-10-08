@@ -64,7 +64,7 @@
 "score": -38,
 "kind": "self-capture",
 "motif": "promotion",
-"explain": "dxc8=Q! The pawn takes its own rook to reach the last ranks. Without self-capture the best play here would be 7.1 worse.",
+"explain": "dxc8=Q! The pawn takes its own rook on its way to promotion. Without self-capture the best play here would be 7.1 worse.",
 "nodes": 16,
 "rating": 1163,
 "id": 5

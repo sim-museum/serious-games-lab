@@ -141,7 +141,7 @@ def motif(b, turn, ep, m):
 
 
 MOTIF_TEXT = {                  # {piece}: the mover, {victim}: its own man it takes
-    "promotion": "the pawn takes its own {victim} to reach the last ranks",
+    "promotion": "the pawn takes its own {victim} on its way to promotion",
     "escape": "the king escapes check by taking its own {victim}",
     "king-walk": "the king walks forward by taking its own {victim}",
     "king-other": "the king makes room by taking its own {victim}",

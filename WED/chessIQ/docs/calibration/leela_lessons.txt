@@ -3,12 +3,15 @@ agree escape      1 Q  Leela g1f2
 agree escape      2 Q  Leela g8f8
 agree escape      3 Q  Leela g1g2
 agree promotion   1 D  Leela f5c8
-agree promotion   2 D  Leela b7c8q
+agree promotion   2 Q  Leela d7c8q
+agree promotion   3 D  Leela b7c8q
 DIFF  files       1 D  Leela g8g7
 agree files       2 Q  Leela c1f4
 DIFF  activation  1 D  Leela d8c8
 agree activation  2 D  Leela e2f4
 agree activation  3 D  Leela g3g6
+agree activation  4 Q  Leela h3e6
+agree activation  5 Q  Leela g5e4
 agree check       1 D  Leela f5e4
 agree check       2 Q  Leela b3d5
 agree check       3 Q  Leela g1g2
@@ -19,4 +22,4 @@ agree threats     2 D  Leela g2d5
 agree threats     3 Q  Leela b4c3
 agree threats     4 D  Leela e3g5
 agree threats     5 D  Leela h7h5
-Leela agrees on 19 of 21 lesson positions
+Leela agrees on 22 of 24 lesson positions

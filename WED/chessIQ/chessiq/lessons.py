@@ -84,6 +84,11 @@ LESSONS = [
                      "Bc8! The bishop stands diagonally in front of the pawn, and next move bxc8=Q. Black cannot stop "
                      "it, so in fact almost any White move wins: Bc8 can always come next. Kramnik's own example from "
                      "the paper.", "paper (Kramnik)", quiz=False),
+            Exercise("2R5/1p1P1kp1/5b2/2p1r3/7P/P4pP1/3r1P2/1K5R w - - 0 37",
+                     "White's d-pawn is one step from queening, but the bishop on f6 covers d8. Find the other way.",
+                     ["d7c8q"],
+                     "dxc8=Q: the pawn takes its own rook and promotes on c8, out of the bishop's reach. Without "
+                     "self-capture White would be about seven pawns worse off.", "census (puzzle)"),
             Exercise("2B5/bP6/2K5/8/6Pk/8/8/8 w - - 5 57",
                      "White to move and win.",
                      ["b7c8q"],
