@@ -1,0 +1,10 @@
+# KS: each specialist (own-motif bonus full, others a quarter; adjust 0) against a neutral twin, 80 games, seed 23
+# (tools/specialist_check.py NAME 80 23). Offsets set Personality.adjust = -offset.
+Hal           950: 45.0 / 80 (56%), Elo +44 +/- 77; self-captures 2.7 per 100 moves; motifs activation 29 attack 22 escape 15 check 11 king-walk 10 king-other 10 reposition 5
+Rosa         1250: 49.0 / 80 (61%), Elo +80 +/- 78; self-captures 3.0 per 100 moves; motifs attack 38 activation 26 escape 20 check 17 reposition 11 king-other 4
+Felix        1500: 40.0 / 80 (50%), Elo -0 +/- 76; self-captures 2.7 per 100 moves; motifs activation 57 reposition 27 attack 24 escape 13 check 11 king-walk 4 king-other 3
+Mirela       1750: 45.0 / 80 (56%), Elo +44 +/- 77; self-captures 2.5 per 100 moves; motifs activation 40 reposition 24 escape 22 attack 18 check 12 king-walk 4 king-other 2
+Corin        2000: 56.5 / 80 (71%), Elo +152 +/- 84; self-captures 2.7 per 100 moves; motifs activation 34 check 30 attack 19 reposition 16 escape 11 king-walk 5 king-other 4 promotion 1
+Ada          2250: 48.5 / 80 (61%), Elo +75 +/- 78; self-captures 2.3 per 100 moves; motifs activation 28 escape 22 attack 18 check 14 reposition 11 king-walk 6 king-other 1 promotion 1
+Selim        2500: 35.5 / 80 (44%), Elo -39 +/- 77; self-captures 3.3 per 100 moves; motifs activation 52 attack 23 escape 21 reposition 20 check 20 king-walk 8 king-other 5 promotion 4
+Kestrel      2600: 41.5 / 80 (52%), Elo +13 +/- 76; self-captures 2.9 per 100 moves; motifs activation 37 check 29 attack 24 reposition 22 escape 17 king-walk 7 promotion 3 king-other 2
