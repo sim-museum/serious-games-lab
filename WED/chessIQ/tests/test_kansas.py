@@ -6,7 +6,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from chessiq import kansas as K  # noqa: E402
 from chessiq.personalities import Personality  # noqa: E402
-from chessiq.uci_engine import SC_BONUS, PersonalityEngine  # noqa: E402
+from chessiq.uci_engine import BINARY, SC_BONUS, VARIANTS, PersonalityEngine  # noqa: E402
 
 AZ38 = "r2q1rk1/p2nbpp1/5n2/2p4p/2N2B1P/5Q2/P3NPP1/3R1RK1 b - - 0 19"     # paper game AZ-38: 19...Rxa7
 
@@ -70,6 +70,31 @@ class Appetite(unittest.TestCase):
         lines = {1: (40, "b1c3"), 2: (30, "d2d4")}
         e = stub(0, {"b1c3": 40, "d2d4": -500})
         self.assertEqual(e._kansas_pick(self.MOVES, lines, "b1c3"), "b1c3")
+
+
+@unittest.skipUnless(os.access(BINARY, os.X_OK), "Kramnik Fairy-Stockfish missing")
+class Moments(unittest.TestCase):                 # KS-3
+    def setUp(self):
+        self.rs = K.RuleSwitch(BINARY, VARIANTS, nodes=20000)
+
+    def tearDown(self):
+        self.rs.close()
+
+    def test_a_played_self_capture_is_found_and_described(self):
+        ms = K.moments(["e2e4", "e7e5", "f1e2", "d7d6", "d1e2"], self.rs)       # 3.Qxe2: the queen takes its bishop
+        played = [m for m in ms if m["kind"] == "played"]
+        self.assertEqual([(m["ply"], m["san"]) for m in played], [(4, "Qxe2")])
+        self.assertGreaterEqual(played[0]["loss"], 200)                         # it gives a bishop away for nothing
+        self.assertIn("3.Qxe2", K.describe(played[0]))
+
+    def test_the_kings_escape_is_labelled(self):
+        fen = "r5k1/1p3p2/p1pn3r/3p4/PP1P2P1/3BPQ2/5PP1/R1R3Kq w - - 0 39"
+        ms = K.moments(["g1f2"], self.rs, start=fen)           # the paper's AZ-33: the king takes its own pawn
+        self.assertEqual([m["kind"] for m in ms], ["played"])
+        self.assertEqual(ms[0]["motif"], "escape")
+
+    def test_cancel_returns_none(self):
+        self.assertIsNone(K.moments(["e2e4"], self.rs, cancel=lambda: True))
 
 
 if __name__ == "__main__":

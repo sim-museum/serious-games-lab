@@ -1,18 +1,27 @@
 """The Post-Game Analysis window, as Chessmaster shows after each game (EPIC CM, CM-20): the game's type and summary,
 the rating change, a chart of the evaluation after every move (hover for values), and Play Suggested Opponent.
-Non-modal: it never blocks the board; closing it cancels an analysis still running."""
+Below the chart, "Not in Kansas" (EPIC KS, KS-3): the moments where Kramnik rules mattered -- self-captures played,
+strong ones missed, ordinary-chess moves that lose here, and the right move found -- from a second pass with
+Fairy-Stockfish searching each position with self-capture on and off (chessiq/kansas.py). Clicking a moment shows
+the position on the board. Non-modal: it never blocks the board; closing it cancels an analysis still running."""
 from PyQt6.QtCore import QPointF, Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QColor, QPainter, QPen, QPolygonF
-from PyQt6.QtWidgets import QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QDialog, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QPushButton, QVBoxLayout, QWidget
 
 from . import analysis
+from . import kansas as K
 
 CLIP = 1000                         # the chart shows +-10 pawns; beyond that the game is decided
+
+
+KANSAS_NODES = 30000                # per search in the Kansas pass (three or four searches a move)
 
 
 class AnalysisThread(QThread):
     progress = pyqtSignal(int, int)
     done = pyqtSignal(object)
+    kprogress = pyqtSignal(int, int)
+    kdone = pyqtSignal(object)
 
     def __init__(self, moves, parent=None):
         super().__init__(parent)
@@ -21,8 +30,17 @@ class AnalysisThread(QThread):
     def run(self):
         ev = analysis.evaluate_game(self.moves, progress=lambda i, n: self.progress.emit(i, n),
                                     cancel=lambda: self.cancelled)
-        if not self.cancelled:
-            self.done.emit(ev)
+        if self.cancelled:
+            return
+        self.done.emit(ev)
+        rs = K.RuleSwitch(analysis.BINARY, analysis.VARIANTS, KANSAS_NODES)
+        try:
+            ms = K.moments(self.moves, rs, cancel=lambda: self.cancelled,
+                           progress=lambda i, n: self.kprogress.emit(i, n))
+        finally:
+            rs.close()
+        if not self.cancelled and ms is not None:
+            self.kdone.emit(ms)
 
 
 class Chart(QWidget):
@@ -77,7 +95,7 @@ class PostGameDialog(QDialog):
         self.setModal(False)
         self.sans, self.result, self.white, self.black = sans, result, white, black
         self.people, self.current, self.my_rating = people, current, my_rating
-        self.kind, self.text, self.suggested, self.evals = None, "", None, None
+        self.kind, self.text, self.suggested, self.evals, self.moments = None, "", None, None, None
         self.v = QVBoxLayout(self)
         self.head = QLabel("Analysing the game…")
         self.head.setWordWrap(True)
@@ -95,6 +113,18 @@ class PostGameDialog(QDialog):
         self.thread.progress.connect(lambda i, n: self.head.setText("Analysing the game… move %d of %d" %
                                                                     ((i + 1) // 2, (n + 1) // 2)))
         self.thread.done.connect(self._show)
+        self.kansas = QLabel("")
+        self.kansas.setWordWrap(True)
+        self.klist = QListWidget()
+        self.klist.setMinimumHeight(90)
+        self.klist.setMaximumHeight(180)
+        self.klist.setWordWrap(True)
+        self.klist.hide()
+        self.klist.itemClicked.connect(self._go)
+        self.thread.kprogress.connect(lambda i, n: self.kansas.setText(
+            "<b>Not in Kansas</b> — looking for the moments where Kramnik rules mattered… move %d of %d"
+            % ((i + 1) // 2, (n + 1) // 2)))
+        self.thread.kdone.connect(self._show_kansas)
         self.thread.start()
 
     def _show(self, evals):
@@ -116,7 +146,36 @@ class PostGameDialog(QDialog):
         chart.readout = readout
         self.v.insertWidget(1, chart)
         self.v.insertWidget(2, readout)
+        self.v.insertWidget(3, self.kansas)
+        self.v.insertWidget(4, self.klist)
         self.adjustSize()
+
+    def _show_kansas(self, ms):
+        self.moments = ms
+        human = getattr(getattr(self.parent(), "game", None), "human", None)
+        played = [m for m in ms if m["kind"] == "played"]
+        counts = (len(played), sum(m["kind"] == "missed" for m in ms), sum(m["kind"] == "trap" for m in ms),
+                  sum(m["kind"] == "spotted" for m in ms))
+        if not ms:
+            self.kansas.setText("<b>Not in Kansas</b> — nothing in this game depended on self-capture: it could have "
+                                "been ordinary chess. Kramnik chess often looks like that, until it doesn't.")
+            return
+        self.kansas.setText("<b>Not in Kansas</b> — %d self-capture%s played, %d missed, %d ordinary-chess move%s that "
+                            "lost here, %d found. Click one to see the position."
+                            % (counts[0], "" if counts[0] == 1 else "s", counts[1], counts[2],
+                               "" if counts[2] == 1 else "s", counts[3]))
+        for m in ms:
+            who = "You" if m["side"] == human else self.white if m["side"] == "w" else self.black
+            it = QListWidgetItem("%s — %s" % (who, K.describe(m)))
+            it.setData(Qt.ItemDataRole.UserRole, m["ply"])
+            self.klist.addItem(it)
+        self.klist.show()
+        self.adjustSize()
+
+    def _go(self, item):
+        p = self.parent()
+        if p is not None and hasattr(p, "go_to"):
+            p.go_to(item.data(Qt.ItemDataRole.UserRole))          # the position before the moment's move
 
     def _my_score(self):
         p = self.parent()

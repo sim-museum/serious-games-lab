@@ -146,6 +146,9 @@ class PostGame(unittest.TestCase):                # CM-20: Chessmaster's Post-Ga
         self.assertIn("Game type", d.head.text())
         self.assertTrue(d.suggest_btn.isEnabled())                          # a loss: someone a little weaker
         self.assertLess(d.suggested.rating, w._opponent().rating + 1)
+        self.run_until(lambda: d.moments is not None)                       # KS-3: the Kansas pass follows
+        self.assertEqual(d.moments, [])                                     # two plies: nothing hinged on it
+        self.assertIn("Not in Kansas", d.kansas.text())
 
 
 class TournamentFlow(unittest.TestCase):          # CM-22: a whole round robin through the windows

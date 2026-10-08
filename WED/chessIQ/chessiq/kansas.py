@@ -140,16 +140,20 @@ def motif(b, turn, ep, m):
     return "reposition"
 
 
-MOTIF_TEXT = {
-    "promotion": "a pawn promotes by taking its own piece",
-    "escape": "the king escapes through its own army",
-    "king-walk": "the king walks through its own pawns",
-    "king-other": "the king makes room by taking its own piece",
-    "check": "a self-capture that gives check",
-    "attack": "a self-capture that opens a line at the enemy king",
-    "activation": "a self-capture that frees a piece",
-    "reposition": "a piece moves onto its own man's square",
+MOTIF_TEXT = {                  # {piece}: the mover, {victim}: its own man it takes
+    "promotion": "the pawn takes its own {victim} to reach the last ranks",
+    "escape": "the king escapes check by taking its own {victim}",
+    "king-walk": "the king walks forward by taking its own {victim}",
+    "king-other": "the king makes room by taking its own {victim}",
+    "check": "the {piece} takes its own {victim} and gives check",
+    "attack": "the {piece} takes its own {victim} and opens a line at the enemy king",
+    "activation": "the {piece} takes its own {victim} and gets into play",
+    "reposition": "the {piece} takes its own {victim} to reach that square",
 }
+
+
+def phrase(motif_, piece, victim):
+    return MOTIF_TEXT[motif_].format(piece=PIECE_NAME.get(piece, "king"), victim=PIECE_NAME[victim])
 
 
 # ---- the rule-switch engines ---------------------------------------------------------------------------------------
@@ -260,7 +264,8 @@ def moments(uci_moves, rs, start=START, cancel=None, progress=None):
             bm = find(b, turn, ep, best)
             base = dict(ply=i, side=turn, san=san)
             if m.kind == "self":
-                out.append(dict(base, kind="played", motif=motif(b, turn, ep, m), loss=loss))
+                out.append(dict(base, kind="played", motif=motif(b, turn, ep, m), loss=loss, piece=b[m.frm][1],
+                                victim=b[m.to][1]))
             elif bm is not None:
                 off, s_off, _ = rs.search("off", fen)
                 om = find(b, turn, ep, off) if off else None
@@ -268,7 +273,7 @@ def moments(uci_moves, rs, start=START, cancel=None, progress=None):
                     gain = cap(s_on) - cap(s_off)
                     if gain >= MISSED and loss >= LOSS:
                         out.append(dict(base, kind="missed", best=E.san_of(b, bm, ep), motif=motif(b, turn, ep, bm),
-                                        gain=gain, loss=loss))
+                                        gain=gain, loss=loss, piece=b[bm.frm][1], victim=b[bm.to][1]))
                 elif om is not None and off != best:
                     after = to_fen(E.apply_move(b, om), E.opp(turn), E.ep_after(om), 0, full + (turn == "b"))
                     if u == off and loss >= TRAP:
@@ -294,11 +299,12 @@ def describe(mo):
     """One sentence for a Kansas moment."""
     num = "%d%s" % (mo["ply"] // 2 + 1, "." if mo["side"] == "w" else "...")
     if mo["kind"] == "played":
-        return "%s%s: %s.%s" % (num, mo["san"], MOTIF_TEXT[mo["motif"]].capitalize(),
+        return "%s%s: %s.%s" % (num, mo["san"], phrase(mo["motif"], mo["piece"], mo["victim"]).capitalize(),
                                 " It cost %.1f." % (mo["loss"] / 100) if mo["loss"] >= 100 else "")
     if mo["kind"] == "missed":
-        return "%s%s: missed %s! (%s), worth %.1f more." % (num, mo["san"], mo["best"], MOTIF_TEXT[mo["motif"]],
-                                                           mo["loss"] / 100)
+        return "%s%s: missed %s!, where %s; worth %.1f more." % (num, mo["san"], mo["best"],
+                                                                phrase(mo["motif"], mo["piece"], mo["victim"]),
+                                                                mo["loss"] / 100)
     if mo["kind"] == "trap":
         return ("%s%s: the best move in ordinary chess, but not here (-%.1f): %s. Better was %s."
                 % (num, mo["san"], mo["loss"] / 100, mo["why"], mo["best"]))
