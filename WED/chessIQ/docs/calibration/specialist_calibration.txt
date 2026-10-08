@@ -8,3 +8,15 @@ Corin        2000: 56.5 / 80 (71%), Elo +152 +/- 84; self-captures 2.7 per 100 m
 Ada          2250: 48.5 / 80 (61%), Elo +75 +/- 78; self-captures 2.3 per 100 moves; motifs activation 28 escape 22 attack 18 check 14 reposition 11 king-walk 6 king-other 1 promotion 1
 Selim        2500: 35.5 / 80 (44%), Elo -39 +/- 77; self-captures 3.3 per 100 moves; motifs activation 52 attack 23 escape 21 reposition 20 check 20 king-walk 8 king-other 5 promotion 4
 Kestrel      2600: 41.5 / 80 (52%), Elo +13 +/- 76; self-captures 2.9 per 100 moves; motifs activation 37 check 29 attack 24 reposition 22 escape 17 king-walk 7 promotion 3 king-other 2
+
+# Verification with those corrections, 40 games, seed 31 (mean +1 over the 8):
+Rosa         1250: 17.0 / 40 (42%), Elo -53 +/- 109; self-captures 2.7 per 100 moves; motifs activation 17 escape 11 attack 10 reposition 5 check 3 king-walk 2
+Hal           950: 25.0 / 40 (62%), Elo +89 +/- 111; self-captures 2.9 per 100 moves; motifs activation 16 attack 10 reposition 8 escape 7 check 6 king-other 3 king-walk 2
+Felix        1500: 22.5 / 40 (56%), Elo +44 +/- 109; self-captures 2.7 per 100 moves; motifs activation 25 attack 15 reposition 14 check 8 escape 7 king-walk 5 king-other 2
+Mirela       1750: 18.5 / 40 (46%), Elo -26 +/- 108; self-captures 2.4 per 100 moves; motifs activation 24 reposition 13 escape 10 check 8 attack 5 king-other 2 king-walk 1
+Corin        2000: 13.0 / 40 (32%), Elo -127 +/- 115; self-captures 3.0 per 100 moves; motifs activation 23 escape 18 attack 13 reposition 10 king-walk 5 check 3 king-other 1
+Ada          2250: 24.0 / 40 (60%), Elo +70 +/- 110; self-captures 1.8 per 100 moves; motifs reposition 10 activation 9 check 9 escape 8 attack 4 promotion 2 king-walk 2
+Selim        2500: 22.0 / 40 (55%), Elo +35 +/- 108; self-captures 3.1 per 100 moves; motifs activation 27 reposition 11 check 11 attack 10 escape 9 king-walk 4 king-other 1
+Kestrel      2600: 18.5 / 40 (46%), Elo -26 +/- 108; self-captures 2.6 per 100 moves; motifs activation 24 reposition 11 check 10 escape 9 attack 8 king-walk 5
+
+# Final adjust = -(80 x calibration + 40 x uncorrected verification) / 120, to 5: Hal -75 Rosa -60 Felix -15 Mirela -35 Corin -110 Ada -100 Selim +25 Kestrel -5 (95% about +/- 64 each)
