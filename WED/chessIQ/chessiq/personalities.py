@@ -276,6 +276,7 @@ LEELA_LEVELS = [(1910, 0.3), (1650, 0.5), (1370, 0.6), (1150, 0.7)]
 # Maia, by the human rating band it learned from -> measured Kramnik rating. Compressed: from 1500 up they play alike.
 MAIA_MEASURED = [(1100, 1219), (1300, 1385), (1500, 1483), (1700, 1477), (1900, 1484)]
 BEST_NET = "kramnik-sp1.pb.gz"         # the strongest Kramnik network measured (NN-10); the Nibbler launcher's default
+T40_NET = "kramnik-t40a1.pb.gz"        # 20x256, GPU only: level with full-strength Fairy-Stockfish (NN-23, KS-7)
 
 
 def maia_rating(band):
@@ -296,6 +297,15 @@ def leela_roster():
     nets = os.path.join(HERE and os.path.dirname(HERE), "engine", "nets")
     best = os.path.join(nets, BEST_NET)
     kr = [best] if os.path.exists(best) else sorted(glob.glob(os.path.join(nets, "kramnik-*.pb.gz")))[-1:]
+    t40 = os.path.join(nets, T40_NET)
+    if os.path.exists(t40) and os.access(os.path.join(os.path.dirname(nets), "lc0-kramnik-gpu"), os.X_OK):
+        out.append(Personality(
+            "Leela T40", 2850, "the strongest Kramnik player here: a large network, on the GPU", engine="leela",
+            net=t40, nodes=3000,
+            bio="A 20-block network adapted to Kramnik chess by self-play on this project. At a second or so a move "
+                "it is level with full-strength Fairy-Stockfish (EPIC NN, NN-23: 15/30 at 3 s a move). Where "
+                "Fairy-Stockfish calculates, Leela judges: it plays positions, and it knows which self-captures are "
+                "worth it. Needs the GPU build (engine/build_lc0_gpu.sh)."))
     if kr:
         out.append(Personality("Leela (Kramnik network)", 2850, "a neural network trained on Kramnik chess", engine="leela",
                                net=kr[0], nodes=800))

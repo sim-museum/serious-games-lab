@@ -1,0 +1,7 @@
+Rosa     1250: 22.5 / 40 (56%), Elo +44 +/- 109; self-captures 3.2 per 100 moves
+Felix    1500: 23.0 / 40 (58%), Elo +53 +/- 109; self-captures 2.9 per 100 moves
+Mirela   1750: 24.5 / 40 (61%), Elo +80 +/- 111; self-captures 2.3 per 100 moves
+Corin    2000: 29.0 / 40 (72%), Elo +168 +/- 121; self-captures 2.7 per 100 moves
+Ada      2250: 16.0 / 40 (40%), Elo -70 +/- 110; self-captures 2.6 per 100 moves
+Selim    2500: 16.5 / 40 (41%), Elo -61 +/- 109; self-captures 3.1 per 100 moves
+done

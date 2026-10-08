@@ -26,6 +26,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BINARY = os.environ.get("CHESSIQ_ENGINE", os.path.join(ROOT, "engine", "fairy-stockfish-kramnik"))
 VARIANTS = os.path.join(ROOT, "engine", "kramnik.ini")
 SC_BONUS = 100                  # cp: what a self-capture "gains" from Kramnik rules in a specialist's eyes
+DEFAULT_MS = 1000               # a full-strength opponent with no clock and no move time (tournament quick results)
 
 
 def available():
@@ -88,8 +89,8 @@ class PersonalityEngine:
                 go += " nodes %d" % (self.nodes * self.multipv)   # CM-17: each listed line gets the full search
             elif clock:
                 go += " wtime %d btime %d winc %d binc %d" % (clock["wtime"], clock["btime"], clock["winc"], clock["binc"])
-            elif movetime_ms:
-                go += " movetime %d" % movetime_ms
+            else:                           # never a bare "go": that searches forever
+                go += " movetime %d" % (movetime_ms or DEFAULT_MS)
             self._send(go)
             lines = {}
             for line in self.proc.stdout:
@@ -242,8 +243,8 @@ class LeelaEngine(PersonalityEngine):
                 go += " nodes %d" % self.p.nodes
             elif clock:
                 go += " wtime %d btime %d winc %d binc %d" % (clock["wtime"], clock["btime"], clock["winc"], clock["binc"])
-            elif movetime_ms:
-                go += " movetime %d" % movetime_ms
+            else:
+                go += " movetime %d" % (movetime_ms or DEFAULT_MS)
             self._send(go)
             for line in self.proc.stdout:
                 if line.startswith("bestmove"):

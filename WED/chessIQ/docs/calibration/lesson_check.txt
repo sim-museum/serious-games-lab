@@ -1,0 +1,23 @@
+ok   rules       1 Q best Kxf2 (takes its own pawn), R  -5093  off-rules -      
+ok   escape      1 Q best Kxf2 (takes its own pawn), Q    +45  off-rules -      
+ok   escape      2 Q best Kxf8 (takes its own rook), R     +0  off-rules -      
+ok   escape      3 Q best Kxg2 (takes its own pawn), R   mate  off-rules d6d1   
+ok   promotion   1 D best Bc8, Kd5                      +5651  off-rules f5b1   
+ok   promotion   2 D best bxc8=Q (takes its own bishop  +6085  off-rules c6c7   
+ok   files       1 D best Kg7, Bf5, Nxf5                  -45  off-rules d6e4   
+ok   files       2 Q best Qxf4 (takes its own pawn)      +390  off-rules c3e1   
+ok   activation  1 D best Rxa7 (takes its own pawn), N    -74  off-rules d8c8   
+ok   activation  2 D best Nxf4 (takes its own pawn), Q    +46  off-rules g1f2   
+ok   activation  3 D best Rxg6 (takes its own pawn), Q    +67  off-rules h5f5   
+ok   check       1 D best fxe4+ (takes its own knight)    -14  off-rules a5a4   
+ok   check       2 Q best Qxd5+ (takes its own pawn),    +159  off-rules e3c3   
+ok   check       3 Q best Rxg2+ (takes its own bishop)     +0  off-rules f3d3   
+ok   endgames    1 D best Kxg3 (takes its own pawn), K     +0  off-rules f2f1   
+ok   endgames    2 D best Kxg4 (takes its own pawn), R    -82  off-rules a8g8   
+ok   threats     1 Q best Be3, Qxe3, Qc8+                 +98  off-rules b7c8   
+ok   threats     2 D best Bxd5, Rxa7 (takes its own pa   +112  off-rules b3d5   
+ok   threats     3 Q best Qxc3, c4, b3                   -115  off-rules d4c5   
+ok   threats     4 D best Qxg5 (takes its own pawn), R   -139  off-rules e3f3   
+ok   threats     5 D best Qxc2 (takes its own pawn), R   +260  off-rules h7h8   
+0 exercise(s) fail
+exit 0

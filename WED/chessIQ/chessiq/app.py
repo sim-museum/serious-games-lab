@@ -16,7 +16,7 @@ from . import VERSION
 from . import engine as E
 from . import serious_games_week
 from .game import AI_NAME, MAX_DEPTH, THINK_S, Game, load_pgn
-from . import analysis, clock as clocks, cmbook, personalities, postgame, rating, tourney_ui, uci_engine
+from . import academy, analysis, clock as clocks, cmbook, personalities, postgame, rating, tourney_ui, uci_engine
 from .net import DEFAULT_PORT, Link
 
 LIGHT, DARK = QColor("#f0d9b5"), QColor("#b58863")
@@ -503,7 +503,18 @@ class MainWindow(QMainWindow):
             act = QAction(label, self)
             act.triggered.connect(fn)
             tm.addAction(act)
+        am = self.menuBar().addMenu("&Academy")
+        acad = QAction("Kramnik &Academy: lessons on self-capture...", self)
+        acad.triggered.connect(self.academy_open)
+        am.addAction(acad)
+        self.academy = None
         self.resize(1000, 680)
+
+    def academy_open(self):
+        """The Kramnik Academy (KS-4): lessons and positions on what self-capture changes."""
+        if self.academy is None:
+            self.academy = academy.AcademyWindow(self)
+        self.academy.show(); self.academy.raise_()
 
     # ---------------- game flow ----------------
     def choose_opponent(self):

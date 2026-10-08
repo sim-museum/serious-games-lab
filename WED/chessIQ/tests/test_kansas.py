@@ -73,6 +73,20 @@ class Appetite(unittest.TestCase):
 
 
 @unittest.skipUnless(os.access(BINARY, os.X_OK), "Kramnik Fairy-Stockfish missing")
+class NoEndlessSearch(unittest.TestCase):         # found in KS-7: tournament quick results give no clock
+    def test_full_strength_without_a_clock_answers(self):
+        import time
+        from chessiq.personalities import by_name
+        e = PersonalityEngine(by_name()["The Engine"])
+        try:
+            t = time.monotonic()
+            self.assertIsNotNone(e.choose([]))
+            self.assertLess(time.monotonic() - t, 5)
+        finally:
+            e.close()
+
+
+@unittest.skipUnless(os.access(BINARY, os.X_OK), "Kramnik Fairy-Stockfish missing")
 class Moments(unittest.TestCase):                 # KS-3
     def setUp(self):
         self.rs = K.RuleSwitch(BINARY, VARIANTS, nodes=20000)
