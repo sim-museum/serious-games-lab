@@ -1109,3 +1109,18 @@ One item at a time, each with a goal, the check that proves it and a stopping po
       beginner puzzles' ratings are estimates.
     - Escapes stay opponent-dependent: Mirela's escapes alone are only 1.3 times a neutral player's.
     - Only 3 beginner escape puzzles.
+- **KS-13. The Kansas tour** (PO, 10-08: "do the Kansas tour for first-time players"). Goal: a newcomer goes from
+  "this looks like ordinary chess" to a first game against a specialist in about five minutes.
+  - `academy.TourWindow` has seven pages:
+    1. The two rules ("You're not in Kansas anymore").
+    2. The rules lesson's back-rank escape.
+    3. The easiest beginner escape (KS-11).
+    4–5. The two easiest self-capture mates in one.
+    6. What the board's rings, the coach and Post-Game Analysis show.
+    7. Hal, unrated, with the coach turned on.
+  - Next is enabled only once a board is solved or shown. The tour remembers its place.
+  - It opens by itself on a new player's first launch, with no profile and no Academy record (`CHESSIQ_TOUR=0`
+    turns that off). It also opens from Academy → Kansas tour.
+  - Check: tests (the boards are self-captures, easiest first; a walk through every page, closing halfway and
+    resuming, ending in an unrated game against Hal with the coach on; offered once only). Offscreen renders of the
+    intro, an escape board and the last page. Done.

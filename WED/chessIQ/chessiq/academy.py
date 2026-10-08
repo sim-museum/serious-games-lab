@@ -283,7 +283,7 @@ PUZZLE_K = 32                   # rating points per puzzle at most, as a club El
 PUZZLE_TEXT = {"self-capture": "Find the self-capture.",
                "quiet": "The natural move of ordinary chess is a mistake here. Find the best move.",
                "mate": "Mate in one. In Kramnik chess you may take your own pieces.",
-               "escape": "You are in check. Only one move saves you, and in ordinary chess it would be illegal."}
+               "escape": "You are in check. The best way out would be illegal in ordinary chess."}
 SPECIALIST_FOR = {"promotion": "Ada", "escape": "Mirela", "king-walk": "Ada", "king-other": "Mirela",
                   "check": "Corin", "attack": "Rosa", "activation": "Felix", "reposition": "Ada"}
 
@@ -416,3 +416,110 @@ def practice_exercises(moments, side=None):
         out.append(Exercise(m["fen"], prompt, [m["best_uci"]], K.describe(m)))
     return out
 
+
+
+# ---- the Kansas tour (KS-13): a first-time player's five minutes, from the rules to a first game ---------------------
+
+TOUR_INTRO = ("<h2>You're not in Kansas anymore</h2>"
+              "<p>This is chess: the same board, the same pieces, the same moves. Two rules are different.</p>"
+              "<ol><li><b>No castling.</b></li>"
+              "<li><b>You may capture your own pieces</b>, anything except your own king. The king may take its own "
+              "pieces too. The captured piece is simply gone.</li></ol>"
+              "<p>Most moves in most games are ordinary moves, so it all looks familiar. That is the trap: every so "
+              "often a self-capture turns a mate into no mate, a blocked pawn into a queen, a hopeless defence into "
+              "a win.</p><p>The next few boards take a minute each. Click a piece, then the square it goes to.</p>")
+TOUR_WATCH = ("<h2>Seeing it in your games</h2>"
+              "<p>When you select a piece, a <b>ring</b> marks each of your own pieces it could take.</p>"
+              "<p>In unrated games the <b>coach</b> speaks up on your turn: when a strong self-capture is there, "
+              "and, more often, when the natural move of ordinary chess fails to one. It never names the move.</p>"
+              "<p>After every game, <b>Post-Game Analysis</b> lists its Kansas moments, the self-captures played and "
+              "missed, and turns the ones you missed into positions to practise.</p>")
+TOUR_END = ("<h2>Your first opponent: Hal</h2>"
+            "<p>Hal (950) plays like any beginner, except for one habit: when his king is in danger it takes one of "
+            "its own pieces to get out. The game is unrated and the coach is on.</p>"
+            "<p>Afterwards, the <b>Academy</b> menu has eight lessons, from these rules to master ideas, and Kansas "
+            "puzzles at your level. Eight specialists, from Hal to Kestrel (2600), each play for one idea; "
+            "the <b>Choose…</b> button beside the opponent, then <b>Self-capture specialists</b>, shows them.</p>")
+TOUR_OPPONENT = "Hal"
+
+
+def tour_steps():
+    """[(kind, payload)]: "text" with HTML, or "ex" with an Exercise. The exercises are the rules lesson's quiz and the
+    easiest beginner puzzles: one escape, then two mates in one."""
+    steps = [("text", TOUR_INTRO)]
+    rules = next(l for l in LESSONS if l.key == "rules")
+    steps += [("ex", e) for e in rules.exercises if e.quiz][:1]
+    ps = sorted(load_puzzles(), key=lambda p: (p["rating"], p["id"]))
+    picks = [p for p in ps if p["kind"] == "escape"][:1] + [p for p in ps if p["kind"] == "mate"][:2]
+    steps += [("ex", Exercise(p["fen"], PUZZLE_TEXT[p["kind"]], p["solution"], p["explain"])) for p in picks]
+    return steps + [("text", TOUR_WATCH), ("end", TOUR_END)]
+
+
+class TourWindow(QDialog):
+    """The Kansas tour (KS-13): the rules, four boards to solve, what the app shows, then a game against Hal."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Kansas tour")
+        self.setModal(False)
+        self.resize(880, 560)
+        self.steps = tour_steps()
+        v = QVBoxLayout(self)
+        self.head = QLabel("")
+        v.addWidget(self.head)
+        self.text = QTextBrowser()
+        v.addWidget(self.text, 1)
+        self.view = ExerciseView()
+        self.view.finished.connect(lambda first_try: self.next_btn.setEnabled(True))
+        v.addWidget(self.view, 1)
+        row = QHBoxLayout()
+        self.show_btn = QPushButton("Show")
+        self.show_btn.clicked.connect(self.view.reveal)
+        self.next_btn = QPushButton("Next ▶")
+        self.next_btn.clicked.connect(lambda: self.go(self.step + 1))
+        self.play_btn = QPushButton("Play %s now" % TOUR_OPPONENT)
+        self.play_btn.clicked.connect(self.play)
+        self.later_btn = QPushButton("Later")
+        self.later_btn.clicked.connect(self.finish_later)
+        for b in (self.show_btn, self.next_btn, self.play_btn, self.later_btn):
+            row.addWidget(b)
+        row.addStretch(1)
+        v.addLayout(row)
+        st = load_state()
+        self.go(0 if st.get("tour_done") else min(st.get("tour_step", 0), len(self.steps) - 1))
+
+    def go(self, i):
+        self.step = i
+        kind, payload = self.steps[i]
+        self.head.setText("<b>Kansas tour</b> · step %d of %d" % (i + 1, len(self.steps)))
+        self.text.setVisible(kind != "ex")
+        self.view.setVisible(kind == "ex")
+        self.show_btn.setVisible(kind == "ex")
+        self.next_btn.setVisible(kind != "end")
+        self.play_btn.setVisible(kind == "end")
+        if kind == "ex":
+            self.view.load(payload)
+            self.next_btn.setEnabled(False)            # solve it, or press Show, first
+        else:
+            self.text.setHtml(payload)
+            self.next_btn.setEnabled(True)
+        st = load_state()
+        st["tour_step"] = i
+        save_state(st)
+
+    def _done(self):
+        st = load_state()
+        st.update(tour_done=True, tour_step=0)
+        save_state(st)
+
+    def play(self):
+        """Hal, unrated, with the coach on."""
+        self._done()
+        main = self.parent()
+        if main is not None and hasattr(main, "coach_box"):
+            main.coach_box.setChecked(True)
+        play_against(main, TOUR_OPPONENT)
+        self.close()
+
+    def finish_later(self):
+        self.close()

@@ -214,6 +214,80 @@ class PracticeFromYourGame(unittest.TestCase):    # KS-3 + KS-4: your own missed
         d.close()
 
 
+class Tour(unittest.TestCase):                     # KS-13: a first-time player's five minutes
+    def setUp(self):
+        self.home = tempfile.mkdtemp(prefix="chessiq-test-")
+        os.environ["CHESSIQ_HOME"] = self.home
+        os.environ["CHESSIQ_POSTGAME"] = "0"
+        from PyQt6.QtCore import QSettings
+        from PyQt6.QtWidgets import QApplication
+        from chessiq import academy, app
+        self.qa = QApplication.instance() or QApplication([])
+        self.academy, self.app = academy, app
+        self.coach = QSettings("sim-museum", "chessIQ").value("coach", "true")     # the tour turns the coach on
+
+    def tearDown(self):
+        from PyQt6.QtCore import QSettings
+        QSettings("sim-museum", "chessIQ").setValue("coach", self.coach)
+        os.environ.pop("CHESSIQ_POSTGAME", None)
+        shutil.rmtree(self.home, ignore_errors=True)
+
+    def test_the_boards_are_self_captures_easiest_first(self):
+        steps = self.academy.tour_steps()
+        self.assertEqual([k for k, _ in steps], ["text", "ex", "ex", "ex", "ex", "text", "end"])
+        for _, ex in steps[1:5]:
+            b, turn, ep, _, _ = K.from_fen(ex.fen)
+            for u in ex.solutions:
+                self.assertTrue(K.is_self_capture(b, turn, u), (ex.fen, u))
+        self.assertIn("in check", steps[2][1].prompt)
+        self.assertIn("Mate in one", steps[3][1].prompt)
+
+    def walk(self, t, upto):
+        while t.step < upto:
+            kind, ex = t.steps[t.step]
+            if kind == "ex":
+                self.assertFalse(t.next_btn.isEnabled())          # solve it (or press Show) first
+                m = K.find(*K.from_fen(ex.fen)[:3], ex.solutions[0])
+                t.view.on_square(m.frm); t.view.on_square(m.to)
+                self.assertTrue(t.view.solved)
+            self.assertTrue(t.next_btn.isEnabled())
+            t.next_btn.click()
+
+    def test_from_the_rules_to_a_game_against_hal(self):
+        m = self.app.MainWindow()
+        m.coach_box.setChecked(False)
+        m.tour_open()
+        t = m.tour
+        self.walk(t, 3)
+        t.close()
+        t2 = self.academy.TourWindow(m)                           # come back later: the tour resumes
+        self.assertEqual(t2.step, 3)
+        self.walk(t2, len(t2.steps) - 1)
+        self.assertFalse(t2.play_btn.isHidden())                   # the last page: play, not next
+        self.assertTrue(t2.next_btn.isHidden())
+        t2.play()
+        self.assertEqual(m.who.currentData(), "Hal")
+        self.assertFalse(m.rated_box.isChecked())
+        self.assertTrue(m.coach_box.isChecked())
+        self.assertTrue(self.academy.load_state()["tour_done"])
+        m.close()
+
+    def test_a_new_player_is_offered_the_tour_once(self):
+        os.environ["CHESSIQ_TOUR"] = "1"
+        try:
+            m = self.app.MainWindow()
+            m.welcome()
+            self.assertIsNotNone(m.tour)
+            self.assertIn("Kansas tour", m.note)
+            m.close()
+            m2 = self.app.MainWindow()                            # the tour has saved its place: no second offer
+            m2.welcome()
+            self.assertIsNone(m2.tour)
+            m2.close()
+        finally:
+            os.environ.pop("CHESSIQ_TOUR", None)
+
+
 class CoachInTheWindow(unittest.TestCase):         # KS-6: advice only in unrated games
     def setUp(self):
         self.home = tempfile.mkdtemp(prefix="chessiq-test-")

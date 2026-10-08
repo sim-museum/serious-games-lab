@@ -31,6 +31,8 @@ may take its own pieces too). It's Wednesday's game in Serious Games Week ([seri
     solve on the board, from the AlphaZero/Kramnik paper and from strong engine games. Every solution is checked by
     a deep search (`tools/lesson_check.py`), and Leela agrees on 22 of 24. Each lesson ends with a game against its
     specialist.
+  - **Academy → Kansas tour**: five minutes for a first-time player, offered on the first launch: the two rules,
+    four boards to solve, what the app shows, then an unrated game against Hal with the coach on.
   - **Academy → Kansas puzzles**: 172 puzzles. 93 are mined from strong engine games, checked by both engines and rated
     1163–2600 by the search strength that finds them. 79 beginner puzzles (660–1100) teach that self-capture is
     legal at all: mates in one that need it, and checks it alone escapes. All are served near your own puzzle rating. Each puzzle's rating

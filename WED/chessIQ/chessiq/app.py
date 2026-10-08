@@ -520,21 +520,32 @@ class MainWindow(QMainWindow):
             act.triggered.connect(fn)
             tm.addAction(act)
         am = self.menuBar().addMenu("&Academy")
+        tour = QAction("Kansas &tour for first-time players...", self)
+        tour.triggered.connect(self.tour_open)
+        am.addAction(tour)
         acad = QAction("Kramnik &Academy: lessons on self-capture...", self)
         acad.triggered.connect(self.academy_open)
         am.addAction(acad)
         puz = QAction("Kansas &puzzles...", self)
         puz.triggered.connect(self.puzzles_open)
         am.addAction(puz)
-        self.academy, self.puzzles = None, None
+        self.academy, self.puzzles, self.tour = None, None, None
         self.resize(1000, 680)
 
     def welcome(self):
-        """A new player's first look (KS-8): the game looks ordinary, so say where the differences are taught."""
+        """A new player's first look (KS-8, KS-13): the game looks ordinary, so open the Kansas tour."""
         if self.profile is None and not academy.load_state():
-            self.note = ("New to Kramnik chess? It looks like ordinary chess, but it isn't. Academy → Kramnik Academy "
-                         "shows what self-capture changes, in short lessons.")
+            self.note = ("New to Kramnik chess? It looks like ordinary chess, but it isn't. The Kansas tour "
+                         "(Academy menu) shows the difference in five minutes.")
             self.render()
+            if os.environ.get("CHESSIQ_TOUR", "1") != "0":
+                self.tour_open()
+
+    def tour_open(self):
+        """The Kansas tour (KS-13): the rules, four boards, then a first game against Hal."""
+        if self.tour is None:
+            self.tour = academy.TourWindow(self)
+        self.tour.show(); self.tour.raise_()
 
     def academy_open(self):
         """The Kramnik Academy (KS-4): lessons and positions on what self-capture changes."""
@@ -1272,7 +1283,7 @@ class MainWindow(QMainWindow):
             self.engine.close()
         if self.coach_rs is not None:
             self.coach_rs.close()
-        for w in (self.academy, self.puzzles):
+        for w in (self.academy, self.puzzles, self.tour):
             if w is not None:
                 w.close()
         super().closeEvent(ev)
