@@ -1,0 +1,66 @@
+"""KS: a second opinion from the other engine. Fairy-Stockfish finds and checks the Academy's lessons and puzzles
+(tools/lesson_check.py, tools/mine_puzzles.py); Leela T40 (lc0, kramnik-t40a1 on the GPU), which judges by a
+network rather than by deep calculation, is asked for its move in every position.
+python3 tools/leela_verdict.py lessons            print agreement on the lesson positions
+python3 tools/leela_verdict.py puzzles [NODES]    mark each puzzle in chessiq/puzzles.json with "leela": true/false"""
+import json
+import os
+import subprocess
+import sys
+R = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, R)
+from chessiq.lessons import LESSONS  # noqa: E402
+
+LC0 = os.path.join(R, "engine", "lc0-kramnik-gpu")
+NET = os.path.join(R, "engine", "nets", "kramnik-t40a1.pb.gz")
+PUZZLES = os.path.join(R, "chessiq", "puzzles.json")
+
+
+class Leela:
+    def __init__(self, nodes):
+        self.nodes = nodes
+        self.p = subprocess.Popen([LC0, "--weights=" + NET, "--backend=cuda-fp16", "--threads=2"], stdin=subprocess.PIPE,
+                                  stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1)
+        self.p.stdin.write("uci\nisready\n"); self.p.stdin.flush()
+        for line in self.p.stdout:
+            if line.startswith("readyok"):
+                break
+
+    def best(self, fen):
+        self.p.stdin.write("ucinewgame\nposition fen %s\ngo nodes %d\n" % (fen, self.nodes)); self.p.stdin.flush()
+        for line in self.p.stdout:
+            if line.startswith("bestmove"):
+                return line.split()[1]
+
+    def close(self):
+        self.p.stdin.write("quit\n"); self.p.stdin.flush(); self.p.wait(timeout=10)
+
+
+def main():
+    a = sys.argv[1:]
+    what = a[0] if a else "lessons"
+    lz = Leela(int(a[1]) if len(a) > 1 else 10000)
+    try:
+        if what == "lessons":
+            agree = n = 0
+            for lesson in LESSONS:
+                for i, ex in enumerate(lesson.exercises):
+                    u = lz.best(ex.fen)
+                    ok = u in ex.solutions
+                    agree += ok; n += 1
+                    print("%-5s %-11s %d %s  Leela %s" % ("agree" if ok else "DIFF", lesson.key, i + 1,
+                                                          "Q" if ex.quiz else "D", u))
+            print("Leela agrees on %d of %d lesson positions" % (agree, n))
+        else:
+            ps = json.load(open(PUZZLES))
+            for p in ps:
+                p["leela"] = lz.best(p["fen"]) in p["solution"]
+            with open(PUZZLES, "w") as f:
+                json.dump(ps, f, indent=0)
+            print("Leela agrees on %d of %d puzzles" % (sum(p["leela"] for p in ps), len(ps)))
+    finally:
+        lz.close()
+
+
+if __name__ == "__main__":
+    main()

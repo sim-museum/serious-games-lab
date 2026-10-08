@@ -116,7 +116,8 @@ LESSONS = [
                      "Black is cramped. In ordinary chess Black would struggle for a plan. Find one move that changes "
                      "that.",
                      ["a8a7"],
-                     "Rxa7: the rook takes its own pawn and the a-file is open for it. AlphaZero equalised from here.",
+                     "Rxa7: the rook takes its own pawn and the a-file is open for it. AlphaZero equalised from here. "
+                     "(Quieter moves are about as good; this is the idea to know.)",
                      "paper AZ-38", quiz=False),
             Exercise("4r1k1/1q3p2/1p2p1p1/nP2P3/5P1B/4n2P/4N1P1/1QR3K1 w - - 1 35",
                      "White to move.",
