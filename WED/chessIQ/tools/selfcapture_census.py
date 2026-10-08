@@ -4,9 +4,16 @@ they do, and where the mere possibility of one changes the best move.
 python3 tools/selfcapture_census.py validate
     Classify the paper's example self-captures; every label must match.
 python3 tools/selfcapture_census.py census OUTDIR GAMES.jsonl [GAMES.jsonl ...] [--nodes N] [--workers K] [--every P]
+                                    [--reuse]
     GAMES files come from tools/uci_match.py --games. Writes OUTDIR/selfcaptures.jsonl (every self-capture played,
     with its motif label), OUTDIR/positions.jsonl (a rule-switch search of sampled positions: Fairy-Stockfish with
-    self-capture on and off, fixed nodes, one thread) and OUTDIR/report.md.
+    self-capture on and off, fixed nodes, one thread) and OUTDIR/report.md. --reuse re-labels an existing complete
+    positions.jsonl instead of searching again.
+
+Scores are capped at +/-1000 cp before any comparison, so mate-in-N against mate-in-M (or a mate one search misses)
+is not counted as a self-capture effect. The two rule settings search differently even where self-capture cannot
+matter, so the report gives a control: positions where neither side has two non-king pieces, where no self-capture
+can ever happen.
 
 Motif labels (first match wins): promotion (a pawn self-captures onto its 7th or 8th rank), escape (the king
 self-captures out of check), king-walk (the king self-captures in an endgame), king-other, check (the move gives check,
@@ -236,18 +243,36 @@ def _probe(job):
     return out
 
 
+CAP = 1000
+
+
+def cp(s):
+    return max(-CAP, min(CAP, s))
+
+
+def gain(p):
+    return cp(p["score_on"]) - cp(p["score_off"])
+
+
+def never_sc(fen):
+    """No self-capture can ever happen: neither side has two non-king pieces (a promotion only replaces a pawn)."""
+    b = from_fen(fen)[0]
+    n = Counter(x[0] for x in b if x and x[1] != "k")
+    return n["w"] <= 1 and n["b"] <= 1
+
+
 def label(p, margin=50):
-    gain = p["score_on"] - p["score_off"]
-    if p["sc_best"] and gain >= margin:
+    gain_ = gain(p)
+    if p["sc_best"] and gain_ >= margin:
         return "direct"
-    if not p["sc_best"] and p["best_on"] != p["best_off"] and abs(gain) >= margin:
+    if not p["sc_best"] and p["best_on"] != p["best_off"] and abs(gain_) >= margin:
         return "threat"
     return "differs" if p["best_on"] != p["best_off"] else "same"
 
 
 # ---- census ------------------------------------------------------------------------------------------------------
 
-def census(outdir, files, nodes, workers, every):
+def census(outdir, files, nodes, workers, every, reuse=False):
     os.makedirs(outdir, exist_ok=True)
     ini = os.path.join(outdir, "rules.ini")
     open(ini, "w").write(INI)
@@ -271,8 +296,18 @@ def census(outdir, files, nodes, workers, every):
     with open(os.path.join(outdir, "selfcaptures.jsonl"), "w") as f:
         for s in scs:
             f.write(json.dumps(s) + "\n")
-    pos = []
-    with Pool(workers, _init, (ini, nodes)) as pool, open(os.path.join(outdir, "positions.jsonl"), "w") as f:
+    pos, done = [], os.path.join(outdir, "positions.jsonl")
+    if reuse:
+        pos = [json.loads(line) for line in open(done)]
+        if len(pos) != len(jobs):
+            raise SystemExit("--reuse: %d positions on file, %d sampled" % (len(pos), len(jobs)))
+        for p in pos:
+            p["label"] = label(p)
+        with open(done, "w") as f:
+            f.writelines(json.dumps(p) + "\n" for p in pos)
+        open(os.path.join(outdir, "report.md"), "w").write(report(games, scs, pos, nodes))
+        return
+    with Pool(workers, _init, (ini, nodes)) as pool, open(done, "w") as f:
         for p in pool.imap_unordered(_probe, jobs, chunksize=4):
             b, turn, ep = from_fen(p["fen"])
             m = find(b, turn, ep, p["best_on"])
@@ -317,19 +352,21 @@ def report(games, scs, pos, nodes):
           "self-capture worth at least 50 cp over the best play without self-capture. **threat**: the best move is "
           "not a self-capture but changes, and the evaluation moves at least 50 cp, because self-captures exist. "
           "**differs**: the best move changes by less than that. The noise floor repeats every tenth position with "
-          "the rules on and 10% more nodes.", "",
+          "the rules on and 10% more nodes. Scores are capped at +/-1000 cp (a mate counts as 1000). **control**: "
+          "positions where no self-capture can ever happen; anything other than *same* there is the two rule "
+          "settings searching differently, not self-capture.", "",
           "| Phase | Positions | direct | threat | differs | same |", "|---|---|---|---|---|---|"]
-    for ph in ("opening", "middlegame", "endgame", "all"):
-        ps = [p for p in pos if ph == "all" or p["phase"] == ph]
+    for ph in ("opening", "middlegame", "endgame", "all", "control"):
+        ps = [p for p in pos if ph == "all" or p["phase"] == ph or (ph == "control" and never_sc(p["fen"]))]
         c = Counter(p["label"] for p in ps)
         L.append("| %s | %d | %s | %s | %s | %s |" % (ph, len(ps), pct(c["direct"], len(ps)), pct(c["threat"], len(ps)),
                                                     pct(c["differs"], len(ps)), pct(c["same"], len(ps))))
     rep = [p for p in pos if p["repeat"]]
     noise_move = sum(1 for p in rep if p["best_on2"] != p["best_on"])
-    noise_big = sum(1 for p in rep if p["best_on2"] != p["best_on"] and abs(p["score_on2"] - p["score_on"]) >= 50)
+    noise_big = sum(1 for p in rep if p["best_on2"] != p["best_on"] and abs(cp(p["score_on2"]) - cp(p["score_on"])) >= 50)
     L += ["", "Noise floor (%d positions, same rules, 10%% more nodes): best move changes in %s, and also by 50+ cp in "
           "%s." % (len(rep), pct(noise_move, len(rep)), pct(noise_big, len(rep))), ""]
-    direct = sorted((p for p in pos if p["label"] == "direct"), key=lambda p: -(p["score_on"] - p["score_off"]))
+    direct = sorted((p for p in pos if p["label"] == "direct"), key=lambda p: -gain(p))
     L += ["## Example positions (direct, largest gain first, at most three per motif)", "",
           "| # | Source | Phase | Motif | Move | Gain (cp) | FEN |", "|---|---|---|---|---|---|---|"]
     per, n = Counter(), 0
@@ -338,13 +375,13 @@ def report(games, scs, pos, nodes):
             continue
         per[p.get("motif")] += 1; n += 1
         L.append("| %d | %s | %s | %s | %s | %+d | `%s` |" % (n, p["src"], p["phase"], p.get("motif"), p["san_on"],
-                                                             p["score_on"] - p["score_off"], p["fen"]))
-    threat = sorted((p for p in pos if p["label"] == "threat"), key=lambda p: -abs(p["score_on"] - p["score_off"]))
+                                                             gain(p), p["fen"]))
+    threat = sorted((p for p in pos if p["label"] == "threat"), key=lambda p: -abs(gain(p)))
     L += ["", "## Threat examples (largest evaluation change first)", "",
           "| # | Source | Phase | Best (on) | Best (off) | Change (cp) | FEN |", "|---|---|---|---|---|---|---|"]
     for i, p in enumerate(threat[:10], 1):
         L.append("| %d | %s | %s | %s | %s | %+d | `%s` |" % (i, p["src"], p["phase"], p["san_on"], p["best_off"],
-                                                             p["score_on"] - p["score_off"], p["fen"]))
+                                                             gain(p), p["fen"]))
     return "\n".join(L) + "\n"
 
 
@@ -354,11 +391,13 @@ def main():
         raise SystemExit(__doc__)
     if a[0] == "validate":
         raise SystemExit(1 if validate() else 0)
+    reuse = "--reuse" in a
+    a = [x for x in a if x != "--reuse"]
     opts = {"--nodes": 200000, "--workers": 4, "--every": 4}
     for k in list(opts):
         if k in a:
             i = a.index(k); opts[k] = int(a[i + 1]); del a[i:i + 2]
-    census(a[1], a[2:], opts["--nodes"], opts["--workers"], opts["--every"])
+    census(a[1], a[2:], opts["--nodes"], opts["--workers"], opts["--every"], reuse)
 
 
 if __name__ == "__main__":
