@@ -150,13 +150,13 @@ def main():
                 found.append(r)
             if (i + 1) % 50 == 0:
                 print("%d/%d judged, %d puzzles" % (i + 1, len(fens), len(found)), flush=True)
-    if merge and os.path.exists(OUT):
-        old = json.load(open(OUT))
-        have = {p["fen"] for p in old}
-        found = old + [r for r in found if r["fen"] not in have]
     found.sort(key=lambda r: (r["rating"], r["fen"]))
-    for i, r in enumerate(found):
-        r["id"] = i + 1
+    old = json.load(open(OUT)) if merge and os.path.exists(OUT) else []
+    have, top = {p["fen"] for p in old}, max([p["id"] for p in old] or [0])
+    new = [r for r in found if r["fen"] not in have]
+    for i, r in enumerate(new):                 # ids already given never change: players' records use them
+        r["id"] = top + 1 + i
+    found = sorted(old + new, key=lambda r: (r["rating"], r["id"]))
     with open(OUT, "w") as f:
         json.dump(found, f, indent=0)
     print("%d puzzles -> %s" % (len(found), OUT))

@@ -281,7 +281,9 @@ class AcademyWindow(QDialog):
 
 PUZZLE_K = 32                   # rating points per puzzle at most, as a club Elo
 PUZZLE_TEXT = {"self-capture": "Find the self-capture.",
-               "quiet": "The natural move of ordinary chess is a mistake here. Find the best move."}
+               "quiet": "The natural move of ordinary chess is a mistake here. Find the best move.",
+               "mate": "Mate in one. In Kramnik chess you may take your own pieces.",
+               "escape": "You are in check. Only one move saves you, and in ordinary chess it would be illegal."}
 SPECIALIST_FOR = {"promotion": "Ada", "escape": "Mirela", "king-walk": "Ada", "king-other": "Mirela",
                   "check": "Corin", "attack": "Rosa", "activation": "Felix", "reposition": "Felix"}
 
@@ -337,7 +339,7 @@ class PuzzleWindow(QDialog):
         p = self.current
         ex = Exercise(p["fen"], PUZZLE_TEXT[p["kind"]], p["solution"], p["explain"])
         self.view.load(ex, "Puzzle %d · rated %d · " % (p["id"], puzzle_rating(p, self.adj)))
-        self.specialist = SPECIALIST_FOR.get(p.get("motif", ""), "Selim")
+        self.specialist = "Hal" if p["kind"] in ("mate", "escape") else SPECIALIST_FOR.get(p.get("motif", ""), "Selim")
         self.play_btn.setText("Play %s, who plays for this" % self.specialist)
         self._head()
 

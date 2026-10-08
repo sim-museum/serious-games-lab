@@ -3,7 +3,8 @@
 network rather than by deep calculation, is asked for its move in every position.
 python3 tools/leela_verdict.py lessons            print agreement on the lesson positions
 python3 tools/leela_verdict.py puzzles [NODES]    keep only the puzzles in chessiq/puzzles.json where Leela agrees
-                                                  (both engines, by different methods), renumbered by rating"""
+                                                  (both engines, by different methods); ids never change
+python3 tools/leela_verdict.py check FILE [NODES] the same for a file of candidate puzzles"""
 import json
 import os
 import subprocess
@@ -40,6 +41,9 @@ class Leela:
 def main():
     a = sys.argv[1:]
     what = a[0] if a else "lessons"
+    path = PUZZLES
+    if what == "check":
+        path = a.pop(1)
     lz = Leela(int(a[1]) if len(a) > 1 else 10000)
     try:
         if what == "lessons":
@@ -53,13 +57,15 @@ def main():
                                                           "Q" if ex.quiz else "D", u))
             print("Leela agrees on %d of %d lesson positions" % (agree, n))
         else:
-            ps = json.load(open(PUZZLES))
-            keep = [p for p in ps if lz.best(p["fen"]) in p["solution"]]
-            keep.sort(key=lambda p: (p["rating"], p["fen"]))
-            for i, p in enumerate(keep):
-                p.pop("leela", None)
-                p["id"] = i + 1
-            with open(PUZZLES, "w") as f:
+            ps = json.load(open(path))
+            keep = []
+            for p in ps:
+                u = lz.best(p["fen"])
+                if u in p["solution"]:
+                    keep.append(p)
+                else:
+                    print("DIFF %s %s: solution %s, Leela %s" % (p.get("id", "-"), p["fen"], p["solution"], u))
+            with open(path, "w") as f:
                 json.dump(keep, f, indent=0)
             print("Leela agrees on %d of %d puzzles; kept those" % (len(keep), len(ps)))
     finally:

@@ -1065,3 +1065,18 @@ One item at a time, each with a goal, the check that proves it and a stopping po
     an older shipped rating is ignored, so folding twice changes nothing.
   - Check: tests (a solve lowers the puzzle, a level miss raises it 2400 → 2420, a counted attempt
     counts once, a stale record is ignored, the fold arithmetic). Done.
+- **KS-11. Beginner puzzles below 1163.** Goal: puzzles a newcomer can solve, teaching that self-capture is legal at all.
+  - Source: 3000 games among weak players (Hal, Rosa, Felix and six Chessmaster personalities under 1000 to 1120,
+    `tools/specialist_games.py` with a field), where mates and checks are common.
+  - `tools/beginner_puzzles.py` finds two kinds. "Mate in one", where every mating move is a self-capture: 76.
+    "Escape", in check with only one saving move, a self-capture: 3 of a 1200-position sample (most checks in weak
+    games are already lost or allow several saves).
+  - The ladder cannot rate below its floor, so these get a starting estimate from how many moves a beginner must
+    look past: 700 + 60 per further checking move, 600 + 60 per further legal move, at most 1100. KS-9 corrects them.
+  - Checks: Fairy-Stockfish scores every mate solution as mate in one (and the check rejects a non-mate, 967 cp).
+    Leela agrees on all 3 escapes. Leela is not asked about the mates: in the first try it preferred another
+    winning move on 38 of 79, which does not refute "mate in one".
+  - Puzzle ids now never change when puzzles are added (`mine_puzzles.py --merge`, `leela_verdict.py`): players'
+    records use them.
+  - Result: 172 puzzles, 79 of them rated 660–1100. The prompt says self-capture is allowed, and the sparring
+    partner offered is Hal. Check: tests and an offscreen solve at a puzzle rating of 900. Done.

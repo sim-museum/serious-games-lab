@@ -1,7 +1,7 @@
 """KS-5: games between the strong self-capture specialists, for mining more puzzles: they play for the positions
 where self-capture matters. Same JSON-lines format as tools/uci_match.py --games, so
 tools/selfcapture_census.py and tools/mine_puzzles.py read them unchanged.
-python3 tools/specialist_games.py GAMES SEED OUT.jsonl"""
+python3 tools/specialist_games.py GAMES SEED OUT.jsonl [NAME,NAME,...]   (default field: FIELD)"""
 import json
 import os
 import random
@@ -25,11 +25,12 @@ class Player:
 
 def main():
     games, seed, out = int(sys.argv[1]), int(sys.argv[2]), sys.argv[3]
+    field = sys.argv[4].split(",") if len(sys.argv) > 4 else FIELD
     rnd = random.Random(seed)
-    players = {n: Player(n, seed + i) for i, n in enumerate(FIELD)}
+    players = {n: Player(n, seed + i) for i, n in enumerate(field)}
     with open(out, "a") as f:
         for g in range(games):
-            w, b = rnd.sample(FIELD, 2)
+            w, b = rnd.sample(field, 2)
             start = opening(rnd)
             players[w].e.new_game(); players[b].e.new_game()
             moves = []

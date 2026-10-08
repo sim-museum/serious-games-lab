@@ -1,5 +1,964 @@
 [
 {
+"fen": "rn2kb1r/1p3Bp1/p1p5/5bBp/3q4/5p2/PPQ2PPP/3R1K1R b - - 0 15",
+"solution": [
+"e8f8"
+],
+"san": "Kxf8",
+"score": -296,
+"kind": "escape",
+"motif": "escape",
+"explain": "Kxf8! The king escapes check by taking its own bishop. Without self-capture this position would be lost.",
+"nodes": 16,
+"rating": 660,
+"id": 170
+},
+{
+"fen": "8/3bn3/3p2p1/8/1r5p/3B1P2/4Pk1K/8 b - - 5 58",
+"solution": [
+"b4h4"
+],
+"san": "Rxh4#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxh4#! The rook takes its own pawn on h4, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 700,
+"id": 94
+},
+{
+"fen": "8/8/8/1r5p/8/5k1K/8/8 b - - 2 47",
+"solution": [
+"b5h5"
+],
+"san": "Rxh5#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxh5#! The rook takes its own pawn on h5, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 700,
+"id": 95
+},
+{
+"fen": "3R3R/6k1/6rp/2r4p/8/4P2K/8/8 b - - 6 62",
+"solution": [
+"c5h5"
+],
+"san": "Rxh5#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxh5#! The rook takes its own pawn on h5, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 760,
+"id": 96
+},
+{
+"fen": "6rk/1p2rR2/2n2N2/2p5/p1B2K2/2P5/PP5P/7R w - - 9 34",
+"solution": [
+"h1h2"
+],
+"san": "Rxh2#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxh2#! The rook takes its own pawn on h2, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 760,
+"id": 97
+},
+{
+"fen": "8/7K/8/7p/2k5/4p3/7r/6r1 b - - 5 74",
+"solution": [
+"h2h5"
+],
+"san": "Rxh5#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxh5#! The rook takes its own pawn on h5, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 760,
+"id": 98
+},
+{
+"fen": "8/8/7K/8/2k4p/4p3/7r/6r1 b - - 1 75",
+"solution": [
+"h2h4"
+],
+"san": "Rxh4#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxh4#! The rook takes its own pawn on h4, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 760,
+"id": 99
+},
+{
+"fen": "8/8/K7/7p/p7/6k1/r7/1r6 b - - 1 50",
+"solution": [
+"a2a4"
+],
+"san": "Rxa4#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxa4#! The rook takes its own pawn on a4, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 760,
+"id": 100
+},
+{
+"fen": "2r2k1r/1p3pp1/4B1b1/b6p/7P/B1N3n1/2NK1P2/R3R3 b - - 1 31",
+"solution": [
+"f8g7"
+],
+"san": "Kxg7",
+"score": -130,
+"kind": "escape",
+"motif": "escape",
+"explain": "Kxg7! The king escapes check by taking its own pawn. Without self-capture the best play here would be 2.2 worse.",
+"nodes": 16,
+"rating": 780,
+"id": 171
+},
+{
+"fen": "3R3r/4bk1p/p7/6P1/8/4n3/1P4r1/7K b - - 1 30",
+"solution": [
+"h8h7"
+],
+"san": "Rxh7#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxh7#! The rook takes its own pawn on h7, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 820,
+"id": 101
+},
+{
+"fen": "8/1R4B1/8/5p2/P2R1K1N/8/k7/8 w - - 5 46",
+"solution": [
+"d4a4"
+],
+"san": "Rxa4#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxa4#! The rook takes its own pawn on a4, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 820,
+"id": 102
+},
+{
+"fen": "8/1k5p/p1r5/KpP2PpP/5P2/6R1/1r6/8 b - - 0 39",
+"solution": [
+"c6a6"
+],
+"san": "Rxa6#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxa6#! The rook takes its own pawn on a6, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 820,
+"id": 103
+},
+{
+"fen": "8/2r4k/8/4R2P/p2N4/P7/1P1NK3/6R1 w - - 1 42",
+"solution": [
+"e5h5"
+],
+"san": "Rxh5#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxh5#! The rook takes its own pawn on h5, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 820,
+"id": 104
+},
+{
+"fen": "8/4p3/3k1bp1/5P1p/2K4P/2p3r1/1r6/8 b - - 0 52",
+"solution": [
+"g3c3"
+],
+"san": "Rxc3#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxc3#! The rook takes its own pawn on c3, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 820,
+"id": 105
+},
+{
+"fen": "8/7k/3p4/6p1/3q3p/5P1K/4r1P1/8 b - - 1 33",
+"solution": [
+"d4h4"
+],
+"san": "Qxh4#",
+"kind": "mate",
+"motif": "check",
+"explain": "Qxh4#! The queen takes its own pawn on h4, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 820,
+"id": 106
+},
+{
+"fen": "8/8/r5P1/8/4k2p/2n5/p5r1/K7 b - - 0 51",
+"solution": [
+"a6a2",
+"g2a2"
+],
+"san": "Raxa2#",
+"kind": "mate",
+"motif": "check",
+"explain": "Raxa2#! The rook takes its own pawn on a2, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 820,
+"id": 107
+},
+{
+"fen": "8/8/r7/6P1/4k2p/2n5/p2r2P1/K7 b - - 0 50",
+"solution": [
+"a6a2",
+"d2a2"
+],
+"san": "Raxa2#",
+"kind": "mate",
+"motif": "check",
+"explain": "Raxa2#! The rook takes its own pawn on a2, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 820,
+"id": 108
+},
+{
+"fen": "8/R7/2p2k1P/5p2/P3PPp1/1P2K1P1/8/7R w - - 1 35",
+"solution": [
+"h1h6"
+],
+"san": "Rxh6#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxh6#! The rook takes its own pawn on h6, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 820,
+"id": 109
+},
+{
+"fen": "8/p1Qr1p2/2BPp2k/8/6RP/6P1/P1P2K2/7R w - - 3 30",
+"solution": [
+"h1h4"
+],
+"san": "Rhxh4#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rhxh4#! The rook takes its own pawn on h4, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 820,
+"id": 110
+},
+{
+"fen": "r7/2k1P1B1/8/N3NBP1/P1P2K2/8/8/1R6 w - - 1 58",
+"solution": [
+"g7e5"
+],
+"san": "Bxe5#",
+"kind": "mate",
+"motif": "check",
+"explain": "Bxe5#! The bishop takes its own knight on e5, and it is mate. In ordinary chess your own knight would be in the way.",
+"rating": 820,
+"id": 111
+},
+{
+"fen": "r3kb1r/pp2pppp/nqp5/5b2/R1pP3P/5NN1/1PnBPP2/3QKB1R w - - 1 12",
+"solution": [
+"e1f2"
+],
+"san": "Kxf2",
+"score": -264,
+"kind": "escape",
+"motif": "escape",
+"explain": "Kxf2! The king escapes check by taking its own pawn. Without self-capture this position would be lost.",
+"nodes": 16,
+"rating": 840,
+"id": 172
+},
+{
+"fen": "6Q1/k1p2N2/P7/2PP4/8/4P3/2Q2K2/R7 w - - 1 39",
+"solution": [
+"c2c5"
+],
+"san": "Qxc5#",
+"kind": "mate",
+"motif": "check",
+"explain": "Qxc5#! The queen takes its own pawn on c5, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 880,
+"id": 112
+},
+{
+"fen": "7k/4NR2/3p1p2/2p5/3PP2P/3K1NP1/4B2R/8 w - - 0 40",
+"solution": [
+"h2h4"
+],
+"san": "Rxh4#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxh4#! The rook takes its own pawn on h4, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 880,
+"id": 113
+},
+{
+"fen": "r7/pp1R4/4qr2/1N4Q1/1kP1P3/5R2/1P2K1P1/5B2 w - - 2 34",
+"solution": [
+"g5b5"
+],
+"san": "Qxb5#",
+"kind": "mate",
+"motif": "check",
+"explain": "Qxb5#! The queen takes its own knight on b5, and it is mate. In ordinary chess your own knight would be in the way.",
+"rating": 880,
+"id": 114
+},
+{
+"fen": "2Q5/P4p1k/8/8/2BbR2P/2P5/6R1/5K2 w - - 0 30",
+"solution": [
+"e4h4"
+],
+"san": "Rxh4#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxh4#! The rook takes its own pawn on h4, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 940,
+"id": 115
+},
+{
+"fen": "4n3/1p2kp2/1p4pb/4P3/5p2/3r3b/1P5K/5r2 b - - 0 33",
+"solution": [
+"h6f4"
+],
+"san": "Bxf4#",
+"kind": "mate",
+"motif": "check",
+"explain": "Bxf4#! The bishop takes its own pawn on f4, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 940,
+"id": 116
+},
+{
+"fen": "7r/8/6p1/4k1P1/1b2P3/4K2p/ppr4P/8 b - - 6 52",
+"solution": [
+"h8h3"
+],
+"san": "Rxh3#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxh3#! The rook takes its own pawn on h3, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 940,
+"id": 117
+},
+{
+"fen": "8/5k2/1q4pK/4Bp1p/2b4P/3r4/8/8 b - - 4 37",
+"solution": [
+"b6g6"
+],
+"san": "Qxg6#",
+"kind": "mate",
+"motif": "check",
+"explain": "Qxg6#! The queen takes its own pawn on g6, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 940,
+"id": 118
+},
+{
+"fen": "8/5rkp/8/p5pK/1p1P4/6r1/5qQ1/8 b - - 1 47",
+"solution": [
+"f2f7"
+],
+"san": "Qxf7#",
+"kind": "mate",
+"motif": "check",
+"explain": "Qxf7#! The queen takes its own rook on f7, and it is mate. In ordinary chess your own rook would be in the way.",
+"rating": 940,
+"id": 119
+},
+{
+"fen": "8/7R/4P3/6P1/1pp3kP/4B3/2B1KP2/7R w - - 2 34",
+"solution": [
+"h7h4",
+"h1h4"
+],
+"san": "R7xh4#",
+"kind": "mate",
+"motif": "check",
+"explain": "R7xh4#! The rook takes its own pawn on h4, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 940,
+"id": 120
+},
+{
+"fen": "8/R7/4p1Q1/1BQp4/7P/6Pk/5K2/8 w - - 1 47",
+"solution": [
+"g6g3"
+],
+"san": "Qxg3#",
+"kind": "mate",
+"motif": "check",
+"explain": "Qxg3#! The queen takes its own pawn on g3, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 940,
+"id": 121
+},
+{
+"fen": "B5k1/2R5/8/R7/8/4KP2/PP4P1/8 w - - 3 40",
+"solution": [
+"a5a8"
+],
+"san": "Rxa8#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxa8#! The rook takes its own bishop on a8, and it is mate. In ordinary chess your own bishop would be in the way.",
+"rating": 940,
+"id": 122
+},
+{
+"fen": "r3k3/p3p3/1p4p1/2P1bpK1/1nP1qB2/1P4P1/P4P2/R2Q1B1r b - - 1 19",
+"solution": [
+"e4f5"
+],
+"san": "Qxf5#",
+"kind": "mate",
+"motif": "check",
+"explain": "Qxf5#! The queen takes its own pawn on f5, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 940,
+"id": 123
+},
+{
+"fen": "r4k2/p1pp1p1r/6p1/6q1/2P4p/8/PBNP4/7K b - - 5 25",
+"solution": [
+"h7h4"
+],
+"san": "Rxh4#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxh4#! The rook takes its own pawn on h4, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 940,
+"id": 124
+},
+{
+"fen": "5Q1Q/P7/6R1/4K1P1/8/8/8/6k1 w - - 3 55",
+"solution": [
+"g6g5"
+],
+"san": "Rxg5#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxg5#! The rook takes its own pawn on g5, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 1000,
+"id": 125
+},
+{
+"fen": "5k2/8/8/p1rn3p/1r5P/K2bb3/8/8 b - - 1 56",
+"solution": [
+"c5a5"
+],
+"san": "Rxa5#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxa5#! The rook takes its own pawn on a5, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 1000,
+"id": 126
+},
+{
+"fen": "6Q1/7R/1k2N3/8/PP6/2R5/2P2K2/R7 w - - 1 46",
+"solution": [
+"g8e6"
+],
+"san": "Qxe6#",
+"kind": "mate",
+"motif": "check",
+"explain": "Qxe6#! The queen takes its own knight on e6, and it is mate. In ordinary chess your own knight would be in the way.",
+"rating": 1000,
+"id": 127
+},
+{
+"fen": "Q5Q1/4R3/3K4/8/8/8/6Bk/8 w - - 1 58",
+"solution": [
+"a8g2",
+"g8g2"
+],
+"san": "Qaxg2#",
+"kind": "mate",
+"motif": "check",
+"explain": "Qaxg2#! The queen takes its own bishop on g2, and it is mate. In ordinary chess your own bishop would be in the way.",
+"rating": 1000,
+"id": 128
+},
+{
+"fen": "r1b2k1r/pp3Bb1/2p5/6Np/4q3/1Q6/PPP2KPP/R2R4 w - - 2 17",
+"solution": [
+"b3f7"
+],
+"san": "Qxf7#",
+"kind": "mate",
+"motif": "check",
+"explain": "Qxf7#! The queen takes its own bishop on f7, and it is mate. In ordinary chess your own bishop would be in the way.",
+"rating": 1000,
+"id": 129
+},
+{
+"fen": "4k3/p4pp1/8/1p6/P3q3/1P6/3r2b1/6K1 b - a3 0 27",
+"solution": [
+"e4g2"
+],
+"san": "Qxg2#",
+"kind": "mate",
+"motif": "check",
+"explain": "Qxg2#! The queen takes its own bishop on g2, and it is mate. In ordinary chess your own bishop would be in the way.",
+"rating": 1060,
+"id": 130
+},
+{
+"fen": "7Q/1R6/8/8/2kP1R2/6K1/P5P1/8 w - - 1 44",
+"solution": [
+"h8d4"
+],
+"san": "Qxd4#",
+"kind": "mate",
+"motif": "check",
+"explain": "Qxd4#! The queen takes its own pawn on d4, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 1060,
+"id": 131
+},
+{
+"fen": "7k/2p5/3r3p/6p1/5p2/1P6/5qP1/7K b - - 1 36",
+"solution": [
+"d6h6"
+],
+"san": "Rxh6#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxh6#! The rook takes its own pawn on h6, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 1060,
+"id": 132
+},
+{
+"fen": "8/1Pbn1Qpk/8/3B4/7P/6P1/1P2PN2/5K1R w - - 1 29",
+"solution": [
+"h1h4"
+],
+"san": "Rxh4#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxh4#! The rook takes its own pawn on h4, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 1060,
+"id": 133
+},
+{
+"fen": "1Q6/R2R4/2B4R/P7/2P2Pk1/8/4KP2/8 w - - 1 51",
+"solution": [
+"c6d7"
+],
+"san": "Bxd7#",
+"kind": "mate",
+"motif": "check",
+"explain": "Bxd7#! The bishop takes its own rook on d7, and it is mate. In ordinary chess your own rook would be in the way.",
+"rating": 1100,
+"id": 134
+},
+{
+"fen": "1QQ4B/7k/R4P2/7P/8/8/4B3/5K1R w - - 1 47",
+"solution": [
+"c8h8"
+],
+"san": "Qxh8#",
+"kind": "mate",
+"motif": "check",
+"explain": "Qxh8#! The queen takes its own bishop on h8, and it is mate. In ordinary chess your own bishop would be in the way.",
+"rating": 1100,
+"id": 135
+},
+{
+"fen": "3Br3/k4p2/2p4R/6p1/PQ1P4/8/1P3PK1/R7 w - - 3 29",
+"solution": [
+"a1a4"
+],
+"san": "Rxa4#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxa4#! The rook takes its own pawn on a4, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 1100,
+"id": 136
+},
+{
+"fen": "3R4/1P2np1k/8/3p4/8/6Q1/1P3PKP/7R w - - 0 27",
+"solution": [
+"h1h2"
+],
+"san": "Rxh2#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxh2#! The rook takes its own pawn on h2, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 1100,
+"id": 137
+},
+{
+"fen": "3rk2r/2p2p2/1p6/1Kb5/8/8/4r3/q5qq b - - 1 52",
+"solution": [
+"g1c5"
+],
+"san": "Qxc5#",
+"kind": "mate",
+"motif": "check",
+"explain": "Qxc5#! The queen takes its own bishop on c5, and it is mate. In ordinary chess your own bishop would be in the way.",
+"rating": 1100,
+"id": 138
+},
+{
+"fen": "4Q3/4R3/6P1/7R/2P1N3/8/Q3B1k1/4K3 w - - 3 47",
+"solution": [
+"e8g6"
+],
+"san": "Qxg6#",
+"kind": "mate",
+"motif": "check",
+"explain": "Qxg6#! The queen takes its own pawn on g6, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 1100,
+"id": 139
+},
+{
+"fen": "4Q3/6k1/8/P6R/8/3P4/1P3PP1/R1B2K2 w - - 1 38",
+"solution": [
+"c1b2"
+],
+"san": "Bxb2#",
+"kind": "mate",
+"motif": "check",
+"explain": "Bxb2#! The bishop takes its own pawn on b2, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 1100,
+"id": 140
+},
+{
+"fen": "4k3/2p1qp1r/6r1/1pb5/2b2K1P/8/1PP3P1/2Q1R3 b - - 1 26",
+"solution": [
+"h7f7"
+],
+"san": "Rxf7#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxf7#! The rook takes its own pawn on f7, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 1100,
+"id": 141
+},
+{
+"fen": "4k3/8/6K1/8/3n3q/8/p2r2n1/8 b - - 9 74",
+"solution": [
+"d2g2"
+],
+"san": "Rxg2#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxg2#! The rook takes its own knight on g2, and it is mate. In ordinary chess your own knight would be in the way.",
+"rating": 1100,
+"id": 142
+},
+{
+"fen": "4kb2/8/8/3brpKp/8/8/8/1q2q3 b - - 3 51",
+"solution": [
+"b1f5"
+],
+"san": "Qxf5#",
+"kind": "mate",
+"motif": "check",
+"explain": "Qxf5#! The queen takes its own pawn on f5, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 1100,
+"id": 143
+},
+{
+"fen": "6K1/6p1/2k5/8/6q1/8/8/q4q2 b - - 3 54",
+"solution": [
+"g4g7",
+"a1g7"
+],
+"san": "Qgxg7#",
+"kind": "mate",
+"motif": "check",
+"explain": "Qgxg7#! The queen takes its own pawn on g7, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 1100,
+"id": 144
+},
+{
+"fen": "6Q1/pp6/5r1k/6p1/2BN4/4P3/PP4PP/2K4R w - - 5 25",
+"solution": [
+"h1h2"
+],
+"san": "Rxh2#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxh2#! The rook takes its own pawn on h2, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 1100,
+"id": 145
+},
+{
+"fen": "7B/5pQ1/8/1p1Nr2k/8/4P2P/1PPK1PP1/5B1R w - - 0 31",
+"solution": [
+"h1h3"
+],
+"san": "Rxh3#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxh3#! The rook takes its own pawn on h3, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 1100,
+"id": 146
+},
+{
+"fen": "7r/1b2kp2/3p4/1p6/1n3r2/8/4K2p/b5q1 b - - 1 49",
+"solution": [
+"h8h2"
+],
+"san": "Rxh2#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxh2#! The rook takes its own pawn on h2, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 1100,
+"id": 147
+},
+{
+"fen": "7r/3kb2b/n4p2/2p5/8/3n3q/3K4/6q1 b - - 1 47",
+"solution": [
+"h3d3"
+],
+"san": "Qxd3#",
+"kind": "mate",
+"motif": "check",
+"explain": "Qxd3#! The queen takes its own knight on d3, and it is mate. In ordinary chess your own knight would be in the way.",
+"rating": 1100,
+"id": 148
+},
+{
+"fen": "7r/4Q2p/5N1k/1p2R3/8/3K3b/PPP2R1P/8 w - - 5 30",
+"solution": [
+"f2f6"
+],
+"san": "Rxf6#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxf6#! The rook takes its own knight on f6, and it is mate. In ordinary chess your own knight would be in the way.",
+"rating": 1100,
+"id": 149
+},
+{
+"fen": "7r/p2K4/1q6/8/6k1/8/5p2/r7 b - - 2 56",
+"solution": [
+"a1a7"
+],
+"san": "Rxa7#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxa7#! The rook takes its own pawn on a7, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 1100,
+"id": 150
+},
+{
+"fen": "8/1R3Pk1/p7/3Q4/7R/P5P1/6K1/8 w - - 0 34",
+"solution": [
+"d5f7"
+],
+"san": "Qxf7#",
+"kind": "mate",
+"motif": "check",
+"explain": "Qxf7#! The queen takes its own pawn on f7, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 1100,
+"id": 151
+},
+{
+"fen": "8/1p4pk/p2r4/5P2/1q2p3/4P3/K7/8 b - - 1 40",
+"solution": [
+"d6a6"
+],
+"san": "Rxa6#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxa6#! The rook takes its own pawn on a6, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 1100,
+"id": 152
+},
+{
+"fen": "8/2B1R1Pk/8/8/6Q1/8/4K3/8 w - - 3 62",
+"solution": [
+"g4g7"
+],
+"san": "Qxg7#",
+"kind": "mate",
+"motif": "check",
+"explain": "Qxg7#! The queen takes its own pawn on g7, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 1100,
+"id": 153
+},
+{
+"fen": "8/3r4/4k3/5b2/6p1/4Kn2/8/r6q b - - 1 56",
+"solution": [
+"h1f3"
+],
+"san": "Qxf3#",
+"kind": "mate",
+"motif": "check",
+"explain": "Qxf3#! The queen takes its own knight on f3, and it is mate. In ordinary chess your own knight would be in the way.",
+"rating": 1100,
+"id": 154
+},
+{
+"fen": "8/5k2/8/p1rn3p/1r5P/3bb3/K7/8 b - - 3 57",
+"solution": [
+"c5a5"
+],
+"san": "Rxa5#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxa5#! The rook takes its own pawn on a5, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 1100,
+"id": 155
+},
+{
+"fen": "8/6Q1/8/1PpB1k2/6p1/4K1P1/P3N3/8 w - - 0 49",
+"solution": [
+"e2g3"
+],
+"san": "Nxg3#",
+"kind": "mate",
+"motif": "check",
+"explain": "Nxg3#! The knight takes its own pawn on g3, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 1100,
+"id": 156
+},
+{
+"fen": "8/8/4p3/4Q2p/5Pk1/6P1/8/5K1R w - - 1 42",
+"solution": [
+"e5f4"
+],
+"san": "Qxf4#",
+"kind": "mate",
+"motif": "check",
+"explain": "Qxf4#! The queen takes its own pawn on f4, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 1100,
+"id": 157
+},
+{
+"fen": "8/8/8/8/4Q1Q1/7r/1K2Pk2/3r4 w - - 3 57",
+"solution": [
+"e4e2"
+],
+"san": "Qexe2#",
+"kind": "mate",
+"motif": "check",
+"explain": "Qexe2#! The queen takes its own pawn on e2, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 1100,
+"id": 158
+},
+{
+"fen": "8/R4B1k/1PPB1P2/6PP/8/8/8/1K5R w - - 1 47",
+"solution": [
+"h1h5"
+],
+"san": "Rxh5#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxh5#! The rook takes its own pawn on h5, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 1100,
+"id": 159
+},
+{
+"fen": "8/r2R4/k1p5/4N1B1/8/1Q4P1/PP2PP2/RN3K2 w - - 2 24",
+"solution": [
+"a1a2"
+],
+"san": "Rxa2#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxa2#! The rook takes its own pawn on a2, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 1100,
+"id": 160
+},
+{
+"fen": "B1knbb1r/R7/4q3/1QpNpp2/7P/4PP2/1P4P1/5K1R w - - 1 29",
+"solution": [
+"a7a8"
+],
+"san": "Rxa8#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxa8#! The rook takes its own bishop on a8, and it is mate. In ordinary chess your own bishop would be in the way.",
+"rating": 1100,
+"id": 161
+},
+{
+"fen": "r1b5/4pk2/2nb2p1/2p5/8/p3K3/r7/1q6 b - - 1 38",
+"solution": [
+"a8a3"
+],
+"san": "R8xa3#",
+"kind": "mate",
+"motif": "check",
+"explain": "R8xa3#! The rook takes its own pawn on a3, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 1100,
+"id": 162
+},
+{
+"fen": "r2k1r2/p2P1ppp/3Q4/6N1/8/2P1P3/P4PPP/3RKB1R w - - 1 18",
+"solution": [
+"d6d7"
+],
+"san": "Qxd7#",
+"kind": "mate",
+"motif": "check",
+"explain": "Qxd7#! The queen takes its own pawn on d7, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 1100,
+"id": 163
+},
+{
+"fen": "r2k2n1/ppr1pp2/8/5b2/3b3P/5q2/K6R/8 b - - 2 25",
+"solution": [
+"a8a7"
+],
+"san": "Rxa7#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxa7#! The rook takes its own pawn on a7, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 1100,
+"id": 164
+},
+{
+"fen": "r3k1r1/pQ2B3/n4pp1/2pP4/2P5/5BK1/PP4PP/4R3 w - - 5 23",
+"solution": [
+"b7e7"
+],
+"san": "Qxe7#",
+"kind": "mate",
+"motif": "check",
+"explain": "Qxe7#! The queen takes its own bishop on e7, and it is mate. In ordinary chess your own bishop would be in the way.",
+"rating": 1100,
+"id": 165
+},
+{
+"fen": "r3k2r/pp2ppb1/6p1/4p1p1/n5b1/6KP/PPP1q1P1/7R b - - 0 25",
+"solution": [
+"g7e5"
+],
+"san": "Bxe5#",
+"kind": "mate",
+"motif": "check",
+"explain": "Bxe5#! The bishop takes its own pawn on e5, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 1100,
+"id": 166
+},
+{
+"fen": "r3k3/pp2N2R/2p2Q2/2P5/1P4P1/4B3/P4P2/R3KB2 w - - 0 26",
+"solution": [
+"f6e7"
+],
+"san": "Qxe7#",
+"kind": "mate",
+"motif": "check",
+"explain": "Qxe7#! The queen takes its own knight on e7, and it is mate. In ordinary chess your own knight would be in the way.",
+"rating": 1100,
+"id": 167
+},
+{
+"fen": "r5n1/pp3kp1/2p2p2/8/1q6/4N3/K4P2/2r5 b - - 0 32",
+"solution": [
+"a8a7"
+],
+"san": "Rxa7#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxa7#! The rook takes its own pawn on a7, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 1100,
+"id": 168
+},
+{
+"fen": "rn2k2r/ppp2pp1/1q6/3n4/4P3/K7/PP4p1/8 b - - 2 23",
+"solution": [
+"a8a7"
+],
+"san": "Rxa7#",
+"kind": "mate",
+"motif": "check",
+"explain": "Rxa7#! The rook takes its own pawn on a7, and it is mate. In ordinary chess your own pawn would be in the way.",
+"rating": 1100,
+"id": 169
+},
+{
 "fen": "1Bn5/4b3/4k3/1p2P1p1/2p3P1/8/1K2BP2/8 w - - 0 32",
 "solution": [
 "e2g4"
