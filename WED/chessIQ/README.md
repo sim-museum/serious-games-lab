@@ -32,7 +32,9 @@ may take its own pieces too). It's Wednesday's game in Serious Games Week ([seri
     a deep search (`tools/lesson_check.py`), and Leela agrees on 22 of 24. Each lesson ends with a game against its
     specialist.
   - **Academy → Kansas puzzles**: 93 puzzles mined from strong engine games, each checked by both engines, rated
-    1163–2600 by the search strength that finds them, and served near your own puzzle rating.
+    1163–2600 by the search strength that finds them, and served near your own puzzle rating. Each puzzle's rating
+    also moves with players' first attempts (`puzzle_ratings.json`; `tools/puzzle_feedback.py` folds several
+    machines' results back into the shipped file).
   - **The coach** (unrated games, on by default): on your turn, a warning when the natural ordinary-chess move fails
     to a self-capture, or a nudge when a strong self-capture is there. It never names the move, and is silent in
     rated games.

@@ -4,7 +4,11 @@ board, as Chessmaster's tutorials and puzzles.
 Lessons: quizzes accept only the checked solution (tools/lesson_check.py); demonstrations let you try and then show
 the idea; each lesson ends with a game against the specialist in its motif. Puzzles (chessiq/puzzles.json, mined
 and checked by tools/mine_puzzles.py) come one at a time near your puzzle rating, which moves like an Elo rating
-with each first attempt. Progress is kept in academy.json beside the rating profile."""
+with each first attempt. Progress is kept in academy.json beside the rating profile.
+
+A puzzle's own rating moves the other way with each first attempt on this machine (puzzle_ratings.json beside the
+profile, shared by everyone who plays here), so the engines' estimate gives way to how people actually do;
+tools/puzzle_feedback.py folds the files from several machines back into chessiq/puzzles.json."""
 import json
 import os
 import random
@@ -43,6 +47,37 @@ def save_state(st):
 
 def load_progress():
     return set(load_state().get("done", []))
+
+
+def ratings_path():
+    return os.path.join(os.path.dirname(profile_path()), "puzzle_ratings.json")
+
+
+def load_ratings():
+    """{puzzle id (str): {"r": rating now, "n": first attempts, "base": the shipped rating it started from}}"""
+    try:
+        with open(ratings_path()) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def _record(p, adj):
+    """This machine's record for puzzle p, or None. A record made against an older shipped rating or position is
+    ignored (the feedback it carried is already folded in)."""
+    a = adj.get(str(p["id"]))
+    return a if a and a.get("base") == p["rating"] and a.get("fen") == p["fen"] else None
+
+
+def puzzle_rating(p, adj):
+    """The rating a puzzle plays at here: the shipped one, moved by this machine's first attempts."""
+    a = _record(p, adj)
+    return a["r"] if a else p["rating"]
+
+
+def puzzle_k(n):
+    """How far one first attempt moves a puzzle's rating: 40 for its first, falling to 8 as attempts pile up."""
+    return max(8, round(40 / (1 + n / 10)))
 
 
 def load_puzzles():
@@ -266,6 +301,7 @@ class PuzzleWindow(QDialog):
         self.rating = st.get("puzzle_rating", prof.rating if prof else 1200)
         self.seen = set(st.get("puzzles_seen", []))
         self.solved_ids = set(st.get("puzzles_solved", []))
+        self.adj = load_ratings()
         v = QVBoxLayout(self)
         self.head = QLabel("")
         v.addWidget(self.head)
@@ -290,7 +326,7 @@ class PuzzleWindow(QDialog):
         pool = [p for p in self.puzzles if p["id"] not in self.seen] or list(self.puzzles)
         if not pool:
             return None
-        pool.sort(key=lambda p: abs(p["rating"] - self.rating))
+        pool.sort(key=lambda p: abs(puzzle_rating(p, self.adj) - self.rating))
         return self.rand.choice(pool[:5])
 
     def next_puzzle(self):
@@ -300,7 +336,7 @@ class PuzzleWindow(QDialog):
             return
         p = self.current
         ex = Exercise(p["fen"], PUZZLE_TEXT[p["kind"]], p["solution"], p["explain"])
-        self.view.load(ex, "Puzzle %d · rated %d · " % (p["id"], p["rating"]))
+        self.view.load(ex, "Puzzle %d · rated %d · " % (p["id"], puzzle_rating(p, self.adj)))
         self.specialist = SPECIALIST_FOR.get(p.get("motif", ""), "Selim")
         self.play_btn.setText("Play %s, who plays for this" % self.specialist)
         self._head()
@@ -312,8 +348,19 @@ class PuzzleWindow(QDialog):
     def on_finished(self, first_try):
         p = self.current
         if p["id"] not in self.seen:                     # only a first attempt counts
-            expected = 1 / (1 + 10 ** ((p["rating"] - self.rating) / 400))
-            self.rating = round(self.rating + PUZZLE_K * ((1.0 if first_try else 0.0) - expected))
+            self.adj = load_ratings()                     # another window or profile may have written since
+            pr = puzzle_rating(p, self.adj)
+            expected = 1 / (1 + 10 ** ((pr - self.rating) / 400))
+            score = 1.0 if first_try else 0.0
+            self.rating = round(self.rating + PUZZLE_K * (score - expected))
+            a = _record(p, self.adj)
+            n = a["n"] if a else 0
+            self.adj[str(p["id"])] = dict(r=round(pr - puzzle_k(n) * (score - expected)), n=n + 1, base=p["rating"],
+                                          fen=p["fen"])
+            path = ratings_path()
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w") as f:
+                json.dump(self.adj, f)
             self.seen.add(p["id"])
             if first_try:
                 self.solved_ids.add(p["id"])

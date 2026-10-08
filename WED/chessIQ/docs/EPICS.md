@@ -1053,3 +1053,15 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
   - The puzzle rating scale is engine-based. Measuring it against players' first-attempt results would correct it
     over time.
   - Leela's verdicts on the GPU are not exactly repeatable (41 vs 40 of 44 puzzles agreed between runs).
+
+## EPIC KS, follow-up on the open items (2026-10-08, PO: "keep going, use the remaining hours on the open items")
+One item at a time, each with a goal, the check that proves it and a stopping point.
+- **KS-9. Puzzle ratings learn from players.** Goal: the engine-based estimate gives way to people's results.
+  - Each machine keeps `puzzle_ratings.json` beside the profile. Every first attempt moves the puzzle's rating
+    opposite to the player's: K is 40 for its first attempt, falling to 8 by its 40th. Puzzles are served and shown
+    at that rating.
+  - `tools/puzzle_feedback.py` folds the files from several machines back into `chessiq/puzzles.json`. The shift is
+    attempt-weighted and shrunk by 10 attempts' worth of the estimate, and needs 5 attempts. A record made against
+    an older shipped rating is ignored, so folding twice changes nothing.
+  - Check: tests (a solve lowers the puzzle, a level miss raises it 2400 → 2420, a counted attempt
+    counts once, a stale record is ignored, the fold arithmetic). Done.

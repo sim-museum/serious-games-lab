@@ -125,7 +125,13 @@ class Puzzles(unittest.TestCase):                 # KS-5
         self.assertTrue(w.view.solved)
         self.assertGreater(w.rating, 1200)
         self.assertEqual(self.academy.load_state()["puzzles_solved"], [1])
+        a = self.academy.load_ratings()["1"]                       # and the puzzle proved easier: its rating falls
+        self.assertEqual((a["n"], a["base"]), (1, 1163))
+        self.assertLess(a["r"], 1163)
         w.close()
+        w2 = self.academy.PuzzleWindow(seed=1)
+        self.assertEqual(self.academy.puzzle_rating(w2.puzzles[0], w2.adj), a["r"])
+        w2.close()
 
     def test_a_wrong_first_try_costs_rating_and_counts_once(self):
         w = self.academy.PuzzleWindow(seed=1)
@@ -138,9 +144,19 @@ class Puzzles(unittest.TestCase):                 # KS-5
         w.view.reveal()
         r = w.rating
         self.assertEqual(r, 2384)
+        self.assertEqual(self.academy.load_ratings()["2"]["r"], 2420)   # a first miss: the puzzle gains 40 x 0.5
         w.on_finished(True)                                        # a second finish of the same puzzle: no change
         self.assertEqual(w.rating, r)
+        self.assertEqual(self.academy.load_ratings()["2"]["n"], 1)
         w.close()
+
+    def test_a_record_against_an_older_shipped_rating_is_ignored(self):
+        p = self.PUZZLES[0]
+        adj = {"1": {"r": 900, "n": 30, "base": 1100, "fen": p["fen"]}}
+        self.assertEqual(self.academy.puzzle_rating(p, adj), 1163)
+        adj["1"]["base"] = 1163
+        self.assertEqual(self.academy.puzzle_rating(p, adj), 900)
+        self.assertEqual([self.academy.puzzle_k(n) for n in (0, 10, 40, 1000)], [40, 20, 8, 8])
 
     def test_the_shipped_puzzles_are_legal(self):
         import json
@@ -153,7 +169,21 @@ class Puzzles(unittest.TestCase):                 # KS-5
         for p in ps:
             b, turn, ep, _, _ = K.from_fen(p["fen"])
             self.assertIsNotNone(K.find(b, turn, ep, p["solution"][0]), p["id"])
-            self.assertIn(p["kind"], ("self-capture", "quiet"))
+            self.assertIn(p["kind"], self.academy.PUZZLE_TEXT)
+        self.assertEqual(len({p["id"] for p in ps}), len(ps))
+
+
+class PuzzleFeedback(unittest.TestCase):           # players' first attempts folded back into the shipped ratings
+    def test_fold(self):
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools"))
+        import puzzle_feedback as F
+        ps = [{"id": 1, "fen": "a", "rating": 1000}, {"id": 2, "fen": "b", "rating": 1500},
+              {"id": 3, "fen": "c", "rating": 2000}]
+        m1 = {"1": {"r": 900, "n": 6, "base": 1000, "fen": "a"}, "2": {"r": 1400, "n": 2, "base": 1500, "fen": "b"},
+              "3": {"r": 1000, "n": 50, "base": 1900, "fen": "c"}}                 # 3: an older shipped rating
+        m2 = {"1": {"r": 1100, "n": 4, "base": 1000, "fen": "a"}}
+        # puzzle 1: (6 x -100 + 4 x +100) / (10 + 10) = -10; puzzle 2: too few attempts; puzzle 3: stale record
+        self.assertEqual(F.fold(ps, [m1, m2]), {1: 990})
 
 
 class PracticeFromYourGame(unittest.TestCase):    # KS-3 + KS-4: your own missed moments become exercises
