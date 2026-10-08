@@ -3303,6 +3303,105 @@ def _sanity_wrap(raw: Bid, state: AuctionState, eval_: HandEval,
         return raw
 
 
+# Q-Plus's Precision 90 modern swaps the two positive answers to the strong
+# 1C (A-artificial-1C.switch-1NT-1H): 1C-1H = 8+ balanced, no five-card
+# major, 1C-1NT = 8+ with five+ hearts (Q-Plus's own records: 71 x 1H all
+# without five hearts, 8 x 1NT all with). biq read Q-Plus's 1H as hearts
+# and Blackwooded on three of them (live 261007 board 58: 1C-1H-4NT-7NT X,
+# -16 IMP). The rules are written for the standard meanings, so with the
+# switch they see the auction with that one answer swapped back, and an
+# answer they choose is swapped on the way out. Every later call reads the
+# same in both views: opener's rebids over 1C-1H/1NT are all two-level or
+# higher. Only our own side's uncontested 1C (P) answer is swapped.
+SWITCH_1C = os.environ.get("BIQ_SWITCH_1C", "1") == "1"
+
+
+def _has_switch_1c(system) -> bool:
+    from .bidding_systems import BiddingSystem, get_system
+    sys_obj = system if isinstance(system, BiddingSystem) else get_system(system)
+    return (SWITCH_1C and getattr(sys_obj, "strong_open_call", "2C") == "1C"
+            and sys_obj.has("A-artificial-1C.switch-1NT-1H"))
+
+
+def _switch_1c_index(state: AuctionState) -> Optional[int]:
+    """Index in state.bids of our side's uncontested answer to our strong
+    1C (whether made yet or not), else None."""
+    bids = state.bids
+    i = next((k for k, (_, b) in enumerate(bids) if not b.is_pass), None)
+    if i is None:
+        return None
+    s, op = bids[i]
+    if s not in (state.seat, state.seat.partner()):
+        return None
+    if op.level != 1 or op.suit != Suit.CLUBS:
+        return None
+    if len(bids) < i + 2 or not bids[i + 1][1].is_pass:
+        return None
+    return i + 2
+
+
+def _swap_1c_answer(b: Bid) -> Bid:
+    if b.level == 1 and b.suit == Suit.HEARTS and not (b.is_double or b.is_redouble):
+        return replace(b, suit=Suit.NOTRUMP, alert=True,
+                       explanation=(b.explanation or "") + " [1C-1NT: 5+ hearts]")
+    if b.level == 1 and b.suit == Suit.NOTRUMP:
+        return replace(b, suit=Suit.HEARTS, alert=True,
+                       explanation=(b.explanation or "") + " [1C-1H: balanced]")
+    return b
+
+
+def _is_call(b: Bid, level: int, suit: Suit) -> bool:
+    return (not (b.is_pass or b.is_double or b.is_redouble)
+            and b.level == level and b.suit == suit)
+
+
+def _switch_1c_view(state: AuctionState, system):
+    """(the auction as biq's rules read it, what to do with the call made
+    now: None, "answer" = swap the answer back, "rebid" = opener's 2NT
+    over the balanced 1H is Q-Plus's 1NT)."""
+    if not _has_switch_1c(system):
+        return state, None
+    k = _switch_1c_index(state)
+    if k is None:
+        return state, None
+    if k == len(state.bids):
+        return state, ("answer" if state.bids[k - 2][0] == state.seat.partner()
+                       else None)
+    calls = [b for _, b in state.bids]
+    new = _swap_1c_answer(calls[k])
+    if new is calls[k]:
+        return state, None
+    mode = None
+    # Over the balanced 1H Q-Plus's opener rebids 1NT with 16-21 (56 of its
+    # records; responder then bids 3NT or Stayman 2C) and 2NT with 22+;
+    # biq's rules know only 1C-1NT-2NT (16-18), so the two trade places.
+    if _is_call(calls[k], 1, Suit.HEARTS) and len(calls) > k + 1 \
+            and calls[k + 1].is_pass:
+        if len(calls) == k + 2:
+            mode = "rebid"
+        elif _is_call(calls[k + 2], 1, Suit.NOTRUMP):
+            calls[k + 2] = replace(calls[k + 2], level=2)
+    calls[k] = new
+    return parse_auction(state.seat, state.dealer, calls,
+                         vulnerability=state.vulnerability), mode
+
+
+def _switch_1c_out(b: Bid, mode) -> Bid:
+    if mode == "answer":
+        return _swap_1c_answer(b)
+    if mode == "rebid" and _is_call(b, 2, Suit.NOTRUMP):
+        return replace(b, level=1,
+                       explanation=(b.explanation or "") + " [1C-1H-1NT: 16-21]")
+    return b
+
+
+def _rules_call(state: AuctionState, e: HandEval, system) -> Bid:
+    """The rule bidder's call (sanity-wrapped) in the switched view."""
+    view, mode = _switch_1c_view(state, system)
+    b = _sanity_wrap(_decide_bid_impl(view, e, system), view, e, system)
+    return _switch_1c_out(b, mode)
+
+
 _ALERT_CACHE: Dict[tuple, bool] = {}
 _ALERT_DECK = None
 
@@ -3345,7 +3444,7 @@ def _rules_alert(seat: Seat, dealer: Seat, prefix: List[Bid], call: Bid,
         rng.shuffle(deck)
         e = evaluate_hand(Hand(cards=deck[:13]))
         try:
-            b = _sanity_wrap(_decide_bid_impl(st, e, system), st, e, system)
+            b = _rules_call(st, e, system)
         except Exception:                                       # noqa: BLE001
             continue
         if _call_key(b) == want:
@@ -3411,12 +3510,15 @@ def decide_bid(state: AuctionState, eval_: HandEval, system,
     Without `hand` (rollouts, probes, tests) it is the pure rule bidder.
     """
     wire_state = state
-    state = _mark_system_alerts(state, system)
+    real_state = _mark_system_alerts(state, system)
+    state, switch_mode = _switch_1c_view(real_state, system)
     raw = _decide_bid_impl(state, eval_, system)
     out = _sanity_wrap(raw, state, eval_, system)
     net = _learned_game_net(state, eval_, system, out)
     if net is not None:
         out = net
+    out = _switch_1c_out(out, switch_mode)
+    state = real_state
     if hand is not None:
         from .bidding_systems import BiddingSystem, get_system
         sys_obj = system if isinstance(system, BiddingSystem) else get_system(system)
@@ -4298,6 +4400,18 @@ def _respond_to_partner_opening(state, e, system):
             if rho_intervened:
                 return _respond_to_precision_1c_competitive(
                     state, e, system)
+            if _has_switch_1c(system) and e.is_balanced and e.hcp >= 14:
+                # Q-Plus's 2NT answer is a 4-4-4-1 12+ (A-artificial-1C.
+                # d4441.is-2NT-12-plus): a strong balanced hand also starts
+                # with its five-card major or the balanced 1H.
+                if e.suit_lengths[Suit.HEARTS] >= 5:
+                    return bid(1, Suit.HEARTS, alert=True,
+                               why="Precision: 8+ HCP, 5+ hearts")
+                if e.suit_lengths[Suit.SPADES] >= 5:
+                    return bid(1, Suit.SPADES, alert=True,
+                               why="Precision: 8+ HCP, 5+ spades")
+                return bid(1, Suit.NOTRUMP, alert=True,
+                           why="Precision: 8+ balanced")
             return _respond_to_precision_1c(state, e)
         if (op.level == 1 and op.suit == Suit.CLUBS
                 and len(state.partner_bids) >= 2):
@@ -4941,8 +5055,11 @@ def _respond_to_1nt_competitive(state, e, system):
                 # NTX_RUN: 0-4 HCP with a four-card major crawls via 2C
                 # Stayman (still on after the double) to a 4-4 or 4-3 fit
                 # at the 2-level: 1NT-(X) passed on 843.8632.975.743 and
-                # went four down for -1100 (Q-Plus run board 85).
-                if (NTX_RUN and hcp <= 4
+                # went four down for -1100 (Q-Plus run board 85). Only up
+                # to 2 HCP: Q-Plus passes with 3-4 and a four-card major
+                # (its records; live 261007 boards 149, 41: 2C ran into
+                # 2D doubled, -5 and -4, where 1NT doubled made).
+                if (NTX_RUN and hcp <= 2
                         and system.has("C-1NT-doubled.Stayman-and-Jacoby")
                         and max(e.suit_lengths[Suit.SPADES],
                                 e.suit_lengths[Suit.HEARTS]) >= 4):
