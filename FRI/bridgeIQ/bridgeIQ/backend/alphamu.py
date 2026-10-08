@@ -165,7 +165,7 @@ class AlphaMu:
                  dds: Optional[DDSolver] = None, depth: int = 2,
                  time_budget: float = 5.0, biq_seats=None,
                  defense_rollout_leaf: bool = False, vul=None,
-                 signal_margin: float = 0.0):
+                 signal_margin: float = 0.0, second_low_margin: float = 0.0):
         self.trump_suit = trump
         self.trump = None if trump is None else trump.value
         self.strain = _strain_i(trump)
@@ -192,6 +192,9 @@ class AlphaMu:
         # (~0.1-0.2 tr) makes biq a RELIABLE signaller — it always plays the
         # convention card among near-equal spots — at a bounded trick cost.
         self.signal_margin = signal_margin
+        # Second hand low (defence): how much better a lone A/K must score
+        # than a duck before biq rises with it. 0 = off. See choose().
+        self.second_low_margin = second_low_margin
         self.dds = dds or DDSolver()
         self.depth = depth
         self.time_budget = time_budget
@@ -457,6 +460,27 @@ class AlphaMu:
                 best_val, best_c = mean, c
         if best_c is None:
             return None
+        # SECOND HAND LOW: a spot led, biq second to play, the search's best
+        # is a lone A or K (no touching honour). The DD leaves let declarer
+        # read every card, so they never credit the guess a duck leaves him.
+        # Played out no-peek on 130 Q-Plus probe positions, rising cost 0.9
+        # tr when it scored < 0.05 better and 0.2-0.3 tr up to 0.65; it paid
+        # only above ~0.65 (2026-10-07). Duck unless the A/K clears the margin.
+        if self.second_low_margin > 0 and len(trick52) == 1 \
+                and trick52[0] % 13 >= 4 and best_c // 13 == trick52[0] // 13 \
+                and best_c % 13 <= 1 and best_c + 1 not in my \
+                and not (best_c % 13 == 1 and best_c - 1 in my):
+            lows = [(c, m) for c, m in scored
+                    if c // 13 == best_c // 13 and c % 13 >= 5
+                    and m >= best_val - self.second_low_margin]
+            if lows:
+                top = max(m for _, m in lows)
+                ducks = [Card.from_code52(x) for c, m in lows
+                         if m >= top - (self.signal_margin or 1e-9)
+                         for x in runs.get(c, [c])]
+                pick = tiebreak(ducks) if tiebreak is not None and \
+                    len(ducks) > 1 else None
+                return pick or max(ducks, key=lambda c: c.rank.value)
         # TIE-BREAK by signal: among cards that tie for the best value (no trick
         # cost), let the caller pick the one carrying the standard signal.
         if tiebreak is not None and best_val is not None:

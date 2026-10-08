@@ -544,6 +544,13 @@ _SIGNAL_MARGIN = float(os.environ.get("BIQ_SIGNAL_MARGIN", "0.15"))  # trick
 # near-ties are noise; the signal heuristic is a better arbiter). A/B 3 seeds:
 # trick-neutral-to-positive vs margin 0 (0.786 vs 0.797). 0 = exact ties only.
 _SIGNAL_SAFE = os.environ.get("BIQ_SIGNAL_SAFE", "1") == "1"
+_SECOND_LOW = float(os.environ.get("BIQ_SECOND_LOW", "0.8"))  # NT defence: a
+# lone A/K in 2nd seat over a led spot must beat a duck by this many tricks
+# (0 = off). Q-Plus's way in 3NT (probes 2026-10-05/07: it ducks a lone A/K,
+# rises with A-K); +0.037 tr on those positions. NOTRUMP ONLY: on 695 random
+# SAYC deals played no-peek in all four seats it lost in suit contracts
+# (96 diverged, -0.22 tr) and was level in NT (40, -0.03 tr SE 0.14, -26 IMP).
+# Q-Plus's suit-contract habit is unprobed (BACKLOG).
 _DDS = None
 
 
@@ -655,7 +662,9 @@ def _alphamu_card(b: BoardState, seat: Seat, trick: List[Card],
                           defense_rollout_leaf=(defending and _DEF_ROLLOUT_LEAF),
                           vul=b.vulnerability,
                           signal_margin=(_SIGNAL_MARGIN if signalling
-                                         and defending else 0.0))
+                                         and defending else 0.0),
+                          second_low_margin=(_SECOND_LOW if defending
+                                             and trump is None else 0.0))
     # When DEFENDING, break trick-equivalent ties by the standard signal so the
     # carding reads like a real defender (zero trick cost — these tie for best).
     # Signalling OFF: no tie-break and no margin — alpha-mu's best card stands.

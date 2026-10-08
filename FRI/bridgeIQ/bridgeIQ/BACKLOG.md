@@ -5,6 +5,20 @@ section. Move an item to a STATUS doc under `docs/` when it's picked up.
 
 ## Backlog
 
+- **Probe Q-Plus's second-hand play in SUIT contracts.** The 2026-10-05/07
+  probes saw Q-Plus in second seat only in 3NT (declarer establishing clubs):
+  with a lone A or K it ducks almost always (A-x 30%, A-x-x 16%, longer or a
+  lone K ~never), with A-K it always rises. Copying that everywhere
+  (`BIQ_SECOND_LOW`, off) won on those positions but lost on 695 random
+  deals, nearly all in suit contracts (96 diverged deals, -0.22 tr; NT 40,
+  -0.03 tr, -26 IMP). Design a suit-contract family for `tools/qplus_probe.py`
+  (e.g. 4S/4H, declarer or dummy leads a low side-suit card toward K-x / K-Q-x
+  / Q-x, Q-Plus holds A-x, A-x-x, K-x, K-x-x behind it; also trumps), run it
+  through `biq_bluechip_tm.py --script`, and fit Q-Plus's rule. Then try that
+  rule (NT + suit) as the default per the "Q-Plus's way unless strong
+  evidence against" policy, verified with the scratchpad paired no-peek A/B
+  (`secondlow_ab.py`: same deal played twice, all four seats no-peek).
+
 - **"How often does biq look wacky?" audit.** Go through the recorded Q-Plus
   matches (`tools/runs/results/*.qss`, Q-Plus `DATA/LOG/*.bdl`) and list
   every biq call and card that differs from BOTH Q-Plus (closed room / same
