@@ -1097,3 +1097,8 @@ One item at a time, each with a goal, the check that proves it and a stopping po
   - Strength, pooled over 300 games each: corrections Ada −79 (was −100) and Mirela −20 (was −35). The 120
     verification games: Ada 50.8%, Mirela 40.4%; the 180 calibration games had Mirela at 51.7%. Her two batches
     differ by two standard errors, so the pooled value stands. Done.
+- **KS-12. Repeatable Leela verdicts.** Goal: the second opinion gives the same answer every run.
+  - Asked about all 172 puzzle positions twice, at 10000 nodes on the GPU. Two search threads gave different
+    answers on 2 positions; one thread gave none. `tools/leela_verdict.py` now uses one thread.
+  - It does not ask Leela about "mate in one" puzzles (see KS-11).
+  - Check: lessons 22 of 24 (as before), puzzles 172 of 172, and `chessiq/puzzles.json` is unchanged. Done.
