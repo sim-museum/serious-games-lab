@@ -93,6 +93,69 @@ class Window(unittest.TestCase):
         m.close()
 
 
+class Puzzles(unittest.TestCase):                 # KS-5
+    PUZZLES = [
+        {"id": 1, "fen": "8/3P1p1k/3R4/6R1/p6P/5Pp1/6P1/1r4K1 w - - 1 41", "solution": ["g1g2"], "san": "Kxg2",
+         "kind": "self-capture", "motif": "escape", "explain": "Kxg2!", "rating": 1163},
+        {"id": 2, "fen": "4kb1r/1Qp2p2/p4nnp/2q1p1p1/4P3/2P2NNP/PP3PK1/R1B4r w - - 0 19", "solution": ["c1e3"],
+         "san": "Be3", "kind": "quiet", "off": "Qc8+", "explain": "Be3.", "rating": 2400},
+    ]
+
+    def setUp(self):
+        import json
+        self.home = tempfile.mkdtemp(prefix="chessiq-test-")
+        os.environ["CHESSIQ_HOME"] = self.home
+        from PyQt6.QtWidgets import QApplication
+        from chessiq import academy
+        self.qa = QApplication.instance() or QApplication([])
+        self.academy, self.saved = academy, academy.PUZZLES
+        academy.PUZZLES = os.path.join(self.home, "puzzles.json")
+        with open(academy.PUZZLES, "w") as f:
+            json.dump(self.PUZZLES, f)
+
+    def tearDown(self):
+        self.academy.PUZZLES = self.saved
+        shutil.rmtree(self.home, ignore_errors=True)
+
+    def test_the_nearest_puzzle_comes_first_and_a_solve_raises_the_rating(self):
+        w = self.academy.PuzzleWindow(seed=1)
+        self.assertEqual(w.rating, 1200)                          # no profile: 1200
+        self.assertEqual(w.current["id"], 1)                       # 1163 is nearer than 2400... among the two
+        w.view.on_square(sq("g1")); w.view.on_square(sq("g2"))
+        self.assertTrue(w.view.solved)
+        self.assertGreater(w.rating, 1200)
+        self.assertEqual(self.academy.load_state()["puzzles_solved"], [1])
+        w.close()
+
+    def test_a_wrong_first_try_costs_rating_and_counts_once(self):
+        w = self.academy.PuzzleWindow(seed=1)
+        w.rating = 2400                                            # level with the puzzle: a miss costs about 16
+        w.current = self.PUZZLES[1]
+        from chessiq.lessons import Exercise
+        w.view.load(Exercise(w.current["fen"], "x", w.current["solution"], "Be3."))
+        w.view.on_square(sq("b7")); w.view.on_square(sq("c8"))    # Qc8+?, the ordinary-chess move
+        self.assertFalse(w.view.solved)
+        w.view.reveal()
+        r = w.rating
+        self.assertEqual(r, 2384)
+        w.on_finished(True)                                        # a second finish of the same puzzle: no change
+        self.assertEqual(w.rating, r)
+        w.close()
+
+    def test_the_shipped_puzzles_are_legal(self):
+        import json
+        path = self.saved
+        if not os.path.exists(path):
+            self.skipTest("no puzzles shipped")
+        with open(path) as f:
+            ps = json.load(f)
+        self.assertGreater(len(ps), 20)
+        for p in ps:
+            b, turn, ep, _, _ = K.from_fen(p["fen"])
+            self.assertIsNotNone(K.find(b, turn, ep, p["solution"][0]), p["id"])
+            self.assertIn(p["kind"], ("self-capture", "quiet"))
+
+
 class CoachInTheWindow(unittest.TestCase):         # KS-6: advice only in unrated games
     def setUp(self):
         self.home = tempfile.mkdtemp(prefix="chessiq-test-")

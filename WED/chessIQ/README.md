@@ -18,6 +18,28 @@ may take its own pieces too). It's Wednesday's game in Serious Games Week ([seri
   moves quickly for the first 20 games, and each game shows what a loss, draw or win would do to it. No take-backs
   and no advice (no book hints) during a rated game. A rated game can be adjourned and resumed later.
   Your history is kept in `~/.local/share/chessIQ/profile.json`.
+- **Not in Kansas: learning what self-capture changes.** Kramnik chess looks like ordinary chess, and most moves
+  are ordinary moves, which is what makes it deceptive. chessIQ shows where it differs:
+  - **Self-capture specialists**: eight opponents from 950 to 2600 (Hal, Rosa, Felix, Mirela, Corin, Ada, Selim,
+    Kestrel), each playing for one self-capture idea, with a biography that says what to watch for. They choose,
+    among near-best moves, the ones that gain most from Kramnik rules, and their ratings are measured like any
+    style's (`docs/calibration/kansas_cost.txt`, `specialist_check.txt`).
+  - **Academy → Kramnik Academy**: eight lessons from beginner to advanced (the king that escapes through its own
+    army, promotion through your own piece, opening a file in one move, the quiet threat, ...) with 21 positions to
+    solve on the board, from the AlphaZero/Kramnik paper and from strong engine games. Every solution is checked by
+    a deep search (`tools/lesson_check.py`). Each lesson ends with a game against its specialist.
+  - **Academy → Kansas puzzles**: puzzles mined from strong engine games and checked the same way, rated by the
+    search strength that finds them, served near your own puzzle rating.
+  - **The coach** (unrated games, on by default): on your turn, a warning when the natural ordinary-chess move fails
+    to a self-capture, or a nudge when a strong self-capture is there. It never names the move, and is silent in
+    rated games.
+  - **Post-Game Analysis → Not in Kansas**: after each game, the moments where Kramnik rules mattered: self-captures
+    played, strong ones missed, and ordinary-chess moves that lost. Click one to see the position.
+  - How often it matters, measured over 220 strong games: `docs/SELF_CAPTURE_CENSUS.md`; the motifs, from the
+    paper: `docs/SELF_CAPTURE_MOTIFS.md`.
+- **The strongest opponent, Leela T40** (with the GPU build): a large network adapted to Kramnik chess here, level
+  with full-strength Fairy-Stockfish. Fairy-Stockfish, which can switch self-capture on and off, does the explaining
+  (specialists, coach, analysis, puzzles); Leela brings the judgement.
 - **Time controls:** Fischer 10+3 (and 5+3, 15+10, 3+2), 30 minutes per game, 40 moves in 90 minutes, or untimed.
   Rated games are always timed. Running out of time loses, unless the other side cannot mate.
 - **Opening helper** from 25,072 grandmaster games, each legal Kramnik chess up to its first castling move: blue

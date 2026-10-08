@@ -1,48 +1,166 @@
-"""The Kramnik Academy window (EPIC KS, KS-4): lessons on what self-capture changes, with positions to solve on a
-board, as Chessmaster's tutorials. Quizzes accept only the checked solution (tools/lesson_check.py); demonstrations
-let you try and then show the idea. Each lesson ends with a game against the specialist in its motif. Finished
-lessons are remembered in academy.json beside the rating profile."""
+"""The Kramnik Academy (EPIC KS): lessons on what self-capture changes (KS-4) and Kansas puzzles (KS-5), solved on a
+board, as Chessmaster's tutorials and puzzles.
+
+Lessons: quizzes accept only the checked solution (tools/lesson_check.py); demonstrations let you try and then show
+the idea; each lesson ends with a game against the specialist in its motif. Puzzles (chessiq/puzzles.json, mined
+and checked by tools/mine_puzzles.py) come one at a time near your puzzle rating, which moves like an Elo rating
+with each first attempt. Progress is kept in academy.json beside the rating profile."""
 import json
 import os
+import random
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (QDialog, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QPushButton, QSplitter,
                              QTextBrowser, QVBoxLayout, QWidget)
 
 from . import engine as E
 from . import kansas as K
-from .lessons import LESSONS
-from .rating import profile_path
+from .lessons import LESSONS, Exercise
+from .rating import Profile, profile_path
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+PUZZLES = os.path.join(HERE, "puzzles.json")
 
 
 def progress_path():
     return os.path.join(os.path.dirname(profile_path()), "academy.json")
 
 
-def load_progress():
+def load_state():
     try:
         with open(progress_path()) as f:
-            return set(json.load(f).get("done", []))
+            return json.load(f)
     except (OSError, ValueError):
-        return set()
+        return {}
 
 
-def save_progress(done):
+def save_state(st):
     path = progress_path()
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
-        json.dump({"done": sorted(done)}, f)
+        json.dump(st, f)
+
+
+def load_progress():
+    return set(load_state().get("done", []))
+
+
+def load_puzzles():
+    try:
+        with open(PUZZLES) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return []
+
+
+class ExerciseView(QWidget):
+    """A board with one exercise: click a piece, then its target. Emits finished(first_try_correct)."""
+    finished = pyqtSignal(bool)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        from .app import BoardWidget          # imported here: app imports this module
+        row = QHBoxLayout(self)
+        self.board = BoardWidget()
+        self.board.setMinimumSize(320, 320)
+        self.board.clicked.connect(self.on_square)
+        row.addWidget(self.board, 3)
+        self.side = QVBoxLayout()
+        self.counter = QLabel("")
+        self.prompt = QLabel("")
+        self.prompt.setWordWrap(True)
+        self.feedback = QLabel("")
+        self.feedback.setWordWrap(True)
+        for w in (self.counter, self.prompt):
+            self.side.addWidget(w)
+        self.side.addWidget(self.feedback, 1)
+        row.addLayout(self.side, 2)
+        self.ex, self.pos, self.solved, self.tries = None, None, False, 0
+
+    def load(self, ex, counter=""):
+        self.ex, self.solved, self.tries = ex, False, 0
+        self.pos = K.from_fen(ex.fen)
+        b, turn = self.pos[0], self.pos[1]
+        self.board.board, self.board.orient = b, turn
+        self.board.selected, self.board.targets, self.board.last, self.board.hints = None, [], None, []
+        self.board.update()
+        self.counter.setText("%s%s · %s to move" % (counter, "Find the move" if ex.quiz else "Find the idea",
+                                                    "White" if turn == "w" else "Black"))
+        self.prompt.setText("<b>%s</b>" % ex.prompt)
+        self.feedback.setText("" if ex.quiz else "<i>A demonstration: try a move, then see the idea.</i>")
+
+    def on_square(self, i):
+        if self.solved or self.ex is None:
+            return
+        b, turn, ep = self.pos[0], self.pos[1], self.pos[2]
+        bw = self.board
+        if bw.selected is not None:
+            hits = [m for m in bw.targets if m.to == i]
+            if hits:
+                m = next((h for h in hits if K.uci_of(h) in self.ex.solutions), None) or next(
+                    (h for h in hits if h.promo in (None, "q")), hits[0])
+                self.attempt(m)
+                return
+        p = b[i]
+        if p and p[0] == turn:
+            bw.selected = i
+            bw.targets = [m for m in E.legal_moves(b, turn, ep) if m.frm == i]
+        else:
+            bw.selected, bw.targets = None, []
+        bw.update()
+
+    def attempt(self, m):
+        ex = self.ex
+        b, turn, ep = self.pos[0], self.pos[1], self.pos[2]
+        u, san = K.uci_of(m), E.san_of(b, m, ep)
+        self.board.selected, self.board.targets = None, []
+        self.tries += 1
+        if u in ex.solutions:
+            self.finish(m, "<span style='color:#1a7f37'><b>%s — yes!</b></span> %s" % (san, ex.explain), self.tries == 1)
+        elif ex.quiz:
+            self.feedback.setText("<span style='color:#b35900'><b>%s</b> is not it.</span> Try again, or press Show."
+                                  % san)
+            self.board.update()
+        else:
+            best = K.find(b, turn, ep, ex.solutions[0])
+            self.finish(best, "<b>%s</b> is a move a strong player might consider. The idea here is <b>%s</b>: %s"
+                        % (san, E.san_of(b, best, ep), ex.explain), True)
+
+    def reveal(self):
+        if self.ex is None or self.solved:
+            return
+        b, turn, ep = self.pos[0], self.pos[1], self.pos[2]
+        m = K.find(b, turn, ep, self.ex.solutions[0])
+        self.tries += 1
+        self.finish(m, "<b>%s.</b> %s" % (E.san_of(b, m, ep), self.ex.explain), False)
+
+    def finish(self, m, html, first_try):
+        self.solved = True
+        self.board.board, self.board.last = E.apply_move(self.pos[0], m), m
+        self.board.update()
+        self.feedback.setText(html)
+        self.finished.emit(first_try)
+
+
+def play_against(main, name):
+    """Start an unrated game against the named opponent in the main window."""
+    if main is None or not name or main.who.findData(name) < 0:
+        return
+    main.who.setCurrentIndex(main.who.findData(name))
+    main.mode.setCurrentIndex(main.mode.findData("ai"))
+    main.rated_box.setChecked(False)
+    main.new_game()
+    main.raise_()
 
 
 class AcademyWindow(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        from .app import BoardWidget          # imported here: app imports this module
         self.setWindowTitle("Kramnik Academy")
         self.setModal(False)
         self.resize(1000, 640)
         self.done = load_progress()
-        self.lesson, self.index, self.solved = None, 0, False
+        self.lesson, self.index = None, 0
         split = QSplitter(self)
         self.list = QListWidget()
         self.list.setMaximumWidth(360)
@@ -53,33 +171,20 @@ class AcademyWindow(QDialog):
         self.text = QTextBrowser()
         self.text.setMinimumHeight(150)
         rv.addWidget(self.text, 2)
-        row = QHBoxLayout()
-        self.board = BoardWidget()
-        self.board.setMinimumSize(320, 320)
-        self.board.clicked.connect(self.on_square)
-        row.addWidget(self.board, 3)
-        side = QVBoxLayout()
-        self.counter = QLabel("")
-        self.prompt = QLabel("")
-        self.prompt.setWordWrap(True)
-        self.feedback = QLabel("")
-        self.feedback.setWordWrap(True)
-        side.addWidget(self.counter)
-        side.addWidget(self.prompt)
-        side.addWidget(self.feedback, 1)
+        self.view = ExerciseView()
+        self.view.finished.connect(self.on_finished)
         nav = QHBoxLayout()
         self.prev_btn, self.show_btn, self.next_btn = QPushButton("◀ Previous"), QPushButton("Show"), QPushButton("Next ▶")
         self.prev_btn.clicked.connect(lambda: self.go(self.index - 1))
         self.next_btn.clicked.connect(lambda: self.go(self.index + 1))
-        self.show_btn.clicked.connect(self.reveal)
+        self.show_btn.clicked.connect(self.view.reveal)
         for b in (self.prev_btn, self.show_btn, self.next_btn):
             nav.addWidget(b)
-        side.addLayout(nav)
+        self.view.side.addLayout(nav)
         self.play_btn = QPushButton("")
         self.play_btn.clicked.connect(self.play_opponent)
-        side.addWidget(self.play_btn)
-        row.addLayout(side, 2)
-        rv.addLayout(row, 5)
+        self.view.side.addWidget(self.play_btn)
+        rv.addWidget(self.view, 5)
         split.addWidget(right)
         v = QVBoxLayout(self)
         v.addWidget(split)
@@ -87,7 +192,17 @@ class AcademyWindow(QDialog):
         self.list.currentRowChanged.connect(self.open_lesson)
         self.list.setCurrentRow(0)
 
-    # ---- lessons ----
+    @property
+    def solved(self):
+        return self.view.solved
+
+    @property
+    def feedback(self):
+        return self.view.feedback
+
+    def on_square(self, i):
+        self.view.on_square(i)
+
     def refill(self):
         row = self.list.currentRow()
         self.list.blockSignals(True)
@@ -112,90 +227,97 @@ class AcademyWindow(QDialog):
 
     def go(self, i):
         exs = self.lesson.exercises
-        if not exs:
-            self.counter.setText("No positions in this lesson.")
-            return
         self.index = max(0, min(len(exs) - 1, i))
-        ex = exs[self.index]
-        self.solved = False
-        self.pos = K.from_fen(ex.fen)
-        b, turn = self.pos[0], self.pos[1]
-        self.board.board, self.board.orient = b, turn
-        self.board.selected, self.board.targets, self.board.last, self.board.hints = None, [], None, []
-        self.board.update()
-        self.counter.setText("Position %d of %d · %s · %s to move" % (
-            self.index + 1, len(exs), "Find the move" if ex.quiz else "Find the idea", "White" if turn == "w" else "Black"))
-        self.prompt.setText("<b>%s</b>" % ex.prompt)
-        self.feedback.setText("" if ex.quiz else "<i>A demonstration: try a move, then see the idea.</i>")
+        self.view.load(exs[self.index], "Position %d of %d · " % (self.index + 1, len(exs)))
         self.prev_btn.setEnabled(self.index > 0)
         self.next_btn.setEnabled(self.index < len(exs) - 1)
 
-    # ---- moves on the board ----
-    def on_square(self, i):
-        if self.solved or self.lesson is None or not self.lesson.exercises:
-            return
-        b, turn, ep = self.pos[0], self.pos[1], self.pos[2]
-        bw = self.board
-        if bw.selected is not None:
-            hits = [m for m in bw.targets if m.to == i]
-            if hits:
-                sols = self.lesson.exercises[self.index].solutions
-                m = next((h for h in hits if K.uci_of(h) in sols), None) or next(
-                    (h for h in hits if h.promo in (None, "q")), hits[0])
-                self.attempt(m)
-                return
-        p = b[i]
-        if p and p[0] == turn:
-            bw.selected = i
-            bw.targets = [m for m in E.legal_moves(b, turn, ep) if m.frm == i]
-        else:
-            bw.selected, bw.targets = None, []
-        bw.update()
-
-    def attempt(self, m):
-        ex = self.lesson.exercises[self.index]
-        b, turn, ep = self.pos[0], self.pos[1], self.pos[2]
-        u, san = K.uci_of(m), E.san_of(b, m, ep)
-        self.board.selected, self.board.targets = None, []
-        if u in ex.solutions:
-            self.finish(m, "<span style='color:#1a7f37'><b>%s — yes!</b></span> %s" % (san, ex.explain))
-        elif ex.quiz:
-            self.feedback.setText("<span style='color:#b35900'><b>%s</b> is not it.</span> Try again, or press Show."
-                                  % san)
-            self.board.update()
-        else:
-            best = E.san_of(b, K.find(b, turn, ep, ex.solutions[0]), ep)
-            self.finish(K.find(b, turn, ep, ex.solutions[0]),
-                        "<b>%s</b> is a move a strong player might consider. The idea here is <b>%s</b>: %s"
-                        % (san, best, ex.explain))
-
-    def reveal(self):
-        if self.lesson is None or not self.lesson.exercises or self.solved:
-            return
-        ex = self.lesson.exercises[self.index]
-        b, turn, ep = self.pos[0], self.pos[1], self.pos[2]
-        m = K.find(b, turn, ep, ex.solutions[0])
-        self.finish(m, "<b>%s.</b> %s" % (E.san_of(b, m, ep), ex.explain))
-
-    def finish(self, m, html):
-        self.solved = True
-        b, turn, ep = self.pos[0], self.pos[1], self.pos[2]
-        self.board.board, self.board.last = E.apply_move(b, m), m
-        self.board.update()
-        self.feedback.setText(html)
+    def on_finished(self, _first_try):
         if self.index == len(self.lesson.exercises) - 1 and self.lesson.key not in self.done:
             self.done.add(self.lesson.key)
-            save_progress(self.done)
+            st = load_state()
+            st["done"] = sorted(self.done)
+            save_state(st)
             self.refill()
 
-    # ---- the specialist ----
     def play_opponent(self):
-        p = self.parent()
-        name = self.lesson.opponent if self.lesson else ""
-        if p is None or not name or p.who.findData(name) < 0:
+        play_against(self.parent(), self.lesson.opponent if self.lesson else "")
+
+
+PUZZLE_K = 32                   # rating points per puzzle at most, as a club Elo
+PUZZLE_TEXT = {"self-capture": "Find the self-capture.",
+               "quiet": "The natural move of ordinary chess is a mistake here. Find the best move."}
+SPECIALIST_FOR = {"promotion": "Ada", "escape": "Mirela", "king-walk": "Ada", "king-other": "Mirela",
+                  "check": "Corin", "attack": "Rosa", "activation": "Felix", "reposition": "Felix"}
+
+
+class PuzzleWindow(QDialog):
+    """Kansas puzzles, one at a time near your puzzle rating (KS-5)."""
+
+    def __init__(self, parent=None, seed=None):
+        super().__init__(parent)
+        self.setWindowTitle("Kansas puzzles")
+        self.setModal(False)
+        self.resize(880, 560)
+        self.rand = random.Random(seed)
+        self.puzzles = load_puzzles()
+        st = load_state()
+        prof = Profile.load()
+        self.rating = st.get("puzzle_rating", prof.rating if prof else 1200)
+        self.seen = set(st.get("puzzles_seen", []))
+        self.solved_ids = set(st.get("puzzles_solved", []))
+        v = QVBoxLayout(self)
+        self.head = QLabel("")
+        v.addWidget(self.head)
+        self.view = ExerciseView()
+        self.view.finished.connect(self.on_finished)
+        v.addWidget(self.view, 1)
+        row = QHBoxLayout()
+        self.show_btn, self.next_btn = QPushButton("Show"), QPushButton("Next puzzle ▶")
+        self.show_btn.clicked.connect(self.view.reveal)
+        self.next_btn.clicked.connect(self.next_puzzle)
+        for b in (self.show_btn, self.next_btn):
+            row.addWidget(b)
+        self.view.side.addLayout(row)
+        self.play_btn = QPushButton("")
+        self.play_btn.clicked.connect(lambda: play_against(self.parent(), self.specialist))
+        self.view.side.addWidget(self.play_btn)
+        self.current, self.specialist = None, ""
+        self.next_puzzle()
+
+    def pick(self):
+        """An unseen puzzle among the five rated nearest yours (all puzzles again once every one has been seen)."""
+        pool = [p for p in self.puzzles if p["id"] not in self.seen] or list(self.puzzles)
+        if not pool:
+            return None
+        pool.sort(key=lambda p: abs(p["rating"] - self.rating))
+        return self.rand.choice(pool[:5])
+
+    def next_puzzle(self):
+        self.current = self.pick()
+        if self.current is None:
+            self.head.setText("No puzzles are installed (chessiq/puzzles.json).")
             return
-        p.who.setCurrentIndex(p.who.findData(name))
-        p.mode.setCurrentIndex(p.mode.findData("ai"))
-        p.rated_box.setChecked(False)
-        p.new_game()
-        p.raise_()
+        p = self.current
+        ex = Exercise(p["fen"], PUZZLE_TEXT[p["kind"]], p["solution"], p["explain"])
+        self.view.load(ex, "Puzzle %d · rated %d · " % (p["id"], p["rating"]))
+        self.specialist = SPECIALIST_FOR.get(p.get("motif", ""), "Selim")
+        self.play_btn.setText("Play %s, who plays for this" % self.specialist)
+        self._head()
+
+    def _head(self):
+        self.head.setText("<b>Your puzzle rating: %d</b> · solved at the first try: %d of %d · %d puzzles in all"
+                          % (self.rating, len(self.solved_ids), len(self.seen), len(self.puzzles)))
+
+    def on_finished(self, first_try):
+        p = self.current
+        if p["id"] not in self.seen:                     # only a first attempt counts
+            expected = 1 / (1 + 10 ** ((p["rating"] - self.rating) / 400))
+            self.rating = round(self.rating + PUZZLE_K * ((1.0 if first_try else 0.0) - expected))
+            self.seen.add(p["id"])
+            if first_try:
+                self.solved_ids.add(p["id"])
+            st = load_state()
+            st.update(puzzle_rating=self.rating, puzzles_seen=sorted(self.seen), puzzles_solved=sorted(self.solved_ids))
+            save_state(st)
+        self._head()

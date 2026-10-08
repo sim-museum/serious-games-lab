@@ -520,14 +520,30 @@ class MainWindow(QMainWindow):
         acad = QAction("Kramnik &Academy: lessons on self-capture...", self)
         acad.triggered.connect(self.academy_open)
         am.addAction(acad)
-        self.academy = None
+        puz = QAction("Kansas &puzzles...", self)
+        puz.triggered.connect(self.puzzles_open)
+        am.addAction(puz)
+        self.academy, self.puzzles = None, None
         self.resize(1000, 680)
+
+    def welcome(self):
+        """A new player's first look (KS-8): the game looks ordinary, so say where the differences are taught."""
+        if self.profile is None and not academy.load_state():
+            self.note = ("New to Kramnik chess? It looks like ordinary chess, but it isn't. Academy → Kramnik Academy "
+                         "shows what self-capture changes, in short lessons.")
+            self.render()
 
     def academy_open(self):
         """The Kramnik Academy (KS-4): lessons and positions on what self-capture changes."""
         if self.academy is None:
             self.academy = academy.AcademyWindow(self)
         self.academy.show(); self.academy.raise_()
+
+    def puzzles_open(self):
+        """Kansas puzzles (KS-5): one at a time near your puzzle rating."""
+        if self.puzzles is None:
+            self.puzzles = academy.PuzzleWindow(self)
+        self.puzzles.show(); self.puzzles.raise_()
 
     # ---------------- game flow ----------------
     def choose_opponent(self):
@@ -1241,8 +1257,9 @@ class MainWindow(QMainWindow):
             self.engine.close()
         if self.coach_rs is not None:
             self.coach_rs.close()
-        if self.academy is not None:
-            self.academy.close()
+        for w in (self.academy, self.puzzles):
+            if w is not None:
+                w.close()
         super().closeEvent(ev)
 
     # ---------------- drawing ----------------
@@ -1382,4 +1399,5 @@ def main(argv=None):
     app.setApplicationName("chessIQ")
     w = MainWindow()
     w.show()
+    w.welcome()
     return app.exec()
