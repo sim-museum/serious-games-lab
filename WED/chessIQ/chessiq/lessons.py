@@ -126,7 +126,17 @@ LESSONS = [
             Exercise("3r4/pp1k2q1/2p2bP1/5p1Q/3Pp3/1BP3R1/PP2KPP1/r7 w - - 4 29",
                      "White to move.",
                      ["g3g6"],
-                     "Rxg6: the rook takes its own pawn and lands on the sixth rank.", "census", quiz=False)],
+                     "Rxg6: the rook takes its own pawn and lands on the sixth rank.", "census", quiz=False),
+            Exercise("5r2/1p4k1/p1bpp3/P1p5/4PP1p/3P1Qbq/1PP1K3/R6R b - - 1 32",
+                     "Black to move. The queen on h3 is out of play. Bring it back with force.",
+                     ["h3e6"],
+                     "...Qxe6: the queen takes its own pawn and is back in the centre at once. Without self-capture "
+                     "Black would be more than two pawns worse off.", "census (puzzle)"),
+            Exercise("r1b1kr2/pp1nqpb1/2p2npp/4p1N1/4P3/1BN1B3/PPP1QPPP/3RK2R w - - 0 12",
+                     "White to move. The knight on g5 is attacked. Where does it go?",
+                     ["g5e4"],
+                     "Ngxe4: the knight takes its own pawn and lands on a central square, where it hits f6 and d6. "
+                     "Without self-capture White would be about two pawns worse off.", "census (puzzle)")],
            "Felix"),
     Lesson("check", "Self-capture with check", "Advanced",
            "<p>Strong players use self-captures as steps in a combination: a piece takes its own man to give check, "

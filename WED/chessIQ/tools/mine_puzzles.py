@@ -8,7 +8,10 @@ self-capture was played. Each is searched under Kramnik rules (one thread, NODES
     kind "quiet" if it is not, the best move of ordinary chess differs, and that move loses TRAP or more here to a
     line with a self-capture (chessiq.kansas.sc_line);
   * rated by the strength ladder (chessiq.personalities.LADDER): the smallest node count from which a fresh search
-    finds the solution at every larger step. "A player of this rating finds it."
+    finds the solution at every larger step, capped at MAX_RATING. This is an engine's difficulty, a proxy for a
+    player's: an engine looks at checks no sooner than other moves, so a checking self-capture can rate higher than
+    a player would find it.
+Then tools/leela_verdict.py puzzles keeps only the puzzles where Leela T40 agrees.
 python3 tools/mine_puzzles.py CENSUS_OUT_DIR [--workers K] [--nodes N]   -> chessiq/puzzles.json"""
 import json
 import math
@@ -22,6 +25,7 @@ from chessiq.personalities import LADDER  # noqa: E402
 from chessiq.uci_engine import BINARY, VARIANTS  # noqa: E402
 
 GAP = 150
+MAX_RATING = 2600               # the strongest specialist; beyond it the ladder says little about people
 STEPS = [16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 65536, 262144]
 OUT = os.path.join(R, "chessiq", "puzzles.json")
 
@@ -116,7 +120,7 @@ def judge(fen):
         found = n
     if found is None:
         return None
-    out.update(nodes=found, rating=ladder_rating(found))
+    out.update(nodes=found, rating=min(MAX_RATING, ladder_rating(found)))
     return out
 
 

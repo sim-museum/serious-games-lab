@@ -9,10 +9,12 @@ ok   files       2 Q best Qxf4 (takes its own pawn)      +390  off-rules c3e1
 ok   activation  1 D best Rxa7 (takes its own pawn), N    -74  off-rules d8c8   
 ok   activation  2 D best Nxf4 (takes its own pawn), Q    +46  off-rules g1f2   
 ok   activation  3 D best Rxg6 (takes its own pawn), Q    +67  off-rules h5f5   
+ok   activation  4 Q best Qxe6 (takes its own pawn), R   +149  off-rules h3f5   
+ok   activation  5 Q best Ngxe4 (takes its own pawn),    +263  off-rules g5h3   
 ok   check       1 D best fxe4+ (takes its own knight)    -14  off-rules a5a4   
 ok   check       2 Q best Qxd5+ (takes its own pawn),    +159  off-rules e3c3   
 ok   check       3 Q best Rxg2+ (takes its own bishop)     +0  off-rules f3d3   
-ok   endgames    1 D best Kxg3 (takes its own pawn), K     +0  off-rules f2f1   
+ok   endgames    1 D best Kxg3 (takes its own pawn), K     +0  off-rules f2e1   
 ok   endgames    2 D best Kxg4 (takes its own pawn), R    -82  off-rules a8g8   
 ok   threats     1 Q best Be3, Qxe3, Qc8+                 +98  off-rules b7c8   
 ok   threats     2 D best Bxd5, Rxa7 (takes its own pa   +112  off-rules b3d5   

@@ -1,0 +1,10 @@
+rated game vs Corin 2000 | nodes 1676 multipv 6 randomness 4 | clock fischer (10, 3)
+over: {'type': 'mate', 'winner': 'w'} | plies 81 | clocks W 679 s, B 278 s
+rating 1400 -> 2175 | games 1 | note: Rated: your rating +775 → 2175.
+pgn tail:  Bxh6 Kc6 36. Bf4 d5 37. h6 Kd7 38. h7 Kc6 39. h8=Q Kd7 40. Qe5 Kc6 41. Qe6# 1-0
+post-game: admin won in 41 moves. Game type: Dominated. Opening: followed grandmaster games for 6 plies. | Your rating: +775 → 2175. | Suggested opponent: Lili (2275).
+not in Kansas: <b>Not in Kansas</b> — 1 self-capture played, 0 missed, 0 ordinary-chess moves that lost here, 0 found. Click one to see the position.
+    Corin — 24...Kxf7: The king escapes check by taking its own pawn.
+practise button: False
+rating history points: [1400, 2175] | rows 1
+exit 0

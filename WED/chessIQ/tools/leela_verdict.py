@@ -2,7 +2,8 @@
 (tools/lesson_check.py, tools/mine_puzzles.py); Leela T40 (lc0, kramnik-t40a1 on the GPU), which judges by a
 network rather than by deep calculation, is asked for its move in every position.
 python3 tools/leela_verdict.py lessons            print agreement on the lesson positions
-python3 tools/leela_verdict.py puzzles [NODES]    mark each puzzle in chessiq/puzzles.json with "leela": true/false"""
+python3 tools/leela_verdict.py puzzles [NODES]    keep only the puzzles in chessiq/puzzles.json where Leela agrees
+                                                  (both engines, by different methods), renumbered by rating"""
 import json
 import os
 import subprocess
@@ -53,11 +54,14 @@ def main():
             print("Leela agrees on %d of %d lesson positions" % (agree, n))
         else:
             ps = json.load(open(PUZZLES))
-            for p in ps:
-                p["leela"] = lz.best(p["fen"]) in p["solution"]
+            keep = [p for p in ps if lz.best(p["fen"]) in p["solution"]]
+            keep.sort(key=lambda p: (p["rating"], p["fen"]))
+            for i, p in enumerate(keep):
+                p.pop("leela", None)
+                p["id"] = i + 1
             with open(PUZZLES, "w") as f:
-                json.dump(ps, f, indent=0)
-            print("Leela agrees on %d of %d puzzles" % (sum(p["leela"] for p in ps), len(ps)))
+                json.dump(keep, f, indent=0)
+            print("Leela agrees on %d of %d puzzles; kept those" % (len(keep), len(ps)))
     finally:
         lz.close()
 
