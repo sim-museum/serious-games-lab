@@ -916,3 +916,35 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
   time control), so its standard can't be lowered. Progress is kept in `series.json` beside the profile. Check: 8
   tests (`tests/test_series.py`); with the top-half rule loosened by one place, 2 of them fail. Every event's
   range holds 18–62 roster opponents for the 5–9 it needs.
+
+## EPIC KS: "Not in Kansas" (2026-10-07, PO brief, 9 hours autonomous)
+- **PO's goal:** Chessmaster-type ranked play against many personalities, with a "we're not in Kansas anymore"
+  feeling. Educational and exciting at every level. Kramnik chess looks just like regular chess, deceptively. Some
+  personalities specialise in self-capture or its threat, and both strong Kramnik engines (Fairy-Stockfish and lc0)
+  have a place.
+- **What the census says** (`docs/SELF_CAPTURE_CENSUS.md`): self-captures are played rarely (0.7–0.9% of moves),
+  but their *availability* changes the best move in 5% of positions (8% of middlegames). So the Kansas feeling must
+  come mostly from threats and defensive resources, which a player only notices if something points them out.
+- **Division of labour between the engines:**
+  - Fairy-Stockfish can switch self-capture on and off, so it is the engine that explains what is different: the
+    rule-switch comparison, specialists' move choice, the Kansas moments in analysis, and puzzle checking.
+  - Leela (t40a1 on the GPU, sp1 on the CPU) has the strongest judgement, so it is the top opponent and gives a
+    second opinion on critical moments.
+- **Sprints:**
+  - **KS-1. Self-capture appetite.** Specialists choose, among near-best moves, the one that gains most from Kramnik
+    rules: its value with self-capture on minus its value with it off. A self-capture itself scores a fixed bonus.
+    Check: at equal rating, a specialist plays measurably more self-captures and rule-dependent moves than a neutral
+    personality, and its strength cost is measured.
+  - **KS-2. The specialists.** New personalities across 900–2600, each with a self-capture motif family, a bio
+    that says what to watch for, and a calibrated rating. Offered with every roster, Chessmaster's included.
+  - **KS-3. Kansas moments in Post-Game Analysis.** The self-captures played, the strong ones missed ("Rxh2! would
+    have opened the h-file"), and moves that are best only because self-capture exists. Check: tests on constructed
+    games, plus a real game.
+  - **KS-4. Lessons.** A Kramnik Academy: a short lesson per motif family, with board positions to solve (from the
+    paper and the census, each solution checked by a deep search), from beginner to advanced. Each ends with a game
+    against the specialist in that motif.
+  - **KS-5. Puzzles.** Kansas puzzles mined from engine games, graded by rating, solution unique by a margin.
+  - **KS-6. The coach.** In unrated games, an optional warning when the opponent has a self-capture threat, or you
+    have a strong self-capture. Off in rated games.
+  - **KS-7. The strongest opponent.** Leela with t40a1 when the GPU build is present.
+  - **KS-8. Retrospective,** README, and the shipped build.
