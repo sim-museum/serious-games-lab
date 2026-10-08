@@ -309,3 +309,32 @@ def describe(mo):
         return ("%s%s: the best move in ordinary chess, but not here (-%.1f): %s. Better was %s."
                 % (num, mo["san"], mo["loss"] / 100, mo["why"], mo["best"]))
     return "%s%s: well spotted. The ordinary-chess move %s fails here to %s." % (num, mo["san"], mo["off"], mo["why"])
+
+
+def coach(fen, rs):
+    """The coach's word for the side to move (KS-6), or None. It never names the move to play:
+      ("chance", text)  -- the best move is a self-capture worth MISSED over the best ordinary-chess play;
+      ("warning", text) -- the best move of ordinary chess loses TRAP or more here, to a line with a self-capture
+                           within SC_DEPTH plies (the warning names that natural move, not the answer)."""
+    b, turn, ep, half, full = from_fen(fen)
+    best, s_on, _ = rs.search("on", fen)
+    bm = find(b, turn, ep, best) if best else None
+    if bm is None:
+        return None
+    off, s_off, _ = rs.search("off", fen)
+    if bm.kind == "self":
+        if cap(s_on) - cap(s_off) >= MISSED:
+            return ("chance", "There is a strong self-capture here. Look at what your %s could take of its own."
+                    % PIECE_NAME.get(b[bm.frm][1], "king"))
+        return None
+    om = find(b, turn, ep, off) if off else None
+    if om is None or off == best:
+        return None
+    if cap(s_on) - cap(rs.search("on", fen, [off])[1]) < TRAP:
+        return None
+    nb = E.apply_move(b, om)
+    pv = rs.search("on", to_fen(nb, E.opp(turn), E.ep_after(om), 0, full + (turn == "b")))[2]
+    if not sc_line(nb, E.opp(turn), E.ep_after(om), pv):
+        return None
+    return ("warning", "Careful: %s, the natural move in ordinary chess, fails here to a self-capture."
+            % E.san_of(b, om, ep))

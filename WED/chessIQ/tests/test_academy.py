@@ -93,5 +93,40 @@ class Window(unittest.TestCase):
         m.close()
 
 
+class CoachInTheWindow(unittest.TestCase):         # KS-6: advice only in unrated games
+    def setUp(self):
+        self.home = tempfile.mkdtemp(prefix="chessiq-test-")
+        os.environ["CHESSIQ_HOME"] = self.home
+        from PyQt6.QtWidgets import QApplication
+        from chessiq import app
+        self.qa = QApplication.instance() or QApplication([])
+        self.w = app.MainWindow()
+
+    def tearDown(self):
+        self.w.close()
+        shutil.rmtree(self.home, ignore_errors=True)
+
+    def test_shown_in_an_unrated_game(self):
+        w = self.w
+        w.rated = None
+        w._coached(len(w.game.history), ("warning", "Careful: Qc8+ ..."))
+        self.assertIn("Coach", w.coach_label.text())
+
+    def test_silent_in_a_rated_game(self):
+        w = self.w
+        w.rated = {"opponent": "x"}
+        w._coached(len(w.game.history), ("warning", "Careful"))
+        self.assertEqual(w.coach_label.text(), "")
+        n = len(w.threads)
+        w.maybe_coach()
+        self.assertEqual(len(w.threads), n)                       # no search started either
+
+    def test_stale_advice_is_dropped(self):
+        w = self.w
+        w.rated = None
+        w._coached(len(w.game.history) + 1, ("chance", "old position"))
+        self.assertEqual(w.coach_label.text(), "")
+
+
 if __name__ == "__main__":
     unittest.main()

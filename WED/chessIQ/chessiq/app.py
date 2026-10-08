@@ -2,6 +2,7 @@
 computer, or another player over the network -- found through the Serious Games Week matchmaker."""
 import os
 import random
+import threading
 import time
 import sys
 
@@ -393,9 +394,21 @@ class MainWindow(QMainWindow):
         self.tc.currentIndexChanged.connect(lambda i: QSettings("sim-museum", "chessIQ").setValue("timecontrol", i))
         grid.addWidget(QLabel("Time"), 4, 0)
         grid.addWidget(self.tc, 4, 1)
+        # KS-6: the coach -- self-capture chances and traps on your turn, in unrated games against the computer
+        self.coach_box = QCheckBox("Coach: point out self-capture chances and traps")
+        self.coach_box.setToolTip("On your turn in an unrated game, a quick search with self-capture on and off. "
+                                  "Off in rated games, which allow no advice.")
+        self.coach_box.setChecked(QSettings("sim-museum", "chessIQ").value("coach", "true") == "true")
+        self.coach_box.toggled.connect(lambda on: (QSettings("sim-museum", "chessIQ").setValue(
+            "coach", "true" if on else "false"), self.maybe_coach()))
+        grid.addWidget(self.coach_box, 5, 0, 1, 2)
+        self.coach_label = QLabel("")
+        self.coach_label.setWordWrap(True)
+        self.coach_rs, self.coach_thread, self.coach_lock = None, None, threading.Lock()
         self.clock_label = QLabel()
         self.clock_label.setStyleSheet("font-family: monospace; font-size: 13pt")
         side.addWidget(self.clock_label)
+        side.addWidget(self.coach_label)
         # CM-6: the opening helper -- what the grandmasters played in this position (also in rated games, as in
         # Chessmaster, whose coach may show opening moves during ranked play)
         self.openings = QLabel()
@@ -769,6 +782,39 @@ class MainWindow(QMainWindow):
             self.link.send(t="move", ply=len(self.game.history) - 1, san=san)
         self.render()
         self.maybe_ai()
+        self.maybe_coach()
+
+    # ---------------- the coach (KS-6) ----------------
+    def maybe_coach(self):
+        """Start the coach's look at the position if it is the local player's turn in an unrated computer game."""
+        g = self.game
+        self.coach_label.setText("")
+        if (not self.coach_box.isChecked() or self.rated or g.mode != "ai" or g.over or not g.local_to_move()
+                or self.review is not None or not analysis.available()):
+            return
+        from . import kansas as K
+        fen, ply = K.to_fen(g.board, g.turn, g.ep, g.half, len(g.history) // 2 + 1), len(g.history)
+
+        def look():
+            with self.coach_lock:
+                if self.coach_rs is None:
+                    self.coach_rs = K.RuleSwitch(analysis.BINARY, analysis.VARIANTS, 30000)
+                try:
+                    return K.coach(fen, self.coach_rs)
+                except (OSError, RuntimeError, ValueError):
+                    return None
+        th = ThinkThread(ply, look)
+        th.done.connect(self._coached)
+        th.finished.connect(lambda: self.threads.remove(th) if th in self.threads else None)
+        self.threads.append(th)
+        th.start()
+
+    def _coached(self, ply, word):
+        g = self.game
+        if word is None or ply != len(g.history) or g.over or not g.local_to_move() or self.rated:
+            return
+        colour = "#1a7f37" if word[0] == "chance" else "#b35900"
+        self.coach_label.setText("<span style='color:%s'><b>Coach:</b> %s</span>" % (colour, word[1]))
 
     def on_square(self, i):
         g = self.game
@@ -1193,6 +1239,10 @@ class MainWindow(QMainWindow):
             th.wait(3000)
         if self.engine is not None:
             self.engine.close()
+        if self.coach_rs is not None:
+            self.coach_rs.close()
+        if self.academy is not None:
+            self.academy.close()
         super().closeEvent(ev)
 
     # ---------------- drawing ----------------

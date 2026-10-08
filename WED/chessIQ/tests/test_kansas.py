@@ -111,5 +111,30 @@ class Moments(unittest.TestCase):                 # KS-3
         self.assertIsNone(K.moments(["e2e4"], self.rs, cancel=lambda: True))
 
 
+@unittest.skipUnless(os.access(BINARY, os.X_OK), "Kramnik Fairy-Stockfish missing")
+class Coach(unittest.TestCase):                   # KS-6
+    @classmethod
+    def setUpClass(cls):
+        cls.rs = K.RuleSwitch(BINARY, VARIANTS, nodes=200000)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.rs.close()
+
+    def test_warns_about_the_ordinary_chess_move_without_giving_the_answer(self):
+        word = K.coach("4kb1r/1Qp2p2/p4nnp/2q1p1p1/4P3/2P2NNP/PP3PK1/R1B4r w - - 0 19", self.rs)
+        self.assertEqual(word[0], "warning")
+        self.assertIn("Qc8+", word[1])
+        self.assertNotIn("Be3", word[1])
+
+    def test_points_to_a_strong_self_capture(self):
+        word = K.coach("8/3P1p1k/3R4/6R1/p6P/5Pp1/6P1/1r4K1 w - - 1 41", self.rs)    # only Kxg2 saves White
+        self.assertEqual(word[0], "chance")
+        self.assertIn("king", word[1])
+
+    def test_quiet_when_nothing_hinges_on_it(self):
+        self.assertIsNone(K.coach(K.START, self.rs))
+
+
 if __name__ == "__main__":
     unittest.main()
