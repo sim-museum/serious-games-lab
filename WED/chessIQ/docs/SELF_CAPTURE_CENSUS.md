@@ -26,7 +26,7 @@ the *possibility* of one changes the best move. The motif families are in `SELF_
 
 - **Games:** 120 Fairy-Stockfish self-play games (300k nodes a move, one thread, about 0.7 s, depth 12+). Also 100 lc0
   t40a1 self-play games (800 nodes a move, CUDA at the 70 W cap). Each game starts from a different grandmaster-book
-  opening of 2–12 plies. Made with `tools/uci_match.py --games`, at about 155 plies per game.
+  opening of 2–12 plies. Made with `tools/uci_match.py --games`, at 135–150 plies per game on average.
 - **Self-captures played:** every one, labelled by `tools/selfcapture_census.py`. Its rules reproduce all 17 of the
   paper's labelled examples (`validate`).
 - **Rule-switch searches:** every 4th ply from ply 16, 7,124 positions in all. Each was searched by Fairy-Stockfish
