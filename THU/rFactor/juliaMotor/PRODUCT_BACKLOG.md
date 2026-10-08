@@ -23472,10 +23472,12 @@ installed -- the PO's `~/.local/share/julia-racer` untouched) and running the SH
   match their cockpit golds landmark for landmark (Zandvoort: E60; the Ring: E78 S1–S8, GPLVIS-1).
 
 
-### AppImage 261008 (2026-10-07, PO "run it")
-* `~/Documents/261008/JuliaRacer-x86_64-261008.AppImage` (1,677,711,864 bytes; sha256 `9e5ae25b…bdd4b` in SHA256SUMS),
-  built from `d85ad6d1` with the 261007 recipe (`build_julia.sh` + JR_* env, zstd squash, 261007 runtime).
-* Adds over 261007: COCKPIT-GOLD-1 S3 (mirror view of the world behind). E78 S10–S12 were checks only.
+### AppImage 261007, evening rebuild (2026-10-07, PO "run it")
+* `~/Documents/261007/JuliaRacer-x86_64-261007.AppImage` (1,677,711,864 bytes; sha256 `9e5ae25b…bdd4b` in SHA256SUMS),
+  built from `d85ad6d1` with the morning's recipe (`build_julia.sh` + JR_* env, zstd squash, same runtime). First written
+  to `261008/`; the PO corrected the date ("26108 is tomorrow"), so it replaced the morning build in `261007/` (the
+  morning image + status kept in `~/jr-appimage-build/superseded_261007_morning/`).
+* Adds over the morning build: COCKPIT-GOLD-1 S3 (mirror view of the world behind). E78 S10–S12 were checks only.
 * Verified from the mounted image: the shipped analyser, coach, launcher and segnames tests pass headless; the shipped
   `drive_native_mtk.jl`, `render.jl`, `juliaRacer.py`, `analyser.py` and `coach.py` are byte-identical to the repo.
-* Status for the PO: `~/Documents/261008/STATUS_2026-10-08.md`.
+* Status for the PO: `~/Documents/261007/STATUS_2026-10-07.md` (replaces the morning's).
