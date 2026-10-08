@@ -21,6 +21,11 @@ this index was written; that is what it exists to stop.
 
 | item | what | state |
 |---|---|---|
+| **LOADHANG-1** | Why did the AppImage's Spa race load "hang" (≈15 min, the PO stopped it at the AI cars) after a Ring race, a WG race and a replay in the same launcher session? Little time if data is lacking -- but how to avoid / diagnose such issues in future (PO 2026-10-07 night) | open. Known: the installed copy loads Spa cold in 243 s and the repo in 230 s; the log had no stage times and arrives in bursts |
+| **COCKPIT-2** | Cockpits need work: in REPLAY the cockpit is static (wheel doesn't turn, hands don't move, mirrors black, gauges have no dials); the Lotus wrists are see-through while driving; ALL cockpits incl. AI cockpits in replay as close to the gold as possible; the shifter at right moves when the player shifts (as in the gold) (PO 2026-10-07 night). Carries E64's open mirror-camera finding | open. Videos: GPL gold `watkinsGlenn/261007_wg_race_GPL_gold_dtandard.mp4` (replay cockpits of the field); ours `~/Videos/261007_wg_race_analysis.mp4`, `261007_spa_race.mp4` |
+| **TRACKS-TD-1** | Track fixes from test drives (PO 2026-10-07 night): (a) Ring: start fences L+R flicker (also in the mirrors); artifacts at middle distance at times; at Ex-Mühle the hill ahead from the dip before the left turn is missing until you're about to turn, then pops in. (b) Spa: AI go off the road -- inside at Eau Rouge ("red water"), hit the PO's car parked across that inside path instead of dodging left; replay shows AI off inside/outside at times; long openings in the ground just after Stavelot showing another view through the ground | open. Video: `~/Videos/261007_spa_race.mp4` (race 0:10–7:15, parked test 7:30–10:45, replay 14:45–19:30) |
+| **REPLAY-3** | Fix the replay analysis: the left panel never lists any replays, so the rest could not be exercised (PO 2026-10-07 night) | open. Videos: `~/Videos/261007_wg_race_analysis.mp4` ~11:20, `261007_spa_race.mp4` ~19:45 |
+| **TRACKSEG-4** | Section names (Stavelot, Front Straight...) on screen twice as long, with an English translation in parentheses where at all possible -- even a wrong/absurd one, as a memory aid for orientation (PO 2026-10-07 night) | open. Videos show today's labels ("The 90", "Les Combes", "La Source (The Spring)") |
 | **AIHELMET-1** | The AI drivers' helmets render as a dark dome (black lobes from the front) where GPL's are the driver's skin -- found 2026-10-07 during HANDS-2 | ✅ **S1 (2026-10-07):** each AI driver's own helmet skin bound to the shell (`261007/helmet/`) |
 | **TRACKSEG-3** | Preferences switch: show/hide the track-section names ("Front Straight", "Big Bend" at WG), default ON (PO 2026-10-06) | ✅ **DONE (S1, 2026-10-06):** launcher Graphics group, "Show track section names", default ON, remembered; OFF = `JM_SEGNAME_SECS=0`, also for replays; gate `segnames_smoke` |
 | **GUI-1** | Redesign the julia racer GUI (`demo/native/juliaRacer.py`) for ease of use per GUI best practices, then restyle it like the PyQt GUIs of pokerIQ and bridgeIQ (`~/sgl/MON/pokerIQ`, `~/sgl/FRI/bridgeIQ`) (PO 2026-10-06) | **S1 (2026-10-06) redesign done:** task-ordered tabs (Race / Results / Replays / Settings / Controller), Session + Car cards, one primary Start button, menus + status bar, log on demand, everything remembered; the sim's environment is identical to before (3 cases). **S2 restyle done:** dark pokerIQ/bridgeIQ theme (`261006/gui/s2_vs_iq.jpg`). 🟡 **AWAITING THE PO's look** |
@@ -23481,3 +23486,83 @@ installed -- the PO's `~/.local/share/julia-racer` untouched) and running the SH
 * Verified from the mounted image: the shipped analyser, coach, launcher and segnames tests pass headless; the shipped
   `drive_native_mtk.jl`, `render.jl`, `juliaRacer.py`, `analyser.py` and `coach.py` are byte-identical to the repo.
 * Status for the PO: `~/Documents/261007/STATUS_2026-10-07.md` (replaces the morning's).
+
+
+## PO batch 2026-10-07 (night, after an AppImage test drive)
+Verbatim: *"add backlog item: why did appImage spa hang during load? (don't spend a lot of time on this if data is lacking,
+but ask yourself how to avoid similar issues in the future) add backlog item: cockpits need work.  During replay, there is
+no movement in cockpits - the wheel doesn't turn, the hands don't move, the mirrors are black, there are no dials on the
+gauges.  The lotus hands and gloves look good during driving, except the wrists are see-through.  All cockpits, including
+AI cockpits during replay, should be as close as possible to gold standard.  Also the shifter at right should move when
+the player shifts in cockpit view, as it does in the gold standard.  add backlog item: improve tracks (based on test
+drives)  a. at the ring, at the start, the fences at left and right flicker, an effect also seen in the mirrors. also at
+the ring, at some times there are artifacts visible at middle-distance.  At ex-mill the hill directly ahead while you're
+in the dip before the left turn is missing until you're about to turn left, then it suddenly appears  b. at spa, the AI
+often go off the road - on the inside at red water, even hitting my car when I parked across that inside path, rather
+than dodging to the left.  there are long openings in the ground, just after stavelot, I think, where you can see through
+to some other view through the ground confusingly.  A replay shows the AI cars going off the road on the inside
+sometimes, on the outside other times, though on the road most of the time.  add backlog item: fix the replay analysis.
+There are never any replays on the left panel to choose from, so I never got the chance to exercise the other
+functionality.  add backlog item: make the track place names (stavelot, front straight, etc.) appear on the screen for
+twice as long as they currently do, and supply an English translation in parenthasis if at all possible, even if the
+tranlation is wrong or even obsurd - the point is that it's something you can use to remember and orient yourself.
+Continue running scrum autonomously, start each backlog item with a big-picture retrospective - what has been done
+before, lessons learned, new angles to try, then do more than 4 sprints on a backlog item before rotating to the next
+open backlog item.  Don't stop, keep going!"*
+
+Process change: the per-item sprint count is now a floor -- more than 4 sprints per item before rotating, unless the
+item closes or blocks on the PO first. Queue, in the PO's order: LOADHANG-1, COCKPIT-2, TRACKS-TD-1, REPLAY-3, TRACKSEG-4.
+
+### Evidence videos for this batch (PO 2026-10-07 night: "they are necessary in order to complete the backlog items")
+All 1080p59.94. Times are approximate (from 1-frame-per-3/5-s contact sheets, `scratchpad` only).
+* **GPL gold -- `~/gold standard/julia racer/watkinsGlenn/261007_wg_race_GPL_gold_dtandard.mp4`** (6:46; original in
+  `~/Videos/`, sha256 `cb6b1f3a…253c`). GPL under Wine at Watkins Glen: chase laps 0:00–1:00, menus/track map 1:05–1:30,
+  then a **race REPLAY cycling cockpit cameras of the whole field** (Lotus, Ferrari, Brabham, BRM, Eagle, Honda) 2:00–3:40
+  and 5:45–6:25, onboard rear/side cameras 3:40–4:25, TV cameras 4:30–4:45; static "noise" camera cuts at ~2:05 and 5:35.
+  -> **COCKPIT-2's gold**: the AI cockpits in replay (wheel, hands, mirrors, dials moving); with the 260802 cockpit laps
+  for the player's shifter.
+* **Ours -- `~/Videos/261007_wg_race_analysis.mp4`** (12:22, AppImage 261007 morning build, 21:25–21:37): launcher 0:00–0:55;
+  WG race in the cockpit 0:55–4:15 (section label "The 90" ~2:40); launcher/log 4:15–6:40; **our replay** 6:40–10:55
+  (cockpit views 7:05–7:30 and 10:20–10:50: static wheel/hands, black mirrors, empty gauges); **the Analyser with an
+  empty replay list** ~11:20–11:40.  -> COCKPIT-2 (replay cockpits), REPLAY-3, TRACKSEG-4 (label length).
+* **Ours -- `~/Videos/261007_spa_race.mp4`** (20:20, the repo run 22:02–22:22 with JM_TIMING): Spa race in the chase view
+  0:10–7:15 (labels "Les Combes" ~1:45, "La Source (The Spring)" ~6:45; Stavelot ~4:30–5:15); finish P1 7:15; the car
+  PARKED on the run-off with the AI arriving 7:30–10:45 (the "parked across the inside path" test); launcher 11:00–14:30;
+  **our replay** 14:45–19:30 (AI cockpits 15:30–16:00; AI off the road e.g. ~16:45, ~18:45); **the Analyser, empty list**
+  ~19:45–20:00.  -> TRACKS-TD-1(b) (AI off-road, holes after Stavelot), COCKPIT-2, REPLAY-3, TRACKSEG-4.
+* No video of the Ring items (TRACKS-TD-1(a)): fence flicker at the start, mid-distance artifacts, the Ex-Mühle hill
+  pop-in -- reproduce from the description (GPL gold: `260802_nurburgring_cockpit.mp4`).
+
+### E64 S12 (2026-10-07) -- mirror camera sweep, paused by the PO; carried into COCKPIT-2
+* New test hook: `JM_SHOTS` takes an optional 4th field `K=V,K=V` that sets ENV knobs when that shot starts, so one
+  launch sweeps per-frame knobs (`JM_MIRCAM_*`, `JM_MIRROR_*`; not `JM_MIRROR_FOV`, a const) -- 8 variants per 5-min launch.
+* Zandvoort s=100 vs gold `261006/zandmap/g16.png` (`261007/mir4/sweep*.jpg`): moving the mirror camera FORWARD shows more of
+  our car (the driver's helmet appears); moving it BACK to x=0 and UP to y=0.9 (yawout 0.5) leaves only a small chrome piece
+  at the bottom -- the gold shows the rear tyre at the bottom outer edge and chrome at the bottom centre. Not yet adopted
+  (needs a second location and a driving check). Defaults unchanged.
+
+### LOADHANG-1 retrospective (2026-10-07)
+* **Done before:** E80/E92 (2026-08-29/30) chased a "13-minute Spa load" for 10 sprints: four plausible stories died on
+  contact with a counter; the real cost was texture DECODE (~0.27–0.4 s per GPL texture). E67 S2 shipped a decoded-RGBA
+  disk cache (`~/.cache/juliamotor/tex/<hash(abspath(dir), alphableed, decoder)>`, default ON): cold 700 s, warm 1.5 s.
+  E80-S2 (09-15) then measured Spa at 244 s -- warm cache.
+* **Lessons:** (1) the last printed line is not where the time goes (E80's original misreading, and mine tonight: I
+  called the run "stuck" after the horizon line, then had to retract). (2) Measure from the artefacts the run leaves,
+  not from its log. (3) A "cold" test is only cold if nothing warmed it first.
+* **New angle:** the texture cache is keyed on the track folder's PATH; the AppImage installs the tracks under
+  `~/.local/share/julia-racer/...`, a different key from the repo's. Look at the cache directories' file times.
+
+### LOADHANG-1 S1 (2026-10-07): diagnosed -- the first Spa launch from the AppImage install decoded every texture
+* `~/.cache/juliamotor/tex/65efcf847d363b13/` was filled **21:40:32 → 21:53:53** with **1,921** textures: exactly the
+  PO's AppImage Spa launch (started ~21:39, log "stuck" after the horizon at 21:42, objects done 21:54). 0.42 s per
+  texture on one core. The repo's Spa cache (`58aa2b…`, 1,921 files) dates from 09-26, so every repo launch is warm.
+  Not a hang and not staleness from the earlier Ring/WG/replay runs: those tracks were already cached for the install.
+* **Why my headless "cold" install test was fast (243 s):** it ran after the PO's run had filled that cache.
+* **Why the log looked frozen:** with the launcher, the sim's stdout is a PIPE; Julia queues pipe writes in libuv and
+  only sends them when the task yields or `flush(stdout)` runs, so a long compute delivers its lines in one burst (21:54)
+  while stderr warnings appear at once -- out of order. Smoke runs log to a FILE (synchronous), so they never show it.
+* **How to avoid it (next sprints):** (a) every launch logs stage stamps and flushes at each one (the launcher passes
+  JM_TIMING; tstamp flushes); (b) a cold texture cache announces itself with progress ("first run on this track:
+  preparing textures n/N -- later launches skip this") and the launcher's status line shows the latest stage;
+  (c) decode the uncached textures in parallel before the upload loop (the box has 8 cores; the decode is pure CPU);
+  (d) a test hook for the cache directory so a truly cold run can be timed without deleting the PO's caches.
