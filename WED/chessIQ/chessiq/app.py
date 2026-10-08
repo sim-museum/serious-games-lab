@@ -232,8 +232,11 @@ class OpponentDialog(QDialog):
         kind = ("a neural network" if p.engine == "leela" else
                 "a Chessmaster personality (from your installation)" if p.source == "Chessmaster" else
                 "a self-capture specialist (chessIQ's own)" if getattr(p, "kansas", 0) else "chessIQ's own")
-        self.bio.setHtml("<h3>%s</h3><p><b>Rated %d</b> &middot; %s</p><p><i>%s</i></p><p>%s</p>"
-                         % (p.name, p.rating, kind, p.style or "", (p.bio or "").replace("\n", "<br>")))
+        from .lessons import LESSONS
+        learn = [lesson.title for lesson in LESSONS if lesson.opponent == p.name]
+        self.bio.setHtml("<h3>%s</h3><p><b>Rated %d</b> &middot; %s</p><p><i>%s</i></p><p>%s</p>%s"
+                         % (p.name, p.rating, kind, p.style or "", (p.bio or "").replace("\n", "<br>"),
+                            "<p>Learn the idea first: Academy &rarr; %s.</p>" % " and ".join(learn) if learn else ""))
 
 
 class HostDialog(QDialog):
