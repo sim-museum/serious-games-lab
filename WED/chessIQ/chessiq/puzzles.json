@@ -1,5 +1,19 @@
 [
 {
+"fen": "1Bn5/4b3/4k3/1p2P1p1/2p3P1/8/1K2BP2/8 w - - 0 32",
+"solution": [
+"e2g4"
+],
+"san": "Bxg4+",
+"score": 157,
+"kind": "self-capture",
+"motif": "check",
+"explain": "Bxg4+! The bishop takes its own pawn and gives check. Without self-capture the best play here would be 3.0 worse.",
+"nodes": 16,
+"rating": 1163,
+"id": 1
+},
+{
 "fen": "1q2k2r/4bp2/p1p1p3/3nP1pp/3p4/P2N1Q1P/2PP1PP1/2BKR3 w - - 1 19",
 "solution": [
 "d3e5"
@@ -11,7 +25,21 @@
 "explain": "Nxe5! The knight takes its own pawn and opens a line at the enemy king. Without self-capture the best play here would be 2.2 worse.",
 "nodes": 16,
 "rating": 1163,
-"id": 1
+"id": 2
+},
+{
+"fen": "2R1k2r/1p2bpp1/4p3/1b2P2p/8/3n2P1/1P3PB1/r1B1Q1K1 b - - 2 25",
+"solution": [
+"e8f7"
+],
+"san": "Kxf7",
+"score": 653,
+"kind": "self-capture",
+"motif": "escape",
+"explain": "Kxf7! The king escapes check by taking its own pawn. Without self-capture the best play here would be 5.2 worse.",
+"nodes": 16,
+"rating": 1163,
+"id": 3
 },
 {
 "fen": "2R2k1r/6p1/1p5p/1B1n4/4p3/6P1/4PP2/5K2 b - - 2 33",
@@ -25,7 +53,35 @@
 "explain": "Kxg7! The king escapes check by taking its own pawn. Without self-capture the best play here would be 5.4 worse.",
 "nodes": 16,
 "rating": 1163,
-"id": 2
+"id": 4
+},
+{
+"fen": "2R5/1p1P1kp1/5b2/2p1r3/7P/P4pP1/3r1P2/1K5R w - - 0 37",
+"solution": [
+"d7c8q"
+],
+"san": "dxc8=Q",
+"score": -38,
+"kind": "self-capture",
+"motif": "promotion",
+"explain": "dxc8=Q! The pawn takes its own rook to reach the last ranks. Without self-capture the best play here would be 7.1 worse.",
+"nodes": 16,
+"rating": 1163,
+"id": 5
+},
+{
+"fen": "2bk3r/2pq1p2/r1n2Q2/1B4pp/2P5/7P/PP4P1/2R2K1R b - - 1 22",
+"solution": [
+"d8c7"
+],
+"san": "Kxc7",
+"score": 0,
+"kind": "self-capture",
+"motif": "escape",
+"explain": "Kxc7! The king escapes check by taking its own pawn. Without self-capture this position would be lost.",
+"nodes": 16,
+"rating": 1163,
+"id": 6
 },
 {
 "fen": "2r2k1r/1p3ppP/p1q2b2/3p4/8/B1P3PR/2P1Q1P1/R4K2 b - - 0 22",
@@ -39,7 +95,7 @@
 "explain": "Kxf7! The king escapes check by taking its own pawn. Without self-capture this position would be lost.",
 "nodes": 16,
 "rating": 1163,
-"id": 3
+"id": 7
 },
 {
 "fen": "2r3k1/7p/p2b2pP/qp1Q4/3P2p1/2r1R3/P4P1P/4RK2 b - - 0 33",
@@ -53,7 +109,7 @@
 "explain": "Kxh7! The king escapes check by taking its own pawn. Without self-capture this position would be lost.",
 "nodes": 16,
 "rating": 1163,
-"id": 4
+"id": 8
 },
 {
 "fen": "3k3r/pR3ppp/3pq3/8/1Q1pP2P/8/PP3PP1/2r2K1R w - - 1 22",
@@ -67,7 +123,21 @@
 "explain": "Kxf2! The king escapes check by taking its own pawn. Without self-capture this position would be lost.",
 "nodes": 16,
 "rating": 1163,
-"id": 5
+"id": 9
+},
+{
+"fen": "3r1k2/1p3pp1/2P2R2/q6p/3N3P/1b2P3/4B1P1/2QK3R w - - 1 32",
+"solution": [
+"d1e2"
+],
+"san": "Kxe2",
+"score": 176,
+"kind": "self-capture",
+"motif": "escape",
+"explain": "Kxe2! The king escapes check by taking its own bishop. Without self-capture the best play here would be 6.5 worse.",
+"nodes": 16,
+"rating": 1163,
+"id": 10
 },
 {
 "fen": "4R3/r1Nnkp2/6p1/6P1/7P/4PPK1/8/8 b - - 9 44",
@@ -81,7 +151,35 @@
 "explain": "Kxf7! The king escapes check by taking its own pawn. Without self-capture this position would be lost.",
 "nodes": 16,
 "rating": 1163,
-"id": 6
+"id": 11
+},
+{
+"fen": "4kb1Q/p4p2/2qP1N2/8/1r4bp/1P2P3/P2N3P/4K3 b - - 5 30",
+"solution": [
+"e8f7"
+],
+"san": "Kxf7",
+"score": 100,
+"kind": "self-capture",
+"motif": "escape",
+"explain": "Kxf7! The king escapes check by taking its own pawn. Without self-capture this position would be lost.",
+"nodes": 16,
+"rating": 1163,
+"id": 12
+},
+{
+"fen": "4rk2/3N1ppp/p7/4R2P/1n6/2p5/5P2/3K4 b - - 5 35",
+"solution": [
+"f8f7"
+],
+"san": "Kxf7",
+"score": 335,
+"kind": "self-capture",
+"motif": "escape",
+"explain": "Kxf7! The king escapes check by taking its own pawn. Without self-capture this position would be lost.",
+"nodes": 16,
+"rating": 1163,
+"id": 13
 },
 {
 "fen": "5r2/1p4k1/p1bpp3/P1p5/4PP1p/3P1Qbq/1PP1K3/R6R b - - 1 32",
@@ -95,7 +193,7 @@
 "explain": "Qxe6! The queen takes its own pawn and gets into play. Without self-capture the best play here would be 2.2 worse.",
 "nodes": 16,
 "rating": 1163,
-"id": 7
+"id": 14
 },
 {
 "fen": "5r2/1p6/6p1/3kb2p/pP2R2P/P3B1P1/4P1K1/8 w - - 1 43",
@@ -109,7 +207,35 @@
 "explain": "Rxb4! The rook takes its own pawn and opens a line at the enemy king. Without self-capture the best play here would be 4.0 worse.",
 "nodes": 16,
 "rating": 1163,
-"id": 8
+"id": 15
+},
+{
+"fen": "6r1/Q7/5k2/1p3N2/1b4P1/5P2/1P2n1BR/3q3K w - - 6 34",
+"solution": [
+"h1g2"
+],
+"san": "Kxg2",
+"score": -476,
+"kind": "self-capture",
+"motif": "escape",
+"explain": "Kxg2! The king escapes check by taking its own bishop. Without self-capture this position would be lost.",
+"nodes": 16,
+"rating": 1163,
+"id": 16
+},
+{
+"fen": "6r1/r3kp2/qpR4b/4p2p/2b1P3/5NPP/1Q2KPB1/7R w - - 0 31",
+"solution": [
+"e2f2"
+],
+"san": "Kxf2",
+"score": -153,
+"kind": "self-capture",
+"motif": "escape",
+"explain": "Kxf2! The king escapes check by taking its own pawn. Without self-capture this position would be lost.",
+"nodes": 16,
+"rating": 1163,
+"id": 17
 },
 {
 "fen": "7r/p5k1/b3p3/3pPp2/P1n2P1p/2P2Q1P/1q4BK/6R1 w - - 0 35",
@@ -123,7 +249,7 @@
 "explain": "Rxg2+! The rook takes its own bishop and gives check. Without self-capture the best play here would be 7.1 worse.",
 "nodes": 16,
 "rating": 1163,
-"id": 9
+"id": 18
 },
 {
 "fen": "8/2p2ppk/8/pQ1Pq2P/2P5/4rB1R/PK6/8 w - - 4 33",
@@ -137,7 +263,7 @@
 "explain": "Kxa2! The king escapes check by taking its own pawn. Without self-capture the best play here would be 4.4 worse.",
 "nodes": 16,
 "rating": 1163,
-"id": 10
+"id": 19
 },
 {
 "fen": "8/3P1p1k/3R4/6R1/p6P/5Pp1/6P1/1r4K1 w - - 1 41",
@@ -151,7 +277,7 @@
 "explain": "Kxg2! The king escapes check by taking its own pawn. Without self-capture this position would be lost.",
 "nodes": 16,
 "rating": 1163,
-"id": 11
+"id": 20
 },
 {
 "fen": "8/5R2/5kp1/4q1Np/7P/4P3/4K3/8 b - - 75 92",
@@ -165,7 +291,49 @@
 "explain": "Kxg6! The king escapes check by taking its own pawn. Without self-capture this position would be lost.",
 "nodes": 16,
 "rating": 1163,
-"id": 12
+"id": 21
+},
+{
+"fen": "8/8/pp1kp3/4n2p/P6R/3p2P1/5K2/2R5 b - - 0 37",
+"solution": [
+"e5d3"
+],
+"san": "Nxd3+",
+"score": -342,
+"kind": "self-capture",
+"motif": "check",
+"explain": "Nxd3+! The knight takes its own pawn and gives check. Without self-capture the best play here would be 2.6 worse.",
+"nodes": 16,
+"rating": 1163,
+"id": 22
+},
+{
+"fen": "8/p4pk1/b2B2p1/2nP4/4pN2/2K5/P4r2/1R6 b - - 0 34",
+"solution": [
+"c5e4"
+],
+"san": "Nxe4+",
+"score": 715,
+"kind": "self-capture",
+"motif": "check",
+"explain": "Nxe4+! The knight takes its own pawn and gives check. Without self-capture the best play here would be 5.2 worse.",
+"nodes": 16,
+"rating": 1163,
+"id": 23
+},
+{
+"fen": "8/pp1k4/5p1p/8/3P1n2/P1r2P2/1r3BPP/4RK2 w - - 0 30",
+"solution": [
+"f2d4"
+],
+"san": "Bxd4",
+"score": -615,
+"kind": "self-capture",
+"motif": "activation",
+"explain": "Bxd4! The bishop takes its own pawn and gets into play. Without self-capture this position would be lost.",
+"nodes": 16,
+"rating": 1163,
+"id": 24
 },
 {
 "fen": "Q1b5/p4r2/1p1k3p/4n3/4Bpq1/2R5/PPPK1PPp/4R3 b - - 7 36",
@@ -179,7 +347,49 @@
 "explain": "Qxf4+! The queen takes its own pawn and gives check. Without self-capture this position would be lost.",
 "nodes": 16,
 "rating": 1163,
-"id": 13
+"id": 25
+},
+{
+"fen": "r1b1k3/bp1p1ppr/2p5/1B6/4P1P1/1N4q1/PP2Q3/RNB2K1R w - - 0 14",
+"solution": [
+"e2e4"
+],
+"san": "Qxe4+",
+"score": -36,
+"kind": "self-capture",
+"motif": "check",
+"explain": "Qxe4+! The queen takes its own pawn and gives check. Without self-capture this position would be lost.",
+"nodes": 16,
+"rating": 1163,
+"id": 26
+},
+{
+"fen": "r1b2k2/p1nq2p1/6N1/1p6/1b1r2PP/2N2P2/QP3K1R/2R2B2 b - - 4 24",
+"solution": [
+"f8g7"
+],
+"san": "Kxg7",
+"score": -318,
+"kind": "self-capture",
+"motif": "escape",
+"explain": "Kxg7! The king escapes check by taking its own pawn. Without self-capture this position would be lost.",
+"nodes": 16,
+"rating": 1163,
+"id": 27
+},
+{
+"fen": "r1bR1k1r/1p2npp1/1p5p/1B6/8/5N2/P4KPP/7R b - - 1 19",
+"solution": [
+"f8g7"
+],
+"san": "Kxg7",
+"score": 13,
+"kind": "self-capture",
+"motif": "escape",
+"explain": "Kxg7! The king escapes check by taking its own pawn. Without self-capture this position would be lost.",
+"nodes": 16,
+"rating": 1163,
+"id": 28
 },
 {
 "fen": "r1bR2k1/pp3pp1/4r3/1P2p1Pp/4B3/2N3P1/R5K1/8 b - - 1 29",
@@ -193,7 +403,7 @@
 "explain": "Kxg7! The king escapes check by taking its own pawn. Without self-capture this position would be lost.",
 "nodes": 16,
 "rating": 1163,
-"id": 14
+"id": 29
 },
 {
 "fen": "r1bq1k1r/2p2ppp/pb6/2pp4/1Q1P4/P1n1BN2/1P3PPP/R4K1R w - - 0 15",
@@ -207,7 +417,35 @@
 "explain": "Qxc3. The natural dxc5, best in ordinary chess, fails here to Nxd5 (takes its own pawn).",
 "nodes": 16,
 "rating": 1163,
-"id": 15
+"id": 30
+},
+{
+"fen": "r2k1b2/p2b2p1/1p4q1/B1pP1p2/P5r1/RR6/1P2P1B1/3Q1K2 w - - 0 26",
+"solution": [
+"d1d5"
+],
+"san": "Qxd5",
+"score": -342,
+"kind": "self-capture",
+"motif": "attack",
+"explain": "Qxd5! The queen takes its own pawn and opens a line at the enemy king. Without self-capture the best play here would be 4.4 worse.",
+"nodes": 16,
+"rating": 1163,
+"id": 31
+},
+{
+"fen": "r2k4/bp3pp1/2pp4/1B3b2/8/1N4q1/PPK5/RNB4Q w - - 2 19",
+"solution": [
+"c2b2"
+],
+"san": "Kxb2",
+"score": 0,
+"kind": "self-capture",
+"motif": "escape",
+"explain": "Kxb2! The king escapes check by taking its own pawn. Without self-capture the best play here would be 4.8 worse.",
+"nodes": 16,
+"rating": 1163,
+"id": 32
 },
 {
 "fen": "r3k2R/pb1p1p2/1p3Br1/1Bnp4/8/PP3P2/8/R3K3 b - - 3 24",
@@ -221,7 +459,49 @@
 "explain": "Kxf7! The king escapes check by taking its own pawn. Without self-capture this position would be lost.",
 "nodes": 16,
 "rating": 1163,
-"id": 16
+"id": 33
+},
+{
+"fen": "rn1R1k2/pb3pp1/1p3n2/4QP2/1p5P/5qP1/PP3P2/4K2R b - - 3 22",
+"solution": [
+"f8g7"
+],
+"san": "Kxg7",
+"score": 361,
+"kind": "self-capture",
+"motif": "escape",
+"explain": "Kxg7! The king escapes check by taking its own pawn. Without self-capture this position would be lost.",
+"nodes": 16,
+"rating": 1163,
+"id": 34
+},
+{
+"fen": "rn2kb1r/pQ1b1pp1/3pp3/q1pP3p/2P5/P4N2/1P1B1PPP/R3KB1R b - - 0 10",
+"solution": [
+"a5a7"
+],
+"san": "Qxa7",
+"score": -142,
+"kind": "self-capture",
+"motif": "attack",
+"explain": "Qxa7! The queen takes its own pawn and opens a line at the enemy king. Without self-capture the best play here would be 5.8 worse.",
+"nodes": 16,
+"rating": 1163,
+"id": 35
+},
+{
+"fen": "2r1k3/8/2p2pp1/2Q5/4N1R1/1q6/1b1B4/2K5 w - - 1 36",
+"solution": [
+"c1d2"
+],
+"san": "Kxd2",
+"score": -794,
+"kind": "self-capture",
+"motif": "escape",
+"explain": "Kxd2! The king escapes check by taking its own bishop. Without self-capture this position would be lost.",
+"nodes": 128,
+"rating": 1493,
+"id": 36
 },
 {
 "fen": "2Q1kb1r/2p2p2/p4nnp/4p1p1/4P3/2P1PNNP/PP4K1/r7 b - - 1 21",
@@ -235,7 +515,21 @@
 "explain": "Kxf7! The king escapes check by taking its own pawn. Without self-capture this position would be lost.",
 "nodes": 256,
 "rating": 1691,
-"id": 17
+"id": 37
+},
+{
+"fen": "3r1k2/8/3q4/2Np1p1P/R2P2p1/6P1/2QNPPK1/4r3 b - - 10 38",
+"solution": [
+"d6d5"
+],
+"san": "Qxd5+",
+"score": -731,
+"kind": "self-capture",
+"motif": "check",
+"explain": "Qxd5+! The queen takes its own pawn and gives check. Without self-capture this position would be lost.",
+"nodes": 256,
+"rating": 1691,
+"id": 38
 },
 {
 "fen": "3r4/2p1b1k1/P3p3/4Pp1Q/5P1p/4B1rP/2qp2PK/1R1R4 w - - 3 49",
@@ -249,7 +543,63 @@
 "explain": "Bxf4! The bishop takes its own pawn and opens a line at the enemy king. Without self-capture the best play here would be 1.6 worse.",
 "nodes": 256,
 "rating": 1691,
-"id": 18
+"id": 39
+},
+{
+"fen": "r1b1k2r/1p1nbpp1/2n1p3/q1P1P2p/2Pp3P/2N2NP1/PP2QPB1/R1B1K2R w - - 0 14",
+"solution": [
+"a1a2"
+],
+"san": "Rxa2",
+"score": 159,
+"kind": "self-capture",
+"motif": "reposition",
+"explain": "Rxa2! The rook takes its own pawn to reach that square. Without self-capture the best play here would be 3.7 worse.",
+"nodes": 256,
+"rating": 1691,
+"id": 40
+},
+{
+"fen": "r1b1k2r/pppp1ppp/2n2q2/1Bb1p1N1/4P1n1/3P4/PPP2PPP/RNBQ1K1R w - - 5 7",
+"solution": [
+"g5e4"
+],
+"san": "Nxe4",
+"score": -7,
+"kind": "self-capture",
+"motif": "activation",
+"explain": "Nxe4! The knight takes its own pawn and gets into play. Without self-capture the best play here would be 3.0 worse.",
+"nodes": 256,
+"rating": 1691,
+"id": 41
+},
+{
+"fen": "r2n1k1r/1b1pbppp/3N1n2/1N6/p3p3/Q1P1B3/PP1K1PR1/7R b - - 0 21",
+"solution": [
+"f6e4"
+],
+"san": "Nxe4+",
+"score": -188,
+"kind": "self-capture",
+"motif": "check",
+"explain": "Nxe4+! The knight takes its own pawn and gives check. Without self-capture the best play here would be 4.0 worse.",
+"nodes": 256,
+"rating": 1691,
+"id": 42
+},
+{
+"fen": "2N1bn1R/4kp2/6p1/2pRP3/8/5P2/rP3KP1/8 b - - 5 33",
+"solution": [
+"e7f7"
+],
+"san": "Kxf7",
+"score": -661,
+"kind": "self-capture",
+"motif": "escape",
+"explain": "Kxf7! The king escapes check by taking its own pawn. Without self-capture the best play here would be 2.8 worse.",
+"nodes": 512,
+"rating": 1838,
+"id": 43
 },
 {
 "fen": "4r3/5kpp/p2p3n/1ppN1P1q/5Q2/7P/PPP5/R1BK4 w - - 1 23",
@@ -263,7 +613,63 @@
 "explain": "Kxc2! The king escapes check by taking its own pawn. Without self-capture the best play here would be 5.9 worse.",
 "nodes": 512,
 "rating": 1838,
-"id": 19
+"id": 44
+},
+{
+"fen": "r1b1kr2/2q1bp2/p7/1p6/2n1QP2/2P1B1P1/PP4BP/R3K2R w - - 2 18",
+"solution": [
+"e3f4"
+],
+"san": "Bxf4",
+"score": 344,
+"kind": "self-capture",
+"motif": "reposition",
+"explain": "Bxf4! The bishop takes its own pawn to reach that square. Without self-capture the best play here would be 2.8 worse.",
+"nodes": 512,
+"rating": 1838,
+"id": 45
+},
+{
+"fen": "r1b2k1r/2p1qpp1/p6p/3nN2n/1p1N4/3B2Q1/PP3PPP/R4K1R w - - 2 21",
+"solution": [
+"g3h2"
+],
+"san": "Qxh2",
+"score": -156,
+"kind": "self-capture",
+"motif": "reposition",
+"explain": "Qxh2! The queen takes its own pawn to reach that square. Without self-capture the best play here would be 3.0 worse.",
+"nodes": 512,
+"rating": 1838,
+"id": 46
+},
+{
+"fen": "r3kb2/p4pp1/2p5/3nq3/Q1B5/2N5/P2B2K1/1R6 b - - 1 25",
+"solution": [
+"e5g7"
+],
+"san": "Qxg7+",
+"score": 0,
+"kind": "self-capture",
+"motif": "check",
+"explain": "Qxg7+! The queen takes its own pawn and gives check. Without self-capture the best play here would be 7.2 worse.",
+"nodes": 512,
+"rating": 1838,
+"id": 47
+},
+{
+"fen": "rn2kb1r/pbpp1pqp/1p2pN2/6B1/3P3P/2P2P2/PP4P1/RN1QKB1n b - - 1 10",
+"solution": [
+"e8f7"
+],
+"san": "Kxf7",
+"score": 118,
+"kind": "self-capture",
+"motif": "escape",
+"explain": "Kxf7! The king escapes check by taking its own pawn. Without self-capture the best play here would be 3.8 worse.",
+"nodes": 512,
+"rating": 1838,
+"id": 48
 },
 {
 "fen": "2B3k1/q3pp1r/3P2p1/1ppP4/2P2Q1P/2B5/r5P1/5RK1 b - - 0 30",
@@ -277,7 +683,49 @@
 "explain": "Qxc5+! The queen takes its own pawn and gives check. Without self-capture this position would be lost.",
 "nodes": 1024,
 "rating": 1983,
-"id": 20
+"id": 49
+},
+{
+"fen": "r1b2k2/ppp2pp1/n3p3/3P4/1b1PP3/1Q3PP1/PP2N1Pr/R1B2KNq w - - 1 13",
+"solution": [
+"b3f3"
+],
+"san": "Qxf3",
+"score": -629,
+"kind": "self-capture",
+"motif": "attack",
+"explain": "Qxf3! The queen takes its own pawn and opens a line at the enemy king. Without self-capture this position would be lost.",
+"nodes": 1024,
+"rating": 1983,
+"id": 50
+},
+{
+"fen": "r3kbnr/ppp2ppp/5q2/3Pp3/1nB3b1/2P2NP1/PP1P1P1P/RNBQK2R w - - 1 7",
+"solution": [
+"b1d2"
+],
+"san": "Nbxd2",
+"score": 56,
+"kind": "self-capture",
+"motif": "activation",
+"explain": "Nbxd2! The knight takes its own pawn and gets into play. Without self-capture the best play here would be 1.8 worse.",
+"nodes": 1024,
+"rating": 1983,
+"id": 51
+},
+{
+"fen": "r4k1r/pp2b2p/2pN1p1B/q7/3Q2b1/2p5/P7/R4K2 b - - 0 25",
+"solution": [
+"f8e7"
+],
+"san": "Kxe7",
+"score": -50,
+"kind": "self-capture",
+"motif": "escape",
+"explain": "Kxe7! The king escapes check by taking its own bishop. Without self-capture this position would be lost.",
+"nodes": 1024,
+"rating": 1983,
+"id": 52
 },
 {
 "fen": "4r1k1/4P3/1pb2qp1/4R3/p1PQ1P1r/5R2/5KB1/8 w - - 3 40",
@@ -291,7 +739,21 @@
 "explain": "Qxc4+! The queen takes its own pawn and gives check. Without self-capture the best play here would be 2.4 worse.",
 "nodes": 2048,
 "rating": 2160,
-"id": 21
+"id": 53
+},
+{
+"fen": "5k2/4np2/p7/6Pp/8/8/PR4BP/3q3K w - - 0 43",
+"solution": [
+"h1h2"
+],
+"san": "Kxh2",
+"score": -800,
+"kind": "self-capture",
+"motif": "escape",
+"explain": "Kxh2! The king escapes check by taking its own pawn. Without self-capture this position would be lost.",
+"nodes": 2048,
+"rating": 2160,
+"id": 54
 },
 {
 "fen": "5r1r/1pRk1p1p/1B1p4/3Pb3/4pRp1/6P1/PP5P/4K3 b - - 2 23",
@@ -305,7 +767,7 @@
 "explain": "Kxd6! The king escapes check by taking its own pawn. Without self-capture the best play here would be 6.8 worse.",
 "nodes": 2048,
 "rating": 2160,
-"id": 22
+"id": 55
 },
 {
 "fen": "8/1P3p2/1P1p3k/3P1p2/3bpP2/1Q5P/6P1/5KBq w - - 1 44",
@@ -319,7 +781,21 @@
 "explain": "Qxh3+! The queen takes its own pawn and gives check. Without self-capture the best play here would be 10.0 worse.",
 "nodes": 2048,
 "rating": 2160,
-"id": 23
+"id": 56
+},
+{
+"fen": "8/R5pr/1pk5/3p2Np/5r1P/2R5/8/3K4 b - - 0 38",
+"solution": [
+"c6b6"
+],
+"san": "Kxb6",
+"score": -216,
+"kind": "self-capture",
+"motif": "escape",
+"explain": "Kxb6! The king escapes check by taking its own pawn. Without self-capture the best play here would be 2.5 worse.",
+"nodes": 2048,
+"rating": 2160,
+"id": 57
 },
 {
 "fen": "R5k1/3b1p2/7B/1p1P4/3b1Prp/7R/1PQ3PK/4q3 b - - 2 34",
@@ -333,7 +809,7 @@
 "explain": "Kxf7! The king escapes check by taking its own pawn. Without self-capture the best play here would be 7.0 worse.",
 "nodes": 2048,
 "rating": 2160,
-"id": 24
+"id": 58
 },
 {
 "fen": "r1b4r/6p1/pk2p3/2p1B1bp/6B1/8/P5PP/1R2KR2 b - - 0 20",
@@ -347,7 +823,21 @@
 "explain": "Kxc5! The king escapes check by taking its own pawn. Without self-capture the best play here would be 4.5 worse.",
 "nodes": 2048,
 "rating": 2160,
-"id": 25
+"id": 59
+},
+{
+"fen": "1Q2rk1r/7p/2N2p2/1Pbn4/2P5/2B5/7N/7K w - - 1 36",
+"solution": [
+"b8b5"
+],
+"san": "Qxb5",
+"score": 457,
+"kind": "self-capture",
+"motif": "attack",
+"explain": "Qxb5! The queen takes its own pawn and opens a line at the enemy king. Without self-capture the best play here would be 3.3 worse.",
+"nodes": 4096,
+"rating": 2497,
+"id": 60
 },
 {
 "fen": "2R3kr/5pp1/1p5p/1r3B1n/4pR2/6P1/4PP2/5K2 b - - 1 29",
@@ -361,7 +851,7 @@
 "explain": "Kxf7! The king escapes check by taking its own pawn. Without self-capture this position would be lost.",
 "nodes": 4096,
 "rating": 2497,
-"id": 26
+"id": 61
 },
 {
 "fen": "2b3kr/q3pp2/1p1p2p1/2pPP3/2P2PBP/2B3n1/r5P1/1RQ2RK1 w - - 0 27",
@@ -375,7 +865,21 @@
 "explain": "Qxf4! The queen takes its own pawn and opens a line at the enemy king. Without self-capture the best play here would be 4.7 worse.",
 "nodes": 4096,
 "rating": 2497,
-"id": 27
+"id": 62
+},
+{
+"fen": "4k1r1/rpR2p2/q3b2b/4p2p/2P1P3/5NPP/2Q1KP2/5B1R w - - 1 27",
+"solution": [
+"f1h3"
+],
+"san": "Bxh3",
+"score": -21,
+"kind": "self-capture",
+"motif": "activation",
+"explain": "Bxh3! The bishop takes its own pawn and gets into play. Without self-capture the best play here would be 2.9 worse.",
+"nodes": 4096,
+"rating": 2497,
+"id": 63
 },
 {
 "fen": "8/6p1/2P2p1k/1P2p2p/4Q1b1/2NKP3/8/2q5 w - - 13 40",
@@ -389,7 +893,7 @@
 "explain": "Qxe3+! The queen takes its own pawn and gives check. Without self-capture the best play here would be 5.3 worse.",
 "nodes": 4096,
 "rating": 2497,
-"id": 28
+"id": 64
 },
 {
 "fen": "8/8/P5p1/2q4k/8/2p2Q2/4K1P1/8 b - - 1 59",
@@ -403,7 +907,21 @@
 "explain": "Kxg6! The king escapes check by taking its own pawn. Without self-capture this position would be lost.",
 "nodes": 4096,
 "rating": 2497,
-"id": 29
+"id": 65
+},
+{
+"fen": "r1b2k2/p2q2p1/n4n2/Qp1r4/1b3B1P/2N2P2/PP2N1PR/2R1KB2 w - - 2 20",
+"solution": [
+"a5a2"
+],
+"san": "Qxa2",
+"score": -438,
+"kind": "self-capture",
+"motif": "reposition",
+"explain": "Qxa2! The queen takes its own pawn to reach that square. Without self-capture the best play here would be 2.7 worse.",
+"nodes": 4096,
+"rating": 2497,
+"id": 66
 },
 {
 "fen": "r2q2kr/pp3nb1/6p1/3P3p/2p5/2Nn1BPP/PP1B2K1/R2Q1R2 w - - 0 21",
@@ -417,7 +935,119 @@
 "explain": "Bxd5! The bishop takes its own pawn and opens a line at the enemy king. Without self-capture the best play here would be 2.6 worse.",
 "nodes": 4096,
 "rating": 2497,
-"id": 30
+"id": 67
+},
+{
+"fen": "r2qkb1r/1ppnp1p1/2n3Q1/1p5p/2P2P2/4B3/PP4PP/3RK2R b - - 3 18",
+"solution": [
+"e8e7"
+],
+"san": "Kxe7",
+"score": 346,
+"kind": "self-capture",
+"motif": "escape",
+"explain": "Kxe7! The king escapes check by taking its own pawn. Without self-capture this position would be lost.",
+"nodes": 4096,
+"rating": 2497,
+"id": 68
+},
+{
+"fen": "r2qkb1r/pp1bp1p1/2pp1n1p/3P1p2/5Pn1/2N1PNPP/PPP5/R1BQKB1R b - - 0 10",
+"solution": [
+"g4h6"
+],
+"san": "Nxh6",
+"score": -115,
+"kind": "self-capture",
+"motif": "reposition",
+"explain": "Nxh6! The knight takes its own pawn to reach that square. Without self-capture the best play here would be 2.5 worse.",
+"nodes": 4096,
+"rating": 2497,
+"id": 69
+},
+{
+"fen": "1r2kb1r/p1q1p1p1/B1n1p3/6P1/4Q2p/P4N2/1P3PP1/3R1K2 w - - 0 21",
+"solution": [
+"e4e6"
+],
+"san": "Qxe6",
+"score": 361,
+"kind": "quiet",
+"off": "Qg6+",
+"explain": "Qxe6. The natural Qg6+, best in ordinary chess, fails here to Kxe7 (takes its own pawn).",
+"nodes": 262144,
+"rating": 2600,
+"id": 70
+},
+{
+"fen": "1r5Q/2n1k3/2Prp3/P4P2/P7/B2qPb2/5P2/4K3 w - - 12 45",
+"solution": [
+"h8h4"
+],
+"san": "Qh4+",
+"score": -642,
+"kind": "quiet",
+"off": "f6+",
+"explain": "Qh4+. The natural f6+, best in ordinary chess, fails here to Kxe6 (takes its own pawn).",
+"nodes": 262144,
+"rating": 2600,
+"id": 71
+},
+{
+"fen": "1r5Q/2n1k3/2Prp3/P4P2/P7/B2qPb2/5P2/4K3 w - - 8 43",
+"solution": [
+"h8h4"
+],
+"san": "Qh4+",
+"score": 0,
+"kind": "quiet",
+"off": "f6+",
+"explain": "Qh4+. The natural f6+, best in ordinary chess, fails here to Kxe6 (takes its own pawn).",
+"nodes": 65536,
+"rating": 2600,
+"id": 72
+},
+{
+"fen": "1r5r/2p1qkp1/p1pb1p2/2P4p/1P2pPb1/6Q1/P1BB2PP/R4K1R b - - 0 21",
+"solution": [
+"d6c7"
+],
+"san": "Bxc7",
+"score": 0,
+"kind": "self-capture",
+"motif": "activation",
+"explain": "Bxc7! The bishop takes its own pawn and gets into play. Without self-capture the best play here would be 2.4 worse.",
+"nodes": 8192,
+"rating": 2600,
+"id": 73
+},
+{
+"fen": "1rb1k2r/2p2pp1/p2p1n2/1pb1pP1p/4P2q/1B1P1QPP/PPP5/R1BN1K1R b - - 0 18",
+"solution": [
+"h4h5"
+],
+"san": "Qxh5",
+"score": -122,
+"kind": "self-capture",
+"motif": "activation",
+"explain": "Qxh5! The queen takes its own pawn and gets into play. Without self-capture this position would be lost.",
+"nodes": 8192,
+"rating": 2600,
+"id": 74
+},
+{
+"fen": "2r1k3/8/2p2pp1/2Q1b3/4N1b1/1q6/3B4/2K3R1 w - - 0 35",
+"solution": [
+"d2c3"
+],
+"san": "Bc3",
+"score": -412,
+"kind": "quiet",
+"off": "Qb4",
+"explain": "Bc3. The natural Qb4, best in ordinary chess, fails here to Rxc6+ (takes its own pawn).",
+"nodes": 262144,
+"rating": 2600,
+"id": 75
 },
 {
 "fen": "2r3kr/4Bpb1/3p2p1/p2N3p/2n1n2P/PB5R/2P2PP1/3RK3 w - - 5 25",
@@ -431,7 +1061,7 @@
 "explain": "Rxh4! The rook takes its own pawn to reach that square. Without self-capture the best play here would be 1.0 worse.",
 "nodes": 16384,
 "rating": 2600,
-"id": 31
+"id": 76
 },
 {
 "fen": "3r2k1/p6r/5P2/1P1p2P1/3p4/7R/3R2PK/8 b - - 2 47",
@@ -445,7 +1075,7 @@
 "explain": "Rxd5! The rook takes its own pawn to reach that square. Without self-capture the best play here would be 2.5 worse.",
 "nodes": 65536,
 "rating": 2600,
-"id": 32
+"id": 77
 },
 {
 "fen": "3r3r/1p2bk1p/p1q1p3/2p3pP/P5Q1/2N1P3/1P2KP2/3R2R1 w - - 0 23",
@@ -459,7 +1089,7 @@
 "explain": "Qxh5+! The queen takes its own pawn and gives check. Without self-capture the best play here would be 2.0 worse.",
 "nodes": 16384,
 "rating": 2600,
-"id": 33
+"id": 78
 },
 {
 "fen": "4kb1r/1Qp2p2/p4nnp/2q1p1p1/4P3/2P2NNP/PP3PK1/R1B4r w - - 0 19",
@@ -473,7 +1103,7 @@
 "explain": "Be3. The natural Qc8+, best in ordinary chess, fails here to Kxf7 (takes its own pawn).",
 "nodes": 65536,
 "rating": 2600,
-"id": 34
+"id": 79
 },
 {
 "fen": "4r1k1/2q2pp1/1b1p1r2/1P1B1P2/Q3p2p/7P/2P3P1/1R3R1K w - - 0 33",
@@ -487,7 +1117,7 @@
 "explain": "Bc6. The natural Bxe4, best in ordinary chess, fails here to Qxd6 (takes its own pawn).",
 "nodes": 262144,
 "rating": 2600,
-"id": 35
+"id": 80
 },
 {
 "fen": "5R2/3b2rQ/3k3B/1p6/3b1P1p/7R/1P4PK/4q3 w - - 0 38",
@@ -501,7 +1131,35 @@
 "explain": "Bxf4+! The bishop takes its own pawn and gives check. Without self-capture this position would be lost.",
 "nodes": 262144,
 "rating": 2600,
-"id": 36
+"id": 81
+},
+{
+"fen": "8/5k2/7p/R4pP1/2pKr2b/2P5/1P3p2/R7 w - - 4 40",
+"solution": [
+"d4c3"
+],
+"san": "Kxc3",
+"score": -376,
+"kind": "self-capture",
+"motif": "escape",
+"explain": "Kxc3! The king escapes check by taking its own pawn. Without self-capture the best play here would be 1.9 worse.",
+"nodes": 262144,
+"rating": 2600,
+"id": 82
+},
+{
+"fen": "8/6k1/p3p3/3n4/2p3PR/pr6/5KR1/8 w - - 8 57",
+"solution": [
+"g2g4"
+],
+"san": "Rgxg4+",
+"score": -178,
+"kind": "self-capture",
+"motif": "check",
+"explain": "Rgxg4+! The rook takes its own pawn and gives check. Without self-capture the best play here would be 3.3 worse.",
+"nodes": 16384,
+"rating": 2600,
+"id": 83
 },
 {
 "fen": "N4k1r/pp2bppp/2n5/2P5/8/5PP1/Pq3PKP/R2Q3R b - - 0 18",
@@ -515,7 +1173,7 @@
 "explain": "Qxb7! The queen takes its own pawn and opens a line at the enemy king. Without self-capture the best play here would be 2.1 worse.",
 "nodes": 16384,
 "rating": 2600,
-"id": 37
+"id": 84
 },
 {
 "fen": "q5k1/5p2/7P/5PPK/8/8/3Q4/8 w - - 1 63",
@@ -529,7 +1187,35 @@
 "explain": "Qxg5+! The queen takes its own pawn and gives check. Without self-capture the best play here would be 4.2 worse.",
 "nodes": 262144,
 "rating": 2600,
-"id": 38
+"id": 85
+},
+{
+"fen": "r1b1k2r/bp1p1ppp/2p5/1B6/4P1P1/1N4q1/PP2Q3/RNB2K1R b - - 0 13",
+"solution": [
+"h8h7"
+],
+"san": "Rxh7",
+"score": 74,
+"kind": "self-capture",
+"motif": "activation",
+"explain": "Rxh7! The rook takes its own pawn and gets into play. Without self-capture the best play here would be 3.0 worse.",
+"nodes": 65536,
+"rating": 2600,
+"id": 86
+},
+{
+"fen": "r1b1kb1r/3n1ppp/5n2/qN2p1N1/2BpPQ2/p7/1P3PPP/R4K1R w - - 0 17",
+"solution": [
+"f4f5"
+],
+"san": "Qf5",
+"score": -582,
+"kind": "quiet",
+"off": "Qf3",
+"explain": "Qf5. The natural Qf3, best in ordinary chess, fails here to Nxe5 (takes its own pawn).",
+"nodes": 16384,
+"rating": 2600,
+"id": 87
 },
 {
 "fen": "r1b1kr2/pp1nqpb1/2p2npp/4p1N1/4P3/1BN1B3/PPP1QPPP/3RK2R w - - 0 12",
@@ -543,21 +1229,49 @@
 "explain": "Ngxe4! The knight takes its own pawn and gets into play. Without self-capture the best play here would be 2.2 worse.",
 "nodes": 16384,
 "rating": 2600,
-"id": 39
+"id": 88
 },
 {
-"fen": "r3k2r/1pp2q2/p2p4/3Pp3/2Pn1nQp/4N3/PP1N1PPP/R3R1K1 w - - 5 23",
+"fen": "r1b3kr/1pq3p1/p3p1Q1/2n3Np/2P2p1B/P7/P3B1P1/3RK3 b - - 3 26",
 "solution": [
-"d2e4"
+"c8b7"
 ],
-"san": "Ne4",
-"score": 126,
-"kind": "quiet",
-"off": "Kh1",
-"explain": "Ne4. The natural Kh1, best in ordinary chess, fails here to h3, g3, Nxh3 (takes its own pawn).",
-"nodes": 65536,
+"san": "Bxb7",
+"score": -69,
+"kind": "self-capture",
+"motif": "activation",
+"explain": "Bxb7! The bishop takes its own pawn and gets into play. Without self-capture this position would be lost.",
+"nodes": 8192,
 "rating": 2600,
-"id": 40
+"id": 89
+},
+{
+"fen": "r3k2r/2p2ppp/b7/2b5/1p1qP1nP/1B3P2/PPQ3K1/RNB4R w - - 0 14",
+"solution": [
+"h1d1"
+],
+"san": "Rd1",
+"score": -91,
+"kind": "quiet",
+"off": "Bf4",
+"explain": "Rd1. The natural Bf4, best in ordinary chess, fails here to Nf2, Nd2, Qxf2+ (takes its own knight).",
+"nodes": 16384,
+"rating": 2600,
+"id": 90
+},
+{
+"fen": "r4k2/1b1R1ppQ/8/p7/2B2pP1/PP6/5PP1/q4K2 w - - 1 22",
+"solution": [
+"f1f2"
+],
+"san": "Kxf2",
+"score": 737,
+"kind": "self-capture",
+"motif": "escape",
+"explain": "Kxf2! The king escapes check by taking its own pawn. Without self-capture the best play here would be 15.2 worse.",
+"nodes": 16384,
+"rating": 2600,
+"id": 91
 },
 {
 "fen": "r6r/2pbqpk1/1p1p1np1/p2Pp2p/1PP1P2P/P4PP1/3QB1K1/R1RN4 b - - 1 20",
@@ -571,6 +1285,20 @@
 "explain": "Nxh5! The knight takes its own pawn and opens a line at the enemy king. Without self-capture the best play here would be 1.6 worse.",
 "nodes": 8192,
 "rating": 2600,
-"id": 41
+"id": 92
+},
+{
+"fen": "rn2kb1r/pbpp1ppp/1p2pq2/4N1B1/3P3P/2P2Pn1/PP4P1/RN1QKB1R b - - 2 8",
+"solution": [
+"f6e6"
+],
+"san": "Qxe6",
+"score": 287,
+"kind": "self-capture",
+"motif": "activation",
+"explain": "Qxe6! The queen takes its own pawn and gets into play. Without self-capture the best play here would be 3.9 worse.",
+"nodes": 262144,
+"rating": 2600,
+"id": 93
 }
 ]

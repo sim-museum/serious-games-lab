@@ -30,6 +30,19 @@ the *possibility* of one changes the best move. The motif families are in `SELF_
 - Finding 5 is an Academy demonstration (Endgames that change). The census positions supply most of the lessons'
   and all of the puzzles' positions, each re-checked deeply (`tools/lesson_check.py`, `tools/mine_puzzles.py`).
 
+## The specialists' games (EPIC KS, KS-5)
+
+There were 210 games among chessIQ's four strongest self-capture specialists (Kestrel, Selim, Ada, Corin), run
+through the same census (`~/kramnik-nn/census2/`).
+
+- **Self-captures** are 3.0% of moves and appear in 96% of games: 3–4 times the plain engines' rate. The victims
+  stay realistic: pawns 89.5%, queens 0.7%.
+- **Rule switching:** self-capture is clearly best in 0.7% of positions. It changes the best move in 6.3%, and in
+  9.4% of middlegames, against 0.0% in the control.
+- **Puzzles:** these games added 61 to the puzzle set, giving 93 in all, each checked by both engines.
+
+So the specialists make the variant's character visible without inventing a different game.
+
 ## Method
 
 - **Games:** 120 Fairy-Stockfish self-play games (300k nodes a move, one thread, about 0.7 s, depth 12+). Also 100 lc0
