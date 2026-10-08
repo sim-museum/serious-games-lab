@@ -30,9 +30,9 @@ from multiprocessing import Pool
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 from chessiq import engine as E  # noqa: E402
+from chessiq.kansas import motif as classify, nonpawn  # noqa: E402
 
 FSF = os.path.join(ROOT, "engine", "fairy-stockfish-kramnik")
-NONPAWN = {"n": 3, "b": 3, "r": 5, "q": 9}
 INI = """[kramnik:chess]
 castling = false
 selfCapture = true
@@ -83,62 +83,10 @@ def find(b, turn, ep, u):
     return next((m for m in E.legal_moves(b, turn, ep) if uci_of(m) == u), None)
 
 
-def nonpawn(b):
-    return sum(NONPAWN.get(p[1], 0) for p in b if p)
-
-
 def phase(b, full):
     if full <= 12:
         return "opening"
     return "endgame" if nonpawn(b) <= 26 else "middlegame"
-
-
-def ordinary_moves(b, color, ep):
-    return sum(1 for m in E.legal_moves(b, color, ep) if m.kind != "self")
-
-
-def reaches_zone(b, sq, color):
-    """Does the piece on sq, looking through its own side's pieces, reach a square next to (or on) the enemy king?"""
-    ks = E.king_sq(b, E.opp(color))
-    zone = {ks} | {t for t in range(64) if max(abs((t >> 3) - (ks >> 3)), abs((t & 7) - (ks & 7))) == 1}
-    t, r, c = b[sq][1], sq >> 3, sq & 7
-    if t in "nkp":
-        if t == "p":
-            d = -1 if color == "w" else 1
-            hits = [(r + d) * 8 + c + dc for dc in (-1, 1) if E.inb(r + d, c + dc)]
-        else:
-            hits = [(r + dr) * 8 + c + dc for dr, dc in (E.KN if t == "n" else E.KG) if E.inb(r + dr, c + dc)]
-        return any(h in zone for h in hits)
-    dirs = E.DIAG if t == "b" else E.ORTH if t == "r" else E.DIAG + E.ORTH
-    for dr, dc in dirs:
-        rr, cc = r + dr, c + dc
-        while E.inb(rr, cc):
-            s = rr * 8 + cc
-            if s in zone:
-                return True
-            if b[s] and b[s][0] != color:
-                break
-            rr, cc = rr + dr, cc + dc
-    return False
-
-
-def classify(b, turn, ep, m):
-    piece = b[m.frm][1]
-    nb = E.apply_move(b, m)
-    rank = 8 - (m.to >> 3)
-    if piece == "p" and (m.promo or rank == (7 if turn == "w" else 2)):
-        return "promotion"
-    if piece == "k":
-        if E.in_check(b, turn):
-            return "escape"
-        return "king-walk" if nonpawn(b) <= 26 else "king-other"
-    if E.in_check(nb, E.opp(turn)):
-        return "check"
-    if reaches_zone(nb, m.to, turn):
-        return "attack"
-    if ordinary_moves(nb, turn, None) - ordinary_moves(b, turn, ep) >= 2:
-        return "activation"
-    return "reposition"
 
 
 # ---- validation against the paper's examples ---------------------------------------------------------------------
