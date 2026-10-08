@@ -12,7 +12,8 @@ self-capture was played. Each is searched under Kramnik rules (one thread, NODES
     player's: an engine looks at checks no sooner than other moves, so a checking self-capture can rate higher than
     a player would find it.
 Then tools/leela_verdict.py puzzles keeps only the puzzles where Leela T40 agrees.
-python3 tools/mine_puzzles.py CENSUS_OUT_DIR [--workers K] [--nodes N]   -> chessiq/puzzles.json"""
+python3 tools/mine_puzzles.py CENSUS_OUT_DIR [--workers K] [--nodes N] [--merge]   -> chessiq/puzzles.json
+  --merge keeps the puzzles already there and adds the new positions."""
 import json
 import math
 import os
@@ -131,6 +132,8 @@ def main():
         i = a.index("--workers"); workers = int(a[i + 1]); del a[i:i + 2]
     if "--nodes" in a:
         i = a.index("--nodes"); nodes = int(a[i + 1]); del a[i:i + 2]
+    merge = "--merge" in a
+    a = [x for x in a if x != "--merge"]
     src = a[0]
     fens = []
     for p in map(json.loads, open(os.path.join(src, "positions.jsonl"))):
@@ -147,6 +150,10 @@ def main():
                 found.append(r)
             if (i + 1) % 50 == 0:
                 print("%d/%d judged, %d puzzles" % (i + 1, len(fens), len(found)), flush=True)
+    if merge and os.path.exists(OUT):
+        old = json.load(open(OUT))
+        have = {p["fen"] for p in old}
+        found = old + [r for r in found if r["fen"] not in have]
     found.sort(key=lambda r: (r["rating"], r["fen"]))
     for i, r in enumerate(found):
         r["id"] = i + 1
