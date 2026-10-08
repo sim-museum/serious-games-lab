@@ -1,9 +1,11 @@
 """A match between two UCI engines at Kramnik chess (EPIC NN, sprint NN-5). Openings: grandmaster book lines of
 random length (seeded, the same pair for both colours), every move checked against chessIQ's rules.
-python3 tools/uci_match.py GAMES 'A: <cmd> | <setoption name=value;...> | <go args>' 'B: ...' [--seed S]
+python3 tools/uci_match.py GAMES 'A: <cmd> | <setoption name=value;...> | <go args>' 'B: ...' [--seed S] [--games F]
   e.g. 'lc0r1: engine/lc0-kramnik --weights=net.pb.gz --backend=blas --threads=1 | | nodes 400'
        'fsf1k: engine/fairy-stockfish-kramnik | VariantPath=engine/kramnik.ini;UCI_Variant=kramnik | nodes 1000'
-Prints the score of A and an Elo difference with a 95% interval."""
+Prints the score of A and an Elo difference with a 95% interval. --games F appends each finished game to F as a JSON
+line: white, black, book plies, UCI moves, result for White."""
+import json
 import math
 import os
 import random
@@ -76,8 +78,10 @@ def opening(rnd):
     return moves
 
 
-def play(white, black, start):
-    b, turn, ep, moves, seen, half = E.init_board(), "w", None, [], Counter(), 0
+def play(white, black, start, moves=None):
+    """Result for White. Pass a list as `moves` to get the game's UCI moves back."""
+    b, turn, ep, seen, half = E.init_board(), "w", None, Counter(), 0
+    moves = [] if moves is None else moves
     for u in start:
         m = next(m for m in E.legal_moves(b, turn, ep) if uci_of(m) == u)
         b, ep, turn = E.apply_move(b, m), E.ep_after(m), E.opp(turn); moves.append(u)
@@ -109,14 +113,23 @@ def main():
     seed = 1
     if "--seed" in args:
         i = args.index("--seed"); seed = int(args[i + 1]); del args[i:i + 2]
+    log = None
+    if "--games" in args:
+        i = args.index("--games"); log = open(args[i + 1], "a"); del args[i:i + 2]
     games, a, b = int(args[0]), Engine(args[1]), Engine(args[2])
     rnd, score = random.Random(seed), 0.0
     for g in range(games):
         if g % 2 == 0:
             start = opening(rnd)
         a.new_game(); b.new_game()
-        r = play(a, b, start) if g % 2 == 0 else 1 - play(b, a, start)
+        w, k, moves = (a, b, []) if g % 2 == 0 else (b, a, [])
+        rw = play(w, k, start, moves)
+        r = rw if g % 2 == 0 else 1 - rw
         score += r
+        if log:
+            log.write(json.dumps({"white": w.name, "black": k.name, "book": len(start), "moves": moves,
+                                  "result": rw}) + "\n")
+            log.flush()
         print("game %d: %s %.1f, total %.1f / %d" % (g + 1, a.name, r, score, g + 1), flush=True)
     d, ci = elo(score / games, games)
     print("%s vs %s: %.1f / %d (%.0f%%), Elo difference %+.0f +/- %.0f" % (a.name, b.name, score, games,
