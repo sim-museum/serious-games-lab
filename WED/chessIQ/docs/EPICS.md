@@ -1102,3 +1102,10 @@ One item at a time, each with a goal, the check that proves it and a stopping po
     answers on 2 positions; one thread gave none. `tools/leela_verdict.py` now uses one thread.
   - It does not ask Leela about "mate in one" puzzles (see KS-11).
   - Check: lessons 22 of 24 (as before), puzzles 172 of 172, and `chessiq/puzzles.json` is unchanged. Done.
+- **Follow-up closed (2026-10-08 09:50).** All four open items of the KS retrospective are done. Full suite: 113
+  tests OK. chessIQ runs from the source tree (`WED/chessIQ.sh`), so the commits are the shipped build.
+  - Still open, for the PO to choose:
+    - Players' results: KS-9 collects them, but until the files from a Serious Games Week are folded in, the
+      beginner puzzles' ratings are estimates.
+    - Escapes stay opponent-dependent: Mirela's escapes alone are only 1.3 times a neutral player's.
+    - Only 3 beginner escape puzzles.
