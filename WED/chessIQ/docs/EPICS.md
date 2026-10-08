@@ -948,3 +948,49 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
     have a strong self-capture. Off in rated games.
   - **KS-7. The strongest opponent.** Leela with t40a1 when the GPU build is present.
   - **KS-8. Retrospective,** README, and the shipped build.
+- **KS-1 (10-07): done. The self-capture appetite** (`Personality.kansas`, `chessiq/uci_engine.py`). Among moves
+  within (10 + kansas/2) cp of the best, a specialist plays the one with the highest score + kansas% × (score with
+  self-capture − score without). A second Fairy-Stockfish on the new `kramniknosc` variant gives the "without"
+  score, from a FEN, since earlier self-captures are illegal there. A self-capture gains a fixed 100 cp.
+  - Check: against a neutral twin at 1200, 1800 and 2400 (40 games each), appetite 100 plays 3.0–4.5 self-captures
+    per 100 moves, against 1.5–2.3 for the neutral twin.
+  - Cost: 1.3 Elo per point (`docs/calibration/kansas_cost.txt`). It is paid back in search like any style's, and
+    not stacked with the random-lines bonus it already contains. (The first version stacked them, putting every
+    specialist 105–155 below its label; caught by reading the effective ratings before any game.)
+- **KS-2 (10-07): done. Eight specialists**, 950–2600: Hal (king escapes), Rosa (file opener), Felix (activation),
+  Mirela (escape artist), Corin (self-capture with check), Ada (promotion and the king walk), Selim and Kestrel
+  (the quiet threat). Each bio ends with "Watch for:". A specialist's own motif gets the full self-capture bonus,
+  others half. Offered with every roster, under their own filter in the picker.
+  - Check: six specialists, 40 games each against neutral twins, average +36 ± 45 Elo against their labels, which is
+    within noise (`docs/calibration/specialist_check.txt`).
+- **KS-3 (10-07): done. "Not in Kansas" in Post-Game Analysis.** A second pass searches every position with
+  self-capture on and off and lists, with clicks to the position:
+  - self-captures played, naming the pieces;
+  - strong self-captures missed;
+  - ordinary-chess moves that lost here (traps);
+  - the right move found.
+  Traps and finds are shown only when the refutation has a self-capture within 8 plies. Without that rule the
+  explanations showed no self-capture, and some were the noise the census measured.
+  - Check: a Felix–Morgan game, four self-captures found in about 10 s; window and engine tests.
+- **KS-4 (10-07): done. The Kramnik Academy:** eight lessons, Beginner to Advanced, and 21 positions from the paper
+  and the census. Each lesson ends with a game against its specialist.
+  - `tools/lesson_check.py` showed that 11 of the first 19 positions failed a strict test:
+    - some had several winning moves (Kramnik's Bc8: every move wins);
+    - some were right ideas but not unique (AlphaZero's Rxa7, by 15 cp);
+    - two were wrong for Fairy-Stockfish (AZ-37's Rxh4, AZ-40).
+  - Hence quizzes (the solution leads by a pawn, uncapped when it wins) and demonstrations (within half a pawn),
+    with the wrong ones dropped. The checker uses one thread, because two made its verdict change between runs.
+  - Check: 21/21 pass (`docs/calibration/lesson_check.txt`). Leela T40 agrees on 19/21, including all 9 quizzes
+    (`leela_lessons.txt`); the two exceptions are AlphaZero's demonstrations.
+- **KS-6 (10-07): done. The coach** in unrated games: "There is a strong self-capture here. Look at what your rook
+  could take of its own", or "Careful: Qc8+, the natural move in ordinary chess, fails here to a self-capture". It
+  never names the move, and is silent in rated games.
+  - Check: tests on census positions; a live game against Hal (12 coach looks, no stalls, silent in an ordinary
+    opening).
+- **KS-7 (10-07): done. Leela T40** (t40a1, 3000 nodes, GPU build only) is the 2850 top opponent. It is also the
+  second opinion on lessons and puzzles (`tools/leela_verdict.py`).
+  - **Found on the way:** a full-strength opponent with no clock (tournament quick results) was sent a bare `go`
+    and searched forever. A tournament with The Engine in it would have hung. Both engine classes now fall back to
+    1 s a move, with a test.
+- Also: tournaments of specialists only (New tournament → "Self-capture specialists only"), and a first-launch note
+  pointing new players to the Academy.
