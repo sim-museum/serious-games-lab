@@ -994,3 +994,62 @@ engine setting the ladder says plays at that strength. Style knobs stay on the F
     1 s a move, with a test.
 - Also: tournaments of specialists only (New tournament → "Self-capture specialists only"), and a first-launch note
   pointing new players to the Academy.
+- **KS-5 (10-08): done. Kansas puzzles** (Academy → Kansas puzzles). `tools/mine_puzzles.py` takes census positions
+  and keeps those whose solution leads by 1.5 pawns at 2M deterministic nodes. A puzzle is rated by the strength
+  ladder: the smallest search that always finds it, capped at 2600. `tools/leela_verdict.py` keeps only the
+  puzzles Leela T40 agrees on.
+  - The plain engine games gave 41 puzzles. 210 games among the strong specialists (`tools/specialist_games.py`)
+    raised that to **93**: 84 self-captures and 9 quiet threats, rated 1163–2600.
+  - Puzzles are served near your puzzle rating (Elo, K 32, first attempts only).
+  - Two puzzles became activation quizzes and one a promotion quiz. The lessons are now 24 positions: 24/24 pass
+    the checker, and Leela agrees on 22.
+  - Also: Post-Game Analysis → "Practise N positions from this game" turns your missed self-captures and
+    ordinary-chess traps into quizzes. During unrated play, a self-capture is named in the status line
+    ("Qxe2 by White: the queen takes its own bishop…").
+- **KS-2, calibrated (10-08).**
+  - Motif counts over 30 games each: specialists self-capture about 1.5 times as often as neutral twins, but at
+    first only Corin (check) and Felix (activation) clearly played their own motif. A self-capture outside the
+    specialist's family now gets a quarter of the bonus. Over 80 games Rosa's top self-capture is then her own
+    (attack 30% against 14%).
+  - Ratings: one global cost per appetite point does not fit, because the appetite costs more at higher ratings.
+    So each specialist got a measured `adjust`: 80 games, then a 40-game verification on new seeds, which averaged
+    **+1 Elo** over the eight. The final correction pools both runs (120 games each; ±64 at 95%).
+- **KS-7, measured (10-08):** Leela T40 at 3000 nodes scored 14/20 against The Engine at 1 s a move (+147 ± 166).
+- **End to end (10-08):** a rated Fischer 10+3 game against Corin in the real app (`tools/ranked_game_check.py`,
+  `docs/calibration/ranked_game_corin.txt`): mate in 41, rating recorded, Post-Game Analysis with its Not in
+  Kansas section (Corin's 24...Kxf7 escape), and rating history.
+
+## EPIC KS, retrospective (2026-10-08)
+- **Delivered against the PO's goal** (ranked play against many personalities, a "not in Kansas" feeling,
+  educational at every level, both engines used):
+  - 8 calibrated specialists, from beginner (Hal 950) to master (Kestrel 2600). Each has an idea, a bio saying what
+    to watch for, and a lesson.
+  - Leela T40 as the top opponent.
+  - An Academy of 8 lessons and 24 checked positions, and 93 puzzles checked by both engines.
+  - A coach in unrated games. Kansas moments in every Post-Game Analysis, with practice from your own game.
+  - Tournaments of specialists.
+  - It all reuses the existing ranked play, tournaments, series and rating history.
+- **The engines' roles:**
+  - Fairy-Stockfish switches self-capture on and off, so it explains: specialists' choices, coach, analysis,
+    lesson and puzzle checks.
+  - Leela judges: the strongest opponent, and an independent second opinion on every lesson and puzzle.
+- **What the evidence changed:**
+  1. The census showed that threats matter far more than self-captures played. The design followed: rule-gain
+     appetite, trap warnings, quiet-threat lessons.
+  2. A checker rejected 11 of the first 19 lesson positions, including some from the paper. It led to the
+     quiz/demonstration split, rather than shipping puzzles with several answers.
+  3. A single global cost for the appetite left specialists up to 150 Elo off their labels; per-specialist
+     measurement fixed it.
+- **Lessons:**
+  1. Checkers must be deterministic (one thread, a fresh hash, fixed nodes), and must cap mate scores.
+  2. An explanation must show the cause. Moments and traps are kept only when a self-capture appears in the
+     refutation within 8 plies.
+  3. A rating from engine search depth is a proxy for human difficulty. It is capped and labelled as such.
+  4. A bare UCI `go` searches forever. It was found by wiring a new opponent into tournaments.
+- **Open:**
+  - Beginner puzzles below 1163: the ladder's floor is 16 nodes.
+  - Ada's and Mirela's motifs are only mildly more frequent than neutral, because escapes and promotions depend on
+    the opponent.
+  - The puzzle rating scale is engine-based. Measuring it against players' first-attempt results would correct it
+    over time.
+  - Leela's verdicts on the GPU are not exactly repeatable (41 vs 40 of 44 puzzles agreed between runs).

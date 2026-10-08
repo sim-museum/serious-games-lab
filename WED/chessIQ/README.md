@@ -22,23 +22,27 @@ may take its own pieces too). It's Wednesday's game in Serious Games Week ([seri
   are ordinary moves, which is what makes it deceptive. chessIQ shows where it differs:
   - **Self-capture specialists**: eight opponents from 950 to 2600 (Hal, Rosa, Felix, Mirela, Corin, Ada, Selim,
     Kestrel), each playing for one self-capture idea, with a biography that says what to watch for. They choose,
-    among near-best moves, the ones that gain most from Kramnik rules, and their ratings are measured like any
-    style's (`docs/calibration/kansas_cost.txt`, `specialist_check.txt`).
+    among near-best moves, the ones that gain most from Kramnik rules, and self-capture 3–4 times as often as
+    ordinary engines. Their ratings are measured: 120 games each against a neutral opponent of the same rating
+    (`docs/calibration/specialist_calibration.txt`). A specialist's biography names the Academy lesson for their
+    idea, and New tournament can fill an event with specialists only.
   - **Academy → Kramnik Academy**: eight lessons from beginner to advanced (the king that escapes through its own
-    army, promotion through your own piece, opening a file in one move, the quiet threat, ...) with 21 positions to
+    army, promotion through your own piece, opening a file in one move, the quiet threat, ...) with 24 positions to
     solve on the board, from the AlphaZero/Kramnik paper and from strong engine games. Every solution is checked by
-    a deep search (`tools/lesson_check.py`). Each lesson ends with a game against its specialist.
-  - **Academy → Kansas puzzles**: puzzles mined from strong engine games and checked the same way, rated by the
-    search strength that finds them, served near your own puzzle rating.
+    a deep search (`tools/lesson_check.py`), and Leela agrees on 22 of 24. Each lesson ends with a game against its
+    specialist.
+  - **Academy → Kansas puzzles**: 93 puzzles mined from strong engine games, each checked by both engines, rated
+    1163–2600 by the search strength that finds them, and served near your own puzzle rating.
   - **The coach** (unrated games, on by default): on your turn, a warning when the natural ordinary-chess move fails
     to a self-capture, or a nudge when a strong self-capture is there. It never names the move, and is silent in
     rated games.
   - **Post-Game Analysis → Not in Kansas**: after each game, the moments where Kramnik rules mattered: self-captures
-    played, strong ones missed, and ordinary-chess moves that lost. Click one to see the position.
+    played, strong ones missed, and ordinary-chess moves that lost. Click one to see the position, or practise the
+    ones you missed as quizzes. During unrated play, a self-capture is named in the status line as it happens.
   - How often it matters, measured over 220 strong games: `docs/SELF_CAPTURE_CENSUS.md`; the motifs, from the
     paper: `docs/SELF_CAPTURE_MOTIFS.md`.
-- **The strongest opponent, Leela T40** (with the GPU build): a large network adapted to Kramnik chess here, level
-  with full-strength Fairy-Stockfish. Fairy-Stockfish, which can switch self-capture on and off, does the explaining
+- **The strongest opponent, Leela T40** (with the GPU build): a large network adapted to Kramnik chess here; at
+  3000 nodes it scored 14/20 against full-strength Fairy-Stockfish at a second a move. Fairy-Stockfish, which can switch self-capture on and off, does the explaining
   (specialists, coach, analysis, puzzles); Leela brings the judgement.
 - **Time controls:** Fischer 10+3 (and 5+3, 15+10, 3+2), 30 minutes per game, 40 moves in 90 minutes, or untimed.
   Rated games are always timed. Running out of time loses, unless the other side cannot mate.
