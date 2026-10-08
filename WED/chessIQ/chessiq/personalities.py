@@ -119,6 +119,7 @@ class Personality:
     kansas: int = 0              # 0..100: appetite for moves that gain from Kramnik rules (self-captures and their threats)
     motif: str = ""              # the self-capture motif family a specialist plays for (docs/SELF_CAPTURE_MOTIFS.md)
     adjust: int = 0              # Elo: a measured correction to the strength model (KS: per specialist, by matches)
+    reach: int = 0               # cp: how much further an own-motif self-capture may trail the best move (KS-10)
 
     def engine_options(self):
         """UCI options for the Kramnik Fairy-Stockfish (engine/kramnik-selfcapture.patch)."""
@@ -244,23 +245,25 @@ SPECIALISTS = [
        "own and is in play a move later. His positions look passive until they suddenly aren't.\n"
        "Watch for: a bishop or rook capturing its own pawn to reach a long diagonal or an open file.", randomness=8,
        positional={**{t: (100, 100) for t in TERMS}, "Mobility": (140, 100)}, adjust=-15),
-    _s("Mirela", 1750, "a defender whose king escapes through its own army", "escape", 80,
+    _s("Mirela", 1750, "a defender whose king walks through its own army", "escape,king-other,king-walk", 80,
        "Mirela lets you attack. When the mate seems certain, her king takes its own rook or pawn and walks away, and "
-       "your pieces are left on the wrong side of the board.\n"
+       "your pieces are left on the wrong side of the board. Even in quiet positions her king takes its own pawns to "
+       "step where it wants.\n"
        "Watch for: before you go for mate, check every square next to her king, including the ones her own men "
        "stand on.", randomness=6, attack=-30,
-       positional={**{t: (100, 100) for t in TERMS}, "KingSafety": (130, 100)}, adjust=-35),
+       positional={**{t: (100, 100) for t in TERMS}, "KingSafety": (130, 100)}, reach=120, adjust=-20),
     _s("Corin", 2000, "a tactician: self-captures with check, and material won straight back", "check", 80,
        "Corin's self-captures are never gifts. He takes his own piece to give check, uncover an attack or open a "
        "line, and wins the material back a move or two later.\n"
        "Watch for: discovered checks made by a pawn or piece taking one of its own.", randomness=4, attack=30, adjust=-110),
-    _s("Ada", 2250, "an endgame specialist: promotes through her own pieces, walks her king through her own pawns",
-       "promotion,king-walk", 80,
-       "Ada steers for endgames. Her pawn on the seventh promotes by taking her own piece in front of it, and her "
-       "king breaks into fortresses by taking its own blocking pawns. Many ordinary-chess draws are wins for her, and "
-       "some lost pawn endings are draws.\n"
-       "Watch for: a piece placed in front of her own passed pawn, and a king next to its own pawns.", randomness=2,
-       positional={**{t: (100, 100) for t in TERMS}, "PassedPawns": (150, 130)}, adjust=-100),
+    _s("Ada", 2250, "an endgame technician: her pieces reroute through their own men, her pawns promote through them",
+       "promotion,king-walk,reposition", 80,
+       "Ada's pieces take their own men to reach the squares they want: a bishop takes its own pawn to reach a "
+       "diagonal, a knight its own pawn to reach an outpost. In the endgame her pawn on the seventh promotes by taking "
+       "her own piece in front of it, and her king breaks into fortresses by taking its own blocking pawns.\n"
+       "Watch for: a piece that could take one of her own men to land on a better square, and a piece placed in front "
+       "of her own passed pawn.", randomness=2,
+       positional={**{t: (100, 100) for t in TERMS}, "PassedPawns": (150, 130)}, reach=60, adjust=-79),
     _s("Selim", 2500, "plays ordinary-looking chess in which the threat of self-capture decides", "", 100,
        "Selim seldom self-captures. He plays for positions where your natural move, the best one in ordinary chess, "
        "loses because of a self-capture you did not consider, by him or by you.\n"

@@ -1080,3 +1080,20 @@ One item at a time, each with a goal, the check that proves it and a stopping po
     records use them.
   - Result: 172 puzzles, 79 of them rated 660–1100. The prompt says self-capture is allowed, and the sparring
     partner offered is Hal. Check: tests and an offscreen solve at a puzzle rating of 900. Done.
+- **KS-10. Ada's and Mirela's ideas show in their games.** Goal: each plays her own motifs clearly more often
+  than a neutral player of her rating, at her labelled strength. Record: `docs/calibration/ks10_reach.txt`.
+  - Tried first: steering toward quiet moves whose line leads to the motif. It changed nothing (Ada 6 → 8, Mirela
+    17 → 18 in 60 games) and was removed.
+  - Measured why. Over 30 games, Mirela's escape was legal in 73 positions, in her six candidate lines in 63, inside
+    her 50 cp window in 9, and chosen in 7 of those. Ada's promotion or king walk was inside the window once. The
+    bonus works; these motifs are seldom good moves, and an escape needs the opponent to give check.
+  - The fix: `reach`, cp by which an own-motif self-capture may trail the best move, with that much more bonus. It
+    is paid for in strength like any style, and `adjust` pays it back. Mirela's motif became the king's
+    self-captures (escape, king-other, king-walk; reach 120). Ada's became promotion, king-walk and reposition
+    (reach 60), which teaches rerouting through one's own men; the puzzles' reposition motif now points to her.
+  - Result over 180 games each, against the neutral twin over 60:
+    - Mirela: own motifs 1.13 per 100 moves against 0.68; the king walks and makes room 0.48 against 0.06.
+    - Ada: 0.98 per 100 moves against 0.17.
+  - Strength, pooled over 300 games each: corrections Ada −79 (was −100) and Mirela −20 (was −35). The 120
+    verification games: Ada 50.8%, Mirela 40.4%; the 180 calibration games had Mirela at 51.7%. Her two batches
+    differ by two standard errors, so the pooled value stands. Done.

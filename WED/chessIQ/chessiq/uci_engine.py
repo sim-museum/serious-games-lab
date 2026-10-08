@@ -125,16 +125,24 @@ class PersonalityEngine:
 
     def _kansas_pick(self, moves, lines, best):
         top = max(cp for cp, _ in lines.values())
-        cands = [(cp, mv) for cp, mv in lines.values() if top - cp <= 10 + self.kansas // 2]
+        window, reach = 10 + self.kansas // 2, getattr(self.p, "reach", 0)
+        b, turn, ep, half, full = K.replay(moves)
+        own = set(filter(None, getattr(self.p, "motif", "").split(",")))
+
+        def own_sc(mv):
+            return own and K.is_self_capture(b, turn, mv) and K.motif(b, turn, ep, K.find(b, turn, ep, mv)) in own
+
+        # KS-10: a specialist's own motif may trail by `reach` more, and gets that much more bonus: a motif the
+        # position seldom offers at no cost (an escape, a king walk) is played at a price, which `adjust` pays back
+        cands = [(cp, mv) for cp, mv in lines.values()
+                 if top - cp <= window or (reach and top - cp <= window + reach and own_sc(mv))]
         if len(cands) < 2:
             return None
-        b, turn, ep, half, full = K.replay(moves)
         sc = {mv for _, mv in cands if K.is_self_capture(b, turn, mv)}
         off = self._off_scores(K.to_fen(b, turn, ep, half, full), [mv for _, mv in cands if mv not in sc])
 
-        own = set(filter(None, getattr(self.p, "motif", "").split(",")))
-        bonus = {mv: SC_BONUS if not own or K.motif(b, turn, ep, K.find(b, turn, ep, mv)) in own else SC_BONUS // 4
-                 for mv in sc}                  # a specialist's own motif gets the full bonus, others a quarter
+        bonus = {mv: SC_BONUS + reach * 100 // max(1, self.kansas) if own_sc(mv) else SC_BONUS if not own
+                 else SC_BONUS // 4 for mv in sc}   # a specialist's own motif gets the full bonus, others a quarter
 
         def gain(cp, mv):
             return bonus[mv] if mv in sc else (K.cap(cp) - K.cap(off[mv]) if mv in off else 0)

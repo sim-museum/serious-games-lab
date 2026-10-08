@@ -285,7 +285,7 @@ PUZZLE_TEXT = {"self-capture": "Find the self-capture.",
                "mate": "Mate in one. In Kramnik chess you may take your own pieces.",
                "escape": "You are in check. Only one move saves you, and in ordinary chess it would be illegal."}
 SPECIALIST_FOR = {"promotion": "Ada", "escape": "Mirela", "king-walk": "Ada", "king-other": "Mirela",
-                  "check": "Corin", "attack": "Rosa", "activation": "Felix", "reposition": "Felix"}
+                  "check": "Corin", "attack": "Rosa", "activation": "Felix", "reposition": "Ada"}
 
 
 class PuzzleWindow(QDialog):

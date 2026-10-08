@@ -1,0 +1,36 @@
+KS-10: Ada and Mirela, own-motif reach (tools/specialist_check.py, against a neutral twin of the label rating)
+
+## before (reach 0, old motifs), seed 17
+Mirela (old motif) 1750: 34.5 / 60 (58%), Elo +53 +/- 89; self-captures 3.2 per 100 of 3533 moves; motifs activation 48 escape 17 reposition 16 attack 14 check 12 king-walk 4 king-other 3
+Ada (old motif)    2250: 28.5 / 60 (48%), Elo -17 +/- 88; self-captures 2.5 per 100 of 3399 moves; motifs activation 22 attack 16 escape 14 reposition 14 check 9 king-walk 6 king-other 4
+
+## neutral baselines, seed 17
+neutral@1750 1750: 30.0 / 60 (50%), Elo -0 +/- 88; self-captures 2.3 per 100 of 3550 moves; motifs activation 26 escape 22 attack 16 reposition 11 check 5 king-other 1 promotion 1 king-walk 1
+neutral@2250 2250: 30.0 / 60 (50%), Elo -0 +/- 88; self-captures 1.5 per 100 of 3476 moves; motifs escape 17 activation 14 check 9 attack 5 reposition 3 king-walk 3 king-other 1
+
+## reach tried, seed 17
+Mirela:reach=60 1750: 24.0 / 60 (40%), Elo -70 +/- 90; self-captures 2.6 per 100 of 3828 moves; motifs activation 34 escape 22 reposition 20 attack 10 check 9 king-walk 4
+Mirela:reach=120 1750: 26.0 / 60 (43%), Elo -47 +/- 89; self-captures 2.7 per 100 of 3652 moves; motifs activation 34 escape 30 reposition 11 attack 11 king-walk 7 check 6
+Ada:reach=60 2250: 30.5 / 60 (51%), Elo +6 +/- 88; self-captures 2.8 per 100 of 3706 moves; motifs activation 26 escape 21 reposition 19 attack 16 check 13 king-walk 6 promotion 2
+Ada:reach=120 2250: 29.0 / 60 (48%), Elo -12 +/- 88; self-captures 2.8 per 100 of 3523 moves; motifs activation 24 escape 21 reposition 18 check 15 attack 13 king-walk 5 king-other 2 promotion 1
+Ada:motif=promotion+king-walk+reposition,reach=60 2250: 29.5 / 60 (49%), Elo -6 +/- 88; self-captures 2.6 per 100 of 3558 moves; motifs reposition 26 activation 16 escape 14 attack 14 king-walk 10 check 7 promotion 2 king-other 2
+Ada:motif=promotion+king-walk+reposition 2250: 31.5 / 60 (52%), Elo +17 +/- 88; self-captures 2.4 per 100 of 3691 moves; motifs reposition 20 attack 17 escape 16 check 13 activation 13 king-walk 7 king-other 1
+Mirela:motif=escape+king-other+king-walk,reach=120 1750: 26.5 / 60 (44%), Elo -41 +/- 89; self-captures 3.2 per 100 of 3859 moves; motifs activation 29 attack 21 reposition 21 escape 20 king-walk 12 king-other 11 check 9 promotion 1
+
+## calibration of the final configs (adjust Ada -100, Mirela -35), seeds 21-23
+Ada:motif=promotion+king-walk+reposition,reach=60 2250: 16.5 / 40 (41%), Elo -61 +/- 109; self-captures 1.9 per 100 of 2569 moves; motifs reposition 15 escape 12 activation 8 attack 5 check 5 king-walk 4 promotion 1
+Ada:motif=promotion+king-walk+reposition,reach=60 2250: 19.0 / 40 (48%), Elo -17 +/- 108; self-captures 3.2 per 100 of 2088 moves; motifs reposition 16 escape 14 activation 11 check 10 attack 9 king-walk 6 king-other 1
+Ada:motif=promotion+king-walk+reposition,reach=60 2250: 19.0 / 40 (48%), Elo -17 +/- 108; self-captures 2.5 per 100 of 2543 moves; motifs reposition 19 activation 14 attack 10 escape 8 king-walk 6 check 5 king-other 2
+Mirela:motif=escape+king-other+king-walk,reach=120 1750: 23.5 / 40 (59%), Elo +61 +/- 109; self-captures 2.9 per 100 of 2024 moves; motifs activation 21 escape 18 reposition 7 attack 6 king-walk 4 check 2 king-other 1
+Mirela:motif=escape+king-other+king-walk,reach=120 1750: 24.5 / 40 (61%), Elo +80 +/- 111; self-captures 3.4 per 100 of 2564 moves; motifs activation 23 escape 17 king-walk 13 reposition 12 attack 12 check 7 king-other 1 promotion 1
+Mirela:motif=escape+king-other+king-walk,reach=120 1750: 18.5 / 40 (46%), Elo -26 +/- 108; self-captures 2.8 per 100 of 2576 moves; motifs activation 20 escape 17 attack 9 reposition 9 check 7 king-other 6 king-walk 5
+
+## verification at Ada -77, Mirela -47, seeds 31, 41, 51
+Ada          2250: 34.0 / 60 (57%), Elo +47 +/- 89; self-captures 2.5 per 100 of 3851 moves; motifs reposition 22 attack 18 activation 17 escape 16 check 12 king-walk 9 king-other 1
+Mirela       1750: 23.0 / 60 (38%), Elo -83 +/- 90; self-captures 3.0 per 100 of 3522 moves; motifs activation 24 escape 24 reposition 16 king-walk 15 attack 11 king-other 9 check 6 promotion 1
+Ada          2250: 14.5 / 30 (48%), Elo -12 +/- 124; self-captures 2.4 per 100 of 1891 moves; motifs reposition 15 escape 11 attack 7 king-walk 4 activation 4 check 4 promotion 1
+Ada          2250: 12.5 / 30 (42%), Elo -58 +/- 126; self-captures 2.6 per 100 of 1841 moves; motifs reposition 19 activation 10 escape 7 king-walk 6 check 5 attack 1
+Mirela       1750: 14.5 / 30 (48%), Elo -12 +/- 124; self-captures 3.6 per 100 of 1788 moves; motifs activation 18 reposition 12 escape 11 king-walk 9 attack 7 check 5 king-other 3
+Mirela       1750: 11.0 / 30 (37%), Elo -95 +/- 129; self-captures 3.6 per 100 of 1855 moves; motifs activation 19 escape 16 reposition 9 attack 8 king-walk 7 king-other 4 check 4
+
+pooled over 300 games each: Ada adjust -79, Mirela -20

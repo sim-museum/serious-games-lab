@@ -66,6 +66,16 @@ class Appetite(unittest.TestCase):
         self.assertEqual(e._kansas_pick(moves, lines, "b1c3"), "d1e2")    # 20 + 0.5 * SC_BONUS > 35
         self.assertGreater(20 + 0.5 * SC_BONUS, 35)
 
+    def test_reach_lets_the_own_motif_trail_further(self):          # KS-10
+        moves = ["e2e4", "e7e5", "f1e2", "d7d6"]
+        b, turn, ep, _, _ = K.replay(moves)
+        mo = K.motif(b, turn, ep, K.find(b, turn, ep, "d1e2"))
+        lines = {1: (100, "b1c3"), 2: (0, "d1e2")}                  # Qxe2 trails by 100: outside the 60 cp window
+        for reach, motif, want in ((0, mo, None), (60, mo, "d1e2"), (60, "promotion", None)):
+            e = stub(100, {"b1c3": 100})
+            e.p = Personality("t", 1600, kansas=100, motif=motif, reach=reach)
+            self.assertEqual(e._kansas_pick(moves, lines, "b1c3"), want, (reach, motif))
+
     def test_zero_appetite_changes_nothing(self):
         lines = {1: (40, "b1c3"), 2: (30, "d2d4")}
         e = stub(0, {"b1c3": 40, "d2d4": -500})
