@@ -29,7 +29,7 @@ def tick():
     g = w.game
     if g.over:                                   # keep the event loop running until the post-game analysis is in,
         pg = w.postgame                          # as it is for a player (quitting the loop drops its signal)
-        if pg is not None and pg.evals is None and __import__('time').time() - END.setdefault('t', __import__('time').time()) < 300:
+        if pg is not None and (pg.evals is None or pg.moments is None) and __import__('time').time() - END.setdefault('t', __import__('time').time()) < 600:
             QTimer.singleShot(100, tick); return
         qa.quit(); return
     if g.turn == g.human and w.review is None:
@@ -48,6 +48,10 @@ print('rating 1400 ->', prof['rating'], '| games', prof['games'], '| note:', w.n
 print('pgn tail:', ' '.join(prof['history'][-1]['pgn'].split())[-80:] if prof['history'] else '-')
 if w.postgame is not None:                       # CM-20: the Post-Game Analysis window
     print('post-game:', ' '.join(w.postgame.head.text().replace('<br>', ' | ').split()))
+    print('not in Kansas:', ' '.join(w.postgame.kansas.text().split()))       # KS-3
+    for i in range(w.postgame.klist.count()):
+        print('   ', w.postgame.klist.item(i).text())
+    print('practise button:', w.postgame.practise_btn.isVisible() and w.postgame.practise_btn.text())
 w.rating_history()                               # CM-23
 print('rating history points:', w.history_dlg.points, '| rows', w.history_dlg.table.rowCount())
 w.close(); send('quit')

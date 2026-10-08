@@ -22,6 +22,14 @@ the *possibility* of one changes the best move. The motif families are in `SELF_
    self-capture. Line: 1.Kg2 Ke3 2.Kxg3!, where the king takes its own pawn and blockades Black's. This is the
    defensive mirror of Kramnik's examples, where draws become wins.
 
+## What it led to (EPIC KS)
+
+- The threat finding shaped the design. Specialists choose moves by how much they gain from Kramnik rules, not
+  just by self-capturing. The coach warns about ordinary-chess moves that fail here. Post-Game Analysis lists
+  those moves as Kansas moments.
+- Finding 5 is an Academy demonstration (Endgames that change). The census positions supply most of the lessons'
+  and all of the puzzles' positions, each re-checked deeply (`tools/lesson_check.py`, `tools/mine_puzzles.py`).
+
 ## Method
 
 - **Games:** 120 Fairy-Stockfish self-play games (300k nodes a move, one thread, about 0.7 s, depth 12+). Also 100 lc0
