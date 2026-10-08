@@ -111,6 +111,8 @@ class Personality:
     nodes: int = 0               # Leela: nodes per move (0 = use the clock)
     blunder: float = -1.0        # probability of a random legal move; -1 = from the rating (below the ladder's floor)
     compensate: bool = True      # pay a style's measured cost in strength back in search (CM-17)
+    kansas: int = 0              # 0..100: appetite for moves that gain from Kramnik rules (self-captures and their threats)
+    motif: str = ""              # the self-capture motif family a specialist plays for (docs/SELF_CAPTURE_MOTIFS.md)
 
     def engine_options(self):
         """UCI options for the Kramnik Fairy-Stockfish (engine/kramnik-selfcapture.patch)."""

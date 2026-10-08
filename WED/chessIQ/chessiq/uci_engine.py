@@ -8,6 +8,10 @@ One engine process per opponent. Rating, style, contempt and material go in as U
     ladder's floor comes from the measured blunder rate (CM-14), and a style's cost in strength is paid back in
     search nodes (Personality.search_nodes);
   * max depth (< 99): the search is limited to that many plies.
+  * kansas (0..100, EPIC KS): a self-capture specialist's appetite. Among the moves within (10 + kansas/2) cp of the
+    best, it plays the one that gains most from Kramnik rules: its score with self-capture on, plus kansas% of (score
+    on - score off), where "off" is a second engine playing the same position without self-capture. A self-capture,
+    which does not exist off, gains SC_BONUS. The specialist still never plays a move outside that margin.
 available() is False when the binary has not been built (engine/build_engine.sh); chessIQ then falls back to its
 own Python engine.
 """
@@ -16,9 +20,12 @@ import random
 import subprocess
 import threading
 
+from . import kansas as K
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BINARY = os.environ.get("CHESSIQ_ENGINE", os.path.join(ROOT, "engine", "fairy-stockfish-kramnik"))
 VARIANTS = os.path.join(ROOT, "engine", "kramnik.ini")
+SC_BONUS = 100                  # cp: what a self-capture "gains" from Kramnik rules in a specialist's eyes
 
 
 def available():
@@ -41,6 +48,11 @@ class PersonalityEngine:
         self.blunder = personality.blunder_rate() if hasattr(personality, "blunder_rate") else 0.0
         self.nodes = personality.search_nodes() if hasattr(personality, "search_nodes") else 0
         self.multipv = 4 if self.rnd_level > 0 else 1
+        self.kansas = getattr(personality, "kansas", 0)
+        if self.kansas > 0:
+            self.multipv = max(self.multipv, 6)
+        self.off = None                     # the no-self-capture engine, started on a specialist's first move
+        self.last_kansas = None             # (chosen, best, gain) of the last move the appetite changed, for tests
         self._send("setoption name MultiPV value %d" % self.multipv)
         self._send("isready"); self._wait("readyok")
 
@@ -98,6 +110,10 @@ class PersonalityEngine:
             root = self._root_moves(moves)
             if root:
                 return self.rand.choice(sorted(root))
+        if self.kansas > 0 and len(lines) > 1:
+            pick = self._kansas_pick(moves, lines, best)
+            if pick and pick != best:
+                return pick
         r = self.rnd_level
         if r > 0 and len(lines) > 1 and self.rand.random() < r / 200:
             top = max(cp for cp, _ in lines.values())
@@ -105,6 +121,48 @@ class PersonalityEngine:
             if near:
                 return self.rand.choice(near)
         return best
+
+    def _kansas_pick(self, moves, lines, best):
+        top = max(cp for cp, _ in lines.values())
+        cands = [(cp, mv) for cp, mv in lines.values() if top - cp <= 10 + self.kansas // 2]
+        if len(cands) < 2:
+            return None
+        b, turn, ep, half, full = K.replay(moves)
+        sc = {mv for _, mv in cands if K.is_self_capture(b, turn, mv)}
+        off = self._off_scores(K.to_fen(b, turn, ep, half, full), [mv for _, mv in cands if mv not in sc])
+
+        def gain(cp, mv):
+            return SC_BONUS if mv in sc else (K.cap(cp) - K.cap(off[mv]) if mv in off else 0)
+
+        cp, mv = max(cands, key=lambda c: c[0] + self.kansas / 100.0 * gain(*c))
+        if mv != best:
+            self.last_kansas = (mv, best, gain(cp, mv))
+        return mv
+
+    def _off_scores(self, fen, cands):
+        """Scores of the candidate moves under the same rules without self-capture (same personality knobs)."""
+        if not cands:
+            return {}
+        if self.off is None:
+            self.off = subprocess.Popen([BINARY], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                        stderr=subprocess.DEVNULL, text=True, bufsize=1)
+            for c in ["uci", "setoption name VariantPath value " + VARIANTS, "setoption name UCI_Variant value kramniknosc"] + \
+                     ["setoption name %s value %s" % kv for kv in self.p.engine_options().items()]:
+                self.off.stdin.write(c + "\n")
+        w = self.off.stdin.write
+        w("setoption name MultiPV value %d\n" % len(cands))
+        w("position fen %s\n" % fen)
+        w("go nodes %d searchmoves %s\n" % ((self.nodes or 100000) * len(cands), " ".join(cands)))
+        self.off.stdin.flush()
+        out = {}
+        for line in self.off.stdout:
+            if line.startswith("info") and " multipv " in line and " pv " in line and " score " in line:
+                t = line.split()
+                s = t[t.index("score") + 1:t.index("score") + 3]
+                out[t[t.index("pv") + 1]] = int(s[1]) if s[0] == "cp" else (100000 - abs(int(s[1]))) * (1 if int(s[1]) > 0 else -1)
+            elif line.startswith("bestmove"):
+                break
+        return out
 
     def _root_moves(self, moves):
         """The legal moves, as Fairy-Stockfish lists them (`go perft 1`; proven against the rules in test_fsf_moves)."""
@@ -121,6 +179,16 @@ class PersonalityEngine:
         return out
 
     def close(self):
+        if getattr(self, "off", None) is not None:
+            try:
+                self.off.stdin.write("quit\n"); self.off.stdin.flush(); self.off.wait(timeout=3)
+            except Exception:
+                self.off.kill()
+            for f in (self.off.stdin, self.off.stdout):
+                try:
+                    f.close()
+                except Exception:
+                    pass
         try:
             self._send("quit")
             self.proc.wait(timeout=3)

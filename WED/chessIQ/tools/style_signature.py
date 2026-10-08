@@ -38,7 +38,7 @@ def king_zone(b, colour):
 
 def game(styled_e, neutral_e, styled_colour, start):
     b, turn, ep, moves, seen, half = E.init_board(), "w", None, [], {}, 0
-    f = dict(moves=0, zone=0, checks=0, taken=0, given=0)
+    f = dict(moves=0, zone=0, checks=0, taken=0, given=0, sc=0)
     for u in start:
         m = next(m for m in E.legal_moves(b, turn, ep) if uci_of(m) == u)
         b, ep, turn = E.apply_move(b, m), E.ep_after(m), E.opp(turn); moves.append(u)
@@ -62,6 +62,7 @@ def game(styled_e, neutral_e, styled_colour, start):
                 f["taken"] += VAL[target[1]]
             elif target and target[0] == turn:
                 f["given"] += VAL[target[1]]
+                f["sc"] += 1
         half = 0 if (b[m.frm][1] == "p" or m.kind != "move") else half + 1
         b, ep, turn = E.apply_move(b, m), E.ep_after(m), E.opp(turn); moves.append(u)
         if turn != styled_colour and E.in_check(b, turn):
@@ -90,8 +91,9 @@ def main():
         sd = math.sqrt(sum((x - m) ** 2 for x in xs) / max(1, len(xs) - 1))
         return "%5.1f +/- %4.1f" % (m, 1.96 * sd / math.sqrt(len(xs)))
     print("%-14s r%d %3d games: score %4.1f%% draws %2d avg plies %3.0f | per 100 moves: zone %s  checks %s  "
-          "taken %s  given %s" % (spec, rating, games, 100 * score / games, draws, plies / games, rate("zone"),
-                                  rate("checks"), rate("taken"), rate("given")))
+          "taken %s  given %s  self-captures %s" % (spec, rating, games, 100 * score / games, draws, plies / games,
+                                                     rate("zone"), rate("checks"), rate("taken"), rate("given"),
+                                                     rate("sc")))
 
 
 if __name__ == "__main__":
