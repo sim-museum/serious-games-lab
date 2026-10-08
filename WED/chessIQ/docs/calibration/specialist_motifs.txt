@@ -1,0 +1,13 @@
+# KS: specialists vs neutral twins, 30 games each, seed 17 (tools/specialist_check.py), motif counts of the specialist's self-captures
+Hal           950: 18.5 / 30 (62%), Elo +83 +/- 128; self-captures 2.2 per 100 moves; motifs activation 9 attack 7 escape 5 king-other 4 reposition 2 check 1 king-walk 1
+Rosa         1250: 17.5 / 30 (58%), Elo +58 +/- 126; self-captures 2.9 per 100 moves; motifs activation 14 escape 9 attack 9 reposition 7 check 5 king-walk 2
+Mirela       1750: 19.0 / 30 (63%), Elo +95 +/- 129; self-captures 2.3 per 100 moves; motifs activation 11 check 9 attack 8 escape 7 reposition 6 king-walk 4
+Felix        1500: 22.5 / 30 (75%), Elo +191 +/- 144; self-captures 2.5 per 100 moves; motifs activation 24 attack 10 check 6 escape 5 reposition 3 king-other 1 king-walk 1
+neutral@1250 1250: 15.0 / 30 (50%), Elo -0 +/- 124; self-captures 1.2 per 100 moves; motifs reposition 5 activation 4 attack 3 escape 3 check 3 king-other 2 king-walk 1
+Corin        2000: 17.5 / 30 (58%), Elo +58 +/- 126; self-captures 2.9 per 100 moves; motifs check 14 activation 10 escape 8 attack 7 reposition 7 king-walk 2 king-other 1
+neutral@1750 1750: 15.0 / 30 (50%), Elo -0 +/- 124; self-captures 2.1 per 100 moves; motifs activation 14 escape 8 attack 7 reposition 6 check 3 king-other 1
+Ada          2250: 20.0 / 30 (67%), Elo +120 +/- 132; self-captures 2.6 per 100 moves; motifs activation 12 check 7 attack 7 reposition 7 escape 4 king-walk 4 king-other 2
+neutral@2000 2000: 15.0 / 30 (50%), Elo -0 +/- 124; self-captures 2.0 per 100 moves; motifs activation 14 escape 9 attack 9 check 3 king-walk 2 reposition 2
+Selim        2500: 10.5 / 30 (35%), Elo -108 +/- 130; self-captures 3.3 per 100 moves; motifs activation 21 reposition 11 escape 7 attack 7 king-walk 5 check 4
+Kestrel      2600: 19.0 / 30 (63%), Elo +95 +/- 129; self-captures 2.2 per 100 moves; motifs activation 19 escape 7 check 6 attack 3 reposition 3 king-walk 2
+neutral@2250 2250: 15.0 / 30 (50%), Elo -0 +/- 124; self-captures 1.7 per 100 moves; motifs activation 8 escape 7 check 6 attack 2 reposition 2 king-walk 1 king-other 1

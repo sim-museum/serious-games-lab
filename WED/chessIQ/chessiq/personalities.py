@@ -118,6 +118,7 @@ class Personality:
     compensate: bool = True      # pay a style's measured cost in strength back in search (CM-17)
     kansas: int = 0              # 0..100: appetite for moves that gain from Kramnik rules (self-captures and their threats)
     motif: str = ""              # the self-capture motif family a specialist plays for (docs/SELF_CAPTURE_MOTIFS.md)
+    adjust: int = 0              # Elo: a measured correction to the strength model (KS: per specialist, by matches)
 
     def engine_options(self):
         """UCI options for the Kramnik Fairy-Stockfish (engine/kramnik-selfcapture.patch)."""
@@ -136,7 +137,7 @@ class Personality:
 
     def effective_rating(self):
         """The ladder rating the engine must play at so that this style, with its cost, plays at `rating` (CM-17)."""
-        return self.rating + (style_cost(self) if self.compensate else 0)
+        return self.rating + (style_cost(self) if self.compensate else 0) + self.adjust
 
     def search_nodes(self):
         return level_for(self.effective_rating())[0] if self.rating < 2850 else 0   # 0 = full strength on the clock
