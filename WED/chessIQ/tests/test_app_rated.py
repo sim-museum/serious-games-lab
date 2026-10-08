@@ -174,6 +174,16 @@ class TournamentFlow(unittest.TestCase):          # CM-22: a whole round robin t
             self.qa.processEvents()
             time.sleep(0.05)
 
+    def test_a_field_of_specialists(self):                          # KS: "Self-capture specialists only"
+        from chessiq import tourney_ui
+        from chessiq.personalities import SPECIALISTS
+        self.w = w = self.A.MainWindow()
+        tw = tourney_ui.start(w, "rr", 5, 0, 900, 2700, 0, False, seed=3, kansas=True)
+        names = {p for p, _ in tw.t.players} - {tw.t.human}
+        self.assertEqual(len(names), 5)
+        self.assertTrue(names <= {p.name for p in SPECIALISTS})
+        tw.close()
+
     @unittest.skipUnless(os.access(FSF, os.X_OK), "Kramnik Fairy-Stockfish missing")
     def test_round_robin_through_the_windows(self):
         from chessiq import tourney_ui

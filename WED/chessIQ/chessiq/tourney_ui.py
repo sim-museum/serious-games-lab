@@ -93,6 +93,8 @@ class NewTournamentDialog(QDialog):
             self.tc.addItem(label, (kind, args))
         self.tc.setCurrentIndex(1)
         self.rated = QCheckBox("Rated (your games change your rating)")
+        self.kansas = QCheckBox("Self-capture specialists only (EPIC KS)")
+        self.kansas.setToolTip("A field of chessIQ's self-capture specialists, all playing for Kramnik rules")
         self.event.currentIndexChanged.connect(self.fill)
         f.addRow("Event", self.event)
         f.addRow("Type", self.kind)
@@ -102,6 +104,7 @@ class NewTournamentDialog(QDialog):
         f.addRow("Highest rating", self.hi)
         f.addRow("Your games", self.tc)
         f.addRow("", self.rated)
+        f.addRow("", self.kansas)
         bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         bb.accepted.connect(self.accept); bb.rejected.connect(self.reject)
         f.addRow(bb)
@@ -109,11 +112,12 @@ class NewTournamentDialog(QDialog):
     def fill(self):
         """A series event sets every field and fixes them (it is rated), so its standard cannot be lowered."""
         key = self.event.currentData()
-        fields = (self.kind, self.size, self.rounds, self.lo, self.hi, self.tc, self.rated)
+        fields = (self.kind, self.size, self.rounds, self.lo, self.hi, self.tc, self.rated, self.kansas)
         for w in fields:
             w.setEnabled(key is None)
         if key is None:
             return
+        self.kansas.setChecked(False)
         _, _, kind, n, rounds, lo, hi, tc = next(e for e in SERIES if e[0] == key)
         self.kind.setCurrentIndex(self.kind.findData(kind))
         self.size.setValue(n); self.rounds.setValue(rounds); self.lo.setValue(lo); self.hi.setValue(hi)
@@ -316,14 +320,15 @@ def new_tournament(main):
     if not d.exec():
         return None
     return start(main, d.kind.currentData(), d.size.value(), d.rounds.value(), d.lo.value(), d.hi.value(),
-                 d.tc.currentIndex(), d.rated.isChecked(), event=d.event.currentData())
+                 d.tc.currentIndex(), d.rated.isChecked(), event=d.event.currentData(), kansas=d.kansas.isChecked())
 
 
-def start(main, kind, n, rounds, lo, hi, tc_index, rated, seed=None, event=None):
+def start(main, kind, n, rounds, lo, hi, tc_index, rated, seed=None, event=None, kansas=False):
     from .app import player_name
     me = player_name()
     my = main.profile.rating if main.profile is not None else 1400
-    field = pick_field(main.people, n, lo, hi, seed)
+    people = [p for p in main.people if getattr(p, "kansas", 0)] if kansas else main.people
+    field = pick_field(people, min(n, len(people)), lo, hi, seed)
     players = [(me, my)] + [(p.name, p.rating) for p in field]
     t = T.Tournament(players, "swiss" if kind == "swiss" else "rr", rounds=rounds, double=(kind == "rr2"),
                      rated=rated, seed=seed, human=me)

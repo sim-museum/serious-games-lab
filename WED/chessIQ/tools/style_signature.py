@@ -10,7 +10,9 @@ import random
 import sys
 R = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, R); sys.path.insert(0, os.path.join(R, "tools"))
+from collections import Counter  # noqa: E402
 from chessiq import engine as E  # noqa: E402
+from chessiq.kansas import motif  # noqa: E402
 from chessiq.personalities import BASE, PIECES, Personality  # noqa: E402
 from chessiq.uci_engine import PersonalityEngine  # noqa: E402
 from uci_match import opening, uci_of  # noqa: E402
@@ -38,7 +40,7 @@ def king_zone(b, colour):
 
 def game(styled_e, neutral_e, styled_colour, start):
     b, turn, ep, moves, seen, half = E.init_board(), "w", None, [], {}, 0
-    f = dict(moves=0, zone=0, checks=0, taken=0, given=0, sc=0)
+    f = dict(moves=0, zone=0, checks=0, taken=0, given=0, sc=0, motifs=Counter())
     for u in start:
         m = next(m for m in E.legal_moves(b, turn, ep) if uci_of(m) == u)
         b, ep, turn = E.apply_move(b, m), E.ep_after(m), E.opp(turn); moves.append(u)
@@ -63,6 +65,7 @@ def game(styled_e, neutral_e, styled_colour, start):
             elif target and target[0] == turn:
                 f["given"] += VAL[target[1]]
                 f["sc"] += 1
+                f["motifs"][motif(b, turn, ep, m)] += 1
         half = 0 if (b[m.frm][1] == "p" or m.kind != "move") else half + 1
         b, ep, turn = E.apply_move(b, m), E.ep_after(m), E.opp(turn); moves.append(u)
         if turn != styled_colour and E.in_check(b, turn):
