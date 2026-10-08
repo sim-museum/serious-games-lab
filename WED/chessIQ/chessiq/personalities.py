@@ -304,7 +304,8 @@ def leela_roster():
             "Leela T40", 2850, "the strongest Kramnik player here: a large network, on the GPU", engine="leela",
             net=t40, nodes=3000,
             bio="A 20-block network adapted to Kramnik chess by self-play on this project. At a second or so a move "
-                "it is level with full-strength Fairy-Stockfish (EPIC NN, NN-23: 15/30 at 3 s a move). Where "
+                "it is at least level with full-strength Fairy-Stockfish (EPIC NN, NN-23: 15/30 at 3 s a move; as "
+                "played here, 3000 nodes, 14/20 against The Engine at 1 s a move). Where "
                 "Fairy-Stockfish calculates, Leela judges: it plays positions, and it knows which self-captures are "
                 "worth it. Needs the GPU build (engine/build_lc0_gpu.sh)."))
     if kr:
