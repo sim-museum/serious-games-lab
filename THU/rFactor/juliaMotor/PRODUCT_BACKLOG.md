@@ -23471,3 +23471,11 @@ installed -- the PO's `~/.local/share/julia-racer` untouched) and running the SH
 * **E78 after S9–S12 (4 sprints this pass -- ROTATING):** the drop-rule audit is clean and Monza, Spa and Watkins Glen
   match their cockpit golds landmark for landmark (Zandvoort: E60; the Ring: E78 S1–S8, GPLVIS-1).
 
+
+### AppImage 261008 (2026-10-07, PO "run it")
+* `~/Documents/261008/JuliaRacer-x86_64-261008.AppImage` (1,677,711,864 bytes; sha256 `9e5ae25b…bdd4b` in SHA256SUMS),
+  built from `d85ad6d1` with the 261007 recipe (`build_julia.sh` + JR_* env, zstd squash, 261007 runtime).
+* Adds over 261007: COCKPIT-GOLD-1 S3 (mirror view of the world behind). E78 S10–S12 were checks only.
+* Verified from the mounted image: the shipped analyser, coach, launcher and segnames tests pass headless; the shipped
+  `drive_native_mtk.jl`, `render.jl`, `juliaRacer.py`, `analyser.py` and `coach.py` are byte-identical to the repo.
+* Status for the PO: `~/Documents/261008/STATUS_2026-10-08.md`.
