@@ -595,8 +595,9 @@ class TableManager:
 
     def _scripted_card(self, t, p, hand, cur):
         """Probe mode: a scripted card for biq's seat `p` if the script has
-        one: "follows" {"<trick><seat>": card}, else, on lead, the first card
-        of "leads" that `p` holds."""
+        one: "follows" {"<trick><seat>": card}; "low": suit letter = follow
+        that suit with the lowest card; else, on lead, the first card of
+        "leads" that `p` holds."""
         sc = self.script
         if not sc:
             return None
@@ -605,6 +606,10 @@ class TableManager:
         if f:
             c = parse_card(f)
             return c if c in legal else None
+        low = sc.get("low")                  # "C": follow with the lowest club
+        if low and cur and cur[0].suit == parse_card("2" + low).suit \
+                and legal and legal[0].suit == cur[0].suit:
+            return max(legal, key=lambda c: c.rank.value)
         if not cur:
             for i, tok in enumerate(sc.get("leads", [])):
                 c = parse_card(tok)
@@ -724,7 +729,8 @@ def main(argv=None):
     ap.add_argument("--quiet", action="store_true")
     ap.add_argument("--script", default=None,
                     help="probe mode: JSON lines {board, calls: {N: [..], S: [..]}, "
-                         "leads: [cards], follows: {'<trick><seat>': card}} for biq's seats")
+                         "leads: [cards], follows: {'<trick><seat>': card}, low: suit} "
+                         "for biq's seats")
     a = ap.parse_args(argv)
     tm = TableManager(a)
     try:

@@ -250,9 +250,96 @@ def leads_boards(rng, n_hands):
     return boards
 
 
+# Family "decl": Q-Plus DECLARES. Q-Plus sits N/S (--remote N,S) and bids
+# its own hands: N a balanced 15-17 (1NT), S a 9-12 raise with no four-card
+# major, so the contract is 3NT by N. biq sits E/W, passes throughout, leads
+# a low card of its longest side suit and follows clubs with its lowest
+# club ("low": "C"). Every side suit is double-stopped by N/S (the ace plus
+# another of A-K-Q), so the play is about the club combination: which hand
+# Q-Plus leads clubs from, finesse or drop, and in what order. Each
+# combination is dealt with several E/W club splits (the missing honours on
+# either side, short and long) and fresh side cards; a line that changes with
+# the hidden split would show that Q-Plus looks at hidden cards.
+_DECL_COMBOS = (                        # name, N (declarer) clubs, S (dummy) clubs
+    ("AQx-xxx", "AQ4", "532"),
+    ("AQT-xxx", "AQT", "532"),
+    ("AJ9-xxx", "AJ9", "532"),
+    ("KJx-xxx", "KJ4", "532"),
+    ("KQxx-xxx", "KQ54", "632"),
+    ("AKJx-xxx", "AKJ4", "532"),        # 7 cards missing the Q: finesse
+    ("AKJxx-xxx", "AKJ43", "652"),      # 8 cards: finesse
+    ("AKJxx-xxxx", "AKJ43", "7652"),    # 9 cards: drop
+    ("AKTx-xxx", "AKT4", "532"),
+    ("AKxxx-xx", "AK654", "32"),
+    ("xxx-AQx", "532", "AQ4"),          # the tenace in dummy
+    ("xxx-AKJx", "532", "AKJ4"),
+)
+
+
+def _decl_splits(rng, miss, k=8):
+    """Up to k E/W splits of the missing clubs: one per (holder of each
+    missing honour, E's length), shuffled."""
+    groups = {}
+    for le in range(len(miss) + 1):
+        for e in itertools.combinations(miss, le):
+            if not 1 <= le <= len(miss) - 1 or max(le, len(miss) - le) > 5:
+                continue
+            key = (tuple(r in e for r in miss if r in "KQJT"), le)
+            groups.setdefault(key, []).append("".join(e))
+    keys = sorted(groups)
+    rng.shuffle(keys)
+    return [rng.choice(groups[x]) for x in keys[:k]]
+
+
+def _decl_fill(rng, clubs, tries=200000):
+    side = [(s, r) for s in "SHD" for r in RK]
+    for _ in range(tries):
+        rng.shuffle(side)
+        hands, i = {}, 0
+        for seat in SEATS:
+            n = 13 - len(clubs[seat])
+            hands[seat] = [("C", r) for r in clubs[seat]] + side[i:i + n]
+            i += n
+        ln = {x: {s: sum(1 for c in hands[x] if c[0] == s) for s in "SHDC"} for x in SEATS}
+        if not 15 <= hcp(hands["N"]) <= 17 or not 9 <= hcp(hands["S"]) <= 12:
+            continue
+        if sorted(ln["N"].values()) not in ([3, 3, 3, 4], [2, 3, 4, 4], [2, 3, 3, 5]) \
+                or max(ln["N"]["S"], ln["N"]["H"]) > 4:
+            continue
+        if max(ln["S"]["S"], ln["S"]["H"]) > 3 or min(ln["S"].values()) < 2 or max(ln["S"].values()) > 5:
+            continue
+        if hcp(hands["E"]) > 10 or hcp(hands["W"]) > 10 or max(ln["E"].values()) > 6 \
+                or max(ln["W"].values()) > 6:
+            continue
+        ns = {s: {r for x in "NS" for s2, r in hands[x] if s2 == s} for s in "SHD"}
+        if not all("A" in ns[s] and len(ns[s] & set("KQ")) >= 1 for s in "SHD"):
+            continue
+        return hands
+    raise RuntimeError("no fill found")
+
+
+def decl_boards(rng, k=8):
+    boards = []
+    for name, n, s in _DECL_COMBOS:
+        miss = [r for r in RK if r not in n + s]
+        for e in _decl_splits(rng, miss, k):
+            w = "".join(r for r in miss if r not in e)
+            hands = _decl_fill(rng, {"N": n, "S": s, "E": e, "W": w})
+            leads = []
+            for x in "EW":
+                ln = {su: sorted((r for s2, r in hands[x] if s2 == su), key=RK.index) for su in "SHD"}
+                su = max("SHD", key=lambda q: (len(ln[q]), -"SHD".index(q)))
+                h = ln[su]
+                leads.append(su + (h[3] if len(h) >= 4 else h[-1]))
+            boards.append({"family": "decl", "combo": name, "N": n, "S": s, "E": e, "W": w,
+                           "calls": {"E": ["P"] * 6, "W": ["P"] * 6}, "leads": leads, "low": "C",
+                           "hands": {x: pbn_hand(hands[x]) for x in SEATS}})
+    return boards
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("family", choices=["count", "count2", "att", "all"])
+    ap.add_argument("family", choices=["count", "count2", "att", "all", "decl"])
     ap.add_argument("--out", required=True)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--max", type=int, default=60)
@@ -278,6 +365,8 @@ def main(argv=None):
         boards = count2_boards()
     if a.family == "att":
         boards = att_boards()
+    if a.family == "decl":
+        boards = decl_boards(rng)
     if a.family == "all":
         # One long session: attitude in NT and in clubs, opening leads, and
         # count with dummy's suit changed (a missing ten or a missing king).
@@ -285,17 +374,17 @@ def main(argv=None):
                   + count2_boards("KQJ98", ("N", "E", "W"), "count3")
                   + count2_boards("QJT98", ("N", "E", "W"), "count3"))
     order = list(range(len(boards))) * a.repeat
-    if a.family == "all":
-        rng.shuffle(order)      # interleave the families
+    if a.family in ("all", "decl"):
+        rng.shuffle(order)      # interleave the families / combinations
     pbn, script, design = [], [], []
     for n, bi in enumerate(order, 1):
         b = boards[bi]
         deal = "N:" + " ".join(b["hands"][x] for x in SEATS)
         pbn += [f'[Board "{n}"]', '[Dealer "N"]', '[Vulnerable "None"]', f'[Deal "{deal}"]', ""]
         x = {"board": n, "calls": {k: list(v) for k, v in b["calls"].items()}}
-        for k in ("leads", "follows"):
+        for k in ("leads", "follows", "low"):
             if k in b:
-                x[k] = b[k] if k == "follows" else list(b[k])
+                x[k] = list(b[k]) if k == "leads" else b[k]
         script.append(x)
         design.append({"board": n, "design": bi, **{k: v for k, v in b.items() if k not in ("hands", "calls")},
                        "deal": deal})

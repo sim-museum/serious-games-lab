@@ -1,5 +1,23 @@
 # biq — Claude Code project notes
 
+## STATUS — biq + 3 Q-Plus run 2; 1C answer switch; declarer probe (2026-10-08, UNCOMMITTED)
+* Run `tools/runs/bluechip/261007_qplus_biqS` (biq South, Q-Plus N/E/W,
+  Precision, seed 261009): -416 IMP / 184 boards (-2.26/bd); bidding -395
+  by DD, play -21. Stopped when the East window hung on board 185
+  (RESUME.txt there).
+* Q-Plus's Precision swaps the positive answers to 1C
+  (`A-artificial-1C.switch-1NT-1H`): 1C-1H = 8+ balanced, 1C-1NT = 5+
+  hearts. biq had the flag but read 1H as hearts (board 58: 1C-1H-4NT-7NT
+  X, -16). `native_bidder._switch_1c_view`: rules see the answer swapped
+  back, biq's own answer is swapped out, opener's 1C-1H-1NT (16-21) <->
+  rules' 2NT; balanced 14+ answers 1H too. BIQ_SWITCH_1C=0 disables.
+  NTX_RUN escape now 0-2 HCP only (Q-Plus passes with 3-4). Q4-* tests,
+  174 checks. Rules-only Precision par A/B, 2000 deals: +0.006/deal (SE
+  0.013), neutral as expected; the gain is with a Q-Plus partner.
+* Declarer probe (decl1, 96 x 3NT): biq declaring the same contracts takes
+  945 tricks vs Q-Plus 1005 (DD 978); the gap is NOT the probed club
+  combinations but leads/third-hand play in the other suits. BACKLOG top.
+
 ## STATUS — biq + 3 Q-Plus; selective signalling (2026-10-05)
 Full write-up: tools/HARNESS_STATUS_2026-09-30.md, last section.
 * biq South with Q-Plus N/E/W (`--remote N,E,W`): -2.72 IMP/board over 87

@@ -5,6 +5,22 @@ section. Move an item to a STATUS doc under `docs/` when it's picked up.
 
 ## Backlog
 
+- **biq's notrump declarer play: leads and third-hand plays.** Declarer
+  probe `tools/runs/probes/decl1` (96 x 3NT, long clubs; Q-Plus declared
+  live, `tools/runs/bluechip/probe_decl1`) replayed with biq declaring the
+  same contracts against the same scripted E/W, one board at a time
+  (scratchpad `decl_biq.py`, NPROC=1; parallel runs gave nearly the same
+  result, 939 vs 945): Q-Plus 1005 tricks / 93 made, biq 945 / 83, double
+  dummy 978. Card-by-card DD audit: defence equal (106 vs 103 DD tricks
+  given away); declarer 79 vs 136, of which clubs (the probed suit) 21 vs
+  25 and the OTHER suits 58 vs 111. By card: leads 43 vs 82, third hand
+  24 vs 36, second hand 7 vs 14. Next: list biq's costly declarer leads
+  (trick, hand, suit; winner cashed early? wrong suit set up? entries?),
+  compare with Q-Plus's line on the same board, and look at alpha-mu's
+  declarer depth / world count in NT (BIQ_AMU_DEPTH, BIQ_AMU_WORLDS).
+  Caveat: the defence differs slightly between the two replays (biq E/W
+  adapt to declarer's plays), so per-board comparisons are not exact.
+
 - **Probe Q-Plus's second-hand play in SUIT contracts.** The 2026-10-05/07
   probes saw Q-Plus in second seat only in 3NT (declarer establishing clubs):
   with a lone A or K it ducks almost always (A-x 30%, A-x-x 16%, longer or a
