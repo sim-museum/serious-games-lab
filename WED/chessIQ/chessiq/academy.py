@@ -321,3 +321,49 @@ class PuzzleWindow(QDialog):
             st.update(puzzle_rating=self.rating, puzzles_seen=sorted(self.seen), puzzles_solved=sorted(self.solved_ids))
             save_state(st)
         self._head()
+
+
+class PracticeDialog(QDialog):
+    """Your own game's Kansas moments -- the strong self-captures missed and the ordinary-chess moves that lost -- as
+    positions to solve (KS-3 + KS-4): the lesson you learn best is from your own game."""
+
+    def __init__(self, exercises, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Practise your game's Kansas moments")
+        self.setModal(False)
+        self.resize(820, 520)
+        self.exs, self.index = exercises, 0
+        v = QVBoxLayout(self)
+        self.view = ExerciseView()
+        v.addWidget(self.view, 1)
+        row = QHBoxLayout()
+        self.show_btn, self.next_btn = QPushButton("Show"), QPushButton("Next ▶")
+        self.show_btn.clicked.connect(self.view.reveal)
+        self.next_btn.clicked.connect(lambda: self.go(self.index + 1))
+        for b in (self.show_btn, self.next_btn):
+            row.addWidget(b)
+        self.view.side.addLayout(row)
+        self.go(0)
+
+    def go(self, i):
+        self.index = max(0, min(len(self.exs) - 1, i))
+        self.view.load(self.exs[self.index], "Position %d of %d · " % (self.index + 1, len(self.exs)))
+        self.next_btn.setEnabled(self.index < len(self.exs) - 1)
+
+
+def practice_exercises(moments, side=None):
+    """Exercises from Kansas moments (chessiq.kansas.moments): each missed self-capture and each ordinary-chess trap
+    by `side` (both sides if None), to be found again."""
+    out = []
+    for m in moments:
+        if m["kind"] not in ("missed", "trap") or (side is not None and m["side"] != side):
+            continue
+        num = "%d%s" % (m["ply"] // 2 + 1, "." if m["side"] == "w" else "...")
+        if m["kind"] == "missed":
+            prompt = "In the game, %s%s was played here. A self-capture was much stronger. Find it." % (num, m["san"])
+        else:
+            prompt = ("In the game, %s%s was played here: the best move in ordinary chess, but not in Kramnik chess. "
+                      "Find the better move." % (num, m["san"]))
+        out.append(Exercise(m["fen"], prompt, [m["best_uci"]], K.describe(m)))
+    return out
+

@@ -156,6 +156,34 @@ class Puzzles(unittest.TestCase):                 # KS-5
             self.assertIn(p["kind"], ("self-capture", "quiet"))
 
 
+class PracticeFromYourGame(unittest.TestCase):    # KS-3 + KS-4: your own missed moments become exercises
+    TRAP = {"kind": "trap", "ply": 36, "side": "w", "san": "Qc8+", "best": "Be3", "best_uci": "c1e3", "loss": 203,
+            "why": "Kxf7 (takes its own pawn)", "fen": "4kb1r/1Qp2p2/p4nnp/2q1p1p1/4P3/2P2NNP/PP3PK1/R1B4r w - - 0 19"}
+    PLAYED = {"kind": "played", "ply": 5, "side": "w", "san": "Qxe2", "motif": "attack", "piece": "q", "victim": "b",
+              "loss": 300, "fen": K.START, "best_uci": "e2e4"}
+
+    def setUp(self):
+        from PyQt6.QtWidgets import QApplication
+        from chessiq import academy
+        self.qa = QApplication.instance() or QApplication([])
+        self.academy = academy
+
+    def test_only_your_missed_and_trapped_moments(self):
+        black = dict(self.TRAP, side="b")
+        exs = self.academy.practice_exercises([self.TRAP, self.PLAYED, black], side="w")
+        self.assertEqual(len(exs), 1)
+        self.assertEqual(exs[0].solutions, ["c1e3"])
+        self.assertIn("19.Qc8+", exs[0].prompt)
+        self.assertEqual(len(self.academy.practice_exercises([self.TRAP, black])), 2)     # hotseat: both sides
+
+    def test_solve_it_in_the_dialog(self):
+        d = self.academy.PracticeDialog(self.academy.practice_exercises([self.TRAP]))
+        d.view.on_square(sq("c1")); d.view.on_square(sq("e3"))
+        self.assertTrue(d.view.solved)
+        self.assertIn("yes!", d.view.feedback.text())
+        d.close()
+
+
 class CoachInTheWindow(unittest.TestCase):         # KS-6: advice only in unrated games
     def setUp(self):
         self.home = tempfile.mkdtemp(prefix="chessiq-test-")

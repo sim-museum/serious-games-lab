@@ -262,7 +262,7 @@ def moments(uci_moves, rs, start=START, cancel=None, progress=None):
         if best is not None:
             loss = 0 if u == best else cap(s_on) - cap(rs.search("on", fen, [u])[1])
             bm = find(b, turn, ep, best)
-            base = dict(ply=i, side=turn, san=san)
+            base = dict(ply=i, side=turn, san=san, fen=fen, best_uci=best)
             if m.kind == "self":
                 out.append(dict(base, kind="played", motif=motif(b, turn, ep, m), loss=loss, piece=b[m.frm][1],
                                 victim=b[m.to][1]))

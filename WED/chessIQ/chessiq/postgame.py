@@ -121,6 +121,10 @@ class PostGameDialog(QDialog):
         self.klist.setWordWrap(True)
         self.klist.hide()
         self.klist.itemClicked.connect(self._go)
+        self.practise_btn = QPushButton("Practise these positions")
+        self.practise_btn.hide()
+        self.practise_btn.clicked.connect(self._practise)
+        self.practice = None
         self.thread.kprogress.connect(lambda i, n: self.kansas.setText(
             "<b>Not in Kansas</b> — looking for the moments where Kramnik rules mattered… move %d of %d"
             % ((i + 1) // 2, (n + 1) // 2)))
@@ -148,6 +152,7 @@ class PostGameDialog(QDialog):
         self.v.insertWidget(2, readout)
         self.v.insertWidget(3, self.kansas)
         self.v.insertWidget(4, self.klist)
+        self.v.insertWidget(5, self.practise_btn)
         self.adjustSize()
 
     def _show_kansas(self, ms):
@@ -170,7 +175,24 @@ class PostGameDialog(QDialog):
             it.setData(Qt.ItemDataRole.UserRole, m["ply"])
             self.klist.addItem(it)
         self.klist.show()
+        n = len(self._exercises())
+        if n:
+            self.practise_btn.setText("Practise %d position%s from this game" % (n, "" if n == 1 else "s"))
+            self.practise_btn.show()
         self.adjustSize()
+
+    def _exercises(self):
+        from .academy import practice_exercises
+        human = getattr(getattr(self.parent(), "game", None), "human", None)
+        mode = getattr(getattr(self.parent(), "game", None), "mode", "ai")
+        return practice_exercises(self.moments or [], human if mode in ("ai", "net") else None)
+
+    def _practise(self):
+        from .academy import PracticeDialog
+        exs = self._exercises()
+        if exs:
+            self.practice = PracticeDialog(exs, self.parent())
+            self.practice.show()
 
     def _go(self, item):
         p = self.parent()
