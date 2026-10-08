@@ -131,8 +131,12 @@ class PersonalityEngine:
         sc = {mv for _, mv in cands if K.is_self_capture(b, turn, mv)}
         off = self._off_scores(K.to_fen(b, turn, ep, half, full), [mv for _, mv in cands if mv not in sc])
 
+        own = set(filter(None, getattr(self.p, "motif", "").split(",")))
+        bonus = {mv: SC_BONUS if not own or K.motif(b, turn, ep, K.find(b, turn, ep, mv)) in own else SC_BONUS // 2
+                 for mv in sc}                  # a specialist's own motif gets the full bonus, others half
+
         def gain(cp, mv):
-            return SC_BONUS if mv in sc else (K.cap(cp) - K.cap(off[mv]) if mv in off else 0)
+            return bonus[mv] if mv in sc else (K.cap(cp) - K.cap(off[mv]) if mv in off else 0)
 
         cp, mv = max(cands, key=lambda c: c[0] + self.kansas / 100.0 * gain(*c))
         if mv != best:

@@ -104,8 +104,12 @@ class Roster(unittest.TestCase):
         finally:
             P.chessmaster_dir = saved
         own = [p for p in r if p.engine == "fsf"]
-        self.assertEqual([p.source for p in own], ["chessIQ"] * len(P.ROSTER))      # then any Leela opponents
-        self.assertEqual(sorted(p.rating for p in own), [p.rating for p in own])
+        n = len(P.ROSTER)            # chessIQ's own, then the self-capture specialists (KS-2), then any Leela opponents
+        self.assertEqual([p.source for p in own], ["chessIQ"] * (n + len(P.SPECIALISTS)))
+        self.assertEqual([p.name for p in own[n:]], [p.name for p in P.SPECIALISTS])
+        for group in (own[:n], own[n:]):
+            self.assertEqual(sorted(p.rating for p in group), [p.rating for p in group])
+        self.assertTrue(all(p.kansas > 0 and p.bio and "Watch for" in p.bio for p in own[n:]))
         self.assertTrue(all(p.engine == "leela" and p.net for p in r[len(own):]))
 
 

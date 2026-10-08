@@ -68,11 +68,16 @@ def style_features(p):
 # times the nodes, which plays better (STYLE_RANDOM_ON), while the deliberate deviations cost in proportion.
 STYLE_COST = (0.0, 11.0, 113.0, 387.0)
 STYLE_RANDOM_ON = -236.0
+# Elo per point of self-capture appetite (KS-1): appetite 50 and 100 against a neutral twin, 40 games each at 1200,
+# 1800 and 2400, scored 47.5% and 31.6% on average (docs/calibration/kansas_cost.txt).
+KANSAS_COST = 1.3
 
 
 def style_cost(p):
     f = style_features(p)
-    return sum(c * x for c, x in zip(STYLE_COST, f)) + (STYLE_RANDOM_ON if f[3] > 0 else 0.0)
+    k = getattr(p, "kansas", 0)          # an appetite's measured cost already includes its many-lines search
+    return (sum(c * x for c, x in zip(STYLE_COST, f)) + (STYLE_RANDOM_ON if f[3] > 0 and not k else 0.0)
+            + KANSAS_COST * k)
 
 
 def level_for(rating):
@@ -213,6 +218,56 @@ ROSTER = [
 ]
 
 
+# Self-capture specialists (EPIC KS): they look like ordinary players and play ordinary chess, until Kramnik rules
+# matter. `kansas` is their appetite for moves that gain from self-capture (KS-1; its cost in strength is paid back in
+# search like any style's), and `motif` the family they play for (docs/SELF_CAPTURE_MOTIFS.md). Original text.
+def _s(name, rating, style, motif, kansas, bio, **kw):
+    return Personality(name=name, rating=rating, style=style, motif=motif, kansas=kansas, bio=bio, **kw)
+
+
+SPECIALISTS = [
+    _s("Hal", 950, "a beginner whose king slips out of trouble through its own pieces", "escape", 60,
+       "Hal plays like any beginner, except for one habit: when his king is in danger it takes one of its own pieces "
+       "to get out. Mates that would work in ordinary chess often fail against him.\n"
+       "Watch for: a king that captures its own pawn or piece to escape a check.", randomness=20),
+    _s("Rosa", 1250, "opens files by taking her own pawns", "attack", 70,
+       "Rosa pushes a rook's pawn, then takes it with her own rook and swings the rook into the attack. In ordinary "
+       "chess a closed file stays closed; against Rosa it opens in one move.\n"
+       "Watch for: Rxh-pawn or Qxh-pawn opening a file toward your king.", randomness=10, attack=40,
+       positional={**{t: (100, 100) for t in TERMS}, "KingSafety": (100, 130)}),
+    _s("Felix", 1500, "frees a buried piece by taking his own pawn", "activation", 70,
+       "Felix hates a bad piece. A bishop blocked by its own pawns, or a rook with no open file, takes a pawn of its "
+       "own and is in play a move later. His positions look passive until they suddenly aren't.\n"
+       "Watch for: a bishop or rook capturing its own pawn to reach a long diagonal or an open file.", randomness=8,
+       positional={**{t: (100, 100) for t in TERMS}, "Mobility": (140, 100)}),
+    _s("Mirela", 1750, "a defender whose king escapes through its own army", "escape", 80,
+       "Mirela lets you attack. When the mate seems certain, her king takes its own rook or pawn and walks away, and "
+       "your pieces are left on the wrong side of the board.\n"
+       "Watch for: before you go for mate, check every square next to her king, including the ones her own men "
+       "stand on.", randomness=6, attack=-30,
+       positional={**{t: (100, 100) for t in TERMS}, "KingSafety": (130, 100)}),
+    _s("Corin", 2000, "a tactician: self-captures with check, and material won straight back", "check", 80,
+       "Corin's self-captures are never gifts. He takes his own piece to give check, uncover an attack or open a "
+       "line, and wins the material back a move or two later.\n"
+       "Watch for: discovered checks made by a pawn or piece taking one of its own.", randomness=4, attack=30),
+    _s("Ada", 2250, "an endgame specialist: promotes through her own pieces, walks her king through her own pawns",
+       "promotion,king-walk", 80,
+       "Ada steers for endgames. Her pawn on the seventh promotes by taking her own piece in front of it, and her "
+       "king breaks into fortresses by taking its own blocking pawns. Many ordinary-chess draws are wins for her, and "
+       "some lost pawn endings are draws.\n"
+       "Watch for: a piece placed in front of her own passed pawn, and a king next to its own pawns.", randomness=2,
+       positional={**{t: (100, 100) for t in TERMS}, "PassedPawns": (150, 130)}),
+    _s("Selim", 2500, "plays ordinary-looking chess in which the threat of self-capture decides", "", 100,
+       "Selim seldom self-captures. He plays for positions where your natural move, the best one in ordinary chess, "
+       "loses because of a self-capture you did not consider, by him or by you.\n"
+       "Watch for: every move, ask what each side could take of its own.", randomness=2, contempt=20),
+    _s("Kestrel", 2600, "the strongest specialist: every motif, every threat", "", 100,
+       "Kestrel uses all of Kramnik chess: file openers, escapes, promotions through her own pieces and the quiet "
+       "threats that decide most games between strong players. A test for players who have done the lessons.\n"
+       "Watch for: everything.", randomness=1, contempt=30),
+]
+
+
 # Measured on the ladder (docs/calibration/leela_maia_ladder.txt), 60 games each against Fairy-Stockfish ladder levels.
 # The Kramnik network at one node: its first instinct, made weaker by sampling (lc0 temperature). Temperature is
 # harsh in Kramnik chess -- the network's long tail includes ruinous self-captures -- so the useful range is 0-1.
@@ -258,13 +313,14 @@ def leela_roster():
 
 
 def roster():
-    """Chessmaster's personalities when installed, otherwise chessIQ's own; plus the Leela opponents available."""
-    return (load_chessmaster() or list(ROSTER)) + leela_roster()
+    """Chessmaster's personalities when installed, otherwise chessIQ's own; the self-capture specialists; and the
+    Leela opponents available."""
+    return (load_chessmaster() or list(ROSTER)) + list(SPECIALISTS) + leela_roster()
 
 
 def by_name():
     """Every personality by name, Chessmaster's, chessIQ's own and the Leela opponents (for tools and tests)."""
-    out = {p.name: p for p in ROSTER}
+    out = {p.name: p for p in ROSTER + SPECIALISTS}
     out.update({p.name: p for p in load_chessmaster()})
     out.update({p.name: p for p in leela_roster()})
     return out

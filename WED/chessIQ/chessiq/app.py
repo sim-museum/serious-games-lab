@@ -165,7 +165,8 @@ class OpponentDialog(QDialog):
         row = QHBoxLayout()
         self.kind = QComboBox()
         for label, key in (("All opponents", ""), ("Chessmaster personalities", "Chessmaster"),
-                           ("chessIQ's own", "chessIQ"), ("Neural networks (Leela, Maia)", "leela")):
+                           ("chessIQ's own", "chessIQ"), ("Self-capture specialists", "kansas"),
+                           ("Neural networks (Leela, Maia)", "leela")):
             self.kind.addItem(label, key)
         self.lo, self.hi = QSpinBox(), QSpinBox()
         for sb, val in ((self.lo, 0), (self.hi, 3000)):
@@ -195,6 +196,8 @@ class OpponentDialog(QDialog):
     def matches(self, p):
         k = self.kind.currentData()
         if k == "leela" and p.engine != "leela":
+            return False
+        if k == "kansas" and not getattr(p, "kansas", 0):
             return False
         if k in ("Chessmaster", "chessIQ") and (p.source != k or p.engine == "leela"):
             return False
@@ -226,7 +229,8 @@ class OpponentDialog(QDialog):
             self.bio.setHtml("")
             return
         kind = ("a neural network" if p.engine == "leela" else
-                "a Chessmaster personality (from your installation)" if p.source == "Chessmaster" else "chessIQ's own")
+                "a Chessmaster personality (from your installation)" if p.source == "Chessmaster" else
+                "a self-capture specialist (chessIQ's own)" if getattr(p, "kansas", 0) else "chessIQ's own")
         self.bio.setHtml("<h3>%s</h3><p><b>Rated %d</b> &middot; %s</p><p><i>%s</i></p><p>%s</p>"
                          % (p.name, p.rating, kind, p.style or "", (p.bio or "").replace("\n", "<br>")))
 

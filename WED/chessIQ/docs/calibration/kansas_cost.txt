@@ -1,0 +1,11 @@
+# KS-1: self-capture appetite against a neutral twin of the same rating (tools/style_signature.py RATING 40 STYLE 11)
+# per 100 moves of the styled side; 'given' = own material self-captured, in pawns
+neutral        r1200  40 games: score 50.0% draws 10 avg plies 110 | per 100 moves: zone  23.2 +/-  3.7  checks   8.2 +/-  1.9  taken  68.1 +/-  8.6  given   4.9 +/-  2.8  self-captures   2.3 +/-  1.1
+neutral        r1800  40 games: score 50.0% draws  4 avg plies 131 | per 100 moves: zone  22.8 +/-  3.7  checks  11.5 +/-  2.6  taken  49.9 +/-  6.5  given   2.5 +/-  0.9  self-captures   2.2 +/-  0.7
+kansas=50      r1200  40 games: score 37.5% draws  6 avg plies 106 | per 100 moves: zone  16.9 +/-  3.5  checks   6.0 +/-  1.8  taken  63.6 +/-  8.0  given   3.2 +/-  1.6  self-captures   2.4 +/-  0.8
+kansas=100     r1200  40 games: score 26.2% draws  7 avg plies 108 | per 100 moves: zone  16.5 +/-  3.9  checks   4.5 +/-  2.1  taken  55.7 +/-  5.3  given   3.7 +/-  1.5  self-captures   3.0 +/-  0.8
+kansas=50      r1800  40 games: score 40.0% draws  2 avg plies 118 | per 100 moves: zone  17.5 +/-  3.2  checks   9.4 +/-  1.9  taken  54.6 +/-  4.2  given   5.9 +/-  2.4  self-captures   4.1 +/-  0.9
+neutral        r2400  40 games: score 50.0% draws  4 avg plies 115 | per 100 moves: zone  21.3 +/-  3.4  checks  10.9 +/-  2.5  taken  62.5 +/-  6.8  given   1.6 +/-  0.6  self-captures   1.5 +/-  0.6
+kansas=100     r1800  40 games: score 32.5% draws  6 avg plies 129 | per 100 moves: zone  17.3 +/-  3.4  checks   9.8 +/-  2.6  taken  48.5 +/-  4.6  given   5.9 +/-  1.4  self-captures   4.5 +/-  0.9
+kansas=50      r2400  40 games: score 65.0% draws  4 avg plies 129 | per 100 moves: zone  20.0 +/-  2.9  checks  13.0 +/-  2.5  taken  59.4 +/-  5.3  given   3.8 +/-  1.1  self-captures   3.1 +/-  0.7
+kansas=100     r2400  40 games: score 36.2% draws  3 avg plies 126 | per 100 moves: zone  16.1 +/-  3.0  checks   9.8 +/-  2.8  taken  52.7 +/-  4.8  given   5.1 +/-  1.6  self-captures   3.6 +/-  0.8
