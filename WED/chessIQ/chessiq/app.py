@@ -788,7 +788,10 @@ class MainWindow(QMainWindow):
         self.offer_bar.hide()
         self.note = ""
         mover = self.game.turn
+        said = self._self_capture_words(m) if m.kind == "self" and not self.rated else ""
         san = self.game.do_move(m)
+        if said:
+            self.note = "%s %s: %s." % (san, said[0], said[1])
         if self.game.over:
             self.clock.stop()
         elif self.clock.moved(mover):
@@ -799,6 +802,15 @@ class MainWindow(QMainWindow):
         self.render()
         self.maybe_ai()
         self.maybe_coach()
+
+    def _self_capture_words(self, m):
+        """Who self-captured and what it does, for the status line (KS: the moment shows as it happens). Unrated only,
+        like all commentary during play."""
+        from . import kansas as K
+        g = self.game
+        who = ("you" if g.mode == "ai" and g.turn == g.human else self._opp_name() if g.mode == "ai" else
+               "White" if g.turn == "w" else "Black")
+        return "by " + who, K.phrase(K.motif(g.board, g.turn, g.ep, m), g.board[m.frm][1], g.board[m.to][1])
 
     # ---------------- the coach (KS-6) ----------------
     def maybe_coach(self):

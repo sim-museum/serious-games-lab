@@ -212,6 +212,17 @@ class CoachInTheWindow(unittest.TestCase):         # KS-6: advice only in unrate
         w.maybe_coach()
         self.assertEqual(len(w.threads), n)                       # no search started either
 
+    def test_a_self_capture_is_named_as_it_happens(self):
+        w = self.w
+        w.mode.setCurrentIndex(w.mode.findData("human")); w.rated_box.setChecked(False); w.new_game()
+        for san in ("e4", "e5", "Be2", "d6", "Qxe2"):
+            w.do_move(w.game.move_from_san(san))
+        self.assertEqual(w.note, "Qxe2 by White: the queen takes its own bishop and gets into play.")
+        w.rated = {"opponent": "x", "recorded": False}             # no commentary during a rated game
+        w.do_move(w.game.move_from_san("Nf6")); w.do_move(w.game.move_from_san("Qxe4"))
+        self.assertEqual(w.note, "")
+        w.rated = None
+
     def test_stale_advice_is_dropped(self):
         w = self.w
         w.rated = None
