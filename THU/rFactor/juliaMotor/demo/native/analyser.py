@@ -25,6 +25,7 @@ from PyQt6.QtWidgets import (
 LAP_COLOURS = ["#4fc3f7", "#ffb74d", "#81c784", "#e57373", "#ba68c8"]   # up to five laps, as GPL Replay Analyser
 SPLITS = (0.25, 0.50, 0.75)                                              # its split points
 GRID_M = 5.0                                                             # resampling step along the lap (m)
+UNFINISHED_MIN_M = 200.0                                                 # REPLAY-3: shorter stubs are not listed
 G = 9.81
 
 
@@ -37,10 +38,13 @@ def jrt_path(jmr):
 # ---------------------------------------------------------------------------------------------------------------
 class Lap:
     """One timed lap of one car, resampled onto a common distance grid (metres along the player's lap)."""
-    __slots__ = ("car", "driver", "num", "t0", "t1", "time", "i0", "i1", "dist", "ch", "xs", "zs", "ds", "splits", "clean")
+    __slots__ = ("car", "driver", "num", "t0", "t1", "time", "i0", "i1", "dist", "ch", "xs", "zs", "ds", "splits", "clean",
+                 "start", "reached", "full")
 
     def label(self):
-        return f"{self.driver} — lap {self.num}  {fmt_time(self.time)}"
+        if self.time is None:                      # REPLAY-3: an unfinished lap (crash, retirement, end of recording)
+            return f"{self.driver} — lap {self.num}  " + _untimed(self)
+        return f"{self.driver} — lap {self.num}  {fmt_time(self.time)}" + ("  (from the start)" if self.start else "")
 
 
 class Replay:
@@ -81,9 +85,14 @@ class Replay:
                 car["dist"] = car["s"]; car["L"] = self.line_total
             self._derive(car)
             self.cars.append(car)
-        self.laps = []
+        # REPLAY-3: a race's lap 1 is timed from the green flag (the "race" channel of the first frame); a practice
+        # session's first lap is an out-lap from the pits and stays untimed
+        self.race = "race" in self.cars[0] and self.n > 0 and self.cars[0]["race"][0] > 0.5
+        self.laps = []                             # timed laps -- every statistic, report and the coach use these only
+        self.unfinished = []                       # laps cut short (crash, restart, end of recording): plotted, never timed
         for c in range(self.ncar):
-            self.laps += self._laps_of(c)
+            done, cut = self._laps_of(c)
+            self.laps += done; self.unfinished += cut
 
     def _derive(self, car):
         """Longitudinal and lateral acceleration (g) from speed and heading -- every car has them."""
@@ -100,43 +109,69 @@ class Replay:
 
     def _laps_of(self, c):
         car = self.cars[c]; lap = car["lap"]; d = car["dist"]; L = car["L"]; t = self.t
-        crossings = []                             # (frame index after the line, exact time, lap number started)
+        # REPLAY-3 (PO 2026-10-07: "There are never any replays on the left panel to choose from"): only line-to-line laps
+        # were timed, so a 1-lap race -- the PO's usual -- had none at all. GPL's Replay Analyser times lap 1 from the
+        # start; so does this: the recording begins at the green flag, which opens lap `lap[0] + 1`.
+        # (frame index after the line, exact time or None if untimed, lap started); the start is untimed in practice
+        # and whether a session begins there (the green flag or a restart): the car may then be on the grid, short of the line
+        crossings = [(0, t[0] if self.race else None, int(lap[0]), True)] if self.n > 10 else []
         for k in range(1, self.n):
             if lap[k] == lap[k - 1] + 1:
                 a = L - d[k - 1]; b = d[k]
                 f = a / (a + b) if (a + b) > 0 and 0 <= a < 0.5 * L and 0 <= b < 0.5 * L else 0.5
-                crossings.append((k, t[k - 1] + f * (t[k] - t[k - 1]), int(lap[k])))
+                crossings.append((k, t[k - 1] + f * (t[k] - t[k - 1]), int(lap[k]), False))
             elif lap[k] < lap[k - 1]:              # a session restart (R): no lap spans it
-                crossings.append((k, None, None))
-        laps = []
-        for (k0, ta, la), (k1, tb, _lb) in zip(crossings, crossings[1:]):
-            if ta is None or tb is None or k1 - k0 < 10:
+                crossings.append((k, None, int(lap[k]), True))
+        crossings.append((self.n, None, None, False))   # the end of the recording
+        laps = []; cut = []
+        for (k0, ta, la, fresh), (k1, tb, _lb, _f) in zip(crossings, crossings[1:]):
+            if k1 - k0 < 10 or la is None:
                 continue
             lp = Lap()
-            # numbered as racing does: the lap completed at its END (the line-to-line lap after the first crossing is
-            # lap 2; lap 1, from the start, has no line crossing to time it from)
+            # numbered as racing does: the lap completed at its END (the lap from the start is lap 1)
             lp.car = c; lp.driver = self.names[c] if c < len(self.names) else f"car {c}"; lp.num = la + 1
-            lp.t0 = ta; lp.t1 = tb; lp.time = tb - ta; lp.i0 = k0; lp.i1 = k1
-            self._resample(lp, car)
-            laps.append(lp)
-        return laps
+            lp.start = fresh; lp.i0 = k0
+            if ta is not None and tb is not None:
+                lp.t0 = ta; lp.t1 = tb; lp.time = tb - ta; lp.i1 = k1
+                self._resample(lp, car)
+                laps.append(lp)
+            else:                                  # REPLAY-3: no line at one end -- an out-lap, a crash, a restart
+                lp.t0 = t[k0] if ta is None else ta; lp.time = None; lp.i1 = k1 - 1
+                self._resample(lp, car); lp.t1 = t[lp.i1]
+                if lp.reached >= UNFINISHED_MIN_M:
+                    cut.append(lp)
+        return laps, cut
 
     def _resample(self, lp, car):
         """Channels against distance on a GRID_M grid of the PLAYER's lap length (AI distance is rescaled)."""
         L = car["L"]; scale = self.laplen / L if L > 0 else 1.0
-        idx = list(range(lp.i0 - 1, lp.i1 + 1))
-        ds = []; prev = -1e9
-        for k in idx:                              # distance from this lap's line, monotone (a spin cannot rewind it)
-            dk = car["dist"][k]
-            if k < lp.i0:
-                dk -= L                            # the frame before the line, just short of it
-            dk = max(dk * scale, prev); ds.append(dk); prev = dk
+        idx = list(range(lp.i0 if lp.start else lp.i0 - 1, lp.i1 + 1))   # a session start has no frame before the line
+        # distance from this lap's line, UNWRAPPED frame to frame and monotone (a spin cannot rewind it). REPLAY-3: a
+        # session starts on the grid, behind the line, where the lap distance reads ~L; and a step no car can drive
+        # in one frame (a reset, the session's end) is not distance covered -- it once made a crashed lap "complete"
+        d = car["dist"]; v = car["speed"]; t = self.t; k0 = idx[0]
+        x = d[k0] - L if (k0 < lp.i0 or (lp.start and d[k0] > 0.5 * L)) else d[k0]
+        ds = [max(x * scale, -1e9)]; prev = ds[0]
+        for a, k in zip(idx, idx[1:]):
+            step = (d[k] - d[a] + 0.5 * L) % L - 0.5 * L
+            if abs(step) > 20.0 + 2.0 * max(v[a], v[k]) * max(t[k] - t[a], 0.0):
+                if lp.time is None:                # an unfinished lap ends at the jump (no line drawn back to the pits)
+                    break
+                step = 0.0
+            x += step; dk = max(x * scale, prev); ds.append(dk); prev = dk
+        idx = idx[:len(ds)]
+        lp.i1 = idx[-1] if lp.time is None else lp.i1
         ts = [self.t[k] - lp.t0 for k in idx]
         grid = [i * GRID_M for i in range(int(self.laplen // GRID_M) + 1)]
         names = [n for n in ("speed", "throttle", "brake", "steer", "gear", "rpm", "lateral", "lane", "glong", "glat")
                  if n in car]
         cols = {n: [car[n][k] for k in idx] for n in names}
         cols["time"] = ts
+        if lp.time is None:                        # REPLAY-3: an unfinished lap is plotted only as far as it got
+            lp.reached = ds[-1] if ds else 0.0; lp.full = lp.reached >= 0.98 * self.laplen
+            grid = [g for g in grid if g <= lp.reached] or [0.0]
+        else:
+            lp.reached = self.laplen; lp.full = True
         lp.dist = grid
         lp.ch = {n: _interp(ds, cols[n], grid) for n in cols}
         if "speed" in lp.ch:
@@ -144,8 +179,14 @@ class Replay:
         if "lane" in lp.ch and "lateral" not in lp.ch:
             lp.ch["lateral"] = lp.ch["lane"]
         lp.xs = [car["x"][k] for k in idx]; lp.zs = [car["z"][k] for k in idx]; lp.ds = ds
-        lp.splits = [_interp(ds, ts, [s * self.laplen])[0] for s in SPLITS]
+        lp.splits = [_interp(ds, ts, [s * self.laplen])[0] if s * self.laplen <= lp.reached else None for s in SPLITS]
         lp.clean = ("ontrack" not in car) or all(car["ontrack"][k] > 0.5 for k in idx)
+
+
+def _untimed(lp):
+    """REPLAY-3: what an untimed lap shows in place of a time -- an out-lap or a lap after a restart went all the way
+    round, anything else was cut short."""
+    return "untimed" if lp.full else f"unfinished, {lp.reached:.0f} m"
 
 
 def _smooth(v, r):
@@ -390,7 +431,7 @@ class TrackMap(QWidget):
         faster, red where lap 2 is, full colour at 20 km/h."""
         a, b = self.laps[0], self.laps[1]
         for k in range(1, len(a.xs)):
-            g = min(len(a.dist) - 1, max(0, int(a.ds[k] / GRID_M)))
+            g = min(len(a.dist) - 1, len(b.dist) - 1, max(0, int(a.ds[k] / GRID_M)))   # an unfinished lap is shorter
             dv = a.ch["kmh"][g] - b.ch["kmh"][g]; m = min(1.0, abs(dv) / 20.0)
             col = QColor.fromRgbF(0.25 + 0.75 * m, 0.35, 0.3) if dv < 0 else QColor.fromRgbF(0.3, 0.35 + 0.65 * m, 0.4)
             p.setPen(QPen(col, 4.0, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
@@ -604,23 +645,29 @@ class AnalyserWindow(QDialog):
         split = QSplitter(); root.addWidget(split)
         left = QWidget(); lv = QVBoxLayout(left); lv.setContentsMargins(0, 0, 0, 0)
         best = min((lp.time for lp in self.rep.laps), default=None)
-        lv.addWidget(QLabel(f"<b>{len(self.rep.laps)} timed laps</b> · {self.rep.ncar} car(s) · "
-                            f"best {fmt_time(best)}"))
-        self.table = QTableWidget(len(self.rep.laps), 4)
+        # REPLAY-3 (PO 2026-10-07: "There are never any replays on the left panel to choose from"): a lap cut short --
+        # a crash, the session's end -- is listed too, untimed, and can be plotted as far as it got
+        allaps = self.rep.laps + self.rep.unfinished
+        nun = len(self.rep.unfinished)
+        lv.addWidget(QLabel(f"<b>{len(self.rep.laps)} timed lap{'' if len(self.rep.laps) == 1 else 's'}</b>"
+                            + (f" + {nun} unfinished" if nun else "") + f" · {self.rep.ncar} car(s) · best {fmt_time(best)}"))
+        self.table = QTableWidget(len(allaps), 4)
         self.table.setHorizontalHeaderLabels(["", "Driver", "Lap", "Time"])
         self.table.verticalHeader().setVisible(False); self.table.setAlternatingRowColors(True)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        order = sorted(range(len(self.rep.laps)), key=lambda i: (self.rep.laps[i].car, self.rep.laps[i].num))
         self.rows = []
-        for r, i in enumerate(order):
-            lp = self.rep.laps[i]; self.rows.append(lp)
+        for r, lp in enumerate(sorted(allaps, key=lambda lp: (lp.car, lp.num, lp.i0))):
+            self.rows.append(lp)
             cb = QCheckBox(); cb.toggled.connect(self._changed)
             self.table.setCellWidget(r, 0, cb)
             self.table.setItem(r, 1, QTableWidgetItem(lp.driver + ("" if lp.clean else "  (off track)")))
             self.table.setItem(r, 2, QTableWidgetItem(str(lp.num)))
-            it = QTableWidgetItem(fmt_time(lp.time))
-            if best is not None and abs(lp.time - best) < 1e-9:
+            it = QTableWidgetItem(fmt_time(lp.time) + ("  (from the start)" if lp.start else "") if lp.time is not None
+                                  else _untimed(lp))
+            if lp.time is None:
+                it.setForeground(QColor("#8aa0b2"))
+            elif best is not None and abs(lp.time - best) < 1e-9:
                 it.setForeground(QColor("#7fd1ae"))
             self.table.setItem(r, 3, it)
         self.table.resizeColumnsToContents()
@@ -666,9 +713,13 @@ class AnalyserWindow(QDialog):
         # preselect: the player's best lap and the fastest other lap, so the window opens on a comparison
         pre = []
         pl = [lp for lp in self.rep.laps if lp.car == 0]
+        pu = [lp for lp in self.rep.unfinished if lp.car == 0]
         if pl:
             pre.append(min(pl, key=lambda lp: lp.time))
-        others = sorted((lp for lp in self.rep.laps if lp not in pre), key=lambda lp: lp.time)
+        elif pu:                                          # REPLAY-3: no lap completed -- open on the furthest attempt
+            pre.append(max(pu, key=lambda lp: lp.reached))
+        others = sorted((lp for lp in self.rep.laps if lp not in pre), key=lambda lp: lp.time) + \
+            sorted((lp for lp in self.rep.unfinished if lp not in pre), key=lambda lp: -lp.reached)
         pre += others[: 2 - len(pre)]                     # always open on a comparison of two laps when there are two
         for r, lp in enumerate(self.rows):
             if lp in pre:
@@ -693,7 +744,8 @@ class AnalyserWindow(QDialog):
         self.map.set_data(self.rep, sel); self.map_full.set_data(self.rep, sel)
         if hasattr(self, "circle"):
             self.circle.set_data(sel)
-        self.hint.setText(("Time difference is lap 2 minus lap 1 (above zero: lap 2 behind). " if len(sel) >= 2 else "")
+        self.hint.setText(("No lap was completed: unfinished laps are drawn as far as they got. " if not self.rep.laps else "")
+                          + ("Time difference is lap 2 minus lap 1 (above zero: lap 2 behind). " if len(sel) >= 2 else "")
                           + "Tick up to five laps. Wheel zooms, drag pans, double-click resets.")
 
     def _coach(self):

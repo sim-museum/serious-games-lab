@@ -24,8 +24,8 @@ this index was written; that is what it exists to stop.
 | **LOADHANG-1** | Why did the AppImage's Spa race load "hang" (≈15 min, the PO stopped it at the AI cars) after a Ring race, a WG race and a replay in the same launcher session? Little time if data is lacking -- but how to avoid / diagnose such issues in future (PO 2026-10-07 night) | ✅ **CLOSED (S1–S4, 2026-10-08):** the first Spa launch from the install decoded every texture cold at 125 ms each -- a boxed closure in the alpha bleed; now 1.7 ms (pixels identical), a cold Spa race loads in 232 s like a warm one; launches log flushed stage stamps + first-run texture progress; gate `texcold_smoke`; smoke runs no longer read the PO's wheel (netcollide repaired) |
 | **COCKPIT-2** | Cockpits need work: in REPLAY the cockpit is static (wheel doesn't turn, hands don't move, mirrors black, gauges have no dials); the Lotus wrists are see-through while driving; ALL cockpits incl. AI cockpits in replay as close to the gold as possible; the shifter at right moves when the player shifts (as in the gold) (PO 2026-10-07 night). Carries E64's open mirror-camera finding | open. Videos: GPL gold `watkinsGlenn/261007_wg_race_GPL_gold_dtandard.mp4` (replay cockpits of the field); ours `~/Videos/261007_wg_race_analysis.mp4`, `261007_spa_race.mp4` |
 | **TRACKS-TD-1** | Track fixes from test drives (PO 2026-10-07 night): (a) Ring: start fences L+R flicker (also in the mirrors); artifacts at middle distance at times; at Ex-Mühle the hill ahead from the dip before the left turn is missing until you're about to turn, then pops in. (b) Spa: AI go off the road -- inside at Eau Rouge ("red water"), hit the PO's car parked across that inside path instead of dodging left; replay shows AI off inside/outside at times; long openings in the ground just after Stavelot showing another view through the ground | open. Video: `~/Videos/261007_spa_race.mp4` (race 0:10–7:15, parked test 7:30–10:45, replay 14:45–19:30) |
-| **REPLAY-3** | Fix the replay analysis: the left panel never lists any replays, so the rest could not be exercised (PO 2026-10-07 night) | open. Videos: `~/Videos/261007_wg_race_analysis.mp4` ~11:20, `261007_spa_race.mp4` ~19:45 |
-| **TRACKSEG-4** | Section names (Stavelot, Front Straight...) on screen twice as long, with an English translation in parentheses where at all possible -- even a wrong/absurd one, as a memory aid for orientation (PO 2026-10-07 night) | open. Videos show today's labels ("The 90", "Les Combes", "La Source (The Spring)") |
+| **REPLAY-3** | Fix the replay analysis: the left panel never lists any replays, so the rest could not be exercised (PO 2026-10-07 night) | ✅ **CLOSED (S1–S2, 2026-10-08), for the PO's look:** the analyser's lap list was empty because only line-to-line laps were timed; lap 1 of a race is now timed from the green (Spa: the PO's 6:38.871 vs the game's 6:38.898), unfinished laps (crash, end of recording) are listed untimed and plotted as far as they got (Ring crash: "lap 1 unfinished, 10514 m"), a reset jump is not distance. Videos: `~/Videos/261007_wg_race_analysis.mp4` ~11:20 |
+| **TRACKSEG-4** | Section names (Stavelot, Front Straight...) on screen twice as long, with an English translation in parentheses where at all possible -- even a wrong/absurd one, as a memory aid for orientation (PO 2026-10-07 night) | ✅ **CLOSED (S1, 2026-10-08), for the PO's look:** names stay 6 s (was 3); every non-English name has an English handle, real or memorable (Stavelot (Stable Lot), Blanchimont (White Mount)); gate `trackseg_smoke` |
 | **BILLBOARD-2** | Fix track billboards (PO 2026-10-07 night): Zandvoort near Tarzan the boards are blank white/grey -- match the gold, legible and colourful as at the other tracks (E60 S4 restored the MARTINI/CALTEX fronts there; something still draws blank); the Ring: a line of billboards at left middle distance after the North hairpin (Nordkehre) but well before Flugplatz, improbably in the middle of the forest -- "a dozen or so side by side" | open. Gold: `zandervoort/260801_zandervoort_cockpit.mp4`, `nurburgring/260802_nurburgring_cockpit.mp4` |
 | **DIALS-1** | In the cockpit view make ALL the dials work, not just the rev counter (oil pressure, oil/water temperature, fuel...) as in the gold (PO 2026-10-07 night) | open; worked alongside COCKPIT-2 (same dashboard, same replay channels) |
 | **AIHELMET-1** | The AI drivers' helmets render as a dark dome (black lobes from the front) where GPL's are the driver's skin -- found 2026-10-07 during HANDS-2 | ✅ **S1 (2026-10-07):** each AI driver's own helmet skin bound to the shell (`261007/helmet/`) |
@@ -23651,3 +23651,62 @@ dashboard; the replay needs the same channels).
   would have run into its 1800 s timeout. I killed that PID by hand to let the run finish, and the gate now waits 20 s
   after SIGTERM, then SIGKILLs. Rerun alone with the fix: PASS (hits 3, dmin 3.90 m; the host exited on SIGTERM this time). (A sim that hangs on SIGTERM is worth a look
   some day; the PO's own exits go through the window close, not a signal.)
+
+### TRACKSEG-4 retrospective (2026-10-08)
+* **Before:** TRACKSEG-1 (2026-10-04) put each section's name in the timing band for 3 s on entering it (Ring: GPL's own
+  23 boards; other tracks: the BAPOM map names matched to the .trk corners); TRACKSEG-2 added English in parentheses for
+  generic words only, leaving place and person names bare; TRACKSEG-3 made the names a launcher switch (default on).
+* **The PO now (2026-10-07):** twice as long on screen, and a translation "if at all possible, even if the translation is
+  wrong or even absurd -- the point is that it's something you can use to remember and orient yourself". So TRACKSEG-2's
+  rule ("place names have none") was the wrong goal: the handle is a memory aid, not a dictionary entry.
+* **Lesson:** the table had no test at all; a name without a handle could slip in unnoticed. New angle: a gate over the
+  table (every non-English name has a handle) rather than a render.
+
+### TRACKSEG-4 S1 (2026-10-08): 6 s on screen; every non-English name has an English handle -- CLOSED
+* `JM_SEGNAME_SECS` default 3 -> **6 s** (the launcher's OFF switch still sends 0).
+* 22 new handles (`track_sections.jl SECTION_EN`): real meanings where there is one (Blanchimont = White Mount, Della
+  Roggia = Of the Irrigation Ditch, Les Combes = The Hollows, Eschbach = Ash Brook, Zijn Veld = His Field), memorable
+  sound-alikes otherwise, as the PO allowed (Stavelot = Stable Lot, Malmedy = Bad Medicine, Burnenville = Burning Town,
+  Wippermann = Seesaw Man, Jan de Wyker = John the Yielder, Lesmos = Lazy Bends). Watkins Glen's names are English and
+  stay bare. Longest label: "Della Roggia (Of the Irrigation Ditch)", 38 characters (TRACKSEG-2's 33-character
+  "Schwalbenschwanz (Swallow's Tail)" already rendered centred in the band).
+* **New gate `trackseg_smoke`** (48 gates): every non-English name has a handle, labels <= 48 characters, the 6 s default.
+  **Control:** against the old table and default it FAILS (22 names missing, 3 s). parse/launcher gates PASS.
+* No render this sprint (the PO asked for a pause by ~20:45); the band layout code is unchanged.
+
+### REPLAY-3 retrospective (2026-10-08)
+* **Before:** REPLAY-2 (2026-10-07) built the analyser on GPL Replay Analyser 7.9: laps listed on the left, tick up to five,
+  graphs/map/split times/reports, the optional coach. Its tests used a synthetic recording whose laps all run line to
+  line, plus 2-AI Zandvoort/WG recordings of 10 s.
+* **The PO's evidence** (`~/Videos/261007_wg_race_analysis.mp4` 11:20–11:40): the window opens, "0 timed laps", the table
+  empty, "Tick laps on the left to compare them" -- so the replay list (the Replays tab combo) worked and the LAP list did
+  not. The PO races 1–3 laps and crashed out at the Ring.
+* **Lesson:** the test data shaped the rule. Every synthetic lap was line-to-line, so "only complete line-to-line laps"
+  passed; real sessions are a start lap, maybe one more, and a crash or the end of the recording. Test the analyser on
+  the PO's own recordings (`~/.local/share/julia-racer/.../data/juliaracer/*.jrt`, the repo's Spa one).
+* **New angles:** time lap 1 from the green flag (as GPL does in a race); list laps cut short instead of hiding them;
+  a reset jump in the lap distance is not distance driven.
+
+### REPLAY-3 S1 (2026-10-08): lap 1 of a race is timed from the green flag
+`analyser.py _laps_of`: the recording starts at the green flag (`race_go`), so its first frame opens lap 1 when the
+"race" channel reads 1; practice keeps its out-lap untimed. A grid slot behind the line reads ~L until the car crosses
+it -- the start lap's distance unwraps from there. Spa (repo recording 2026-10-07 22-01): 6 laps, the PO's lap
+**6:38.871** (the game's own timing 6:38.898); WG 21:26: 6 laps (PO 1:37.852). Labelled "(from the start)".
+
+### REPLAY-3 S2 (2026-10-08): unfinished laps are listed, untimed, plotted as far as they got
+* A lap with no line at one end -- the session's end, a restart, a practice out-lap -- is a `Replay.unfinished` lap:
+  listed in grey ("unfinished, 10514 m" / "untimed" for an out-lap that went all the way round), selectable, graphs and
+  map drawn only over the distance covered. Shorter than 200 m: not listed. `rep.laps` stays timed laps only, so every
+  statistic, report and the coach are unchanged in meaning.
+* The lap distance is now unwrapped frame to frame, and a step no car can drive in one frame (20 m + 2·v·dt) is not
+  distance: on the PO's Ring crash (21:15) the sim's exit reset the lap distance to L, which first made the crashed lap
+  "complete" and drew a straight line from the crash back to the start on the map; an unfinished lap now ends there.
+* No lap completed: the window opens on the player's furthest attempt plus the next lap, with a hint saying so.
+  Speed-difference map clamps to the shorter lap.
+* PO recordings: Ring 21:09 (crash early) 5 AI laps listed; Ring 21:15: "You lap 1 unfinished, 10514 m" + 5 AI;
+  Spa 6 timed + 4 unfinished; WG 6 + 6. (Window screenshot on the Ring crash checked: the jump line gone.)
+* `tests/analyser_test.py` +8 checks (race start lap, unfinished tail laps, practice out-lap, crash + reset, window
+  preselect, coach says no lap completed); **control**: the new test against the shipped analyser fails
+  (`'Replay' object has no attribute 'race'`). coach.py: its no-lap sentence now says lap 1 is timed from the green.
+* Gates: parse_smoke, launcher_smoke (analyser 25/25, coach, launcher, section-name tests) and trackseg_smoke PASS. No
+  full run for this sprint (analyser-only change; the PO asked for a pause by ~20:45). **REPLAY-3 CLOSED** for the PO's look.

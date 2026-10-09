@@ -88,7 +88,8 @@ def build_summary(rep):
          f"gearbox: {'automatic' if rep.h.get('gearbox', 'auto') == 'auto' else 'manual'})."]
     mine = [lp for lp in rep.laps if lp.car == 0]
     if not mine:
-        L.append("The driver completed no timed lap in this recording (a lap is timed from one crossing of the line to the next).")
+        L.append("The driver completed no timed lap in this recording (a race's lap 1 is timed from the green flag, every "
+                 "other lap from one crossing of the line to the next).")
         return "\n".join(L)
     ts = [lp.time for lp in mine]
     avg = sum(ts) / len(ts); sd = (sum((t - avg) ** 2 for t in ts) / len(ts)) ** 0.5
