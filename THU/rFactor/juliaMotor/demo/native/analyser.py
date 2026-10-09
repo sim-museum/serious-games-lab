@@ -673,6 +673,15 @@ class AnalyserWindow(QDialog):
         nun = len(self.rep.unfinished)
         lv.addWidget(QLabel(f"<b>{len(self.rep.laps)} timed lap{'' if len(self.rep.laps) == 1 else 's'}</b>"
                             + (f" + {nun} unfinished" if nun else "") + f" · {self.rep.ncar} car(s) · best {fmt_time(best)}"))
+        # WGTD-1 (PO 2026-10-08: "Provide a filter to remove clutter from the laps list on the left - it is rarely useful to
+        # compare a human lap to an AI lap. Typically you want to compare human laps"): AI laps hidden unless asked for
+        # (or unless the human has no lap at all), unfinished laps on a switch.
+        frow = QHBoxLayout()
+        self.show_ai = QCheckBox("Show AI laps"); self.show_unf = QCheckBox("Show unfinished laps")
+        self.show_ai.setChecked(not any(lp.car == 0 for lp in allaps)); self.show_unf.setChecked(True)
+        for cb in (self.show_ai, self.show_unf):
+            cb.toggled.connect(self._filter); frow.addWidget(cb)
+        frow.addStretch(1); lv.addLayout(frow)
         self.table = QTableWidget(len(allaps), 4)
         self.table.setHorizontalHeaderLabels(["", "Driver", "Lap", "Time"])
         self.table.verticalHeader().setVisible(False); self.table.setAlternatingRowColors(True)
@@ -740,13 +749,30 @@ class AnalyserWindow(QDialog):
             pre.append(min(pl, key=lambda lp: lp.time))
         elif pu:                                          # REPLAY-3: no lap completed -- open on the furthest attempt
             pre.append(max(pu, key=lambda lp: lp.reached))
-        others = sorted((lp for lp in self.rep.laps if lp not in pre), key=lambda lp: lp.time) + \
+        # WGTD-1: the human's own laps first (best against second best); an AI lap only if the human has no second lap
+        others = sorted((lp for lp in self.rep.laps if lp not in pre and lp.car == 0), key=lambda lp: lp.time) + \
+            sorted((lp for lp in self.rep.laps if lp not in pre and lp.car != 0), key=lambda lp: lp.time) + \
             sorted((lp for lp in self.rep.unfinished if lp not in pre), key=lambda lp: -lp.reached)
         pre += others[: 2 - len(pre)]                     # always open on a comparison of two laps when there are two
+        any(lp.car != 0 for lp in pre) and self.show_ai.setChecked(True)
         for r, lp in enumerate(self.rows):
             if lp in pre:
                 self.table.cellWidget(r, 0).setChecked(True)
+        self._filter()
         self._changed()
+
+    def _filter(self, *_):
+        """WGTD-1: hide AI / unfinished laps per the two switches; a hidden lap is also unticked."""
+        if not hasattr(self, "rows"):
+            return
+        changed = False
+        for r, lp in enumerate(self.rows):
+            hide = (lp.car != 0 and not self.show_ai.isChecked()) or (lp.time is None and not self.show_unf.isChecked())
+            self.table.setRowHidden(r, hide)
+            cb = self.table.cellWidget(r, 0)
+            if hide and cb is not None and cb.isChecked():
+                cb.blockSignals(True); cb.setChecked(False); cb.blockSignals(False); changed = True
+        changed and hasattr(self, "graphs") and self._changed()
 
     def selected(self):
         return [lp for r, lp in enumerate(self.rows) if self.table.cellWidget(r, 0).isChecked()]

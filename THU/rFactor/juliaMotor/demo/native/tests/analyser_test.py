@@ -80,6 +80,12 @@ for i in range(w.rep_combo.count()):
 check(len(w.selected()) == 2, "the window opens on a two-lap comparison")
 check(w.times.rowCount() == len(rep.laps) + 2, "split-time table: every lap + each driver's best sectors")
 check(w.table.rowCount() == len(rep.laps) + len(rep.unfinished), "the lap list shows the unfinished laps too")
+# WGTD-1: AI laps hidden by default when the human has laps; the window compares the human's own two best laps
+hid_ai = all(w.table.isRowHidden(r) == (lp.car != 0) for r, lp in enumerate(w.rows))
+check(hid_ai and all(lp.car == 0 for lp in w.selected()) and len(w.selected()) == 2,
+      f"lap filter: AI laps hidden, comparing your own laps ({[lp.label() for lp in w.selected()]})")
+w.show_ai.setChecked(True); app.processEvents()
+check(not any(w.table.isRowHidden(r) for r in range(len(w.rows))), "Show AI laps brings them back")
 w.grab()                                            # paints every widget once (an exception would fail the test)
 os.remove(path)
 
