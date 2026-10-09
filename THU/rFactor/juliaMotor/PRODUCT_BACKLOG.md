@@ -24262,3 +24262,10 @@ view" or a real valley view -- needs the PO's video moment (`261007_spa_race.mp4
   REPLAY-4), all GPL Replay Analyser features incl. the graphical race reports and the animated track map with car
   silhouettes (h), the slow AI cool-down lap into the pits (e), smooth brake marks (f), the AI line after the 90 (g:
   likely SPATD-1 S4's frame fix -- measure with JM_AI_OFFROAD at WG).
+
+### WGTD-1 S3 (2026-10-09, measurement): (g) "the AI line goes wide a little off the track after the 90"
+`JM_AI_OFFROAD=1`, WG, 70 %, 5 AI, 200 s, without / with SPATD-1 S4's frame correction (WG: mean 0.62 m, max 2.8 m):
+race line on our road 100 % both ways, and **0 of 60 000 AI car-frames had the car CENTRE off the drawn road** both ways.
+So at WG the AI never leave the road with their centre; the PO's "a little off the track" is the car BODY (wheels over
+the edge) at the exit of the 90 -- the counter must test the car's width (centre ± 0.95 m), not its centre. Next pass:
+extend the counter to body overlap, then look at GPL's race line there against our road edge (memory jr-gplai-pace-and-frame).
