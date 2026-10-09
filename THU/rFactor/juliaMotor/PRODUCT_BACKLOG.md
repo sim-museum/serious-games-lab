@@ -35,6 +35,7 @@ this index was written; that is what it exists to stop.
 | **SPATD-1** | Spa fixes from the PO's 2026-10-08 race (video `~/Videos/261008_spa.mp4`): (1) AI leave the road -- inside at Eau Rouge, presumably elsewhere -- and are extremely slow (at 70 % they just poke along); (2) an INVISIBLE barrier tore a wheel off at the downhill left-hand 90 toward Burnenville when the rear barely left the road (nothing visible on the grass) -- and a building belongs on the outside of that turn: put it back; (3) three strong earthquake-like jolts between Burnenville and Masta, mid-road, nothing nearby; (4) put back the objects on the far side of La Source (the hairpin before the start/finish line) -- without them you stare out into farmland and cannot see the near-180° turn | 🟡 **S1–S4 done (2026-10-09), for the PO's look:** jolts = contact impulses, now logged as `[jolt]`; the Burnenville invisible barrier was GPL's right wall registered onto our centreline (fixed: invisible contacts 89 -> 0); soft grazes capped; AI pace calibrated (70 %: 477 s -> 282 s lap-equivalent); AI line placed on our road (off-road 8.8 % -> 0 % past the grid). Open: the missing building at that left, La Source far-side objects |
 | **BLINDTURN-1** | All five tracks (PO 2026-10-08): wherever there is a sharp blind turn GPL has an OBJECT on the far side of the road (what you would hit going straight on) -- it tells you the turn is coming. Restore every one that is missing. Known: Spa La Source (SPATD-1(4)); Ring (a) beyond the sharp left immediately after the start/finish line, (b) just before the sharp right that passes under the first bridge, (c) probably the 90° right after Ex-Mühle | 🟡 S1–S4 analysis (2026-10-09): La Source's far side is missing as near TERRAIN/scenery (gold 224–235 s: hillside, trees, crowd); not a drop rule, not culling, not the horizon; next: census of the track .3do scenery dropped in that sector; PO question: more of Spa's crowd back? |
 | **RINGTD-1** | Nürburgring fixes from the PO's 2026-10-08 race (video `~/Videos/261008_nurbergring.mp4`, 28:32). MOST EXTREME: just before the North hairpin, passing the tower on the right, the car in the chase ("nintendo") view rolls 90° left and back. (a) billboards still at middle distance on the left a couple of turns after the North hairpin; (b) floating shed on the left near the Trickle (Wehrseifen); (c) the hill you turn left to avoid just before Ex-Mühle appears only ~10 car lengths away; (d) floating trees over (or nearly over) the track in the Adenauer Forst; (e) after the Karussell an overhead banner on solid columns makes the car buck comically under it -- remove the banner; AI drive smoothly but are often off the road in curves, usually on the left | 🟡 **S1 (2026-10-09), for the PO's look:** the 90° roll at the tower and the bucking under the post-Karussell banner were the drawn body tilt reading the structures as ground -- fixed, proven on the PO's recorded line; open: (a) billboards, (b) floating shed, (c) Ex-Mühle pop-in, (d) Adenauer Forst trees, the banner removal (now harmless: PO's call) |
+| **CARPHYS-1** | The car physics model is the sine qua non -- make it as accurate as possible. Build it from the .ibt with Julia equivalents of Modelica objects: if the .ibt contains a rollbar, the Julia model contains a rollbar object. Investigate any non-physical-seeming Julia car behaviour, and why GPL feels better than Julia (could be many things, e.g. the brakes). Cue any further iRacing test drives for this evening (PO 2026-10-09) | open -- top priority |
 | **HANDLING-1** | The PO's car often oversteers and washes out in a non-physical way -- at the Ring (DEFAULT setup) as at Spa (WW103) (PO 2026-10-08) | open -- with both setups it points at the tyre model beyond the grip peak, not the setup (cf. WW103-GPL-1's 50° steady slide); **scrum PAUSED** |
 | **REPLAY-5** | Replay: jump to the beginning or the end with one command; at the end the replay gets stuck and cannot be backed up -- the only way out is to exit (PO 2026-10-08) | ✅ **CLOSED (2026-10-09), for the PO's look:** replay pauses at its end (no more sticking), Space there replays from the start, Home/End jump to start/end, PgUp/PgDn ±10 s |
 | **AIHELMET-1** | The AI drivers' helmets render as a dark dome (black lobes from the front) where GPL's are the driver's skin -- found 2026-10-07 during HANDS-2 | ✅ **S1 (2026-10-07):** each AI driver's own helmet skin bound to the shell (`261007/helmet/`) |
@@ -24276,3 +24277,58 @@ The `JM_AI_OFFROAD` counter now also tests the car's EDGES (centre ± 0.95 m alo
 PO's "goes wide a little off the track after the 90" was seen before tonight's AI changes and does not reproduce here;
 remaining possibilities: the drawn road (ROADHAT) counts paved kerbs/run-off the PO reads as off-track, or a different
 moment of the race. **For the PO's look** at the next WG race. Gates parse, warm PASS.
+
+
+# CARPHYS-1 added (PO 2026-10-09 ~08:45, verbatim) -- the scrum continues
+> I can't do test drives for a while.  keep working.  backlog item: for car physics modeling, use .ibt and julia
+> equivalent of modelica objects.  If the .ibt contains a rollbar, the julia model should contain a rollbar object.  The
+> car physics model is the se ce ne qua none here - make it as accurate as possible.  If more iracing test drives are
+> needed, cue them for this evening when I can do testing.  Investigate any non-physical seeming julia car behavior,
+> also investigate why GPL feels better than julia (it could be a lot of things, for example brake)
+
+## Retrospective of the 2026-10-08 night cycle (23:08 -> 08:35, 27 commits, gates 49/49 at 07:42)
+* **Went well:** measuring before fixing paid every time -- the `[stall]` log split each hitch into compile and GC
+  before PERF-4 touched anything, and the `[jolt]` detector named the Burnenville wall before SPATD-1 moved it. Each
+  fix carried its before/after number (invisible contacts 89 -> 0, AI off-road 8.8 % -> 0 %, lap 477 -> 282 s).
+* **Went badly:** (1) warm_smoke went red three times, each time from a new first-use path I had just added (the
+  jolt print, faster AI, Base closures) -- any change to code that runs mid-race must regenerate the warm list in the
+  same sprint, not after the gate fails. (2) Two changes were made without first seeing their effect (BLINDTURN's
+  low-marker keep, the trace marker that returned a constant) and had to be undone. (3) WGTD-1 S4's edge counter was
+  never shown to catch a known positive: its 0 % is unvalidated (memory ff-validate-detectors).
+* **Changes for this cycle:** physics work starts with a regression harness -- the refactor into components must
+  reproduce today's trajectories before any physics changes, so a change in feel can be traced to one decision. Every
+  detector gets a known positive. Anything that needs iRacing goes on the evening test list, not into a guess.
+
+## CARPHYS-1 -- plan
+Queue for this cycle: **CARPHYS-1** (≤ 4 sprints) -> **HANDLING-1** (non-physical oversteer/washout, the 50° slide) ->
+**WW103-GPL-1** (GPL replay against Julia, incl. the brakes) -> back to CARPHYS-1. The three are one goal (the car),
+rotated to honour the 4-sprint cap. The evening iRacing test list grows in `IRTEST-261009` below as items need it.
+
+### CARPHYS-1 S1 (2026-10-09): inventory against the .ibt, and three non-physical behaviours measured
+* **Inventory** (`JuliaMotorMTK/CARPHYS.md`): every physical quantity the iRacing .ibt carries (setup YAML + 276
+  channels) against the model. Fitted from the data: springs (motion ratios measured), camber, toe, gearbox, LSD,
+  engine torque + friction, drag + rolling resistance, tyre peak/stiffness/braking. Lumped or hand-set: the anti-roll
+  bars (a roll term inside the corner spring sum), dampers (2500/3000, symmetric), unsprung mass, inertias, CG height,
+  tyre vertical stiffness, wheel inertia, front rolling radius, clutch capacity, part-throttle map. Missing: bump
+  stops/packers (unlimited travel), brake pressure → torque per wheel (line pressures unused), tyre pressure and
+  temperature in the sim, the steering system / aligning torque. Today only the tyres are separate objects
+  (`DrivenVehicle3D` is one 240-line equation set).
+* **Non-physical 1 -- sliding is 20–25 % too slippery** (`261009/slide_grip.py`): total grip vs body slip angle.
+  iRacing gold skidpad (all 261002/4/5 files): 1.15 g at 15–20°, 1.08 at 25–30°, 1.05 at 40–45°, 1.03 at 50–55°;
+  gold Ring 0.9–1.04 g. Julia, the PO's 10-08 races, on track, contact spikes removed: 0.75 / 0.87 / 0.81 / 0.80 /
+  0.83 g. The tyre's sliding drop `rs` 0.629 was fitted to locked-wheel BRAKING and multiplies the direction-dependent
+  peak, so a sideways slide falls to 0.63 × μy ≈ 0.85; iRacing's slide is ~isotropic (locked stop ≈ 1.0 g, sideways
+  ≈ 1.05 g) while its peaks are not (μx 1.44, μy 1.35). This is HANDLING-1's washout and WW103-GPL-1's 50° slide.
+* **Non-physical 2 -- a traction aid**: `TC_ON` is ON by default and cuts the throttle when the rear slip passes
+  7.2 % above 25 m/s. Neither the real car nor iRacing's nor GPL's has one; iRacing's own WOT pulls run 4–13 % rear
+  slip. In the PO's 10-08 races it was active in 0.2–2.5 % of on-throttle time above 25 m/s (WG 21:22: 2.5 %).
+* **Non-physical 3 -- force feedback**: hand-shaped (front Fy × a hand trail + a centring spring, tanh clip), two
+  cascaded 50 ms low-passes (~100 ms felt lag), never compared with iRacing's 360 Hz SteeringWheelTorque.
+* Next: the component library + a regression harness that reproduces today's trajectories; then fix 1 (sliding
+  friction fitted through the player car against the gold's slides), 2 (TC off, checked by the stability suite) and
+  3 (aligning torque from the tyres through a rack, against the gold torque), one at a time.
+
+## IRTEST-261009 -- iRacing tests cued for the PO's evening session (grows as items need them)
+1. *(proposed)* **Steady drifts / provoked slides** at Centripetal, both directions, 80–150 km/h, held 3–5 s at 20–50°
+   of body slip with the wheel counter-steered -- the beyond-peak tyre (fix 1) has spins and lift-off slides behind it
+   today but few HELD slides. 360 Hz logging, default setup.
