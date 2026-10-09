@@ -241,16 +241,28 @@ struct Track
     lap::Float64
     P::Params
     height::Function          # height(dlong, dlat, x, z) -> road y in the world
+    # SPATD-1 S4: the lateral correction (m of dlat, sampled every `dstep` m of arc) from the RIGID frame to our drawn road.
+    # The frame is one similarity transform; our road differs from GPL's locally by metres, and the AI line was off our road
+    # on 9 % of Spa (the PO's "off the road on the inside at red water"). Empty = no correction (as before).
+    dsh::Vector{Float64}
+    dstep::Float64
+end
+Track(lines, ref, lap, P, height) = Track(lines, ref, lap, P, height, Float64[], 3.0)
+@inline function dshift(T::Track, sa)
+    n = length(T.dsh); n == 0 && return 0.0
+    t = mod(sa, T.ref.lap)/T.dstep; k = floor(Int, t); u = t - k
+    a = T.dsh[mod(k, n) + 1]; b = T.dsh[mod(k + 1, n) + 1]
+    a + (b - a)*u
 end
 L(T::Track, k) = T.lines[k]
 # GPL's dlong runs over 3 m x records (the replays: Ring dlong 0..22773 for 7591 records) while the arc walk of the
 # .trk is slightly longer (Ring 22815 m): GPL dlong maps onto the arc chain in proportion.
 _k(T::Track) = T.ref.lap / T.lap
-tworld(T::Track, s, d) = world(T.ref, s*_k(T), d)
+tworld(T::Track, s, d) = (sa = s*_k(T); world(T.ref, sa, d + dshift(T, sa)))
 theading(T::Track, s) = heading(T.ref, s*_k(T))
 tcurv(T::Track, s) = curv(T.ref, s*_k(T)) * _k(T)
 "locate world (x, z) in GPL's frame: (dlong, dlat, hint)"
-tlocate(T::Track, x, z, hint::Int = 0) = ((s, d, h) = locate(T.ref, x, z, hint); (s/_k(T), d, h))
+tlocate(T::Track, x, z, hint::Int = 0) = ((s, d, h) = locate(T.ref, x, z, hint); (s/_k(T), d - dshift(T, s), h))
 corridor(T::Track, s) = (dlat(L(T, MINR), s), dlat(L(T, MAXR), s))
 
 # ------------------------------------------------------------------------------------------------ cars

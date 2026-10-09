@@ -884,6 +884,8 @@ const FIXED_DT    = parse(Float64, get(ENV, "JM_FIXED_DT", "0"))   # >0 = fixed 
 # The PO's .ibt shows each as ONE frame in which the car lost ~6.5 m/s and gained ~4 m/s sideways at a normal frame time --
 # an impulse. Every frame whose world velocity changes by more than JM_JOLT_MS (3 m/s, ~18 g) in one step is logged with
 # what touched the car in it: solid-object contact force, GPL-wall and drawn-obstacle hits/clamps, step-guard holds.
+const AI_OFFROAD_DIAG = get(ENV, "JM_AI_OFFROAD", "0") != "0"   # SPATD-1 S4: count AI frames off the drawn road
+const AI_OFF = [0, 0]; const AI_OFFBIN = Dict{Int,Int}()
 const JOLT_MS = parse(Float64, get(ENV, "JM_JOLT_MS", "3.0"))
 const JOLT_PRE = Ref((0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0, 0))
 const JOLT_N = Ref(0)
@@ -12377,7 +12379,32 @@ function main()
                 hr.found && return trk_road(hr.lapdist, hr.lateral)
                 h = mesh_ground(x, z); h[1]
             end
-            GPLAI_T = GPLAI.Track(lines, ref, glap, P, gh)
+            # SPATD-1 S4: per-metre lateral correction from the rigid frame to our drawn road -- the offset, along the frame's
+            # own lateral, from GPL's centreline (rigid) to the nearest point of the re-centred centreline (ALIGNED, which
+            # follows our drawn road), every 3 m, median + Gaussian smoothed. JM_AI_ROADSHIFT=0 disables.
+            dsh = Float64[]
+            if get(ENV, "JM_AI_ROADSHIFT", "1") != "0"
+                n3 = max(1, floor(Int, ref.lap/3.0)); raw_d = zeros(n3); hint = 1; na = length(ALIGNED)
+                for i in 1:n3
+                    sa = (i - 1)*3.0
+                    w0 = GPLAI.world(ref, sa, 0.0); w1 = GPLAI.world(ref, sa, 1.0); ex = w1[1] - w0[1]; ez = w1[2] - w0[2]
+                    bd = Inf; bp = (w0[1], w0[2])
+                    for kk in (i == 1 ? (1:na) : (hint - 40):(hint + 40))
+                        k = mod1(kk, na); j = k == na ? 1 : k + 1
+                        ax, az = ALIGNED[k]; vx = ALIGNED[j][1] - ax; vz = ALIGNED[j][2] - az; L2 = vx*vx + vz*vz
+                        u = L2 > 0 ? clamp(((w0[1] - ax)*vx + (w0[2] - az)*vz)/L2, 0.0, 1.0) : 0.0
+                        px = ax + u*vx; pz = az + u*vz; d2 = (px - w0[1])^2 + (pz - w0[2])^2
+                        d2 < bd && (bd = d2; bp = (px, pz); hint = k)
+                    end
+                    raw_d[i] = ((bp[1] - w0[1])*ex + (bp[2] - w0[2])*ez)/max(ex*ex + ez*ez, 1e-9)
+                end
+                med = [sort([raw_d[mod1(i + q, n3)] for q in -3:3])[4] for i in 1:n3]
+                g = [exp(-q^2/(2*2.0^2)) for q in -6:6]; g ./= sum(g)
+                dsh = [sum(g[q + 7]*med[mod1(i + q, n3)] for q in -6:6) for i in 1:n3]
+                println("  → AI frame: lateral correction to our road, |shift| mean ", round(sum(abs, dsh)/n3, digits = 2),
+                        " m, max ", round(maximum(abs, dsh), digits = 2), " m (JM_AI_ROADSHIFT=0 off)")
+            end
+            GPLAI_T = GPLAI.Track(lines, ref, glap, P, gh, dsh, 3.0)
             gs = GPLAI.grip_scale(GPLAI_T)
             # natural lap at that pace (one car, headless): sets the pace knob against AI_TGT like AI_T0 does for the rail field
             c1 = GPLAI.Car(GPLAI_T, 1, 10.0, GPLAI.dlat(lines[GPLAI.RACE], 10.0); v = 30.0)
@@ -14185,6 +14212,14 @@ function main()
             poses, hit = GPLAI.step!(f, ddt; player = (ps, pdl, clamp(pdv, -15.0, 15.0), cs.v), scale = GPLAI_SC,
                                      vrel = isfinite(AI_REL) ? max(cs.v*AI_REL, 6.0) : Inf)
             ai_hit[] = hit
+            if AI_OFFROAD_DIAG && race_go[]                       # SPATD-1 S4: AI centres off the drawn road, by 100 m of lap
+                for gc in f.cars
+                    (wx, wz, _) = GPLAI.tworld(GPLAI_T, gc.s, gc.d); AI_OFF[2] += 1
+                    if !JuliaMotor.hat3d(ROADHAT, wx, wz; ref = Inf)[3]
+                        AI_OFF[1] += 1; b = floor(Int, gc.s/100); AI_OFFBIN[b] = get(AI_OFFBIN, b, 0) + 1
+                    end
+                end
+            end
             for (i, gc) in enumerate(f.cars)                      # keep the race bookkeeping (laps, order, HUD) in our frame
                 i > length(AICARS) && break
                 prevs = AICARS[i].s
@@ -15301,6 +15336,11 @@ function main()
         catch e
             println("  .ibt export failed: ", e)
         end
+    end
+    if AI_OFFROAD_DIAG && AI_OFF[2] > 0
+        println("  [ai offroad] ", AI_OFF[1], " of ", AI_OFF[2], " AI car-frames had the car centre off the drawn road (",
+                round(100*AI_OFF[1]/AI_OFF[2], digits = 2), " %); worst 100 m bins (s: frames): ",
+                join(["$(100k)-$(100k+100): $(v)" for (k, v) in sort(collect(AI_OFFBIN), by = x -> -x[2])[1:min(end, 8)]], ", "))
     end
     if DRIVECHECK
         d = DC[]
