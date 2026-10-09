@@ -4479,6 +4479,84 @@ const TELLTALE = Ref(0.0)    # highest rpm since load / race restart (GPL's red 
 tach_deg(rpm) = TACH_DEG0 + TACH_DEG_PER_K * clamp(rpm, 0.0, 12000.0) / 1000
 # per-frame model (car frame) for a needle built pointing up, turned to art angle `deg`
 tach_model(deg) = Render.translate(TACH.c) * Render.rotaxis(TACH.n, TACH_SGN * Float32(deg2rad(deg))) * Render.translate(-TACH.c)
+# ── DIALS-1 (PO 2026-10-07: "in cockpit view, make all dials work, not just the rpm dial") ──────────
+# The other five Smiths dials, placed exactly as the tachometer: a pivot found under a UV of the dash
+# art, the dial's up/right from that face. Centres and radii: chrome-ring circle fits on the decoded
+# 256 px art (dash7: the oil dial; ldashr: water, fuel, volts). Scales read off the art, in degrees
+# clockwise from the dial's up, value -> angle (piecewise linear; the water scale is compressed below
+# 100 C as printed). The oil dial is GPL's dual gauge: pressure on the upper arc, temperature on the
+# lower arc running the other way. GPL (gold 261007 WG, replay cockpits 2:16-2:45) moves all of them.
+const DIAL_SPECS = (
+    (name = "oilpsi", tex = "dash7",  uv = (0.5550f0, 0.3163f0), ru = 0.1120f0,
+     scale = ((0.0, -90.0), (20.0, -60.0), (40.0, -20.0), (60.0, 20.0), (80.0, 55.0))),
+    (name = "oiltemp", tex = "dash7", uv = (0.5550f0, 0.3163f0), ru = 0.1120f0,
+     scale = ((40.0, 235.0), (60.0, 215.0), (80.0, 200.0), (100.0, 180.0), (120.0, 140.0))),
+    (name = "water",  tex = "ldashr", uv = (0.1192f0, 0.3131f0), ru = 0.1053f0,
+     scale = ((40.0, -140.0), (60.0, -120.0), (80.0, -100.0), (100.0, -40.0), (110.0, 0.0), (120.0, 40.0),
+              (130.0, 90.0), (140.0, 135.0))),
+    (name = "fuelpsi", tex = "ldashr", uv = (0.4980f0, 0.3201f0), ru = 0.1075f0, scale = ((0.0, -135.0), (120.0, 135.0))),
+    (name = "volts",  tex = "ldashr", uv = (0.6942f0, 0.4437f0), ru = 0.0978f0, scale = ((8.0, -60.0), (16.0, 60.0))))
+# _tach_frame generalised: the same search for any dial texture/UV/radius
+function _dial_frame(parts, tex, uv, ru)
+    for p in parts
+        lowercase(p.tex) == tex || continue
+        v = p.verts
+        for t in 0:33:length(v)-33
+            P = [Float32[v[t+11k+1], v[t+11k+2], v[t+11k+3]] for k in 0:2]
+            U = [v[t+11k+10] for k in 0:2]; V = [v[t+11k+11] for k in 0:2]
+            d = (U[2]-U[1])*(V[3]-V[1]) - (U[3]-U[1])*(V[2]-V[1]); abs(d) < 1f-9 && continue
+            b2 = ((uv[1]-U[1])*(V[3]-V[1]) - (U[3]-U[1])*(uv[2]-V[1])) / d
+            b3 = ((U[2]-U[1])*(uv[2]-V[1]) - (uv[1]-U[1])*(V[2]-V[1])) / d
+            (b2 >= -1f-4 && b3 >= -1f-4 && b2 + b3 <= 1 + 1f-4) || continue
+            c = P[1] + b2*(P[2]-P[1]) + b3*(P[3]-P[1])
+            e1 = P[2]-P[1]; e2 = P[3]-P[1]
+            right = (( e1*(V[3]-V[1]) - e2*(V[2]-V[1])) / d) * ru
+            up    = -((-e1*(U[3]-U[1]) + e2*(U[2]-U[1])) / d) * ru
+            nrm = normalize(cross(right, up)); dot(nrm, Float32[0.46, 0.40, 0] - c) < 0 && (nrm = -nrm)
+            sgn = dot(Vector{Float32}((Render.rotaxis(nrm, 0.1) * Float32[up..., 0])[1:3]), right) > 0 ? 1f0 : -1f0
+            return (c = c, right = right, up = up, n = nrm, sgn = sgn)
+        end
+    end
+    nothing
+end
+const DIALS_ON = get(ENV, "JM_DIALS", "1") != "0"
+const DIALS = DIALS_ON ? [(spec = sp, sym = Symbol(sp.name), f = _dial_frame(CARPIN, sp.tex, sp.uv, sp.ru)) for sp in DIAL_SPECS] : []
+filter!(d -> d.f !== nothing, DIALS)
+println("  [dials] ", isempty(DIALS) ? "none found" : join([d.spec.name for d in DIALS], " "), " (JM_DIALS=0 hides them)")
+function dial_deg(scale, x)
+    x <= scale[1][1] && return scale[1][2]
+    for k in 2:length(scale)
+        x <= scale[k][1] && return scale[k-1][2] + (x - scale[k-1][1]) / (scale[k][1] - scale[k-1][1]) * (scale[k][2] - scale[k-1][2])
+    end
+    scale[end][2]
+end
+dial_model(f, deg) = Render.translate(f.c) * Render.rotaxis(f.n, f.sgn * Float32(deg2rad(deg))) * Render.translate(-f.c)
+function _dial_needle_verts(f, tip, tail, w0, w1, col; lift = 0.002f0)
+    dir = f.up; side = normalize(cross(dir, f.n)) * norm(f.right); c = f.c + lift*f.n
+    a = c - tail*dir; b = c + tip*dir
+    q = (a - w0*side, a + w0*side, b + w1*side, b - w1*side)
+    out = Float32[]
+    for i in (1,2,3, 1,3,4); append!(out, q[i]); append!(out, f.n); append!(out, col); append!(out, (0f0, 0f0)); end
+    out
+end
+# What the dials read. The model has no oil or coolant circuit; these follow GPL's own readout in the gold
+# (260802 WG cockpit, the HUD line under the picture, 0:00-1:44): oil pressure and fuel pressure hold 545 kPa
+# (79 psi) whenever the engine runs, from 3300 rpm up; the temperature starts COLD, 43 C, and climbs about
+# 4 C a minute (43 -> 49 C in 100 s). Here: pressures build over the first 1500 rpm, the temperatures warm
+# from 43 C toward a running value (first order, ~12-15 min), the volts needle stands still as the gold's does. Values only --
+# nothing in the physics reads them; in a replay they follow the recorded rpm.
+mutable struct DialVals; oilpsi::Float64; oiltemp::Float64; water::Float64; fuelpsi::Float64; volts::Float64; tw::Float64; end
+const DIALV = DialVals(0.0, 43.0, 43.0, 0.0, 12.2, 0.0)
+function dials_update!(rpm)
+    t = time(); dt = DIALV.tw == 0.0 ? 0.0 : clamp(t - DIALV.tw, 0.0, 0.1); DIALV.tw = t
+    run = rpm > 200; load = clamp(rpm / 9000, 0.0, 1.0)
+    DIALV.oilpsi  = run ? 79.0 * clamp(rpm / 1500, 0.0, 1.0) : 0.0
+    DIALV.fuelpsi = run ? 79.0 * clamp(rpm / 1500, 0.0, 1.0) : 0.0
+    DIALV.volts   = run ? 11.5 : 11.0       # the gold's needle stands still just left of upright (~ -8 deg) while racing
+    DIALV.water   += ((run ? 80 + 15 * load : 43.0) - DIALV.water)   * dt / 700
+    DIALV.oiltemp += ((run ? 85 + 25 * load : 43.0) - DIALV.oiltemp) * dt / 900
+    DIALV
+end
 # The lotd body carries its own MIRROR PODS, which land exactly where the port's live-RTT round
 # mirrors already draw -- so the pods (and only the pods) are cut here, by centroid box in the
 # render frame (x fwd, y up, z lateral). Stride 11 floats/vertex (pos+normal+uv+col).
@@ -9385,6 +9463,11 @@ const TACH_ITEMS = TACH_ON ? map(((tip, tail, w0, w1, col, lift),) -> begin
         vao, n = Render.upload(_needle_verts(0.0, tip, tail, w0, w1, col; lift = lift)); Render.Item(vao, n, GLuint(0), col)
     end, ((0.80f0, 0.30f0, 0.040f0, 0.018f0, (0.85f0, 0.06f0, 0.05f0), 0.002f0),     # red tell-tale (under)
           (0.86f0, 0.32f0, 0.040f0, 0.016f0, (0.96f0, 0.96f0, 0.94f0), 0.0035f0))) : Render.Item[]   # white rpm needle, 1.5 mm above the red (they z-fought when coplanar)
+# DIALS-1: one white needle per dial, the tachometer's shape scaled to each face
+const DIAL_ITEMS = map(DIALS) do d
+    vao, n = Render.upload(_dial_needle_verts(d.f, 0.78f0, 0.22f0, 0.045f0, 0.018f0, (0.96f0, 0.96f0, 0.94f0); lift = 0.003f0))
+    Render.Item(vao, n, GLuint(0), (0.96f0, 0.96f0, 0.94f0))
+end
 # PO 2026-08-27: "remove the cockpit gauge panel, hands and sleeves". JM_GAUGE=0 hides the cluster
 # (hands + sleeves are JM_HANDS=0, which already existed).
 # E106-S7 (PO video 2026-09-02): "spurious enlarged dashboard floating over visor blocking the
@@ -14551,6 +14634,12 @@ function main()
         if CTL.view == 0 && !isempty(TACH_ITEMS)
             Render.draw(prog, TACH_ITEMS[1], vp, bodyModel * tach_model(tach_deg(TELLTALE[])); unlit=true)
             Render.draw(prog, TACH_ITEMS[2], vp, bodyModel * tach_model(tach_deg(cs.rpm)); unlit=true)
+        end
+        if CTL.view == 0 && !isempty(DIAL_ITEMS)        # DIALS-1: the other five dials
+            dv = dials_update!(cs.rpm)
+            for (d, it) in zip(DIALS, DIAL_ITEMS)
+                Render.draw(prog, it, vp, bodyModel * dial_model(d.f, dial_deg(d.spec.scale, getfield(dv, d.sym))); unlit=true)
+            end
         end
         # E106-S4: exhausts at hub height (chrome: a touch of spec so the megaphones catch the sun)
         let pm = bodyModel * Render.translate(0, PIPE_LIFT, 0)
