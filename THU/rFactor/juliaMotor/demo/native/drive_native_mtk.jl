@@ -5455,6 +5455,13 @@ const PERF4_MARK = Ref(0)
 # --trace-compile does not list, a method whose result is a known constant (the first marker, `= nothing`, never appeared)
 @noinline perf4_reveal_marker() = (PERF4_MARK[] += 1; PERF4_MARK[])
 const HUD_BV = Float32[]; const HUD_TV = Float32[]; const HUD_ST = Float32[]   # PERF-4 S2: text/HUD buffers reused per frame
+# PERF-4 S3: the GL driver may queue several finished frames ahead of the display (NVIDIA allows up to 3), and each
+# queued frame is ~17 ms between the controls being read and the picture showing them. JM_GPUQ=1 caps the queue at ONE
+# frame: after each swap the CPU waits until the GPU has finished the PREVIOUS frame (a fence), so the next frame's
+# controls are read at most one frame before the GPU can draw them. JM_GPUQ_DIAG=<n> prints the wait every n frames.
+const GPUQ = parse(Int, get(ENV, "JM_GPUQ", "1"))   # ON since S3: 0.07 ms per frame, no fps change (WG, 5 AI); JM_GPUQ=0 = off
+const GPUQ_DIAG = parse(Int, get(ENV, "JM_GPUQ_DIAG", "0"))
+const GPUQ_FENCE = Ref{Ptr{Cvoid}}(C_NULL); const GPUQ_WAIT = zeros(3)   # (sum s, frames, max s)
 const FRAMEPROF = parse(Int, get(ENV, "JM_FRAMEPROF", "0"))  # E80: per-PHASE frame profiler
 const PROF_WORLD = Ref(0.0); const PROF_HUD = Ref(0.0); const PROF_N = Ref(0); const PROF_TOT = Ref(0.0)
 # SPA-FPS-1 S2: the world draw split by phase (shadow depth pass, track items, trackside objects, billboards, AI cars)
@@ -14745,6 +14752,19 @@ function main()
         end
         DSTAT && (GPUSYNC && glFinish(); DS_T[5] = time())
         GLFW.SwapBuffers(win)
+        if GPUQ > 0                                   # PERF-4 S3: at most one frame queued in the driver
+            _tq = time()
+            if GPUQ_FENCE[] != C_NULL
+                glClientWaitSync(GPUQ_FENCE[], GL_SYNC_FLUSH_COMMANDS_BIT, UInt64(100_000_000)); glDeleteSync(GPUQ_FENCE[])
+            end
+            GPUQ_FENCE[] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0)
+            _w = time() - _tq; GPUQ_WAIT[1] += _w; GPUQ_WAIT[2] += 1; GPUQ_WAIT[3] = max(GPUQ_WAIT[3], _w)
+            if GPUQ_DIAG > 0 && GPUQ_WAIT[2] >= GPUQ_DIAG
+                println("  [gpuq] fence wait mean ", round(1000GPUQ_WAIT[1]/GPUQ_WAIT[2], digits = 2), " ms  max ",
+                        round(1000GPUQ_WAIT[3], digits = 1), " ms  fps ", round(FRAME_FPS[], digits = 1)); flush(stdout)
+                fill!(GPUQ_WAIT, 0.0)
+            end
+        end
         if DSTAT
             DS_T[6] = time()
             for k in 1:5; DS_ACC[k] += DS_T[k+1] - DS_T[k]; end

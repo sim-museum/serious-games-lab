@@ -23950,3 +23950,19 @@ start, 5 AI): **304 KB/frame** in the top 25 sites. Four causes, all type or buf
 **Result: 304 -> 150 KB/frame; in-race GC stalls over the same 60 s race start 4 -> 2** (31.7/34.1/32.5/34.1 ms ->
 32.2/33.5 ms). HUD checked in the smoke frame (timing rows, standings, rpm digits, gear: unchanged). Gates parse, warm,
 mipcolor PASS.
+
+### PERF-4 S3 (2026-10-09): the steady-state pipeline adds ~one frame; the driver queue is now capped at one frame
+* **Input path, read from the code:** no smoothing on the wheel or pedals (`JoyCfg.apply` is raw + calibration); the
+  cockpit camera's tilt filter is 0.05 s (frame jitter only). Controls are read at the top of each frame, simulated
+  and drawn in the same frame.
+* **Driver queue, measured** (`JM_DRAWSTATS`, WG race start, 5 AI, windowed): a frame is 17.2 ms, the CPU's work ~7 ms
+  (sim 3.4–5.3, draw ~3), and the rest is `SwapBuffers` waiting for the display refresh. A new fence (`JM_GPUQ`: after
+  each swap, wait until the GPU has finished the previous frame) waited **0.07 ms on average (max 0.2)** -- the previous
+  frame is always done, i.e. frames were NOT piling up in the driver here: input to picture is about one frame plus
+  scan-out, as in any vsynced game. fps with the fence 57.5–58.6, unchanged.
+* **Kept ON by default anyway** (`JM_GPUQ=0` = off): it costs 0.07 ms and bounds the queue where one CAN build -- the PO
+  races FULLSCREEN, where NVIDIA's flip path may queue up to 3 frames (~50 ms); I did not take the PO's display to
+  measure that. **For the PO:** if a drive still feels laggy, `JM_GPUQ=0` vs default in the launcher's environment is the
+  A/B, and the session log now has a `[stall]` line for every hitch.
+* So the PO's lag was mostly S1 (compile freezes at the first contact / crash, 145–260 ms) plus S2's GC hitches; what
+  remains to compare with GPL is the CAR's response (steering ratio, tyre build-up) -- HANDLING-1 / WW103-GPL-1.
