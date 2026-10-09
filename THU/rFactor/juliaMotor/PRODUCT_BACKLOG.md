@@ -24077,3 +24077,22 @@ the recording + live mirrors; S2 the lever moves with the gear; S3 DIALS-1; S4 t
   **Honest limit:** the in-sim A/B (`JM_SOFT_DVMAX=8` = old law) through the crash harness was equal (34 jolts each) --
   that harness drives DEEP into the hedge (up to 2.7 m), where the full budget applies by design; the cap is for the
   shallow brush the PO described, proven at kernel level only.
+
+### SPATD-1 S2 (2026-10-09): the invisible barrier at Burnenville -- GPL's right wall registered onto the centreline
+* **The invisible contact named.** S1's crash harness grazed s=5160 R and reported 87–89 frames of contact with a GPL
+  wall where nothing is drawn. The jolt line, now with GPL's wall state, showed it: sections 95–97 (s≈5160–5240, the
+  run down into Burnenville -- the PO's "left hand 90 going downhill toward burning village" and the first jolt) had
+  a free interval of **[−351, 0.0]**: GPL's right wall at lateral 0, down the middle of our road.
+* **Why** (`JM_GPLW_DUMP=95,96,97,98`, raw vs registered edge table): GPL's own data is right -- asphalt −4.09..+4.09,
+  kerb, then a raised wall (0x806, 0.75 m) at **+4.5**: the village houses at the kerb. GPLWALL-1 S9's ROAD registration
+  then slid the whole strip list −4.5 m (its largest shift on the lap, 4.63 m) because the "drawn road" it centred on
+  there is a far wider run (the village side road joins): the junction's centre, not the road's. Every wall moved with
+  it, the right one onto the centreline.
+* **Fix:** a drawn run may register GPL's road only if it is at most `JM_GPLWALL_ROADREG_WIDE` (3 m) wider than GPL's
+  asphalt; wider runs (junctions, squares) leave the point to the smoothed neighbours. Registration 2577 -> 2539 of 2596
+  points, max shift 4.63 -> 3.88 m. Sections 95/97 now free to **+4.5 / +3.13** (GPL's own wall position).
+* **Check** (crash harness, the PO's three jolt spots + the barrier, 8° at the PO's speeds): **INVISIBLE contacts 89 -> 0**;
+  the right-side grazes now end at the real village wall (drawn faces), Masta (6630 L) passes clean, after Stavelot the
+  wall at +3.3 is drawn. Gates gplwall, gplroad, gpldlat, gplplan, seam, parse PASS.
+* **Left for S3:** (1) the AI (off the road at Eau Rouge, ~half their target pace); (4) La Source far-side objects; and a
+  look at whether the same junction contamination moved walls elsewhere (a lap-wide census of wall faces on drawn road).

@@ -3234,6 +3234,7 @@ function gplw_register!(W, grid; w = GPLW_REG)
     end
     (nface, nreg, shifts)
 end
+const GPLW_ROADREG_WIDE = parse(Float64, get(ENV, "JM_GPLWALL_ROADREG_WIDE", "3.0"))   # SPATD-1: see the road registration below
 if GPLW_ON && (get(ENV, "JM_GPLWALL_REG", "2.0") != "0" || get(ENV, "JM_GPLWALL_CENSUS", "0") != "0")
     let grid = gplw_vertical_grid(TRACKMESH.tris)
         function census(label)
@@ -3280,7 +3281,11 @@ if GPLW_ON && (get(ENV, "JM_GPLWALL_REG", "2.0") != "0" || get(ENV, "JM_GPLWALL_
                         run0 = t
                     elseif !on && !isnan(run0)
                         rc = (run0 + t - 0.25)/2; rw = t - 0.25 - run0
-                        (rw >= 0.5w && abs(rc - c) < bd) && (bd = abs(rc - c); best = rc)
+                        # SPATD-1 (PO 2026-10-08, Spa: invisible barrier toward Burnenville + "earthquake" jolts): a drawn run
+                        # much WIDER than GPL's asphalt is a junction or a village square, not the road -- its centre dragged
+                        # sections 95-97 4.5 m left, which put GPL's right wall (raw +4.5, the houses at the kerb) at 0.0, down
+                        # the middle of our road. Only runs within GPLW_ROADREG_WIDE m of GPL's width may register.
+                        (rw >= 0.5w && rw <= w + GPLW_ROADREG_WIDE && abs(rc - c) < bd) && (bd = abs(rc - c); best = rc)
                         run0 = NaN
                     end
                 end
@@ -3309,6 +3314,20 @@ if GPLW_ON && (get(ENV, "JM_GPLWALL_REG", "2.0") != "0" || get(ENV, "JM_GPLWALL_
             CEN && census("registered")
         end
         CEN && exit(0)
+    end
+end
+# SPATD-1 diagnostic: JM_GPLW_DUMP="95,97" prints those sections' strips, raw vs registered edge table (f = 0, .5, 1)
+if GPLW_ON && get(ENV, "JM_GPLW_DUMP", "") != ""
+    for si in parse.(Int, split(ENV["JM_GPLW_DUMP"], ","))
+        v = GPLWALLS.secs[si]; E = GPLWALLS.E[si]
+        println("  [gplw dump] section ", si, " (", round(GPLWALLS.seclen[si], digits = 1), " m)")
+        for k in eachindex(v)
+            println("     ", lpad(k, 2), " raw ", lpad(round(v[k].l0, digits = 2), 8), " -> ", lpad(round(v[k].l1, digits = 2), 8),
+                    "   E f0 ", lpad(round(E[k, 1], digits = 2), 8), "  f.5 ", lpad(round(E[k, 6], digits = 2), 8), "  f1 ", lpad(round(E[k, end], digits = 2), 8),
+                    "  0x", string(v[k].typ, base = 16), v[k].wall ? " RAISED h=$(round(v[k].height, digits = 2))" : "")
+        end
+        println("     free at f=.5 near lat 0: ", round.(GPLWall.free_interval(GPLWALLS, si, 0.5, 0.0, 0.0; hmin = GPLW_HMIN)[1:2], digits = 2),
+                "   (hmin ", GPLW_HMIN, ")")
     end
 end
 # JM_GPLWALL_SHOW=1: draw every blocking GPL wall face (after registration) as a magenta ribbon, wall-height tall
@@ -13464,7 +13483,15 @@ function main()
                     println("         at (", round(cs.x, digits = 1), ", ", round(cs.z, digits = 1), ")  deepest solid: ",
                             _jk == 0 ? "none" : string(_jk <= length(SOLIDNAMES) ? SOLIDNAMES[_jk] : "?", " kind=", SOLIDS[_jk][4],
                             " r=", round(SOLIDS[_jk][3], digits = 1), (_jk <= length(SOLIDBOX) && SOLIDBOX[_jk] !== nothing) ? " (box)" : "",
-                            " at (", round(SOLIDS[_jk][1], digits = 1), ", ", round(SOLIDS[_jk][2], digits = 1), ") gap ", round(_jg, digits = 2), " m")); flush(stdout)
+                            " at (", round(SOLIDS[_jk][1], digits = 1), ", ", round(SOLIDS[_jk][2], digits = 1), ") gap ", round(_jg, digits = 2), " m"))
+                    if GPLW_PHYS                                            # GPL's walls at this spot (no tracking state touched)
+                        (_sec, _f, _lat, _, _) = gplw_locate(cs.x, cs.z; update = false)
+                        (_lo, _hi, _, _) = GPLWall.free_interval(GPLWALLS, _sec, _f, _lat, _lat; hmin = GPLW_HMIN)
+                        _L = GPLWALLS.seclen[_sec]
+                        println("         GPL: section ", _sec, " at ", round(_f*_L, digits = 1), "/", round(_L, digits = 1), " m, lat ",
+                                round(_lat, digits = 2), ", free [", round(_lo, digits = 2), ", ", round(_hi, digits = 2), "]")
+                    end
+                    flush(stdout)
                 end
             end
             GPLW_PHYS && (GPLW_T[] = (GPLW_T[][1] + time() - _tgc, GPLW_T[][2]))
