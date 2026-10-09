@@ -32,6 +32,7 @@ this index was written; that is what it exists to stop.
 | **WW103-GPL-1** | 2nd WG race 2026-10-08: strange sideways slide going into the Big Bend in lap 2; and "ww103 in julia doesn't feel at all like ww103 in GPL. Why not?" -- compare our WW103 WG race with the PO's most recent WW103 WG race in GPL (.rpy under `~/sgl/THU`) | open -- first look done (see section); **scrum PAUSED by the PO** |
 | **REPLAY-4** | Each press of R (restart) starts a NEW session for replay and analysis, and writes a NEW .ibt (PO 2026-10-08) -- today one recording/ibt spans restarts (the 21:55 ibt holds two runs) | open -- **scrum PAUSED by the PO** |
 | **PERF-4** | "julia racer is sluggish compared to GPL. Would it make sense to translate julia racer from julia to, e.g. C++?" (PO 2026-10-08); PO: it is (3) **control lag** -- "a lag between control inputs and car response, especially noticable at the start of a race" | open -- first evidence in the section: the race start has 4–5× the long frames of the rest of the race (first-use JIT compiles suspected); **scrum PAUSED** |
+| **SPATD-1** | Spa fixes from the PO's 2026-10-08 race (video `~/Videos/261008_spa.mp4`): (1) AI leave the road -- inside at Eau Rouge, presumably elsewhere -- and are extremely slow (at 70 % they just poke along); (2) an INVISIBLE barrier tore a wheel off at the downhill left-hand 90 toward Burnenville when the rear barely left the road (nothing visible on the grass) -- and a building belongs on the outside of that turn: put it back; (3) three strong earthquake-like jolts between Burnenville and Masta, mid-road, nothing nearby | open -- first evidence for (3) in the section (the jolts are 26.9 s apart, on a timer, not on the road); overlaps TRACKS-TD-1(b); **scrum PAUSED** |
 | **AIHELMET-1** | The AI drivers' helmets render as a dark dome (black lobes from the front) where GPL's are the driver's skin -- found 2026-10-07 during HANDS-2 | ✅ **S1 (2026-10-07):** each AI driver's own helmet skin bound to the shell (`261007/helmet/`) |
 | **TRACKSEG-3** | Preferences switch: show/hide the track-section names ("Front Straight", "Big Bend" at WG), default ON (PO 2026-10-06) | ✅ **DONE (S1, 2026-10-06):** launcher Graphics group, "Show track section names", default ON, remembered; OFF = `JM_SEGNAME_SECS=0`, also for replays; gate `segnames_smoke` |
 | **GUI-1** | Redesign the julia racer GUI (`demo/native/juliaRacer.py`) for ease of use per GUI best practices, then restyle it like the PyQt GUIs of pokerIQ and bridgeIQ (`~/sgl/MON/pokerIQ`, `~/sgl/FRI/bridgeIQ`) (PO 2026-10-06) | **S1 (2026-10-06) redesign done:** task-ordered tabs (Race / Results / Replays / Settings / Controller), Session + Car cards, one primary Start button, menus + status bar, log on demand, everything remembered; the sim's environment is identical to before (3 cases). **S2 restyle done:** dark pokerIQ/bridgeIQ theme (`261006/gui/s2_vs_iq.jpg`). 🟡 **AWAITING THE PO's look** |
@@ -23813,3 +23814,31 @@ frames through throttle/clutch/shift/brake (or a precompile workload / sysimage)
 fill FrameRate in the .ibt and log stalls with wall-clock times; then measure steady-state input latency separately
 (vsync/swap queue, input read -> physics -> draw ordering, pedal/FFB filtering) -- e.g. input timestamps vs. the first
 frame showing the response.
+
+### SPATD-1 added (PO 2026-10-08 ~22:40, verbatim) -- scrum still PAUSED
+> backlog item: spa fixes 1. AI cars - they go off the road on the inside at red water, and I presume leave the road
+> elsewhere as well.  Also, they are extremely slow - at 70% they just poke along.  2. invisible barrier - I lost a wheel
+> at the left hand 90 going downhill toward burning village, when my back end just barely left the road surface and there
+> was no visible barrier whatsoever on the grass (side note - there should be a building there, at the outside of that
+> turn) - put it back.  3. sudden jolts.  between burning village and mast village, I counted three strong jolts, like an
+> earthquake, while riding along in the middle of the road with no obstacles nearby
+>
+> (video, same message thread) '/home/g/Videos/261008_spa.mp4'
+
+**First look at (3), from `data/juliaracer/lotus49_spa 2026-10-08 22-20-21.ibt` (no code touched).** Three one-frame
+acceleration spikes, far beyond anything a car can do, with the speed unchanged and a normal frame step (16–17 ms):
+
+| sim time | lap dist | speed | lateral | longitudinal |
+|---|---|---|---|---|
+| 150.31 s | 5233 m | 48.3 m/s | +272 m/s² (28 g) | −396 m/s² (40 g) |
+| 177.25 s (+26.94) | 6640 m | 43.9 | −168 | −453 |
+| 204.13 s (+26.88) | 8044 m | 48.6 | −38 | −278 |
+
+They match the PO's count and stretch (Burnenville 3340 m -> Masta 6491 m -> just past it), and they are **exactly
+26.9 s apart at 1,400 m spacing** -- periodic in TIME, not tied to a place on the road, so not a track defect. Candidates
+to check: something on a timer that disturbs the physics state for one frame (the replay autosave every 20 s of WALL
+time writes the whole growing replay; an ibt/telemetry flush; a forced GC every GC_EVERY frames) -- correlate wall
+clock vs sim time, then reproduce with autodrive at Spa and each timer disabled in turn. (1) is the same family as
+TRACKS-TD-1(b) (Eau Rouge inside line) plus the AI pace: at 70 % the AI's Spa laps were already 9:10–10:07 against a
+5:34 target in the 10-07 replay (REPLAY-3 retro note). (2): find the collision wall/object at the downhill left before
+Burnenville (s≈3300) with JM_OBJDIAG_AT, and which building GPL has on its outside (gold `260802_spa_cockpit.mp4`).
