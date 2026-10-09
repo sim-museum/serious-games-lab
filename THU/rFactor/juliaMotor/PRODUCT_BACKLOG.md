@@ -31,7 +31,7 @@ this index was written; that is what it exists to stop.
 | **WGTD-1** | Watkins Glen improvements from the PO's 2026-10-08 race (video `~/Videos/261008_wg_race.mp4`, 14:42): (a) replay cockpit -- mirrors, steering, shifting live (with COCKPIT-2); (b) analysis = ALL of GPL Replay Analyser, incl. two replay files of the same track side by side; (c) spurious diagonal straight line across the WG map under the graphs; (d) a lap-list filter (human laps, same or different sessions -- human vs AI is rarely useful); (e) after the race the AI do one slow lap and stop in the pits, as GPL; (f) the default black brake marks along the racing line start/stop in blocks -- GPL's are smooth smears; (g) the AI line runs wide, a little off track, after the 90 and before the Esses -- stay on track as GPL; (h) analyser: GPL's GRAPHICAL race reports (missing now) and GPL's ANIMATED track map -- little car silhouettes showing where the cars of the selected laps are, with position and direction | open -- **PAUSED by the PO (2026-10-08 21:3x): no scrum until the PO says so** |
 | **WW103-GPL-1** | 2nd WG race 2026-10-08: strange sideways slide going into the Big Bend in lap 2; and "ww103 in julia doesn't feel at all like ww103 in GPL. Why not?" -- compare our WW103 WG race with the PO's most recent WW103 WG race in GPL (.rpy under `~/sgl/THU`) | open -- first look done (see section); **scrum PAUSED by the PO** |
 | **REPLAY-4** | Each press of R (restart) starts a NEW session for replay and analysis, and writes a NEW .ibt (PO 2026-10-08) -- today one recording/ibt spans restarts (the 21:55 ibt holds two runs) | open -- **scrum PAUSED by the PO** |
-| **PERF-4** | "julia racer is sluggish compared to GPL. Would it make sense to translate julia racer from julia to, e.g. C++?" (PO 2026-10-08) | open -- first answer in the section (measure what "sluggish" is before any rewrite); **scrum PAUSED** |
+| **PERF-4** | "julia racer is sluggish compared to GPL. Would it make sense to translate julia racer from julia to, e.g. C++?" (PO 2026-10-08); PO: it is (3) **control lag** -- "a lag between control inputs and car response, especially noticable at the start of a race" | open -- first evidence in the section: the race start has 4–5× the long frames of the rest of the race (first-use JIT compiles suspected); **scrum PAUSED** |
 | **AIHELMET-1** | The AI drivers' helmets render as a dark dome (black lobes from the front) where GPL's are the driver's skin -- found 2026-10-07 during HANDS-2 | ✅ **S1 (2026-10-07):** each AI driver's own helmet skin bound to the shell (`261007/helmet/`) |
 | **TRACKSEG-3** | Preferences switch: show/hide the track-section names ("Front Straight", "Big Bend" at WG), default ON (PO 2026-10-06) | ✅ **DONE (S1, 2026-10-06):** launcher Graphics group, "Show track section names", default ON, remembered; OFF = `JM_SEGNAME_SECS=0`, also for replays; gate `segnames_smoke` |
 | **GUI-1** | Redesign the julia racer GUI (`demo/native/juliaRacer.py`) for ease of use per GUI best practices, then restyle it like the PyQt GUIs of pokerIQ and bridgeIQ (`~/sgl/MON/pokerIQ`, `~/sgl/FRI/bridgeIQ`) (PO 2026-10-06) | **S1 (2026-10-06) redesign done:** task-ordered tabs (Race / Results / Replays / Settings / Controller), Session + Car cards, one primary Start button, menus + status bar, log on demand, everything remembered; the sim's environment is identical to before (3 cases). **S2 restyle done:** dark pokerIQ/bridgeIQ theme (`261006/gui/s2_vs_iq.jpg`). 🟡 **AWAITING THE PO's look** |
@@ -23798,3 +23798,18 @@ replay + .ibt and opens new ones, so each run is its own session in the Replays 
 * Plan when the scrum resumes: ask the PO which of the four it is (or measure all four against GPL: load time, frame
   times, input-to-motion latency from a high-speed phone video or input timestamps, step-steer response), then fix the
   largest gap in Julia; revisit a port only if a measured gap cannot be closed that way.
+
+### PERF-4: the PO's answer and a first look at the data (2026-10-08 ~22:30, scrum still PAUSED)
+> 3 is the worst one; I feel a lag between control inputs and car response, especially noticable at the start of a race
+
+From the 21:55 race `.ibt` (no code touched): the .ibt's FrameRate channel is not filled (always 0), but its
+SessionTime steps are the sim's frame dt (median 16.7 ms = 60 Hz, clamped at 50 ms, so a longer stall shows as 50 ms). Steps
+longer than 25 ms: **17 in the first 30 s, then 1–4 per 30 s** for the rest of the 526 s. The first-30-s ones line up with
+the first uses of new controls: first throttle (~7.5 s, a 50 ms step), first gear (~9.8 s, 50 ms), first upshift (~14.2 s,
+50 ms). Hypothesis: **Julia compiling code paths the first time they run** (first clutch slip, first shift, first
+wheelspin...), each a stall that reads as lag exactly when the race starts; the hidden warm-up frames before the window is
+revealed run the physics with no input, so those paths are still cold. Possible fixes, all in Julia: drive the warm-up
+frames through throttle/clutch/shift/brake (or a precompile workload / sysimage) so the start runs on compiled code;
+fill FrameRate in the .ibt and log stalls with wall-clock times; then measure steady-state input latency separately
+(vsync/swap queue, input read -> physics -> draw ordering, pedal/FFB filtering) -- e.g. input timestamps vs. the first
+frame showing the response.
