@@ -24212,3 +24212,14 @@ the recording + live mirrors; S2 the lever moves with the gear; S3 DIALS-1; S4 t
   people/sprites; E88 removed spectators at WG on request -- check that nothing similar applies at Spa), the hillside
   trees (sprite/tree rules), `lasad1` (footprint filter), hay bales (1 m rule). Next sprint: render ours at the gold's
   exact spot with `JM_KEEPTEST` A/Bs per candidate, judged at full resolution (memory jr-judge-geometry-full-res).
+
+### BLINDTURN-1 S3 (2026-10-09, analysis): the missing far side at La Source is scenery/terrain, not a drop rule -- BLINDTURN-1 rotates
+* `JM_KEEPTEST="people,peprow,p_s,pelf,hayb,lasad,stree,tr2,tr3,bu1,x1"` at s=13560 (`261007/blindturn_lasource_keeptest_ab.png`,
+  top shipped / bottom force-kept): the spectators come back (at the villa wall, along the boards on the right) -- the
+  loose-people rules the PO asked for elsewhere also thin Spa's crowds; not changed without the PO -- **but straight ahead,
+  beyond the hairpin, it is still open sky**. The gold shows a hillside with a crowd bank and trees there. So the far
+  side is missing as TERRAIN/SCENERY: next suspects are the scenery distance bands and GPL's per-cell visibility (memory
+  jr-gpl-track-renderer: segment range + 117/312/914 m bands + per-cell clip planes) or a removed backdrop/veil
+  (RING-GOLD-1). Next pass: render the same spot with the band/cell culling off (`JM_GPLVIS`-style A/B) and look again.
+* **For the PO:** Spa's spectators are thinned by the loose-people rules (on-road/hanging rows) -- do you want more of the
+  La Source crowd back? It is part of what GPL shows on the outside there.
