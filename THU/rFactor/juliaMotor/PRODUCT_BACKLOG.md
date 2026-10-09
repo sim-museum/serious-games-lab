@@ -23901,3 +23901,38 @@ lever, dials, wrists; drafts ready) -> **SPATD-1** (timed jolts, invisible barri
 (visual 90° roll, banner, floating shed/trees) -> **REPLAY-4 + REPLAY-5** (R = new session/.ibt; replay start/end, stuck at
 end) -> **BLINDTURN-1** -> **TRACKS-TD-1** -> **WGTD-1** -> **HANDLING-1 / WW103-GPL-1** (tyre beyond the peak; GPL replay
 comparison) -> **BILLBOARD-2**. At most 4 sprints each, then rotate; gates with GATES_SKIP=road_clear_smoke.
+
+### PERF-4 retrospective (2026-10-08 night)
+* **Before:** PERF-1 (allocation cuts, parallel GC: pauses 32–39 -> 16 ms), PERF-3 (vsync pacing; forced young GCs
+  (`JM_GC_EVERY`) tried and left OFF -- the collector is automatic; 52–60 fps measured with 5 AI), PHYSPRE-1 (the physics package's precompile image),
+  `precompile(...)` calls for a few first-use functions (damage_impact!, text_draw, wall contact), 2 hidden warm-up frames
+  before the window is shown, and an optional sysimage (`jlracer.so`, not built on this box).
+* **The PO's symptom is latency, worst at the start.** All earlier work measured frame RATE at steady state; nobody
+  measured the first 30 s of a race or the time from an input to the car's response. The 21:55 .ibt shows 17 long frames
+  in the first 30 s against 1–4 per 30 s later, aligned with first throttle / first gear / first upshift -- but the
+  .ibt's dt is clamped at 50 ms and its FrameRate channel was never filled, so the data cannot say what a stall WAS.
+* **Lesson:** a stall must be named when it happens (compile vs GC vs other), not inferred afterwards. **New angle:**
+  log every stall with the compile time and GC time spent inside it, reproduce the race start headlessly, then make the
+  hidden warm-up exercise the paths the start uses.
+
+### PERF-4 S1 (2026-10-08 night): the race-start lag was Julia compiling mid-race -- now compiled during loading
+* **Instrument first.** Every frame slower than 30 ms now logs a `[stall]` line with the time spent COMPILING
+  (`Base.cumulative_compile_time_ns`) and in GC inside it, plus gear/throttle/clutch/brake/speed -- on by default, one
+  line per stall, into the session log (`JM_STALLLOG=0` off). The .ibt's FrameRate channel is filled (it was always 0).
+* **Reproduce the PO's start headlessly.** Autodrive only ever used the AUTO gearbox; `JM_AUTODRIVE_MANUAL=1` now drives
+  the MANUAL path (clutch-slip launch, clutch in + paddle for each shift by rpm) so a smoke run can start a race the way
+  the PO does (WG, 5 AI, `ZAND_SHIFT=manual`).
+* **What stalled (runs 1–6):** after the window is shown, compiling happened only for code used for the FIRST time:
+  the **first contact with another car in the crowded start** (`bumpX!` + contact forces: 143–149 ms at 5 s), a crash
+  (`wreck!`, wheel detach, wall locate: 245–260 ms), plus small text/print paths. The first gear change looked guilty
+  (same moment) but the trace names the contact. Method: `--trace-compile` with a marker call at the window reveal
+  (`perf4_reveal_marker`; it must do work -- a method returning a constant is never compiled, so the first marker
+  never appeared in the trace).
+* **Fix:** `tools/warmgen.py` collects the after-reveal statements from trace logs into `demo/native/warm_statements.jl`
+  (28 now; closures dropped since their names change per edit); the sim compiles them just before the loop
+  (`[warm] 27 in-race methods compiled ahead (1 skipped) in 704 ms`; `JM_WARM=0` = off).
+* **Result (same scenarios):** compile time inside stalls **race start 251 ms -> 0**, **crash harness 550 ms -> 0**.
+  Remaining stalls: GC, 23–26 ms every ~4 s while racing, and 94 / 277 ms GCs in the crash run (S2). The 280–330 ms
+  stall at frame 39 is the smoke run's own screenshot (frame 38), not in a real race.
+* **New gate `warm_smoke`** (49 gates): the manual race start; fails if > 60 ms of compiling lands in race stalls or the
+  warm list has gone stale (> 25 % skipped). Known positive: with `JM_WARM=0` the gate FAILS (423.6 ms of compiling in 8 race stalls: 137.5 ms at the first contact, 244 ms at a crash); with the warm list it PASSES (0.0 ms). parse, telemetry_rpm, stall gates PASS.

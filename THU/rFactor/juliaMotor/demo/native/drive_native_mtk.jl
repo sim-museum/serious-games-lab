@@ -909,6 +909,11 @@ const AUTODRIVE_V = parse(Float64, get(ENV, "JM_AUTODRIVE_V", "45"))   # target 
 # deliberate excursion needs its own knob. Positive = one side, negative = the other.
 const AUTODRIVE_LAT = parse(Float64, get(ENV, "JM_AUTODRIVE_LAT", "0"))
 const AUTODRIVE_DIAG = parse(Int, get(ENV, "JM_AUTODRIVE_DIAG", "0"))
+# PERF-4: autodrive always used the AUTO gearbox, so no headless run ever exercised the PO's way of driving -- MANUAL
+# gearbox, clutch pedal, paddles. JM_AUTODRIVE_MANUAL=1 shifts by rpm through the manual path: clutch in for the shift
+# frames, up at 8700 rpm, down below 4300 rpm while braking, neutral -> 1st at the start.
+const AUTODRIVE_MANUAL = get(ENV, "JM_AUTODRIVE_MANUAL", "0") != "0"
+const ADM = Ref((hold = 0, up = false, dn = false))      # frames of clutch left for the current shift
 # SKIDPAD-GOLD-1 S3 (2026-09-15): a CONSTANT-INPUT driver, the same design as FreeFalcon's FF_STICK.
 # S2 revived the skidpad and found that NOBODY DRIVES IT: JM_AUTODRIVE is the race AI and a skidpad
 # has no race, so the car idled in gear 1 for 4,000 frames and every telemetry channel read 0.000.
@@ -5435,6 +5440,20 @@ const GC_EVERY = parse(Int, get(ENV, "JM_GC_EVERY", "0")); const GC_MS = zeros(3
 const PACE_WARM = parse(Int, get(ENV, "JM_PACE_WARM", "120"))   # PERF-3: frames of JIT warm-up the pacer ignores
 get(ENV, "JM_GCLOG", "0") != "0" && GC.enable_logging(true)   # PERF-1: print every GC pause (hitch attribution)
 const FPSDIAG = parse(Int, get(ENV, "JM_FPSDIAG", "0"))   # E80: frame-time report, per view
+# PERF-4 (PO 2026-10-08: "a lag between control inputs and car response, especially noticable at the start of a race").
+# Every frame slower than JM_STALL_MS (default 30) after the window is shown is logged with how much of it was Julia
+# COMPILING code (Base.cumulative_compile_time_ns) and how much was GC, plus the controls at that moment -- so a stall
+# names its cause instead of being inferred from a clamped dt. On by default (one line per stall); JM_STALLLOG=0 = off.
+const STALLLOG = get(ENV, "JM_STALLLOG", "1") != "0"
+const STALL_MS = parse(Float64, get(ENV, "JM_STALL_MS", "30"))
+STALLLOG && Base.cumulative_compile_timing(true)
+const STALL_PREV = UInt64[0, 0, 0]
+const STALL_N = Ref(0); const STALL_COMP_MS = Ref(0.0)
+const FRAME_FPS = Ref(0.0)                      # wall-clock frame rate, smoothed -- the .ibt's FrameRate channel
+const PERF4_MARK = Ref(0)
+# first CALLED (so compiled, so traced) when the window is revealed; it must DO something -- Julia does not compile, and
+# --trace-compile does not list, a method whose result is a known constant (the first marker, `= nothing`, never appeared)
+@noinline perf4_reveal_marker() = (PERF4_MARK[] += 1; PERF4_MARK[])
 const FRAMEPROF = parse(Int, get(ENV, "JM_FRAMEPROF", "0"))  # E80: per-PHASE frame profiler
 const PROF_WORLD = Ref(0.0); const PROF_HUD = Ref(0.0); const PROF_N = Ref(0); const PROF_TOT = Ref(0.0)
 # SPA-FPS-1 S2: the world draw split by phase (shadow depth pass, track items, trackside objects, billboards, AI cars)
@@ -12545,6 +12564,26 @@ function main()
         place_at_s!(SHOTS[1].s)
         println("  JM_SHOTS: ", length(SHOTS), " shots → ", SHOTS_DIR); flush(stdout)
     end
+    # PERF-4 (PO 2026-10-08: "a lag between control inputs and car response, especially noticable at the start of a race"):
+    # compile, NOW, the methods recorded runs compiled only after the window was shown -- the first contact with another
+    # car (bumpX! + contact forces, ~145 ms), a crash (wreck!/detach, ~260 ms), the first lap time and section banner.
+    # Each was a freeze mid-race; here it is part of the load. The list is warm_statements.jl (tools/warmgen.py);
+    # a statement that no longer matches the code is skipped. JM_WARM=0 = off (for A/Bs).
+    if get(ENV, "JM_WARM", "1") != "0"
+        _wf = joinpath(@__DIR__, "warm_statements.jl"); _wok = 0; _wbad = 0; _wt = time()
+        if isfile(_wf)
+            for _l in eachline(_wf)
+                startswith(_l, "precompile(") || continue
+                try
+                    Core.eval(Main, Meta.parse(_l)) === true ? (_wok += 1) : (_wbad += 1)
+                catch
+                    _wbad += 1
+                end
+            end
+        end
+        println("  [warm] ", _wok, " in-race methods compiled ahead (", _wbad, " skipped) in ",
+                round(Int, 1000 * (time() - _wt)), " ms"); flush(stdout)
+    end
     while !GLFW.WindowShouldClose(win)
         GLFW.PollEvents()
         key(GLFW.KEY_ESCAPE) && break
@@ -12742,9 +12781,25 @@ function main()
                             " steer=", round(st,digits=2), " s=", round(s0,digits=1))
                     flush(stdout)
                 end
-                inp = DriveInput(throttle = clamp(thr, 0, 1), brake = clamp(brk, 0, 1),
-                                 steer = clamp(st, -1, 1), clutch = inp.clutch,
-                                 shift_up = false, shift_down = false, autoshift = true)
+                if AUTODRIVE_MANUAL && !CTL.auto           # (a stall drops the car to AUTO: then drive as AUTO does)
+                    h = ADM[].hold
+                    if h == 0
+                        up = cs.gear == 0 || (cs.rpm > 8700 && cs.gear < 5)
+                        dn = !up && cs.gear > 1 && cs.rpm < 4300 && brk > 0.1
+                        (up || dn) && (ADM[] = (hold = 8, up = up, dn = dn))
+                    end
+                    h = ADM[].hold; ADM[] = (hold = max(h - 1, 0), up = ADM[].up, dn = ADM[].dn)
+                    # clutch in for 8 frames; the paddle pulse in the middle one (the gearbox reads an edge)
+                    # a launch as a driver does it: slip the clutch until the car rolls (70 % in at rest, out by 7 m/s)
+                    launch = cs.v < 7.0 ? clamp(0.7 - cs.v / 10, 0.0, 1.0) : 0.0
+                    inp = DriveInput(throttle = h > 0 ? 0.0 : (launch > 0 ? max(clamp(thr, 0, 1), 0.5) : clamp(thr, 0, 1)),
+                                     brake = clamp(brk, 0, 1), steer = clamp(st, -1, 1), clutch = h > 0 ? 1.0 : launch,
+                                     shift_up = h == 4 && ADM[].up, shift_down = h == 4 && ADM[].dn, autoshift = false)
+                else
+                    inp = DriveInput(throttle = clamp(thr, 0, 1), brake = clamp(brk, 0, 1),
+                                     steer = clamp(st, -1, 1), clutch = inp.clutch,
+                                     shift_up = false, shift_down = false, autoshift = true)
+                end
             end
         end
         # SKIDPAD-GOLD-1 S3: the constant-input driver. Overrides whatever the human or the AI
@@ -13483,7 +13538,7 @@ function main()
                 "IsOnTrack"=>cs.ontrack ? 1.0 : 0.0,
                 "Speed"=>cs.v, "RPM"=>cs.rpm, "Gear"=>Float64(cs.gear),
                 "Throttle"=>inp.throttle, "Brake"=>inp.brake, "Clutch"=>1.0-inp.clutch,
-                "SteeringWheelAngle"=>δw,
+                "SteeringWheelAngle"=>δw, "FrameRate"=>FRAME_FPS[],   # PERF-4: was never filled (always 0)
                 "Lap"=>Float64(cs.laps+1), "LapCompleted"=>Float64(cs.laps),
                 "LapDist"=>cs.lapdist, "LapDistPct"=>(SKIDPAD ? 0.0 : (LAPLEN>0 ? cs.lapdist/LAPLEN : 0.0)),
                 "Yaw"=>cs.θ, "YawRate"=>tl.r,
@@ -14773,8 +14828,25 @@ function main()
         end
 
         frames += 1
+        if STALLLOG                                   # PERF-4: name every stall (compile / GC / other)
+            _now = time_ns(); _ct = UInt64(Base.cumulative_compile_time_ns()[1]); _gt = UInt64(Base.gc_time_ns())
+            if STALL_PREV[1] > 0
+                _wall = (_now - STALL_PREV[1]) / 1e6
+                FRAME_FPS[] = FRAME_FPS[] == 0.0 ? 1000 / _wall : FRAME_FPS[] + (1000 / _wall - FRAME_FPS[]) * 0.1
+                if _wall > STALL_MS && win_shown[]
+                    _cm = (_ct - STALL_PREV[2]) / 1e6; _gm = (_gt - STALL_PREV[3]) / 1e6
+                    STALL_N[] += 1; STALL_COMP_MS[] += _cm
+                    println("  [stall] frame ", frames, " t=", round(cs.t, digits = 2), "s  ", round(_wall, digits = 1),
+                            " ms (compile ", round(_cm, digits = 1), ", gc ", round(_gm, digits = 1), ")  gear ", cs.gear,
+                            " thr ", round(inp.throttle, digits = 2), " clu ", round(inp.clutch, digits = 2),
+                            " brk ", round(inp.brake, digits = 2), " v ", round(cs.v, digits = 1)); flush(stdout)
+                end
+            end
+            STALL_PREV[1] = _now; STALL_PREV[2] = _ct; STALL_PREV[3] = _gt
+        end
         if !win_shown[] && frames >= show_after
             println("  window revealed after ", frames, " hidden warm-up frames (", round(Int, 1000*(time() - show_t0)), " ms)"); flush(stdout)
+            Base.invokelatest(perf4_reveal_marker)   # PERF-4: a marker line in --trace-compile output (warm_statements)
             reveal!()
         end
         # PERF-1 diag: JM_ALLOCSITES=1 samples allocations over frames 300..600 and prints the top sites.
