@@ -24403,3 +24403,35 @@ Order = value to the model; about 45 min of driving in all.
   (next round): brakes / clutch / gearbox / LSD / engine / steering as objects; the steering object + force feedback
   from the gold's SteeringWheelTorque (it is 98 % front-tyre force × ~5 cm of trail, no measurable lag -- ours is
   hand-shaped with ~100 ms of low-pass); the IRTEST-261009 results. Rotating to HANDLING-1.
+
+## HANDLING-1 -- retrospective at rotation (2026-10-09)
+* CARPHYS-1 just did the item's two biggest suspects (sliding friction, the aid). What went well: every change was
+  measured against the gold before and after, and the regression harness made the refactor provably neutral. What
+  went badly: I edited a tool's include chain (arbfit) without noticing S2 had renamed state names it used
+  (`sys.zuFL` → `sys.wFL.zu`): three tools were broken for a sprint. Change: when a model name changes, grep `tools/`
+  in the same sprint. HANDLING-1's question now is narrower: what ELSE makes the car step out unlike a real one?
+
+### HANDLING-1 S1 (2026-10-09): the PO's own slides, replayed through the old and the new car
+`JuliaMotorMTK/tools/poslide_261009.jl`: the sim car started in the race's state and driven with the PO's recorded
+throttle, brake, clutch and road steer angle (flat ground). Old = before CARPHYS-1 S3/S4 (`JM_TC=1`, rsy 0.629).
+* **WG 21:55 run 2, the Big Bend 50° slide** (frame 22025, 244 km/h, 5th): the old car reproduces the race -- out to
+  44° (race 50°) at 0.81–0.86 g (race 0.80–0.85). The new car stops the slide at 16° within 0.5 s at 1.2 g; the PO's
+  recorded counter-steer (held 3 s, right for the old skating car) then flicks it the other way and spins it --
+  iRacing's own spins show the same snap-back (gold 00-28-13 69 s: −67° → +49° → +81°).
+* **Ring 22:53, s 21832** (frame 51060, 161 km/h, default setup): old car out to 58° (race 68°), 3.6 s beyond 20°;
+  new car peaks at 25° and drives on at 1.8°. Ring 17° slide (frame 51012): old 20.4°, new 14.8°.
+* **WG 21:55 frame 12329 (s 1613, 48° in the race): NEITHER car slides on flat ground** with the PO's inputs -- that
+  slide was started by something other than the tyre (S2).
+
+### HANDLING-1 S2 (2026-10-09): velocity kicks the forces cannot explain -- the AI-contact knock
+* Detector (`261009/kicks.py`): body-frame velocity change per frame minus what the recorded accelerations (+ the
+  frame's rotation) predict; > 3 g unexplained = a kick. Walls, hedges and the world edge act through the ODE's
+  external force and so ARE explained; teleports and `bumpX!` impulses are not. Known positives: every crash-harness
+  teleport (+197 km/h) and wall stop in the gate runs' ibts registers.
+* PO's 10-08 races: WG s ≈ 1612–1650 recurs in EVERY WG session -- 7 kicks in 4 sessions at 100–133 km/h, mostly on
+  track; the 48° slide (frame 12378: −13 km/h in 0.13 s at 0.2 g recorded, yaw −0.39 → −0.80 rad/s, roll 4 → 11°,
+  vertical 0.44 g) is one. The saved WG replays put an AI car within 3 m of the PO at s 1612–1625 in 3 sessions.
+* Cause: the only impulse the player receives is AI contact, and it is amplified by design (PO round 4: "a LOT more
+  of a jolt"): 1.8× the momentum exchange sideways, a yaw kick up to ±2.2 rad/s set only by which SIDE was hit, an
+  invented hop (≤ 3 m/s) and body roll, plus a speed "scrub" on top. Not physics: next sprint makes it a rigid-body
+  impulse at the contact point. (Why the AI are bunched at WG s ≈ 1615 is for WGTD-1/AI.)

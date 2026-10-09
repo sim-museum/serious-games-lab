@@ -19,7 +19,7 @@ sys = mtkcompile(DrivenVehicle3D(name = :car))
 mutable struct C; integ; set; get; end
 function build(; v0=0.0, gear=0.0, w0=0.0)
     prob = ODEProblem(sys, [sys.u => v0, sys.ωf => v0/0.30, sys.ωr => v0/0.33, sys.ωe => 209.4,
-                            sys.w => w0, sys.vuFL => w0, sys.vuFR => w0, sys.vuRL => w0, sys.vuRR => w0], (0.0, 1e6))
+                            sys.w => w0, sys.wFL.vu => w0, sys.wFR.vu => w0, sys.wRL.vu => w0, sys.wRR.vu => w0], (0.0, 1e6))
     integ = init(prob, Rosenbrock23(); save_everystep=false, dense=false, adaptive=false, dt=1/600)
     set = (; thr=setp(sys,sys.throttle), brk=setp(sys,sys.brake), st=setp(sys,sys.δ), gr=setp(sys,sys.gear),
             clu=setp(sys,sys.clutch),

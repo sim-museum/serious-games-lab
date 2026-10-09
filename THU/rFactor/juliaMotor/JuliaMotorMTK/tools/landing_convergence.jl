@@ -17,7 +17,7 @@ sys = mtkcompile(DrivenVehicle3D(name = :car))
 "Drop the car (whole-car up-velocity w0) onto flat ground; return peak VertAccel,
 peak tyre load, and the work done by suspension dampers vs tyre dampers."
 function landing(; w0 = 4.0, solver_dt = 1/300, frame = 1/600)
-    prob = ODEProblem(sys, [sys.w => w0, sys.vuFL => w0, sys.vuFR => w0, sys.vuRL => w0, sys.vuRR => w0], (0.0, 1e6))
+    prob = ODEProblem(sys, [sys.w => w0, sys.wFL.vu => w0, sys.wFR.vu => w0, sys.wRL.vu => w0, sys.wRR.vu => w0], (0.0, 1e6))
     integ = init(prob, Rosenbrock23(); save_everystep=false, dense=false, adaptive=false, dt=solver_dt)
     get = getsym(sys, [sys.az, sys.z, sys.FzFL, sys.FzFR, sys.FzRL, sys.FzRR])
     maxaz = 0.0; maxfz = 0.0

@@ -53,7 +53,7 @@ end
 function sim_curve(car, sp, u0; V0 = 33.0, δmax = 0.22, tr = 30.0)
     sys = car.sys
     get = ModelingToolkit.getsym(sys, [sys.u, sys.v, sys.r, sys.ay, sys.δ, sys.z, sys.th, sys.ph,
-                                       sys.zuFL, sys.zuFR, sys.zuRL, sys.zuRR])
+                                       sys.wFL.zu, sys.wFR.zu, sys.wRL.zu, sys.wRR.zu])
     a = ModelingToolkit.getp(sys, sys.a)(car.integ); b = ModelingToolkit.getp(sys, sys.b)(car.integ)
     pts = NTuple{5,Float64}[]
     for dir in (1.0, -1.0)
