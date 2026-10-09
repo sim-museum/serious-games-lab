@@ -23710,3 +23710,11 @@ it -- the start lap's distance unwraps from there. Spa (repo recording 2026-10-0
   (`'Replay' object has no attribute 'race'`). coach.py: its no-lap sentence now says lap 1 is timed from the green.
 * Gates: parse_smoke, launcher_smoke (analyser 25/25, coach, launcher, section-name tests) and trackseg_smoke PASS. No
   full run for this sprint (analyser-only change; the PO asked for a pause by ~20:45). **REPLAY-3 CLOSED** for the PO's look.
+
+### 2026-10-08 evening -- my test muted the PO's launcher (found from the PO's "I have no sound. Why?")
+`launcher_test.py` ticks "Mute the engine sound" and unticks "Record a replay" to check they are remembered. The gate runs
+it with a throw-away settings directory, but I had also run it BY HAND without one, so both choices were saved in the
+PO's real `~/.config/juliaRacer/launcher.conf` (`pref/mute=true`, `pref/replay=false`); the PO's test drive started with
+`JM_NOSOUND=1 JM_NOREPLAY=1`. Fixed: both settings restored in the file (backup in scratch); `launcher_test.py` and
+`segnames_test.py` now always set their own `XDG_CONFIG_HOME`, whoever runs them -- run by hand with no isolation, the
+real file stays byte-identical (checked). Lesson: a test that writes settings must isolate ITSELF, not rely on its runner.

@@ -1,6 +1,11 @@
 # TRACKSEG-3 (PO 2026-10-06): the launcher's "Show track section names" switch -- default ON, OFF -> JM_SEGNAME_SECS=0,
 # remembered, honoured by the replay path. Run headless by JuliaMotorMTK/tools/launcher_smoke.jl (own XDG config dir).
 import sys, os
+# 2026-10-08: run by hand without launcher_smoke's throw-away config, this test once ticked "Mute the engine sound" and
+# unticked "Record a replay" in the PO's REAL launcher settings (the PO's next race had no sound and no replay). The test
+# now always uses its own settings directory, whoever runs it.
+import tempfile as _tf
+os.environ["XDG_CONFIG_HOME"] = _tf.mkdtemp(prefix="jr_test_cfg_")
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import QProcessEnvironment, QSettings
