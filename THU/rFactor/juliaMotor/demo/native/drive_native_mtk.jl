@@ -5454,6 +5454,7 @@ const PERF4_MARK = Ref(0)
 # first CALLED (so compiled, so traced) when the window is revealed; it must DO something -- Julia does not compile, and
 # --trace-compile does not list, a method whose result is a known constant (the first marker, `= nothing`, never appeared)
 @noinline perf4_reveal_marker() = (PERF4_MARK[] += 1; PERF4_MARK[])
+const HUD_BV = Float32[]; const HUD_TV = Float32[]; const HUD_ST = Float32[]   # PERF-4 S2: text/HUD buffers reused per frame
 const FRAMEPROF = parse(Int, get(ENV, "JM_FRAMEPROF", "0"))  # E80: per-PHASE frame profiler
 const PROF_WORLD = Ref(0.0); const PROF_HUD = Ref(0.0); const PROF_N = Ref(0); const PROF_TOT = Ref(0.0)
 # SPA-FPS-1 S2: the world draw split by phase (shadow depth pass, track items, trackside objects, billboards, AI cars)
@@ -6033,7 +6034,7 @@ println("  [cull] PERF-3: track part radii p50 ", round(sort(last.(TRACKBOUND))[
 # reflection must be about the chassis' own WHEEL CENTRELINE, not z=0: the AI meshes are not centred (the Lotus's wheel
 # line sits at z -0.105 in the pose frame), so reflecting about z=0 slid the body 0.21 m off its wheels (S4, measured on
 # the rear view). Body, hubs and built shafts all go through the same per-chassis reflection.
-const _AI_HANDS = Dict{String,Any}()
+const _AI_HANDS = Dict{String,Render.M4}()   # PERF-4 S2: was Dict{String,Any} -- every AI matrix product then allocated (~100 KB/frame)
 ai_hand(cm) = get!(_AI_HANDS, cm.name) do
     zh = Float32(sum(w[2] for w in cm.wheelspec) / max(length(cm.wheelspec), 1))
     Render.translate(0f0, 0f0, zh) * AI_HAND * Render.translate(0f0, 0f0, -zh)
@@ -14250,7 +14251,8 @@ function main()
                 FRUSTUM_CULL && !infrustum(vp_, bc, br) && continue
                 # PERF-1: size cull -- an object whose bounding sphere covers < JM_MINPIX pixels is not drawn
                 br < (flip ? MINPIX_K_MIR : MINPIX_K) * sqrt((eye_[1]-bc[1])^2+(eye_[2]-bc[2])^2+(eye_[3]-bc[3])^2) && continue
-                ob, oa = 1.05, 0.55                                    # default object grade (grandstands/buildings)
+                ob, oa = 1.05f0, 0.55f0                                # default object grade (grandstands/buildings). PERF-4 S2: Float32 like the
+                                                                       # vegetation branch -- a Float64/Float32 mix made every draw's keywords allocate
                 # SPAYELLOW-1 (PO 2026-09-26, Spa: "the initial view shows mostly a yellow blob, like a
                 # hillside colored bright yellow, on the left side of the screen"). Bisected with
                 # JM_LAYERS_OFF: with objects off the pixel is sky, so the blob is a placed OBJECT --
@@ -14265,7 +14267,7 @@ function main()
                 _ovg = OBJ_VEG_GRADE ? get(OBJVEG, onm, nothing) : nothing
                 if MONZA                                               # E57: tone the combined-circuit paved/banking object surfaces
                     g = monza_obj_grade(onm)
-                    g === :road && ((ob, oa) = (MZ_ROAD_B, MZ_ROAD_A)); g === :bank && ((ob, oa) = (MZ_BANK_B, MZ_BANK_A))
+                    g === :road && ((ob, oa) = (Float32(MZ_ROAD_B), Float32(MZ_ROAD_A))); g === :bank && ((ob, oa) = (Float32(MZ_BANK_B), Float32(MZ_BANK_A)))
                 end
                 otint = is_crowd_obj(onm) ? CROWD_TINT : (1f0,1f0,1f0)   # E46: warm/de-blue the over-blue grandstand crowd MIP
                 # OBJDUP-1 (PO 2026-09-19, WG: "banner over start/finish is placed twice, a couple of metres
@@ -14582,9 +14584,9 @@ function main()
             # S2: the band must also cover the Track Position table (three lap rows alone left the
             # table's lower rows blended over the grandstand).
             nrows = (IS_RACE && !isempty(AICARS)) ? max(3, min(7, 1 + length(AICARS)) + 1) : 3
-            bv = Float32[]; Render.hquad!(bv, 0.0, 0.0, Float64(W), nrows*FONT.lineh + 12.0, (0.0, 0.0, 0.0))
+            bv = empty!(HUD_BV); Render.hquad!(bv, 0.0, 0.0, Float64(W), nrows*FONT.lineh + 12.0, (0.0, 0.0, 0.0))
             Render.hud_draw(hudprog, hudvao, hudvbo, bv, W, H)
-            tv = Float32[]; fy = 6.0; fx = 8.0
+            tv = empty!(HUD_TV); fy = 6.0; fx = 8.0
             cur = (race_go[] && !race_done) ? cs.t - lap_t0 : (SMOKE ? 23.27 : 0.0)
             Render.text!(tv, FONT, fx, fy,            "I  " * lapfmt(cur),                              (1.0, 0.45, 1.0))
             Render.text!(tv, FONT, fx, fy + FONT.lineh, "B  " * lapfmt(SMOKE ? 92.1 : best_lap),           (0.75, 0.75, 0.75))
@@ -14612,7 +14614,7 @@ function main()
                 if cs.t - SEG[][3] < SEGNAME_SECS || !isempty(SEGNAME_FORCE)
                     msg = isempty(SEGNAME_FORCE) ? SEG[][2] : SEGNAME_FORCE; tw = Render.text_width(SEGFONT, msg)
                     bandh = nrows*FONT.lineh + 12.0
-                    st = Float32[]; Render.text!(st, SEGFONT, (W - tw)/2, max(2.0, (bandh - SEGFONT.lineh)/2), msg, (0.95, 0.95, 0.95))
+                    st = empty!(HUD_ST); Render.text!(st, SEGFONT, (W - tw)/2, max(2.0, (bandh - SEGFONT.lineh)/2), msg, (0.95, 0.95, 0.95))
                     Render.text_draw(textprog, textvao, textvbo, SEGFONT, st, W, H)
                 end
             end

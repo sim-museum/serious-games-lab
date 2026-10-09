@@ -23936,3 +23936,17 @@ comparison) -> **BILLBOARD-2**. At most 4 sprints each, then rotate; gates with 
   stall at frame 39 is the smoke run's own screenshot (frame 38), not in a real race.
 * **New gate `warm_smoke`** (49 gates): the manual race start; fails if > 60 ms of compiling lands in race stalls or the
   warm list has gone stale (> 25 % skipped). Known positive: with `JM_WARM=0` the gate FAILS (423.6 ms of compiling in 8 race stalls: 137.5 ms at the first contact, 244 ms at a crash); with the warm list it PASSES (0.0 ms). parse, telemetry_rpm, stall gates PASS.
+
+### PERF-4 S2 (2026-10-09): half the per-frame garbage -> half the GC hitches while racing
+After S1 the only stalls left in a race were GC: an automatic collection every ~15 s, 31–34 ms (two frames). Pause
+length tracks the garbage swept (~0.15 ms/MB), so the lever is allocation. `JM_ALLOCSITES=1` (frames 300–600, WG race
+start, 5 AI): **304 KB/frame** in the top 25 sites. Four causes, all type or buffer slips:
+* `_AI_HANDS` was a `Dict{String,Any}` -> every AI body/wheel/axle matrix product downstream was dynamically typed and
+  allocated (`ai_wheel_mat` 62 KB/frame, `draw_ai_main!` 33, `draw_ai_depth!` 12): now `Dict{String,Render.M4}`;
+* the object draw's grade was `ob, oa = 1.05, 0.55` (Float64) while the vegetation branch gives Float32 -> a Union in
+  `Render.draw`'s keywords on every object, every frame (49 KB): now Float32 (Monza's values converted);
+* `Render.text!` and `hquad!` built a 7- (5-) element `Float32[...]` per vertex to `append!` (63 + 19 KB): now `push!`;
+* the HUD/text vertex buffers were new empty vectors each frame, regrown by doubling: now reused (`empty!`).
+**Result: 304 -> 150 KB/frame; in-race GC stalls over the same 60 s race start 4 -> 2** (31.7/34.1/32.5/34.1 ms ->
+32.2/33.5 ms). HUD checked in the smoke frame (timing rows, standings, rpm digits, gear: unchanged). Gates parse, warm,
+mipcolor PASS.

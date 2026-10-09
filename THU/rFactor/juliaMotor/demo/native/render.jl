@@ -747,7 +747,7 @@ function hud_program()
 end
 function hud_buffers(); vao=Ref{GLuint}();glGenVertexArrays(1,vao); vbo=Ref{GLuint}();glGenBuffers(1,vbo); (vao[],vbo[]); end
 function hquad!(v,x,y,w,h,c)
-    for (px,py) in ((x,y),(x+w,y),(x+w,y+h),(x,y),(x+w,y+h),(x,y+h)); append!(v,Float32[px,py,c[1],c[2],c[3]]); end
+    for (px,py) in ((x,y),(x+w,y),(x+w,y+h),(x,y),(x+w,y+h),(x,y+h)); push!(v, px, py, c[1], c[2], c[3]); end   # PERF-4 S2: no array per vertex
 end
 const SEG7 = (63,6,91,79,102,109,125,7,127,111)     # digit → lit-segment bitmask (a..g)
 function hdigit!(v,x,y,W,H,T,d,c)
@@ -841,8 +841,9 @@ end
 right), throttle/brake/rpm bars, the four per-wheel traction circles (over the
 nose), and last/best lap times (top-left).  `tc`=(FL,FR,RL,RR) (long,lat,radius)
 or nothing; `lastlap`/`bestlap` in seconds (0 = none).  Returns the HUD vertex list."""
+const _HUDV = Float32[]   # PERF-4 S2: one buffer reused every frame (it grew from empty each frame); hud_draw consumes it at once
 function compose_hud(W,H,kmh,gear,rpm,revlim,thr,brk,clu=0.0,tc=nothing; lastlap=0.0, bestlap=0.0, manual=false, countdown=-1.0, clutchgate=-1.0, finished=0, startprompt=-1.0)
-    v=Float32[]
+    v=empty!(_HUDV)
     white=(0.90,0.95,1.0); amber=(1.0,0.82,0.35); green=(0.42,0.82,0.42); red=(0.95,0.35,0.30); dim=(0.16,0.18,0.22); blue=(0.35,0.65,1.0)
     # PO 2026-08-31: "start as a countdown timer". Seconds remaining, big and central, amber while
     # counting and green on GO. Drawn first so the rest of the HUD stays on top of nothing.
@@ -2656,7 +2657,7 @@ function text!(v::Vector{Float32}, font::Font, x, y, str::AbstractString, col; s
         x0=px+xo*scale; y0=base+yo*scale; x1=x0+gw*scale; y1=y0+gh*scale
         u0=gx/font.W; v0=gy/font.H; u1=(gx+gw)/font.W; v1=(gy+gh)/font.H
         for (qx,qy,qu,qv) in ((x0,y0,u0,v0),(x1,y0,u1,v0),(x1,y1,u1,v1),(x0,y0,u0,v0),(x1,y1,u1,v1),(x0,y1,u0,v1))
-            append!(v, Float32[qx,qy,qu,qv,col[1],col[2],col[3]])
+            push!(v, qx, qy, qu, qv, col[1], col[2], col[3])   # PERF-4 S2: was append!(v, Float32[...]) -- an array per vertex
         end
         px+=adv*scale
     end
