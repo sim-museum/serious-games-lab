@@ -29,6 +29,7 @@ this index was written; that is what it exists to stop.
 | **BILLBOARD-2** | Fix track billboards (PO 2026-10-07 night): Zandvoort near Tarzan the boards are blank white/grey -- match the gold, legible and colourful as at the other tracks (E60 S4 restored the MARTINI/CALTEX fronts there; something still draws blank); the Ring: a line of billboards at left middle distance after the North hairpin (Nordkehre) but well before Flugplatz, improbably in the middle of the forest -- "a dozen or so side by side" | open. Gold: `zandervoort/260801_zandervoort_cockpit.mp4`, `nurburgring/260802_nurburgring_cockpit.mp4` |
 | **DIALS-1** | In the cockpit view make ALL the dials work, not just the rev counter (oil pressure, oil/water temperature, fuel...) as in the gold (PO 2026-10-07 night) | open; worked alongside COCKPIT-2 (same dashboard, same replay channels) |
 | **WGTD-1** | Watkins Glen improvements from the PO's 2026-10-08 race (video `~/Videos/261008_wg_race.mp4`, 14:42): (a) replay cockpit -- mirrors, steering, shifting live (with COCKPIT-2); (b) analysis = ALL of GPL Replay Analyser, incl. two replay files of the same track side by side; (c) spurious diagonal straight line across the WG map under the graphs; (d) a lap-list filter (human laps, same or different sessions -- human vs AI is rarely useful); (e) after the race the AI do one slow lap and stop in the pits, as GPL; (f) the default black brake marks along the racing line start/stop in blocks -- GPL's are smooth smears; (g) the AI line runs wide, a little off track, after the 90 and before the Esses -- stay on track as GPL; (h) analyser: GPL's GRAPHICAL race reports (missing now) and GPL's ANIMATED track map -- little car silhouettes showing where the cars of the selected laps are, with position and direction | open -- **PAUSED by the PO (2026-10-08 21:3x): no scrum until the PO says so** |
+| **WW103-GPL-1** | 2nd WG race 2026-10-08: strange sideways slide going into the Big Bend in lap 2; and "ww103 in julia doesn't feel at all like ww103 in GPL. Why not?" -- compare our WW103 WG race with the PO's most recent WW103 WG race in GPL (.rpy under `~/sgl/THU`) | open -- first look done (see section); **scrum PAUSED by the PO** |
 | **AIHELMET-1** | The AI drivers' helmets render as a dark dome (black lobes from the front) where GPL's are the driver's skin -- found 2026-10-07 during HANDS-2 | ✅ **S1 (2026-10-07):** each AI driver's own helmet skin bound to the shell (`261007/helmet/`) |
 | **TRACKSEG-3** | Preferences switch: show/hide the track-section names ("Front Straight", "Big Bend" at WG), default ON (PO 2026-10-06) | ✅ **DONE (S1, 2026-10-06):** launcher Graphics group, "Show track section names", default ON, remembered; OFF = `JM_SEGNAME_SECS=0`, also for replays; gate `segnames_smoke` |
 | **GUI-1** | Redesign the julia racer GUI (`demo/native/juliaRacer.py`) for ease of use per GUI best practices, then restyle it like the PyQt GUIs of pokerIQ and bridgeIQ (`~/sgl/MON/pokerIQ`, `~/sgl/FRI/bridgeIQ`) (PO 2026-10-06) | **S1 (2026-10-06) redesign done:** task-ordered tabs (Race / Results / Replays / Settings / Controller), Session + Car cards, one primary Start button, menus + status bar, log on demand, everything remembered; the sim's environment is identical to before (3 cases). **S2 restyle done:** dark pokerIQ/bridgeIQ theme (`261006/gui/s2_vs_iq.jpg`). 🟡 **AWAITING THE PO's look** |
@@ -23743,3 +23744,29 @@ items (cf. AIGPL-2 line tracking); (f) is the skid-mark renderer. Same evening, 
 pedals now stop at ~60 % of their old electrical range (clutch never fully out -> creep in gear; shifts needed a mashed
 clutch; throttle capped at 60 %) -- the PO recalibrated (joystick.conf 21:15: clutch/throttle full at raw -0.18; brake
 full at 0.863, i.e. a very short brake range -- watch for over-braking).
+
+### WW103-GPL-1 added (PO 2026-10-08 ~22:05, verbatim) -- scrum still PAUSED
+> don't restart scrum until I say so.  backlog item: 2nd wg race: strange sideways slide going into the big bend in lap 2.
+> Compare ww103 setup wg race in julia with my most recent ww103 wg race in GPL (via .rpy files under ~/sgl/THU).  ww103
+> in julia doesn't feel at all like ww103 in GPL.  Why not?
+
+**First look (answering the question only; no code touched).** Telemetry `data/juliaracer/lotus49_watglen 2026-10-08
+21-55-45.ibt` (two runs in one file; the 2nd run's lap 2 is the slide):
+* **The slide:** on the Speed Trap straight at 68 m/s (245 km/h) in 5th the PO is at 99 % throttle and the rears spin
+  7 % fast (LR 72.9 vs 68.0 m/s, s≈2611); a lift at s≈2646 (throttle 0.08 -> 0) and the body slip angle grows -5° -> -50°
+  over ~200 m (s 2646 -> 2857) with the wheel held at only -0.14 and the yaw rate small (+0.6 -> 0 rad/s); speed falls
+  62 -> 50 m/s, ~0.6 g, while the car travels sideways at 50°. A car sliding at 50° should be scrubbing off speed at
+  about the tyres' full grip and spinning or gripping, not drifting steadily for 200 m -- suggests the model's
+  BEYOND-PEAK tyre behaviour (large slip angle, sliding friction) is too slippery/too stable. That regime is not fitted
+  to anything: the iRacing fits (TYRE-1/-2, CAMBER-1) are skidpad and on-limit data. Hypothesis, not yet tested.
+* **Why it may not feel like GPL at all:** (1) our WW103 was fitted to **iRacing's** Lotus 49 running WW103 (the 261005
+  ibt; PO 2026-10-05: "as close to the iracing gold standard as possible") -- never to GPL's own physics, which differ
+  (GPL's 1998 tyre/engine model is famously lower-grip and more tail-happy); (2) **until the 21:15 recalibration the PO
+  was driving on 60 % throttle** with a clutch that never fully released (pedal range shrunk, see WGTD-1 notes) -- every
+  earlier impression of WW103 in Julia came from a car with ~60 % power; tonight's race is the first at full throttle,
+  and the wheelspin at 245 km/h is the result; (3) the new brake calibration reaches 100 % at very short travel.
+* **Plan when the scrum resumes:** read the PO's latest GPL WW103 WG replay via GPL Replay Analyser (memory
+  gplra-gui-telemetry: `~/sgl/THU/afterGameReport/*/`, newest WG `261007_2225_gpl/261007_wg_test.rpy` -- check its setup is
+  WW103) and compare against this ibt corner by corner: speeds, gears, throttle/brake points, slip/yaw in the Big Bend
+  approach and the Speed Trap; then decide whether "feel like GPL" changes the physics target from iRacing to GPL for
+  WW103 -- that is the PO's call, ask before refitting.
