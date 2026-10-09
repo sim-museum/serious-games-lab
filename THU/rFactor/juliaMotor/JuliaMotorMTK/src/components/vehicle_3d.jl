@@ -88,6 +88,7 @@ function DrivenVehicle3D(; name,
     RL = brush ? BrushTyre(; name=:RL, br...,  camber=cmb) : Tyre(; name=:RL, TYRE_SKIDPAD_REAR...)
     RR = brush ? BrushTyre(; name=:RR, br...,  camber=cmb) : Tyre(; name=:RR, TYRE_SKIDPAD_REAR...)
 
+    gv, kfv, krv = g, karb_f, karb_r                     # numeric values for the parts' own parameters (the next line rebinds the names)
     ps = @parameters m=m Izz=Izz Ixx=Ixx Iyy=Iyy a=a b=b tf=tf tr=tr h=h mf=mf mr=mr L=L M_s=M_s g=g Rw_f=Rw_f Rw_r=Rw_r Iw=Iw η=η final=final bias=bias Tbrake_max=Tbrake_max CdA=CdA ρair=ρair throttle=throttle0 brake=brake0 δ=steer0 gear=gear0 clutch=0.0 Ie=0.18 c_c=60.0 T_cap=500.0 k_idle=0.5 idle_rpm=2000.0 zrFL=0.0 zrFR=0.0 zrRL=0.0 zrRR=0.0 vrFL=0.0 vrFR=0.0 vrRL=0.0 vrRR=0.0 Fx_ext=0.0 Fy_ext=0.0 Mz_ext=0.0 CdA_scale=1.0 c_abl=C_ABL toe_f=toe_f toe_r=toe_r karb_f=karb_f karb_r=karb_r
     if cmb
         append!(ps, @parameters camFL=camber[1] camFR=camber[2] camRL=camber[3] camRR=camber[4] rc_f=rc[1] rc_r=rc[2])
@@ -103,11 +104,9 @@ function DrivenVehicle3D(; name,
     vplane = [@variables(u(t)=0.0, v(t)=0.0, r(t)=0.0, ωf(t)=0.0)...; ωr; @variables ωe(t)=209.4 ωRL(t)=0.0 ωRR(t)=0.0 Tlsd(t) ay(t) ax(t) az(t) rpm(t) X(t)=0.0 Y(t)=0.0 ψ(t)=0.0]
     # vertical / attitude states (sprung): heave z, pitch th, roll ph + rates
     vatt = @variables z(t)=0.0 w(t)=0.0 th(t)=0.0 q(t)=0.0 ph(t)=0.0 pp(t)=0.0
-    # unsprung vertical states (one per corner)
-    vuns = @variables zuFL(t)=0.0 vuFL(t)=0.0 zuFR(t)=0.0 vuFR(t)=0.0 zuRL(t)=0.0 vuRL(t)=0.0 zuRR(t)=0.0 vuRR(t)=0.0
     vfz  = @variables FzFL(t) FzFR(t) FzRL(t) FzRR(t)     # tyre vertical loads (observed)
     lsd || (vplane = filter(x -> !any(isequal(x), (ωRL, ωRR, Tlsd)), vplane))
-    vars = vcat(vplane, vatt, vuns, vfz)
+    vars = vcat(vplane, vatt, vfz)
 
     # CdA_scale (≤1 in a leading car's slipstream) makes DRAFT a real aero effect — reduced frontal
     # drag in the wake → the tow, not a forward velocity bump.  Fx_ext/Fy_ext/Mz_ext are body-frame
@@ -118,40 +117,53 @@ function DrivenVehicle3D(; name,
     rr = CRR_IBT*m*g*tanh(u/0.12)                       # E91-S10: CdA/Crr from the ibt coast-downs (powertrain.jl)
     εF = 80.0                                             # contact/clamp rounding scale [N]
 
-    #            tyre  xi    yi    steer axle  m_s              m_u              ks/cs/kt/ct          zu     vu     zr     vr     Fz
+    #            tyre  xi    yi    steer axle  corner spec  zr    vr    Fz    key
     # toe-in turns each wheel toward the centreline: the LEFT wheel (+y) steers right (−), the right one left (+)
-    spec = ((FL,  a,  tf/2,  δ - toe_f, :f, fl_corner, zuFL, vuFL, zrFL, vrFL, FzFL),
-            (FR,  a, -tf/2,  δ + toe_f, :f, fr_corner, zuFR, vuFR, zrFR, vrFR, FzFR),
-            (RL, -b,  tr/2,     -toe_r, :r, rl_corner, zuRL, vuRL, zrRL, vrRL, FzRL),
-            (RR, -b, -tr/2,      toe_r, :r, rr_corner, zuRR, vuRR, zrRR, vrRR, FzRR))
+    spec = ((FL,  a,  tf/2,  δ - toe_f, :f, fl_corner, zrFL, vrFL, FzFL, :FL),
+            (FR,  a, -tf/2,  δ + toe_f, :f, fr_corner, zrFR, vrFR, FzFR, :FR),
+            (RL, -b,  tr/2,     -toe_r, :r, rl_corner, zrRL, vrRL, FzRL, :RL),
+            (RR, -b, -tr/2,      toe_r, :r, rr_corner, zrRR, vrRR, FzRR, :RR))
+
+    # ---- CARPHYS-1: the vertical load path as objects (chassis_parts.jl) ----
+    # per corner: the body MOUNT (a point of the sprung body), the COIL-OVER, the WHEEL (unsprung mass), the tyre's
+    # VERTICAL carcass and the ROAD under it; per axle one ANTI-ROLL BAR. The mounts and roads are flanges whose motion
+    # this model prescribes (the body's heave/pitch/roll, the adapter's road input); the parts are joined by connect().
+    karb(c) = hasproperty(c, :karb) ? c.karb : 0.0
+    mount, road, wheel, strut, tyrev, arb = quiet_flanges() do        # (MTK's false flange warning, chassis_parts.jl)
+    mount = [PrescribedMotion(; name = Symbol(:m, s[10])) for s in spec]
+    road  = [PrescribedMotion(; name = Symbol(:r, s[10])) for s in spec]
+    wheel = [WheelMass(; name = Symbol(:w, s[10]), m_u = s[6].m_u, g = gv) for s in spec]
+    strut = [CoilOver(; name = Symbol(:s, s[10]), ks = s[6].ks, P = s[6].m_s*gv, cs = s[6].cs,
+                      cb = hasproperty(s[6], :cb) ? s[6].cb : NaN, cr = hasproperty(s[6], :cr) ? s[6].cr : NaN, ε = εF)
+             for s in spec]
+    tyrev = [TyreVertical(; name = Symbol(:tv, s[10]), kt = s[6].kt, ct = s[6].ct, Fz_static = (s[6].m_s + s[6].m_u)*gv, ε = εF)
+             for s in spec]
+    # each bar: the IRFIT-261004 corner share (the rear's motion-ratio roll term, see drive_rt3d.jl _karb_r) + the
+    # setup's bar (WWSETUP-1 karb_f / karb_r, from the garage's ArbDiameter/ArbArms through ARB_ID)
+    arb = [AntiRollBar(; name = :arbF, k = 0.5*(karb(fl_corner) + karb(fr_corner)) + kfv),
+           AntiRollBar(; name = :arbR, k = 0.5*(karb(rl_corner) + karb(rr_corner)) + krv)]
+    (mount, road, wheel, strut, tyrev, arb)
+    end
 
     eqs = Equation[]; Fyb=Any[]; Fxb=Any[]; Mz=Any[]; Fx_f=Any[]; Fx_r=Any[]; Pslip=Any[]
     Fsusp=Any[]; xs=Any[]; ys=Any[]
-    # IRFIT-261004 SUSP-1: suspension compression per corner (wheel up relative to its body mount), for the
-    # anti-roll coupling between the two corners of an axle (karb, roll-only: zero in heave and pitch).
-    comp = [s[7] - (z + s[2]*th + s[3]*ph) for s in spec]
-    karb(c) = hasproperty(c, :karb) ? c.karb : 0.0
-    for (idx, (ty, xi, yi, st, axle, cor, zu, vu, zr, vr, Fz)) in enumerate(spec)
+    for (idx, (ty, xi, yi, st, axle, cor, zr, vr, Fz, key)) in enumerate(spec)
         pidx = isodd(idx) ? idx + 1 : idx - 1                 # the other corner of this axle
-        kab = 0.5*(karb(cor) + karb(spec[pidx][6])) + (axle == :f ? karb_f : karb_r)
+        bar = arb[axle == :f ? 1 : 2]; left = isodd(idx)
         Rw  = axle == :f ? Rw_f : Rw_r
         ωax = axle == :f ? ωf : !lsd ? ωr : idx == 3 ? ωRL : ωRR
-        m_s_i = cor.m_s; m_u_i = cor.m_u
-        P_s   = m_s_i*g                                   # static suspension preload
-        Fz_static = (m_s_i + m_u_i)*g                     # static tyre load
-        # sprung-mount vertical motion at this corner (small-angle): up = +
-        z_mount = z + xi*th + yi*ph
-        v_mount = w + xi*q  + yi*pp
-        # suspension force (up on sprung, down on unsprung), preloaded, can't pull. SUSP-1: bump/rebound damping
-        # (measured) when the corner spec carries them, blended smoothly through zero velocity; + anti-roll coupling.
-        vrel = vu - v_mount
-        cdmp = hasproperty(cor, :cb) ? cor.cr + (cor.cb - cor.cr)*0.5*(1 + tanh(vrel/0.01)) : cor.cs
-        Fs = smoothpos(P_s + cor.ks*(zu - z_mount) + cdmp*vrel + kab*(comp[idx] - comp[pidx]), εF)
-        # tyre vertical load from ground contact (zr road input), can't pull
-        push!(eqs, Fz ~ smoothpos(Fz_static + cor.kt*(zr - zu) + cor.ct*(vr - vu), εF))
-        # unsprung vertical dynamics
-        append!(eqs, [D(zu) ~ vu, m_u_i*D(vu) ~ Fz - Fs - m_u_i*g])
-        push!(Fsusp, Fs); push!(xs, xi); push!(ys, yi)
+        mt, rd, wh, so, tv = mount[idx], road[idx], wheel[idx], strut[idx], tyrev[idx]
+        zu = wh.zu
+        append!(eqs, [
+            mt.s ~ z + xi*th + yi*ph,                         # the sprung body's point above this wheel (small-angle, up +)
+            mt.v ~ w + xi*q  + yi*pp,
+            rd.s ~ zr, rd.v ~ vr,                             # the road under it (adapter input)
+            connect(mt.fl, so.a, left ? bar.mL : bar.mR),
+            connect(so.b, wh.fl, tv.a, left ? bar.wL : bar.wR),
+            connect(tv.b, rd.fl),
+            so.Fbar ~ (left ? bar.FL : bar.FR),
+            Fz ~ tv.Fz])
+        push!(Fsusp, mt.f); push!(xs, xi); push!(ys, yi)
         # ---- in-plane tyre kinematics (as in vehicle_rt) ----
         vx = u - r*yi;  vy = v + r*xi
         Vref = sqrt(vx^2 + 1.0)
@@ -164,7 +176,7 @@ function DrivenVehicle3D(; name,
             # lifts the left side and tips the tops toward −y) -- tilts the wheel by rc of it (1 = the wheel leans
             # with the body as on equal parallel wishbones, 0 = it stays upright to the road).
             camst = (camFL, -camFR, camRL, -camRR)[idx]
-            zuo = spec[pidx][7]; trk = axle == :f ? tf : tr
+            zuo = wheel[pidx].zu; trk = axle == :f ? tf : tr
             φs = ph - (isodd(idx) ? zu - zuo : zuo - zu)/trk
             push!(eqs, ty.γ ~ camst - (axle == :f ? rc_f : rc_r)*φs)
         end
@@ -238,5 +250,5 @@ function DrivenVehicle3D(; name,
             ωr ~ (ωRL + ωRR)/2,
         ])
     end
-    System(eqs, t, vars, ps; systems = [FL, FR, RL, RR], name)
+    System(eqs, t, vars, ps; systems = [FL, FR, RL, RR, mount..., road..., wheel..., strut..., tyrev..., arb...], name)
 end

@@ -16,7 +16,7 @@ using ModelingToolkit: t_nounits as t, D_nounits as D
 const setp = ModelingToolkit.setp
 
 const HERE = @__DIR__
-for f in ("tyre.jl","powertrain.jl","vehicle_3d.jl")
+for f in ("tyre.jl","powertrain.jl","chassis_parts.jl","vehicle_3d.jl")
     include(joinpath(HERE, "components", f))
 end
 
@@ -523,7 +523,7 @@ function build_car3d(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0, y0 = 0.0,
               (setp(sys,sys.vrFL),setp(sys,sys.vrFR),setp(sys,sys.vrRL),setp(sys,sys.vrRR)),
               ModelingToolkit.setu(sys,[sys.X,sys.Y]), ModelingToolkit.setu(sys,[sys.u,sys.v]),
               ModelingToolkit.setu(sys,[sys.z,sys.w,sys.th,sys.q,sys.ph,sys.pp,
-                  sys.zuFL,sys.vuFL,sys.zuFR,sys.vuFR,sys.zuRL,sys.vuRL,sys.zuRR,sys.vuRR]),
+                  sys.wFL.zu,sys.wFL.vu,sys.wFR.zu,sys.wFR.vu,sys.wRL.zu,sys.wRL.vu,sys.wRR.zu,sys.wRR.vu]),
               setp(sys,sys.Fx_ext),setp(sys,sys.Fy_ext),setp(sys,sys.Mz_ext),setp(sys,sys.CdA_scale),
               _musetters(sys),
               getall, 1, y0, ntuple(_->0.0,4),
@@ -551,7 +551,7 @@ function build_cars3d(poses; brush = !haskey(ENV, "JM_MAGIC"), dt = 1/300)
     s_vr=(setp(sys,sys.vrFL),setp(sys,sys.vrFR),setp(sys,sys.vrRL),setp(sys,sys.vrRR))
     s_pos=ModelingToolkit.setu(sys,[sys.X,sys.Y]); s_vel=ModelingToolkit.setu(sys,[sys.u,sys.v])
     s_vreset=ModelingToolkit.setu(sys,[sys.z,sys.w,sys.th,sys.q,sys.ph,sys.pp,
-                  sys.zuFL,sys.vuFL,sys.zuFR,sys.vuFR,sys.zuRL,sys.vuRL,sys.zuRR,sys.vuRR])
+                  sys.wFL.zu,sys.wFL.vu,sys.wFR.zu,sys.wFR.vu,sys.wRL.zu,sys.wRL.vu,sys.wRR.zu,sys.wRR.vu])
     s_fx=setp(sys,sys.Fx_ext); s_fy=setp(sys,sys.Fy_ext); s_mz=setp(sys,sys.Mz_ext); s_cda=setp(sys,sys.CdA_scale)
     s_mu=_musetters(sys)
     getall=ModelingToolkit.getsym(sys, [sys.X, sys.Y, sys.ψ, sys.u, sys.v, sys.rpm,
@@ -584,7 +584,7 @@ const VFRAME_INERTIAL = lowercase(get(ENV, "JM_VFRAME", "inertial")) != "legacy"
 const _VREF = IdDict{Any,Float64}()
 const _VSTATE = IdDict{Any,Any}()
 _vstate(c) = get!(_VSTATE, c.sys) do
-    vs = [c.sys.w, c.sys.vuFL, c.sys.vuFR, c.sys.vuRL, c.sys.vuRR]
+    vs = [c.sys.w, c.sys.wFL.vu, c.sys.wFR.vu, c.sys.wRL.vu, c.sys.wRR.vu]
     (ModelingToolkit.getsym(c.sys, vs), ModelingToolkit.setu(c.sys, vs))
 end
 "Advance the 3-D car by dt.  Inputs as DriveRT.step_car!.  `groundz(x,z)->h`

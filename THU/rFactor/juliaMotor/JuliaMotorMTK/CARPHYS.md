@@ -18,6 +18,25 @@ force per corner, the brakes are a torque split in the wheel equations, the clut
 the same block. It is fitted carefully — most of its numbers come from iRacing data through the tools in `tools/` —
 but no part can be swapped, tested or read on its own.
 
+## The objects (2026-10-09, CARPHYS-1 S2)
+
+`src/components/chassis_parts.jl`, assembled in `DrivenVehicle3D`. Connector: a translational `Flange` (position s,
+velocity v, flow force f), Modelica's `Translational.Interfaces.Flange` plus its velocity.
+
+| Object | Per | Parameters (source) |
+|---|---|---|
+| `PrescribedMotion` | 4 body mounts + 4 road points | — (the body's heave/pitch/roll; the adapter's road input) |
+| `CoilOver` (spring + damper + seat) | corner | wheel rate `ks` (ibt SpringRate × MR²), preload `P` (corner weight), damping `cs` / `cb`,`cr` |
+| `AntiRollBar` | axle | roll stiffness `k` (ibt ArbDiameter via ARB_ID; the rear also carries the motion-ratio roll term) |
+| `WheelMass` | corner | unsprung mass `m_u` (hand-set 20 kg) |
+| `TyreVertical` | corner | carcass `kt`, `ct`, static load (hand-set rates) |
+| `BrushTyre` | corner | μ, μx, Cα, Cκ, kμ, sliding drop, camber (fitted) |
+
+Assembly per corner: mount → coil-over (+ the axle's bar) → wheel → tyre carcass → road. `tools/carphys_regress.jl`
+proves the assembly reproduces the single-block model: same 23/24 unknowns, every channel within 1e-10 over six
+manoeuvres and both setups. Still inline in `DrivenVehicle3D` (next objects): brakes, clutch, gearbox, LSD, engine,
+aero, the rigid body's planar motion, steering.
+
 ## Inventory: every physical quantity the .ibt carries, and what the model has
 
 ✅ = an object or a fitted term that uses the session's value · 🟡 = present but lumped, hand-set or not from the ibt ·

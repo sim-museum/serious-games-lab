@@ -24329,6 +24329,40 @@ rotated to honour the 4-sprint cap. The evening iRacing test list grows in `IRTE
   3 (aligning torque from the tyres through a rack, against the gold torque), one at a time.
 
 ## IRTEST-261009 -- iRacing tests cued for the PO's evening session (grows as items need them)
-1. *(proposed)* **Steady drifts / provoked slides** at Centripetal, both directions, 80–150 km/h, held 3–5 s at 20–50°
-   of body slip with the wheel counter-steered -- the beyond-peak tyre (fix 1) has spins and lift-off slides behind it
-   today but few HELD slides. 360 Hz logging, default setup.
+Every test: Lotus 49, 360 Hz logging ON, setup named in the test, one .ibt per test (exit to the garage between tests).
+Order = value to the model; about 45 min of driving in all.
+1. **Held slides** (Centripetal, default setup, ~10 min): from a steady circle at 100–140 km/h, provoke the rear (lift
+   or squeeze) and HOLD the slide 3–5 s at 20–50° of body slip with counter-steer, both directions, 6+ slides. Today
+   the beyond-peak tyre has only spins and lift-offs behind it; held slides separate the sideways sliding friction
+   from the yaw dynamics.
+2. **Slalom / sine steer** (Centripetal's straight or any long straight, default setup, ~8 min): at a steady 100 km/h
+   and again at 150 km/h, weave left-right steadily -- slow (one full cycle in ~2 s), medium (~1 s), quick (~0.5 s) --
+   10 cycles each, throttle held. Identifies the yaw inertia (hand-set 890 kg·m²) and how fast the tyres build force
+   (no tyre lag in the model today).
+3. **Brake bias sweep** (Döttinger Höhe, Touristenfahrten, default setup, ~10 min): straight-line stops from ~200 km/h
+   at a steady ~60 % pedal, three stops each at bias 50 %, 54 % and 58 %. The model maps pedal → torque with one fitted
+   split; the ibt's four brake-line pressures will make the brakes an object (master cylinder → calipers) instead.
+4. **Front anti-roll bar arms** (Centripetal, default setup otherwise, ~10 min): steady circles at ~1.0 g, both
+   directions, 20 s each way, with the FRONT bar arms at the softest, middle and stiffest positions. The bar object's
+   stiffness law (diameter⁴ ÷ arm²) has only two setups behind it today; the arms are ignored.
+5. **Big kerb and compression** (Nordschleife Touristenfahrten, default setup, ~7 min): one lap at a steady pace
+   taking the Fuchsröhre compression flat, plus two passes over a high kerb (e.g. Hatzenbach) -- the shock deflection
+   near its ShockDeflection limit identifies the bump stops/packers the model does not have.
+
+### CARPHYS-1 S2 (2026-10-09): the vertical load path as Modelica-style objects -- reproduces today's car exactly
+* **Objects** (`JuliaMotorMTK/src/components/chassis_parts.jl`): a translational `Flange` connector (position,
+  velocity, flow force -- Modelica's Translational Flange), and `PrescribedMotion` (body mounts, road points),
+  `CoilOver` (spring + damper + seat), **`AntiRollBar`** (one per axle, roll stiffness from the ibt's ArbDiameter via
+  ARB_ID), `WheelMass`, `TyreVertical`. `DrivenVehicle3D` now assembles them with `connect()` per corner: mount →
+  coil-over (+ the axle's bar) → wheel → tyre carcass → road. The rest (brakes, clutch, gearbox, LSD, engine, aero,
+  steering) is still inline -- next objects.
+* **Regression harness** (`JuliaMotorMTK/tools/carphys_regress.jl`): the committed model (from git) and the working
+  copy, same chassis, same inputs, bare ODEs at 1/300 s, six manoeuvres (WOT, braking, step steer, sine steer, lift-off
+  at the limit, a bump + 0.3 m drop) × two setups (default spool; WW103 LSD + camber + bars). Result: same 23/24
+  unknowns, every channel within **4e-12** (scaled) -- the restructure changed nothing.
+* MTK notes: a flange placed directly in the root model is an "outside" connector whose force MTK pins to zero
+  (Modelica's rule) -- body mounts and roads are therefore `PrescribedMotion` sources, as in Modelica; MTK's connector
+  heuristic warns about a flange with two potentials (s, v) -- exactly that message is filtered while the parts are
+  built; the logger API comes from `Base.CoreLogging` (JRPhysics has no Logging dependency -- the first gate run caught
+  that).
+* Full gates **49/49 PASS** (11:20).
