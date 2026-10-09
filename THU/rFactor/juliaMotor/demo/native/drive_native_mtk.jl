@@ -10460,12 +10460,23 @@ end
 
 # ---- terrain pitch: slope under the car from the HAT, sampled fore & aft ----
 tstamp("  [E80] .. read_input defined")
+# RINGTD-1 (PO 2026-10-08, Ring: "as the driver's car passes the tower on the right, the car in nintendo view actually
+# rolls 90 degrees to the left and then rolls back(!)" and, after the Karussell, a banner on columns "causes the car to
+# buck up and down comically"). These two DRAW the body's terrain tilt from the ground 1.3-1.5 m around the car, and
+# sampled it with ref=Inf -- the TOPMOST surface -- so a tower, a post or a banner beside/over the car read as "ground"
+# metres up: atan(several m / 2.6 m) is a near-90 deg roll (the physics car's own roll stayed under 6.3 deg there,
+# measured on the PO's .ibt). Sample the surface at or below the car's height + TILT_REF_UP instead, and never draw a
+# terrain tilt beyond TILT_MAX. JM_TERRAIN_TILT_REFINF=1 restores the old sampling (A/B).
+const TILT_REF_UP = 1.5; const TILT_MAX = deg2rad(25.0)
+const TILT_REFINF = get(ENV, "JM_TERRAIN_TILT_REFINF", "0") != "0"
+const TILTDIAG = get(ENV, "JM_TILTDIAG", "0") != "0"; const TILT_N = Ref(0)
+tilt_ref(cs) = (TILT_REFINF || !hasproperty(cs, :y) || !isfinite(cs.y)) ? Inf : Float64(cs.y) + TILT_REF_UP
 function terrain_pitch(cs)
     SKIDPAD && return 0.0   # flat pad → no slope
     L = 1.5; fx = cos(cs.θ); fz = sin(cs.θ)               # physics forward (x, z)
-    hf = JuliaMotor.hat3d(TERRAIN, cs.x+fx*L, cs.z+fz*L; ref=Inf)
-    hr = JuliaMotor.hat3d(TERRAIN, cs.x-fx*L, cs.z-fz*L; ref=Inf)
-    (hf[3] && hr[3]) ? atan(hf[1]-hr[1], 2L) : 0.0        # front higher → nose up (+)
+    hf = JuliaMotor.hat3d(TERRAIN, cs.x+fx*L, cs.z+fz*L; ref=tilt_ref(cs))
+    hr = JuliaMotor.hat3d(TERRAIN, cs.x-fx*L, cs.z-fz*L; ref=tilt_ref(cs))
+    (hf[3] && hr[3]) ? clamp(atan(hf[1]-hr[1], 2L), -TILT_MAX, TILT_MAX) : 0.0        # front higher → nose up (+)
 end
 
 # ---- terrain ROLL: cross-slope under the car (left vs right), so a 3-D car on a banked
@@ -10473,11 +10484,38 @@ end
 function terrain_roll(cs)
     SKIDPAD && return 0.0
     L = 1.3; lx = -sin(cs.θ); lz = cos(cs.θ)               # car's LEFT direction (perp to heading)
-    hl = JuliaMotor.hat3d(TERRAIN, cs.x+lx*L, cs.z+lz*L; ref=Inf)
-    hr = JuliaMotor.hat3d(TERRAIN, cs.x-lx*L, cs.z-lz*L; ref=Inf)
-    (hl[3] && hr[3]) ? atan(hl[1]-hr[1], 2L) : 0.0         # left higher → list right
+    hl = JuliaMotor.hat3d(TERRAIN, cs.x+lx*L, cs.z+lz*L; ref=tilt_ref(cs))   # RINGTD-1: not the topmost surface
+    hr = JuliaMotor.hat3d(TERRAIN, cs.x-lx*L, cs.z-lz*L; ref=tilt_ref(cs))
+    (hl[3] && hr[3]) ? clamp(atan(hl[1]-hr[1], 2L), -TILT_MAX, TILT_MAX) : 0.0         # left higher → list right
 end
 
+# RINGTD-1 probe: JM_TILTPROBE=<.jmr> evaluates the drawn terrain roll/pitch along the RECORDED player path with the old
+# (ref=Inf) and the new sampling, prints where the old one exceeded 20 deg, and exits. Measures the PO's own line.
+const DIFFN = Ref(0)
+if get(ENV, "JM_TILTPROBE", "") != ""
+    let rd = deserialize(ENV["JM_TILTPROBE"]), st = 1 + 4*rd.ncar, d = rd.data, nbad = 0, worst = 0.0
+        refinf(cs) = (x = cs.x, y = Inf, z = cs.z, θ = cs.θ)
+        for i in 0:rd.nframes-1
+            b = i*st; cs = (x = Float64(d[b+2]), y = Float64(d[b+3]), z = Float64(d[b+4]), θ = Float64(d[b+5]))
+            ro = terrain_roll(refinf(cs)); po = terrain_pitch(refinf(cs)); rn = terrain_roll(cs); pn = terrain_pitch(cs)
+            m = max(abs(ro), abs(po)); worst = max(worst, m)
+            if abs(po - pn) > deg2rad(2) || abs(ro - rn) > deg2rad(2)
+                DIFFN[] += 1
+                DIFFN[] <= 30 && println("  [tiltprobe diff] frame ", i, " t=", round(d[b+1], digits = 1), " (", round(cs.x, digits = 1), ", ",
+                                         round(cs.z, digits = 1), ")  old roll/pitch ", round(rad2deg(ro), digits = 1), "/", round(rad2deg(po), digits = 1),
+                                         "  new ", round(rad2deg(rn), digits = 1), "/", round(rad2deg(pn), digits = 1))
+            end
+            if m > deg2rad(20)
+                nbad += 1
+                nbad <= 25 && println("  [tiltprobe] frame ", i, " t=", round(d[b+1], digits = 1), " (", round(cs.x, digits = 1), ", ",
+                                      round(cs.z, digits = 1), ")  OLD roll ", round(rad2deg(ro), digits = 1), " pitch ", round(rad2deg(po), digits = 1),
+                                      "  ->  NEW roll ", round(rad2deg(rn), digits = 1), " pitch ", round(rad2deg(pn), digits = 1))
+            end
+        end
+        println("  [tiltprobe] ", rd.nframes, " recorded frames: ", nbad, " with the old drawn tilt > 20 deg (worst ",
+                round(rad2deg(worst), digits = 1), " deg)"); flush(stdout); exit(0)
+    end
+end
 # ---- camera (pitch/roll = total body orientation, applied to the cockpit view only) ----
 # CHASEGOLD-1 (PO 2026-09-25: "change the V chase view to be above and behind the user's car, as in the
 # gold standard watkins glen video, not directly behind the car as it is now"). Fitted to the gold
@@ -13556,7 +13594,8 @@ function main()
                             " ms  | solids F=(", round(_jp[3], digits = 0), ",", round(_jp[4], digits = 0), ") pk ", round(_jp[5], digits = 0),
                             "  wall hits +", GPLW_STAT[].hits - _jp[6], " clamps +", GPLW_STAT[].clamps - _jp[7],
                             "  obstacle hits +", OBS_STAT[].hits - _jp[8], " clamps +", OBS_STAT[].clamps - _jp[9],
-                            "  step-guard +", STEP_GUARD_HITS[] - _jp[10], "  rh ", round.(cs.rh, digits = 3))
+                            "  step-guard +", STEP_GUARD_HITS[] - _jp[10], "  rh (", round(cs.rh[1], digits = 3), ", ", round(cs.rh[2], digits = 3),
+                            ", ", round(cs.rh[3], digits = 3), ", ", round(cs.rh[4], digits = 3), ")")   # no broadcast: no closure to compile mid-race (PERF-4)
                     # the solid this step penetrated deepest (name, kind, radius or box, gap) and where the car is
                     _jg = Inf; _jk = 0
                     for _k in eachindex(SOLIDS)
@@ -14035,6 +14074,12 @@ function main()
         acc = clamp((cs.v - v_prev)/max(dt,1e-3), -15.0, 15.0); v_prev = cs.v
         pitch_ter += (terrain_pitch(cs) - pitch_ter) * min(1.0, dt*6)
         roll_ter  += (terrain_roll(cs)  - roll_ter)  * min(1.0, dt*6)   # car lists with the cross-slope (3-D)
+        if TILTDIAG && (abs(roll_ter) > deg2rad(10) || abs(pitch_ter) > deg2rad(10)) && TILT_N[] < 40   # RINGTD-1
+            TILT_N[] += 1; _ts = CLINE === nothing ? (NaN, NaN) : RaceAI.project(CLINE, cs.x, cs.z)
+            println("  [tilt] t=", round(cs.t, digits = 2), " s=", round(_ts[1], digits = 1), " lat=", round(_ts[2], digits = 2),
+                    "  drawn roll ", round(rad2deg(roll_ter), digits = 1), " deg  pitch ", round(rad2deg(pitch_ter), digits = 1),
+                    " deg  (physics roll ", round(rad2deg(cs.roll), digits = 1), ")"); flush(stdout)
+        end
         rollv = 0.0
         if CAR3D
             pitch_dyn = (cs.pitch - pitch_ter) * SUSP_GAIN   # REAL body pitch (minus the slope carModel already applies), visually amplified
@@ -14083,7 +14128,7 @@ function main()
         # (cross-slope terrain bank + physics roll) — so AI LIST on a dune side / roll in a collision,
         # exactly like the player's 3-D car (was yaw-only → they stayed flat).  6-tuple (x,y,z,θ,pitch,roll).
         aibankP(pc) = (isfinite(pc.pitch) ? pc.pitch : 0.0, (isfinite(pc.roll) ? pc.roll : 0.0) + terrain_roll(pc))
-        aibankK(p)  = (cc=(x=p[1], z=p[3], θ=p[4]); (terrain_pitch(cc), terrain_roll(cc)))   # kinematic: terrain only (NB local must NOT be named `cs` — that would clobber the player car in the enclosing scope → cs.y FieldError)
+        aibankK(p)  = (cc=(x=p[1], y=p[2], z=p[3], θ=p[4]); (terrain_pitch(cc), terrain_roll(cc)))   # RINGTD-1: y for the tilt sampling height   # kinematic: terrain only (NB local must NOT be named `cs` — that would clobber the player car in the enclosing scope → cs.y FieldError)
         # ── E104(a) FIX (S4) ────────────────────────────────────────────────────────────────────
         # THE MEASURED DEFECT: AI cars are drawn up to 0.30 m off the terrain (median +0.09 m,
         # 13 of 45 samples at or above +0.20 m, min -0.19 m) while the player measures 0.00 m.

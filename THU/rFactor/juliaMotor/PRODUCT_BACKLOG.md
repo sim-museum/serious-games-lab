@@ -24135,3 +24135,32 @@ the recording + live mirrors; S2 the lever moves with the gear; S3 DIALS-1; S4 t
   grazes capped; (2) the invisible barrier = that wall; (1) AI pace calibrated and AI on the road. Open for the next
   pass: (2)'s missing BUILDING on the outside of that left (to restore), (4) La Source far-side objects, and the grid
   area's AI off-road share (start area not counted as road?).
+
+### RINGTD-1 retrospective (2026-10-09)
+* **Before:** RINGBUMP-1/RINGBANNER-1 (the Continental banner's support post baked into the track mesh read as ground,
+  s≈1594.7 lat −4; removed 2026-10-05), E109 (trees over the road), RING-GOLD-1 (backdrop/veils), GPLVIS-1 (GPL's
+  per-cell visibility -- the band/clip machinery behind (c)'s pop-in), TRACKS-TD-1(a) (fence flicker, Ex-Mühle hill
+  pop-in -- the same report as (c), now with a distance: ~10 car lengths).
+* **Lesson (memory jr-hat-ref-inf-reads-scenery):** `ref=Inf` returns the TOPMOST surface -- a post, a banner, a tower
+  -- and reads as ground. The physics ground was cleaned of that long ago; the DRAW path's terrain tilt (the chase
+  view's body pitch/roll) still sampled with `ref=Inf`. The PO's .ibt confirms the roll was visual only (physics roll
+  ≤ 6.3° by the tower).
+* **New angle:** treat every "the car does something absurd near a structure" report as a ref=Inf candidate first; and
+  the AI side of the report ("often off the road at curves, usually on the left") is SPATD-1 S4's frame fix, which is
+  generic -- measure the Ring with `JM_AI_OFFROAD=1` rather than re-derive it.
+
+### RINGTD-1 S1 (2026-10-09): the 90° roll at the tower and the bucking under the banner -- one bug, fixed
+* Both are the DRAWN body tilt (`terrain_roll` / `terrain_pitch`, the chase view's body pitch/roll and the AI cars'),
+  which sampled the ground 1.3–1.5 m around the car with `ref=Inf` -- the topmost surface -- so a tower, post or banner
+  beside or over the car read as ground metres up: atan(several m / 2.6 m) ≈ 90°. The physics car never rolled
+  (≤ 6.3° by the tower on the PO's .ibt). Now: the surface at or below the car's height + 1.5 m, and the drawn terrain
+  tilt clamped to ±25°; the kinematic AI pass their height too. `JM_TERRAIN_TILT_REFINF=1` restores the old sampling.
+* **Proof on the PO's own line** (new `JM_TILTPROBE=<.jmr>`: old vs new drawn tilt at every recorded frame of the PO's
+  Ring replay 2026-10-08 22-36, 11 926 frames): exactly two places change by more than 2° -- **t=80.7 s, the tower before
+  the North hairpin: roll −25 (clamp; more before) -> −0.2°**, and **t=588.5 s, lap 2 after the Karussell: pitch +25 then
+  −25 on consecutive frames (the "comic bucking") -> 1.3°, roll −25 -> 0.2°**. Elsewhere identical (the crash at
+  t≈310 s reads −25 in both: a real bank). Autodrive on the racing line did not reproduce either (it never came within
+  1.3 m of the structures) -- the recorded line did. `JM_TILTDIAG=1` logs drawn tilts > 10° live.
+* Gates parse, susp_pose PASS; warm_smoke PASS after a regeneration (the faster AI and the jolt report brought new first-use paths: the [jolt] ride-height print no longer broadcasts, and warmgen.py now keeps Base/package closures -- only our own code's closures change names; list 35, 0.0 ms of race-time compiling). The PO asked to REMOVE the post-Karussell banner too; with the bucking gone it is now harmless
+  -- kept for the PO's call (say if it should still go). Next: (a) billboards after the North hairpin, (b) floating shed
+  near Wehrseifen, (c) Ex-Mühle hill pop-in, (d) floating trees in the Adenauer Forst.

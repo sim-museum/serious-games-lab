@@ -5,7 +5,7 @@ Every method Julia compiles AFTER the window is revealed is a stall the driver f
 ~145 ms; a crash: ~260 ms; the first section banner, the first lap time ...). The sim marks the reveal in the trace by
 calling perf4_reveal_marker(); this keeps the statements after that marker, from every log given, de-duplicated, and
 writes them as a list the sim compiles during loading (drive_native_mtk.jl, PERF-4 warm-up). Statements that name a
-module-internal closure (var"#...") are dropped: their names change with every edit, so they would only fail.
+closure of our own code (Main/GPLAI/JRPhysics/... var"#...") are dropped: their names change with every edit, so they would only fail.
 
 usage: warmgen.py OUT.jl TRACE.jl [TRACE.jl ...]
        a trace with no marker contributes nothing (say so loudly rather than guess a boundary)
@@ -21,7 +21,9 @@ def runtime_statements(path):
     out = []
     for l in lines[mark[0] + 1:]:
         l = re.sub(r"^#=\s*[0-9.]+ ms =#\s*", "", l).strip()
-        if l.startswith("precompile(") and 'var"#' not in l:
+        # drop closures of OUR code (their names change with every edit); Base's and packages' closures are stable for a
+        # given Julia/package version and are kept (the jolt report's round.(...; digits) broadcast was one, 2026-10-09)
+        if l.startswith("precompile(") and 'Main.var"#' not in l and not re.search(r'(GPLAI|JRPhysics|JuliaMotor|Render|RaceAI)\.var"#', l):
             out.append(l)
     return out
 

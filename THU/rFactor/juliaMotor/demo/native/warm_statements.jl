@@ -29,6 +29,8 @@ precompile(Tuple{typeof(Base.setindex!), Base.RefValue{Tuple{Float64, Float64, F
 precompile(Tuple{typeof(Main.gplw_road_interval), Int64, Float64})
 precompile(Tuple{typeof(Base.println), String, Int64, String, Int64, String, Int64, String, String, String, Int64, Vararg{Any}})
 precompile(Tuple{typeof(Base.print), Base.IOStream, String, Int64, String, Int64, String, Int64, String, String, String, Vararg{Any}})
+precompile(Tuple{typeof(Base.Broadcast.broadcasted), Base.Broadcast.var"#18#19"{Base.Pairs{Symbol, Int64, Nothing, NamedTuple{(:digits,), Tuple{Int64}}}, typeof(Base.round)}, NTuple{4, Float64}})
+precompile(Tuple{typeof(Base.Broadcast.materialize), Base.Broadcast.Broadcasted{Base.Broadcast.Style{Tuple}, Nothing, Base.Broadcast.var"#18#19"{Base.Pairs{Symbol, Int64, Nothing, NamedTuple{(:digits,), Tuple{Int64}}}, typeof(Base.round)}, Tuple{NTuple{4, Float64}}}})
 precompile(Tuple{typeof(Base.print), Base.IOStream, NTuple{4, Float64}})
 precompile(Tuple{typeof(Base.print_to_string), String, String, Symbol, String, Float64, String, String, Float64, String, Float64, Vararg{Any}})
 precompile(Tuple{typeof(Base.println), String, Float64, String, Float64, String, String})
