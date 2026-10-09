@@ -23998,3 +23998,20 @@ the recording + live mirrors; S2 the lever moves with the gear; S3 DIALS-1; S4 t
   steer (before: straight, the PO's hands-off wheel), the rev-counter needle stands at ~3,900 (before: idle), the HUD
   reads 3920 / 68 / gear 2 (before: 2000 / 0 / n), and the left mirror shows the car behind (before: black).
   Gates parse, warm PASS.
+
+### COCKPIT-2 S2 (2026-10-09): the gear lever moves through GPL's gate, stands in the slot, reads as wood
+* The lever (`lotshift`, 46 tris after dedup = shiftel.3do) is cut out of the static cockpit body and drawn on its own,
+  turned about its foot by the selected gear: 1st/2nd in the plane nearest the driver, 3rd/4th the middle (neutral's
+  plane), 5th outboard; odd forward, even back; a plane change goes back to the neutral line first (gold 260802 WG
+  cockpit, lever crops every 3 s against GPL's HUD gear). In replay the gear comes from the recording (S1).
+* **Why it looked "translucent orange":** the extraction stands the lever on the cockpit RIM (foot y 0.147), so the
+  knob poked up behind the yellow perspex wing and was seen through it. The knob's own art (`lotshift`) is GPL's dark
+  wood with the Lotus badge, fully opaque. Placement fitted against the gold by four shot sweeps at WG s=1200 (one load
+  each, offsets as JM_SHOTS env overrides; `261007/ck2_s2_lever_sweep_vs_gold.png`): foot 6 cm down into the gate slot,
+  size ×1.8 (gold's knob ~0.6 of the volts dial), a 55° lean toward the driver so the shaft rises out of the slot as
+  in the gold (stretching only the shaft stretched the knob too -- rejected). Lit as wood, not as chrome.
+  The gate-art search (`lotinsid` slot at u .745 v .11) landed on the mesh's own foot (7 mm away): the slot really is
+  there, the lever was simply too short and upright to show in it. Tuning knobs: JM_SHIFT_XYZ / _S / _SY / _LEAN.
+* **Replay check, five gears** (Spa 10-07 replay; `261007/ck2_s2_lever_5gears.png`): the knob changes position with
+  each gear; in 2nd and 4th (back) its Lotus badge faces the driver. Gates parse, warm PASS.
+* Not yet: the gold's right glove LEAVES the wheel to make the shift (frames 14/27/31 of the 3-s crops) -- a later sprint.

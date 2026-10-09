@@ -4163,10 +4163,97 @@ const RSUSPP_B = _RSONLY == "" ? Render.extract_gpl_car(LOT3DO; include_groups=(
 # (lotinsid/lotinsa), the real dash (dash7/dash7a/ldashr). This replaces the S5 geometric dress
 # entirely. plaface/plahelm (the player face/helmet the mirrors reflect) are excluded here because
 # the helmet is drawn separately at the head pivot (E60), as are the hands, pipes and windscreen.
+# COCKPIT-2 S3 (PO 2026-10-07: "the shifter at right should move when the player shifts in cockpit view, as it does in the
+# gold standard"): the gear lever (texture lotshift; the same 54 triangles as shiftel.3do, placed by lotus.3do) is cut
+# out of the static cockpit body and drawn on its own, turned about its foot by the gear selected. JM_SHIFTER=0 = static.
+const SHIFTER_ON = get(ENV, "JM_SHIFTER", "1") != "0"
+const SHIFT_TEX = SHIFTER_ON ? ("lotshift",) : ()
 const CARPIN = get(ENV,"JM_COCKPIT_DRESS","1") != "0" ?
-    Render.extract_gpl_car(joinpath(LOTDIR,"lotd.3DO"); exclude=(_HAND_EXC...,_LOTBLACK_EXC...,_EXTRA_EXC...,_GARBAGE_EXC...,DRIVER_TEX...,MIRROR_TEX...,Render.STEER_TEX...,"pipe3","plaface","plahelm"), exclude_groups=Tuple(parse(Int, x) for x in split(get(ENV, "JM_CAR_EXCL_GROUPS", "6600,3560,27288,39792"), ",") if !isempty(strip(x))), cockpit_clean=true, maxlat=parse(Float32,get(ENV,"JM_COCKPIT_MAXLAT","0.30")), dedup=_CAR_DEDUP, grey=(TUB_GREY,TUB_GREY+0.01f0,TUB_GREY+0.02f0), visor=true) :   # E106-S10: dedup coincident stacks (visor/mirror flicker)
+    Render.extract_gpl_car(joinpath(LOTDIR,"lotd.3DO"); exclude=(_HAND_EXC...,_LOTBLACK_EXC...,_EXTRA_EXC...,_GARBAGE_EXC...,DRIVER_TEX...,MIRROR_TEX...,Render.STEER_TEX...,"pipe3","plaface","plahelm",SHIFT_TEX...), exclude_groups=Tuple(parse(Int, x) for x in split(get(ENV, "JM_CAR_EXCL_GROUPS", "6600,3560,27288,39792"), ",") if !isempty(strip(x))), cockpit_clean=true, maxlat=parse(Float32,get(ENV,"JM_COCKPIT_MAXLAT","0.30")), dedup=_CAR_DEDUP, grey=(TUB_GREY,TUB_GREY+0.01f0,TUB_GREY+0.02f0), visor=true) :   # E106-S10: dedup coincident stacks (visor/mirror flicker)
     Render.TrackPart[]
 
+# COCKPIT-2 S3: the lever alone, from the same extraction as the cockpit body (so it sits where it sat). Its pivot is the
+# foot of the shaft: the centre of the vertices within 1 cm of its lowest point.
+const SHIFTP = (SHIFTER_ON && get(ENV,"JM_COCKPIT_DRESS","1") != "0") ?
+    Render.extract_gpl_car(joinpath(LOTDIR,"lotd.3DO"); only=SHIFT_TEX, cockpit_clean=true,
+                           maxlat=parse(Float32,get(ENV,"JM_COCKPIT_MAXLAT","0.30")), dedup=_CAR_DEDUP) : Render.TrackPart[]
+const SHIFT_PIVOT = let ys = Float32[], ps = Vector{Float32}[]
+    for p in SHIFTP, i in 0:11:length(p.verts)-11
+        push!(ps, Float32[p.verts[i+1], p.verts[i+2], p.verts[i+3]])
+    end
+    if isempty(ps)
+        nothing
+    else
+        y0 = minimum(q[2] for q in ps); low = [q for q in ps if q[2] < y0 + 0.01f0]
+        c = sum(low) / length(low)
+        top = ps[argmax([q[2] for q in ps])]
+        println("  [shifter] lever foot ", round.(c; digits=3), "  knob top ", round.(top; digits=3), "  (", length(ps) ÷ 3, " tris)")
+        c
+    end
+end
+# COCKPIT-2 S2: where the lever STANDS. Our extraction puts its foot 15 cm up and outboard, on the cockpit rim -- the knob
+# then shows above the cowl, seen through the yellow perspex (the "translucent orange" knob). GPL's lever rises out of
+# the gate slot painted on the right cockpit side panel (lotinsid art, slot centre u 0.745 v 0.11, the shaft stub drawn
+# inside it): find that art point on the cockpit mesh, as the dials are found on the dash, and stand the lever's foot in
+# it. JM_SHIFT_GATE_UV="u,v" moves the point; JM_SHIFT_DY lifts the foot (m). Several matches: the one nearest the foot.
+const SHIFT_GATE_UV = Tuple(parse.(Float32, split(get(ENV, "JM_SHIFT_GATE_UV", "0.745,0.11"), ",")))
+function _uv_points(parts, tex, uv)
+    out = Vector{Vector{Float32}}()
+    for p in parts
+        lowercase(p.tex) == tex || continue
+        v = p.verts
+        for t in 0:33:length(v)-33
+            P = [Float32[v[t+11k+1], v[t+11k+2], v[t+11k+3]] for k in 0:2]
+            U = [v[t+11k+10] for k in 0:2]; V = [v[t+11k+11] for k in 0:2]
+            d = (U[2]-U[1])*(V[3]-V[1]) - (U[3]-U[1])*(V[2]-V[1]); abs(d) < 1f-9 && continue
+            b2 = ((uv[1]-U[1])*(V[3]-V[1]) - (U[3]-U[1])*(uv[2]-V[1])) / d
+            b3 = ((U[2]-U[1])*(uv[2]-V[1]) - (uv[1]-U[1])*(V[2]-V[1])) / d
+            (b2 >= -1f-4 && b3 >= -1f-4 && b2 + b3 <= 1 + 1f-4) || continue
+            push!(out, P[1] + b2*(P[2]-P[1]) + b3*(P[3]-P[1]))
+        end
+    end
+    out
+end
+const SHIFT_GATE = SHIFT_PIVOT === nothing ? nothing : let g = _uv_points(CARPIN, "lotinsid", SHIFT_GATE_UV)
+    if isempty(g)
+        println("  [shifter] gate art not found on the cockpit mesh -- the lever stays where the mesh put it"); nothing
+    else
+        gp = g[argmin([sum(abs2, q .- SHIFT_PIVOT) for q in g])] .+ Float32[0, parse(Float32, get(ENV, "JM_SHIFT_DY", "0")), 0]
+        println("  [shifter] gate at ", round.(gp; digits = 3), " (", length(g), " match(es)); lever moved by ",
+                round.(gp .- SHIFT_PIVOT; digits = 3)); gp
+    end
+end
+const SHIFT_MOVE = SHIFT_GATE === nothing ? Render.ident() : Render.translate(SHIFT_GATE .- SHIFT_PIVOT)
+# The gate, read off the gold (260802 WG cockpit, lever crops every 3 s against GPL's HUD gear): 1st and 2nd in the
+# plane nearest the driver, 3rd and 4th in the middle (neutral's plane), 5th outboard; odd gears forward, even back.
+# Angles at the foot, degrees: JM_SHIFT_LAT (across, per plane) and JM_SHIFT_FA (fore/aft).
+const SHIFT_LAT = parse(Float32, get(ENV, "JM_SHIFT_LAT", "12"))
+const SHIFT_FA  = parse(Float32, get(ENV, "JM_SHIFT_FA", "14"))
+shift_target(g) = g == 0 ? (0f0, 0f0) : g < 0 ? (-1.6f0, -1f0) :
+    (g <= 2 ? -1f0 : g <= 4 ? 0f0 : 1f0, isodd(g) ? 1f0 : -1f0)
+const SHIFT_TUNE = Ref(false)
+const SHIFT_S = 1.8f0                       # size about the foot (gold: knob ~0.6 x the volts dial); JM_SHIFT_S (tuning)
+const SHIFT_LEAN = 55f0                     # base lean toward the driver, degrees (gold: shaft up out of the slot toward the driver)
+const SHIFT_SY = 1.8f0                      # size along the shaft; uniform (stretching it stretched the knob too)
+const SHIFT_XYZ = Float32[0, -0.06, 0]      # foot 6 cm down into the slot (WG sweeps 2026-10-09, against the gold); JM_SHIFT_XYZ="dx/dy/dz"
+const SHIFT_STATE = Float32[0, 0]           # current (across, fore/aft), in gate units; moves through neutral's plane
+function shift_model(g, dt)
+    tl, tf = shift_target(g); l, f = SHIFT_STATE; k = clamp(dt / 0.05f0, 0f0, 1f0)
+    if abs(tl - l) > 0.02f0                 # a plane change: back to the neutral line first, then across
+        f += (0f0 - f) * k; abs(f) < 0.15f0 && (l += (tl - l) * k)
+    else
+        l = tl; f += (tf - f) * k
+    end
+    SHIFT_STATE .= (l, f)
+    c = SHIFT_PIVOT; inb = c[3] > 0 ? -1f0 : 1f0          # "across toward the driver" = toward the centreline
+    SHIFT_TUNE[] = SHIFT_TUNE[] || haskey(ENV, "JM_SHIFT_XYZ")                    # placement tuning: read per frame
+    off = SHIFT_TUNE[] ? Float32.(parse.(Float64, split(get(ENV, "JM_SHIFT_XYZ", "0/0/0"), r"[,/ ]+"))) : SHIFT_XYZ
+    sc = SHIFT_TUNE[] ? parse(Float32, get(ENV, "JM_SHIFT_S", "1")) : SHIFT_S
+    lean = SHIFT_TUNE[] ? parse(Float32, get(ENV, "JM_SHIFT_LEAN", "0")) : SHIFT_LEAN   # base lean toward the driver (deg)
+    sy = SHIFT_TUNE[] ? parse(Float32, get(ENV, "JM_SHIFT_SY", string(sc))) : SHIFT_SY       # along the shaft
+    Render.translate(off) * SHIFT_MOVE * Render.translate(c) * Render.rotaxis(Float32[0, 0, 1], -deg2rad(SHIFT_FA * f)) *
+        Render.rotaxis(Float32[1, 0, 0], inb * deg2rad(SHIFT_LAT * l + lean)) * Render.scalexyz(sc, sy, sc) * Render.translate(-c)
+end
 # NOSE-1 S9 (2026-09-14): apply the grille re-map to CARPIN TOO. S6 (degenerate-UV repair) and S8
 # (grille re-map) both worked on the numbers and changed the picture by less than the frame-to-frame
 # noise -- because both mutate CARP, and the COCKPIT view draws CARPIN, a SEPARATE extraction from
@@ -9533,6 +9620,8 @@ load_wheel(nm) = haskey(WHEEL_WRAP, nm) ?
 const WHEELITEMS = Dict(nm => load_wheel(nm) for nm in ("lotwlf","lotwrf","lotwlr","lotwrr"))
 tstamp("  [E80] wheel models loaded")
 swItems = Render.build_gpl(SWPARTS, GPLTEX)        # steering wheel (rotated with steer)
+shiftItems = isempty(SHIFTP) ? Render.Item[] : Render.build_gpl(SHIFTP, GPLTEX)   # COCKPIT-2 S3: the gear lever
+const SHIFT_TW = Ref(0.0)
 # HANDS-1 S3 (2026-10-06): the gold's cockpit sleeves are WHITE with a RED stripe (260801 Zandvoort, 260802 Ring cockpit
 # videos) -- that is the "JackSeller 16-bit Driving Suits" lotarms in the PO's GPL install, not the base greyscale
 # cars67/lotus/lotarms.mip. When that folder exists the gloves + sleeves take their textures from it (its own decoded-texture
@@ -14530,6 +14619,11 @@ function main()
         # (JM_SW_ROT, degrees, default 180) puts the wheel as the gold has it; the steering input adds to it.
         swModel = bodyModel * Render.translate(SWCENTER) * Render.rotaxis(SWAXIS, Float32(HSIGN*inp.steer*2.5 + SW_ROT)) * Render.translate(-SWCENTER[1], -SWCENTER[2], -SWCENTER[3])
         for it in swItems; Render.draw(prog, it, vp, swModel; bright=1.2, ambfill=0.34); end
+        if CTL.view == 0 && !isempty(shiftItems) && SHIFT_PIVOT !== nothing     # COCKPIT-2 S3: the lever follows the gear
+            _tn = time(); _dt = SHIFT_TW[] == 0.0 ? 1f0 : Float32(clamp(_tn - SHIFT_TW[], 0.0, 0.1)); SHIFT_TW[] = _tn
+            shm = bodyModel * shift_model(cs.gear, _dt)
+            for it in shiftItems; Render.draw(prog, it, vp, shm; bright=0.95, ambfill=0.45); end   # gold: dark wood, not lit orange
+        end
         # E64 S2 (Z-CK4): gloved hands + forearms, cockpit view only (the chase driver figure has its
         # own DRIVER_TEX arms).  Hands turn with the wheel, forearms stay put — GPL-era articulation.
         # The lotarms mesh is authored in a positioner-local frame (D12 posmat-clamp family): raw it
