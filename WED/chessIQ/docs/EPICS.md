@@ -1124,3 +1124,8 @@ One item at a time, each with a goal, the check that proves it and a stopping po
   - Check: tests (the boards are self-captures, easiest first; a walk through every page, closing halfway and
     resuming, ending in an unrated game against Hal with the coach on; offered once only). Offscreen renders of the
     intro, an escape board and the last page. Done.
+- **CHESSIQ-CLUB-1 (2026-10-09, PO 10-08: "start with Felix, not Hal ... the average Serious Games Week player is about
+  my ELO rating", ~1600).** S1: the plain-wording renames committed (Getting started, Self-capture puzzles,
+  Self-capture moments). S2: Getting started ends in an unrated game against Felix (1500, coach on) instead of Hal
+  (950). Check: test_academy 20 OK; offscreen render of the last page. Note: two runs of test_academy hung at the
+  first test before five clean runs in a row; not reproduced, cause unknown (no engine processes left behind).

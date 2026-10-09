@@ -434,13 +434,13 @@ TOUR_WATCH = ("<h2>Seeing it in your games</h2>"
               "and, more often, when the natural move of ordinary chess fails to one. It never names the move.</p>"
               "<p>After every game, <b>Post-Game Analysis</b> lists its self-capture moments: the self-captures played and "
               "missed, and turns the ones you missed into positions to practise.</p>")
-TOUR_END = ("<h2>Your first opponent: Hal</h2>"
-            "<p>Hal (950) plays like any beginner, except for one habit: when his king is in danger it takes one of "
-            "its own pieces to get out. The game is unrated and the coach is on.</p>"
+TOUR_END = ("<h2>Your first opponent: Felix</h2>"
+            "<p>Felix (1500) plays sound club chess, with one habit: a bishop blocked by its own pawns, or a rook "
+            "with no open file, takes one of his own pawns to get into play. The game is unrated and the coach is on.</p>"
             "<p>Afterwards, the <b>Academy</b> menu has eight lessons, from these rules to master ideas, and "
-            "self-capture puzzles at your level. Eight specialists, from Hal to Kestrel (2600), each play for one idea; "
-            "the <b>Choose…</b> button beside the opponent, then <b>Self-capture specialists</b>, shows them.</p>")
-TOUR_OPPONENT = "Hal"
+            "self-capture puzzles at your level. Eight specialists, from Hal (950) to Kestrel (2600), each play for one "
+            "idea; the <b>Choose…</b> button beside the opponent, then <b>Self-capture specialists</b>, shows them.</p>")
+TOUR_OPPONENT = "Felix"   # PO 10-08: the audience is club strength (~1600)
 
 
 def tour_steps():
@@ -456,7 +456,7 @@ def tour_steps():
 
 
 class TourWindow(QDialog):
-    """Getting started (KS-13): the rules, four boards to solve, what the app shows, then a game against Hal."""
+    """Getting started (KS-13): the rules, four boards to solve, what the app shows, then a game against Felix."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -513,7 +513,7 @@ class TourWindow(QDialog):
         save_state(st)
 
     def play(self):
-        """Hal, unrated, with the coach on."""
+        """Felix, unrated, with the coach on."""
         self._done()
         main = self.parent()
         if main is not None and hasattr(main, "coach_box"):

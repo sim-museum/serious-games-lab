@@ -253,7 +253,7 @@ class Tour(unittest.TestCase):                     # KS-13: a first-time player'
             self.assertTrue(t.next_btn.isEnabled())
             t.next_btn.click()
 
-    def test_from_the_rules_to_a_game_against_hal(self):
+    def test_from_the_rules_to_a_game_against_felix(self):
         m = self.app.MainWindow()
         m.coach_box.setChecked(False)
         m.tour_open()
@@ -266,7 +266,7 @@ class Tour(unittest.TestCase):                     # KS-13: a first-time player'
         self.assertFalse(t2.play_btn.isHidden())                   # the last page: play, not next
         self.assertTrue(t2.next_btn.isHidden())
         t2.play()
-        self.assertEqual(m.who.currentData(), "Hal")
+        self.assertEqual(m.who.currentData(), "Felix")
         self.assertFalse(m.rated_box.isChecked())
         self.assertTrue(m.coach_box.isChecked())
         self.assertTrue(self.academy.load_state()["tour_done"])
