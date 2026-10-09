@@ -104,7 +104,20 @@ const SECTION_EN = Dict(
     # Zandvoort (Dutch)
     "Tarzanbocht" => "Tarzan Bend", "Gerlachbocht" => "Gerlach Bend", "Hugenholtzbocht" => "Hugenholtz Bend",
     "Hondenvlak" => "Dogs' Flat", "Tunnel Oost" => "Tunnel East", "Panoramabocht" => "Panorama Bend",
-    "Huzaren Vlak" => "Hussars' Flat")
+    "Huzaren Vlak" => "Hussars' Flat",
+    # TRACKSEG-4 (PO 2026-10-07: "supply an English translation in parenthasis if at all possible, even if the tranlation is
+    # wrong or even obsurd - the point is that it's something you can use to remember and orient yourself"). TRACKSEG-2 left
+    # place and person names bare; now every non-English name gets an English handle. Where a name has a real meaning it is
+    # used (Blanchimont = white mount, roggia = irrigation ditch, Bach = brook); otherwise a sound-alike or folk etymology,
+    # memorable rather than right. English names (Watkins Glen's) stay as they are.
+    "Hatzenbach" => "Hatz Brook", "Aremberg" => "Eagle Mountain", "Metzgesfeld" => "Butcher's Field",
+    "Kallenhard" => "Cold Ridge", "Wehrseifen" => "Weir Trickle", "Wippermann" => "Seesaw Man",
+    "Eschbach" => "Ash Brook",
+    "Della Roggia" => "Of the Irrigation Ditch", "Lesmos" => "Lazy Bends", "Serraglio" => "Seraglio", "Ascari" => "Ascari's Corner",
+    "Les Combes" => "The Hollows", "Burnenville" => "Burning Town", "Malmedy" => "Bad Medicine", "Masta" => "Mast Village",
+    "Stavelot" => "Stable Lot", "Blanchimont" => "White Mount",
+    "Hunzerug" => "Huns' Back", "Zijn Veld" => "His Field", "Jan de Wyker" => "John the Yielder", "Scheivlak" => "Parting Flat",
+    "Pulleveld" => "Puddle Field")
 section_label(n) = (get(ENV, "JM_SEGNAME_EN", "1") != "0" && haskey(SECTION_EN, n)) ? string(n, " (", SECTION_EN[n], ")") : n
 
 """Section boundaries for `track`, scaled onto a ribbon of length `laplen`: a sorted Vector{Tuple{Float64,String}}

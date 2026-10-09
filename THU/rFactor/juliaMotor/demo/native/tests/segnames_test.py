@@ -14,7 +14,7 @@ def check(c, msg):
     global ok; ok &= bool(c); print(("PASS " if c else "FAIL ") + msg)
 check(t.gfx_segnames.isChecked(), "default ON")
 e = QProcessEnvironment(); t._gfx_env(e)
-check(not e.contains("JM_SEGNAME_SECS"), "ON -> no JM_SEGNAME_SECS (sim default 3 s)")
+check(not e.contains("JM_SEGNAME_SECS"), "ON -> no JM_SEGNAME_SECS (sim default 6 s)")
 t.gfx_segnames.setChecked(False); e = QProcessEnvironment(); t._gfx_env(e)
 check(e.value("JM_SEGNAME_SECS") == "0", "OFF -> JM_SEGNAME_SECS=0")
 check(QSettings("juliaRacer", "launcher").value("hud/segnames") == "false", "OFF remembered")

@@ -5848,10 +5848,10 @@ FONT = TEXT_HUD ? Render.load_font(joinpath(@__DIR__, "assets"), 18) : nothing
 TEXT_HUD && FONT === nothing && println("  [texthud] no font atlas under demo/native/assets -- text overlay off (run JuliaMotorMTK/tools/make_font_atlas.py)")
 # TRACKSEG-1 (PO 2026-10-04): GPL's Nürburgring names each section of the lap on trackside boards (Flugplatz,
 # Schwedenkreuz, Hohe Acht ...). Every track gets the same: the name, centred in the timing band above the 3-D
-# view, for SEGNAME_SECS seconds on entering a section. Names and positions: track_sections.jl.
+# view, for SEGNAME_SECS seconds on entering a section (6 s since TRACKSEG-4). Names and positions: track_sections.jl.
 # JM_SEGNAME_SECS=0 turns it off.
 include(joinpath(@__DIR__, "track_sections.jl"))
-const SEGNAME_SECS = parse(Float64, get(ENV, "JM_SEGNAME_SECS", "3.0"))
+const SEGNAME_SECS = parse(Float64, get(ENV, "JM_SEGNAME_SECS", "6.0"))   # TRACKSEG-4 (PO 2026-10-07: "twice as long"): was 3 s
 const SEGFONT = FONT === nothing ? nothing : something(Render.load_font(joinpath(@__DIR__, "assets"), 32), FONT)
 const SECTIONS = isdefined(Main, :LAPLEN) ? track_sections(TRACKSEL, LAPLEN) : Tuple{Float64,String}[]
 const SEG = Ref((0, "", -1.0e9))                   # (current section index, banner text, banner start time)
