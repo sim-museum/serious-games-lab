@@ -112,6 +112,17 @@ end
 println(sweep_ok ? "\n    no approach speed produced a bounce-back \u2713" :
                    "\n    BOUNCE-BACK AT ONE OR MORE SPEEDS \u2717")
 
-allok = wall_ok && hedge_ok && sweep_ok
+# SPATD-1 (PO 2026-10-08, Spa: "three strong jolts, like an earthquake"): a hedge GRAZED at speed must not kick like a
+# wall. The measured case: 0.2 m of overlap with a box END face, so the contact normal points back along the car's travel
+# and the approach along it is the full 44 m/s. A wall may take 8 m/s off in that frame; soft scenery at most 1 m/s.
+let m = 617.0, dt = 1/60
+    (fxh, _, _) = DriveRT3D.contact_force(0.2, -1.0, 0.0, -44.0, 0.0; kind = :soft, dt = dt)
+    (fxw, _, _) = DriveRT3D.contact_force(0.2, -1.0, 0.0, -44.0, 0.0; kind = :wall, dt = dt)
+    dvh = abs(fxh)*dt/m; dvw = abs(fxw)*dt/m
+    global graze_ok = dvh <= 1.0 + 1e-6 && dvw > 2.0
+    @printf("\n  SPATD-1 hedge graze (0.2 m into an end face at 44 m/s): hedge %.2f m/s per frame (<= 1.0), wall %.2f  %s\n",
+            dvh, dvw, graze_ok ? "ok" : "FAIL <- a hedge kicks like a wall")
+end
+allok = wall_ok && hedge_ok && sweep_ok && graze_ok
 @printf("\n  RESULT: %s\n", allok ? "CONTACT LAW OK ✓ (wall STOPS the car · hedge sticks · no divergence)" : "FAIL ✗")
 exit(allok ? 0 : 1)

@@ -24041,3 +24041,39 @@ the recording + live mirrors; S2 the lever moves with the gear; S3 DIALS-1; S4 t
   (S2), all dials (S3/DIALS-1), wrists (S4). Open for the next pass: AI cockpits in replay (each car's own `?d.3do` set;
   the PO's 261007 video shows Clark's "cockpit" is the external mesh seen from the seat), the right glove reaching for
   the lever on a shift, the sleeves' white-with-red-stripe look (ours read as silver foil), the mirror camera (E64 S12).
+
+**Full gates 2026-10-09 02:40 (after PERF-4 S1–S4, COCKPIT-2 S1–S4, DIALS-1): ALL 49 PASS** (road_clear_smoke skipped).
+
+### SPATD-1 retrospective (2026-10-09)
+* **Before:** Spa has the longest list of "invisible barrier" fixes in the backlog -- E71-S18 (house25's 5 m disc over
+  the racing line: "IF IT IS NOT DRAWN, IT MUST NOT BE SOLID"), SPA-BARRIER (three stacked house discs threw the car back
+  at 70 m/s -> cap_total_contact), SPA-WALL-1 (2026-09-06, the PO's exact words then: "turning left and going downhill
+  toward burnenville I still hit something invisible" -> undrawn solids dropped), ROAD-1 (discs shrunk to clear the
+  tarmac), GPLWALL-1 (GPL's .trk walls + drawn obstacles are the collision). The AI side: AIGPL-2/GPLAI (line tracking),
+  TRACKS-TD-1(b) (Eau Rouge inside line) is the same family as (1).
+* **Lesson:** every past round fixed one named object from one telemetry incident. **New angle:** make the sim NAME
+  every impulse when it happens (a per-frame jolt detector), reproduce the PO's line (lateral offset), not the AI's.
+
+### SPATD-1 S1 (2026-10-09): the jolts are contact impulses at the road edges -- now named in every session; soft grazes capped
+* **The PO's .ibt (22:20):** each jolt is ONE frame (normal 16.6 ms) in which the car lost 6.4–7.2 m/s and gained up to
+  4 m/s sideways -- an impulse, saturating the contact cap (617 kg × 8 m/s / dt ≈ 296 kN). At jolts 1 and 2 the PO was
+  ~4 m off the centreline (+3.9 / −4.2 m) and was thrown ~2 m back toward the middle; jolt 3 at +4.8 m. Not the AI
+  (all five were > 1.4 km behind, lapping at ~29 m/s = 104 km/h -- the "poke along" of (1)), not a timer (frame times
+  normal around every jolt; their even spacing in time is also even spacing in distance at a steady 52 m/s).
+* **New permanent diagnostic:** any frame whose world velocity changes by > 3 m/s logs `[jolt]` with the solid-object
+  force, GPL-wall and drawn-obstacle hits/clamps, step-guard holds, ride heights, the car's position and the solid it
+  penetrated deepest (name, kind, box/disc, gap). In every session log (`JM_JOLT_MS=0` off).
+* **Reproduced** (autodrive 4 m off the centreline from s=4800; crash-harness grazes at 8° at the PO's speeds):
+  - s≈5162–5169 LEFT: `bushrow2`, a drawn hedge-row box at the road edge -- 15–27 cm of overlap gave 150–360 kN per
+    frame ALTERNATING in sign (the closest face of the box flips between frames): a chain of 8 m/s kicks from a graze.
+  - s≈5160–5235 RIGHT: GPL walls / drawn faces; the crash harness reports **89 frames of INVISIBLE contact** there
+    (contact with nothing drawn) -- the next sprint's target, and the PO's (2) is the same stretch.
+  - s≈8035–8075 RIGHT: GPL's right wall at lat +3.3 (the PO's jolt 3 at +4.8 m).
+* **Fix 1 (contact law, `drive_rt3d.jl`):** SOFT scenery (hedges, hay) may take at most 1 m/s per frame while the overlap
+  is a graze (<= 0.3 m), growing to the full 8 m/s once the car is buried (>= 0.8 m), so a head-on hedge hit still stops
+  the car (E56) but a brush no longer kicks like a wall; the exit bleed is capped the same way. `contact_smoke` gains the
+  graze check (0.2 m into an end face at 44 m/s: hedge 1.00 m/s, wall 8.00; the old law gave the hedge 8.00) and still
+  passes the wall/hedge/no-bounce checks; stacked_contact, contact_geom, wreck, solid_box, wreck_seal, parse PASS.
+  **Honest limit:** the in-sim A/B (`JM_SOFT_DVMAX=8` = old law) through the crash harness was equal (34 jolts each) --
+  that harness drives DEEP into the hedge (up to 2.7 m), where the full budget applies by design; the cap is for the
+  shallow brush the PO described, proven at kernel level only.

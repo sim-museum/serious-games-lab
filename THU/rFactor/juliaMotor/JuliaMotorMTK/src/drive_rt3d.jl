@@ -896,6 +896,19 @@ const SPRING_DMAX = parse(Float64, get(ENV, "JM_SPRING_DMAX", "0.25"))   # E94b:
 # while the car itself never does.
 const VN_OUT_MAX = parse(Float64, get(ENV, "JM_VN_OUT_MAX", "0.25"))   # m/s of separation a contact may ever grant
 const CONTACT_DVMAX = 8.0                                          # PO round-4: a hit must not FLING the car — cap the per-frame outward Δv (was 16 = "rubber-band sling-back")
+# SPATD-1 (PO 2026-10-08, Spa: "three strong jolts, like an earthquake, while riding along"). A HEDGE grazed at speed
+# (bushrow2 at Burnenville, 15–27 cm of overlap at 3.5 m off the centreline) gave the car the full wall budget, 8 m/s in
+# ONE frame, several frames running and alternating in sign as the closest face of the box changed -- the strong
+# two-sided damper (c = 7e4 x tens of m/s along a box END normal) saturates the cap however shallow the touch. Soft
+# scenery is "plough through with a penalty" (E99), never a wall: its per-frame Δv is capped at CONTACT_DVMAX_SOFT.
+const CONTACT_DVMAX_SOFT = 1.0
+# ... but a car that has really ploughed IN must still be stopped (E56: "drive in & get stuck"; contact_smoke's 30 m/s
+# head-on into a hedge went straight through with a flat 1 m/s cap). So the soft budget grows with the overlap: a graze
+# (<= 0.3 m) gets CONTACT_DVMAX_SOFT, a buried car (>= 0.8 m) the full CONTACT_DVMAX, linear between. A head-on hit
+# passes 0.8 m within a frame or two; the jolts were 0.15-0.27 m grazes.
+const SOFT_DVMAX_OVERRIDE = Ref(NaN)   # set at RUN time by the app (JM_SOFT_DVMAX) for A/Bs -- a const here would be baked in at precompile
+soft_dvmax(δ) = isfinite(SOFT_DVMAX_OVERRIDE[]) ? SOFT_DVMAX_OVERRIDE[] :
+    CONTACT_DVMAX_SOFT + (CONTACT_DVMAX - CONTACT_DVMAX_SOFT) * clamp((δ - 0.3) / 0.5, 0.0, 1.0)
 function contact_force(δ, nx, nz, vn, θ; kind = :wall, m = 617.0, dt = 1/60, arm = 1.4)
     δ <= 0.0 && return (0.0, 0.0, 0.0)
     # PO round 4: trackside objects still felt like "a big rubber band that slings you back the other
@@ -939,7 +952,7 @@ function contact_force(δ, nx, nz, vn, θ; kind = :wall, m = 617.0, dt = 1/60, a
     δspring = min(δeff, SPRING_DMAX)
     damp = twoSided ? -c*vn : -c*min(vn, 0.0)                    # :wall damps approach only (so it rebounds)
     Fn = max(k*δspring + damp, 0.0)                               # along +n (outward); a contact never pulls
-    Fn = min(Fn, m*CONTACT_DVMAX/max(dt, 1e-3))                  # clamp per-frame impulse → solver-stable
+    Fn = min(Fn, m*(kind === :soft ? soft_dvmax(δ) : CONTACT_DVMAX)/max(dt, 1e-3))   # clamp per-frame impulse → solver-stable (soft: SPATD-1)
     # E96: THE NO-REBOUND INVARIANT. Everything above still ends in an outward spring term that
     # keeps pushing once the car has stopped (at rest vn≈0, so the damper is silent and only k·δ
     # acts) -- which is the bounce, and no choice of k removes it. Split the impulse budget
@@ -984,6 +997,7 @@ function contact_force(δ, nx, nz, vn, θ; kind = :wall, m = 617.0, dt = 1/60, a
         # VN_OUT_MAX intact means a car can always creep free at walking pace while anything
         # faster -- which is what reads as a bounce -- is removed.
         Fn = -m*max(vn - VN_OUT_MAX, 0.0)/max(dt, 1e-3)
+        kind === :soft && (Fn = max(Fn, -m*soft_dvmax(δ)/max(dt, 1e-3)))   # SPATD-1: the bleed is soft-capped too
     end
     cθ = cos(θ); sθ = sin(θ)
     Fx = Fn*( nx*cθ + nz*sθ);  Fy = Fn*(-nx*sθ + nz*cθ)         # world force → body frame

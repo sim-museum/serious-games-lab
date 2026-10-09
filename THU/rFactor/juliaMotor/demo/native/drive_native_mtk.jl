@@ -880,6 +880,14 @@ const NET_DIAG = parse(Int, get(ENV, "JM_NET_DIAG", "0"))
 # E85-S6: drive the player car from the racing line, for headless measurement runs.
 # E106-S15: driveability watch (see the per-frame block in the autodrive branch).
 const FIXED_DT    = parse(Float64, get(ENV, "JM_FIXED_DT", "0"))   # >0 = fixed sim step (headless sweeps)
+# SPATD-1 (PO 2026-10-08, Spa: "three strong jolts, like an earthquake, while riding along in the middle of the road").
+# The PO's .ibt shows each as ONE frame in which the car lost ~6.5 m/s and gained ~4 m/s sideways at a normal frame time --
+# an impulse. Every frame whose world velocity changes by more than JM_JOLT_MS (3 m/s, ~18 g) in one step is logged with
+# what touched the car in it: solid-object contact force, GPL-wall and drawn-obstacle hits/clamps, step-guard holds.
+const JOLT_MS = parse(Float64, get(ENV, "JM_JOLT_MS", "3.0"))
+const JOLT_PRE = Ref((0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0, 0))
+const JOLT_N = Ref(0)
+haskey(ENV, "JM_SOFT_DVMAX") && (JRPhysics.DriveRT3D.SOFT_DVMAX_OVERRIDE[] = parse(Float64, ENV["JM_SOFT_DVMAX"]))   # SPATD-1 A/B (8 = the old law)
 const AI_NOWHEELS = get(ENV, "JM_NO_AI_WHEELS", "0") != "0"   # E106-S25 probe
 const DRIVECHECK  = get(ENV, "JM_DRIVECHECK", "0") != "0"
 const DC_AIR_MAX  = parse(Float64, get(ENV, "JM_DC_AIR",   "0.75"))  # m above ground = "levitating"
@@ -13418,6 +13426,8 @@ function main()
             # engine being re-specified. With a dead engine the revs fall and E98's stall rule
             # drops MANUAL to AUTO on its own, which is what a driver would want.
             PLAYER_HDG[] = cs.θ   # TRACKSMOOTH-2: the crease filter samples along this heading
+            (JOLT_MS > 0 && CAR3D && !SKIDPAD && !rst) && (JOLT_PRE[] = (WVX[], WVZ[], cfx, cfy, cpk, GPLW_STAT[].hits, GPLW_STAT[].clamps,
+                                          OBS_STAT[].hits, OBS_STAT[].clamps, STEP_GUARD_HITS[]))   # SPATD-1
             _tps = time()
             step_carX!(cs, inp.throttle * DriveRT3D.engine_power(), inp.brake, inp.steer, dt > 1e-4 ? dt : 1/60;
                         clutch=inp.clutch, up=inp.shift_up, dn=inp.shift_down, manual=!inp.autoshift,
@@ -13433,6 +13443,30 @@ function main()
             # nothing within 2 m before the step (it moves <= 1.33 m): no clamp, but keep the obstacle "came from" fresh --
             # a stale one would mis-side a fence the car has since driven round the end of
             (GPLW_PHYS && CAR3D && !rst && !GPLW_NEAR[] && OBS_ON) && (OBS_PREV[] = (cs.x, cs.z))
+            if JOLT_MS > 0 && CAR3D && !SKIDPAD && !rst && JOLT_N[] < 60   # SPATD-1: name every impulse
+                (_jvx, _jvz) = DriveRT3D.world_velocity(cs); _jp = JOLT_PRE[]
+                _jd = hypot(_jvx - _jp[1], _jvz - _jp[2])
+                if _jd > JOLT_MS
+                    JOLT_N[] += 1
+                    _js = CLINE === nothing ? NaN : RaceAI.project(CLINE, cs.x, cs.z)
+                    println("  [jolt] t=", round(cs.t, digits = 2), " s=", round(_js[1], digits = 1), " lat=", round(_js[2], digits = 2),
+                            " v=", round(cs.v, digits = 1), "  dv ", round(_jd, digits = 2), " m/s in ", round(dt*1000, digits = 1),
+                            " ms  | solids F=(", round(_jp[3], digits = 0), ",", round(_jp[4], digits = 0), ") pk ", round(_jp[5], digits = 0),
+                            "  wall hits +", GPLW_STAT[].hits - _jp[6], " clamps +", GPLW_STAT[].clamps - _jp[7],
+                            "  obstacle hits +", OBS_STAT[].hits - _jp[8], " clamps +", OBS_STAT[].clamps - _jp[9],
+                            "  step-guard +", STEP_GUARD_HITS[] - _jp[10], "  rh ", round.(cs.rh, digits = 3))
+                    # the solid this step penetrated deepest (name, kind, radius or box, gap) and where the car is
+                    _jg = Inf; _jk = 0
+                    for _k in eachindex(SOLIDS)
+                        SOLIDS[_k][3] < -100 && continue
+                        _g = car_gap(cs.x, cs.z, cs.θ, _k)[1]; _g < _jg && (_jg = _g; _jk = _k)
+                    end
+                    println("         at (", round(cs.x, digits = 1), ", ", round(cs.z, digits = 1), ")  deepest solid: ",
+                            _jk == 0 ? "none" : string(_jk <= length(SOLIDNAMES) ? SOLIDNAMES[_jk] : "?", " kind=", SOLIDS[_jk][4],
+                            " r=", round(SOLIDS[_jk][3], digits = 1), (_jk <= length(SOLIDBOX) && SOLIDBOX[_jk] !== nothing) ? " (box)" : "",
+                            " at (", round(SOLIDS[_jk][1], digits = 1), ", ", round(SOLIDS[_jk][2], digits = 1), ") gap ", round(_jg, digits = 2), " m")); flush(stdout)
+                end
+            end
             GPLW_PHYS && (GPLW_T[] = (GPLW_T[][1] + time() - _tgc, GPLW_T[][2]))
             if CRASH_ON && !isempty(CRASHES) && crash_i[] <= length(CRASHES) && frames >= 2
                 if crash_i[] == 0 || frames - crash_t0[] >= CRASH_FRAMES
