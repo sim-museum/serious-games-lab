@@ -28,6 +28,7 @@ this index was written; that is what it exists to stop.
 | **TRACKSEG-4** | Section names (Stavelot, Front Straight...) on screen twice as long, with an English translation in parentheses where at all possible -- even a wrong/absurd one, as a memory aid for orientation (PO 2026-10-07 night) | ✅ **CLOSED (S1, 2026-10-08), for the PO's look:** names stay 6 s (was 3); every non-English name has an English handle, real or memorable (Stavelot (Stable Lot), Blanchimont (White Mount)); gate `trackseg_smoke` |
 | **BILLBOARD-2** | Fix track billboards (PO 2026-10-07 night): Zandvoort near Tarzan the boards are blank white/grey -- match the gold, legible and colourful as at the other tracks (E60 S4 restored the MARTINI/CALTEX fronts there; something still draws blank); the Ring: a line of billboards at left middle distance after the North hairpin (Nordkehre) but well before Flugplatz, improbably in the middle of the forest -- "a dozen or so side by side" | open. Gold: `zandervoort/260801_zandervoort_cockpit.mp4`, `nurburgring/260802_nurburgring_cockpit.mp4` |
 | **DIALS-1** | In the cockpit view make ALL the dials work, not just the rev counter (oil pressure, oil/water temperature, fuel...) as in the gold (PO 2026-10-07 night) | open; worked alongside COCKPIT-2 (same dashboard, same replay channels) |
+| **WGTD-1** | Watkins Glen improvements from the PO's 2026-10-08 race (video `~/Videos/261008_wg_race.mp4`, 14:42): (a) replay cockpit -- mirrors, steering, shifting live (with COCKPIT-2); (b) analysis = ALL of GPL Replay Analyser, incl. two replay files of the same track side by side; (c) spurious diagonal straight line across the WG map under the graphs; (d) a lap-list filter (human laps, same or different sessions -- human vs AI is rarely useful); (e) after the race the AI do one slow lap and stop in the pits, as GPL; (f) the default black brake marks along the racing line start/stop in blocks -- GPL's are smooth smears; (g) the AI line runs wide, a little off track, after the 90 and before the Esses -- stay on track as GPL | open -- **PAUSED by the PO (2026-10-08 21:3x): no scrum until the PO says so** |
 | **AIHELMET-1** | The AI drivers' helmets render as a dark dome (black lobes from the front) where GPL's are the driver's skin -- found 2026-10-07 during HANDS-2 | ✅ **S1 (2026-10-07):** each AI driver's own helmet skin bound to the shell (`261007/helmet/`) |
 | **TRACKSEG-3** | Preferences switch: show/hide the track-section names ("Front Straight", "Big Bend" at WG), default ON (PO 2026-10-06) | ✅ **DONE (S1, 2026-10-06):** launcher Graphics group, "Show track section names", default ON, remembered; OFF = `JM_SEGNAME_SECS=0`, also for replays; gate `segnames_smoke` |
 | **GUI-1** | Redesign the julia racer GUI (`demo/native/juliaRacer.py`) for ease of use per GUI best practices, then restyle it like the PyQt GUIs of pokerIQ and bridgeIQ (`~/sgl/MON/pokerIQ`, `~/sgl/FRI/bridgeIQ`) (PO 2026-10-06) | **S1 (2026-10-06) redesign done:** task-ordered tabs (Race / Results / Replays / Settings / Controller), Session + Car cards, one primary Start button, menus + status bar, log on demand, everything remembered; the sim's environment is identical to before (3 cases). **S2 restyle done:** dark pokerIQ/bridgeIQ theme (`261006/gui/s2_vs_iq.jpg`). 🟡 **AWAITING THE PO's look** |
@@ -23718,3 +23719,23 @@ PO's real `~/.config/juliaRacer/launcher.conf` (`pref/mute=true`, `pref/replay=f
 `JM_NOSOUND=1 JM_NOREPLAY=1`. Fixed: both settings restored in the file (backup in scratch); `launcher_test.py` and
 `segnames_test.py` now always set their own `XDG_CONFIG_HOME`, whoever runs them -- run by hand with no isolation, the
 real file stays byte-identical (checked). Lesson: a test that writes settings must isolate ITSELF, not rely on its runner.
+
+### WGTD-1 added (PO 2026-10-08 ~21:35, verbatim) -- scrum PAUSED until the PO says so
+> remain paused and don't restart scrum until I say so.  Backlog item: watglen glen improvements:
+> '/home/g/Videos/261008_wg_race.mp4'  still need cockpit mirrors, steering, shifting to be changing in real time during
+> replay.  Analysis should include all GPL replay analyzer functionality, including ability to analyze two different
+> replay files coming from the same track side by side.  Note a spurious diagonal straight line running through the
+> watkins glen map below the graphs.  Provide a filter to remove clutter from the laps list on the left - it is rarely
+> useful to compare a human lap to an AI lap.  Typically you want to compare human laps (from the same or different
+> sessions).  After the race, have the AI go around the track one more time, slowly, and come to a stop in the pit as in
+> GPL.  The black brake marks that appear by default, showing the racing line, start and end abruptly.  They are not
+> smooth braking smears, as in GPL, but blocks of braking marks that abruptly stop and start in chunks.  The AI line goes
+> wide a little off the track after the 90 and before the esses.  Fix that so AI always stays on track, as in GPL.
+
+Notes for when the scrum resumes (nothing done yet): (a) is COCKPIT-2 S1/S3 (drafted in scratch); (b)–(d) reopen the
+analyser after REPLAY-3 -- the diagonal line is likely the map's reference line or a lap's polyline joining across a
+gap (REPLAY-3 S2 already cut lines at reset jumps; check the refline wrap and the WG start lap); (e) and (g) are AI
+items (cf. AIGPL-2 line tracking); (f) is the skid-mark renderer. Same evening, found from the PO's test drive: the TX
+pedals now stop at ~60 % of their old electrical range (clutch never fully out -> creep in gear; shifts needed a mashed
+clutch; throttle capped at 60 %) -- the PO recalibrated (joystick.conf 21:15: clutch/throttle full at raw -0.18; brake
+full at 0.863, i.e. a very short brake range -- watch for over-braking).
