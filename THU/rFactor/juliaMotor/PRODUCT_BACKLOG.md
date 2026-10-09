@@ -24229,3 +24229,13 @@ the recording + live mirrors; S2 the lever moves with the gear; S3 DIALS-1; S4 t
   absent as TERRAIN/scenery mesh. Next pass: `JM_OBJDIAG`-style census of the track .3do scenery groups in that sector
   (which mesh parts our filters drop there: SCENEDUP, overhang/crease, footprint) against the gold frame at 230 s.
   **BLINDTURN-1 rotates** (4 sprints, analysis only; no code kept).
+
+### TRACKS-TD-1 (2026-10-09, one look before the cycle ended)
+Spa after Stavelot, cockpit shots s=8000/8100/8200/8300 (`261007/trackstd_spa_after_stavelot_8000-8300.png`): no hole
+in the ground straight ahead; a grey-blue band on the far LEFT at 8100–8200 may be the PO's "opening ... to some other
+view" or a real valley view -- needs the PO's video moment (`261007_spa_race.mp4`, race 0:10–7:15) to judge. (b)'s
+"AI off the road" is now SPATD-1 S4's frame fix.
+
+# CYCLE 2026-10-08 night -- END (08:10). Done: PERF-4 S1–S4, COCKPIT-2 S1–S4 (+DIALS-1 closed), SPATD-1 S1–S4,
+# RINGTD-1 S1, REPLAY-4, REPLAY-5, BLINDTURN-1 S1–S4 (analysis), TRACKS-TD-1 look. Full gates 49/49 at 07:42.
+# Status for the PO: STATUS_2026-10-09.md.
