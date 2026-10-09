@@ -1,5 +1,24 @@
 # biq — Claude Code project notes
 
+## STATUS — Monte-Carlo declarer; run 2 at 369 boards (2026-10-09, UNCOMMITTED)
+* Run `tools/runs/bluechip/261007_qplus_biqS` resumed at 185 and stopped
+  again at 370 (the East window hung, as before; RESUME.txt there): boards
+  185-369 -281 IMP, total -697 / 369 (-1.89/bd).
+* biq's DECLARER now plays plain Monte-Carlo (`nopeek._DECL_PIMC`,
+  BIQ_DECL_PIMC=60 layouts, DD average, natural tie-break) instead of
+  alpha-mu; BIQ_DECL_PIMC=0 restores alpha-mu. Defence is unchanged.
+  decl1 replay (96 x 3NT vs scripted Q-Plus defence): 987 tricks / 89 made
+  vs alpha-mu 945 / 83 (Q-Plus 1005 / 93, DD 978). Alpha-mu worlds 30,
+  depth 3, longer budget and a long-suit lead tie-break: 939-952, so not a
+  tuning problem. Belief-level diagnostic (60 samples per costly card):
+  biq's card was >= 0.5 tr worse than the best on average 13 times vs
+  Q-Plus 4. Paired A/B on 298 random SAYC deals (no-peek, all four seats,
+  seed 91): +0.218 tr/deal (SE 0.056), +185 IMP, 99 wins / 42 losses; NT
+  +0.27 (SE 0.12), suit +0.19 (SE 0.06). About 8x faster per card.
+  test_decl_pimc.py (branch taken, legal, no peek).
+* test_competitive_fit.py and test_multi_client.py fail with or without
+  this change (pre-existing).
+
 ## STATUS — biq + 3 Q-Plus run 2; 1C answer switch; declarer probe (2026-10-08, UNCOMMITTED)
 * Run `tools/runs/bluechip/261007_qplus_biqS` (biq South, Q-Plus N/E/W,
   Precision, seed 261009): -416 IMP / 184 boards (-2.26/bd); bidding -395

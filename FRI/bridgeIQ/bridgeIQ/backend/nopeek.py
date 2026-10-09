@@ -551,6 +551,13 @@ _SECOND_LOW = float(os.environ.get("BIQ_SECOND_LOW", "0.8"))  # NT defence: a
 # SAYC deals played no-peek in all four seats it lost in suit contracts
 # (96 diverged, -0.22 tr) and was level in NT (40, -0.03 tr SE 0.14, -26 IMP).
 # Q-Plus's suit-contract habit is unprobed (BACKLOG).
+_DECL_PIMC = int(os.environ.get("BIQ_DECL_PIMC", "60"))  # declarer: plain
+# Monte-Carlo (DD average over this many sampled layouts) instead of alpha-mu;
+# 0 = alpha-mu. 3NT probe decl1 (96 deals vs scripted Q-Plus defence): 987
+# tricks / 89 made vs alpha-mu 945 / 83 (Q-Plus 1005 / 93, DD 978); alpha-mu
+# size/depth/tie-break variants were all 939-952. 298 random SAYC deals, biq
+# no-peek in all four seats, paired: +0.218 tr/deal (SE 0.056), +185 IMP,
+# NT +0.27 (SE 0.12), suit +0.19 (SE 0.06). About 8x faster than alpha-mu.
 _DDS = None
 
 
@@ -623,6 +630,34 @@ def _alphamu_card(b: BoardState, seat: Seat, trick: List[Card],
         known_seats, biq_seats = {seat, dummy}, {seat}
     else:
         known_seats, biq_seats = {declarer, dummy}, {declarer, dummy}
+        if _DECL_PIMC > 0:
+            # Plain Monte-Carlo declarer: DD-score every legal card in K
+            # sampled layouts, play the best average (natural tie-break).
+            samples, hidden = declarer_search._sample_defenders(
+                b, seat, trick, declarer, _DECL_PIMC, known_seats=known_seats)
+            if samples:
+                pbns = []
+                for a in samples:
+                    w = {s: (frozenset(a[s]) if s in hidden else
+                             frozenset(c.code52() for c in b.hands[s].cards))
+                         for s in (Seat.NORTH, Seat.EAST, Seat.SOUTH, Seat.WEST)}
+                    pbns.append(alphamu._pbn(w))
+                leader = Seat((seat.value - len(trick)) % 4)
+                res = _get_dds().solve(alphamu._strain_i(trump), leader.value,
+                                       [c.code52() for c in trick], pbns,
+                                       solutions=3)
+                if res:
+                    n = min(len(v) for v in res.values())
+                    if n > 0:
+                        avg = {c: sum(v[:n]) / n for c, v in res.items()}
+                        best = max(avg.values())
+                        tied = [Card.from_code52(c) for c, m in avg.items()
+                                if m >= best - 1e-9]
+                        pick = _natural_declarer_card(tied, b, seat, trick, trump) \
+                            if len(tied) > 1 else tied[0]
+                        _why(explain, "Monte-Carlo search",
+                             f"Double-dummy average over {len(pbns)} sampled layouts.")
+                        return pick
     from . import signal_trust, signals as _signals
     signalling = _signals.is_enabled()
     if defending and _READ_SIGNALS and signalling and signal_trust.reading_active():

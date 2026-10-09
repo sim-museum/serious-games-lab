@@ -5,21 +5,21 @@ section. Move an item to a STATUS doc under `docs/` when it's picked up.
 
 ## Backlog
 
-- **biq's notrump declarer play: leads and third-hand plays.** Declarer
-  probe `tools/runs/probes/decl1` (96 x 3NT, long clubs; Q-Plus declared
-  live, `tools/runs/bluechip/probe_decl1`) replayed with biq declaring the
-  same contracts against the same scripted E/W, one board at a time
-  (scratchpad `decl_biq.py`, NPROC=1; parallel runs gave nearly the same
-  result, 939 vs 945): Q-Plus 1005 tricks / 93 made, biq 945 / 83, double
-  dummy 978. Card-by-card DD audit: defence equal (106 vs 103 DD tricks
-  given away); declarer 79 vs 136, of which clubs (the probed suit) 21 vs
-  25 and the OTHER suits 58 vs 111. By card: leads 43 vs 82, third hand
-  24 vs 36, second hand 7 vs 14. Next: list biq's costly declarer leads
-  (trick, hand, suit; winner cashed early? wrong suit set up? entries?),
-  compare with Q-Plus's line on the same board, and look at alpha-mu's
-  declarer depth / world count in NT (BIQ_AMU_DEPTH, BIQ_AMU_WORLDS).
-  Caveat: the defence differs slightly between the two replays (biq E/W
-  adapt to declarer's plays), so per-board comparisons are not exact.
+- **Declarer play after the Monte-Carlo switch (2026-10-09).** decl1
+  replay now 987 tricks vs Q-Plus 1005 (alpha-mu was 945). Belief-level
+  diagnostic (scratch `decl_diag.py`, 60 samples per costly card):
+  "search" losses (card worse on average under biq's own beliefs)
+  Monte-Carlo 10 cards / 13 tr, Q-Plus 25 / 28, alpha-mu 62 / 72; "luck"
+  losses (card best on average, lost on the actual layout) Monte-Carlo
+  78 / 88, Q-Plus 47 / 51. The diagnostic uses biq's sampler, so it
+  flatters Monte-Carlo; the remaining gap is in the BELIEFS (what the
+  sampler thinks the defenders hold, and DD leaves that assume the
+  defence never misguesses), not the search. Next: re-weight samples by
+  the defenders' plays so far (signals, which honour they played), and
+  measure in the next Q-Plus TM run (play IMPs vs the -21 / -2.26/bd
+  baseline).
+  Also: does the Monte-Carlo idea help biq's DEFENCE (alpha-mu there was
+  an A/B win earlier, so test before switching)?
 
 - **Probe Q-Plus's second-hand play in SUIT contracts.** The 2026-10-05/07
   probes saw Q-Plus in second seat only in 3NT (declarer establishing clubs):
