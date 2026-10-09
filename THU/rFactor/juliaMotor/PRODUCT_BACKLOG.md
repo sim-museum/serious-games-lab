@@ -24182,3 +24182,21 @@ the recording + live mirrors; S2 the lever moves with the gear; S3 DIALS-1; S4 t
   The in-game help line and the launcher's Replays hint list the keys. (Keys are not drivable headlessly: verified by
   code and parse; the PO's look will confirm.)
 * Gates parse, launcher (analyser + coach + launcher + segnames), warm, telemetry_rpm, restart PASS.
+
+**Full gates 2026-10-09 07:42 (after SPATD-1 S1–S4, RINGTD-1 S1, REPLAY-4/5): ALL 49 PASS** (road_clear_smoke skipped).
+
+### BLINDTURN-1 retrospective + S1 (2026-10-09, analysis only -- no code kept)
+* **Before:** E78's drop-rule audit (clean on WG/Monza/Spa/Ring for objects the PO did NOT ask to remove), memory
+  jr-stale-drop-rules (`JM_OBJDIAG_AT` names why an object is dropped; `JM_KEEPTEST` A/Bs it), GPLVIS-1 (GPL's
+  per-cell visibility can hide distant objects), E109/RING-GOLD-1 (trees/backdrops removed on request).
+* **Spa La Source** (`JM_OBJDIAG_AT=13700:250`, 713 instances): apart from no-mesh sprites and junk-filter people, only
+  two rules drop anything -- `lasad1` (a La Source board, lat +7.4, s 13640) by the on-road FOOTPRINT filter, and
+  hay-bale rows `hayb` (lat +8..+10 at s 13670; −7 at s 13900) by the blanket "under 1 m tall" draw rule (objkeep).
+* **Tried and reverted:** keeping low markers (hay/straw/tyre walls) despite the 1 m rule -- the cockpit view at s=13560
+  is unchanged (the bales do not show from the approach), so it does not answer the PO's report ("staring out into
+  farmland on the far side of the hairpin"). The view there does show exactly that: the road appears to run on into
+  open sky. **Ring Südkehre** (`JM_OBJDIAG_AT=600:150`): only `km_00_7` dropped (footprint) -- the Ring's missing
+  far-side markers are not a drop rule; candidates are track-mesh scenery filters or GPLVIS culling.
+* **Next sprint:** gold vs ours at the same place (memory jr-gold-align-landmarks): `260802_spa_cockpit.mp4` on the
+  La Source approach and the Ring cockpit gold at Südkehre / the first-bridge right / after Ex-Mühle -- name what GPL
+  draws beyond each corner, then find which of our filters removes it (lasad1's footprint is the first suspect).
