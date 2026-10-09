@@ -24200,3 +24200,15 @@ the recording + live mirrors; S2 the lever moves with the gear; S3 DIALS-1; S4 t
 * **Next sprint:** gold vs ours at the same place (memory jr-gold-align-landmarks): `260802_spa_cockpit.mp4` on the
   La Source approach and the Ring cockpit gold at Südkehre / the first-bridge right / after Ex-Mühle -- name what GPL
   draws beyond each corner, then find which of our filters removes it (lasad1's footprint is the first suspect).
+
+### BLINDTURN-1 S2 (2026-10-09, analysis): what GPL shows beyond La Source -- the gold located
+* Gold `spa/260802_spa_cockpit.mp4` **224–235 s** is the La Source approach (`261007/blindturn_gold_lasource_224-235s.png`,
+  1 frame/s): at ~230 s, about 80 m before the hairpin, GPL shows BEYOND the corner a spectator bank, trees on the
+  hillside, a CASTROL board and a row of Shell boards; at 232 s hay bales line the outside of the exit; 233–235 s a wall
+  of billboards on the left. Ours at s=13560 (≈80 m before the corner, `261007/blindturn_ours_lasource_s13560.ppm`):
+  the road appears to run on into open sky, CALTEX boards on the right, the villa on the left -- the far side is
+  missing as a whole (crowd bank + trees + boards), not one object.
+* So BLINDTURN-1 is mostly "what scenery do we drop beyond corners" -- candidates: the spectator objects (no-mesh
+  people/sprites; E88 removed spectators at WG on request -- check that nothing similar applies at Spa), the hillside
+  trees (sprite/tree rules), `lasad1` (footprint filter), hay bales (1 m rule). Next sprint: render ours at the gold's
+  exact spot with `JM_KEEPTEST` A/Bs per candidate, judged at full resolution (memory jr-judge-geometry-full-res).
