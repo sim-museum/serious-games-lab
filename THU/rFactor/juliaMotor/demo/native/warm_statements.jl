@@ -29,3 +29,8 @@ precompile(Tuple{typeof(Base.setindex!), Base.RefValue{Tuple{Float64, Float64, F
 precompile(Tuple{typeof(Main.gplw_road_interval), Int64, Float64})
 precompile(Tuple{typeof(Base.println), String, Int64, String, Int64, String, Int64, String, String, String, Int64, Vararg{Any}})
 precompile(Tuple{typeof(Base.print), Base.IOStream, String, Int64, String, Int64, String, Int64, String, String, String, Vararg{Any}})
+precompile(Tuple{typeof(Base.print), Base.IOStream, NTuple{4, Float64}})
+precompile(Tuple{typeof(Base.print_to_string), String, String, Symbol, String, Float64, String, String, Float64, String, Float64, Vararg{Any}})
+precompile(Tuple{typeof(Base.println), String, Float64, String, Float64, String, String})
+precompile(Tuple{typeof(Base.print), Base.IOStream, String, Float64, String, Float64, String, String, String})
+precompile(Tuple{typeof(Core.kwcall), NamedTuple{(:update,), Tuple{Bool}}, typeof(Main.gplw_locate), Float64, Float64})

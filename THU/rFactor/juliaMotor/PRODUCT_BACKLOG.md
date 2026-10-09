@@ -24096,3 +24096,23 @@ the recording + live mirrors; S2 the lever moves with the gear; S3 DIALS-1; S4 t
   wall at +3.3 is drawn. Gates gplwall, gplroad, gpldlat, gplplan, seam, parse PASS.
 * **Left for S3:** (1) the AI (off the road at Eau Rouge, ~half their target pace); (4) La Source far-side objects; and a
   look at whether the same junction contamination moved walls elsewhere (a lap-wide census of wall faces on drawn road).
+
+### SPATD-1 S3 (2026-10-09): the AI were at ~60 % of the pace asked for -- now calibrated on the measured lap; wall census
+* **AI pace, measured** (PO: "they are extremely slow - at 70% they just poke along"). A 70 % race at Spa recorded as a
+  replay, the PO's car crawling at the back: the fastest AI averaged **29.6 m/s (max 40.2)** -- a lap-equivalent of
+  **477 s against the 286 s target** (GPLrank 200.3 s / 0.70); the slower makes 510–545 s. Not traffic: one AI car
+  alone, headless, at the pace scale the sim chose (0.527) also laps in **471.5 s**. The knob assumed lap time scales
+  as 1/scale (natural lap 150.7 s at scale 1 → 0.527 for 286 s); the GPL AI's lap does not scale that way.
+* **Fix:** bisect the scale on the MEASURED headless lap (8 halvings, ~3 s of load): Spa 70 % → scale **0.867, 286.6 s**
+  (target 286.2), 60 % → 0.744, 333.9 s (333.9). `JM_AI_PACE_CAL=0` restores the old estimate. **In the race** (same
+  setup, replay-measured): Clark **50.1 m/s mean, 66.5 max (240 km/h)**, lap-equivalent **282 s** including the
+  standing start; Ferrari 297, Brabham 309, Cooper 315 (their power/weight spread). Generic -- every track's AI were
+  under-paced the same way; each now calibrates at load.
+* **Wall census** (`JM_GPLW_ONROAD=1`, blocking GPL wall faces with drawn road 0.5 m on BOTH sides, after S2): Spa 12
+  of 9460 (all pit walls at the start/finish, lat 10–30 m -- none on the racing road), Watkins Glen 12 of 2354 (s≈552
+  lat −6.5; s≈2600–2700 lat +6.8–7.2: paved verges, to check), Monza 94 of 4246 (incl. **s≈5513, lat −3.3..−3.7 -- on the
+  racing road**, the Parabolica pit-entry wall?), Nürburgring 308 of 38038 (start/finish pit wall first; needs a grouped
+  listing). Carried to TRACKS-TD-1 / BLINDTURN-1 time: each flagged site checked against the drawn barrier.
+* Gates: ai_field, racestart, lapprog, netai, netai_host, parse PASS. warm_smoke went red once (124 ms of compiling at 50 s:
+  the new [jolt] report's first print) -- the warm list was regenerated from fresh traces including the jolt paths
+  (28 -> 33 statements) and the gate PASSES (27.9 ms residual, budget 60).

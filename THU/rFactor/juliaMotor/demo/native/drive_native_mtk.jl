@@ -3316,6 +3316,29 @@ if GPLW_ON && (get(ENV, "JM_GPLWALL_REG", "2.0") != "0" || get(ENV, "JM_GPLWALL_
         CEN && exit(0)
     end
 end
+# SPATD-1 S3 census: JM_GPLW_ONROAD=1 lists every blocking GPL wall face that stands ON our drawn road -- drawn tarmac
+# 0.5 m on BOTH sides of the face. Such a face is an invisible barrier by construction (the Burnenville case, S2).
+if GPLW_ON && ROADHAT !== TERRAIN0 && get(ENV, "JM_GPLW_ONROAD", "0") != "0"
+    let onr(x, z) = JuliaMotor.hat3d(ROADHAT, x, z; ref = Inf)[3], sites = Tuple{Float64,Int,Float64,Float64}[], s0 = 0.0, nf = 0
+        for (si, v) in enumerate(GPLWALLS.secs)
+            L = GPLWALLS.seclen[si]
+            for j in 1:GPLWall.NF+1, k in 1:length(v)-1
+                (v[k].wall && v[k].height >= GPLW_HMIN) || continue
+                f = (j - 1)/GPLWall.NF; (px, pz, nx, nz) = gplw_frame(si, f)
+                for kk in (k, k + 1)
+                    e = GPLWALLS.E[si][kk, j]; nf += 1
+                    (onr(px + nx*(e - 0.5), pz + nz*(e - 0.5)) && onr(px + nx*(e + 0.5), pz + nz*(e + 0.5))) &&
+                        push!(sites, (s0 + f*L, si, e, v[k].height))
+                end
+            end
+            s0 += L
+        end
+        println("  [gplw onroad] ", TRACKSEL, ": ", length(sites), " of ", nf, " wall-face points stand on drawn road")
+        for (sl, si, e, h) in sites[1:min(end, 25)]
+            println("     s=", round(sl, digits = 1), "  section ", si, "  face at lat ", round(e, digits = 2), "  h ", round(h, digits = 2))
+        end
+    end
+end
 # SPATD-1 diagnostic: JM_GPLW_DUMP="95,97" prints those sections' strips, raw vs registered edge table (f = 0, .5, 1)
 if GPLW_ON && get(ENV, "JM_GPLW_DUMP", "") != ""
     for si in parse.(Int, split(ENV["JM_GPLW_DUMP"], ","))
@@ -12366,6 +12389,39 @@ function main()
             end
             tnat = t0 > 0 ? tk/36 - t0 : NaN
             GPLAI_SC = isfinite(tnat) ? gs*clamp(tnat/max(AI_TGT, 1.0), 0.4, 1.0) : gs
+            # SPATD-1 S3 (PO 2026-10-08: "they are extremely slow - at 70% they just poke along"): the knob assumed the lap
+            # time scales as 1/scale. Measure the headless lap AT the chosen scale and say what it actually is.
+            function gplai_natlap(sc)
+                cc = GPLAI.Car(GPLAI_T, 1, 10.0, GPLAI.dlat(lines[GPLAI.RACE], 10.0); v = 30.0)
+                ff = GPLAI.Field(GPLAI_T, [cc]); ta = -1.0; tq = 0
+                while tq < 36*1200
+                    GPLAI.tick!(ff, nothing, sc, Inf); tq += 1
+                    (cc.lap == 1 && ta < 0) && (ta = tq/36)
+                    cc.lap == 2 && break
+                end
+                ta > 0 && cc.lap == 2 ? tq/36 - ta : NaN
+            end
+            # It is not: at Spa, 70 %, scale 0.527 laps in 471.5 s against a 286.2 s target (the race measured 477 s for the
+            # fastest car) -- the field ran at ~60 % of the pace asked for. Bisect the scale on the MEASURED headless lap.
+            # JM_AI_PACE_CAL=0 restores the 1/scale estimate.
+            if isfinite(tnat) && get(ENV, "JM_AI_PACE_CAL", "1") != "0"
+                _tc = time(); lo_ = 0.25*gs; hi_ = gs; tlo_ = gplai_natlap(lo_); nev = 1
+                isfinite(tlo_) || (tlo_ = Inf)              # no lap at all = slower than any target
+                if AI_TGT >= tlo_
+                    GPLAI_SC = lo_
+                elseif AI_TGT <= tnat
+                    GPLAI_SC = gs
+                else
+                    for _ in 1:8
+                        mid_ = (lo_ + hi_)/2; tm_ = gplai_natlap(mid_); nev += 1
+                        (!isfinite(tm_) || tm_ > AI_TGT) ? (lo_ = mid_) : (hi_ = mid_)   # NaN = too slow
+                    end
+                    GPLAI_SC = (lo_ + hi_)/2
+                end
+                println("  → AI pace calibrated: scale ", round(GPLAI_SC, digits = 3), " laps in ",
+                        round(gplai_natlap(GPLAI_SC), digits = 1), " s (target ", round(AI_TGT, digits = 1), " s; ", nev,
+                        " headless laps, ", round(time() - _tc, digits = 1), " s)"); flush(stdout)
+            end
             # does GPL's race line, placed by this frame, lie on OUR drawn road? (measured, not assumed)
             non = 0; ntot = 0
             for x in 0:6.0:glap-1
