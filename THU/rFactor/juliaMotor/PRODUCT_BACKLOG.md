@@ -24164,3 +24164,21 @@ the recording + live mirrors; S2 the lever moves with the gear; S3 DIALS-1; S4 t
 * Gates parse, susp_pose PASS; warm_smoke PASS after a regeneration (the faster AI and the jolt report brought new first-use paths: the [jolt] ride-height print no longer broadcasts, and warmgen.py now keeps Base/package closures -- only our own code's closures change names; list 35, 0.0 ms of race-time compiling). The PO asked to REMOVE the post-Karussell banner too; with the bucking gone it is now harmless
   -- kept for the PO's call (say if it should still go). Next: (a) billboards after the North hairpin, (b) floating shed
   near Wehrseifen, (c) Ex-Mühle hill pop-in, (d) floating trees in the Adenauer Forst.
+
+### REPLAY-4 S1 + REPLAY-5 S1 (2026-10-09): R starts a new session (replay + .ibt); the replay no longer sticks at its end
+* **REPLAY-4** (PO: "each time you press "r" that should start a new session. It should write to a new .ibt also"): a
+  restart now writes the ending session's replay (`final`) and .ibt, empties both recorders and opens new files with a
+  fresh timestamp (" (2)" if two restarts share a second). The .ibt writer became `flush_ibt!` (exit and restart).
+  Smoke hook `JM_RESTART_AT="20,40"` presses R at those times. **Check** (WG race, 60 s, R at 20 and 40 s): three
+  replays + three .ibt (1158/1161/1281 ticks), each read by the analyser as its own session.
+* That check exposed an analyser bug: after a restart every car stands on the grid BEHIND the line and its counter ticks
+  within seconds -- "lap 1  0:01.713". A race start behind the line now merges that run into lap 1, but only when the
+  counter ticked on it (the player's counter skips the grid crossing; the PO's Spa 6:38.871 / WG 1:37.852 unchanged).
+  analyser_test +1 check (grid 40 m behind the line: lap 1 = 20.8 s).
+* **REPLAY-5** (PO: "allow the user to move to the end or the beginning with one command. Currently when you reach the end
+  of the replay it just gets stuck, and you can't back up"): at the end playback kept running into the clamp, so a tap
+  of ← went back a fraction of a second and play carried it straight back. Now the replay PAUSES at its end (the arrows
+  then scrub freely), SPACE at the end replays from the start, HOME / END jump to start / end, PAGE UP / PAGE DOWN ±10 s.
+  The in-game help line and the launcher's Replays hint list the keys. (Keys are not drivable headlessly: verified by
+  code and parse; the PO's look will confirm.)
+* Gates parse, launcher (analyser + coach + launcher + segnames), warm, telemetry_rpm, restart PASS.

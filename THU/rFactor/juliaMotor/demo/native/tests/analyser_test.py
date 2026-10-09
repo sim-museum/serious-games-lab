@@ -83,6 +83,12 @@ check(w.table.rowCount() == len(rep.laps) + len(rep.unfinished), "the lap list s
 w.grab()                                            # paints every widget once (an exception would fail the test)
 os.remove(path)
 
+# REPLAY-3/4: a race started on a grid BEHIND the line (a restart puts every car there): the run to the line is not lap 1
+start_saved = list(start); start[0] = L - 40.0; start[1] = L - 60.0
+p4 = make(); r4 = A.Replay(p4); os.remove(p4); start[:] = start_saved
+pl4 = [lp for lp in r4.laps if lp.car == 0]
+check(len(pl4) >= 1 and pl4[0].num == 1 and abs(pl4[0].time - (L + 40.0) / 50) < 0.05,
+      f"grid behind the line: lap 1 = run to the line + one lap ({[round(lp.time, 2) for lp in pl4]})")
 # REPLAY-3: practice -- the first lap is an out-lap from the pits: listed, untimed
 p2 = make(race=0); r2 = A.Replay(p2); os.remove(p2)
 pl2 = [lp for lp in r2.laps if lp.car == 0]; out = [lp for lp in r2.unfinished if lp.car == 0 and lp.start]

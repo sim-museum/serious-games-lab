@@ -880,6 +880,8 @@ const NET_DIAG = parse(Int, get(ENV, "JM_NET_DIAG", "0"))
 # E85-S6: drive the player car from the racing line, for headless measurement runs.
 # E106-S15: driveability watch (see the per-frame block in the autodrive branch).
 const FIXED_DT    = parse(Float64, get(ENV, "JM_FIXED_DT", "0"))   # >0 = fixed sim step (headless sweeps)
+const RESTART_AT  = Float64[parse(Float64, x) for x in split(get(ENV, "JM_RESTART_AT", ""), ",") if !isempty(strip(x))]   # REPLAY-4 test hook (smoke)
+const RESTART_I   = Ref(1)
 # SPATD-1 (PO 2026-10-08, Spa: "three strong jolts, like an earthquake, while riding along in the middle of the road").
 # The PO's .ibt shows each as ONE frame in which the car lost ~6.5 m/s and gained ~4 m/s sideways at a normal frame time --
 # an impulse. Every frame whose world velocity changes by more than JM_JOLT_MS (3 m/s, ~18 g) in one step is logged with
@@ -12796,6 +12798,23 @@ function main()
     texthud_name(id) = id == 0 ? "You" : (haskey(ENV, "JM_TEXTHUD_CHASSIS") ? AICHASSIS[id].name :
                                           (id <= length(AIDRIVERS) ? AIDRIVERS[id] : AICHASSIS[id].name))
     ibt_samples = IBTREC ? Dict{String,Float64}[] : nothing      # iRacing-format telemetry rows
+    # REPLAY-4: write the session's .ibt (at exit, and on a restart R) and start an empty one
+    function flush_ibt!(samples)
+        (samples === nothing || isempty(samples)) && return
+        try
+            tmpl = ibt_open(IBTTMPL)
+            ts = Dates.format(Dates.now(), "yyyy-mm-dd HH-MM-SS")
+            odir = get(ENV, "JM_IBT_DIR", joinpath(dirname(dirname(@__DIR__)), "data", "juliaracer"))
+            mkpath(odir)
+            out = joinpath(odir, "lotus49_$(IBTNAME) $(ts).ibt"); n = 2   # iRacing filename convention
+            while isfile(out); out = joinpath(odir, "lotus49_$(IBTNAME) $(ts) ($n).ibt"); n += 1; end
+            write_ibt(out, tmpl, samples)
+            println("  wrote iRacing telemetry: ", out, "  (", length(samples), " ticks, ", filesize(out)÷1024, " KB)")
+        catch e
+            println("  .ibt export failed: ", e)
+        end
+        empty!(samples); nothing
+    end
     # E18: record ALL car poses (player + AI) for replay — a flat Float32 buffer, ~15 Hz, written .jmr at exit
     # REPLAY-2 S1 (PO 2026-10-06: "make sure there is always a replay available for the session the user just exited
     # from"). The recording was RACES WITH AI only (IS_RACE && N_AI > 0) and was written only on a clean exit, so a
@@ -12809,16 +12828,24 @@ function main()
     REPLAY_AUTOSAVE = parse(Float64, get(ENV, "JM_REPLAY_AUTOSAVE", "20"))
     replay_saved = Ref(time())
     replay_names = String[ent_name(i) for i in 0:length(AICARS)]   # REPLAY-2: "You", "Clark (Lotus)" ... (two Lotuses)
-    replay_out = REPLAY_REC ? begin
-            _odir = get(ENV, "JM_IBT_DIR", joinpath(dirname(dirname(@__DIR__)), "data", "juliaracer"))
-            joinpath(_odir, "replay_$(TRACKSEL) $(length(AICARS))ai $(Dates.format(Dates.now(), "yyyy-mm-dd HH-MM-SS")).jmr")
-        end : ""
+    # REPLAY-4 (PO 2026-10-08: "each time you press "r" that should start a new session. It should write to a new .ibt
+    # also"): a restart closes this session's replay and .ibt and opens new ones, so every run is its own entry in the
+    # Replays list and the analyser. The path is a Ref because a restart replaces it.
+    function new_replay_path()
+        _odir = get(ENV, "JM_IBT_DIR", joinpath(dirname(dirname(@__DIR__)), "data", "juliaracer"))
+        base = "replay_$(TRACKSEL) $(length(AICARS))ai $(Dates.format(Dates.now(), "yyyy-mm-dd HH-MM-SS"))"
+        f = joinpath(_odir, base * ".jmr"); n = 2
+        while isfile(f); f = joinpath(_odir, base * " ($n).jmr"); n += 1; end   # two restarts in one second
+        f
+    end
+    replay_out = Ref(REPLAY_REC ? new_replay_path() : "")
     IBTREC && println("  recording iRacing .ibt telemetry (JM_IBT) — template: ", basename(IBTTMPL))
     # E18 PLAYBACK: load the recording; the loop sets poses from it instead of simulating (VCR keys below).
     REPLAY = !isempty(REPLAY_FILE)
     repd = REPLAY ? deserialize(REPLAY_FILE) : nothing
     rep_rt = Ref(parse(Float64,get(ENV,"JM_REPLAY_T","0.0"))); rep_play = Ref(true); rep_speed = Ref(1.0)
     rep_psp = Ref(false); rep_pup = Ref(false); rep_pdn = Ref(false)   # VCR key edge-detect
+    rep_phome = Ref(false); rep_pend = Ref(false); rep_ppu = Ref(false); rep_ppd = Ref(false)   # REPLAY-5
     rep_focus = Ref(clamp(parse(Int,get(ENV,"JM_REPLAY_FOCUS","0")), 0, REPLAY ? repd.ncar-1 : 0))   # E25: focus car (0=player, 1.. = AI)
     rep_cam = Ref(clamp(parse(Int,get(ENV,"JM_REPLAY_CAM","2")), 1, length(REPLAY_CAMS)))             # E25: camera mode index (start CHASE)
     rep_pn = Ref(false); rep_pv = Ref(false)                          # E25: C (switch car) / V (switch angle) edge-detect
@@ -12851,7 +12878,7 @@ function main()
          clutch = ch("clutch"), gear = kg == 0 ? 0 : round(Int, tl[(g < 0.5 ? i0 : i1)*REP_NT+kg]))
     end
     REPLAY && println("  ▶ REPLAY: $(basename(REPLAY_FILE)) — $(repd.nframes) frames, $(round(rep_dur,digits=1))s, $(repd.ncar) cars\n" *
-        "  SPACE play/pause · ←/→ seek · ↑/↓ speed · V switch ANGLE (cockpit/chase/TV/F10/nose/RR-susp) · C switch CAR · Esc quit")
+        "  SPACE play/pause · ←/→ seek · PgUp/PgDn ±10 s · Home/End start/end · ↑/↓ speed · V switch ANGLE (cockpit/chase/TV/F10/nose/RR-susp) · C switch CAR · Esc quit")
     # PO 2026-08-27: this was hardcoded "zand_racer_" with a "@ Zandvoort" header on EVERY track,
     # so the Nurburgring run just recorded landed as zand_racer_*.txt claiming to be Zandvoort.
     # Telemetry that misnames its own track is worse than none: it is wrong in a file that outlives
@@ -12954,6 +12981,9 @@ function main()
         last = now
         GEAR_NOW[] = cs.gear; RPM_NOW[] = cs.rpm; V_NOW[] = cs.v        # for the rev-matched shift gate
         inp, rst, recover, restart = read_input()
+        if SMOKE && !isempty(RESTART_AT) && RESTART_I[] <= length(RESTART_AT) && cs.t >= RESTART_AT[RESTART_I[]]
+            restart = true; RESTART_I[] += 1; println("  [test] restart (R) at t=", round(cs.t, digits = 2)); flush(stdout)
+        end
         (rst || restart) && GPLW_ON && gplw_teleported!()
         CRASH_ON && (inp = JuliaMotor.DriveInput(throttle = 0.0, brake = 0.0, steer = 0.0, clutch = inp.clutch,
                                                  shift_up = false, shift_down = false, autoshift = true))
@@ -12972,6 +13002,14 @@ function main()
         # forgets one field is worse than no restart, and the compiler cannot catch a missing one.
         if restart
             t_restart = time()
+            # REPLAY-4: the session that just ended gets its own replay and .ibt; the restart starts new ones
+            if replay_buf !== nothing && !isempty(replay_buf)
+                write_replay(replay_out[], replay_buf, tele_buf, REPLAY_NCAR, replay_names, CLINE; final = true)
+                println("  [session] replay saved: ", basename(replay_out[])); flush(stdout)
+                empty!(replay_buf); empty!(tele_buf); replay_t[] = -1.0; replay_saved[] = time()
+                replay_out[] = new_replay_path()
+            end
+            flush_ibt!(ibt_samples)
             PLAYER_G[] = NaN; respawnX!(cs; groundz = groundz_phys); DriveRT3D.damage_reset!()
             DC[].lastz = 0.0   # LAPTIME-1: see the respawn below
             WRECKED[] = false; WRECK_FROZEN[] = false; empty!(LOOSE_WHEELS)   # a detached corner is never redrawn otherwise
@@ -13165,12 +13203,27 @@ function main()
             end
         end
         if REPLAY                                   # E18 PLAYBACK: VCR + set poses from the recording, skip the sim
-            sp = key(GLFW.KEY_SPACE); (sp && !rep_psp[]) && (rep_play[] = !rep_play[]); rep_psp[] = sp
+            # REPLAY-5 (PO 2026-10-08: "allow the user to move to the end or the beginning with one command. Currently when you
+            # reach the end of the replay it just gets stuck, and you can't back up"): at the end playback kept running into
+            # the clamp, so a tap of <- moved back a fraction of a second and play carried it straight back to the end. Now
+            # the replay PAUSES at the end (the arrows then scrub freely), SPACE at the end plays again from the start,
+            # HOME / END jump to the start / end, PAGE UP / PAGE DOWN jump 10 s back / forward.
+            sp = key(GLFW.KEY_SPACE)
+            if sp && !rep_psp[]
+                rep_play[] = !rep_play[]
+                (rep_play[] && rep_rt[] >= rep_dur - 1e-6) && (rep_rt[] = 0.0)   # SPACE at the end: from the start
+            end
+            rep_psp[] = sp
+            kh = key(GLFW.KEY_HOME); (kh && !rep_phome[]) && (rep_rt[] = 0.0); rep_phome[] = kh
+            ke = key(GLFW.KEY_END);  (ke && !rep_pend[]) && (rep_rt[] = rep_dur; rep_play[] = false); rep_pend[] = ke
+            kpu = key(GLFW.KEY_PAGE_UP);   (kpu && !rep_ppu[]) && (rep_rt[] = clamp(rep_rt[] - 10.0, 0.0, rep_dur)); rep_ppu[] = kpu
+            kpd = key(GLFW.KEY_PAGE_DOWN); (kpd && !rep_ppd[]) && (rep_rt[] = clamp(rep_rt[] + 10.0, 0.0, rep_dur)); rep_ppd[] = kpd
             up = key(GLFW.KEY_UP);   (up && !rep_pup[]) && (rep_speed[] = clamp(rep_speed[]*2, 0.25, 8.0)); rep_pup[] = up
             dn = key(GLFW.KEY_DOWN); (dn && !rep_pdn[]) && (rep_speed[] = clamp(rep_speed[]/2, 0.25, 8.0)); rep_pdn[] = dn
             key(GLFW.KEY_RIGHT) && (rep_rt[] = clamp(rep_rt[] + 8*dt, 0.0, rep_dur))   # hold to scrub
             key(GLFW.KEY_LEFT)  && (rep_rt[] = clamp(rep_rt[] - 8*dt, 0.0, rep_dur))
             rep_play[] && (rep_rt[] = clamp(rep_rt[] + dt*rep_speed[], 0.0, rep_dur))
+            (rep_play[] && rep_rt[] >= rep_dur - 1e-6) && (rep_play[] = false)   # REPLAY-5: stop AT the end, do not grind on it
             cf = key(GLFW.KEY_C); (cf && !rep_pn[]) && (rep_focus[] = mod(rep_focus[]+1, repd.ncar)); rep_pn[] = cf   # E25: switch CAR
             cvv = key(GLFW.KEY_V); (cvv && !rep_pv[]) && (rep_cam[] = mod1(rep_cam[]+1, length(REPLAY_CAMS))); rep_pv[] = cvv  # E25: switch ANGLE
             (pp, rep_ai_raw) = replay_poses(rep_rt[])
@@ -14437,7 +14490,7 @@ function main()
                   Float32(cs.ontrack ? 1 : 0), Float32(phase[] == :race ? 1 : 0))
             for a in AICARS; push!(tele_buf, Float32(a.s), Float32(a.v), Float32(a.lap), Float32(a.lane)); end
             if time() - replay_saved[] > REPLAY_AUTOSAVE           # crash-safe: the session so far is on disk
-                replay_saved[] = time(); write_replay(replay_out, replay_buf, tele_buf, REPLAY_NCAR, replay_names, CLINE; final = false)
+                replay_saved[] = time(); write_replay(replay_out[], replay_buf, tele_buf, REPLAY_NCAR, replay_names, CLINE; final = false)
             end
         end
         # PERF-1: one fused matrix per call (was 4 matrices + 3 products), and the body matrix is computed once
@@ -15369,19 +15422,7 @@ function main()
         end
     end
     telem !== nothing && close(telem)
-    if ibt_samples !== nothing && !isempty(ibt_samples)
-        try
-            tmpl = ibt_open(IBTTMPL)
-            ts = Dates.format(Dates.now(), "yyyy-mm-dd HH-MM-SS")
-            odir = get(ENV, "JM_IBT_DIR", joinpath(dirname(dirname(@__DIR__)), "data", "juliaracer"))
-            mkpath(odir)
-            out = joinpath(odir, "lotus49_$(IBTNAME) $(ts).ibt")   # iRacing filename convention
-            write_ibt(out, tmpl, ibt_samples)
-            println("  wrote iRacing telemetry: ", out, "  (", length(ibt_samples), " ticks, ", filesize(out)÷1024, " KB)")
-        catch e
-            println("  .ibt export failed: ", e)
-        end
-    end
+    flush_ibt!(ibt_samples)
     if AI_OFFROAD_DIAG && AI_OFF[2] > 0
         println("  [ai offroad] ", AI_OFF[1], " of ", AI_OFF[2], " AI car-frames had the car centre off the drawn road (",
                 round(100*AI_OFF[1]/AI_OFF[2], digits = 2), " %); worst 100 m bins (s: frames): ",
@@ -15425,7 +15466,7 @@ function main()
         flush(stdout)
     end
     if replay_buf !== nothing && !isempty(replay_buf)   # E18: save the all-car replay alongside the .ibt (REPLAY-2: + .jrt)
-        write_replay(replay_out, replay_buf, tele_buf, REPLAY_NCAR, replay_names, CLINE; final = true)
+        write_replay(replay_out[], replay_buf, tele_buf, REPLAY_NCAR, replay_names, CLINE; final = true)
     end
     ffb !== nothing && FFB.close_ffb(ffb)
     EngineAudio.stop!(ENG)

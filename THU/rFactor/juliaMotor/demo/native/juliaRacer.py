@@ -1423,7 +1423,7 @@ class ReplayTab(QWidget):
         row.addStretch(1)
         row.addWidget(self.refresh_b)
         v.addLayout(row)
-        v.addWidget(QLabel("In the replay:  SPACE play/pause · ←/→ scrub · ↑/↓ speed · Esc quit"))
+        v.addWidget(QLabel("In the replay:  SPACE play/pause · ←/→ scrub · PgUp/PgDn ±10 s · Home/End start/end · ↑/↓ speed · Esc quit"))
         # REPLAYLOAD-1 (PO 2026-09-19): "the replay takes a very long time to load ... at minimum a
         # progress bar is needed ... it can seem hung". The Drive tab has had load milestones since
         # 2026-09-03; the replay had only "(loading)". Same bar, same milestones, plus the replay's own.

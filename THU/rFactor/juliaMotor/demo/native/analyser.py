@@ -123,6 +123,18 @@ class Replay:
             elif lap[k] < lap[k - 1]:              # a session restart (R): no lap spans it
                 crossings.append((k, None, int(lap[k]), True))
         crossings.append((self.n, None, None, False))   # the end of the recording
+        # REPLAY-3/4 (2026-10-09): a race that starts on a grid BEHIND the line (lap distance ~L, e.g. every car after a
+        # restart R) crosses the line within seconds -- that crossing finishes the run to the line, not lap 1, which
+        # ends at the NEXT crossing (it gave "lap 1  0:01.713"). Merge it into the start lap.
+        # Only when the lap COUNTER ticked on that short run: the player's counter skips the grid crossing (the game times
+        # lap 1 from the green to the end of a full lap -- the PO's Spa 6:38.871), so there the first tick comes after a
+        # second wrap of the lap distance and must stand.
+        if (len(crossings) >= 3 and crossings[0][3] and crossings[0][1] is not None and d[0] > 0.5 * L
+                and crossings[1][1] is not None and not crossings[1][3]):
+            k1 = crossings[1][0]
+            wraps = sum(1 for k in range(1, k1 + 1) if d[k] - d[k - 1] < -0.5 * L)
+            if wraps <= 1:
+                del crossings[1]
         laps = []; cut = []
         for (k0, ta, la, fresh), (k1, tb, _lb, _f) in zip(crossings, crossings[1:]):
             if k1 - k0 < 10 or la is None:
