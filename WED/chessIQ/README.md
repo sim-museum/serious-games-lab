@@ -18,7 +18,7 @@ may take its own pieces too). It's Wednesday's game in Serious Games Week ([seri
   moves quickly for the first 20 games, and each game shows what a loss, draw or win would do to it. No take-backs
   and no advice (no book hints) during a rated game. A rated game can be adjourned and resumed later.
   Your history is kept in `~/.local/share/chessIQ/profile.json`.
-- **Not in Kansas: learning what self-capture changes.** Kramnik chess looks like ordinary chess, and most moves
+- **Learning what self-capture changes.** Kramnik chess looks like ordinary chess, and most moves
   are ordinary moves, which is what makes it deceptive. chessIQ shows where it differs:
   - **Self-capture specialists**: eight opponents from 950 to 2600 (Hal, Rosa, Felix, Mirela, Corin, Ada, Selim,
     Kestrel), each playing for one self-capture idea, with a biography that says what to watch for. They choose,
@@ -31,9 +31,9 @@ may take its own pieces too). It's Wednesday's game in Serious Games Week ([seri
     solve on the board, from the AlphaZero/Kramnik paper and from strong engine games. Every solution is checked by
     a deep search (`tools/lesson_check.py`), and Leela agrees on 22 of 24. Each lesson ends with a game against its
     specialist.
-  - **Academy → Kansas tour**: five minutes for a first-time player, offered on the first launch: the two rules,
+  - **Academy → Getting started**: five minutes for a first-time player, offered on the first launch: the two rules,
     four boards to solve, what the app shows, then an unrated game against Hal with the coach on.
-  - **Academy → Kansas puzzles**: 172 puzzles. 93 are mined from strong engine games, checked by both engines and rated
+  - **Academy → Self-capture puzzles**: 172 puzzles. 93 are mined from strong engine games, checked by both engines and rated
     1163–2600 by the search strength that finds them. 79 beginner puzzles (660–1100) teach that self-capture is
     legal at all: mates in one that need it, and checks it alone escapes. All are served near your own puzzle rating. Each puzzle's rating
     also moves with players' first attempts (`puzzle_ratings.json`; `tools/puzzle_feedback.py` folds several
@@ -41,7 +41,7 @@ may take its own pieces too). It's Wednesday's game in Serious Games Week ([seri
   - **The coach** (unrated games, on by default): on your turn, a warning when the natural ordinary-chess move fails
     to a self-capture, or a nudge when a strong self-capture is there. It never names the move, and is silent in
     rated games.
-  - **Post-Game Analysis → Not in Kansas**: after each game, the moments where Kramnik rules mattered: self-captures
+  - **Post-Game Analysis → Self-capture moments**: after each game, the moments where Kramnik rules mattered: self-captures
     played, strong ones missed, and ordinary-chess moves that lost. Click one to see the position, or practise the
     ones you missed as quizzes. During unrated play, a self-capture is named in the status line as it happens.
   - How often it matters, measured over 220 strong games: `docs/SELF_CAPTURE_CENSUS.md`; the motifs, from the

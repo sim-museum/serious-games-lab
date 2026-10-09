@@ -278,7 +278,7 @@ class Tour(unittest.TestCase):                     # KS-13: a first-time player'
             m = self.app.MainWindow()
             m.welcome()
             self.assertIsNotNone(m.tour)
-            self.assertIn("Kansas tour", m.note)
+            self.assertIn("Getting started", m.note)
             m.close()
             m2 = self.app.MainWindow()                            # the tour has saved its place: no second offer
             m2.welcome()

@@ -520,29 +520,29 @@ class MainWindow(QMainWindow):
             act.triggered.connect(fn)
             tm.addAction(act)
         am = self.menuBar().addMenu("&Academy")
-        tour = QAction("Kansas &tour for first-time players...", self)
+        tour = QAction("&Getting started: Kramnik chess in five minutes...", self)
         tour.triggered.connect(self.tour_open)
         am.addAction(tour)
         acad = QAction("Kramnik &Academy: lessons on self-capture...", self)
         acad.triggered.connect(self.academy_open)
         am.addAction(acad)
-        puz = QAction("Kansas &puzzles...", self)
+        puz = QAction("Self-capture &puzzles...", self)
         puz.triggered.connect(self.puzzles_open)
         am.addAction(puz)
         self.academy, self.puzzles, self.tour = None, None, None
         self.resize(1000, 680)
 
     def welcome(self):
-        """A new player's first look (KS-8, KS-13): the game looks ordinary, so open the Kansas tour."""
+        """A new player's first look (KS-8, KS-13): the game looks ordinary, so open Getting started."""
         if self.profile is None and not academy.load_state():
-            self.note = ("New to Kramnik chess? It looks like ordinary chess, but it isn't. The Kansas tour "
-                         "(Academy menu) shows the difference in five minutes.")
+            self.note = ("New to Kramnik chess? It looks like ordinary chess, but it isn't. Academy → Getting "
+                         "started shows the difference in five minutes.")
             self.render()
             if os.environ.get("CHESSIQ_TOUR", "1") != "0":
                 self.tour_open()
 
     def tour_open(self):
-        """The Kansas tour (KS-13): the rules, four boards, then a first game against Hal."""
+        """Getting started (KS-13): the rules, four boards, then a first game against Hal."""
         if self.tour is None:
             self.tour = academy.TourWindow(self)
         self.tour.show(); self.tour.raise_()
@@ -554,7 +554,7 @@ class MainWindow(QMainWindow):
         self.academy.show(); self.academy.raise_()
 
     def puzzles_open(self):
-        """Kansas puzzles (KS-5): one at a time near your puzzle rating."""
+        """Self-capture puzzles (KS-5): one at a time near your puzzle rating."""
         if self.puzzles is None:
             self.puzzles = academy.PuzzleWindow(self)
         self.puzzles.show(); self.puzzles.raise_()

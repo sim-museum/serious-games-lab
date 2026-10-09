@@ -1,4 +1,4 @@
-"""The Kramnik Academy (EPIC KS): lessons on what self-capture changes (KS-4) and Kansas puzzles (KS-5), solved on a
+"""The Kramnik Academy (EPIC KS): lessons on what self-capture changes (KS-4) and self-capture puzzles (KS-5), solved on a
 board, as Chessmaster's tutorials and puzzles.
 
 Lessons: quizzes accept only the checked solution (tools/lesson_check.py); demonstrations let you try and then show
@@ -289,11 +289,11 @@ SPECIALIST_FOR = {"promotion": "Ada", "escape": "Mirela", "king-walk": "Ada", "k
 
 
 class PuzzleWindow(QDialog):
-    """Kansas puzzles, one at a time near your puzzle rating (KS-5)."""
+    """Self-capture puzzles, one at a time near your puzzle rating (KS-5)."""
 
     def __init__(self, parent=None, seed=None):
         super().__init__(parent)
-        self.setWindowTitle("Kansas puzzles")
+        self.setWindowTitle("Self-capture puzzles")
         self.setModal(False)
         self.resize(880, 560)
         self.rand = random.Random(seed)
@@ -373,12 +373,12 @@ class PuzzleWindow(QDialog):
 
 
 class PracticeDialog(QDialog):
-    """Your own game's Kansas moments -- the strong self-captures missed and the ordinary-chess moves that lost -- as
+    """Your own game's self-capture moments -- the strong self-captures missed and the ordinary-chess moves that lost -- as
     positions to solve (KS-3 + KS-4): the lesson you learn best is from your own game."""
 
     def __init__(self, exercises, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Practise your game's Kansas moments")
+        self.setWindowTitle("Practise your game's self-capture moments")
         self.setModal(False)
         self.resize(820, 520)
         self.exs, self.index = exercises, 0
@@ -401,7 +401,7 @@ class PracticeDialog(QDialog):
 
 
 def practice_exercises(moments, side=None):
-    """Exercises from Kansas moments (chessiq.kansas.moments): each missed self-capture and each ordinary-chess trap
+    """Exercises from self-capture moments (chessiq.kansas.moments): each missed self-capture and each ordinary-chess trap
     by `side` (both sides if None), to be found again."""
     out = []
     for m in moments:
@@ -418,9 +418,9 @@ def practice_exercises(moments, side=None):
 
 
 
-# ---- the Kansas tour (KS-13): a first-time player's five minutes, from the rules to a first game ---------------------
+# ---- Getting started (KS-13): a first-time player's five minutes, from the rules to a first game -------------------
 
-TOUR_INTRO = ("<h2>You're not in Kansas anymore</h2>"
+TOUR_INTRO = ("<h2>Chess, with two new rules</h2>"
               "<p>This is chess: the same board, the same pieces, the same moves. Two rules are different.</p>"
               "<ol><li><b>No castling.</b></li>"
               "<li><b>You may capture your own pieces</b>, anything except your own king. The king may take its own "
@@ -432,13 +432,13 @@ TOUR_WATCH = ("<h2>Seeing it in your games</h2>"
               "<p>When you select a piece, a <b>ring</b> marks each of your own pieces it could take.</p>"
               "<p>In unrated games the <b>coach</b> speaks up on your turn: when a strong self-capture is there, "
               "and, more often, when the natural move of ordinary chess fails to one. It never names the move.</p>"
-              "<p>After every game, <b>Post-Game Analysis</b> lists its Kansas moments, the self-captures played and "
+              "<p>After every game, <b>Post-Game Analysis</b> lists its self-capture moments: the self-captures played and "
               "missed, and turns the ones you missed into positions to practise.</p>")
 TOUR_END = ("<h2>Your first opponent: Hal</h2>"
             "<p>Hal (950) plays like any beginner, except for one habit: when his king is in danger it takes one of "
             "its own pieces to get out. The game is unrated and the coach is on.</p>"
-            "<p>Afterwards, the <b>Academy</b> menu has eight lessons, from these rules to master ideas, and Kansas "
-            "puzzles at your level. Eight specialists, from Hal to Kestrel (2600), each play for one idea; "
+            "<p>Afterwards, the <b>Academy</b> menu has eight lessons, from these rules to master ideas, and "
+            "self-capture puzzles at your level. Eight specialists, from Hal to Kestrel (2600), each play for one idea; "
             "the <b>Choose…</b> button beside the opponent, then <b>Self-capture specialists</b>, shows them.</p>")
 TOUR_OPPONENT = "Hal"
 
@@ -456,11 +456,11 @@ def tour_steps():
 
 
 class TourWindow(QDialog):
-    """The Kansas tour (KS-13): the rules, four boards to solve, what the app shows, then a game against Hal."""
+    """Getting started (KS-13): the rules, four boards to solve, what the app shows, then a game against Hal."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Kansas tour")
+        self.setWindowTitle("Getting started")
         self.setModal(False)
         self.resize(880, 560)
         self.steps = tour_steps()
@@ -491,7 +491,7 @@ class TourWindow(QDialog):
     def go(self, i):
         self.step = i
         kind, payload = self.steps[i]
-        self.head.setText("<b>Kansas tour</b> · step %d of %d" % (i + 1, len(self.steps)))
+        self.head.setText("<b>Getting started</b> · step %d of %d" % (i + 1, len(self.steps)))
         self.text.setVisible(kind != "ex")
         self.view.setVisible(kind == "ex")
         self.show_btn.setVisible(kind == "ex")

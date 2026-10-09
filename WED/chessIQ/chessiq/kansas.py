@@ -1,4 +1,4 @@
-"""What Kramnik rules change (EPIC KS, "not in Kansas"): helpers shared by the self-capture specialists, the Kansas
+"""What Kramnik rules change (EPIC KS): helpers shared by the self-capture specialists, the self-capture
 moments in Post-Game Analysis, the coach and the lessons.
 
 The comparison at the heart of it: Fairy-Stockfish searches a position under Kramnik rules (`kramnik`) and under the
@@ -237,7 +237,7 @@ def sc_line(b, turn, ep, pv, n=SC_DEPTH):
 
 
 def moments(uci_moves, rs, start=START, cancel=None, progress=None):
-    """The game's Kansas moments, in order. Each is a dict: ply (moves before it), side ("w"/"b"), kind, san (the
+    """The game's self-capture moments, in order. Each is a dict: ply (moves before it), side ("w"/"b"), kind, san (the
     move played), and by kind:
       played  -- a self-capture was played: motif, loss (cp against the best move);
       missed  -- the best move was a self-capture worth MISSED over the best ordinary-chess play, and the move
@@ -296,7 +296,7 @@ def moments(uci_moves, rs, start=START, cancel=None, progress=None):
 
 
 def describe(mo):
-    """One sentence for a Kansas moment."""
+    """One sentence for a self-capture moment."""
     num = "%d%s" % (mo["ply"] // 2 + 1, "." if mo["side"] == "w" else "...")
     if mo["kind"] == "played":
         return "%s%s: %s.%s" % (num, mo["san"], phrase(mo["motif"], mo["piece"], mo["victim"]).capitalize(),

@@ -1,6 +1,6 @@
 """The Post-Game Analysis window, as Chessmaster shows after each game (EPIC CM, CM-20): the game's type and summary,
 the rating change, a chart of the evaluation after every move (hover for values), and Play Suggested Opponent.
-Below the chart, "Not in Kansas" (EPIC KS, KS-3): the moments where Kramnik rules mattered -- self-captures played,
+Below the chart, "Self-capture moments" (EPIC KS, KS-3): the moments where Kramnik rules mattered -- self-captures played,
 strong ones missed, ordinary-chess moves that lose here, and the right move found -- from a second pass with
 Fairy-Stockfish searching each position with self-capture on and off (chessiq/kansas.py). Clicking a moment shows
 the position on the board. Non-modal: it never blocks the board; closing it cancels an analysis still running."""
@@ -14,7 +14,7 @@ from . import kansas as K
 CLIP = 1000                         # the chart shows +-10 pawns; beyond that the game is decided
 
 
-KANSAS_NODES = 30000                # per search in the Kansas pass (three or four searches a move)
+KANSAS_NODES = 30000                # per search in the self-capture pass (three or four searches a move)
 
 
 class AnalysisThread(QThread):
@@ -126,7 +126,7 @@ class PostGameDialog(QDialog):
         self.practise_btn.clicked.connect(self._practise)
         self.practice = None
         self.thread.kprogress.connect(lambda i, n: self.kansas.setText(
-            "<b>Not in Kansas</b> — looking for the moments where Kramnik rules mattered… move %d of %d"
+            "<b>Self-capture moments</b> — looking for the moments where Kramnik rules mattered… move %d of %d"
             % ((i + 1) // 2, (n + 1) // 2)))
         self.thread.kdone.connect(self._show_kansas)
         self.thread.start()
@@ -162,10 +162,10 @@ class PostGameDialog(QDialog):
         counts = (len(played), sum(m["kind"] == "missed" for m in ms), sum(m["kind"] == "trap" for m in ms),
                   sum(m["kind"] == "spotted" for m in ms))
         if not ms:
-            self.kansas.setText("<b>Not in Kansas</b> — nothing in this game depended on self-capture: it could have "
+            self.kansas.setText("<b>Self-capture moments</b> — nothing in this game depended on self-capture: it could have "
                                 "been ordinary chess. Kramnik chess often looks like that, until it doesn't.")
             return
-        self.kansas.setText("<b>Not in Kansas</b> — %d self-capture%s played, %d missed, %d ordinary-chess move%s that "
+        self.kansas.setText("<b>Self-capture moments</b> — %d self-capture%s played, %d missed, %d ordinary-chess move%s that "
                             "lost here, %d found. Click one to see the position."
                             % (counts[0], "" if counts[0] == 1 else "s", counts[1], counts[2],
                                "" if counts[2] == 1 else "s", counts[3]))
