@@ -15,11 +15,12 @@ include(joinpath(@__DIR__, "wwtrans_261005.jl"))             # gold_events, inst
 
 function goldtrace(fn, k0, n)
     f = ibt_open(fn); sp = setup_params(f.yaml)
-    c = Dict(x => ch(f, x) for x in ("Speed","VelocityX","VelocityY","YawRate","LatAccel","Throttle","SteeringWheelAngle",
-                                     "LRspeed","RRspeed","Gear","RPM"))
+    c = Dict(x => ch(f, x) for x in ("Speed","VelocityX","VelocityY","YawRate","LatAccel","LongAccel","Throttle","Brake",
+                                     "SteeringWheelAngle","LRspeed","RRspeed","Gear","RPM"))
     b = (setup_params(f.yaml).corner_weight_N |> cw -> (cw[:LF] + cw[:RF])/sum(values(cw)))*LWB
     ks = k0:min(f.nrows, k0 + n)
-    (sp = sp, thr = c["Throttle"][ks], δ = c["SteeringWheelAngle"][ks] ./ sp.steering_ratio, gear = Int(c["Gear"][k0]),
+    (sp = sp, thr = c["Throttle"][ks], brk = c["Brake"][ks], δ = c["SteeringWheelAngle"][ks] ./ sp.steering_ratio, gear = Int(c["Gear"][k0]),
+     amag = [hypot(c["LatAccel"][k], c["LongAccel"][k])/G for k in ks], spd = c["Speed"][ks],
      v = c["Speed"][k0], g = abs(c["LatAccel"][k0])/G, dir = sign(c["LatAccel"][k0]),
      β = [rad2deg(atan(c["VelocityY"][k], c["VelocityX"][k])) for k in ks],
      ay = c["LatAccel"][ks] ./ G,
@@ -28,10 +29,11 @@ function goldtrace(fn, k0, n)
      ρ = [abs(c["YawRate"][k]) > 0.1 ? (c["RRspeed"][k] - c["LRspeed"][k])/(c["YawRate"][k]*1.5) : NaN for k in ks])
 end
 
-function simreplay(car, sp, u0, gt, n)
+"""Put the session car on the event's circle at its speed and lateral g in the gold's gear; returns the settled road
+steer angle (sign: the event's direction). Rate-limited I steer on g, PI throttle on speed, 10 s."""
+function settle!(car, sp, u0, gt)
     sys = car.sys
-    get = ModelingToolkit.getsym(sys, [sys.u, sys.v, sys.r, sys.ay, sys.ωRL, sys.ωRR])
-    a = ModelingToolkit.getp(sys, sys.a)(car.integ); b = ModelingToolkit.getp(sys, sys.b)(car.integ)
+    get = ModelingToolkit.getsym(sys, [sys.u, sys.v, sys.r, sys.ay])
     V = gt.v; g = max(gt.gear, 1)
     reinit!(car.integ, copy(u0)); car.gear = g; car.s_gr(car.integ, sp.gear_ratios[g])
     ModelingToolkit.setu(sys, [sys.u, sys.v])(car.integ, [V, 0.0])
@@ -44,9 +46,17 @@ function simreplay(car, sp, u0, gt, n)
         thr = clamp(0.3 + 0.3*(V - u) + ie, 0, 1); ie = clamp(ie + 0.01*(V - u), -0.4, 0.8)
         DriveRT3D.step_car3d!(car, thr, 0.0, dir*δ/DriveRT3D.MAXSTEER, 1/60; clutch = 0.0, manual = true)
     end
+    dir*δ
+end
+
+function simreplay(car, sp, u0, gt, n)
+    sys = car.sys
+    get = ModelingToolkit.getsym(sys, [sys.u, sys.v, sys.r, sys.ay, sys.ωRL, sys.ωRR])
+    b = ModelingToolkit.getp(sys, sys.b)(car.integ)
+    δ0 = settle!(car, sp, u0, gt)
     out = NamedTuple[]
     for k in 1:n+1
-        δk = dir*δ + (gt.δ[k] - gt.δ[1])
+        δk = δ0 + (gt.δ[k] - gt.δ[1])
         DriveRT3D.step_car3d!(car, gt.thr[k], 0.0, δk/DriveRT3D.MAXSTEER, 1/60; clutch = 0.0, manual = true)
         u, v, r, ay, wl, wr = get(car.integ)
         push!(out, (β = rad2deg(atan(v, max(u, 1.0))), ay = ay/G, αr = rad2deg(-atan(v - b*r, max(u, 1.0))),

@@ -19,12 +19,12 @@ include("brush_tyre.jl") # PHYSICS-BASED brush: brush_forces + BRUSH_FRONT/REAR 
 function BrushTyre(; name, μ = BRUSH_FRONT.μ, μx = BRUSH_FRONT.μx, Cα = BRUSH_FRONT.Cα,
                    Cκ = BRUSH_FRONT.Cκ, kμ = BRUSH_FRONT.kμ, Fz0 = BRUSH_FRONT.Fz0, t0 = 0.035, μscale = 1.0,
                    rs = BRUSH_FRONT.rs, ws = BRUSH_FRONT.ws, camber = false, Cγ = CAMBER_CG, kγ = CAMBER_KG,
-                   ns = BRUSH_NS)
+                   ns = BRUSH_NS, rsy = rs)
     # E56: μscale is a per-wheel SURFACE friction multiplier (1 = tarmac; <1 = grass/verge).  Driving it
     # from the game makes "off the racing line" a REAL per-tyre grip loss the model integrates — a wheel
     # dropping onto the grass loses grip and pulls the car — not a bumpX! drag/yaw state hack.
-    ps = @parameters μ=μ μx=μx Cα=Cα Cκ=Cκ kμ=kμ Fz0=Fz0 t0=t0 μscale=μscale rs=rs ws=ws ns=ns
-    vars = @variables Fz(t) α(t) κ(t) Fy(t) Fx(t) Mz(t) μye(t) μxe(t) ξx(t) ξy(t) ξ(t) sat(t)
+    ps = @parameters μ=μ μx=μx Cα=Cα Cκ=Cκ kμ=kμ Fz0=Fz0 t0=t0 μscale=μscale rs=rs ws=ws ns=ns rsy=rsy
+    vars = @variables Fz(t) α(t) κ(t) Fy(t) Fx(t) Mz(t) μye(t) μxe(t) ξx(t) ξy(t) ξ(t) sat(t) saty(t)
     # TYRE-2: stiffness LOAD SENSITIVITY. The slip stiffnesses are CFα = Cα·Fz·(Fz/Fz0)^(ns−1) ∝ Fz^ns: ns = 1 is the
     # plain brush (stiffness ∝ load, the pre-TYRE-2 model, exact), ns < 1 the real tyre's (the patch grows slower than the
     # load): an axle under load transfer gets softer, and an unloaded wheel relatively stiffer.
@@ -47,10 +47,14 @@ function BrushTyre(; name, μ = BRUSH_FRONT.μ, μx = BRUSH_FRONT.μx, Cα = BRU
         ξy   ~ lsens*(Cα*sin(α) + cthr) / (3.0*μye),   # — the ellipse lives here, no 1/0 at zero slip
         ξ    ~ sqrt(ξx^2 + ξy^2 + 1e-9),               # floor INSIDE the sqrt → autodiff Jacobian finite at
         sat  ~ (1.0 - (1.0 - min(ξ, 1.0))^3) * brush_slide(ξ, rs, ws),   # zero slip (sqrt(0)' = 0/0 = NaN breaks the solver)
+        # CARPHYS-1: the lateral force's own SLIDING fraction rsy (rs was fitted to locked-wheel braking; the gold's
+        # sideways slides keep more, tools/slidefit_261009.jl). Below the peak (ξ ≤ 1) both are the brush exactly; rsy = rs
+        # is the old tyre. Fully sliding, the force lies on a sliding-friction ellipse with semi-axes rs·μx, rsy·μy.
+        saty ~ (1.0 - (1.0 - min(ξ, 1.0))^3) * brush_slide(ξ, rsy, ws),
         Fx   ~ μxe*Fz * sat * ξx/ξ,                    # along the deflection dir; magnitude on the ellipse
-        Fy   ~ μye*Fz * sat * ξy/ξ,
+        Fy   ~ μye*Fz * saty * ξy/ξ,
         # pneumatic trail collapses as the patch slides; camber thrust acts at the patch centre (no trail)
-        Mz   ~ -t0 * (1.0 - min(ξ, 1.0)) * (camber ? μye*Fz * sat * (lsens*Cα*sin(α)/(3.0*μye))/ξ : Fy),
+        Mz   ~ -t0 * (1.0 - min(ξ, 1.0)) * (camber ? μye*Fz * saty * (lsens*Cα*sin(α)/(3.0*μye))/ξ : Fy),
     ]
     System(eqs, t, vars, ps; name)
 end

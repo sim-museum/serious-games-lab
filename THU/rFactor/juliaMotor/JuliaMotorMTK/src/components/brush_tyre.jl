@@ -83,8 +83,14 @@ const C_ABL = 0.40
 # bins (deceleration + front/rear κ) and the locked slide (gold 0.957/1.001/1.046 g at 50-216 km/h, sim
 # 0.969/1.003/1.050; a lock now STAYS locked at full pedal, 96 % of the stop, as iRacing's does). Was μx 1.42/1.45,
 # Cκ 28/28 (not fitted to braking), no sliding drop -- the car braked at ~1.45 g and never locked.
-const BRUSH_FRONT = (μ = 1.277*_GRIP, μx = 1.438*_GRIP, Cα = 30.21, Cκ = 23.7, kμ = 0.082, Fz0 = 1415.0, rs = 0.629, ws = 1.5)
-const BRUSH_REAR  = (μ = 1.446*_GRIP, μx = 1.498*_GRIP, Cα = 34.0, Cκ = 23.2, kμ = 0.082, Fz0 = 1670.0, rs = 0.629, ws = 1.5)
+# CARPHYS-1 S3 (2026-10-09): `rsy`, the LATERAL force's sliding fraction. rs (0.629) is the locked-wheel BRAKING slide and
+# had been applied sideways too, so a sliding car kept 0.77-0.95 g of total grip where the gold keeps 1.04-1.17 g
+# (261009/slide_grip.py on the PO's races; the same deficit in tools/slidefit_261009.jl's replays of the gold's 8 spins).
+# Fitted through the player car on those spins: 0.975 -- iRacing's tyre barely loses lateral force when it slides (to
+# 90° of body slip), while its braking slide drops to 0.63 of peak. Every |β| bin 12-90° within 0.03-0.07 g of the gold
+# (score 23.6 -> 0.96). Not isotropic: the sliding ellipse's semi-axes are ~0.91 (rs·μx) and ~1.31-1.46 (rsy·μy).
+const BRUSH_FRONT = (μ = 1.277*_GRIP, μx = 1.438*_GRIP, Cα = 30.21, Cκ = 23.7, kμ = 0.082, Fz0 = 1415.0, rs = 0.629, ws = 1.5, rsy = 0.975)
+const BRUSH_REAR  = (μ = 1.446*_GRIP, μx = 1.498*_GRIP, Cα = 34.0, Cκ = 23.2, kμ = 0.082, Fz0 = 1670.0, rs = 0.629, ws = 1.5, rsy = 0.975)
 
 # CAMBER-1 (2026-10-06): the wheel's inclination γ to the road (BrushTyre `camber = true`). Two physical effects:
 #   * camber THRUST -- a leaning tread is pushed sideways as it rolls through the patch, a lateral deflection

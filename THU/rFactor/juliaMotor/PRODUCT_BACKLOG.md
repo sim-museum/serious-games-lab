@@ -24366,3 +24366,26 @@ Order = value to the model; about 45 min of driving in all.
   built; the logger API comes from `Base.CoreLogging` (JRPhysics has no Logging dependency -- the first gate run caught
   that).
 * Full gates **49/49 PASS** (11:20).
+
+### CARPHYS-1 S3 (2026-10-09): sideways sliding friction fitted to the gold -- the washout
+* **Model:** `BrushTyre` gains `rsy`, the lateral force's own sliding fraction (below the peak nothing changes; `rsy = rs`
+  is the old tyre exactly -- carphys_regress 0.0). `rs` 0.629 stays the locked-wheel braking slide (BRAKE-2).
+* **Fit** (`tools/slidefit_261009.jl`): the gold's 8 skidpad spins (power-on, both setups) replayed through the session
+  car from its settled circle with the gold's throttle/brake/steering; total grip binned by |β|, pooled:
+
+  | rsy | 12–20° | 20–30° | 30–45° | 45–60° | 60–90° | score |
+  |---|---|---|---|---|---|---|
+  | gold | 1.168 g | 1.096 | 1.055 | 1.047 | 1.037 | |
+  | 0.629 (old) | 0.946 | 0.808 | 0.769 | 0.822 | 0.856 | 23.64 |
+  | 0.85 | 1.065 | 1.016 | 1.026 | 0.929 | 0.894 | 4.01 |
+  | **0.975** | 1.127 | 1.129 | 1.113 | 1.028 | 0.975 | **0.96** |
+  | 1.05 | 1.162 | 1.206 | 1.122 | 1.089 | 1.032 | 1.74 |
+
+  The old tyre reproduces the PO's races (0.75–0.87 g); 0.975 brings every bin within 0.03–0.07 g. iRacing's tyre
+  barely loses LATERAL force when it slides, while its braking slide drops to 0.63 of peak -- the sliding friction is
+  not isotropic (my S1 guess was wrong): semi-axes ~0.91 (rs·μx) and ~1.31–1.46 (rsy·μy).
+* **Acceptance:** stability suite penalty 0 (step steers ≤ 5.9°, WOT blips die, 305 km/h straight, trail braking ≤ 3.8°);
+  the gold's 19 power-on/lift-off replays (replay_261005.jl) reach 6° of sideslip at the same moments as before (the
+  change acts only once sliding). Full gates **49/49** (12:13).
+* For the PO's look: a slide should now scrub speed and bite like iRacing's instead of skating. Bigger tests in
+  IRTEST-261009 item 1 (held slides).
