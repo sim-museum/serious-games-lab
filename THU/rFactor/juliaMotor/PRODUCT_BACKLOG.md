@@ -23892,3 +23892,12 @@ the first-bridge right (Hatzenbach/Flugplatz side) and the right after Ex-Mühle
 * (c) is TRACKS-TD-1(a)'s Ex-Mühle hill pop-in, now with a distance (~10 car lengths); (d) relates to E109 (Ring trees
   over the road); AI off the road on the left in curves joins TRACKS-TD-1(b)/SPATD-1(1)/WGTD-1(g) -- one AI line problem
   showing on three tracks.
+
+# CYCLE 2026-10-08 night -- PO: "now start the scrum process again, using the usual rules (start with retrospective, no more than 4 sprints per backlog item before rotating to the next, etc.).  Work autonomously for the next 10 hours"
+
+Queue (by the PO's own weighting tonight -- control lag is "the worst one" -- then ready work, then bugs with clear
+evidence, then the larger items): **PERF-4** (control lag, race-start stalls) -> **COCKPIT-2 + DIALS-1** (replay cockpit,
+lever, dials, wrists; drafts ready) -> **SPATD-1** (timed jolts, invisible barrier, La Source objects, AI) -> **RINGTD-1**
+(visual 90° roll, banner, floating shed/trees) -> **REPLAY-4 + REPLAY-5** (R = new session/.ibt; replay start/end, stuck at
+end) -> **BLINDTURN-1** -> **TRACKS-TD-1** -> **WGTD-1** -> **HANDLING-1 / WW103-GPL-1** (tyre beyond the peak; GPL replay
+comparison) -> **BILLBOARD-2**. At most 4 sprints each, then rotate; gates with GATES_SKIP=road_clear_smoke.
