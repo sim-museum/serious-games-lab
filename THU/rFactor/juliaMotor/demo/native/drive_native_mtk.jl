@@ -357,6 +357,41 @@ carrad(θ, ux, uz) = hypot(CAR_HALF_L * (cos(θ)*ux + sin(θ)*uz),
 """Contact threshold between two cars separated by (dx,dz), |d|, heading θa and θb."""
 contact_d(dx, dz, d, θa, θb) =
     CONTACT_CIRCLE ? CONTACT_D : (carrad(θa, dx/d, dz/d) + carrad(θb, dx/d, dz/d))
+# HANDLING-1 S3 (2026-10-09, CARPHYS-1: "investigate any non-physical seeming julia car behavior"): car-to-car contact is
+# a RIGID-BODY IMPULSE between two equal masses at the point where the bodies touch, as in GPL. It replaces the old
+# knock: 1.8x the momentum exchange (PLAYER_HIT, PO round 4: "a LOT more of a jolt"), a yaw kick of up to ±2.2 rad/s set
+# only by which SIDE was hit, an invented hop + body roll, and a speed "scrub" on top. That knock was what spun the PO
+# at Watkins Glen s≈1612 (velocity kicks the recorded accelerations cannot explain: 7 in 4 sessions, all at AI
+# contact -- 261009/kicks.py). Physics: normal impulse jn = (1+e)·v_closing·m_eff with the player's rotation in m_eff,
+# Coulomb bodywork friction along the tangent (|jt| ≤ μ·jn: a side-swipe bleeds speed), yaw from the contact point's
+# lever arm (Izz 890). A hit at a rear corner still spins a car -- that is real.
+const CAR_M = 617.0; const CAR_IZZ = 890.0; const CAR_E = 0.12; const CAR_MU = 0.4
+"""Impulse on the player from a contact with another car: player at (px,pz) heading θ, world velocity (pvx,pvz), yaw rate
+r; the other car's centre (qx,qz) and world velocity (avx,avz), assumed not rotating and of equal mass. Returns
+(dvx, dvz, dr, jn) -- the player's world velocity and yaw-rate changes and the normal impulse [N·s] -- or nothing when
+the bodies are separating."""
+function car_contact_impulse(px, pz, θ, pvx, pvz, r, qx, qz, avx, avz)
+    dx = qx - px; dz = qz - pz; d = hypot(dx, dz); d < 1e-6 && return nothing
+    nx = dx/d; nz = dz/d                                         # normal, player -> other
+    # contact point: the other car's centre clamped into the player's body rectangle (player frame), back to world
+    c = cos(θ); s_ = sin(θ)
+    lx = clamp(dx*c + dz*s_, -CAR_HALF_L, CAR_HALF_L); ly = clamp(-dx*s_ + dz*c, -CAR_HALF_W, CAR_HALF_W)
+    rx = lx*c - ly*s_; rz = lx*s_ + ly*c                         # lever arm from the player's CG
+    # velocity of the player's contact point (planar: ω × r with ω = r ŷ-up → (-r·rz, r·rx)) relative to the other car
+    vcx = pvx - r*rz - avx; vcz = pvz + r*rx - avz
+    vn = vcx*nx + vcz*nz
+    vn <= 0.2 && return nothing                                 # separating (or a resting touch): no new impulse
+    rxn = rx*nz - rz*nx                                          # r × n (scalar, planar)
+    meff = 1.0/(2.0/CAR_M + rxn^2/CAR_IZZ)
+    jn = (1 + CAR_E)*vn*meff
+    tx = -nz; tz = nx; vt = vcx*tx + vcz*tz                      # tangential slip at the contact
+    rxt = rx*tz - rz*tx
+    mt = 1.0/(2.0/CAR_M + rxt^2/CAR_IZZ)
+    jt = -sign(vt)*min(CAR_MU*jn, abs(vt)*mt)
+    jx = -jn*nx + jt*tx; jz = -jn*nz + jt*tz                     # impulse ON the player (pushed away from the other car)
+    (jx/CAR_M, jz/CAR_M, (rx*jz - rz*jx)/CAR_IZZ, jn)
+end
+
 # E55/E38: a physics AI whose heading deviates more than this from the rail tangent has SPUN OUT (the
 # controller can oscillate into a spin on the hilly/blind tracks).  It won't trip the slow/off-line
 # recovery (it's still fast + near the line), so it spins forever → "flopping/strange" field.  Treat a
@@ -14384,7 +14419,7 @@ function main()
                 ptw = draft_tow(cs.x, cs.z, cs.θ, cs.v, plds)
                 ptw > 0.0 && (PLAYER_CDA[] = 1.0 - DRAFT_DRAG_CUT * clamp(ptw/TOW_MAX, 0.0, 1.0))
             end
-            pm = 560.0; am = 560.0; restn = 0.12; mr = pm*am/(pm+am)   # PO: car-to-car INELASTIC (was 0.45 = bouncy) — a hit shoves + scrubs, doesn't ping-pong
+            pm = 560.0; am = 560.0                    # FFB / AI-response scales; the player's impulse is car_contact_impulse (CAR_E 0.12: inelastic)
             # E96-S5: the PLAYER's world velocity, not speed x heading. `cs.v` is UNSIGNED, so a car
             # being shoved backwards after a clash still read as travelling along its nose -- and the
             # closing test below (`vrel <= 0.2 && continue`) would then see CLOSING where the cars are
@@ -14405,31 +14440,13 @@ function main()
                 # FF kick, so you always FEEL the AI — not just on a square closing hit.
                 ffb_jolt = clamp(-sign(lat)*0.6, -1.0, 1.0)
                 avx = ac.v*cos(aθ); avz = ac.v*sin(aθ)
-                vrel = (pvx-avx)*nx + (pvz-avz)*nz            # closing speed along the normal
-                vrel <= 0.2 && continue                       # separating → no new closing impulse (the contact kick already fired)
-                j = (1+restn)*vrel*mr
-                # PO round 4: "colliding with AI should be a LOT more of a jolt — right now I have no fear,
-                # it just knocks us both a little and I get the better of it."  The player (a REAL physics
-                # car) now takes a HARD knock so a clash with another car is a genuine event to be feared —
-                # PLAYER_HIT amplifies the lateral/normal shove well past the symmetric momentum exchange.
-                # (The AI stays BOUNDED below — R1: it must not be rocketed / have its lap count inflated.)
-                PLAYER_HIT = 1.8
-                # subtle VERTICAL unsettle on a side (wheel-to-wheel) hit — the PO asked for "the wheelspin
-                # vertical element back, but not exaggerated, and no superball": a small hop + body rock, not
-                # a launch.  Capped low (3.0 m/s, was 7 = superball) and only on a glancing/offset contact.
-                across_p = -nx*sin(cs.θ) + nz*cos(cs.θ)
-                vlaunch = clamp(abs(across_p)*(j/pm)*0.45, 0.0, 3.0)
-                droll = clamp(sign(across_p)*vlaunch*0.7, -4.0, 4.0)   # wheel-climb → body rock (bounded — no cartwheel)
-                bumpX!(cs, -PLAYER_HIT*(j/pm)*nx, -PLAYER_HIT*(j/pm)*nz,
-                       clamp(-sign(lat)*PLAYER_HIT*(j/pm)*0.06, -2.2, 2.2), vlaunch, droll)
-                # PO: a clash must COST you SPEED — not just when you rear-end a car (along_p>0) but on ANY
-                # solid contact, so you can't trade paint and sail on.  A bigger scrub for driving INTO a car,
-                # a smaller one for a side-swipe — a real crash bleeds your momentum either way.
-                along_p = nx*cos(cs.θ) + nz*sin(cs.θ)
-                scrub = along_p > 0.25 ? clamp(PLAYER_HIT*(j/pm)*along_p*0.7, 0.0, cs.v*0.6) :
-                                         clamp((j/pm)*0.35, 0.0, cs.v*0.25)   # side contact still bleeds some speed
-                cs.v = max(0.0, cs.v - scrub)
-                ffb_jolt = clamp(ffb_jolt - sign(lat)*PLAYER_HIT*(j/pm)*0.22 - 0.5*sign(vrel), -1.0, 1.0)   # a CLOSING hit adds a bigger kick
+                # HANDLING-1 S3: a rigid-body impulse at the contact point (car_contact_impulse) -- no amplification, no
+                # side-only yaw kick, no invented hop/roll/scrub; the bodywork friction bleeds speed on a side-swipe.
+                imp = car_contact_impulse(cs.x, cs.z, cs.θ, pvx, pvz, CAR3D ? DriveRT3D.yawrate3d(cs) : 0.0, p[1], p[3], avx, avz)
+                imp === nothing && continue                   # separating → no new impulse (the contact kick already fired)
+                (pdvx, pdvz, pdr, j) = imp
+                bumpX!(cs, pdvx, pdvz, pdr)
+                ffb_jolt = clamp(ffb_jolt - sign(lat)*(j/pm)*0.4 - 0.5, -1.0, 1.0)   # a CLOSING hit adds a bigger kick
                 if AI_PHYSICS                                  # the AI is a real physics car → impulse it too
                     alat = -dx*sin(aθ) + dz*cos(aθ)
                     # E55: PLANAR push + mild yaw only — no vertical launch / roll on the AI (it must not
@@ -14451,11 +14468,11 @@ function main()
         # MP-COLLIDE-1 (PO 2026-09-19, the first two-PC race: "cars can see each other but drive through each other").
         # E85-S5/MP-5 drew remote cars (the other human, and on a client the host's AI field) but never collided them.
         # Each machine now resolves contact for ITS OWN car against every remote car with the player half of the local-AI
-        # model above (same oriented contact distance, inelastic impulse, PLAYER_HIT knock, speed scrub, FF kick); the
+        # model above (same oriented contact distance, the rigid-body impulse of car_contact_impulse, FF kick); the
         # remote car is moved by its own machine, which sees the same contact from its side -- so two humans shove each
         # other apart symmetrically, the way GPL's peers each ran their own car. Uses last frame's remote poses.
         if NET_COLLIDE && NETLINK !== nothing && !REPLAY && race_go[] && !rst && !isempty(NETPOSES[])
-            pm = 560.0; am = 560.0; restn = 0.12; mr = pm*am/(pm+am)
+            pm = 560.0
             pvx = WVX[]; pvz = WVZ[]
             for (nid, p) in NETPOSES[]
                 dx = p[1] - cs.x; dz = p[3] - cs.z; d = hypot(dx, dz)
@@ -14464,20 +14481,12 @@ function main()
                 avx, avz = get(NETVEL[], nid, (0.0, 0.0))
                 lat = -dx*sin(cs.θ) + dz*cos(cs.θ)
                 ffb_jolt = clamp(-sign(lat)*0.6, -1.0, 1.0)
-                vrel = (pvx-avx)*nx + (pvz-avz)*nz
-                vrel <= 0.2 && continue
-                j = (1+restn)*vrel*mr
-                PLAYER_HIT = 1.8
-                across_p = -nx*sin(cs.θ) + nz*cos(cs.θ)
-                vlaunch = clamp(abs(across_p)*(j/pm)*0.45, 0.0, 3.0)
-                droll = clamp(sign(across_p)*vlaunch*0.7, -4.0, 4.0)
-                bumpX!(cs, -PLAYER_HIT*(j/pm)*nx, -PLAYER_HIT*(j/pm)*nz,
-                       clamp(-sign(lat)*PLAYER_HIT*(j/pm)*0.06, -2.2, 2.2), vlaunch, droll)
-                along_p = nx*cos(cs.θ) + nz*sin(cs.θ)
-                scrub = along_p > 0.25 ? clamp(PLAYER_HIT*(j/pm)*along_p*0.7, 0.0, cs.v*0.6) :
-                                         clamp((j/pm)*0.35, 0.0, cs.v*0.25)
-                cs.v = max(0.0, cs.v - scrub)
-                ffb_jolt = clamp(ffb_jolt - sign(lat)*PLAYER_HIT*(j/pm)*0.22 - 0.5*sign(vrel), -1.0, 1.0)
+                imp = car_contact_impulse(cs.x, cs.z, cs.θ, pvx, pvz, CAR3D ? DriveRT3D.yawrate3d(cs) : 0.0, p[1], p[3], avx, avz)
+                imp === nothing && continue                   # HANDLING-1 S3: the same rigid-body impulse as the AI contact
+                (pdvx, pdvz, pdr, j) = imp
+                bumpX!(cs, pdvx, pdvz, pdr)
+                vrel = j/((1 + CAR_E)*CAR_M/2); scrub = 0.0   # (the diag line below: closing speed, no separate scrub any more)
+                ffb_jolt = clamp(ffb_jolt - sign(lat)*(j/pm)*0.4 - 0.5, -1.0, 1.0)
                 NET_HITS[] += 1
                 NET_DIAG > 0 && println("  [netcollide] t=", round(cs.t, digits = 2), " car ", nid, " closing ", round(vrel, digits = 2),
                                         " m/s, d ", round(d, digits = 2), " m, scrub ", round(scrub, digits = 2), " m/s")
