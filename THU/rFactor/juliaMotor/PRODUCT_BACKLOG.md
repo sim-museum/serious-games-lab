@@ -24029,3 +24029,15 @@ the recording + live mirrors; S2 the lever moves with the gear; S3 DIALS-1; S4 t
 * **Check** (Spa replay, 4th gear; `261007/dials1_needles.png`): all six needles on their pivots -- tach ~4,200 (white)
   + tell-tale, water low (~45–50 °C, warming), fuel ~80 psi, volts upright-left, oil visible past the rim. Gates parse,
   warm PASS (no new in-race compile). `JM_DIALS=0` hides the five.
+
+### COCKPIT-2 S4 (2026-10-09): the see-through wrists closed -- COCKPIT-2 rotates (4 sprints this pass)
+* **Not culling:** an A/B of `JM_HAND_CULL=1/0` at WG s=1200 (`261007/ck2_s4_wrists_cull_ab.png`) changes little; the
+  see-through is geometric. Each glove is an open band round the rim, and the sleeve's wrist end was pinned AT the
+  glove's cuff point (HANDS-2: wrist W on the glove H) -- between the strip's end and the band the dash showed through.
+* **Fix:** the sleeve runs on along its own line `ARM_INTO` = 6 cm past the cuff point into the glove (sweep 0/3/6/9 cm,
+  `261007/ck2_s4_wrists_sweep.png`: at 6 the gap is closed on both sides; at 9 the sleeve starts to cover the glove).
+  Live and in replay (the gloves/sleeves follow the recorded steer since S1). Gates parse, warm PASS.
+* **COCKPIT-2 status after 4 sprints:** done -- replay cockpit from the recording + live mirrors (S1), the moving lever
+  (S2), all dials (S3/DIALS-1), wrists (S4). Open for the next pass: AI cockpits in replay (each car's own `?d.3do` set;
+  the PO's 261007 video shows Clark's "cockpit" is the external mesh seen from the seat), the right glove reaching for
+  the lever on a shift, the sleeves' white-with-red-stripe look (ours read as silver foil), the mirror camera (E64 S12).

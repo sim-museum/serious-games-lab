@@ -10023,6 +10023,7 @@ const EYE_RAW = (parse(Float64, get(ENV, "JM_EYE_X", "0.25")), parse(Float64, ge
 const ARM_ROLL = get(ENV, "JM_ARM_ROLL", "0") != "0"
 const SLEEVE_LASTR = Ref(Matrix(1.0I, 3, 3))
 const SLEEVE_HOLD = get(ENV, "JM_ARM_HOLDROLL", "1") != "0"
+const ARM_INTO = 0.06                        # COCKPIT-2 S4: sleeve runs 6 cm into the glove (sweep 0/3/6/9 cm, WG 2026-10-09); JM_ARM_INTO
 const SLEEVE_NREF = Any[nothing, nothing]          # per side: the face normal with the wheel straight (set on first draw)
 function sleeve_mat(W, E, H, S, nf; target = nothing)
     a = collect(W .- E); la = sqrt(sum(a .^ 2)); a ./= la
@@ -14736,6 +14737,12 @@ function main()
                             sleeve_mat(W, E, (h0[1], h0[2], h0[3]), S, nf); SLEEVE_NREF[k] = SLEEVE_LASTR[] * collect(nf)
                         end
                         # HANDS-2 S3: lit toward the gold's white sleeve (it read grey at 1.15 / 0.60)
+                        # COCKPIT-2 S4 (PO 2026-10-07: "the wrists are see-through"): the sleeve's end stopped AT the glove's
+                        # cuff point, and the glove is an open band round the rim -- between them the dash showed through.
+                        # Run the sleeve on along its own line ARM_INTO metres into the glove so the two overlap.
+                        _into = haskey(ENV, "JM_ARM_INTO") ? parse(Float64, ENV["JM_ARM_INTO"]) : ARM_INTO
+                        _d = (h[1] - S[1], h[2] - S[2], h[3] - S[3]); _l = sqrt(_d[1]^2 + _d[2]^2 + _d[3]^2)
+                        h = _l > 1e-6 ? (h[1] + _into*_d[1]/_l, h[2] + _into*_d[2]/_l, h[3] + _into*_d[3]/_l) : h
                         Render.draw(prog, armLR[k], vp, bodyModel * sleeve_mat(W, E, (h[1], h[2], h[3]), S, nf; target = SLEEVE_HOLD ? SLEEVE_NREF[k] : nothing);
                                     bright=1.35, spec=0.05, ambfill=0.85)
                     end
