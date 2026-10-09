@@ -34,6 +34,9 @@ this index was written; that is what it exists to stop.
 | **PERF-4** | "julia racer is sluggish compared to GPL. Would it make sense to translate julia racer from julia to, e.g. C++?" (PO 2026-10-08); PO: it is (3) **control lag** -- "a lag between control inputs and car response, especially noticable at the start of a race" | open -- first evidence in the section: the race start has 4–5× the long frames of the rest of the race (first-use JIT compiles suspected); **scrum PAUSED** |
 | **SPATD-1** | Spa fixes from the PO's 2026-10-08 race (video `~/Videos/261008_spa.mp4`): (1) AI leave the road -- inside at Eau Rouge, presumably elsewhere -- and are extremely slow (at 70 % they just poke along); (2) an INVISIBLE barrier tore a wheel off at the downhill left-hand 90 toward Burnenville when the rear barely left the road (nothing visible on the grass) -- and a building belongs on the outside of that turn: put it back; (3) three strong earthquake-like jolts between Burnenville and Masta, mid-road, nothing nearby; (4) put back the objects on the far side of La Source (the hairpin before the start/finish line) -- without them you stare out into farmland and cannot see the near-180° turn | open -- first evidence for (3) in the section (the jolts are 26.9 s apart, on a timer, not on the road); overlaps TRACKS-TD-1(b); **scrum PAUSED** |
 | **BLINDTURN-1** | All five tracks (PO 2026-10-08): wherever there is a sharp blind turn GPL has an OBJECT on the far side of the road (what you would hit going straight on) -- it tells you the turn is coming. Restore every one that is missing. Known: Spa La Source (SPATD-1(4)); Ring (a) beyond the sharp left immediately after the start/finish line, (b) just before the sharp right that passes under the first bridge, (c) probably the 90° right after Ex-Mühle | open -- **scrum PAUSED** |
+| **RINGTD-1** | Nürburgring fixes from the PO's 2026-10-08 race (video `~/Videos/261008_nurbergring.mp4`, 28:32). MOST EXTREME: just before the North hairpin, passing the tower on the right, the car in the chase ("nintendo") view rolls 90° left and back. (a) billboards still at middle distance on the left a couple of turns after the North hairpin; (b) floating shed on the left near the Trickle (Wehrseifen); (c) the hill you turn left to avoid just before Ex-Mühle appears only ~10 car lengths away; (d) floating trees over (or nearly over) the track in the Adenauer Forst; (e) after the Karussell an overhead banner on solid columns makes the car buck comically under it -- remove the banner; AI drive smoothly but are often off the road in curves, usually on the left | open -- first look in the section; **scrum PAUSED** |
+| **HANDLING-1** | The PO's car often oversteers and washes out in a non-physical way -- at the Ring (DEFAULT setup) as at Spa (WW103) (PO 2026-10-08) | open -- with both setups it points at the tyre model beyond the grip peak, not the setup (cf. WW103-GPL-1's 50° steady slide); **scrum PAUSED** |
+| **REPLAY-5** | Replay: jump to the beginning or the end with one command; at the end the replay gets stuck and cannot be backed up -- the only way out is to exit (PO 2026-10-08) | open -- **scrum PAUSED** |
 | **AIHELMET-1** | The AI drivers' helmets render as a dark dome (black lobes from the front) where GPL's are the driver's skin -- found 2026-10-07 during HANDS-2 | ✅ **S1 (2026-10-07):** each AI driver's own helmet skin bound to the shell (`261007/helmet/`) |
 | **TRACKSEG-3** | Preferences switch: show/hide the track-section names ("Front Straight", "Big Bend" at WG), default ON (PO 2026-10-06) | ✅ **DONE (S1, 2026-10-06):** launcher Graphics group, "Show track section names", default ON, remembered; OFF = `JM_SEGNAME_SECS=0`, also for replays; gate `segnames_smoke` |
 | **GUI-1** | Redesign the julia racer GUI (`demo/native/juliaRacer.py`) for ease of use per GUI best practices, then restyle it like the PyQt GUIs of pokerIQ and bridgeIQ (`~/sgl/MON/pokerIQ`, `~/sgl/FRI/bridgeIQ`) (PO 2026-10-06) | **S1 (2026-10-06) redesign done:** task-ordered tabs (Race / Results / Replays / Settings / Controller), Session + Car cards, one primary Start button, menus + status bar, log on demand, everything remembered; the sim's environment is identical to before (3 cases). **S2 restyle done:** dark pokerIQ/bridgeIQ theme (`261006/gui/s2_vs_iq.jpg`). 🟡 **AWAITING THE PO's look** |
@@ -23861,3 +23864,31 @@ or a heading change > ~70° within 150 m), list GPL's objects within ~60 m beyon
 and whether we draw each one; compare with the gold cockpit videos at the corner (memory jr-gold-align-landmarks:
 anchor by landmarks, full resolution). Start with Spa La Source and the Ring's Südkehre (sharp left after the line),
 the first-bridge right (Hatzenbach/Flugplatz side) and the right after Ex-Mühle.
+
+### RINGTD-1, HANDLING-1, REPLAY-5 added (PO 2026-10-08 ~23:00, verbatim) -- scrum still PAUSED
+> backlog item: nurburgring fixes, most extreme  is - just before the north hairpin, as the driver's car passes the tower
+> on the right, the car in nintendo view actually rolls 90 degrees to the left and then rolls back(!)  a. still
+> billboards at middle distance on the left a couple turns after the north hairpin b. floating shed on the left near the
+> trickle  c. the hill you turn to the left to avoid just before ex-mill suddenly appears when you're about 10 car lengths
+> away from it d. floating trees over the track (or nearly so) at the adenaur forest  e. after the carrosel, there is an
+> overhead banner supported by solid columns on either side of the road that causes the car to buck up and down comically
+> when it crosses under it.  remove that banner. AI cars drive smoothly, but they are often off the road at curves,
+> usually on the left.  The user's car often oversteers and washes out in a non-physical way, as at spa.  Note that at spa
+> I was using ww103, whereas at nurburgring I am using the default setup.  Also, in replay mode, allow the user to move to
+> the end or the beginning with one command.  Currently when you reach the end of the replay it just gets stuck, and you
+> can't back up you just have to exit the replay'/home/g/Videos/261008_nurbergring.mp4'
+
+**First look (telemetry `lotus49_nurburgring nordschleife 2026-10-08 22-53-55.ibt`, no code touched):**
+* **The 90° roll is visual only.** Over s 1500–1800 (the tower before the Nordkehre at 1760) the physics car's roll never
+  exceeds 6.3°, and vertical acceleration stays within −0.9…+2.3 m/s². So the chase-view body is being rolled by
+  something the DRAW path samples -- the drawn car takes its cross-slope roll from the ground under its wheels
+  (`terrain_roll`), and a structure's mesh read as ground there (the tower, or the old Continental banner post at s≈1594.7
+  lat −4 -- memory jr-ringbump-banner-post; RINGBUMP-1/RINGBANNER-1 history) would tip it. Check what `terrain_roll`
+  reads along the PO's line at s 1550–1650, against the physics' own ground.
+* (e) after the Karussell (13846 m): the physics shows only a small vertical kick at s≈14608 (+0.7–0.9 g) in this run, so
+  the "comic bucking" may also be largely the drawn body / camera reading the columns; same check. The PO wants the
+  banner removed either way (cf. RINGBANNER-1, the Continental banner, done 2026-10-05).
+* Roll episodes > 29° in this file are a crash at s≈8000–8050 (Metzgesfeld/Kallenhard), not the tower.
+* (c) is TRACKS-TD-1(a)'s Ex-Mühle hill pop-in, now with a distance (~10 car lengths); (d) relates to E109 (Ring trees
+  over the road); AI off the road on the left in curves joins TRACKS-TD-1(b)/SPATD-1(1)/WGTD-1(g) -- one AI line problem
+  showing on three tracks.
