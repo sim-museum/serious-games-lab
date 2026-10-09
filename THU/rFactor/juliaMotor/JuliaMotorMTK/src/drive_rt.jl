@@ -32,7 +32,7 @@ const RW_R     = 0.334    # E91-S10: measured, gear·final·Speed/ω_engine over
 # the rear loses lateral grip ⇒ power-spin — exactly the iRacing-validated limit).
 # This eases throttle when the rear slip-ratio exceeds TC_SLIP so the rear stays just
 # below its grip limit and keeps lateral grip.  Off ⇒ raw, spin-on-power physics.
-const TC_ON    = !haskey(ENV, "JM_NOTC")
+const TC_ON    = get(ENV, "JM_TC", "0") == "1" && !haskey(ENV, "JM_NOTC")   # CARPHYS-1 S4: opt-in, as drive_rt3d.jl
 const TC_SLIP  = parse(Float64, get(ENV, "JM_TC_SLIP", "0.06"))   # target peak rear slip-ratio (below the 0.155 peak ⇒ lateral grip kept)
 # SPEED GATE: the aid is OFF at low speed (so a deliberate 1st-gear peel-out / skidpad
 # spin still happens) and ramps to full by TC_VHI (so the catastrophic HIGH-speed

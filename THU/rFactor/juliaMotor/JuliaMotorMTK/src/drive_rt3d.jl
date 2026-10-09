@@ -404,7 +404,12 @@ function set_ride_height!(fl::Real, fr::Real, rl::Real, rr::Real; source::Abstra
     RIDE_H[] = (float(fl), float(fr), float(rl), float(rr)); RIDE_H_SRC[] = source
     nothing
 end
-const TC_ON   = !haskey(ENV, "JM_NOTC")            # traction aid (see drive_rt.jl) — keeps the rear below its slip limit
+# CARPHYS-1 S4 (2026-10-09): the traction aid is OFF by default. Neither the real Lotus 49 nor iRacing's nor GPL's has one;
+# it was added (2026-08) against a Flugplatz power-spin of the then hand-set tyre. Every fit since (TYRE-1/2, BRAKE-2, LSD,
+# CAMBER) and the stability suite ran the raw car (JM_NOTC=1), so the car the PO drove was not the one validated. Measured
+# without it: stability suite penalty 0; Flugplatz crest (crestval_261004/5, 13 gold passes) airtime within 0.03 s and
+# landing within 0.01 g of the aided car, no spins. JM_TC=1 brings it back (JM_NOTC is still honoured).
+const TC_ON   = get(ENV, "JM_TC", "0") == "1" && !haskey(ENV, "JM_NOTC")   # opt-in traction aid -- keeps the rear below its slip limit
 # IRFIT-261004: 0.06 -> 0.072 with the braking fit's softer rear Cκ (28 -> 23.2): the same drive force now takes ~20 %
 # more slip, and at 0.06 the aid cut 3rd-gear WOT to 0.84-0.93 of the gold's pulls (which run 8-13 % slip on full
 # power, iRacing has no aid); scaled by 28/23.2 it keeps the same fraction of the tyre's limit -- 0.95-0.99 of the gold.

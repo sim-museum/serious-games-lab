@@ -24389,3 +24389,17 @@ Order = value to the model; about 45 min of driving in all.
   change acts only once sliding). Full gates **49/49** (12:13).
 * For the PO's look: a slide should now scrub speed and bite like iRacing's instead of skating. Bigger tests in
   IRTEST-261009 item 1 (held slides).
+
+### CARPHYS-1 S4 (2026-10-09): the traction aid is off by default -- CARPHYS-1 rotates
+* `TC_ON` (DriveRT3D, DriveRT) now needs `JM_TC=1`; it was on unless `JM_NOTC` was set. Neither the real Lotus 49 nor
+  iRacing's nor GPL's has one; it was added in August against a Flugplatz power-spin of the then hand-set tyre. Every
+  fit since (TYRE-1/2, BRAKE-2, LSD, CAMBER) and the stability suite run the RAW car (`JM_NOTC=1`, "iRacing had none"),
+  so the car the PO drove was not the car that was validated.
+* Without it: stability suite penalty 0 (identical); Flugplatz crest vs the gold (crestval_261004: 9 default passes,
+  crestval_261005: 4 WW103 passes) airtime within 0.03 s and landing g within 0.01 of the aided car, no spins either
+  way -- the aid no longer does anything its reason needed. In the PO's 10-08 races it was cutting the throttle in
+  0.2–2.5 % of on-throttle time above 25 m/s. Full gates **49/49** (12:51).
+* CARPHYS-1 after S1–S4: objects for the vertical path + harness, sliding friction fitted, aid gone. Still open
+  (next round): brakes / clutch / gearbox / LSD / engine / steering as objects; the steering object + force feedback
+  from the gold's SteeringWheelTorque (it is 98 % front-tyre force × ~5 cm of trail, no measurable lag -- ours is
+  hand-shaped with ~100 ms of low-pass); the IRTEST-261009 results. Rotating to HANDLING-1.
