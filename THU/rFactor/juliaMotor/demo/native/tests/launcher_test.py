@@ -42,6 +42,7 @@ for k, v in want.items():
     check(env.value(k) == v, f"env {k}={env.value(k)!r} (want {v!r})")
 for k in ("JM_NOFFB", "JM_NOIBT", "JM_2D", "JM_QUAL", "JM_NET", "JM_SEGNAME_SECS"):
     check(not env.contains(k), f"env has no {k}")
+check(env.value("JM_TIMING") == "1", "LOADHANG-1: the race logs its load stages (JM_TIMING=1)")
 check(started[0][2][-1] == "drive_native_mtk.jl", "runs drive_native_mtk.jl")
 d.proc = None; d.launch_b.setEnabled(True)
 # a new launcher remembers all of it
@@ -68,6 +69,7 @@ started.clear(); rt.combo.setCurrentIndex(1); rt.watch()
 env = started[0][0].processEnvironment()
 check(env.value("JM_REPLAY").endswith("replay_monza 2ai 2026-10-06 12-00-00.jmr") and env.value("TRACK") == "monza"
       and env.value("JM_AI") == "2", "Watch plays the selected file with its track and field")
+check(env.value("JM_TIMING") == "1", "LOADHANG-1: the replay logs its load stages too")
 rt.proc = None
 # DOC-RACE-1: Help > How to race opens the shipped guide
 acts = [a.text() for m in w.menuBar().actions() for a in (m.menu().actions() if m.menu() else [])]

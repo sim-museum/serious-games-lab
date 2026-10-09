@@ -21,11 +21,13 @@ this index was written; that is what it exists to stop.
 
 | item | what | state |
 |---|---|---|
-| **LOADHANG-1** | Why did the AppImage's Spa race load "hang" (≈15 min, the PO stopped it at the AI cars) after a Ring race, a WG race and a replay in the same launcher session? Little time if data is lacking -- but how to avoid / diagnose such issues in future (PO 2026-10-07 night) | open. Known: the installed copy loads Spa cold in 243 s and the repo in 230 s; the log had no stage times and arrives in bursts |
+| **LOADHANG-1** | Why did the AppImage's Spa race load "hang" (≈15 min, the PO stopped it at the AI cars) after a Ring race, a WG race and a replay in the same launcher session? Little time if data is lacking -- but how to avoid / diagnose such issues in future (PO 2026-10-07 night) | ✅ **CLOSED (S1–S4, 2026-10-08):** the first Spa launch from the install decoded every texture cold at 125 ms each -- a boxed closure in the alpha bleed; now 1.7 ms (pixels identical), a cold Spa race loads in 232 s like a warm one; launches log flushed stage stamps + first-run texture progress; gate `texcold_smoke`; smoke runs no longer read the PO's wheel (netcollide repaired) |
 | **COCKPIT-2** | Cockpits need work: in REPLAY the cockpit is static (wheel doesn't turn, hands don't move, mirrors black, gauges have no dials); the Lotus wrists are see-through while driving; ALL cockpits incl. AI cockpits in replay as close to the gold as possible; the shifter at right moves when the player shifts (as in the gold) (PO 2026-10-07 night). Carries E64's open mirror-camera finding | open. Videos: GPL gold `watkinsGlenn/261007_wg_race_GPL_gold_dtandard.mp4` (replay cockpits of the field); ours `~/Videos/261007_wg_race_analysis.mp4`, `261007_spa_race.mp4` |
 | **TRACKS-TD-1** | Track fixes from test drives (PO 2026-10-07 night): (a) Ring: start fences L+R flicker (also in the mirrors); artifacts at middle distance at times; at Ex-Mühle the hill ahead from the dip before the left turn is missing until you're about to turn, then pops in. (b) Spa: AI go off the road -- inside at Eau Rouge ("red water"), hit the PO's car parked across that inside path instead of dodging left; replay shows AI off inside/outside at times; long openings in the ground just after Stavelot showing another view through the ground | open. Video: `~/Videos/261007_spa_race.mp4` (race 0:10–7:15, parked test 7:30–10:45, replay 14:45–19:30) |
 | **REPLAY-3** | Fix the replay analysis: the left panel never lists any replays, so the rest could not be exercised (PO 2026-10-07 night) | open. Videos: `~/Videos/261007_wg_race_analysis.mp4` ~11:20, `261007_spa_race.mp4` ~19:45 |
 | **TRACKSEG-4** | Section names (Stavelot, Front Straight...) on screen twice as long, with an English translation in parentheses where at all possible -- even a wrong/absurd one, as a memory aid for orientation (PO 2026-10-07 night) | open. Videos show today's labels ("The 90", "Les Combes", "La Source (The Spring)") |
+| **BILLBOARD-2** | Fix track billboards (PO 2026-10-07 night): Zandvoort near Tarzan the boards are blank white/grey -- match the gold, legible and colourful as at the other tracks (E60 S4 restored the MARTINI/CALTEX fronts there; something still draws blank); the Ring: a line of billboards at left middle distance after the North hairpin (Nordkehre) but well before Flugplatz, improbably in the middle of the forest -- "a dozen or so side by side" | open. Gold: `zandervoort/260801_zandervoort_cockpit.mp4`, `nurburgring/260802_nurburgring_cockpit.mp4` |
+| **DIALS-1** | In the cockpit view make ALL the dials work, not just the rev counter (oil pressure, oil/water temperature, fuel...) as in the gold (PO 2026-10-07 night) | open; worked alongside COCKPIT-2 (same dashboard, same replay channels) |
 | **AIHELMET-1** | The AI drivers' helmets render as a dark dome (black lobes from the front) where GPL's are the driver's skin -- found 2026-10-07 during HANDS-2 | ✅ **S1 (2026-10-07):** each AI driver's own helmet skin bound to the shell (`261007/helmet/`) |
 | **TRACKSEG-3** | Preferences switch: show/hide the track-section names ("Front Straight", "Big Bend" at WG), default ON (PO 2026-10-06) | ✅ **DONE (S1, 2026-10-06):** launcher Graphics group, "Show track section names", default ON, remembered; OFF = `JM_SEGNAME_SECS=0`, also for replays; gate `segnames_smoke` |
 | **GUI-1** | Redesign the julia racer GUI (`demo/native/juliaRacer.py`) for ease of use per GUI best practices, then restyle it like the PyQt GUIs of pokerIQ and bridgeIQ (`~/sgl/MON/pokerIQ`, `~/sgl/FRI/bridgeIQ`) (PO 2026-10-06) | **S1 (2026-10-06) redesign done:** task-ordered tabs (Race / Results / Replays / Settings / Controller), Session + Car cards, one primary Start button, menus + status bar, log on demand, everything remembered; the sim's environment is identical to before (3 cases). **S2 restyle done:** dark pokerIQ/bridgeIQ theme (`261006/gui/s2_vs_iq.jpg`). 🟡 **AWAITING THE PO's look** |
@@ -23566,3 +23568,86 @@ All 1080p59.94. Times are approximate (from 1-frame-per-3/5-s contact sheets, `s
   preparing textures n/N -- later launches skip this") and the launcher's status line shows the latest stage;
   (c) decode the uncached textures in parallel before the upload loop (the box has 8 cores; the decode is pure CPU);
   (d) a test hook for the cache directory so a truly cold run can be timed without deleting the PO's caches.
+
+### BILLBOARD-2 added (PO 2026-10-07 night, verbatim)
+*"add backlog item: fix track billboards.  At zandervoort near Tarzan, the billboards are blank white or grey - make them
+match the gold standard, make the legible and colorful, as has been done so well at the other tracks.  Also, at the ring,
+there is still a line of billboards at left middle distance after north hairpin but well before flugplatz, improbably set
+in the middle of the forest"* -- queued after TRACKSEG-4.
+PO addendum: *"a line of billboards at the ring - a dozen or so side by side"*.
+
+### LOADHANG-1 S2 (2026-10-07): every load is now readable afterwards and says when it is doing first-run work
+* The launcher passes `JM_TIMING=1` to races AND replays (`timing_env`; gate: `launcher_test` checks both), and `tstamp`
+  now flushes stdout -- the log no longer arrives in bursts under the launcher's pipe. Verified with a cold Zandvoort
+  launch piped through a per-line clock: every `[t+…]` and `[texcache]` line lands within a second of its stamp.
+* A cache miss prints `[texcache] first run on this track: preparing textures, n decoded so far (saved for later
+  launches)` every 50 textures (flushed); the launcher's status line (Race tab) and progress bar (Replays tab) show it.
+* `JM_TEXCACHE_DIR` moves the decoded-texture cache root, so a truly cold launch can be timed without deleting the
+  PO's caches.
+
+### LOADHANG-1 S3 (2026-10-07): the cold texture cost was a boxed closure, not the decode -- 125 ms → 1.7 ms per texture
+* Benchmark (120 Spa textures, empty cache): `GPLMip` decode **0.7 ms** each; the cache-miss path (`tex_rgba`) **125 ms**.
+  The difference was E70-S8's alpha-bleed pass: inline in `tex_rgba`, its `idxof` closure captured `w`, which
+  `tex_rgba` also assigns in its cache-read branch, so Julia boxed `w` and every texel lookup (4 passes × 8 neighbours)
+  was a dynamic call. E92/E67 had measured "the decode" at 0.27 s per texture -- it was this pass all along.
+* Fix: the pass moved verbatim into `_alpha_bleed!(rgba::Vector{UInt8}, w::Int, h::Int)`. **Pixels identical**: the
+  same hash over all 120 textures before and after (`51ed1bb0441d0a89`), so existing caches stay valid. 1.7 ms each (73×).
+* **End to end, truly cold** (`JM_TEXCACHE_DIR` empty, Spa race, 5 AI, the PO's settings): game loop at **232 s** --
+  the same as a warm launch (230–243 s); 2,110 textures cached on the way. The PO's 13-minute first Spa launch is gone,
+  and so is the reason anyone would see one on a new track or a new install.
+
+### DIALS-1 added (PO 2026-10-07 night, verbatim)
+*"add backlog item: in cockpit view, make all dials work, not just the rpm dial"* -- taken with COCKPIT-2 (the same
+dashboard; the replay needs the same channels).
+
+### COCKPIT-2 retrospective (2026-10-07, with DIALS-1)
+* **Done before:** E64 S1–S11 (mirror RTT, gloved hands, de-spidered chase car, mirrors at speed); CARGOLD-1 (wheel the
+  right way up, needles: white rpm + red tell-tale fitted to the dash7 art); COCKPIT-GOLD-1 S1–S3 (perspex glass,
+  chrome-ring mirrors, mirror view); HANDS-2 S1–S3 (sleeves shoulder-to-glove); AIHELMET-1; E64 S12 (mirror camera sweep:
+  x 0 / y 0.9 / yawout 0.5 clears our own engine from the glass -- not yet adopted).
+* **Lessons:** dump the mesh first (windscreen, mirror ring, helmet shell and arms were each "a placement bug" until the
+  dump said otherwise); judge against the gold at full resolution and the same place; GPL's per-car assets exist for
+  everything asked here, so look for them before synthesising.
+* **What the replay does today (read from the code):** the frame loop jumps over the sim (`@goto skipsim`) after setting
+  only the pose, so the cockpit draws with the LIVE controller's steer (wheel and gloves frozen at the PO's hands-off
+  wheel), `cs.v = 0` and an idle `cs.rpm` (HUD "2000 / 0", needles parked), and the mirror RTT is gated off by an explicit
+  `!REPLAY` term (SPA-FPS-1 S10) -> black glass. An AI car's "cockpit" angle is the external AI mesh seen from its seat:
+  no interior, wheel, needles or live mirrors. The `.jmr` (v2) already records the player's steer, throttle, brake,
+  clutch, gear, rpm and speed every 1/15 s; per AI only s, speed, lap, lane.
+* **New angles:** every GPL car ships its own cockpit set -- dash `lotd/ferd/brad/brmd/covd/eagd.3do`, wheel
+  `inwheel*.3do`, mirrors `?mirror.3do`, gear lever `shiftel/shiftfe/brashift/shifbrm/covshift/eshiftr.3do` -- so AI
+  cockpits and the moving shifter are asset work, not modelling. AI steer/rpm/gear can be derived from the recorded path
+  (curvature x wheelbase; speed through the gearbox at GPL's shift points). The tach machinery (`_tach_frame`, a dial =
+  UV centre + radius + scale on the dash art) generalises to every dial (DIALS-1).
+* **Plan:** S1 replay drives the player's cockpit from the recording (wheel, gloves, needles, HUD) and turns the mirrors
+  on; S2 the Lotus wrists (see-through); S3 the gear lever (`shiftel.3do`) moves with the gear; S4 DIALS-1 (oil/water/fuel
+  needles from the art); S5+ AI cockpits in replay from each car's own `?d.3do` set, then the mirror camera (E64 S12).
+  Gold: `watkinsGlenn/261007_wg_race_GPL_gold_dtandard.mp4` (replay cockpits), 260802 cockpit laps (player).
+
+### LOADHANG-1 S4 (2026-10-08): "how to avoid it" -- a gate for the cold path, and test runs that leave the PO's wheel alone
+* **`texcold_smoke` (new gate):** 120 Spa textures through `tex_rgba` with an EMPTY cache must cost < 10 ms each, with
+  the pixel hash unchanged (`51ed1bb0441d0a89`). Fixed code 1.7–3.4 ms; **known positive: the pre-fix `render.jl` FAILS
+  it at 29 ms** (run from a scratch copy). In the suite (47 gates).
+* **The suite itself was not reproducible:** `netcollide_smoke` went red with no code change (dmin 11.8 / 19.5 m, then
+  13.4 m on HEAD code with my changes set aside). Cause 1: every smoke sim read the PO's **TX wheel** (the log said
+  `[clutch] held IN … the slider is parked at the clutch-in end`); the parked host took throttle/clutch from it and
+  rolled away, and the client's autodrive copied the live clutch. **Smoke runs now ignore physical controllers and send
+  no force feedback** (`SMOKE_NOJOY`; `JM_SMOKE_JOY=1` opts back in). Cause 2, exposed once the host stood still: the
+  host was parked on the CENTRELINE but the autodrive follows the AI's RACING line (`racelane` + offset) -- new
+  closest-approach diagnostics (`[net] … at self(s,lat)=(150.05, -2.66) remote=(149.89, 0.0)`) showed the client 2.66 m
+  aside, brushing past (the original 2026-10-06 control was already "alongside, 1.68 m"). New `JM_START_LANE=race` parks
+  a car ON the racing line; the gate's host uses it on the start/finish straight (host s=150, client from s=50).
+  **PASS: head-on contact, closing 22.7 m/s, closest 3.75 m. Control (`JM_NET_COLLIDE=0`): straight through, 0.34 m,
+  gate FAILS** -- a PASS now means a contact, not geometry luck. Each sim's stdout+stderr now share one file handle (two
+  handles on one file had garbled every netcollide log).
+* **LOADHANG-1 lessons, for the future:** (1) a load that looks hung is read from artefacts (cache folder times, flushed
+  `[t+…]` stamps), not from the last log line; (2) a "cold" test is cold only on a fresh `JM_TEXCACHE_DIR`; (3) a closure
+  over a reassigned variable is a silent 100× slowdown in Julia -- extract the hot loop into a typed function; (4) test
+  runs must not read the desk's hardware. LOADHANG-1 is **CLOSED** after S1–S4 (diagnosed, instrumented, fixed 73×,
+  gated); rotating to COCKPIT-2.
+* **Full gates 2026-10-08 20:15: ALL 47 PASS** (road_clear_smoke skipped, per the standing rule). One hang on the way,
+  in the harness, not the code under test: `netcollide_smoke`'s checks had passed (hits 4, dmin 3.74 m), but the host
+  sim printed its SIGTERM stack trace and then deadlocked on exit (`futex_do_wait`, 15 min), and the gate's `wait(hp)`
+  would have run into its 1800 s timeout. I killed that PID by hand to let the run finish, and the gate now waits 20 s
+  after SIGTERM, then SIGKILLs. Rerun alone with the fix: PASS (hits 3, dmin 3.90 m; the host exited on SIGTERM this time). (A sim that hangs on SIGTERM is worth a look
+  some day; the PO's own exits go through the window close, not a signal.)

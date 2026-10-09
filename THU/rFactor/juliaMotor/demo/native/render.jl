@@ -1097,12 +1097,47 @@ function gpl_texture_index(dir)
     # (76969c30aa12ded0). Caveat kept honestly: the warm reads hit a hot page cache, so a
     # genuinely cold read of 1.2 GB will cost seconds rather than milliseconds -- still ~100x.
     # Cost: ~1.2 GB on disk per track dir. JM_TEXCACHE=0 disables.
+    # LOADHANG-1 S2: JM_TEXCACHE_DIR moves the cache root, so a truly COLD launch can be timed without deleting the
+    # player's caches (2026-10-07: the AppImage's first Spa launch decoded 1,921 textures for 13 min).
     cd = get(ENV,"JM_TEXCACHE","1") == "0" ? "" :
-         joinpath(homedir(), ".cache", "juliamotor", "tex",
+         joinpath(get(ENV, "JM_TEXCACHE_DIR", joinpath(homedir(), ".cache", "juliamotor", "tex")),
                   string(hash((abspath(dir), get(ENV,"JM_NO_ALPHABLEED","0"), GPLMip.CMAP_ORDER)), base=16))   # E83: decoder version in the key
     cd != "" && (try; mkpath(cd); catch; cd = ""; end)
     GPLTex(paths, dat, cd)
 end
+
+# LOADHANG-1 S3 (2026-10-07): E70-S8's alpha bleed, moved out of `tex_rgba` unchanged. Inline there, its `idxof` closure
+# captured `w`, which `tex_rgba` also assigns in the cache-read branch, so Julia boxed it and every texel lookup was a
+# dynamic call: 125 ms per cold texture against 0.7 ms for the decode itself -- the 13-minute first Spa launch.
+function _alpha_bleed!(rgba::Vector{UInt8}, w::Int, h::Int)
+    (w > 0 && h > 0 && length(rgba) >= 4*w*h) || return rgba
+    @inline idxof(x, y) = 4*((y-1)*w + (x-1)) + 1
+    for _pass in 1:4
+        changed = false
+        for y in 1:h, x in 1:w
+            i = idxof(x,y)
+            rgba[i+3] >= 0x80 && continue          # already opaque
+            sr=0; sg=0; sb=0; n=0
+            for dy in -1:1, dx in -1:1
+                (dx==0 && dy==0) && continue
+                xx=x+dx; yy=y+dy
+                (xx<1 || yy<1 || xx>w || yy>h) && continue
+                j = idxof(xx,yy)
+                rgba[j+3] < 0x80 && continue
+                sr += Int(rgba[j]); sg += Int(rgba[j+1]); sb += Int(rgba[j+2]); n += 1
+            end
+            if n > 0
+                rgba[i]   = UInt8(sr ÷ n); rgba[i+1] = UInt8(sg ÷ n); rgba[i+2] = UInt8(sb ÷ n)
+                rgba[i+3] = 0x01           # still transparent, but now carries neighbour colour
+                changed = true
+            end
+        end
+        changed || break
+    end
+    rgba
+end
+
+const _TEXDECODED = Ref(0)   # LOADHANG-1 S2: textures decoded (cache misses) this launch
 
 """Resolve a texture name → (w,h,rgba) from the provider, or `nothing`.  E67: raw-blob cache."""
 function tex_rgba(idx::GPLTex, name::AbstractString)
@@ -1115,6 +1150,13 @@ function tex_rgba(idx::GPLTex, name::AbstractString)
         catch; end
     end
     r = _tex_rgba_decode(idx, key)
+    # LOADHANG-1 S2: a cold cache costs ~0.4 s per texture (13 min for Spa's 1,921 on 2026-10-07) and looked like a hang:
+    # say so, and flush -- under the launcher stdout is a pipe whose writes wait for the task to yield.
+    if cf != "" && r !== nothing
+        n = (_TEXDECODED[] += 1)
+        n % 50 == 1 && (println("  [texcache] first run on this track: preparing textures, ", n,
+                                " decoded so far (saved for later launches)"); flush(stdout))
+    end
     # E70-S8: ALPHA BLEED. GPL cutout sheets keep an RGB value under alpha=0, and on several bushes it
     # is BRIGHTER and more saturated than the visible pixels — hgbush opaque (20,69,56) vs transparent
     # (39,111,95); s_bush01 (47,81,59) vs (96,121,108); strauchx (50,52,29) vs (57,106,24). With
@@ -1125,32 +1167,7 @@ function tex_rgba(idx::GPLTex, name::AbstractString)
     # colour left to blend. Alpha is untouched, so the cutout shape is unchanged. JM_NO_ALPHABLEED=1
     # disables for A/B.
     if r !== nothing && get(ENV,"JM_NO_ALPHABLEED","0") == "0"
-        w, h, rgba = r
-        if w > 0 && h > 0 && length(rgba) >= 4*w*h
-            idxof(x,y) = 4*((y-1)*w + (x-1)) + 1
-            for _pass in 1:4
-                changed = false
-                for y in 1:h, x in 1:w
-                    i = idxof(x,y)
-                    rgba[i+3] >= 0x80 && continue          # already opaque
-                    sr=0; sg=0; sb=0; n=0
-                    for dy in -1:1, dx in -1:1
-                        (dx==0 && dy==0) && continue
-                        xx=x+dx; yy=y+dy
-                        (xx<1 || yy<1 || xx>w || yy>h) && continue
-                        j = idxof(xx,yy)
-                        rgba[j+3] < 0x80 && continue
-                        sr += Int(rgba[j]); sg += Int(rgba[j+1]); sb += Int(rgba[j+2]); n += 1
-                    end
-                    if n > 0
-                        rgba[i]   = UInt8(sr ÷ n); rgba[i+1] = UInt8(sg ÷ n); rgba[i+2] = UInt8(sb ÷ n)
-                        rgba[i+3] = 0x01           # still transparent, but now carries neighbour colour
-                        changed = true
-                    end
-                end
-                changed || break
-            end
-        end
+        _alpha_bleed!(r[3], r[1], r[2])   # LOADHANG-1 S3: in its own function (was 99 % of a cold texture's cost)
     end
     # E69-S8: is the warm cast already IN the decoded texture, or added by our shading? Gold's
     # asphalt measures R-B of -2.5..-5.3 while native's renders at +7.8..+12.7 (E69-S7), and the

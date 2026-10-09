@@ -46,6 +46,13 @@ REF_LAP = {"zandvoort": 86.848, "nurburgring": 501.931, "watglen": 66.912,
            "monza": 90.202, "spa": 200.342, "skidpad": 30.0}
 
 
+def timing_env(qenv):
+    """LOADHANG-1 (2026-10-07): every launch logs its load stages with elapsed seconds, so a slow load can be read from
+    last_sim_run.log afterwards (the Spa "hang" had no stamps and took a sprint to attribute). Costs nothing."""
+    if not qenv.contains("JM_TIMING"):
+        qenv.insert("JM_TIMING", "1")
+
+
 def _read_track_times(fname):
     """Read a '<track>\\t<seconds>' file → {track: seconds}. Empty if absent."""
     out = {}
@@ -1153,6 +1160,7 @@ class DriveTab(QWidget):
         qenv.insert("JM_AI_PCT", str(self.ai_pct.value()))
         qenv.insert("ZAND_SHIFT", "auto" if self.gearbox.currentIndex() == 0 else "manual")
         qenv.insert("JM_CARSETUP", ["default", "ww103"][self.carsetup.currentIndex()])
+        timing_env(qenv)   # LOADHANG-1
         if self.mute.isChecked():
             qenv.insert("JM_NOSOUND", "1")
         if self.noffb.isChecked():
@@ -1257,6 +1265,10 @@ class DriveTab(QWidget):
             self.progress.setValue(0)
             self._pc_t0 = None
 
+        m = re.findall(r"\[texcache\] first run on this track: preparing textures, (\d+)", text)
+        if m:   # LOADHANG-1: a cold texture cache is minutes of work -- say what it is, so it does not read as a hang
+            self._status(f"Loading: preparing this track's textures for the first time ({m[-1]} so far) -- "
+                         "a one-off, later launches skip it")
         for marker, pct, label in self.LOAD_STAGES:        # advance the progress bar through load milestones
             if marker in text and pct > getattr(self, "_stage", 0):
                 if self.progress.maximum() == 0:           # leave "busy" mode for a real percentage
@@ -1509,6 +1521,7 @@ class ReplayTab(QWidget):
         qenv.insert("JM_AI", nai)
         qenv.insert("JM_REPLAY", os.path.join(self.dir, name))
         qenv.insert("JM_VIEW", "0")
+        timing_env(qenv)   # LOADHANG-1
         segnames_env(qenv, str(QSettings("juliaRacer", "launcher").value("hud/segnames", "true")) == "true")   # TRACKSEG-3
         self.proc = QProcess(self)
         self.proc.setProcessEnvironment(qenv)
@@ -1553,6 +1566,11 @@ class ReplayTab(QWidget):
     def _log(self):
         text = bytes(self.proc.readAllStandardOutput()).decode(errors="replace")
         self.log.appendPlainText(text.rstrip())
+        m = re.findall(r"\[texcache\] first run on this track: preparing textures, (\d+)", text)
+        if m:   # LOADHANG-1
+            mm = int((time.monotonic() - self._t0) // 60)
+            self.progress.setFormat(f"preparing this track's textures for the first time ({m[-1]} so far, one-off)"
+                                    f"   ({mm} min elapsed)")
         for marker, pct, label in self.LOAD_STAGES:
             if marker in text and pct > self._stage:
                 self._stage = pct

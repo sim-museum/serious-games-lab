@@ -8,7 +8,9 @@ using GLFW, ModernGL, LinearAlgebra, Dates, Serialization
 
 # E67 S1: launch-phase stopwatch — JM_TIMING=1 prints cumulative seconds at each load phase
 const _T0 = time()
-tstamp(lbl) = get(ENV,"JM_TIMING","0") != "0" && println("[t+", round(time()-_T0, digits=1), "s] ", lbl)
+# LOADHANG-1 S2: flush -- under the launcher stdout is a pipe, and without it a long phase delivered its lines in one
+# burst minutes later, so the log "stopped" at the wrong stage (2026-10-07). The launcher sets JM_TIMING=1.
+tstamp(lbl) = get(ENV,"JM_TIMING","0") != "0" && (println("[t+", round(time()-_T0, digits=1), "s] ", lbl); flush(stdout); true)
 using JuliaMotor, RFactorData
 # PHYSPRE-1: the physics modules come from the JRPhysics PACKAGE, whose precompile image caches the compiled
 # car (player build 37.6 s -> 5.0 s measured). Included as loose files, every launch made new modules and
@@ -48,7 +50,12 @@ include("ai.jl"); using .RaceAI           # rail-following race opponents (JM_AI
 include("gplai.jl"); using .GPLAI         # AIGPL-2: the AI driven by GPL's own algorithm (doc/GPL_AI_REVERSE_ENGINEERING.md)
 # Force-feedback tuning (env-overridable). SIGN=-1 ⇒ force opposes the front lateral
 # force, so the wheel self-centres (measured: steer-left gives +front_lat).
-const FFB_ON     = !haskey(ENV, "JM_NOFFB")
+# LOADHANG-1 S4 (2026-10-08): a smoke/gate run is a MEASUREMENT and must not read or drive the PO's wheel. netcollide_smoke
+# went red with no code change: its parked HOST car took throttle/clutch from the TX left on the desk (the sim reported
+# "[clutch] held IN ... the slider is parked at the clutch-in end"), and the client autodrive copied the live clutch too.
+# Smoke runs now ignore physical controllers and send no force feedback; JM_SMOKE_JOY=1 opts back in (controller tests).
+const SMOKE_NOJOY = haskey(ENV, "JM_SMOKE") && get(ENV, "JM_SMOKE_JOY", "0") == "0"
+const FFB_ON     = !haskey(ENV, "JM_NOFFB") && !SMOKE_NOJOY
 const FFB_GAIN   = parse(Float64, get(ENV, "JM_FFB_GAIN", "1.3"))     # pre-soft-clip gain on the aligning torque
 const FFB_SIGN   = parse(Float64, get(ENV, "JM_FFB_SIGN", "-1.0"))    # -1 ⇒ resist (self-centre)
 const FFB_ATRAIL = parse(Float64, get(ENV, "JM_FFB_TRAIL", "0.18"))   # front slip [rad] where pneumatic trail is spent
@@ -63,7 +70,7 @@ const _JOYCONF = joinpath(@__DIR__, "joystick.conf")
 # GLFW.Init is idempotent (the window code calls it again later); headless runs without a display fall
 # through to "no controller".
 const JOYNAME = try
-    GLFW.Init(); GLFW.JoystickPresent(GLFW.JOYSTICK_1) ? String(GLFW.GetJoystickName(GLFW.JOYSTICK_1)) : ""
+    GLFW.Init(); (!SMOKE_NOJOY && GLFW.JoystickPresent(GLFW.JOYSTICK_1)) ? String(GLFW.GetJoystickName(GLFW.JOYSTICK_1)) : ""
 catch
     ""
 end
@@ -941,6 +948,7 @@ const NETPOSES = Ref(Tuple{Int,NTuple{6,Float64}}[])   # MP-5: (car id, grounded
 # local car has had with remote cars (the gate reads it). JM_NET_COLLIDE=0 lets cars pass through each other again.
 const NETVEL = Ref(Dict{Int,NTuple{2,Float64}}())
 const NET_HITS = Ref(0)
+const NET_DMIN_AT = Ref{Any}(nothing)   # LOADHANG-1 S4: ((s,lat) self, (s,lat) remote) at the closest approach
 const NET_DMIN = Ref(Inf)       # closest centre-to-centre approach to any remote car so far (m) -- the gate's pass-through test
 const NET_COLLIDE = get(ENV, "JM_NET_COLLIDE", "1") != "0"
 # E85-S7: receiver-side prediction-error census (JM_NET_ERR=1).
@@ -5363,10 +5371,13 @@ const SMOKE_FRAMES = parse(Int, get(ENV, "JM_SMOKE_FRAMES", "40"))   # SPA-FPS-1
 # s = metres along the centreline, view = 0 cockpit / 1 chase, name = output basename.  Each frame lands
 # in JM_SHOTS_DIR (default /tmp) as <name>.ppm; after each teleport the render runs JM_SHOT_SETTLE frames
 # so the physics/camera/HUD smoothing settle before the dump (38 = the classic single-smoke warmup).
-struct SmokeShot; s::Float64; view::Int; name::String; end
+# An optional 4th field "K=V,K=V" sets those ENV knobs when the shot starts (E64: sweep per-frame knobs such as
+# JM_MIRCAM_* in one launch instead of one 5-minute launch per value).
+struct SmokeShot; s::Float64; view::Int; name::String; env::Vector{Pair{String,String}}; end
 const SHOTS = [let f = split(String(spec), ":")
                    SmokeShot(parse(Float64, f[1]), length(f) >= 2 ? parse(Int, f[2]) : 0,
-                             length(f) >= 3 ? String(f[3]) : "shot$(i)")
+                             length(f) >= 3 ? String(f[3]) : "shot$(i)",
+                             length(f) >= 4 ? [String(k) => String(v) for (k, v) in (split(kv, "=") for kv in split(f[4], ",", keepempty = false))] : Pair{String,String}[])
                end for (i, spec) in enumerate(filter(!isempty, split(get(ENV, "JM_SHOTS", ""), ";")))]
 const SHOTS_DIR   = get(ENV, "JM_SHOTS_DIR", "/tmp")
 # GPLWALL-1 S4: JM_CRASH="s:L|R:deg:mps;..." (or "auto:<metres>") drives the player car from the racing line into
@@ -10055,7 +10066,7 @@ const CLU_HIST = Ref(-1.0e9); const GEAR_NOW = Ref(0); const RPM_NOW = Ref(0.0);
 
 function read_input()
     thr=brk=str=clu=0.0; up=dn=false
-    js = GLFW.GetJoystickAxes(GLFW.JOYSTICK_1)
+    js = SMOKE_NOJOY ? nothing : GLFW.GetJoystickAxes(GLFW.JOYSTICK_1)   # LOADHANG-1 S4
     if !JOYREPORT[] && js !== nothing && !isempty(js)
         JOYREPORT[] = true
         println("  [joy] ", length(js), " axes raw = ", join(round.(js, digits=2), ", "))
@@ -10953,7 +10964,7 @@ function main()
     # vertical state to the terrain there so the car doesn't slam/diverge on a big-elevation track.
     # Teleport the standing car to s metres along the centreline + re-anchor the vertical state to the
     # terrain there (no slam/divergence on big-elevation tracks).  Shared by JM_START_S and JM_SHOTS.
-    place_at_s! = function (s0raw::Float64)
+    place_at_s! = function (s0raw::Float64, lat::Float64 = 0.0)
         (CLINE === nothing || !CAR3D) && return nothing
         s0 = clamp(s0raw, 0.0, CLINE.total)
         # PARITYGATE-JR-1 S5: a teleport IS a respawn, and the step guard must be disarmed for it.
@@ -10969,7 +10980,7 @@ function main()
         # a pale void under a black sky (parity/chase_gate_first_sweep.jpg, 4th panel).
         PLAYER_G[] = NaN
         GPLW_ON && gplw_teleported!()
-        p  = RaceAI.pose_at(CLINE, s0, 0.0)                 # (x, y, z, θ) on the racing line
+        p  = RaceAI.pose_at(CLINE, s0, lat)                 # (x, y, z, θ) at `lat` m off the centreline
         DriveRT3D.place3d!(cs, p[1], p[3], p[4]; v = 0.0)
         cs.s_vreset(cs.integ, zeros(14))                    # zero the vertical subsystem (no spawn bounce)
         h = groundz(p[1], p[3]; acquire=true); isfinite(h) && (cs.zref = Float64(h))
@@ -10989,9 +11000,12 @@ function main()
     end
     if CLINE !== nothing && CAR3D && haskey(ENV, "JM_START_S")
         s0 = clamp(parse(Float64, ENV["JM_START_S"]), 0.0, CLINE.total)
-        p  = place_at_s!(s0)
-        println("  JM_START_S: car placed at s=", round(Int, s0), " m on the centreline (x=",
-                round(Int, p[1]), " z=", round(Int, p[3]), ")")
+        # LOADHANG-1 S4: JM_START_LANE=race parks the car ON the AI's racing line (racelane), where an autodriving car
+        # (which tracks racelane + JM_AUTODRIVE_LAT) will meet it head-on; default: the centreline, as before.
+        _lane = get(ENV, "JM_START_LANE", "") == "race" ? RaceAI.racelane(CLINE, s0) : 0.0
+        p  = place_at_s!(s0, _lane)
+        println("  JM_START_S: car placed at s=", round(Int, s0), " m, ", _lane == 0.0 ? "on the centreline" :
+                "on the racing line (lat $(round(_lane, digits = 2)) m)", " (x=", round(Int, p[1]), " z=", round(Int, p[3]), ")")
         if get(ENV,"JM_OBJDIAG","")!="" && isdefined(Main,:OBJINSTS)
             rad = parse(Float64, get(ENV,"JM_SPOT_RAD","70"))
             near = NTuple{3,Any}[]
@@ -12527,6 +12541,7 @@ function main()
     if SMOKE && !isempty(SHOTS)
         shot_idx[] = 1; shot_t0[] = 0
         CTL.view = SHOTS[1].view
+        for (k, v) in SHOTS[1].env; ENV[k] = v; end
         place_at_s!(SHOTS[1].s)
         println("  JM_SHOTS: ", length(SHOTS), " shots → ", SHOTS_DIR); flush(stdout)
     end
@@ -14044,7 +14059,15 @@ function main()
                 end
             end
             NETPOSES[] = netp
-            for (_, p) in netp; NET_DMIN[] = min(NET_DMIN[], hypot(p[1] - cs.x, p[3] - cs.z)); end
+            for (_, p) in netp
+                _d = hypot(p[1] - cs.x, p[3] - cs.z)
+                if _d < NET_DMIN[]
+                    NET_DMIN[] = _d
+                    # LOADHANG-1 S4: WHERE the closest approach was -- each car's (s, lateral) on the centreline, so a
+                    # miss alongside says which car is off the line (netcollide_smoke went red with dmin 2.4-2.7 m)
+                    CLINE !== nothing && (NET_DMIN_AT[] = (RaceAI.project(CLINE, cs.x, cs.z), RaceAI.project(CLINE, p[1], p[3])))
+                end
+            end
             # JM_NET_DIAG=<n>: report the link every n frames. "No car appeared" has at least four
             # causes -- nothing sent, nothing received, everything judged stale, or nothing drawn --
             # and a screenshot cannot tell them apart, especially with the two cars 80 m apart on a
@@ -14053,7 +14076,9 @@ function main()
                 println("  [net] t=", round(cs.t,digits=1), " rx=", NETLINK.rx,
                         " dropped=", NETLINK.dropped, " peers=", length(NETLINK.peers),
                         " known=", length(NETLINK.remote), " drawn=", length(netp),
-                        " hits=", NET_HITS[], " dmin=", round(NET_DMIN[], digits = 2), " v=", round(cs.v, digits = 1))
+                        " hits=", NET_HITS[], " dmin=", round(NET_DMIN[], digits = 2), " v=", round(cs.v, digits = 1),
+                        NET_DMIN_AT[] === nothing ? "" : string(" at self(s,lat)=", round.(NET_DMIN_AT[][1], digits = 2),
+                                                                " remote=", round.(NET_DMIN_AT[][2], digits = 2)))
                 flush(stdout)
             end
         end
@@ -14739,7 +14764,9 @@ function main()
             isempty(PICKS) || pick_report(vp, eye, sh.name)
             if shot_idx[] < length(SHOTS)
                 shot_idx[] += 1; shot_t0[] = frames + 1
-                nxt = SHOTS[shot_idx[]]; CTL.view = nxt.view; place_at_s!(nxt.s)
+                nxt = SHOTS[shot_idx[]]; CTL.view = nxt.view
+                for (k, v) in nxt.env; ENV[k] = v; end
+                place_at_s!(nxt.s)
             else
                 shots_done[] = true
             end
