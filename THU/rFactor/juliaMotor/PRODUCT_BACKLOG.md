@@ -30,6 +30,8 @@ this index was written; that is what it exists to stop.
 | **DIALS-1** | In the cockpit view make ALL the dials work, not just the rev counter (oil pressure, oil/water temperature, fuel...) as in the gold (PO 2026-10-07 night) | open; worked alongside COCKPIT-2 (same dashboard, same replay channels) |
 | **WGTD-1** | Watkins Glen improvements from the PO's 2026-10-08 race (video `~/Videos/261008_wg_race.mp4`, 14:42): (a) replay cockpit -- mirrors, steering, shifting live (with COCKPIT-2); (b) analysis = ALL of GPL Replay Analyser, incl. two replay files of the same track side by side; (c) spurious diagonal straight line across the WG map under the graphs; (d) a lap-list filter (human laps, same or different sessions -- human vs AI is rarely useful); (e) after the race the AI do one slow lap and stop in the pits, as GPL; (f) the default black brake marks along the racing line start/stop in blocks -- GPL's are smooth smears; (g) the AI line runs wide, a little off track, after the 90 and before the Esses -- stay on track as GPL; (h) analyser: GPL's GRAPHICAL race reports (missing now) and GPL's ANIMATED track map -- little car silhouettes showing where the cars of the selected laps are, with position and direction | open -- **PAUSED by the PO (2026-10-08 21:3x): no scrum until the PO says so** |
 | **WW103-GPL-1** | 2nd WG race 2026-10-08: strange sideways slide going into the Big Bend in lap 2; and "ww103 in julia doesn't feel at all like ww103 in GPL. Why not?" -- compare our WW103 WG race with the PO's most recent WW103 WG race in GPL (.rpy under `~/sgl/THU`) | open -- first look done (see section); **scrum PAUSED by the PO** |
+| **REPLAY-4** | Each press of R (restart) starts a NEW session for replay and analysis, and writes a NEW .ibt (PO 2026-10-08) -- today one recording/ibt spans restarts (the 21:55 ibt holds two runs) | open -- **scrum PAUSED by the PO** |
+| **PERF-4** | "julia racer is sluggish compared to GPL. Would it make sense to translate julia racer from julia to, e.g. C++?" (PO 2026-10-08) | open -- first answer in the section (measure what "sluggish" is before any rewrite); **scrum PAUSED** |
 | **AIHELMET-1** | The AI drivers' helmets render as a dark dome (black lobes from the front) where GPL's are the driver's skin -- found 2026-10-07 during HANDS-2 | ✅ **S1 (2026-10-07):** each AI driver's own helmet skin bound to the shell (`261007/helmet/`) |
 | **TRACKSEG-3** | Preferences switch: show/hide the track-section names ("Front Straight", "Big Bend" at WG), default ON (PO 2026-10-06) | ✅ **DONE (S1, 2026-10-06):** launcher Graphics group, "Show track section names", default ON, remembered; OFF = `JM_SEGNAME_SECS=0`, also for replays; gate `segnames_smoke` |
 | **GUI-1** | Redesign the julia racer GUI (`demo/native/juliaRacer.py`) for ease of use per GUI best practices, then restyle it like the PyQt GUIs of pokerIQ and bridgeIQ (`~/sgl/MON/pokerIQ`, `~/sgl/FRI/bridgeIQ`) (PO 2026-10-06) | **S1 (2026-10-06) redesign done:** task-ordered tabs (Race / Results / Replays / Settings / Controller), Session + Car cards, one primary Start button, menus + status bar, log on demand, everything remembered; the sim's environment is identical to before (3 cases). **S2 restyle done:** dark pokerIQ/bridgeIQ theme (`261006/gui/s2_vs_iq.jpg`). 🟡 **AWAITING THE PO's look** |
@@ -23770,3 +23772,29 @@ full at 0.863, i.e. a very short brake range -- watch for over-braking).
   WW103) and compare against this ibt corner by corner: speeds, gears, throttle/brake points, slip/yaw in the Big Bend
   approach and the Speed Trap; then decide whether "feel like GPL" changes the physics target from iRacing to GPL for
   WW103 -- that is the PO's call, ask before refitting.
+
+### REPLAY-4 and PERF-4 added (PO 2026-10-08 ~22:20, verbatim) -- scrum still PAUSED
+> for purposes of julia replay and analysis, each time you press "r" that should start a new session.  It should write to
+> a new .ibt also.
+> backlog item: julia racer is sluggish compared to GPL.  Would it make sense to translate julia racer from julia to,
+> e.g. C++?
+
+**REPLAY-4 note:** today R restarts the race in place (instant, no reload) but the replay keeps recording across it
+(REPLAY-2: "a session restart rewinds the clock -- keep recording"; the analyser splits laps at the restart) and one .ibt
+covers the whole launch (`lotus49_watglen 2026-10-08 21-55-45.ibt` holds two runs). Wanted: R closes the current
+replay + .ibt and opens new ones, so each run is its own session in the Replays list and the analyser.
+
+**PERF-4 first answer (no measurement yet):** probably not, or not first.
+* Julia compiles to native code; steady-state physics and draw loops already run at C-like speed. Measured on 2026-10-06
+  (PERF-3): 52–60 fps in the cockpit with 5 AI at Spa and the Ring, at vsync. A C++ port would not make the GPU or the
+  OpenGL driver faster, and the fitted physics (ModelingToolkit model + E91/TYRE/CAMBER fits, ~15,000 lines of sim) would
+  have to be re-derived by hand and re-validated -- months of work with a real risk of losing the iRacing match.
+* What C++ WOULD remove is Julia's start-up cost: the ~150 s of compile + physics build before every race
+  (`[t+152s] physics build (mtkcompile) begins`), and GC pauses (~16 ms after PERF-1). Both can be attacked in Julia:
+  a PackageCompiler sysimage / app that ships the compiled code, caching the built physics, and allocation cuts.
+* "Sluggish" needs pinning down first: (1) load time to the grid, (2) frame rate / stutter, (3) control latency (pedal
+  or wheel -> car response: vsync, frames queued, physics step), or (4) the car's own response (steering ratio, inertia,
+  tyre build-up -- cf. WW103-GPL-1). Each has a different fix; only (1) and some of (2) point at the language.
+* Plan when the scrum resumes: ask the PO which of the four it is (or measure all four against GPL: load time, frame
+  times, input-to-motion latency from a high-speed phone video or input timestamps, step-steer response), then fix the
+  largest gap in Julia; revisit a port only if a measured gap cannot be closed that way.
