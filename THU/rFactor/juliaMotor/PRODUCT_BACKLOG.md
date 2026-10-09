@@ -24239,3 +24239,14 @@ view" or a real valley view -- needs the PO's video moment (`261007_spa_race.mp4
 # CYCLE 2026-10-08 night -- END (08:10). Done: PERF-4 S1–S4, COCKPIT-2 S1–S4 (+DIALS-1 closed), SPATD-1 S1–S4,
 # RINGTD-1 S1, REPLAY-4, REPLAY-5, BLINDTURN-1 S1–S4 (analysis), TRACKS-TD-1 look. Full gates 49/49 at 07:42.
 # Status for the PO: STATUS_2026-10-09.md.
+
+### WGTD-1 S1 (2026-10-09): the diagonal line across the WG map -- a lap that ran across a restart
+* Scanning every lap of every car in the PO's three WG replays of 10-08 for jumps > 30 m between recorded points:
+  **21:18** -- every car's "lap 1" (2:17.7–2:26.7, "from the start") contains a ~1.5 km jump at frame 609. The PO pressed
+  R before anyone completed lap 1, so the lap counters stayed 0 and the analyser saw no session boundary: the lap ran
+  across the restart (bogus times) and the map joined the crash spot to the grid with a straight line -- the PO's
+  "spurious diagonal straight line". (The replay's clock does not rewind there: it jumps 5 s forward.)
+* **Fix (`analyser.py`):** a teleport of the player (> 60 m between two frames) marks a session restart for every car,
+  like a falling lap counter already did. 21:18: restart found at 609, no jump segments left, the bogus laps gone;
+  21:46: the PO's 1:32.219 / 1:31.644 / 1:23.549 unchanged; Spa 10-07: 6:38.871 unchanged. analyser test, launcher
+  gate PASS. (REPLAY-4 makes every R a new file from now on, so new recordings cannot mix sessions anyway.)

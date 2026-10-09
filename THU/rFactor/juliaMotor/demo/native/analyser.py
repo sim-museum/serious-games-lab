@@ -88,6 +88,16 @@ class Replay:
         # REPLAY-3: a race's lap 1 is timed from the green flag (the "race" channel of the first frame); a practice
         # session's first lap is an out-lap from the pits and stays untimed
         self.race = "race" in self.cars[0] and self.n > 0 and self.cars[0]["race"][0] > 0.5
+        # WGTD-1 (PO 2026-10-08: "a spurious diagonal straight line running through the watkins glen map below the graphs"):
+        # a restart R before anyone finished lap 1 leaves every lap counter at 0, so no lap boundary was seen -- each car's
+        # "lap 1" ran across the restart (WG 21:18: 2:17-2:26 laps) and the map joined the crash spot to the grid with a
+        # 1.5 km straight line. A restart teleports the player to the grid: > 60 m between two frames marks a new session.
+        p0 = self.cars[0] if self.ncar else None
+        self.restarts = set()
+        if p0 is not None:
+            for k in range(1, self.n):
+                if math.hypot(p0["x"][k] - p0["x"][k - 1], p0["z"][k] - p0["z"][k - 1]) > 60.0:
+                    self.restarts.add(k)
         self.laps = []                             # timed laps -- every statistic, report and the coach use these only
         self.unfinished = []                       # laps cut short (crash, restart, end of recording): plotted, never timed
         for c in range(self.ncar):
@@ -120,7 +130,7 @@ class Replay:
                 a = L - d[k - 1]; b = d[k]
                 f = a / (a + b) if (a + b) > 0 and 0 <= a < 0.5 * L and 0 <= b < 0.5 * L else 0.5
                 crossings.append((k, t[k - 1] + f * (t[k] - t[k - 1]), int(lap[k]), False))
-            elif lap[k] < lap[k - 1]:              # a session restart (R): no lap spans it
+            elif lap[k] < lap[k - 1] or k in self.restarts:   # a session restart (R): no lap spans it
                 crossings.append((k, None, int(lap[k]), True))
         crossings.append((self.n, None, None, False))   # the end of the recording
         # REPLAY-3/4 (2026-10-09): a race that starts on a grid BEHIND the line (lap distance ~L, e.g. every car after a
