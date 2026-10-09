@@ -15,7 +15,7 @@ PROVISIONAL = 20
 LEVELS = [   # (label, starting rating)
     ("I know how the pieces move", 800),
     ("I play now and then", 1100),
-    ("I play regularly, with a club or online", 1400),
+    ("I play regularly, with a club or online", 1500),   # PO 10-08: SGW players are club strength; = Felix, the default opponent
     ("I am a strong club player", 1700),
     ("I am an expert or tournament player", 2000),
     ("I hold a master title", 2300),
@@ -42,7 +42,7 @@ def profile_path():
 
 
 class Profile:
-    def __init__(self, name="Player", rating=1400, games=0, history=None, path=None):
+    def __init__(self, name="Player", rating=1500, games=0, history=None, path=None):
         self.name, self.rating, self.games = name, rating, games
         self.history = history or []      # dicts: time, opponent, opponent_rating, result, before, after, colour, plies
         self.path = path or profile_path()

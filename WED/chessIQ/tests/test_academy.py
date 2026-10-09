@@ -119,11 +119,11 @@ class Puzzles(unittest.TestCase):                 # KS-5
 
     def test_the_nearest_puzzle_comes_first_and_a_solve_raises_the_rating(self):
         w = self.academy.PuzzleWindow(seed=1)
-        self.assertEqual(w.rating, 1200)                          # no profile: 1200
+        self.assertEqual(w.rating, 1500)                          # no profile: 1500 (club level)
         self.assertEqual(w.current["id"], 1)                       # 1163 is nearer than 2400... among the two
         w.view.on_square(sq("g1")); w.view.on_square(sq("g2"))
         self.assertTrue(w.view.solved)
-        self.assertGreater(w.rating, 1200)
+        self.assertGreater(w.rating, 1500)
         self.assertEqual(self.academy.load_state()["puzzles_solved"], [1])
         a = self.academy.load_ratings()["1"]                       # and the puzzle proved easier: its rating falls
         self.assertEqual((a["n"], a["base"]), (1, 1163))

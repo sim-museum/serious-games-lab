@@ -1129,3 +1129,7 @@ One item at a time, each with a goal, the check that proves it and a stopping po
   Self-capture moments). S2: Getting started ends in an unrated game against Felix (1500, coach on) instead of Hal
   (950). Check: test_academy 20 OK; offscreen render of the last page. Note: two runs of test_academy hung at the
   first test before five clean runs in a row; not reproduced, cause unknown (no engine processes left behind).
+  S3: club-level defaults. "I play regularly, with a club or online" starts at 1500 (was 1400), equal to Felix and
+  to the default opponent (nearest 1500), so a new player's first rated game is an even match; the puzzle rating
+  without a profile starts at 1500 (was 1200). Check: test_academy 20, test_rating 5, test_app_rated 9 OK.
+  Item closed (3 sprints).

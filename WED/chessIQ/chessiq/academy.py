@@ -300,7 +300,7 @@ class PuzzleWindow(QDialog):
         self.puzzles = load_puzzles()
         st = load_state()
         prof = Profile.load()
-        self.rating = st.get("puzzle_rating", prof.rating if prof else 1200)
+        self.rating = st.get("puzzle_rating", prof.rating if prof else 1500)
         self.seen = set(st.get("puzzles_seen", []))
         self.solved_ids = set(st.get("puzzles_solved", []))
         self.adj = load_ratings()
