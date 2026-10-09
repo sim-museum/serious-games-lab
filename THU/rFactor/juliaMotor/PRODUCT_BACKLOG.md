@@ -24269,3 +24269,10 @@ race line on our road 100 % both ways, and **0 of 60 000 AI car-frames had the c
 So at WG the AI never leave the road with their centre; the PO's "a little off the track" is the car BODY (wheels over
 the edge) at the exit of the 90 -- the counter must test the car's width (centre ± 0.95 m), not its centre. Next pass:
 extend the counter to body overlap, then look at GPL's race line there against our road edge (memory jr-gplai-pace-and-frame).
+
+### WGTD-1 S4 (2026-10-09, measurement): the AI's car edges at WG -- WGTD-1 rotates
+The `JM_AI_OFFROAD` counter now also tests the car's EDGES (centre ± 0.95 m along the frame's lateral). WG, 70 %, 5 AI,
+200 s with tonight's AI (calibrated pace + road frame): **0 of 60 000 car-frames with an edge off the drawn road**. The
+PO's "goes wide a little off the track after the 90" was seen before tonight's AI changes and does not reproduce here;
+remaining possibilities: the drawn road (ROADHAT) counts paved kerbs/run-off the PO reads as off-track, or a different
+moment of the race. **For the PO's look** at the next WG race. Gates parse, warm PASS.

@@ -887,7 +887,7 @@ const RESTART_I   = Ref(1)
 # an impulse. Every frame whose world velocity changes by more than JM_JOLT_MS (3 m/s, ~18 g) in one step is logged with
 # what touched the car in it: solid-object contact force, GPL-wall and drawn-obstacle hits/clamps, step-guard holds.
 const AI_OFFROAD_DIAG = get(ENV, "JM_AI_OFFROAD", "0") != "0"   # SPATD-1 S4: count AI frames off the drawn road
-const AI_OFF = [0, 0]; const AI_OFFBIN = Dict{Int,Int}()
+const AI_OFF = [0, 0, 0]; const AI_OFFBIN = Dict{Int,Int}(); const AI_EDGEBIN = Dict{Int,Int}()   # [centre off, frames, an edge off]
 const JOLT_MS = parse(Float64, get(ENV, "JM_JOLT_MS", "3.0"))
 const JOLT_PRE = Ref((0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0, 0))
 const JOLT_N = Ref(0)
@@ -14316,6 +14316,11 @@ function main()
                     if !JuliaMotor.hat3d(ROADHAT, wx, wz; ref = Inf)[3]
                         AI_OFF[1] += 1; b = floor(Int, gc.s/100); AI_OFFBIN[b] = get(AI_OFFBIN, b, 0) + 1
                     end
+                    # WGTD-1 S4: the car's EDGES too (centre +- 0.95 m along the frame's lateral) -- "a little off the track"
+                    (lx, lz, _) = GPLAI.tworld(GPLAI_T, gc.s, gc.d + 0.95); (rx, rz, _) = GPLAI.tworld(GPLAI_T, gc.s, gc.d - 0.95)
+                    if !(JuliaMotor.hat3d(ROADHAT, lx, lz; ref = Inf)[3] && JuliaMotor.hat3d(ROADHAT, rx, rz; ref = Inf)[3])
+                        AI_OFF[3] += 1; b = floor(Int, gc.s/100); AI_EDGEBIN[b] = get(AI_EDGEBIN, b, 0) + 1
+                    end
                 end
             end
             for (i, gc) in enumerate(f.cars)                      # keep the race bookkeeping (laps, order, HUD) in our frame
@@ -15427,6 +15432,9 @@ function main()
         println("  [ai offroad] ", AI_OFF[1], " of ", AI_OFF[2], " AI car-frames had the car centre off the drawn road (",
                 round(100*AI_OFF[1]/AI_OFF[2], digits = 2), " %); worst 100 m bins (s: frames): ",
                 join(["$(100k)-$(100k+100): $(v)" for (k, v) in sort(collect(AI_OFFBIN), by = x -> -x[2])[1:min(end, 8)]], ", "))
+        println("  [ai offroad] ", AI_OFF[3], " car-frames with a car EDGE (centre ± 0.95 m) off the drawn road (",
+                round(100*AI_OFF[3]/AI_OFF[2], digits = 2), " %); worst 100 m bins: ",
+                join(["$(100k)-$(100k+100): $(v)" for (k, v) in sort(collect(AI_EDGEBIN), by = x -> -x[2])[1:min(end, 8)]], ", "))
     end
     if DRIVECHECK
         d = DC[]
