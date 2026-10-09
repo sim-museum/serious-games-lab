@@ -23977,3 +23977,24 @@ mipcolor PASS.
 * **PERF-4 status:** the measurable causes of the PO's start lag are fixed and gated (S1 compile freezes, S2 GC rate,
   S3 queue cap); what is left is the car's own response (HANDLING-1). For the PO's look: does the start still feel
   laggy? Full gate run pending (it reads the sim file, so it runs during the next analysis-only stretch).
+
+### COCKPIT-2 retrospective update (2026-10-09, cycle 2026-10-08 night)
+Since the 10-07 retrospective: the S1 replay-cockpit patch, the S3 lever patch and DIALS-1 are drafted and apply cleanly
+(scratch); the gold was read for the lever's gate (260802 WG cockpit, crops every 3 s against GPL's HUD gear: 1st/2nd
+in the plane nearest the driver, 3rd/4th the middle, odd gears forward) and for GPL's engine readout (oil and fuel
+pressure 545 kPa whenever running; temperature from 43 °C cold, +4 °C/min); the lever is already in lotus.3do (54 tris,
+= shiftel.3do), drawn translucent orange, outboard, static; the gold's right glove LEAVES the wheel to shift (noted).
+WGTD-1 (10-08) repeats the replay asks (mirrors, steering, shifting live). Plan this pass (<= 4): S1 replay cockpit from
+the recording + live mirrors; S2 the lever moves with the gear; S3 DIALS-1; S4 the wrists. AI cockpits next pass.
+
+### COCKPIT-2 S1 (2026-10-09): the replay cockpit follows the recording; mirrors live in replay
+* `replay_tele(rt)`: the v2 recording's player channels interpolated at the replay clock (speed, rpm, steer, throttle,
+  brake, clutch; gear from the nearest frame). In the replay branch the cockpit's car state (`cs.v`, `cs.rpm`,
+  `cs.gear`) and its input (`inp`) now come from it instead of the live controller and a parked car. Older recordings
+  without channels: as before.
+* Mirrors: `JM_MIRROR_IN_REPLAY` defaults to 1 (the mirror camera follows the replayed pose); 0 restores the dark glass.
+* **A/B** (Spa replay 2026-10-07 22-01, replay time 22.7 s: recorded steer −0.14, 2nd gear, 3,920 rpm, 68 km/h;
+  `261007/ck2_s1_replay_cockpit_ab.png`, top before / bottom after): the wheel and both gloves turn with the recorded
+  steer (before: straight, the PO's hands-off wheel), the rev-counter needle stands at ~3,900 (before: idle), the HUD
+  reads 3920 / 68 / gear 2 (before: 2000 / 0 / n), and the left mirror shows the car behind (before: black).
+  Gates parse, warm PASS.

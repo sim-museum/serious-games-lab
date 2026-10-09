@@ -12515,6 +12515,20 @@ function main()
         for k in 1:(repd.ncar-1); o = 5 + 4*(k-1); push!(ais, (lerp(o+1), lerp(o+2), lerp(o+3), lerpθ(o+4))); end
         (player, ais)
     end
+    # COCKPIT-2 S1 (PO 2026-10-07: "During replay, there is no movement in cockpits - the wheel doesn't turn, the hands
+    # don't move, the mirrors are black, there are no dials"): the replay set only the pose, so the cockpit drew the LIVE
+    # controller's steer and a parked car's rpm/speed. A v2 recording (REPLAY-2) carries the player's inputs and engine
+    # every frame; interpolate them at the replay clock (gear: nearest frame). Older recordings: nothing (as before).
+    REP_NT = (REPLAY && hasproperty(repd, :tele) && !isempty(repd.tele)) ? length(repd.tele_p) + length(repd.tele_ai)*(repd.ncar-1) : 0
+    REP_CH = REP_NT == 0 ? Dict{String,Int}() : Dict(nm => k for (k, nm) in enumerate(repd.tele_p))
+    function replay_tele(rt)
+        tl = repd.tele; nf = length(tl) ÷ REP_NT; f = clamp(rt*repd.fps, 0.0, nf-1.0)
+        i0 = floor(Int, f); i1 = min(i0+1, nf-1); g = f - i0
+        ch(nm) = (k = get(REP_CH, nm, 0); k == 0 ? 0.0 : Float64(tl[i0*REP_NT+k])*(1-g) + Float64(tl[i1*REP_NT+k])*g)
+        kg = get(REP_CH, "gear", 0)
+        (speed = ch("speed"), rpm = ch("rpm"), steer = ch("steer"), throttle = ch("throttle"), brake = ch("brake"),
+         clutch = ch("clutch"), gear = kg == 0 ? 0 : round(Int, tl[(g < 0.5 ? i0 : i1)*REP_NT+kg]))
+    end
     REPLAY && println("  ▶ REPLAY: $(basename(REPLAY_FILE)) — $(repd.nframes) frames, $(round(rep_dur,digits=1))s, $(repd.ncar) cars\n" *
         "  SPACE play/pause · ←/→ seek · ↑/↓ speed · V switch ANGLE (cockpit/chase/TV/F10/nose/RR-susp) · C switch CAR · Esc quit")
     # PO 2026-08-27: this was hardcoded "zand_racer_" with a "@ Zandvoort" header on EVERY track,
@@ -12840,6 +12854,11 @@ function main()
             cvv = key(GLFW.KEY_V); (cvv && !rep_pv[]) && (rep_cam[] = mod1(rep_cam[]+1, length(REPLAY_CAMS))); rep_pv[] = cvv  # E25: switch ANGLE
             (pp, rep_ai_raw) = replay_poses(rep_rt[])
             cs.x = pp[1]; cs.y = pp[2]; cs.z = pp[3]; cs.θ = pp[4]; cs.v = 0.0; cs.pitch = 0.0; cs.roll = 0.0
+            if REP_NT > 0     # COCKPIT-2 S1: wheel, gloves, needles and HUD follow the recording, not the live controller
+                rt_ = replay_tele(rep_rt[])
+                cs.v = rt_.speed; cs.rpm = rt_.rpm; cs.gear = rt_.gear
+                inp = DriveInput(throttle = rt_.throttle, brake = rt_.brake, steer = rt_.steer, clutch = rt_.clutch)
+            end
             # cockpit interior only renders for the player car in COCKPIT mode; every other angle shows the driver figure + full car
             CTL.view = (REPLAY_CAMS[rep_cam[]] === :cockpit && rep_focus[] == 0) ? 0 : 1
             @goto skipsim
@@ -14362,7 +14381,9 @@ function main()
         # strobe and the "hidden window may not run the RTT" reading was wrong. The PO's report is
         # about a LIVE drive; JM_MIRROR_IN_REPLAY=1 drops the term so the strobe test can be taken
         # headlessly from a replay, which is the only way to take it without the display.
-        _mir_noreplay = !REPLAY || get(ENV, "JM_MIRROR_IN_REPLAY", "0") != "0"
+        # COCKPIT-2 S1 (PO 2026-10-07: "the mirrors are black" in replay): now ON by default -- the mirror camera follows
+        # the replayed pose like everything else. JM_MIRROR_IN_REPLAY=0 restores the old dark glass.
+        _mir_noreplay = !REPLAY || get(ENV, "JM_MIRROR_IN_REPLAY", "1") != "0"
         # PACE-1 (2026-09-25, PO: "why does motion seem jerky"): when starved, the old back-off rendered BOTH
         # mirror halves on one frame in three -- a long frame every third frame, i.e. judder by construction.
         # Now the mirror stays live every frame and renders ONE half per frame, alternating: each mirror at
