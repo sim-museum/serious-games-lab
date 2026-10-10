@@ -37,7 +37,7 @@ this index was written; that is what it exists to stop.
 | **RINGTD-1** | Nürburgring fixes from the PO's 2026-10-08 race (video `~/Videos/261008_nurbergring.mp4`, 28:32). MOST EXTREME: just before the North hairpin, passing the tower on the right, the car in the chase ("nintendo") view rolls 90° left and back. (a) billboards still at middle distance on the left a couple of turns after the North hairpin; (b) floating shed on the left near the Trickle (Wehrseifen); (c) the hill you turn left to avoid just before Ex-Mühle appears only ~10 car lengths away; (d) floating trees over (or nearly over) the track in the Adenauer Forst; (e) after the Karussell an overhead banner on solid columns makes the car buck comically under it -- remove the banner; AI drive smoothly but are often off the road in curves, usually on the left | 🟡 **S1 (2026-10-09), for the PO's look:** the 90° roll at the tower and the bucking under the post-Karussell banner were the drawn body tilt reading the structures as ground -- fixed, proven on the PO's recorded line; open: (a) billboards, (b) floating shed, (c) Ex-Mühle pop-in, (d) Adenauer Forst trees, the banner removal (now harmless: PO's call) |
 | **CARPHYS-1** | The car physics model is the sine qua non -- make it as accurate as possible. Build it from the .ibt with Julia equivalents of Modelica objects: if the .ibt contains a rollbar, the Julia model contains a rollbar object. Investigate any non-physical-seeming Julia car behaviour, and why GPL feels better than Julia (could be many things, e.g. the brakes). Cue any further iRacing test drives for this evening (PO 2026-10-09) | open -- top priority |
 | **HANDLING-1** | The PO's car often oversteers and washes out in a non-physical way -- at the Ring (DEFAULT setup) as at Spa (WW103) (PO 2026-10-08) | open -- with both setups it points at the tyre model beyond the grip peak, not the setup (cf. WW103-GPL-1's 50° steady slide); ✅ S1–S3 done, rotated (2026-10-09): the PO's slides are caught by the CARPHYS-1 tyre; the AI-contact knock that launched the WG s≈1612 slide is now a rigid-body impulse |
-| **TRACKGUIDE-1** | For the post-race analysis, use the GPL track guides under `~/sgl/THU` (PO 2026-10-09) -- `DOC/trackGuidesAndSetups_LOR/` (Lights Out Racing, 11 tracks, the Ring 71 pages: per-section, per-turn gear, braking and line) and `DOC/trackGuides_fs/` (7 tracks) | open |
+| **TRACKGUIDE-1** | For the post-race analysis, use the GPL track guides under `~/sgl/THU` (PO 2026-10-09) -- `DOC/trackGuidesAndSetups_LOR/` (Lights Out Racing, 11 tracks, the Ring 71 pages: per-section, per-turn gear, braking and line) and `DOC/trackGuides_fs/` (7 tracks) | ✅ **S1 (2026-10-09), AWAITING THE PO's look:** analyser "Track guide" tab -- every corner of the guide (Ring 70, Zandvoort 9, Spa 7, WG 5, Monza 5) placed on your lap: guide vs your entry / slowest speed / time through, the guide's advice per corner; the coaching quotes it; the AppImage carries the guides as text |
 | **TRACKSEG-5** | More track-section names for the on-screen banner, from the track maps under `~/sgl/THU` -- the Ring shows only a subset of the names the PO has seen there (PO 2026-10-09). Known source: the BAPOM maps (`DOC/trackMaps/`, `WP/drive_c/Sierra/GPL/tracks/*/map-*.pdf`); for the Ring they add Breidscheid, Angstkurve, Hocheichen, Eiskurve, Hohenrain-Schikane, Pflanzgarten I/II | ✅ **S1 (2026-10-09), AWAITING THE PO's look:** the Ring 26 → 34 names from the PO's own GPL add-on boards (TS_*) + the BAPOM map; Wippermann (360 m early) and Brünnchen/Eschbach (swapped) corrected; the other tracks' maps add nothing |
 | **REPLAY-6** | Add zandracer's per-wheel overlay to the replay screen: the effective contact patch and the traction budget for all four wheels (PO 2026-10-09). zandracer = `/home/g/zand_racer` (rF1-based): `src/render.jl` `htraction!` -- a 2×2 of rings, each sized by that tyre's grip, with a force dot coloured by utilisation | ✅ **S1 (2026-10-09), AWAITING THE PO's look:** every replay recorded from now on shows a 2×2 tyre panel for your car -- ring = that tyre's grip ellipse (μ·Fz, grows with load), dot = its force, red = sliding; W toggles |
 | **REPLAY-5** | Replay: jump to the beginning or the end with one command; at the end the replay gets stuck and cannot be backed up -- the only way out is to exit (PO 2026-10-08) | ✅ **CLOSED (2026-10-09), for the PO's look:** replay pauses at its end (no more sticking), Space there replays from the start, Home/End jump to start/end, PgUp/PgDn ±10 s |
@@ -24543,3 +24543,36 @@ The three new items are small and visible; REPLAY-6 also shows the car-physics w
   order, with Eschbach before Brünnchen.
 * For the PO's look: a Ring lap -- the banner now names Hocheichen, Quiddelbacher Höhe, Breidscheid, Angstkurve, Eiskurve,
   Pflanzgarten I / II, Galgenkopf and Hohenrain, and Wippermann / Eschbach / Brünnchen come up where GPL's boards stand.
+
+## TRACKGUIDE-1 -- retrospective at start (2026-10-09)
+* TRACKSEG-5 went well because the PO's own install held the answer (the add-on boards) and two independent sources
+  (boards, map) cross-checked each other -- that is how the two old errors surfaced. Same approach here: the guides'
+  own structure, checked against our section table.
+
+### TRACKGUIDE-1 S1 (2026-10-09): the GPL track guides in the analyser and the coaching
+* **Source:** the Lights Out Racing guides (`~/sgl/THU/DOC/trackGuidesAndSetups_LOR/`, one per 1967 circuit; the five
+  we drive: Ring 70 corners, Zandvoort 9, Spa 7, WG 5, Monza 5). Every corner: entrance speed (at the braking point),
+  slowest speed, arrival/exit time on the author's replay lap (Ring: Ferrari 8:04.16), and paragraphs on braking, gears
+  and line. Plus the short machine-translated fs guides (`trackGuides_fs/`) as whole-track notes.
+* **Reader** `demo/native/trackguide.py`: pdftotext text → corners; the headings match our section names (accents,
+  case, "the", plurals: "THE FIRST LESMO" → Lesmos, "THE LOOP" → Carousel). The Ring guide heads its sections with a
+  PHOTO of GPL's board, no text: its 23 groups were read off those photos and the map clips once
+  (`trackguide.GROUPS`) -- Südkehre … Schwalbenschwanz, Döttinger Höhe, Antoniusbuche (the left under the bridge),
+  Tiergarten.
+* **Placement on your lap:** the guide's clock is mapped piecewise-linearly onto yours, pinned at every section start
+  (the guide's arrival = its braking point ↔ your time at our section's start), so a corner cannot drift out of its
+  stretch whatever the pace gap. Uses the CURRENT section table (`track_sections.jl`), not the replay header's (the
+  Ring's header before TRACKSEG-5 had Brünnchen before Eschbach).
+* **Analyser → "Track guide" tab** (`guidetab.py`): per corner, guide vs you -- entry speed, slowest speed, time
+  through (red when yours is > 1.3× the guide's), where on the lap; pick a row for the guide's advice; the fs notes
+  below. Follows your first ticked lap (else your best). `parity/trackguide1/`: the PO's 10-08 Ring lap (70 corners)
+  and WG lap 1:23.549 (5).
+* **Coaching:** the summary sent to Claude now carries the guide comparison and the guide's advice for your three
+  slowest corners relative to it; the prompt says to use and cite it.
+* **AppImage rule:** nothing read from ~/sgl at run time -- `build_julia.sh` exports the guides as text
+  (`trackguide.py --export`) into the image and AppRun sets `JM_TRACKGUIDE_DIR`; no pdftotext needed in the image.
+  (Not rebuilt this sprint.)
+* Gate `trackguide_smoke` (new): the five guides parse (counts, speeds, minute-format times), the Ring's 23 groups,
+  placement in lap order and pinned at section starts on a synthetic lap, the exported text reads like the PDFs.
+* Gates: 51/51 pass (`GATES_SKIP=road_clear_smoke`, with trackguide_smoke).
+* For the PO's look: Replays → Analyse… → "Track guide" tab; and Coaching (Claude) now quotes the guide.

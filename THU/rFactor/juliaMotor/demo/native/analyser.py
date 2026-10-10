@@ -737,6 +737,8 @@ class AnalyserWindow(QDialog):
         rr.addWidget(QLabel("Report:")); rr.addWidget(self.rep_combo); rr.addStretch(1); rr.addWidget(exp); rv.addLayout(rr)
         self.report = QTextBrowser(); self.report.setObjectName("guide"); rv.addWidget(self.report, 1)
         self.tabs.addTab(rw, "Reports")
+        import guidetab                                     # TRACKGUIDE-1: the GPL track guide against your lap
+        self.guide = guidetab.TrackGuide(self.rep); self.tabs.addTab(self.guide, "Track guide")
         self._report(0)
         split.setSizes([330, 950])
         self.graphs.cursor_moved.connect(self._cursor)
@@ -792,6 +794,9 @@ class AnalyserWindow(QDialog):
         self.map.set_data(self.rep, sel); self.map_full.set_data(self.rep, sel)
         if hasattr(self, "circle"):
             self.circle.set_data(sel)
+        if hasattr(self, "guide"):                          # the guide follows your first ticked lap, else your best
+            mine = [lp for lp in sel if lp.car == 0] or sorted((lp for lp in self.rep.laps if lp.car == 0), key=lambda lp: lp.time)
+            self.guide.set_lap(mine[0] if mine else None)
         self.hint.setText(("No lap was completed: unfinished laps are drawn as far as they got. " if not self.rep.laps else "")
                           + ("Time difference is lap 2 minus lap 1 (above zero: lap 2 behind). " if len(sel) >= 2 else "")
                           + "Tick up to five laps. Wheel zooms, drag pans, double-click resets.")

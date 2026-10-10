@@ -125,7 +125,31 @@ def build_summary(rep):
     worst = [x for x in worst if x[0] > 0.05][:3]             # losses only
     if worst:
         L.append("Biggest losses: " + ", ".join(f"{_section(rep, you.dist[k]) or f'{you.dist[k]:.0f} m'} ({t:+.2f} s)" for t, k in worst))
+    L += guide_block(rep, you)
     return "\n".join(L)
+
+
+def guide_block(rep, you, n_advice=3, advice_chars=700):
+    """TRACKGUIDE-1 (PO 2026-10-09: "for the julia racer post-race analysis, use GPL track guides"): the track guide's
+    corners against your best lap, and the guide's own advice for the corners where you are slowest against it."""
+    try:
+        import guidetab
+        rows, src = guidetab.guide_rows(rep, you)
+    except Exception:                                # the coaching must work without a readable guide
+        return []
+    if not rows:
+        return []
+    out = [f"Track guide ({src}; a 1967 car at the guide author's pace -- compare shape, not absolute speed). Per corner: "
+           "guide entry/slowest km/h and time through it vs yours:"]
+    f = lambda x, p=0: "n/a" if x is None else f"{x:.{p}f}"
+    for e in rows:
+        out.append(f"- {e['section'] or 'start'} / {e['title']}: entry {f(e['entry'])} vs {f(e['you_entry'])}, slowest "
+                   f"{f(e['through'])} vs {f(e['you_min'])}, time {f(e['negotiate'], 2)} vs {f(e['you_time'], 2)} s")
+    ratio = [(e['you_time'] / e['negotiate'], e) for e in rows if e.get('you_time') and e.get('negotiate')]
+    for _r, e in sorted(ratio, key=lambda x: -x[0])[:n_advice]:
+        out.append(f"Guide advice for {e['section'] or 'start'} / {e['title']} (your time {_r:.1f}x the guide's): "
+                   + e['advice'][:advice_chars] + ("…" if len(e['advice']) > advice_chars else ""))
+    return out
 
 
 PROMPT = ("You are a racing driving coach for Julia Racer: a 1967 Lotus 49 (about 400 hp, no wings, narrow hard tyres) on "
@@ -133,7 +157,8 @@ PROMPT = ("You are a racing driving coach for Julia Racer: a 1967 Lotus 49 (abou
           "the driver's sessions compared with a faster or reference lap. Give the three changes that would gain the most "
           "time, each tied to named corners and to the numbers (braking point, minimum speed, throttle application, "
           "line), and say what to try on the next lap. Then one sentence on consistency. Be concrete and brief "
-          "(under 300 words), use Markdown, and do not invent data that is not in the summary.\n\n")
+          "(under 300 words), use Markdown, and do not invent data that is not in the summary. Where the summary quotes the "
+          "GPL track guide (Lights Out Racing), use its advice for those corners and say so.\n\n")
 
 
 class CoachDialog(QDialog):
