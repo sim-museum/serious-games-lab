@@ -224,6 +224,9 @@ const ROAD_TEX = lt -> occursin("asp", lt) || startswith(lt,"groove") || startsw
 # ---- session mode + race config (GPL-style: Practice / Training / Race) ----
 const MODE      = lowercase(get(ENV, "JM_MODE", "practice"))   # practice | training | race
 const RACE_LAPS = max(1, tryparse(Int, get(ENV, "JM_LAPS", "3")) |> x -> x === nothing ? 3 : x)
+const AI_COOLDOWN = get(ENV, "JM_AI_COOLDOWN", "1") != "0"      # WGTD-1 (e): the AI's cool-down lap and stop after the flag
+const AI_COOL_DIAG = get(ENV, "JM_AI_COOLDIAG", "0") != "0"
+const AI_COOL = Dict{Int,Tuple{Symbol,Float64,Float64}}()        # AI index -> (state, its race pace, where the stop began)
 const PRACTICE_SEC = 60.0 * (tryparse(Float64, get(ENV, "JM_PRACTICE_MIN", "15")) |> x -> x === nothing ? 15.0 : x)   # GPL-style practice session length before the race (T = accelerate time)
 # In REPLAY the field size comes from the RECORDING (so every recorded car gets a chassis to
 # draw + camera-focus), not JM_AI — else focusing the replay camera on an AI shows empty track.
@@ -13106,6 +13109,7 @@ function main()
             WRECKED[] = false; WRECK_FROZEN[] = false; empty!(LOOSE_WHEELS)   # a detached corner is never redrawn otherwise
             CLUTCH_GATE[] = -1.0
             TELLTALE[] = 0.0   # COCKPIT-TACH-1: a restart re-arms the tell-tale
+            empty!(AI_COOL)    # WGTD-1 (e): the new race's field races again
             # lap + race state
             cs.laps = 0; lap_t0 = cs.t; last_lap = 0.0; best_lap = 0.0; prev_laps = 0
             race_done = false; empty!(player_laps)
@@ -14426,12 +14430,43 @@ function main()
                     end
                 end
             end
+            crossed = falses(length(AICARS))
             for (i, gc) in enumerate(f.cars)                      # keep the race bookkeeping (laps, order, HUD) in our frame
                 i > length(AICARS) && break
                 prevs = AICARS[i].s
                 s, lat = RaceAI.project(AILINE, poses[i][1], poses[i][3]; hint = prevs)
                 AICARS[i].s = s; AICARS[i].lane = lat; AICARS[i].v = gc.v
-                (prevs > AILINE.total*0.7 && s < AILINE.total*0.3) && (AICARS[i].lap += 1)
+                (prevs > AILINE.total*0.7 && s < AILINE.total*0.3) && (AICARS[i].lap += 1; crossed[i] = true)
+            end
+            # WGTD-1 (e) (PO 2026-10-08: "after the race the AI do one slow lap and stop in the pits, as GPL"): once any car
+            # has run the race distance the flag is out, and each AI car's next crossing ends ITS race (lapped cars too, as in
+            # racing). It then drives one cool-down lap at 60 % pace; at the line after that it moves to the outer edge of the
+            # corridor (GPL's own line transition, held there) and slows to a stop over 300 m. (GPL brings them into the pit
+            # lane; our AI have no pit line yet, so they stop at the edge of the straight.) JM_AI_COOLDOWN=0: racing on.
+            if AI_COOLDOWN && IS_RACE && phase[] == :race && race_go[]
+                flag = race_done || any(a -> a.lap >= RACE_LAPS, AICARS)
+                for (i, gc) in enumerate(f.cars)
+                    i > length(AICARS) && break
+                    st = get(AI_COOL, i, nothing)
+                    if st === nothing
+                        if flag && crossed[i]
+                            AI_COOL[i] = (:cool, gc.pace, 0.0); gc.pace = 0.6*gc.pace
+                            AI_COOL_DIAG && println("  [cooldown] ", ent_name(i), " finished (lap ", AICARS[i].lap, "): cool-down lap")
+                        end
+                    elseif st[1] === :cool && crossed[i]
+                        # each car stops 25 m beyond the one before it, so they line up along the edge
+                        q = 25.0*count(v -> v[1] === :stop, values(AI_COOL))
+                        AI_COOL[i] = (:stop, st[2], AICARS[i].s + q)
+                        # join! keeps the move as an offset from the race line, which wanders across the straight: aim at the
+                        # corridor's outer edge WHERE THE CAR WILL STOP, so that is where it ends up
+                        sst = mod(gc.s + 300.0 + q, GPLAI_T.lap); lo, hi = GPLAI.corridor(GPLAI_T, sst)
+                        GPLAI.join!(GPLAI_T, gc, hi - 1.2; at = sst, why = :cooldown); gc.hold = typemax(Int) ÷ 4
+                        AI_COOL_DIAG && println("  [cooldown] ", ent_name(i), " pulls aside to stop")
+                    elseif st[1] === :stop
+                        frac = clamp((AICARS[i].s - st[3]) / 300.0, 0.0, 1.0)   # (st[3] carries the car's 25 m queue offset)
+                        gc.pace = st[2] * 0.6 * (1.0 - frac); gc.hold = typemax(Int) ÷ 4
+                    end
+                end
             end
             poses
         else

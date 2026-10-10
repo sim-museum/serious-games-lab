@@ -56,6 +56,8 @@ required = [
     ("AI lap clocks",            "ai_lapt0"),
     ("AI stats",                 "aistat_reset!"),
     ("fuel",                     "fuel[] ="),
+    # WGTD-1 (e): the AI's cool-down/stop state after the flag -- a new race's field must race again
+    ("AI cool-down cleared",     "empty!(AI_COOL)"),
 ]
 for (name, needle) in required
     check(name, occursin(needle, blk), occursin(needle, blk) ? "" : "MISSING `$needle`")
