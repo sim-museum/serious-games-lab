@@ -29,7 +29,7 @@ this index was written; that is what it exists to stop.
 | **BILLBOARD-2** | Fix track billboards (PO 2026-10-07 night): Zandvoort near Tarzan the boards are blank white/grey -- match the gold, legible and colourful as at the other tracks (E60 S4 restored the MARTINI/CALTEX fronts there; something still draws blank); the Ring: a line of billboards at left middle distance after the North hairpin (Nordkehre) but well before Flugplatz, improbably in the middle of the forest -- "a dozen or so side by side" | open. Gold: `zandervoort/260801_zandervoort_cockpit.mp4`, `nurburgring/260802_nurburgring_cockpit.mp4` |
 | **DIALS-1** | In the cockpit view make ALL the dials work, not just the rev counter (oil pressure, oil/water temperature, fuel...) as in the gold (PO 2026-10-07 night) | ✅ **CLOSED (2026-10-09, COCKPIT-2 S3), for the PO's look:** oil pressure + temperature, water, fuel pressure and volts needles, placed from the dash art like the tach; values follow GPL's own readout (pressures 79 psi running, temperatures warming from 43 °C) |
 | **WGTD-1** | Watkins Glen improvements from the PO's 2026-10-08 race (video `~/Videos/261008_wg_race.mp4`, 14:42): (a) replay cockpit -- mirrors, steering, shifting live (with COCKPIT-2); (b) analysis = ALL of GPL Replay Analyser, incl. two replay files of the same track side by side; (c) spurious diagonal straight line across the WG map under the graphs; (d) a lap-list filter (human laps, same or different sessions -- human vs AI is rarely useful); (e) after the race the AI do one slow lap and stop in the pits, as GPL; (f) the default black brake marks along the racing line start/stop in blocks -- GPL's are smooth smears; (g) the AI line runs wide, a little off track, after the 90 and before the Esses -- stay on track as GPL; (h) analyser: GPL's GRAPHICAL race reports (missing now) and GPL's ANIMATED track map -- little car silhouettes showing where the cars of the selected laps are, with position and direction | 🟡 S1–S2 (2026-10-09): (c) the diagonal map line fixed (a lap spanning a restart); (d) lap filter -- human laps by default; open: (a) via COCKPIT-2 (done), (b) two replay files side by side + all GPL Replay Analyser features, (e) cool-down lap, (f) brake marks, (g) AI after the 90 (measure after SPATD-1 S4), (h) graphical reports + animated track |
-| **WW103-GPL-1** | 2nd WG race 2026-10-08: strange sideways slide going into the Big Bend in lap 2; and "ww103 in julia doesn't feel at all like ww103 in GPL. Why not?" -- compare our WW103 WG race with the PO's most recent WW103 WG race in GPL (.rpy under `~/sgl/THU`) | open -- first look done (see section); the PO's GPL WG lap 2 (1:18.754) is exported for the comparison |
+| **WW103-GPL-1** | 2nd WG race 2026-10-08: strange sideways slide going into the Big Bend in lap 2; and "ww103 in julia doesn't feel at all like ww103 in GPL. Why not?" -- compare our WW103 WG race with the PO's most recent WW103 WG race in GPL (.rpy under `~/sgl/THU`) | 🟡 **S1 (2026-10-09):** measured -- the Julia car IS iRacing's (WOT/coast within 1 %); the PO's GPL Lotus pulls ~15–25 % harder at 100–220 km/h and ~5 % more top speed, braking and cornering similar; 4.9 s of the 1:18.7 vs 1:23.5 gap is on the straights. **PO decision:** keep iRacing as the target, or GPL's power-to-weight? |
 | **REPLAY-4** | Each press of R (restart) starts a NEW session for replay and analysis, and writes a NEW .ibt (PO 2026-10-08) -- today one recording/ibt spans restarts (the 21:55 ibt holds two runs) | ✅ **CLOSED (2026-10-09), for the PO's look:** each R writes the session's replay + .ibt and starts new ones (3 sessions -> 3 replays + 3 .ibt, each its own analyser session) |
 | **PERF-4** | "julia racer is sluggish compared to GPL. Would it make sense to translate julia racer from julia to, e.g. C++?" (PO 2026-10-08); PO: it is (3) **control lag** -- "a lag between control inputs and car response, especially noticable at the start of a race" | 🟡 **S1–S4 done (2026-10-09), for the PO's look:** race-start lag was mid-race JIT (first car contact 145 ms, crash 250 ms) -> compiled during loading (warm_statements.jl, gate `warm_smoke`); per-frame garbage halved (GC hitches 4 -> 2 per minute); one-frame GPU queue cap; `[stall]` log in every session |
 | **SPATD-1** | Spa fixes from the PO's 2026-10-08 race (video `~/Videos/261008_spa.mp4`): (1) AI leave the road -- inside at Eau Rouge, presumably elsewhere -- and are extremely slow (at 70 % they just poke along); (2) an INVISIBLE barrier tore a wheel off at the downhill left-hand 90 toward Burnenville when the rear barely left the road (nothing visible on the grass) -- and a building belongs on the outside of that turn: put it back; (3) three strong earthquake-like jolts between Burnenville and Masta, mid-road, nothing nearby; (4) put back the objects on the far side of La Source (the hairpin before the start/finish line) -- without them you stare out into farmland and cannot see the near-180° turn | 🟡 **S1–S4 done (2026-10-09), for the PO's look:** jolts = contact impulses, now logged as `[jolt]`; the Burnenville invisible barrier was GPL's right wall registered onto our centreline (fixed: invisible contacts 89 -> 0); soft grazes capped; AI pace calibrated (70 %: 477 s -> 282 s lap-equivalent); AI line placed on our road (off-road 8.8 % -> 0 % past the grid). Open: the missing building at that left, La Source far-side objects |
@@ -24576,3 +24576,35 @@ The three new items are small and visible; REPLAY-6 also shows the car-physics w
   placement in lap order and pinned at section starts on a synthetic lap, the exported text reads like the PDFs.
 * Gates: 51/51 pass (`GATES_SKIP=road_clear_smoke`, with trackguide_smoke).
 * For the PO's look: Replays → Analyse… → "Track guide" tab; and Coaching (Claude) now quotes the guide.
+
+## WW103-GPL-1 -- retrospective at resumption (2026-10-09)
+* Since the first look (10-08), CARPHYS-1 S3/S4 and HANDLING-1 removed the two non-physical causes of the 50° slide
+  (too-slippery sliding friction, the amplified contact knock). What is left of "doesn't feel like GPL" is the car
+  itself -- measured here, not changed: the target car (iRacing vs GPL) is the PO's decision.
+
+### WW103-GPL-1 S1 (2026-10-09): the PO's GPL WG lap against the PO's Julia WG lap -- the GPL car is stronger, not grippier
+`JuliaMotorMTK/tools/gplcmp_261009.py` (new): GPL Replay Analyser telemetry (the PO's GPL WG race 2026-10-03, lap 2,
+1:18.754, `261009/gpl_wg_261003_lap2.txt`) against the PO's best Julia WG lap (2026-10-08 21:46, lap 3, 1:23.549,
+WW103), section by section, plus full-throttle acceleration by speed for GPL, Julia and the iRacing gold.
+* **Where the 4.9 s go:** every section but the Carousel, and mostly where the car accelerates: the "90" exit +1.06 s
+  (fastest 176 vs 145 km/h onto the straight), the Speed Trap +0.88 (259 vs 241 km/h), Big Bend +0.77, the front
+  straight +0.72 (276 vs 262 km/h). Braking is close (peak 1.54 vs 1.42 g, 1.49 vs 1.39, 1.36 vs 1.18); slowest corner
+  speeds are mixed (Esses 154/160, Carousel 106/114 -- Julia faster; Big Bend 99/81 -- GPL faster).
+* **Acceleration at full throttle (90th percentile, g):**
+
+  | km/h | 100–140 | 140–180 | 180–220 | 220–260 |
+  |---|---|---|---|---|
+  | GPL (PO's lap) | 0.76 | 0.62 | 0.52 | 0.34 |
+  | iRacing gold (261004/5, all files) | 0.62 | 0.53 | 0.48 | 0.39 |
+  | Julia (PO's lap, hills + traffic) | – | 0.46 | 0.44 | 0.32 |
+
+  and the Julia car against iRacing on flat ground (`tools/longval_261002.jl`, re-run today): WOT pulls in 4th and 5th
+  and both coasts within 1 % (29 bands, median sim/gold 1.007). **So the Julia car is iRacing's car; GPL's Lotus pulls
+  ~15–25 % harder from 100 to 220 km/h and reaches ~5 % more top speed.** More power against similar grip is also
+  what makes a car steerable on the throttle -- the GPL hallmark the PO may be missing.
+* **PO decision needed (recorded, not blocking):** keep the iRacing Lotus 49 as the physics target (today; the
+  PO 2026-10-05 asked for "as close to the iracing gold standard as possible"), or give WW103 / all setups GPL's
+  power-to-weight? A GPL target would need GPL's engine and mass figures (not found in the manual or the car folder)
+  or more GPL telemetry (WOT pulls on a straight, coast-downs) to fit to -- that would go on the PO's GPL test list.
+* Next for this item (if the PO wants GPL): export laps 1 and 3 and the PO's other GPL tracks; fit power and drag to
+  GPL pulls the way longval fits iRacing's.
