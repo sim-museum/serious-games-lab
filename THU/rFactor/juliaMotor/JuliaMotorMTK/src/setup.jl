@@ -71,6 +71,11 @@ function setup_params(yaml::AbstractString)
     rh  = Dict(sym => g(ch[name], "RideHeight")  for (name,sym) in corners)    # mm
     cmb = Dict(sym => g(ch[name], "Camber")      for (name,sym) in corners)    # deg
     cp  = Dict(sym => g(ti[name], "ColdPressure") for (name,sym) in corners)   # kPa
+    # CARPHYS-1 S7: "ShockDeflection: 61.8 mm 104.6 mm" = static of max; "Packer" (mm, takes bump travel)
+    nums(s) = [parse(Float64, m.match) for m in eachmatch(r"-?\d+(?:\.\d+)?", string(s))]
+    sdef(name) = haskey(ch[name], "ShockDeflection") && length(nums(ch[name]["ShockDeflection"])) >= 2 ? Tuple(nums(ch[name]["ShockDeflection"])[1:2]) : (NaN, NaN)
+    shk = Dict(sym => sdef(name) for (name,sym) in corners)                    # (static, max) mm
+    pk  = Dict(sym => g(ch[name], "Packer") for (name,sym) in corners)          # mm
     trans = dt["Transmission"]
     gears = [firstnum(trans[k]) for k in ("FirstGear","SecondGear","ThirdGear","FourthGear","FifthGear")]
     (; corner_weight_N = cw,
@@ -78,6 +83,8 @@ function setup_params(yaml::AbstractString)
        ride_height_mm = rh,
        camber_deg = cmb,
        cold_pressure_kPa = cp,
+       shock_defl_mm    = shk,
+       packer_mm        = pk,
        brake_bias_pct   = g(ch["Front"], "BrakeBias"),
        steering_ratio   = g(ch["Front"], "SteeringRatio"),
        cross_weight_pct = g(ch["Front"], "CrossWeight"),

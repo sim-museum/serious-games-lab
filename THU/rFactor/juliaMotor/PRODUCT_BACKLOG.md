@@ -24653,3 +24653,33 @@ WW103), section by section, plus full-throttle acceleration by speed for GPL, Ju
 * Gate `brakesys_smoke` (new): the gold's pressures at 53.5 and 54 %, the BRAKE-2 torques at the reference, the bias
   moving split and total, the .ibt channels.
 * Gates: 53/53 pass (`GATES_SKIP=road_clear_smoke`, with brakesys_smoke).
+
+### CARPHYS-1 S7 (2026-10-09): the shock travel limits -- bump stops and top-out, from the setup
+* **Measured first:** the gold's shocks reach BOTH ends of their travel at the Ring: compression peaks 110.8 / 116.9 mm
+  against the setup's max 104.6 (front) / 113.0 (rear) -- onto the bump stops -- and full extension at ~0 mm. Over
+  the gold's own Flugplatz passes (a scratch copy of crestval_261004 recording the coil-overs): the gold's front wheels
+  droop to about −64 mm in the air and compress to +63 mm on landing; the sim's drooped 146–209 mm (no limit at all)
+  and compressed only +34–44 mm -- the over-extended wheels caught the car early and spread the landing, which is
+  why the sim landed at 1.1–1.2 g where the gold lands at 1.4–1.9 g.
+* **Object:** `TravelStops` in `chassis_parts.jl`, per corner beside the coil-over (mount and wheel flanges): a bump
+  stop at (max − static − packer)/MR and a top-out at −static/MR, from the setup's ShockDeflection "static of max" and
+  Packer (the parser now reads them; default 261004: +55/−79 front, +85/−90 rear mm of wheel travel). It PULLS at full
+  droop (the extended shock carries the hanging wheel), which the coil-over's seat cannot. Quadratic onset over 2 mm.
+* **Stiffness, chosen on the gold** (Flugplatz, 7 default passes; airtime / landing g / crest dip errors):
+
+  | stops | airtime | landing g | crest dip |
+  |---|---|---|---|
+  | none (before) | 0.168 s | 0.20 g | 0.093 g |
+  | bump 500 kN/m, top-out 500 kN/m | 0.173 | 0.13 | 0.246 (every take-off yanks the body to −0.5 g) |
+  | **bump 500 kN/m, top-out 20 kN/m** | 0.174 | **0.13** | **0.090** |
+
+  WW103 (crestval_261005, 4 passes): neutral (0.110 → 0.113 s, 0.21 → 0.21 g; only its fastest pass reaches a stop).
+  The stability suite: penalty 0, unchanged. `carphys_regress`: identical everywhere except the 0.3 m drop, where the
+  wheels now hang at their limit (landing tyre load differs by ~1.7 kN). `JM_NOSTOPS=1` restores unlimited travel.
+* Still short of the gold: its front reaches the bump stop (+63 mm) on the hard landings, ours +38; the next suspect
+  was the damping -- re-tried with the stops in: the measured bump/rebound dampers (suspfit_261004, per shock
+  4017/2855 front, 1654/788 rear) still lose, airtime 0.174 -> 0.260 s (as wheel rates; 0.326 s scaled by MR²). The
+  hand-set dampers stay; the remaining gap is elsewhere (tyre vertical dynamics, the gold's road under the wheels).
+* Gate `travelstop_smoke` (new): the travel from the gold setup, the parser, nothing carried when parked, a hanging
+  wheel stopped near full droop (−91 vs −227 mm without stops).
+* Gates: 54/54 pass (`GATES_SKIP=road_clear_smoke`, with travelstop_smoke).

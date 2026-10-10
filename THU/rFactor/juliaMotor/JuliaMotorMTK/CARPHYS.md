@@ -31,6 +31,7 @@ velocity v, flow force f), Modelica's `Translational.Interfaces.Flange` plus its
 | `WheelMass` | corner | unsprung mass `m_u` (hand-set 20 kg) |
 | `TyreVertical` | corner | carcass `kt`, `ct`, static load (hand-set rates) |
 | `BrushTyre` | corner | μ, μx, Cα, Cκ, kμ, sliding drop, camber (fitted) |
+| `TravelStops` | corner | bump / droop travel from the setup's ShockDeflection and Packer; stiffness 500 / 20 kN/m (Flugplatz landings, S7) |
 | `BrakeSystem` | car | line pressure 122.2 bar at full pedal × garage BrakeBias (gold); caliper N·m/bar front/rear (BRAKE-2 fit, S6) |
 | `SteeringColumn` | car | rack ratio 10 (setup), effective trail 4.78 cm (fitted to SteeringWheelTorque, S5) |
 
@@ -50,7 +51,7 @@ motion. (S5 added the steering column, S6 the brake system.)
 | — (not in the ibt) | inertias Ixx Iyy Izz, CG height | hand-set (120 / 850 / 890 kg·m², h 0.30 m) | 🟡 |
 | SpringRate ×4 | **Spring** per corner | wheel rate = rate × motion ratio² (MR measured: front 0.78, rear 0.648) | ✅ (inline) |
 | SpringPerchOffset ×4, RideHeight ×4 | spring preload / static ride height | static ride heights taken from the ibt; perch offsets unused | 🟡 |
-| Packer ×4, ShockDeflection (static, max) | **Bump stop / packer**, travel limits | none — the suspension has unlimited travel | ❌ |
+| Packer ×4, ShockDeflection (static, max) | **Bump stop / packer**, travel limits | `TravelStops` object per corner: bump stop at (max − static − packer)/MR, top-out at −static/MR (default +55/−79 front, +85/−90 rear mm of wheel travel), 500 / 20 kN/m chosen on the gold's Flugplatz passes; JM_NOSTOPS for A/B | ✅ (CARPHYS-1 S7) |
 | BumpStiffness / ReboundStiffness clicks ×4, shockVel channels | **Damper** per corner (bump ≠ rebound) | hand-set 2500 / 3000 N·s/m, symmetric, scaled per known setup; the measured bump/rebound fit was rejected by the crest test | 🟡 |
 | ArbDiameter + ArbArms, front and rear | **Anti-roll bar** front, rear | a roll-only stiffness per axle inside the corner spring sum, total fitted to the gold's roll gradient; diameter⁴ for unseen bars, arms ignored | 🟡 (lumped) |
 | Camber ×4 | wheel inclination | static camber + roll camber into the tyre | ✅ |

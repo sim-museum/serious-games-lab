@@ -50,6 +50,11 @@ function DrivenVehicle3D(; name,
         # CARPHYS-1 S6: `bias`/`Tbrake_max` are now the fitted torque split and total AT THE REFERENCE 53.5 % pressure bias;
         # the session's own garage bias is `brake_bias_p` (pressure fraction), applied by the BrakeSystem object.
         brake_bias_p = 0.535,
+        # CARPHYS-1 S7: per corner (FL FR RL RR) the wheel travel to the bump stop and to full droop [m] (TravelStops);
+        # `nothing` = unlimited travel (the model before S7). `k_stop` [N/m] the stops' stiffness at the wheel.
+        # Stiffnesses chosen on the gold's Flugplatz passes (tools/crestval_261004.jl): bump 500 kN/m, top-out 20 kN/m
+        # (a stiff top-out yanks the body down at every take-off: crest dip −0.5 g vs the gold's −0.1).
+        travel = nothing, k_stop = 5e5, k_stop_reb = 2e4,
         CdA = CDA_IBT, ρair = 1.10, g = 9.80665,
         throttle0 = 0.0, brake0 = 0.0, steer0 = 0.0, gear0 = 1.72, brush = false,
         # PO: ct (tyre vertical DAMPING) was 300 ≈ 8% of critical for the unsprung mass → the car
@@ -133,7 +138,7 @@ function DrivenVehicle3D(; name,
     # VERTICAL carcass and the ROAD under it; per axle one ANTI-ROLL BAR. The mounts and roads are flanges whose motion
     # this model prescribes (the body's heave/pitch/roll, the adapter's road input); the parts are joined by connect().
     karb(c) = hasproperty(c, :karb) ? c.karb : 0.0
-    mount, road, wheel, strut, tyrev, arb = quiet_flanges() do        # (MTK's false flange warning, chassis_parts.jl)
+    mount, road, wheel, strut, tyrev, arb, stops = quiet_flanges() do        # (MTK's false flange warning, chassis_parts.jl)
     mount = [PrescribedMotion(; name = Symbol(:m, s[10])) for s in spec]
     road  = [PrescribedMotion(; name = Symbol(:r, s[10])) for s in spec]
     wheel = [WheelMass(; name = Symbol(:w, s[10]), m_u = s[6].m_u, g = gv) for s in spec]
@@ -146,7 +151,9 @@ function DrivenVehicle3D(; name,
     # setup's bar (WWSETUP-1 karb_f / karb_r, from the garage's ArbDiameter/ArbArms through ARB_ID)
     arb = [AntiRollBar(; name = :arbF, k = 0.5*(karb(fl_corner) + karb(fr_corner)) + kfv),
            AntiRollBar(; name = :arbR, k = 0.5*(karb(rl_corner) + karb(rr_corner)) + krv)]
-    (mount, road, wheel, strut, tyrev, arb)
+    stops = travel === nothing ? nothing :
+        [TravelStops(; name = Symbol(:ts, s[10]), c_bump = travel[i][1], c_reb = travel[i][2], k = k_stop, kr = k_stop_reb) for (i, s) in enumerate(spec)]
+    (mount, road, wheel, strut, tyrev, arb, stops)
     end
 
     eqs = Equation[]; Fyb=Any[]; Fxb=Any[]; Mz=Any[]; Fx_f=Any[]; Fx_r=Any[]; Pslip=Any[]
@@ -162,8 +169,10 @@ function DrivenVehicle3D(; name,
             mt.s ~ z + xi*th + yi*ph,                         # the sprung body's point above this wheel (small-angle, up +)
             mt.v ~ w + xi*q  + yi*pp,
             rd.s ~ zr, rd.v ~ vr,                             # the road under it (adapter input)
-            connect(mt.fl, so.a, left ? bar.mL : bar.mR),
-            connect(so.b, wh.fl, tv.a, left ? bar.wL : bar.wR),
+            (stops === nothing ? connect(mt.fl, so.a, left ? bar.mL : bar.mR) :
+                                 connect(mt.fl, so.a, left ? bar.mL : bar.mR, stops[idx].a)),
+            (stops === nothing ? connect(so.b, wh.fl, tv.a, left ? bar.wL : bar.wR) :
+                                 connect(so.b, wh.fl, tv.a, left ? bar.wL : bar.wR, stops[idx].b)),
             connect(tv.b, rd.fl),
             so.Fbar ~ (left ? bar.FL : bar.FR),
             Fz ~ tv.Fz])
@@ -258,5 +267,5 @@ function DrivenVehicle3D(; name,
     push!(eqs, col.Fy ~ FL.Fy + FR.Fy)
     append!(eqs, [brk.pedal ~ brake,                       # CARPHYS-1 S6: the brake system object; its calipers from the fit
                   brk.kF ~ Tbrake_max*bias/(brk.P_full*0.535), brk.kR ~ Tbrake_max*(1 - bias)/(brk.P_full*(1 - 0.535))])
-    System(eqs, t, vars, ps; systems = [FL, FR, RL, RR, mount..., road..., wheel..., strut..., tyrev..., arb..., col, brk], name)
+    System(eqs, t, vars, ps; systems = [FL, FR, RL, RR, mount..., road..., wheel..., strut..., tyrev..., arb..., col, brk, (stops === nothing ? [] : stops)...], name)
 end

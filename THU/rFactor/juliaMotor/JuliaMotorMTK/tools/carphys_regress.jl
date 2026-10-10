@@ -34,6 +34,7 @@ function build(builder, ch)
     kw = D3._chassis_kw(ch)
     # a reference from before CARPHYS-1 S6 has no BrakeSystem: it takes the garage bias as the torque split `bias`
     builder === D3.DrivenVehicle3D_ref && !occursin("brake_bias_p", REFSRC[]) && (kw = (; (k => v for (k, v) in pairs(kw) if k !== :brake_bias_p)..., bias = ch.bias))
+    builder === D3.DrivenVehicle3D_ref && !occursin("travel = nothing", REFSRC[]) && (kw = (; (k => v for (k, v) in pairs(kw) if k !== :travel)...))
     sys = mtkcompile(builder(name = :car, brush = true, final = D3.FINAL[], m = D3.MASS[], front_frac = D3.FRONT_FRAC[],
                      fl_corner = D3._corner(:f, KS[1]), fr_corner = D3._corner(:f, KS[2]),
                      rl_corner = D3._corner(:r, KS[3]), rr_corner = D3._corner(:r, KS[4]); kw...))

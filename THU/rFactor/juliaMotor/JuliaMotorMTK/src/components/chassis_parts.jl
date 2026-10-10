@@ -91,6 +91,22 @@ function AntiRollBar(; name, k)
     System(eqs, t, vars, ps; systems = [mL, wL, mR, wR], name)
 end
 
+"""Shock travel limits (CARPHYS-1 S7): the bump stop at full compression and the shock's own extension limit at full
+droop, between the body mount (`a`) and the wheel (`b`), beside the coil-over. `c_bump` > 0 and `c_reb` < 0 are the
+wheel travel from static to each end (the setup's ShockDeflection static/max and Packer, through the motion ratio).
+Unlike the coil-over's seat this element PULLS at full droop -- the extended shock carries the hanging wheel, which is
+what stops a wheel dropping without limit in the air (the gold: the front shocks bottom out at ~0 mm deflection, the
+wheel −64 mm; before S7 the sim's wheels fell 150–210 mm over Flugplatz). Force: `k` per metre past the stop, with a
+quadratic onset over `w` (continuous force and slope)."""
+function TravelStops(; name, c_bump, c_reb, k = 5e5, kr = k, w = 0.002)
+    @named a = Flange(); @named b = Flange()
+    ps = @parameters c_bump=c_bump c_reb=c_reb k=k kr=kr w=w
+    vars = @variables c(t) F(t)
+    pen(x) = ifelse(x <= 0, 0.0, ifelse(x < w, x^2/(2w), x - w/2))
+    System([c ~ b.s - a.s, F ~ k*pen(c - c_bump) - kr*pen(c_reb - c), a.f ~ -F, b.f ~ F], t, vars, ps;
+           systems = [a, b], name)
+end
+
 """Brake system (CARPHYS-1 S6): master cylinder, bias valve and calipers, as iRacing's Lotus 49 records them.
 The pedal makes `P_full` bar of line pressure at full travel, split front/rear by the garage's BrakeBias `bias_p`
 (the gold: LF 65.4 bar at full pedal with 53.5 %, 66.0 with 54 % -- 122.2 bar × bias; the pressure share is the

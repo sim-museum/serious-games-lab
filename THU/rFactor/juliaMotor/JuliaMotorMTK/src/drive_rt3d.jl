@@ -128,6 +128,16 @@ function set_suspension!(fl::Real, fr::Real, rl::Real, rr::Real; source::Abstrac
     nothing
 end
 
+"""CARPHYS-1 S7: wheel travel (bump, droop) [m] per corner FL FR RL RR from the garage's shock deflection static/max
+and packer [mm]: bump = (max − static − packer)/MR, droop = −static/MR (MR front 0.78, rear 0.648)."""
+function travel_from_setup(static, maxd, packer)
+    mr = (sqrt(MR2), sqrt(MR2), sqrt(MR2_R), sqrt(MR2_R))
+    ntuple(i -> ((maxd[i] - static[i] - packer[i])/1000/mr[i], -static[i]/1000/mr[i]), 4)
+end
+# the 261004 default setup's ShockDeflection (LF RF LR RR, static / max mm) and packers
+const TRAVEL_REF = ((61.8, 60.5, 58.1, 59.2), (104.6, 104.6, 113.0, 113.0), (0.0, 0.0, 0.0, 0.0))
+const NOSTOPS = haskey(ENV, "JM_NOSTOPS")      # A/B: the unlimited-travel suspension of before CARPHYS-1 S7
+
 # ---- WWSETUP-1 (2026-10-06): the rest of the setup the gold shows an effect of ---------------------------------
 # PO 2026-10-06: "make the julia physics model as close to the iracing gold standard as possible, in terms of the
 # physics". The A/B of the default and WW103 sessions (tools/wwab_261005.jl, tools/lsdfit_261005.jl) shows the
@@ -148,6 +158,9 @@ Base.@kwdef mutable struct Chassis
     cscale::NTuple{2,Float64} = (1.0, 1.0)
     bias::Float64 = 0.585
     bias_p::Float64 = 0.535                        # CARPHYS-1 S6: the garage's PRESSURE bias (fraction front), for the BrakeSystem object
+    # CARPHYS-1 S7: wheel travel to the bump stop and to full droop per corner [m] (TravelStops), from the setup's
+    # ShockDeflection (static of max) and Packer through the motion ratios; the default is the 261004 default setup's.
+    travel::Union{Nothing,NTuple{4,NTuple{2,Float64}}} = NOSTOPS ? nothing : travel_from_setup(TRAVEL_REF...)
     camber::Union{Nothing,NTuple{4,Float64}} = nothing
     src::String = "built-in (spool rear, no toe, default bars/dampers/bias -- NOT from an ibt)"
 end
@@ -217,9 +230,14 @@ function chassis_from_setup(sp; source::AbstractString = "unknown")
     end
     bias = isfinite(sp.brake_bias_pct) ? bias_torque(sp.brake_bias_pct) : 0.585
     bias_p = isfinite(sp.brake_bias_pct) ? sp.brake_bias_pct/100 : 0.535
+    ks = (:LF, :RF, :LR, :RR)
+    travel = NOSTOPS ? nothing : hasproperty(sp, :shock_defl_mm) && all(k -> all(isfinite, sp.shock_defl_mm[k]), ks) ?
+        travel_from_setup(Tuple(sp.shock_defl_mm[k][1] for k in ks), Tuple(sp.shock_defl_mm[k][2] for k in ks),
+                          Tuple(isfinite(sp.packer_mm[k]) ? sp.packer_mm[k] : 0.0 for k in ks)) :
+        (push!(notes, "no shock deflection in the setup: 261004's travel"); travel_from_setup(TRAVEL_REF...))
     cd = [sp.camber_deg[k] for k in (:LF, :RF, :LR, :RR)]
     camber = all(isfinite, cd) ? Tuple(deg2rad.(cd)) : (push!(notes, "no camber in the setup: upright tyres"); nothing)
-    Chassis(; diff, toe, karb, cscale, bias, bias_p, camber, src = source * (isempty(notes) ? "" : "  (" * join(notes, "; ") * ")"))
+    Chassis(; diff, toe, karb, cscale, bias, bias_p, travel, camber, src = source * (isempty(notes) ? "" : "  (" * join(notes, "; ") * ")"))
 end
 
 """One line per chassis input, for the launch log: a silent fallback is the defect E100 exists to prevent."""
@@ -228,6 +246,7 @@ describe_chassis(ch::Chassis = CHASSIS[]) =
     "   toe-in F $(round(rad2deg(ch.toe[1]), digits = 2))° R $(round(rad2deg(ch.toe[2]), digits = 2))°" *
     "   +roll k F $(round(Int, ch.karb[1])) R $(round(Int, ch.karb[2])) N/m   dampers x$(ch.cscale[1])/$(ch.cscale[2])" *
     "   brake bias $(round(100ch.bias_p, digits = 1)) % (torque split $(round(ch.bias, digits = 3)))" *
+    "   travel " * (ch.travel === nothing ? "unlimited" : join((string(round(Int, 1000t[1]), "/", round(Int, 1000t[2])) for t in ch.travel), " ") * " mm") *
     "   camber " * (ch.camber === nothing ? "none (upright)" : join((string(round(rad2deg(c), digits = 2)) for c in ch.camber), "/") * "°") *
     "   <- $(ch.src)"
 
@@ -505,7 +524,7 @@ _corner(axle::Symbol, ks::Real; ch::Chassis = CHASSIS[]) = axle === :f ?
     (ks = float(ks), cs = 2500.0*ch.cscale[1], karb = 0.0, m_s = 120.0, m_u = 20.0, kt = 180_000.0, ct = 1000.0) :
     (ks = float(ks), cs = 3000.0*ch.cscale[2], karb = _karb_r(ks), m_s = 148.0, m_u = 20.0, kt = 200_000.0, ct = 1100.0)
 # WWSETUP-1: the vehicle keywords the chassis state adds (diff, toe, brake split) -- one place, both builders.
-_chassis_kw(ch::Chassis = CHASSIS[]) = (diff = ch.diff, toe_f = ch.toe[1], toe_r = ch.toe[2], brake_bias_p = ch.bias_p, karb_f = ch.karb[1], karb_r = ch.karb[2],
+_chassis_kw(ch::Chassis = CHASSIS[]) = (diff = ch.diff, toe_f = ch.toe[1], toe_r = ch.toe[2], brake_bias_p = ch.bias_p, travel = ch.travel, karb_f = ch.karb[1], karb_r = ch.karb[2],
                                         camber = ch.camber)
 # initial wheel speeds: the per-wheel rear states exist only with an LSD
 _wheel_u0(sys, v0) = CHASSIS[].diff === nothing ? [sys.ωr => v0/RW_R] : [sys.ωRL => v0/RW_R, sys.ωRR => v0/RW_R]
