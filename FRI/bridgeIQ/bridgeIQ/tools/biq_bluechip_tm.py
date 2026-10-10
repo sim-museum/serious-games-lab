@@ -25,6 +25,14 @@ Then in WBridge5 (one instance per remote seat): Connection, server
 localhost (or this machine's address), the port above, seat East (West),
 any team name, Auto checked.
 
+Live settings: a file control.json in the output folder, e.g.
+  {"system": "Precision90M", "signalling": false}
+is re-read before every board (both rooms of a board always use the same
+settings), so biq's bidding system and defensive signalling can be changed
+during a run without dropping the robots' connections. Missing keys keep the
+current value; every change is logged, and each results.jsonl record carries
+the system and signalling it was played with.
+
 Validate without a robot (scripted clients, see bluechip_test_client.py):
   python3 tools/biq_bluechip_tm.py --remote E,W --boards 4 --port 2001 &
   python3 tools/bluechip_test_client.py --seat East --port 2001 &
@@ -338,9 +346,13 @@ class TableManager:
         self.remote_seats = [BY_NAME[{"N": "north", "E": "east", "S": "south", "W": "west"}[x.strip().upper()[0]]]
                              for x in a.remote.split(",") if x.strip()]
         self.system = get_system(a.system)
+        self.sys_name = a.system
         self.script = {}                     # probe mode: this board's script
         from backend import bid_sim
+        from backend import signals as _signals
         bid_sim.set_play_system(a.system)    # card-play sampler reads our system
+        self.signalling = _signals.is_enabled()
+        self._control_mtime = None
         self.out = Path(a.out or (_HERE / "runs" / "bluechip" /
                                   _dt.datetime.now().strftime("%y%m%d_%H%M%S")))
         self.out.mkdir(parents=True, exist_ok=True)
@@ -618,6 +630,44 @@ class TableManager:
                     return c
         return None
 
+    # --- live settings
+    def apply_control(self):
+        """Re-read <out>/control.json when it has changed (see the module
+        docstring). An unreadable file is logged and changes nothing; an
+        unknown system name is logged and keeps the current system, while the
+        file's other settings still apply."""
+        p = self.out / "control.json"
+        try:
+            mt = p.stat().st_mtime
+        except FileNotFoundError:
+            return
+        if mt == self._control_mtime:
+            return
+        self._control_mtime = mt
+        try:
+            c = json.loads(p.read_text())
+            if not isinstance(c, dict):
+                raise ValueError("not a JSON object")
+        except (OSError, ValueError) as ex:
+            self.log(f"control.json unreadable ({ex}); settings unchanged")
+            return
+        from backend import bid_sim
+        from backend import signals as _signals
+        name = c.get("system", self.sys_name)
+        if name != self.sys_name:
+            new = get_system(name)
+            if name != "SAYC" and getattr(new, "name", "SAYC") == "SAYC":
+                self.log(f"control.json: unknown system {name!r}; keeping {self.sys_name}")
+            else:
+                self.system, self.sys_name = new, name
+                bid_sim.set_play_system(name)
+                self.log(f"control.json: biq's system is now {name}")
+        sig = bool(c.get("signalling", self.signalling))
+        if sig != self.signalling:
+            _signals.set_enabled(sig)
+            self.signalling = sig
+            self.log(f"control.json: biq's signalling is now {'on' if sig else 'off'}")
+
     # --- the match
     def run(self):
         if self.a.pbn:
@@ -637,6 +687,7 @@ class TableManager:
         # crash in a long unattended run loses at most one board's pair.
         with open(self.out / "results.jsonl", "a") as fh:
             for n, dealer0, vul0, hands0 in deck:
+                self.apply_control()
                 for room in rooms:
                     dealer, vul, hands = dealer0, vul0, hands0
                     self.script = json.loads(json.dumps(scripts.get(n, {})))
@@ -651,6 +702,8 @@ class TableManager:
                         self.script = json.loads(json.dumps(scripts.get(n, {})))
                         rec = self.play_board(f"{room}-{n}", n, dealer, vul, hands)
                     rec["room"] = room
+                    rec["system"] = self.sys_name
+                    rec["signalling"] = self.signalling
                     fh.write(json.dumps(rec) + "\n")
                     fh.flush()
                     self.results.append(rec)
