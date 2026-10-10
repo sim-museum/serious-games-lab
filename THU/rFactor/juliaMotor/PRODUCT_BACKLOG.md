@@ -24874,3 +24874,16 @@ WW103), section by section, plus full-throttle acceleration by speed for GPL, Ju
   across the files is the analytic 2.222 s, the map places the second file's car from its own replay, another track is
   refused. (The PO's other WG replays of 10-08 hold no timed lap, so the real-data check is a session against itself.)
 * Gates: 57/57 pass (`GATES_SKIP=road_clear_smoke`). Process slip: for ~1 minute during this run drive_native_mtk.jl carried the next sprint's groove change (reverted at once and re-applied after); one early smoke may have loaded it -- the next sprint's full run covers both.
+
+### WGTD-1 S5 (2026-10-10): (f) the racing groove's dark blocks -- doubled strips blended twice
+* The "black brake marks" are GPL's `groove` overlay (a ~22 % alpha texture on its own strip just above the asphalt;
+  `JM_PICK` at WG s 1200). In GPL's mesh the groove covers 142 of the lap's 152 25-m bins -- continuous, as the gold's
+  smear -- but 133 of its triangles are there TWICE in six stretches (s 0, 250, 1450–1575, 2850–2925, 3450–3525,
+  3625–3750). GPL's depth test rejects the second copy at equal depth; ours (reversed-Z, GEQUAL) blended both: a band
+  twice as dark, starting and stopping exactly where the doubles do -- the PO's "blocks".
+* Fix: the groove joins the E68 coplanar-duplicate dedup (rails/fences), with 20 cm keys -- its doubles lie a few cm
+  apart, so the rails' 2 cm keys caught only 29 (334 dropped at 20 cm). `JM_GROOVE_DEDUP=0` restores. Before/after
+  (`261010/wgtd1/groove_before_after.png`): the dark block into the s 2850 corner is gone, the groove there a smooth
+  smear. The hard start ahead at s 1200 is real: GPL's own groove begins at s ~1175.
+* Gate: `trackrange_smoke` checks the groove's dedup.
+* Gates: 57/57 pass (`GATES_SKIP=road_clear_smoke`).

@@ -2991,8 +2991,14 @@ else
     # 13% of Watkins Armco tris and 10% of its fence tris are EXACT coplanar duplicates that the
     # track path never collapsed.  Dedup rail/fence-family parts by quantized centroid+area
     # (first face wins — identical geometry, so either is fine).  JM_RAIL_DEDUP=0 restores.
+    # WGTD-1 (f) (PO 2026-10-08: "the default black brake marks along the racing line start/stop in blocks -- GPL's are
+    # smooth smears"): the `groove` overlay is ~22 % alpha; Watkins Glen's mesh carries 133 of its triangles TWICE (same
+    # place, same size) in six stretches (s 0, 250, 1450-1575, 2850-2925, 3450-3525, 3625-3750). GPL's depth test rejects
+    # the second copy at equal depth; ours (reversed-Z, GEQUAL) blended both -- a band twice as dark, starting and stopping
+    # exactly where the duplicates do. The groove joins the coplanar-duplicate dedup.
     railfam(tx) = (lt = lowercase(tx); startswith(lt,"armco") || startswith(lt,"fenc") || startswith(lt,"stfce") ||
-                   startswith(lt,"sarmc") || startswith(lt,"yarmc") || startswith(lt,"gd_rail") || startswith(lt,"rail"))
+                   startswith(lt,"sarmc") || startswith(lt,"yarmc") || startswith(lt,"gd_rail") || startswith(lt,"rail") ||
+                   (GROOVE_DEDUP && startswith(lt,"groove")))
     # E68 S11 verdict: terrain sheets must NOT join the blanket cull — winding varies per sheet
     # (culling ate the s=2500 embankment + Zandvoort dune faces while fixing one veil of two).
     # The Watkins veil (giant Grass sheet BACKS over the road) needs PER-FACE road-facing
@@ -3034,6 +3040,7 @@ else
                 tot>0 ? string("  (", round(100gdup/tot,digits=1), "%)") : "")
         flush(stdout)
     end
+    GROOVE_DEDUP = get(ENV, "JM_GROOVE_DEDUP", "1") != "0"   # WGTD-1 (f): A/B switch for the groove's dedup (below)
     const TRACKMAIN = get(ENV,"JM_RAIL_DEDUP","1") == "0" ? TRACKMAIN0 : begin
         ndrop = Ref(0)
         out = map(TRACKMAIN0) do part
@@ -3044,7 +3051,9 @@ else
                 ux=v[t+11]-v[t]; uy=v[t+12]-v[t+1]; uz=v[t+13]-v[t+2]
                 wx=v[t+22]-v[t]; wy=v[t+23]-v[t+1]; wz=v[t+24]-v[t+2]
                 a=0.5*sqrt((uy*wz-uz*wy)^2+(uz*wx-ux*wz)^2+(ux*wy-uy*wx)^2)
-                k=(round(Int,cx*50), round(Int,cy*50), round(Int,cz*50), round(Int,a*100))
+                # WGTD-1 (f): the groove's doubled strips sit a few cm apart, not exactly on each other -- 20 cm keys for it
+                q = startswith(lowercase(part.tex), "groove") ? (5, 10) : (50, 100)
+                k=(round(Int,cx*q[1]), round(Int,cy*q[1]), round(Int,cz*q[1]), round(Int,a*q[2]))
                 if k in seen; ndrop[] += 1; else; push!(seen,k); append!(keep, @view v[t:t+32]); end
             end
             Render.TrackPart(keep, part.tex, part.col)

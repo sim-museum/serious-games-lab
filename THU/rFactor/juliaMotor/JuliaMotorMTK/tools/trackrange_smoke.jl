@@ -16,5 +16,9 @@ k = i === nothing ? nothing : findnext("for (ti, it) in enumerate(trackItems)", 
 chk("set just before the track-mesh loop, reset after it", i !== nothing && j !== nothing && k !== nothing && first(i) < first(k) < first(j))
 chk("the shader discards beyond it", occursin("if(uMaxDist > 0.0 && length(vWorld-uCamPos) > uMaxDist) discard;", rnd))
 chk("the frame's uniforms default it off", occursin("glUniform1f(uloc(prog,\"uMaxDist\"),0f0)", rnd))
+# WGTD-1 (f): the racing groove (a ~22 % alpha overlay) joins the coplanar-duplicate dedup -- doubled strips blended
+# twice drew dark blocks -- with 20 cm keys, its doubles lying a few cm apart
+chk("the groove is deduplicated like the rails (20 cm keys)", occursin("(GROOVE_DEDUP && startswith(lt,\"groove\"))", src) &&
+    occursin("q = startswith(lowercase(part.tex), \"groove\") ? (5, 10) : (50, 100)", src))
 println(fails[] == 0 ? "ALL PASS" : "FAILURES: $(fails[])")
 exit(fails[] == 0 ? 0 : 1)
