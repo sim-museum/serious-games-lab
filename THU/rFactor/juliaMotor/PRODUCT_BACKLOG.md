@@ -24335,17 +24335,22 @@ rotated to honour the 4-sprint cap. The evening iRacing test list grows in `IRTE
 
 ## IRTEST-261009 -- iRacing tests cued for the PO's evening session (grows as items need them)
 Every test: Lotus 49, 360 Hz logging ON, setup named in the test, one .ibt per test (exit to the garage between tests).
-Order = value to the model; about 50 min of driving in all.
+Order = value to the model; about 50 min of driving in all. Default setup throughout (the model's baseline); if time
+is left, #1 again with the WW103 setup (its LSD and camber change the slide). (2026-10-10 correction: #2/#6 said
+"Centripetal's straight" -- Centripetal is a circle; a banked oval such as Charlotte is a poor substitute: short
+straights, and banking adds load and roll.)
 1. **Held slides** (Centripetal, default setup, ~10 min): from a steady circle at 100–140 km/h, provoke the rear (lift
    or squeeze) and HOLD the slide 3–5 s at 20–50° of body slip with counter-steer, both directions, 6+ slides. Today
    the beyond-peak tyre has only spins and lift-offs behind it; held slides separate the sideways sliding friction
    from the yaw dynamics.
-2. **Slalom / sine steer** (Centripetal's straight or any long straight, default setup, ~8 min): at a steady 100 km/h
+2. **Slalom / sine steer** (a long FLAT straight -- Monza's straights if owned, else Döttinger Höhe on the
+   Nordschleife; split across several straights as needed; default setup, ~8 min of straights): at a steady 100 km/h
    and again at 150 km/h, weave left-right steadily -- slow (one full cycle in ~2 s), medium (~1 s), quick (~0.5 s) --
    10 cycles each, throttle held. Identifies the yaw inertia (hand-set 890 kg·m²) and how fast the tyres build force
    (no tyre lag in the model today).
 3. **Brake bias sweep** (Döttinger Höhe, Touristenfahrten, default setup, ~10 min): straight-line stops from ~200 km/h
-   at a steady ~60 % pedal, three stops each at bias 50 %, 54 % and 58 %. The model maps pedal → torque with one fitted
+   at a steady ~60 % pedal, three stops each at bias 50 %, 54 % and 58 % (garage: Chassis → Front → Brake bias, default
+   54 %; one .ibt per bias; an in-car brake-bias key also works -- the ibt records it as dcBrakeBias). The model maps pedal → torque with one fitted
    split; the ibt's four brake-line pressures will make the brakes an object (master cylinder → calipers) instead.
 4. **Front anti-roll bar arms** (Centripetal, default setup otherwise, ~10 min): steady circles at ~1.0 g, both
    directions, 20 s each way, with the FRONT bar arms at the softest, middle and stiffest positions. The bar object's
@@ -24353,8 +24358,8 @@ Order = value to the model; about 50 min of driving in all.
 5. **Big kerb and compression** (Nordschleife Touristenfahrten, default setup, ~7 min): one lap at a steady pace
    taking the Fuchsröhre compression flat, plus two passes over a high kerb (e.g. Hatzenbach) -- the shock deflection
    near its ShockDeflection limit identifies the bump stops/packers the model does not have.
-6. **Steering flicks** (CARPHYS-1 S11, 2026-10-10; Centripetal's straight or any long flat straight, default setup,
-   ~6 min): at a steady 100 km/h and again at 160 km/h, throttle held, flick the wheel ~90° in ~0.1 s and HOLD it for
+6. **Steering flicks** (CARPHYS-1 S11, 2026-10-10; a long FLAT straight as #2 -- Monza if owned, else Döttinger Höhe;
+   default setup, ~6 min of straights): at a steady 100 km/h and again at 160 km/h, throttle held, flick the wheel ~90° in ~0.1 s and HOLD it for
    ~1 s, then back to straight; 5 flicks each way at each speed, settling straight between them. The yaw-rate onset in
    the first 50–100 ms identifies the tyre relaxation length σ (`TyreRelaxation`, built in S11, opt-in via JM_RELAX
    because the skidpad gold can't tell σ 0.1 m from 0.8 m). Unlike the slalom (#2) a held step gives a clean onset.
