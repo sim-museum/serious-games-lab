@@ -112,6 +112,12 @@ re-runs tmdrv automatically. Force feedback would need the `hid-tmff2` DKMS modu
 installed). Diagnostic helpers: `joydiag.py` (axis range + movement-order timeline),
 `joybtn.py` (button capture) — both stream via `joyserver.jl`.
 
+CTRLCAL-1 (2026-10-10): the Controller tab offers **Autodetect** (each device uses its own calibration, as GPL and
+iRacing do: `joystick.conf` if made on that device, else `joystick_profiles/<device>.conf`, else a built-in profile by
+name, else X3D + warning) or a **Saved profile** (built-ins in tracked `controller_profiles/*.conf` -- Thrustmaster TX,
+Logitech Extreme 3D Pro -- plus every wizard calibration). The choice is the `mode` line in `joystick.conf`;
+`JoyCfg.resolve` and the launcher's `resolve()` must agree (gate `ctrlcal_smoke`).
+
 KEY DESIGN: `joystick.conf` axis indices are in **GLFW's** ordering, so the GUI must read
 the stick through GLFW, not pygame/evdev (which number axes differently). It does so via
 `joyserver.jl` — a hidden-window GLFW poller that streams `{name,axes,buttons}` JSON lines

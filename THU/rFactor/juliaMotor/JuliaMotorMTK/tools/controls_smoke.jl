@@ -50,7 +50,7 @@ for nm in ("Thrustmaster Thrustmaster TX Racing Wheel", "Thrustmaster TX Racing 
     pr = JoyCfg.profile_for(nm)
     check("\"$nm\" -> TX profile", pr !== nothing && pr[1] == "Thrustmaster TX", string(pr === nothing ? "none" : pr[1]))
 end
-check("Logitech Extreme 3D -> X3D profile", (p = JoyCfg.profile_for("Logitech Logitech Extreme 3D pro"); p !== nothing && p[1] == "Logitech Extreme 3D"), "")
+check("Logitech Extreme 3D -> X3D profile", (p = JoyCfg.profile_for("Logitech Logitech Extreme 3D pro"); p !== nothing && p[1] == "Logitech Extreme 3D Pro"), "")
 check("unknown device -> no profile (X3D fallback, warned)", JoyCfg.profile_for("Some Gamepad") === nothing, "")
 rest = Float32[0.0, 1.0, 1.0, 1.0]; floor_ = Float32[0.0, -1.0, -1.0, 0.29814]   # TX axes: wheel, throttle, clutch, brake -- floored
 _, thr, brk, clu, _, _ = JoyCfg.apply(JoyCfg.txmap(), rest, nothing)

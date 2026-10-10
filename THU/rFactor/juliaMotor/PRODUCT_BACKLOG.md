@@ -21,6 +21,7 @@ this index was written; that is what it exists to stop.
 
 | item | what | state |
 |---|---|---|
+| **CTRLCAL-1** | Controller calibration should have two options -- **autodetect** or **saved profile**; saved profiles include the Thrustmaster TX and the Logitech Extreme 3D Pro ("3Dx Pro"); for autodetect, look at how GPL and iRacing do it (PO 2026-10-10) | 🟡 **S1 (2026-10-10):** GPL's and iRacing's calibration studied (gpl.exe decoded + the PO's own GPL TX controls.cfg); the Controller tab now offers Autodetect (per-device calibration, as both do) or a Saved profile (TX, Extreme 3D Pro, + your wizard calibrations); built-in profiles are one file each for sim and launcher; AppImage updates keep per-device calibrations; gate `ctrlcal_smoke`. Next: S2 the GPL/iRacing-style sweep calibration in the wizard |
 | **LOADHANG-1** | Why did the AppImage's Spa race load "hang" (≈15 min, the PO stopped it at the AI cars) after a Ring race, a WG race and a replay in the same launcher session? Little time if data is lacking -- but how to avoid / diagnose such issues in future (PO 2026-10-07 night) | ✅ **CLOSED (S1–S4, 2026-10-08):** the first Spa launch from the install decoded every texture cold at 125 ms each -- a boxed closure in the alpha bleed; now 1.7 ms (pixels identical), a cold Spa race loads in 232 s like a warm one; launches log flushed stage stamps + first-run texture progress; gate `texcold_smoke`; smoke runs no longer read the PO's wheel (netcollide repaired) |
 | **COCKPIT-2** | Cockpits need work: in REPLAY the cockpit is static (wheel doesn't turn, hands don't move, mirrors black, gauges have no dials); the Lotus wrists are see-through while driving; ALL cockpits incl. AI cockpits in replay as close to the gold as possible; the shifter at right moves when the player shifts (as in the gold) (PO 2026-10-07 night). Carries E64's open mirror-camera finding | 🟡 **S1–S4 (2026-10-09), for the PO's look:** replay cockpit from the recording (wheel, gloves, needles, HUD) + live mirrors in replay; moving gear lever in GPL's gate; all dials (DIALS-1); see-through wrists closed. Open: AI cockpits in replay, right glove to the lever on shifts, sleeve look |
 | **TRACKS-TD-1** | Track fixes from test drives (PO 2026-10-07 night): (a) Ring: start fences L+R flicker (also in the mirrors); artifacts at middle distance at times; at Ex-Mühle the hill ahead from the dip before the left turn is missing until you're about to turn, then pops in. (b) Spa: AI go off the road -- inside at Eau Rouge ("red water"), hit the PO's car parked across that inside path instead of dodging left; replay shows AI off inside/outside at times; long openings in the ground just after Stavelot showing another view through the ground | 🟡 **S1–S3 (2026-10-10):** (b) Stavelot "openings" FIXED for the PO's look -- the far Les Combes hilltop drawn 2.5–3+ km off as a floating band; the track mesh now has a draw range (2.4 km) as in GPL. (a) the Ring's three items not reproduced: needs the PO's video moment or a located gold frame. Video (moved): `~/Videos/old/261007_spa_race.mp4` |
@@ -24980,3 +24981,48 @@ WW103), section by section, plus full-throttle acceleration by speed for GPL, Ju
 * New gate relax_smoke: off by default; standalone 63.2 % of the step after σ (exact) and settled after 5σ; car
   steering step lags with a long σ. (Gate count 58.)
 * Gates: 58/58 pass (`GATES_SKIP=road_clear_smoke`). Scrum PAUSED by the PO after this sprint (2026-10-10); next when resumed: CARPHYS-1 S12, the two power-on events where the sim and the gold disagree on spinning.
+
+### CTRLCAL-1 S1 (2026-10-10): autodetect or saved profile -- the choice, the profiles, and how GPL and iRacing calibrate
+PO (resuming the scrum): "controller calibration should have two options - autodetect or saved profile. Saved profile
+includes Thrustmaster TX and Logitech 3Dx Pro. For autodetect, look at how GPL and iRacing do it." Ranked first (fresh
+PO request); CARPHYS-1 S12 follows the rotation.
+* **Retro (what existed):** a hold-each-control wizard in the launcher (captures one endpoint per click); a launcher
+  "Preset" dropdown; and, since 2026-10-03, sim-side autodetect by device NAME (TX / Extreme 3D) when there is no
+  joystick.conf, after the X3D map read a released TX throttle as full brake. What didn't work: joystick.conf silently
+  beat everything, with no way to say "use this profile"; the launcher's TX preset had drifted from the sim's (pedals
+  unmapped, paddles swapped); per-device files in joystick_profiles/ were written but never read, and an AppImage update
+  deleted them. Options: (a) keep the name match and add a profile picker; (b) do what GPL/iRacing do -- per-device
+  calibration from a full sweep; (c) both, as the two options the PO asked for. Chose (c): S1 the choice + profiles,
+  S2 the sweep calibration.
+* **How GPL does it** (gpl.exe, `FUN_004c2990`/`2d90`/`2e20`/`2ab0`/`2590`; the `joystick.win` dialog): calibration
+  starts with every axis's CURRENT value as its centre and min = centre−1, max = centre+1; then, every frame, min/max
+  grow as the driver moves each control through its full travel. Per axis it then decides by itself: a quadratic
+  through (min, centre, max) that is monotonic over the travel = a CENTRED axis (steering: centre maps to exactly ½ even
+  if off-middle); not monotonic = the rest sits near an end = a PEDAL, mapped linearly from the rest end (0) to the
+  other (1), inverted automatically if it rests at max. 2 % of the travel at each end saturates; an axis with less than
+  0.2 × its centre of range reads 0. Functions are bound per axis HALF ("N<" / "N>"), so one axis can be throttle and
+  brake. Stored in controls.cfg as a 0x214-byte "YOJP" v1.00 block (min / lo / centre / max / hi / flags / a / b / c,
+  16 axes) that is refused if the device's axis count or mask differ. The PO's own GPL TX profile decodes as exactly
+  that: axis 1 centred (9499 / 12854 / 16277), axes 2-4 pedals resting at ~1000 (flags 0x0e).
+* **How iRacing does it** (support article, a published joyCalib.yaml, forum walkthroughs): the wizard asks for every
+  control through its full range (lock to lock, each pedal fully pressed), then the wheel centred, then turned 90° left
+  -- which measures the wheel's degrees per raw unit (its rotation range). Then each function is assigned by pressing
+  it. Stored per device (DeviceName + InstanceGUID) in joyCalib.yaml as CalibMin / CalibCenter / CalibMax per axis; a
+  pedal's centre sits at its rest end. Same model as GPL: rest snapshot + full sweep, per device.
+* **Built:** built-in profiles are files (`demo/native/controller_profiles/thrustmaster_tx.conf`,
+  `logitech_extreme_3d_pro.conf`, with `label` / `match` lines) read by JoyCfg AND the launcher -- one source; values
+  unchanged (the PO's June TX calibration; the historical X3D map). `joystick.conf` carries the choice as a `mode` line
+  (parsers that read only numbers ignore it): `mode profile` = that profile on any device; `mode autodetect` = the
+  device's own calibration (this conf if made on it, else `joystick_profiles/<device>.conf`, else a built-in matched
+  by name, else X3D + "calibrate it"); no mode line = the old behaviour (the PO's current conf is untouched).
+  Controller tab: a Calibration group with **Autodetect** / **Saved profile: [list] [Use this profile]** and a line
+  "The game will use: ..." for the device plugged in now; the wizard's Save stores the calibration under its device
+  (it joins the profile list) and selects Autodetect. The drifted Python presets are gone. AppImage updates now keep
+  `joystick_profiles/` as they keep joystick.conf.
+* **Gates:** new `ctrlcal_smoke` (built-ins = documented maps; 9 resolve cases across both modes; the launcher's
+  resolve() agrees with JoyCfg's on all 9; the AppImage keep) and `tests/ctrlcal_test.py` under launcher_smoke (the tab
+  flow: default Autodetect writes nothing, pick/use a profile, remembered, back to Autodetect, wizard save per device,
+  another device plugged in). controls_smoke's X3D label updated.
+* Next (S2): the wizard becomes GPL/iRacing's sweep -- rest snapshot, "move every control through its full travel",
+  axes classified centred/pedal by GPL's rule, functions found by pressing them, 2 % end saturation, and iRacing's 90°
+  step to measure a wheel's range where the kernel doesn't report one.

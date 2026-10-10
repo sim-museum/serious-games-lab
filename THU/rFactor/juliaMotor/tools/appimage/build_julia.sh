@@ -126,6 +126,11 @@ if [ -f "$STAMP_SRC" ] && ! cmp -s "$STAMP_SRC" "$STAMP_DST" 2>/dev/null; then
       if [ "$d" = demo ] && [ -f "$W/THU/rFactor/juliaMotor/demo/native/joystick.conf" ]; then
         cp -a "$W/THU/rFactor/juliaMotor/demo/native/joystick.conf" "$W/THU/rFactor/juliaMotor/.new_demo/native/joystick.conf"
       fi
+      # CTRLCAL-1 (2026-10-10): and every device's own calibration (the autodetect store) -- this directory was lost
+      # on every update, the same way joystick.conf was before 2026-10-03.
+      if [ "$d" = demo ] && [ -d "$W/THU/rFactor/juliaMotor/demo/native/joystick_profiles" ]; then
+        cp -a "$W/THU/rFactor/juliaMotor/demo/native/joystick_profiles" "$W/THU/rFactor/juliaMotor/.new_demo/native/"
+      fi
       rm -rf "$W/THU/rFactor/juliaMotor/$d"
       mv "$W/THU/rFactor/juliaMotor/.new_$d" "$W/THU/rFactor/juliaMotor/$d"
     else
