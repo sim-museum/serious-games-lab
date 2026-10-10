@@ -2975,8 +2975,10 @@ else
     # fences)", 2026-06-15) and never revisited. GPL draws them, and GPL's .trk walls stand on those fence lines, so
     # without them the car stops against nothing visible. Drawn again (they also become solid obstacles from here).
     # JM_DRAW_WIREF=0 restores the old exclusion.
+    # TRACKS-TD-1 S2: JM_TRACK_EXCLUDE="tex1,tex2" drops more track textures (a diagnostic: which part is that?).
     const TRACKMAIN0 = Render.extract_gpl_car(ZTRK; track=true, mirror=true,
-                                              exclude = get(ENV, "JM_DRAW_WIREF", "1") == "0" ? ("ltraymap","lshad","wiref_s") : ("ltraymap","lshad"))
+                                              exclude = ((get(ENV, "JM_DRAW_WIREF", "1") == "0" ? ("ltraymap","lshad","wiref_s") : ("ltraymap","lshad"))...,
+                                                         (String(x) for x in split(get(ENV, "JM_TRACK_EXCLUDE", ""), ",") if !isempty(x))...))
     # E68 S10 (PO: "lots of z-fighting on guardrails throughout" Watkins + residuals elsewhere):
     # 13% of Watkins Armco tris and 10% of its fence tris are EXACT coplanar duplicates that the
     # track path never collapsed.  Dedup rail/fence-family parts by quantized centroid+area
@@ -10323,7 +10325,18 @@ if get(ENV, "JM_AI_AXLES", "1") != "0"
     end
     isempty(AI_AXLES) || println("  [ai axles] built driveshafts for: ", join(keys(AI_AXLES), ", "))
 end
-const PROJ = Render.perspective_revz(deg2rad(62f0), Float32(W/H), 0.35f0, 3000f0)  # reversed-Z: near-uniform depth precision → kills distant z-fight (signs on fences)
+# TRACKS-TD-1 S2: JM_FAR (default 3000, as always) moves the far plane -- a diagnostic; the track mesh's own draw range
+# is TRACK_MAXD below.
+const FAR_M = parse(Float32, get(ENV, "JM_FAR", "3000"))
+# TRACKS-TD-1 S2 (2026-10-10, PO: "long openings in the ground just after Stavelot showing another view through the
+# ground"): GPL draws its track mesh only over a range of segments round the car and leaves the distance to the horizon
+# panels. We drew all of it to the far plane: from Spa after Stavelot the hilltop round Les Combes -- road, verges,
+# barriers, 2.5–3+ km away and all at +3° -- showed edge-on as a thin fog-blue band hanging over the near forest, with
+# sky under it (the valley face towards us is not in the mesh; GPL's big horizon hill covers that sky). A far-plane
+# sweep put the band at 2.5–6 km. The track mesh now stops at TRACK_MAXD (fog is 83 % there and full at 2.8 km);
+# objects keep their own 2.2 km range. JM_TRACK_MAXD=0 draws it all again.
+const TRACK_MAXD = parse(Float32, get(ENV, "JM_TRACK_MAXD", "2400"))
+const PROJ = Render.perspective_revz(deg2rad(62f0), Float32(W/H), 0.35f0, FAR_M)  # reversed-Z: near-uniform depth precision → kills distant z-fight (signs on fences)
 tstamp("  [E80] AI car models done / projection")
 # GPL's cockpit uses a WIDE field of view — the mirrors sit at the screen edges and you see lots of road.
 # A separate wide projection for the cockpit view (tunable via JM_FOV) reproduces that immersive look.
@@ -10337,7 +10350,7 @@ tstamp("  [E80] .. AI cars done -> input/camera defs begin")
 # fit on those features, constrained by the roll hoop behind the seat, and a capture sweep
 # (parity/po_260925/cockpit_*.jpg) chose eye height 0.40 (was 0.52), gaze drop 0.12 over 4 m (was 0.55) and a
 # 60 deg vertical FOV (was 70). Old view: JM_EYE_Y=0.52 JM_EYE_DROP=0.55 JM_FOV=70.
-const PROJ_COCKPIT = Render.perspective_revz(deg2rad(parse(Float32,get(ENV,"JM_FOV","60"))), Float32(W/H), 0.20f0, 3000f0)
+const PROJ_COCKPIT = Render.perspective_revz(deg2rad(parse(Float32,get(ENV,"JM_FOV","60"))), Float32(W/H), 0.20f0, FAR_M)
 
 # ---- input: edge-detected shift, view + auto-gearbox toggle ----
 mutable struct Ctl; prevUp::Bool; prevDn::Bool; prevV::Bool; prevG::Bool; prevM::Bool; prevRec::Bool; prevRestart::Bool; view::Int; auto::Bool; cluWarned::Bool; end
@@ -10579,7 +10592,7 @@ end
 const CHASE_D  = parse(Float32, get(ENV,"JM_CHASE_D","5.75"))   # metres behind the car
 const CHASE_H  = parse(Float32, get(ENV,"JM_CHASE_H","1.93"))   # metres above the car origin (= the road)
 const CHASE_LY = parse(Float32, get(ENV,"JM_CHASE_LY","0.63"))  # look-at height 2 m ahead
-const PROJ_CHASE = Render.perspective_revz(deg2rad(parse(Float32, get(ENV,"JM_CHASE_FOV","51"))), Float32(W/H), 0.35f0, 3000f0)
+const PROJ_CHASE = Render.perspective_revz(deg2rad(parse(Float32, get(ENV,"JM_CHASE_FOV","51"))), Float32(W/H), 0.35f0, FAR_M)
 const CHASE_MIN = parse(Float64, get(ENV,"JM_CHASE_MIN","0.45"))  # E102-S12: eye never below road + this
 function camera(cs, pitch=0.0, roll=0.0)
     wx,wy,wz = cs.x, cs.y, -cs.z; fx,fz = cos(cs.θ), -sin(cs.θ)   # render world un-mirrors physics z
@@ -14691,6 +14704,7 @@ function main()
             glUniform1i(Render.uloc(prog,"uBackFlip"), 1)
             secfrom = (@isdefined SEC_FROM) ? SEC_FROM : typemax(Int)
             PROF_DEPTH[] += time() - _tp_d; _tp_t = time()
+            glUniform1f(Render.uloc(prog,"uMaxDist"), TRACK_MAXD)    # TRACKS-TD-1 S2: the track mesh's draw range
             for (ti, it) in enumerate(trackItems)                        # ambfill lifts shadowed walls/fences out of the "carbonized" black under the flat overcast light
                 # RING-HAIRPIN-1 S3: with the tessellated road on, the .3do's asphalt/groove strips are not drawn
                 # SKIDPAD-GOLD-1 S2: same guard as RINGSPRITES above -- ROADTESS is a const defined
@@ -14726,6 +14740,7 @@ function main()
                     Render.draw(prog, it, vp_, Render.IDENT; bright=TRACK_BRIGHT*gg, ambfill=TRACK_AMB*gg)
                 end
             end
+            glUniform1f(Render.uloc(prog,"uMaxDist"), 0f0)
             (@isdefined SEC_FROM) && length(trackItems) >= SEC_FROM && glDisable(GL_CULL_FACE)   # E68 S9b: section cull off before objects
             if OBJ_CULLFACE                                           # E60: GPL culls single-sided faces —
                 # double-sided signs keep both decals (dedup=:orient), each visible only from its own side.

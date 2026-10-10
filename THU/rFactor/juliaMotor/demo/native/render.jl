@@ -330,6 +330,7 @@ uniform float uAlpha;     // per-draw opacity multiplier (1 = opaque; <1 = glass
 uniform int uCutout;      // 1 for chain-link/foliage cutouts → sharpen alpha edge (kill shimmer)
 uniform int uGraze;       // 1 for GPL tree-LINE meshes → fade faces viewed edge-on (kills the end-on "smear")
 uniform int uSky;
+uniform float uMaxDist;   // TRACKS-TD-1: > 0 discards fragments farther than this from the camera (the track mesh's draw range)
 // E69-S8 WHITE BALANCE. Gold renders neutral surfaces slightly COOL (asphalt R-B -2.5..-5.3 across
 // Monza/Spa/Zandvoort) while native renders them WARM (+7.8..+12.7 across Zandvoort/Monza/Watkins).
 // Decode is NOT the cause: the .mip header's own declared average colour for asphalt is (143,137,132),
@@ -378,6 +379,7 @@ float shadow(vec3 N){
   return mix(s, 1.0, smoothstep(0.28, 0.5, max(e.x, e.y)));
 }
 void main(){
+  if(uMaxDist > 0.0 && length(vWorld-uCamPos) > uMaxDist) discard;
   vec2 uv = (uBackFlip==1 && !gl_FrontFacing) ? vec2(1.0-vUV.x, vUV.y) : vUV;  // un-mirror back-facing sign text
   vec4 t = uHasTex==1 ? texture(uTex,uv) : vec4(vC,1.0);
   if(uHasTex==1){
@@ -732,6 +734,7 @@ function set_scene_uniforms(prog, campos; fognear=300f0, fogfar=2400f0,
     glUniform3f(uloc(prog,"uTint"),1f0,1f0,1f0)   # frame default white (draws that bypass draw(), e.g. the horizon ring)
     glUniform1i(uloc(prog,"uMirrorGlass"),0)      # frame default off (same bypass-draw safety)
     glUniform1i(uloc(prog,"uNClip"),0)            # GPLVIS-1 S4: no clip planes unless a draw sets them
+    glUniform1f(uloc(prog,"uMaxDist"),0f0)        # TRACKS-TD-1: no draw-range cut unless a draw sets it
     glUniform1i(uloc(prog,"uMacro"), get(ENV,"JM_MACRO","1")=="0" ? 0 : 1)   # E68 S3 A/B
 end
 
