@@ -1334,6 +1334,14 @@ end
 const BRIDGE_TEX = ("bridge", "br_under")   # E109-S6: the Ring's bridge structure textures
 
 const SCEN_PRSTAT = Ref(0)   # E109: scenery placement matrices built with a non-zero pitch or roll
+# BILLBOARD-2 (PO 2026-10-07: "at the ring, there is still a line of billboards at left middle distance after north hairpin
+# but well before flugplatz, improbably set in the middle of the forest ... a dozen or so side by side"): `bkbill`, the
+# board row of the straight behind the pits, was drawn twice -- as Ring scenery and as an object -- and from everywhere,
+# so after Nordkehre it stood across the valley on the hillside (pick at s 2050: bkbill/bb1, bb11, 470 m away); GPL's
+# gold shows forest there. It now takes the veils' path (E109-S15): the scenery copy goes, the object draws under GPL's
+# per-segment visibility -- gone after Nordkehre, still lining its straight. JM_VEILX="name,..." replaces the list
+# (empty: JM_VEILX="").
+const VEILX = String[lowercase(x) for x in split(get(ENV, "JM_VEILX", "bkbill"), ",") if !isempty(x)]
 function gpl_scenery(ztrk, datpack, ribbon)
     pls = Render.GPL3DO.gpl_placements(ztrk)
     # E78-S1 probe: JM_YAWFLIP=<name,...> turns those placements by 180 deg (A/B for a suspected yaw error).
@@ -1348,7 +1356,7 @@ function gpl_scenery(ztrk, datpack, ribbon)
     # GREY-1 S5: the four hill-cap objects (forest caps on hilltops, `hillcap*`) go the same way -- `wehr-r1b`'s cap stood as a
     # dark pyramid over Metzgesfeld, 1 km outside the stretch GPL draws it from.
     _veilhide = get(ENV, "JM_GPLVIS_VEIL", "1") != "0" ? ["half01","half02","half03","half04","half05","half06","half07","half08","half09","half1s",
-                                                          "adena-r2","bergw-r1","breid-ra","wehr-r1b"] : String[]
+                                                          "adena-r2","bergw-r1","breid-ra","wehr-r1b", VEILX...] : String[]
     let hd = Set(vcat(lowercase.(filter(!isempty, split(get(ENV, "JM_PLACE_HIDE", ""), ","))), _veilhide))
         if !isempty(hd)
             for (nm, t) in pls
@@ -9076,7 +9084,7 @@ const OBJ_SCENEDUP = falses(length(OBJECTS))
 const GPLVIS_ALL = NURB && get(ENV, "JM_GPLVIS", "0") == "1"
 const GPLVIS_VEIL = NURB && get(ENV, "JM_GPLVIS_VEIL", "1") != "0"     # E109-S15: the veils only, by default
 const GPLVIS = GPLVIS_ALL || GPLVIS_VEIL
-isveil(nm) = (n = lowercase(nm); (startswith(n, "half") && length(n) == 6) || n in ("adena-r2", "bergw-r1", "breid-ra", "wehr-r1b"))
+isveil(nm) = (n = lowercase(nm); (startswith(n, "half") && length(n) == 6) || n in ("adena-r2", "bergw-r1", "breid-ra", "wehr-r1b") || n in VEILX)
 const GPLVIS_SEGS, GPLVIS_VIS = GPLVIS ? GPLTrack.segment_visibility(ZTRK) : (Float64[], Dict{Int,BitVector}())
 const _GV_ORD = filter(k -> isfinite(GPLVIS_SEGS[k]), sortperm(GPLVIS_SEGS)); const _GV_S = GPLVIS_SEGS[_GV_ORD]   # segments with a lap table
 # GREY-1 S5: a window's gaps under JM_GPLVIS_GAP m (default 200) are bridged. The walker does not follow the cells'
