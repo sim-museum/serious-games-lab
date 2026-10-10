@@ -91,6 +91,18 @@ function AntiRollBar(; name, k)
     System(eqs, t, vars, ps; systems = [mL, wL, mR, wR], name)
 end
 
+"""Steering column (CARPHYS-1 S5): the torque the front tyres send up the column to the rim -- the force feedback.
+`Fy` is the front axle's lateral force (the two tyres, N), `τ` the rim torque (N·m, positive turns the rim left).
+Fitted to iRacing's SteeringWheelTorque (tools/steerfit_261009.jl, 19 gold skidpad events through the session car):
+the rim torque is the front force on one effective trail -- 4.78 cm at the 10:1 rack (R² 0.982, 1.8 N·m RMS, the
+same across both setups). A separate aligning-moment term (the brush Mz) and a centring term on the wheel angle add
+nothing on the gold, so the column carries none: the rim goes light near the limit because the front FORCE does."""
+function SteeringColumn(; name, ratio = 10.0, trail = 0.0478)
+    ps = @parameters ratio=ratio trail=trail
+    vars = @variables Fy(t) τ(t)
+    System([τ ~ -trail*Fy/ratio], t, vars, ps; name)
+end
+
 """Tyre, vertical: the carcass as a spring `kt` and damper `ct` between the wheel (`a`) and the road (`b`), loaded to
 `Fz_static` at rest. It can only push -- a wheel off the ground carries nothing (rounding `ε` N). `Fz` is the load
 the tyre's force law (BrushTyre) works with."""

@@ -825,6 +825,16 @@ function telemetry3d(c::Car3D)
      pitch=c.pitch, roll=c.roll, rh=c.rh, grounded=c.grounded)
 end
 
+const _RIM3D = IdDict{Any,Any}()
+"""CARPHYS-1 S5: the steering column's rim torque [N·m] (SteeringColumn: front axle Fy on the fitted 4.78 cm trail,
+10:1 rack; positive turns the rim left), or `nothing` on a model without the column."""
+function rimtorque3d(c::Car3D)
+    g = get!(_RIM3D, c.sys) do
+        try ModelingToolkit.getsym(c.sys, c.sys.col.τ) catch; nothing end
+    end
+    g === nothing ? nothing : g(c.integ)
+end
+
 const _GRIP3D = IdDict{Any,Any}()
 """REPLAY-6: each tyre's force and grip, FL FR RL RR, as (Fx, Fy, μx·Fz, μy·Fz, ξ) -- forces in mg/4 (the static corner
 weight), the friction ellipse's semi-axes from the tyre model's own load-sensitive, off-road-scaled μ, and ξ the brush's

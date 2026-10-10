@@ -63,8 +63,17 @@ const FFB_TFLOOR = 0.40                                               # residual
 const FFB_AF     = 1.314                                              # CG → front axle [m]
 const FFB_DELTA  = 0.30                                               # road-wheel angle at full lock [rad] (matches DriveRT)
 const FFB_SQ     = parse(Float64, get(ENV, "JM_FFB_SQ",  "0.03"))   # squelch knee on the ROAD term only (kills tyre-force noise; the spring keeps center alive)
-const FFB_LP     = parse(Float64, get(ENV, "JM_FFB_LP",  "0.05"))   # low-pass time-constant [s] on the FFB force — smooths jostle, keeps it continuous
+const FFB_LP     = parse(Float64, get(ENV, "JM_FFB_LP",  haskey(ENV, "JM_FFB_LEGACY") ? "0.05" : "0.015"))   # low-pass time-constant [s] on the FFB force (CARPHYS-1 S5: 15 ms, was 50)
 const FFB_SPRING = parse(Float64, get(ENV, "JM_FFB_SPRING", "0.55"))# self-centering SPRING ∝ wheel angle — smooth return-to-center so there's NO dead zone
+# CARPHYS-1 S5 (PO 2026-10-09: "make it as accurate as possible"): the road term is the steering column's RIM TORQUE --
+# DriveRT3D.rimtorque3d, the SteeringColumn object fitted to iRacing's SteeringWheelTorque (front axle Fy on a 4.78 cm
+# trail at 10:1, R² 0.982) -- instead of front Fy × a hand-drawn trail curve. FFB_TREF [N·m] is the torque that equals
+# one unit of the old road term, so the PO's tuned FFB_GAIN feels the same at ~1 g (≈ 8 N·m there). The gold has no
+# measurable lag, so both smoothing stages drop from 50 ms to FFB_DESPIKE / FFB_LP of 15 ms (the de-spike still has to
+# eat the coarse GPL mesh's one-frame load jolts). JM_FFB_LEGACY=1 restores the hand model for A/B.
+const FFB_PHYS    = !haskey(ENV, "JM_FFB_LEGACY")
+const FFB_TREF    = parse(Float64, get(ENV, "JM_FFB_TREF", "8.0"))
+const FFB_DESPIKE = parse(Float64, get(ENV, "JM_FFB_DESPIKE", FFB_PHYS ? "0.015" : "0.05"))
 const _JOYCONF = joinpath(@__DIR__, "joystick.conf")
 # joystick.conf (juliaRacer.py / calibrate.jl) > a profile AUTODETECTED from the device name > X3D default.
 # GLFW.Init is idempotent (the window code calls it again later); headless runs without a display fall
@@ -13992,11 +14001,16 @@ function main()
         # pneumatic trail collapses (you feel understeer). A mechanical-trail floor keeps
         # it from going dead; tanh soft-clips so it never hard-pins (always some headroom).
         if ffb !== nothing && ffb.ok
-            tl  = telemetryX(cs)
-            αf  = atan(tl.v + FFB_AF*tl.r, max(tl.u, 1.0)) - clamp(inp.steer, -1, 1)*FFB_DELTA
-            trail = FFB_TFLOOR + (1 - FFB_TFLOOR) * clamp(1 - abs(αf)/FFB_ATRAIL, 0.0, 1.0)
-            fy = cs.tc[1][2] + cs.tc[2][2]                     # front-axle lateral force (mg/4 units) — the ROAD feel
-            fy_lp += (fy - fy_lp) * clamp(dt/0.05, 0.0, 1.0)   # de-spike the coarse GPL mesh (1-frame 11g jolts → smooth)
+            τrim = (FFB_PHYS && CAR3D) ? DriveRT3D.rimtorque3d(cs) : nothing
+            if τrim !== nothing                                # CARPHYS-1 S5: the column's rim torque, in old road-term units
+                fy = -τrim / FFB_TREF; trail = 1.0
+            else                                               # legacy: front Fy × a hand-drawn trail curve
+                tl  = telemetryX(cs)
+                αf  = atan(tl.v + FFB_AF*tl.r, max(tl.u, 1.0)) - clamp(inp.steer, -1, 1)*FFB_DELTA
+                trail = FFB_TFLOOR + (1 - FFB_TFLOOR) * clamp(1 - abs(αf)/FFB_ATRAIL, 0.0, 1.0)
+                fy = cs.tc[1][2] + cs.tc[2][2]                 # front-axle lateral force (mg/4 units) — the ROAD feel
+            end
+            fy_lp += (fy - fy_lp) * clamp(dt/FFB_DESPIKE, 0.0, 1.0)   # de-spike the coarse GPL mesh (1-frame 11g jolts → smooth)
             fy = fy_lp * fy_lp*fy_lp / (fy_lp*fy_lp + FFB_SQ*FFB_SQ)   # squelch tyre-force noise (jostle), not the spring
             mz  = fy * trail
             spd = clamp(cs.v/2.5, 0.0, 1.0)                    # road feel fades in with speed

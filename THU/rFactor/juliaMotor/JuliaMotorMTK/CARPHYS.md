@@ -31,6 +31,7 @@ velocity v, flow force f), Modelica's `Translational.Interfaces.Flange` plus its
 | `WheelMass` | corner | unsprung mass `m_u` (hand-set 20 kg) |
 | `TyreVertical` | corner | carcass `kt`, `ct`, static load (hand-set rates) |
 | `BrushTyre` | corner | μ, μx, Cα, Cκ, kμ, sliding drop, camber (fitted) |
+| `SteeringColumn` | car | rack ratio 10 (setup), effective trail 4.78 cm (fitted to SteeringWheelTorque, S5) |
 
 Assembly per corner: mount → coil-over (+ the axle's bar) → wheel → tyre carcass → road. `tools/carphys_regress.jl`
 proves the assembly reproduces the single-block model: same 23/24 unknowns, every channel within 1e-10 over six
@@ -54,7 +55,7 @@ aero, the rigid body's planar motion, steering.
 | Camber ×4 | wheel inclination | static camber + roll camber into the tyre | ✅ |
 | ToeIn front / rear | wheel toe | per wheel | ✅ |
 | SteeringRatio, SteeringWheelAngle(Max) | **Steering rack / column** | ratio maps wheel to road angle; MAXSTEER 0.30 rad | 🟡 |
-| SteeringWheelTorque (360 Hz) | aligning torque through the rack (= force feedback) | FFB hand-shaped: front Fy × a hand trail curve + a spring, two 50 ms low-passes, tanh clip; never compared with the gold torque | ❌ |
+| SteeringWheelTorque (60 Hz; 360 Hz in _ST) | **Steering column** (= force feedback) | `SteeringColumn` object: front axle Fy on a 4.78 cm effective trail through the 10:1 rack, fitted to the gold (tools/steerfit_261009.jl: R² 0.982, 1.8 N·m RMS, same on both setups; tyre Mz and a centring term add nothing); FFB reads it with 15 ms smoothing (was a hand trail curve and two 50 ms low-passes) | ✅ (CARPHYS-1 S5) |
 | BrakeBias, brakeLinePress ×4 | **Master cylinder + calipers** (pressure → torque per wheel) | pedal → total torque (fitted 2956 N·m) split front/rear by a fitted torque ratio; line pressures unused | 🟡 |
 | — | brake temperature / fade | none | ❌ (not in the ibt) |
 | Gear ratios, FinalDrive | **Gearbox, final drive** | from the session | ✅ |
@@ -79,7 +80,7 @@ aero, the rigid body's planar motion, steering.
 2. **A traction aid nobody asked for.** `TC_ON` (default on) cuts the throttle when the rear slip passes 7.2 % above
    25 m/s. iRacing's own full-throttle pulls run 4–13 % rear wheelspin. In the PO's races it was cutting in 0.2–2.5 %
    of on-throttle time above 25 m/s — the at-the-limit moments.
-3. **Force feedback is hand-shaped and late.** It is not the aligning torque of a steering system: a front-force ×
+3. **Force feedback is hand-shaped and late** (fixed in S5: the SteeringColumn object, fitted to the gold's rim torque). It is not the aligning torque of a steering system: a front-force ×
    hand-trail term plus a centring spring, passed through two 50 ms low-pass filters (~100 ms of lag felt in the
    hands), never compared with iRacing's recorded steering-shaft torque.
 

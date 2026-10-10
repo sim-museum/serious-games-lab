@@ -24608,3 +24608,31 @@ WW103), section by section, plus full-throttle acceleration by speed for GPL, Ju
   or more GPL telemetry (WOT pulls on a straight, coast-downs) to fit to -- that would go on the PO's GPL test list.
 * Next for this item (if the PO wants GPL): export laps 1 and 3 and the PO's other GPL tracks; fit power and drag to
   GPL pulls the way longval fits iRacing's.
+
+## CARPHYS-1 -- retrospective at return (2026-10-09 evening)
+* Since S4: HANDLING-1 closed the contact knock, REPLAY-6 / TRACKSEG-5 / TRACKGUIDE-1 shipped, WW103-GPL-1 showed the
+  Julia car IS iRacing's (and GPL's is stronger) -- so the remaining CARPHYS work is fidelity to iRacing, not to GPL,
+  until the PO decides otherwise. Lesson from S1–S4 kept: measure on the gold first, then build the object.
+
+### CARPHYS-1 S5 (2026-10-09): the steering column as an object, the force feedback from it
+* **Measured first:** on the gold alone the rim torque per newton of front force drops 25–30 % above 1.1 g -- it
+  looked like pneumatic-trail collapse. `tools/steerfit_261009.jl` (new) then replayed the 19 gold skidpad events
+  through the session car (settled circle, gold inputs, 2 s) and fitted the gold's SteeringWheelTorque against the
+  sim's own front tyres: **τ = −0.00478 · ΣFy_front** (N·m per N; a 4.78 cm effective trail at the 10:1 rack),
+  R² 0.982, 1.8 N·m RMS, the same fitted on one setup and tested on the other (0.97–0.98). Adding the brush tyre's
+  aligning moment Mz and a centring term on the wheel angle gives nothing (R² 0.982, coefficients flip sign between
+  setups). The "collapse" was the front FORCE itself flattening at the limit.
+* **Object:** `SteeringColumn` in `chassis_parts.jl` (rack ratio, trail), in `DrivenVehicle3D` as `col`
+  (`col.Fy ~ FL.Fy + FR.Fy`); `DriveRT3D.rimtorque3d(car)`. Pure output: the car's motion is unchanged
+  (`carphys_regress`: 0.0 against HEAD over six manoeuvres × two setups).
+* **Force feedback:** the road term is now that rim torque (÷ FFB_TREF 8 N·m, which matches the old term at 0.73 g, so
+  the PO's FFB_GAIN feels the same in ordinary corners); the hand-drawn trail curve is gone; the two 50 ms smoothing
+  stages are 15 ms each (the gold has no measurable lag; ~100 ms of felt lag → ~30 ms). The wheel-angle spring and the
+  impact jolt are as before. `JM_FFB_LEGACY=1` restores the old model.
+* **What the PO will feel:** ordinary corners the same weight; at the limit the old wheel went LIGHT (its trail fell
+  to 0.54 at 1.2 g, road term 1.15) while iRacing's keeps its weight and simply stops building as the fronts saturate
+  (road term 1.94) -- understeer is "more lock gives no more weight", not "the wheel goes slack"; and less delay.
+  If it is too heavy at the limit: `JM_FFB_TREF` 10 (lighter) or the FFB gain.
+* Gate `steercol_smoke` (new): the column's torque law and sign in a left turn, its magnitude against the gold's range,
+  the FFB wiring and smoothing.
+* Gates: 52/52 pass (`GATES_SKIP=road_clear_smoke`, with steercol_smoke).

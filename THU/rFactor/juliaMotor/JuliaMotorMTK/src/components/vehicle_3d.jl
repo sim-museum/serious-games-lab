@@ -250,5 +250,7 @@ function DrivenVehicle3D(; name,
             ωr ~ (ωRL + ωRR)/2,
         ])
     end
-    System(eqs, t, vars, ps; systems = [FL, FR, RL, RR, mount..., road..., wheel..., strut..., tyrev..., arb...], name)
+    col = SteeringColumn(; name = :col)                    # CARPHYS-1 S5: the rim torque (force feedback), chassis_parts.jl
+    push!(eqs, col.Fy ~ FL.Fy + FR.Fy)
+    System(eqs, t, vars, ps; systems = [FL, FR, RL, RR, mount..., road..., wheel..., strut..., tyrev..., arb..., col], name)
 end
