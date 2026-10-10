@@ -38,7 +38,7 @@ this index was written; that is what it exists to stop.
 | **CARPHYS-1** | The car physics model is the sine qua non -- make it as accurate as possible. Build it from the .ibt with Julia equivalents of Modelica objects: if the .ibt contains a rollbar, the Julia model contains a rollbar object. Investigate any non-physical-seeming Julia car behaviour, and why GPL feels better than Julia (could be many things, e.g. the brakes). Cue any further iRacing test drives for this evening (PO 2026-10-09) | open -- top priority |
 | **HANDLING-1** | The PO's car often oversteers and washes out in a non-physical way -- at the Ring (DEFAULT setup) as at Spa (WW103) (PO 2026-10-08) | open -- with both setups it points at the tyre model beyond the grip peak, not the setup (cf. WW103-GPL-1's 50° steady slide); ✅ S1–S3 done, rotated (2026-10-09): the PO's slides are caught by the CARPHYS-1 tyre; the AI-contact knock that launched the WG s≈1612 slide is now a rigid-body impulse |
 | **TRACKGUIDE-1** | For the post-race analysis, use the GPL track guides under `~/sgl/THU` (PO 2026-10-09) -- `DOC/trackGuidesAndSetups_LOR/` (Lights Out Racing, 11 tracks, the Ring 71 pages: per-section, per-turn gear, braking and line) and `DOC/trackGuides_fs/` (7 tracks) | open |
-| **TRACKSEG-5** | More track-section names for the on-screen banner, from the track maps under `~/sgl/THU` -- the Ring shows only a subset of the names the PO has seen there (PO 2026-10-09). Known source: the BAPOM maps (`DOC/trackMaps/`, `WP/drive_c/Sierra/GPL/tracks/*/map-*.pdf`); for the Ring they add Breidscheid, Angstkurve, Hocheichen, Eiskurve, Hohenrain-Schikane, Pflanzgarten I/II | open |
+| **TRACKSEG-5** | More track-section names for the on-screen banner, from the track maps under `~/sgl/THU` -- the Ring shows only a subset of the names the PO has seen there (PO 2026-10-09). Known source: the BAPOM maps (`DOC/trackMaps/`, `WP/drive_c/Sierra/GPL/tracks/*/map-*.pdf`); for the Ring they add Breidscheid, Angstkurve, Hocheichen, Eiskurve, Hohenrain-Schikane, Pflanzgarten I/II | ✅ **S1 (2026-10-09), AWAITING THE PO's look:** the Ring 26 → 34 names from the PO's own GPL add-on boards (TS_*) + the BAPOM map; Wippermann (360 m early) and Brünnchen/Eschbach (swapped) corrected; the other tracks' maps add nothing |
 | **REPLAY-6** | Add zandracer's per-wheel overlay to the replay screen: the effective contact patch and the traction budget for all four wheels (PO 2026-10-09). zandracer = `/home/g/zand_racer` (rF1-based): `src/render.jl` `htraction!` -- a 2×2 of rings, each sized by that tyre's grip, with a force dot coloured by utilisation | ✅ **S1 (2026-10-09), AWAITING THE PO's look:** every replay recorded from now on shows a 2×2 tyre panel for your car -- ring = that tyre's grip ellipse (μ·Fz, grows with load), dot = its force, red = sliding; W toggles |
 | **REPLAY-5** | Replay: jump to the beginning or the end with one command; at the end the replay gets stuck and cannot be backed up -- the only way out is to exit (PO 2026-10-08) | ✅ **CLOSED (2026-10-09), for the PO's look:** replay pauses at its end (no more sticking), Space there replays from the start, Home/End jump to start/end, PgUp/PgDn ±10 s |
 | **AIHELMET-1** | The AI drivers' helmets render as a dark dome (black lobes from the front) where GPL's are the driver's skin -- found 2026-10-07 during HANDS-2 | ✅ **S1 (2026-10-07):** each AI driver's own helmet skin bound to the shell (`261007/helmet/`) |
@@ -24512,3 +24512,34 @@ The three new items are small and visible; REPLAY-6 also shows the car-physics w
   tyres inside their ellipse, braking −Fx on both axles with μx·Fz > μy·Fz, and the recording/draw wiring.
   Gates: 50/50 pass (`GATES_SKIP=road_clear_smoke`, with tyrepanel_smoke; run beside a DVD conversion at 7 cores).
 * For the PO's look: open any replay recorded from now on, chase or cockpit view on your own car; W hides the panel.
+
+## TRACKSEG-5 -- retrospective at start (2026-10-09)
+* REPLAY-6 went in one sprint: the physics already carried every number the panel needed; the work was reading the
+  tyre, not modelling it. Lesson kept: check what the model already has before adding channels.
+
+### TRACKSEG-5 S1 (2026-10-09): the Ring's names from the PO's own GPL boards and the BAPOM map -- 26 → 34
+* **Source 1, the boards the PO sees:** the PO's GPL Ring has the "Traffic-signs" add-on (`tracks/nurburg/
+  Traffic-signs_README.txt`: "more than 140 traffic- and track-section-signs that were placed around the Nurburgring
+  until 1970"). Its 25 section boards are `TS_*.3do` with a `TS_*.MIP` face; all 25 faces decoded and read
+  (`parity/trackseg5/ring_boards.png`), 23 are placed in the installed `nurburg.3do`, each projected onto the ribbon
+  (`tools/section_signs.jl nurburg '^(ts_|s_)'`) 0.2–8.7 m from the road edge.
+* **Source 2, the map:** the BAPOM map (`DOC/trackMaps/map-nurb2002.pdf`, = `tracks/nurburg/map-nurburg.pdf`) names
+  six corners no board names. `tools/bapom_names.py` (new) fits our ribbon onto the map's track line (similarity
+  transform, mirror-searched ICP; 2.4 px mean gap) and puts each label at the nearest ribbon point; every known name
+  lands in the right order, the boards stand a median 70 m before the map's labels (labels sit beside the apex), so a
+  map-only name starts 70 m before its label.
+* **New names:** Hocheichen, Quiddelbacher Höhe, Galgenkopf, Hohenrain (boards); Breidscheid, Angstkurve, Eiskurve,
+  Pflanzgarten II (map; Breidscheid on the valley floor, s 9700–9900 the lowest road between Wehrseifen and Ex-Mühle).
+  Pflanzgarten is now Pflanzgarten I. Each has an English handle (High Oaks, Quiddelbach Heights, Gallows Head,
+  High Ridge, Broad Divide, Fear Curve, Ice Curve).
+* **Two names were wrong:** Wippermann started 360 m early (Papyrus's `s_wipp` board, 15,047 m; the add-on board and
+  the map both put it at ~15,410–15,466), and Brünnchen came BEFORE Eschbach (`s_brun` at 15,501 m). The add-on boards
+  and the map agree: Eschbach (15,912) then Brünnchen (16,296), the real order. Where a section has both, the
+  add-on board's position is used (it is where the PO sees the name); the Papyrus board stays where there is no
+  add-on board (Wehrseifen, Klostertal, Antoniusbuche).
+* Not added: Hedwigshöhe -- the add-on has its board (`w_hedwig`) but it is not placed in this nurburg.3do and the
+  map does not name it. The other four tracks: their BAPOM maps (DOC and track folders) name nothing our tables lack.
+* Gates: 50/50 pass (`GATES_SKIP=road_clear_smoke`); trackseg_smoke now also checks the Ring has the new names, in lap
+  order, with Eschbach before Brünnchen.
+* For the PO's look: a Ring lap -- the banner now names Hocheichen, Quiddelbacher Höhe, Breidscheid, Angstkurve, Eiskurve,
+  Pflanzgarten I / II, Galgenkopf and Hohenrain, and Wippermann / Eschbach / Brünnchen come up where GPL's boards stand.

@@ -16,6 +16,12 @@ end
 check(isempty(missing_en), "every non-English section name has an English handle" * (isempty(missing_en) ? "" : " -- missing: " * join(missing_en, ", ")))
 check(isempty(long), "labels fit the band (<= 48 chars)" * (isempty(long) ? "" : ": " * join(long, ", ")))
 check(section_label("Stavelot") == "Stavelot (Stable Lot)", "a place name now reads with its handle: $(section_label("Stavelot"))")
+# TRACKSEG-5: the Ring's names from the PO's add-on boards + the BAPOM map, in lap order, the two old errors fixed
+ring = [n for (_s, n) in TRACK_SECTIONS["nurburgring"].secs]; rs = [x for (x, _n) in TRACK_SECTIONS["nurburgring"].secs]
+check(length(ring) >= 34 && issorted(rs), "the Ring has the boards' and the map's names, in lap order ($(length(ring)))")
+check(all(n -> n in ring, ("Hocheichen", "Quiddelbacher Höhe", "Breidscheid", "Angstkurve", "Eiskurve", "Pflanzgarten II", "Galgenkopf", "Hohenrain")),
+      "the TRACKSEG-5 names are there")
+check(findfirst(==("Eschbach"), ring) < findfirst(==("Brünnchen"), ring), "Eschbach comes before Brünnchen (the real order, the add-on boards and the map)")
 src = read(joinpath(ROOT, "drive_native_mtk.jl"), String)
 check(occursin("get(ENV, \"JM_SEGNAME_SECS\", \"6.0\")", src), "names stay up 6 s by default (was 3)")
 println("TRACKSEG GATE: ", ok ? "PASS" : "FAIL"); exit(ok ? 0 : 1)

@@ -10,8 +10,15 @@
 #   * nurburgring -- GPL's OWN section boards: the 23 Papyrus `s_*` objects in nurburg.dat (s_flug = Flugplatz,
 #     s_schwed = Schwedenkreuz, s_hohe = Hohe Acht, ...; text read off their textures), each projected onto the
 #     sim's ribbon (JuliaMotorMTK/tools/section_signs.jl). A board stands at the corner it names (the Karussell
-#     board is at 13,846 m, the 220° left at 13,852). Südkehre and Nordkehre, the pits loop before the first
+#     board is at 13,846 m, the 220° left at 13,852) -- see TRACKSEG-5 below for the add-on boards now used. Südkehre and Nordkehre, the pits loop before the first
 #     board, are placed from the .trk arcs.
+#   * TRACKSEG-5 (PO 2026-10-09: "nurburgring currently contains only a subset of the track section names I've seen for
+#     the ring"): the PO's GPL Ring carries the "Traffic-signs" add-on -- 25 period section boards (TS_*.3do, faces
+#     TS_*.MIP, all read). Where a section has an add-on board, its position is used (it is the name the PO sees);
+#     Papyrus's s_* board where there is none. Names on the BAPOM map with no board (Breidscheid, Angstkurve,
+#     Eiskurve, Pflanzgarten II) are placed by fitting the ribbon onto the map's track line
+#     (JuliaMotorMTK/tools/bapom_names.py), 70 m before the label (the boards' median lead on the map's labels).
+#     It also corrected two: Wippermann started 360 m early, and Brünnchen came before Eschbach.
 #   * the other tracks have no boards. Names are the ones on the BAPOM maps GPL ships with each track
 #     (tracks/<t>/map-<t>.pdf), matched in order to the corners of the .trk arcs
 #     (JuliaMotorMTK/tools/track_corners.jl): s is where the named corner's first arc begins (a straight's
@@ -22,29 +29,37 @@ const TRACK_SECTIONS = Dict(
         (0.0,     "Start und Ziel"),
         (574.0,   "Südkehre"),
         (1760.0,  "Nordkehre"),
-        (2571.4,  "Hatzenbach"),
-        (3984.7,  "Flugplatz"),
-        (5258.3,  "Schwedenkreuz"),
-        (5626.4,  "Aremberg"),
-        (6349.2,  "Fuchsröhre"),
-        (6913.5,  "Adenauer Forst"),
-        (7776.0,  "Metzgesfeld"),
-        (8133.4,  "Kallenhard"),
-        (9157.1,  "Wehrseifen"),
-        (9869.1,  "Ex-Mühle"),
-        (10686.0, "Bergwerk"),
-        (11924.6, "Kesselchen"),
-        (13133.8, "Klostertal"),
-        (13845.8, "Karussell"),
-        (14764.7, "Hohe Acht"),
-        (15046.9, "Wippermann"),
-        (15501.0, "Brünnchen"),
-        (15944.3, "Eschbach"),
-        (17107.8, "Pflanzgarten"),
-        (18553.4, "Schwalbenschwanz"),
-        (19577.1, "Döttinger Höhe"),
-        (21557.4, "Antoniusbuche"),
-        (21992.7, "Tiergarten")]),
+        (2359.1,  "Hatzenbach"),             # TS_HB
+        (3337.1,  "Hocheichen"),             # TS_HO   (TRACKSEG-5: new)
+        (3726.7,  "Quiddelbacher Höhe"),     # TS_QH   (new)
+        (4175.5,  "Flugplatz"),              # TS_FL
+        (5290.6,  "Schwedenkreuz"),          # TS_SK
+        (5613.0,  "Aremberg"),               # TS_AB
+        (6365.4,  "Fuchsröhre"),             # TS_FR
+        (6924.3,  "Adenauer Forst"),         # TS_AF
+        (7738.4,  "Metzgesfeld"),            # TS_MF
+        (8257.0,  "Kallenhard"),             # TS_KH
+        (9157.1,  "Wehrseifen"),             # s_wehr (the add-on's TS_WS is not placed in this nurburg.3do)
+        (9700.0,  "Breidscheid"),            # map, the valley floor (TS_BS not placed)   (new)
+        (9925.5,  "Ex-Mühle"),               # TS_EM
+        (10742.4, "Bergwerk"),               # TS_BW
+        (11798.4, "Kesselchen"),             # TS_KE
+        (12647.0, "Angstkurve"),             # map   (new)
+        (13133.8, "Klostertal"),             # s_klos
+        (13759.9, "Karussell"),              # TS_KA
+        (14845.4, "Hohe Acht"),              # TS_HA
+        (15409.6, "Wippermann"),             # TS_WM  (was s_wipp 15046.9, 360 m early)
+        (15912.1, "Eschbach"),               # TS_EB
+        (16296.3, "Brünnchen"),              # TS_BR  (was s_brun 15501.0, BEFORE Eschbach)
+        (16616.0, "Eiskurve"),               # map   (new)
+        (16822.9, "Pflanzgarten I"),         # TS_PG
+        (17925.0, "Pflanzgarten II"),        # map   (new)
+        (18308.8, "Schwalbenschwanz"),       # TS_SS
+        (19249.3, "Galgenkopf"),             # TS_GK   (new)
+        (19829.7, "Döttinger Höhe"),         # TS_DH
+        (21557.4, "Antoniusbuche"),          # s_anten
+        (21990.0, "Tiergarten"),             # TS_TG
+        (22309.8, "Hohenrain")]),            # TS_HR   (new; the map's "Hohenrain-Schikane")
     "watglen" => (lap = 3755.5, secs = [
         (329.0,  "Esses"),
         (806.0,  "Front Straight"),
@@ -95,7 +110,7 @@ const SECTION_EN = Dict(
     "Flugplatz" => "Airfield", "Schwedenkreuz" => "Swedish Cross", "Fuchsröhre" => "Foxhole",
     "Adenauer Forst" => "Adenau Forest", "Ex-Mühle" => "Ex-Mill", "Bergwerk" => "Mine", "Kesselchen" => "Little Cauldron",
     "Klostertal" => "Monastery Valley", "Karussell" => "Carousel", "Hohe Acht" => "High Eight", "Brünnchen" => "Little Well",
-    "Pflanzgarten" => "Plant Garden", "Schwalbenschwanz" => "Swallow's Tail", "Döttinger Höhe" => "Dötting Heights",
+    "Pflanzgarten I" => "Plant Garden I", "Pflanzgarten II" => "Plant Garden II", "Schwalbenschwanz" => "Swallow's Tail", "Döttinger Höhe" => "Dötting Heights",
     "Antoniusbuche" => "St Anthony's Beech", "Tiergarten" => "Animal Park",
     # Monza (Italian)
     "Curva Grande" => "Big Curve", "Rettifilo Centrale" => "Central Straight", "Parabolica" => "Parabolic",
@@ -113,6 +128,9 @@ const SECTION_EN = Dict(
     "Hatzenbach" => "Hatz Brook", "Aremberg" => "Eagle Mountain", "Metzgesfeld" => "Butcher's Field",
     "Kallenhard" => "Cold Ridge", "Wehrseifen" => "Weir Trickle", "Wippermann" => "Seesaw Man",
     "Eschbach" => "Ash Brook",
+    # TRACKSEG-5: the add-on boards' and the map's extra Ring names
+    "Hocheichen" => "High Oaks", "Quiddelbacher Höhe" => "Quiddelbach Heights", "Breidscheid" => "Broad Divide",
+    "Angstkurve" => "Fear Curve", "Eiskurve" => "Ice Curve", "Galgenkopf" => "Gallows Head", "Hohenrain" => "High Ridge",
     "Della Roggia" => "Of the Irrigation Ditch", "Lesmos" => "Lazy Bends", "Serraglio" => "Seraglio", "Ascari" => "Ascari's Corner",
     "Les Combes" => "The Hollows", "Burnenville" => "Burning Town", "Malmedy" => "Bad Medicine", "Masta" => "Mast Village",
     "Stavelot" => "Stable Lot", "Blanchimont" => "White Mount",
