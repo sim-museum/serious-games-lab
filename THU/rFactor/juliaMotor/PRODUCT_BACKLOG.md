@@ -24705,3 +24705,37 @@ WW103), section by section, plus full-throttle acceleration by speed for GPL, Ju
   corner on part throttle; full throttle unchanged.
 * Gate `throttlemap_smoke` (new): closed/WOT unchanged, the gold's knots, monotonic.
 * Gates: 55/55 pass (`GATES_SKIP=road_clear_smoke`, with throttlemap_smoke).
+
+### CARPHYS-1 S9 (2026-10-09): the clutch as an object, its bite point measured from the gold's launches
+* **Measured** (`tools/clutchfit_261009.py`, new): the gold holds 289 standing starts (pit exits, restarts). During a
+  slipping launch the clutch torque is what drives the car, so it is measured on the CAR side (accelerometer, rolling,
+  wheel inertia, through the 1st-gear ratio) -- the engine side is swamped by shift blips (tried first: noise). 23,293
+  slipping rows, tight spreads:
+
+  | engagement | 0.05 | 0.15 | 0.25 | 0.35 | 0.45 | 0.55 | 0.65 |
+  |---|---|---|---|---|---|---|---|
+  | gold clutch torque N·m | 1 | 14 | 71 | 142 | 202 | 321 | 407 |
+  | model before S9 (500 × e) | 25 | 75 | 125 | 175 | 225 | 275 | 325 |
+
+  A bite point near 0.15, then steep -- the old linear clutch grabbed too early and too softly. iRacing's Clutch and
+  ClutchRaw run the same way, ~1:1, so the bite point is the clutch's, not a pedal curve. Above 0.65 launches have
+  locked up; the 0.45–0.65 slope is extended to 760 N·m fully in (it only matters for shift shocks).
+* **Object:** `Clutch` in `chassis_parts.jl` (engagement, slip → transmitted torque, capacity through powertrain.jl
+  `clutch_capacity` / CLUTCH_KNOTS, coupling stiffness c_c 60). `JM_CLUTCH_LINEAR=1` restores the old law.
+* **Checked** (`tools/launchval_261009.jl`, new): 17 gold launches re-driven by the session car with the gold's own
+  throttle, brake and clutch: mean |Δspeed| at 1/2/3 s **2.04 → 1.35 m/s**. Gentle launches now match (12-18-10:
+  gold 2.7/5.4/5.5 m/s, sim 2.6/5.3/5.8; before 4.5/7.8/7.9). Hard launches (12-03-22) are still ~25 % slow in the sim
+  with either clutch (19.5 vs 14.3 m/s at 3 s) -- the next suspect is traction off the line, not the clutch.
+  `carphys_regress`: car motion unchanged; engine speed differs ≤ 0.9 rad/s (the stronger engaged clutch slips less).
+* **What the PO will feel:** the clutch pedal now has a bite point -- nothing in the first part of its travel from fully
+  pressed, then it takes up firmly; launches with the pedal feathered behave like iRacing's.
+* Gate: `throttlemap_smoke` now also checks the clutch's bite point, the gold's three values, monotonic, the object.
+* Gates: 55/55 pass (`GATES_SKIP=road_clear_smoke`).
+* **CARPHYS-1 rotates** after S5–S9 (5 of ≤ 6 sprints; PO 2026-10-09 evening: ≤ 6 per item). This rotation added the
+  steering column (FFB from the gold's rim torque), the brake system (the gold's line pressures), the travel stops
+  (Flugplatz landings 0.20 → 0.13 g), the measured throttle and clutch maps. Worked: measure on the gold first, then
+  build the object, then an acceptance replay of the gold. Didn't: the measured dampers (still rejected), and the
+  engine side of the clutch (shift blips) -- the car side worked. Open for the next rotation: hard launches ~25 %
+  slow (the clutch dump at 9,500 rpm drags the gold's engine to 2,000 rpm, ours stays above 6,000: engine inertia vs
+  60 Hz sampling); the remaining inline parts (gearbox, LSD, engine, aero) as objects; tyre temperature/pressure;
+  the IRTEST-261009 results when the PO has driven them. Next item: TRACKS-TD-1.

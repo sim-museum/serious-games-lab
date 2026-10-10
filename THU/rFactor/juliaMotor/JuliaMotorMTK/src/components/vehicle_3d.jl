@@ -211,7 +211,9 @@ function DrivenVehicle3D(; name,
     # --- slipping clutch / launch (identical to DrivenVehicleRT) ---
     ωgb = ωr*gr
     engage = (1.0 - clutch) * clamp(gear/0.5, 0.0, 1.0)
-    Tcl   = clamp(c_c*(ωe - ωgb), -T_cap*engage, T_cap*engage)
+    clu = Clutch(; name = :clu)                            # CARPHYS-1 S9: the measured bite point (chassis_parts.jl)
+    append!(eqs, [clu.engage ~ engage, clu.slip ~ ωe - ωgb])
+    Tcl   = clu.T
     Tidle = clamp(k_idle*max(0.0, idle_rpm - rpm), 0.0, 120.0) * (1.0 - engage)
     run   = clamp((rpm - 300.0)/150.0, 0.0, 1.0)
 
@@ -267,5 +269,5 @@ function DrivenVehicle3D(; name,
     push!(eqs, col.Fy ~ FL.Fy + FR.Fy)
     append!(eqs, [brk.pedal ~ brake,                       # CARPHYS-1 S6: the brake system object; its calipers from the fit
                   brk.kF ~ Tbrake_max*bias/(brk.P_full*0.535), brk.kR ~ Tbrake_max*(1 - bias)/(brk.P_full*(1 - 0.535))])
-    System(eqs, t, vars, ps; systems = [FL, FR, RL, RR, mount..., road..., wheel..., strut..., tyrev..., arb..., col, brk, (stops === nothing ? [] : stops)...], name)
+    System(eqs, t, vars, ps; systems = [FL, FR, RL, RR, mount..., road..., wheel..., strut..., tyrev..., arb..., col, brk, clu, (stops === nothing ? [] : stops)...], name)
 end

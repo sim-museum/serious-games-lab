@@ -90,6 +90,26 @@ function throttle_map(thr)
     f
 end
 
+# CARPHYS-1 S9: the clutch's torque capacity against engagement (1 = fully in), measured from the gold's 289 standing
+# starts on the CAR side (tools/clutchfit_261009.py, 23,293 slipping rows): a BITE POINT -- nothing below ~0.1, 14 N·m
+# at 0.15 -- then 71 / 142 / 202 / 321 / 407 N·m at 0.25 … 0.65. Above 0.65 the launches have locked up; the 0.45–0.65
+# slope is extended to 760 N·m at full engagement (it only matters for shift shocks). The model before S9 had a linear
+# 500 N·m × engagement: grabbing too early (125 N·m at 0.25) and too soft late (325 at 0.65).
+const CLUTCH_KNOTS = ((0.0, 0.0), (0.05, 1.0), (0.15, 14.0), (0.25, 71.0), (0.35, 142.0), (0.45, 202.0), (0.55, 321.0),
+                      (0.65, 407.0), (1.0, 760.0))
+const CLUTCH_LINEAR = haskey(ENV, "JM_CLUTCH_LINEAR")               # A/B: 500 N·m × engagement, as before S9
+"Clutch torque capacity [N·m] at engagement `e` (0 out … 1 in), through CLUTCH_KNOTS (Σ ramps: symbolic-safe)."
+function clutch_capacity(e)
+    CLUTCH_LINEAR && return 500.0*e
+    k = CLUTCH_KNOTS
+    T = 0.0*e; s0 = 0.0
+    for i in 1:length(k)-1
+        s = (k[i+1][2] - k[i][2]) / (k[i+1][1] - k[i][1])
+        T += (s - s0)*max(0.0, e - k[i][1]); s0 = s
+    end
+    T
+end
+
 function engine_torque(rpm, throttle; redline = 9500.0, T0 = EFRIC_T0, k = EFRIC_K,
                        r0 = EFRIC_R0, w = EFRIC_W)
     wot = max(0.0, wot_torque(rpm))                                 # WOT (net) torque, measured

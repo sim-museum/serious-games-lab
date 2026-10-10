@@ -91,6 +91,16 @@ function AntiRollBar(; name, k)
     System(eqs, t, vars, ps; systems = [mL, wL, mR, wR], name)
 end
 
+"""Clutch (CARPHYS-1 S9): a dry plate clutch between the engine and the gearbox input. `engage` is the pedal's
+engagement (0 out, 1 in), `slip` the speed difference engine − gearbox input [rad/s]. Below its capacity it couples
+the two through the stiffness `c_c` (N·m per rad/s); slipping, it transmits its capacity, which the gold measures
+(powertrain.jl CLUTCH_KNOTS: a bite point near 0.15, 407 N·m at 0.65)."""
+function Clutch(; name, c_c = 60.0)
+    ps = @parameters c_c=c_c
+    vars = @variables engage(t) slip(t) cap(t) T(t)
+    System([cap ~ clutch_capacity(engage), T ~ clamp(c_c*slip, -cap, cap)], t, vars, ps; name)
+end
+
 """Shock travel limits (CARPHYS-1 S7): the bump stop at full compression and the shock's own extension limit at full
 droop, between the body mount (`a`) and the wheel (`b`), beside the coil-over. `c_bump` > 0 and `c_reb` < 0 are the
 wheel travel from static to each end (the setup's ShockDeflection static/max and Packer, through the motion ratio).

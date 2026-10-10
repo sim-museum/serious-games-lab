@@ -32,13 +32,14 @@ velocity v, flow force f), Modelica's `Translational.Interfaces.Flange` plus its
 | `TyreVertical` | corner | carcass `kt`, `ct`, static load (hand-set rates) |
 | `BrushTyre` | corner | μ, μx, Cα, Cκ, kμ, sliding drop, camber (fitted) |
 | `TravelStops` | corner | bump / droop travel from the setup's ShockDeflection and Packer; stiffness 500 / 20 kN/m (Flugplatz landings, S7) |
+| `Clutch` | car | capacity vs engagement from the gold's launches (bite point, S9) |
 | `BrakeSystem` | car | line pressure 122.2 bar at full pedal × garage BrakeBias (gold); caliper N·m/bar front/rear (BRAKE-2 fit, S6) |
 | `SteeringColumn` | car | rack ratio 10 (setup), effective trail 4.78 cm (fitted to SteeringWheelTorque, S5) |
 
 Assembly per corner: mount → coil-over (+ the axle's bar) → wheel → tyre carcass → road. `tools/carphys_regress.jl`
 proves the assembly reproduces the single-block model: same 23/24 unknowns, every channel within 1e-10 over six
-manoeuvres and both setups. Still inline in `DrivenVehicle3D` (next objects): clutch, gearbox, LSD, engine, aero, the rigid body's planar
-motion. (S5 added the steering column, S6 the brake system.)
+manoeuvres and both setups. Still inline in `DrivenVehicle3D` (next objects): gearbox, LSD, engine, aero, the rigid body's planar motion.
+(S5 added the steering column, S6 the brake system, S7 the travel stops, S9 the clutch.)
 
 ## Inventory: every physical quantity the .ibt carries, and what the model has
 
@@ -62,7 +63,7 @@ motion. (S5 added the steering column, S6 the brake system.)
 | — | brake temperature / fade | none | ❌ (not in the ibt) |
 | Gear ratios, FinalDrive | **Gearbox, final drive** | from the session | ✅ |
 | Differential: preload, ramps, plates | **LSD** (ramp clutch-pack) | ramp LSD, one friction constant fitted to the gold's wheel-speed split | ✅ |
-| Clutch / ClutchRaw | **Clutch** | slipping clutch, capacity 500 N·m (hand), c_c 60 | 🟡 |
+| Clutch / ClutchRaw | **Clutch** | `Clutch` object: capacity vs engagement measured from the gold's 289 standing starts (bite point ~0.15, 407 N·m at 0.65; CLUTCH_KNOTS), coupling stiffness c_c 60 | ✅ (S9) |
 | RPM, ManifoldPress, shift light | **Engine** (torque map, friction, inertia) | WOT torque knots + friction fitted to the gold; part throttle through the measured progressive map (THROTTLE_KNOTS, S8: 30 % pedal = 21 % torque fraction); Ie 0.18 corroborated | ✅ (S8) |
 | LF/RF/LR/RRspeed | wheel rotation, rolling radius | front Rw 0.30 (hand), rear 0.334 (measured); wheel inertia Iw 1.0 (hand) | 🟡 |
 | tyre: ColdPressure, pressure, tempL/M/R + carcass ×4, wear | **Tyre** (brush) + its pressure and temperature | brush tyre fitted (μ, Cα, μx, Cκ, load sensitivity, camber, sliding drop); no pressure or temperature dependence in the sim (a thermal component exists in `components/tyre_thermal.jl`, not used) | 🟡 |
