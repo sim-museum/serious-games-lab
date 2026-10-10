@@ -24334,7 +24334,7 @@ rotated to honour the 4-sprint cap. The evening iRacing test list grows in `IRTE
 
 ## IRTEST-261009 -- iRacing tests cued for the PO's evening session (grows as items need them)
 Every test: Lotus 49, 360 Hz logging ON, setup named in the test, one .ibt per test (exit to the garage between tests).
-Order = value to the model; about 45 min of driving in all.
+Order = value to the model; about 50 min of driving in all.
 1. **Held slides** (Centripetal, default setup, ~10 min): from a steady circle at 100–140 km/h, provoke the rear (lift
    or squeeze) and HOLD the slide 3–5 s at 20–50° of body slip with counter-steer, both directions, 6+ slides. Today
    the beyond-peak tyre has only spins and lift-offs behind it; held slides separate the sideways sliding friction
@@ -24352,6 +24352,11 @@ Order = value to the model; about 45 min of driving in all.
 5. **Big kerb and compression** (Nordschleife Touristenfahrten, default setup, ~7 min): one lap at a steady pace
    taking the Fuchsröhre compression flat, plus two passes over a high kerb (e.g. Hatzenbach) -- the shock deflection
    near its ShockDeflection limit identifies the bump stops/packers the model does not have.
+6. **Steering flicks** (CARPHYS-1 S11, 2026-10-10; Centripetal's straight or any long flat straight, default setup,
+   ~6 min): at a steady 100 km/h and again at 160 km/h, throttle held, flick the wheel ~90° in ~0.1 s and HOLD it for
+   ~1 s, then back to straight; 5 flicks each way at each speed, settling straight between them. The yaw-rate onset in
+   the first 50–100 ms identifies the tyre relaxation length σ (`TyreRelaxation`, built in S11, opt-in via JM_RELAX
+   because the skidpad gold can't tell σ 0.1 m from 0.8 m). Unlike the slalom (#2) a held step gives a clean onset.
 
 ### CARPHYS-1 S2 (2026-10-09): the vertical load path as Modelica-style objects -- reproduces today's car exactly
 * **Objects** (`JuliaMotorMTK/src/components/chassis_parts.jl`): a translational `Flange` connector (position,
@@ -24957,3 +24962,21 @@ WW103), section by section, plus full-throttle acceleration by speed for GPL, Ju
   faster than the gold's. The brush tyre makes its force instantly from the slip (no relaxation length); a real
   tyre builds it over σ ≈ 0.3–0.6 m of rolling. That is the next object: transient slip per tyre, judged by izzval.
 * CARPHYS.md: traction-control row corrected (opt-in since the slide sprint), the Izz finding added.
+
+### CARPHYS-1 S11 (2026-10-10): tyre relaxation as an object -- built and working, not identifiable from the gold; opt-in
+* New object `TyreRelaxation` (chassis_parts.jl): σ·dα/ds = α_in − α with ds = V·dt, one per tyre between the kinematic
+  slip and the brush force law. `relax = (σf, σr)` on the vehicle (`JM_RELAX="σf,σr"`); σ is a runtime parameter of
+  rxFL..rxRR. Default off, so the model is S10's exactly.
+* It works: a steering step at 30 m/s gives 8.7 deg/s of yaw rate at 50 ms with σ 0.05 m and 3.7 with σ 2 m; the
+  front slip trails the kinematic slip as it should.
+* The gold doesn't discriminate it: izzval (`JM_IZZ_PARAM=relax`) over the 19 skidpad events gives 3.63–3.64 deg/s
+  yaw-rate RMS and 1.43–1.44° sideslip RMS for every σ from 0.1 to 0.8 m, the same as without it. Those events are
+  throttle-driven and their slip changes over hundreds of ms; a 0.4 m relaxation is 13–20 ms at those speeds.
+* So the S10 reading ("the sim's yaw responds too quickly; is it lag?") is wrong as well. The per-event errors are
+  dominated by two power-on events where the sim spins (15-36:72.2, 23 deg/s) or doesn't (00-05:59.9). Those are
+  limit-handling differences, not transient lag.
+* Decision: kept opt-in until fitted (one fitted decision at a time). IRTEST-261009 #6 (added at the PO's request): steering flicks at constant speed
+  (e.g. 100 and 160 km/h, a 90° wheel input in ~0.1 s, held 1 s) in iRacing would identify σ from the yaw-rate onset.
+* New gate relax_smoke: off by default; standalone 63.2 % of the step after σ (exact) and settled after 5σ; car
+  steering step lags with a long σ. (Gate count 58.)
+* Gates: 58/58 pass (`GATES_SKIP=road_clear_smoke`). Scrum PAUSED by the PO after this sprint (2026-10-10); next when resumed: CARPHYS-1 S12, the two power-on events where the sim and the gold disagree on spinning.

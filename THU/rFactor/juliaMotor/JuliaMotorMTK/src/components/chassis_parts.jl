@@ -101,6 +101,16 @@ function Clutch(; name, c_c = 60.0)
     System([cap ~ clutch_capacity(engage), T ~ clamp(c_c*slip, -cap, cap)], t, vars, ps; name)
 end
 
+"""Tyre relaxation (CARPHYS-1 S11): a tyre does not make its lateral force from the kinematic slip angle at once -- the
+carcass and tread deflect over a rolling distance σ before the contact patch reaches its new slip. First order in
+distance: σ·dα/ds = α_in − α, with ds = V·dt (V the wheel's rolling speed, kept ≥ 1 m/s by the caller). `α_in` is
+the kinematic slip; `α` the transient slip the tyre's force law sees."""
+function TyreRelaxation(; name, σ = 0.4)
+    ps = @parameters σ=σ
+    vars = @variables α_in(t) α(t)=0.0 V(t)
+    System([D(α) ~ V/σ*(α_in - α)], t, vars, ps; name)
+end
+
 """Shock travel limits (CARPHYS-1 S7): the bump stop at full compression and the shock's own extension limit at full
 droop, between the body mount (`a`) and the wheel (`b`), beside the coil-over. `c_bump` > 0 and `c_reb` < 0 are the
 wheel travel from static to each end (the setup's ShockDeflection static/max and Packer, through the motion ratio).

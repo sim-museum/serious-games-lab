@@ -55,6 +55,9 @@ function DrivenVehicle3D(; name,
         # Stiffnesses chosen on the gold's Flugplatz passes (tools/crestval_261004.jl): bump 500 kN/m, top-out 20 kN/m
         # (a stiff top-out yanks the body down at every take-off: crest dip −0.5 g vs the gold's −0.1).
         travel = nothing, k_stop = 5e5, k_stop_reb = 2e4,
+        # CARPHYS-1 S11: tyre relaxation lengths (σ front, σ rear) [m] (TyreRelaxation); `nothing` = the force follows the
+        # kinematic slip at once (the model before S11). σ is a parameter of each rxFL..rxRR, settable without a rebuild.
+        relax = nothing,
         CdA = CDA_IBT, ρair = 1.10, g = 9.80665,
         throttle0 = 0.0, brake0 = 0.0, steer0 = 0.0, gear0 = 1.72, brush = false,
         # PO: ct (tyre vertical DAMPING) was 300 ≈ 8% of critical for the unsprung mass → the car
@@ -156,6 +159,8 @@ function DrivenVehicle3D(; name,
     (mount, road, wheel, strut, tyrev, arb, stops)
     end
 
+    rlx = relax === nothing ? nothing :
+        [TyreRelaxation(; name = Symbol(:rx, k), σ = (k in ("FL", "FR") ? relax[1] : relax[2])) for k in ("FL", "FR", "RL", "RR")]
     eqs = Equation[]; Fyb=Any[]; Fxb=Any[]; Mz=Any[]; Fx_f=Any[]; Fx_r=Any[]; Pslip=Any[]
     Fsusp=Any[]; xs=Any[]; ys=Any[]
     for (idx, (ty, xi, yi, st, axle, cor, zr, vr, Fz, key)) in enumerate(spec)
@@ -181,7 +186,11 @@ function DrivenVehicle3D(; name,
         vx = u - r*yi;  vy = v + r*xi
         Vref = sqrt(vx^2 + 1.0)
         α = st - atan(vy, Vref);  κ = (ωax*Rw - vx)/Vref
-        append!(eqs, [ty.Fz ~ Fz, ty.α ~ α, ty.κ ~ κ])
+        if rlx === nothing
+            append!(eqs, [ty.Fz ~ Fz, ty.α ~ α, ty.κ ~ κ])
+        else                                                  # CARPHYS-1 S11: the tyre sees the relaxed slip
+            append!(eqs, [ty.Fz ~ Fz, rlx[idx].α_in ~ α, rlx[idx].V ~ Vref, ty.α ~ rlx[idx].α, ty.κ ~ κ])
+        end
         if cmb
             # CAMBER-1: inclination to the road, + = top toward +y (the tyre's thrust side). The garage's camber is
             # negative top-in, so the left wheel's static lean is +cam and the right's −cam. The SUSPENSION roll --
@@ -269,5 +278,6 @@ function DrivenVehicle3D(; name,
     push!(eqs, col.Fy ~ FL.Fy + FR.Fy)
     append!(eqs, [brk.pedal ~ brake,                       # CARPHYS-1 S6: the brake system object; its calipers from the fit
                   brk.kF ~ Tbrake_max*bias/(brk.P_full*0.535), brk.kR ~ Tbrake_max*(1 - bias)/(brk.P_full*(1 - 0.535))])
-    System(eqs, t, vars, ps; systems = [FL, FR, RL, RR, mount..., road..., wheel..., strut..., tyrev..., arb..., col, brk, clu, (stops === nothing ? [] : stops)...], name)
+    System(eqs, t, vars, ps; systems = [FL, FR, RL, RR, mount..., road..., wheel..., strut..., tyrev..., arb..., col, brk, clu, (stops === nothing ? [] : stops)...,
+                                        (rlx === nothing ? [] : rlx)...], name)
 end

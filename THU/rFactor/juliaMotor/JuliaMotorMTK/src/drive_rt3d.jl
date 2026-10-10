@@ -525,7 +525,9 @@ _corner(axle::Symbol, ks::Real; ch::Chassis = CHASSIS[]) = axle === :f ?
     (ks = float(ks), cs = 3000.0*ch.cscale[2], karb = _karb_r(ks), m_s = 148.0, m_u = 20.0, kt = 200_000.0, ct = 1100.0)
 # WWSETUP-1: the vehicle keywords the chassis state adds (diff, toe, brake split) -- one place, both builders.
 _chassis_kw(ch::Chassis = CHASSIS[]) = (diff = ch.diff, toe_f = ch.toe[1], toe_r = ch.toe[2], brake_bias_p = ch.bias_p, travel = ch.travel, karb_f = ch.karb[1], karb_r = ch.karb[2],
-                                        camber = ch.camber)
+                                        camber = ch.camber, relax = RELAX)
+# CARPHYS-1 S11: tyre relaxation lengths "σf,σr" [m]; unset = none (the force follows the kinematic slip at once)
+const RELAX = let e = get(ENV, "JM_RELAX", ""); isempty(e) ? nothing : Tuple(parse.(Float64, split(e, ",")))[1:2] end
 # initial wheel speeds: the per-wheel rear states exist only with an LSD
 _wheel_u0(sys, v0) = CHASSIS[].diff === nothing ? [sys.ωr => v0/RW_R] : [sys.ωRL => v0/RW_R, sys.ωRR => v0/RW_R]
 
