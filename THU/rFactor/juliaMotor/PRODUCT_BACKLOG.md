@@ -24739,3 +24739,27 @@ WW103), section by section, plus full-throttle acceleration by speed for GPL, Ju
   slow (the clutch dump at 9,500 rpm drags the gold's engine to 2,000 rpm, ours stays above 6,000: engine inertia vs
   60 Hz sampling); the remaining inline parts (gearbox, LSD, engine, aero) as objects; tyre temperature/pressure;
   the IRTEST-261009 results when the PO has driven them. Next item: TRACKS-TD-1.
+
+## TRACKS-TD-1 -- retrospective (2026-10-10, after CARPHYS-1 rotated)
+* Done before: one look at Spa after Stavelot (cockpit, straight ahead: no hole; a grey-blue band on the far left
+  unclear); (b)'s AI off the road went to SPATD-1 S4 (fixed). Never reproduced: the Ring items (start-fence flicker,
+  mid-distance artifacts, the Ex-Mühle hill pop-in) -- no video of them. What did not work: looking only straight
+  ahead. Options: find the moment in the PO's video and re-shoot at that spot and view; A/B the culprits (objects,
+  horizon, track mesh) one at a time; the Ring items by frame differencing.
+
+### TRACKS-TD-1 S1 (2026-10-10): the "openings after Stavelot" found -- the far road to Les Combes hangs in the sky
+* **The PO's video** (`~/Videos/old/261007_spa_race.mp4`, 276–286 s, just after the Stavelot hairpin): a thin pale
+  streak hangs above the far hills on the RIGHT in every frame (`261010/trackstd1/po_video_after_stavelot.png`).
+  Reproduced at s 8550–8950 in the chase view (`ours_s8750_streak.png`): a long, fog-blue band with a post at its kink.
+* **What it is:** not a placed object (unchanged with objects cut at 800 m), not GPL's horizon mesh (unchanged without
+  it -- the forested ridge behind it is horiz.3do). Geometry: from s 8750 the road from La Source up to Les Combes
+  (s 1000–2500) is 3 km away at 470 m altitude, +2–3° above the camera, on the right -- exactly where the streak is.
+  We draw that far road (track mesh, fogged) without the hill that should stand in front of it.
+* **The gold** (`260802_spa_nintendo.mp4` 212–232 s, `gold_after_stavelot.png`): after Stavelot a BIG forested hill
+  with clearings rises on the right and fills that part of the sky. Ours shows only a low distant ridge (horiz.3do).
+  So the hill is missing in ours.
+* Tried and reverted: drawing horiz.3do at its absolute position (GPL's ring is ~13 km round the track origin, ours
+  was centred on the camera): directions shift a little, no hill -- the hill is not horizon geometry.
+* Next (S2): find the hill in spa67's own mesh -- GPL's track file carries distance bands (117/312/914 m, memory
+  jr-gpl-track-renderer); a coarse far-hills band that our loader skips, or a terrain group a filter drops, would
+  explain it. Locate the hill's position from the gold view and look for track-mesh triangles there, loaded vs raw.
