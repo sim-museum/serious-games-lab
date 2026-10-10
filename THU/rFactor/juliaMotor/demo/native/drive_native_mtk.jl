@@ -14062,6 +14062,11 @@ function main()
                 row["LRrideHeight"]= _rhok ? tl.rh[3] : NaN
                 row["RRrideHeight"]= _rhok ? tl.rh[4] : NaN
                 row["Pitch"]=tl.pitch; row["Roll"]=tl.roll
+                bp = DriveRT3D.brakepress3d(cs)            # CARPHYS-1 S6: the BrakeSystem object's line pressures, as iRacing logs them
+                if bp !== nothing
+                    row["LFbrakeLinePress"] = bp[1]; row["RFbrakeLinePress"] = bp[1]
+                    row["LRbrakeLinePress"] = bp[2]; row["RRbrakeLinePress"] = bp[2]
+                end
             end
             push!(ibt_samples, row)
         end

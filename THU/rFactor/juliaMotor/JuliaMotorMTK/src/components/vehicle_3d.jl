@@ -47,6 +47,9 @@ function DrivenVehicle3D(; name,
         # IRFIT-261004 BRAKE-2 (2026-10-04): refit with the tyre's longitudinal side and its sliding drop against
         # the 261004 steady-pedal stops (tools/brakefit_261004.jl): split 0.617 -> 0.585, 2800 -> 2956 N·m.
         bias = 0.585, Tbrake_max = 2956.0,
+        # CARPHYS-1 S6: `bias`/`Tbrake_max` are now the fitted torque split and total AT THE REFERENCE 53.5 % pressure bias;
+        # the session's own garage bias is `brake_bias_p` (pressure fraction), applied by the BrakeSystem object.
+        brake_bias_p = 0.535,
         CdA = CDA_IBT, ρair = 1.10, g = 9.80665,
         throttle0 = 0.0, brake0 = 0.0, steer0 = 0.0, gear0 = 1.72, brush = false,
         # PO: ct (tyre vertical DAMPING) was 300 ≈ 8% of critical for the unsprung mass → the car
@@ -90,6 +93,7 @@ function DrivenVehicle3D(; name,
 
     gv, kfv, krv = g, karb_f, karb_r                     # numeric values for the parts' own parameters (the next line rebinds the names)
     ps = @parameters m=m Izz=Izz Ixx=Ixx Iyy=Iyy a=a b=b tf=tf tr=tr h=h mf=mf mr=mr L=L M_s=M_s g=g Rw_f=Rw_f Rw_r=Rw_r Iw=Iw η=η final=final bias=bias Tbrake_max=Tbrake_max CdA=CdA ρair=ρair throttle=throttle0 brake=brake0 δ=steer0 gear=gear0 clutch=0.0 Ie=0.18 c_c=60.0 T_cap=500.0 k_idle=0.5 idle_rpm=2000.0 zrFL=0.0 zrFR=0.0 zrRL=0.0 zrRR=0.0 vrFL=0.0 vrFR=0.0 vrRL=0.0 vrRR=0.0 Fx_ext=0.0 Fy_ext=0.0 Mz_ext=0.0 CdA_scale=1.0 c_abl=C_ABL toe_f=toe_f toe_r=toe_r karb_f=karb_f karb_r=karb_r
+    brk = BrakeSystem(; name = :brk, bias_p = brake_bias_p)   # CARPHYS-1 S6 (chassis_parts.jl)
     if cmb
         append!(ps, @parameters camFL=camber[1] camFR=camber[2] camRL=camber[3] camRR=camber[4] rc_f=rc[1] rc_r=rc[2])
     end
@@ -221,14 +225,14 @@ function DrivenVehicle3D(; name,
         Ixx*D(pp) ~ (ys[1]*Fsusp[1]+ys[2]*Fsusp[2]+ys[3]*Fsusp[3]+ys[4]*Fsusp[4]) + h*ΣFy,  # roll: susp + cornering
         # ---- powertrain (identical to DrivenVehicleRT) ----
         Ie*D(ωe) ~ (engine_torque(rpm, throttle) + Tidle)*run - (1.0 - run)*45.0*ωe - Tcl,
-        2*Iw*D(ωf) ~ -brake*Tbrake_max*bias*tanh(ωf) - (Fx_f[1]+Fx_f[2])*Rw_f,
+        2*Iw*D(ωf) ~ -brk.TF*tanh(ωf) - (Fx_f[1]+Fx_f[2])*Rw_f,
         # ---- world pose for rendering ----
         D(X) ~ u*cos(ψ) - v*sin(ψ),
         D(Y) ~ u*sin(ψ) + v*cos(ψ),
         D(ψ) ~ r,
     )
     if !lsd
-        push!(eqs, 2*Iw*D(ωr) ~ Tcl*gr*η - brake*Tbrake_max*(1-bias)*tanh(ωr) - (Fx_r[1]+Fx_r[2])*Rw_r)
+        push!(eqs, 2*Iw*D(ωr) ~ Tcl*gr*η - brk.TR*tanh(ωr) - (Fx_r[1]+Fx_r[2])*Rw_r)
     else
         # WWSETUP-1 LSD: a ramp-type (Salisbury) clutch-pack diff. The input torque Tin = Tcl·gr·η splits equally,
         # as in an open diff; the clutch packs then pass torque Tlsd from the faster half-shaft to the slower one,
@@ -245,12 +249,14 @@ function DrivenVehicle3D(; name,
         Tcap = lsd_pre + lsd_k*lsd_plates*(wdr*lsd_cotd + (1 - wdr)*lsd_cotc)*sqrt(Tin^2 + 1.0)
         append!(eqs, [
             Tlsd ~ Tcap*tanh((ωRR - ωRL)/lsd_weps),                       # >0: RR faster, torque passes to RL
-            Iw*D(ωRL) ~ Tin/2 + Tlsd/2 - brake*Tbrake_max*(1-bias)/2*tanh(ωRL) - Fx_r[1]*Rw_r,
-            Iw*D(ωRR) ~ Tin/2 - Tlsd/2 - brake*Tbrake_max*(1-bias)/2*tanh(ωRR) - Fx_r[2]*Rw_r,
+            Iw*D(ωRL) ~ Tin/2 + Tlsd/2 - brk.TR/2*tanh(ωRL) - Fx_r[1]*Rw_r,
+            Iw*D(ωRR) ~ Tin/2 - Tlsd/2 - brk.TR/2*tanh(ωRR) - Fx_r[2]*Rw_r,
             ωr ~ (ωRL + ωRR)/2,
         ])
     end
     col = SteeringColumn(; name = :col)                    # CARPHYS-1 S5: the rim torque (force feedback), chassis_parts.jl
     push!(eqs, col.Fy ~ FL.Fy + FR.Fy)
-    System(eqs, t, vars, ps; systems = [FL, FR, RL, RR, mount..., road..., wheel..., strut..., tyrev..., arb..., col], name)
+    append!(eqs, [brk.pedal ~ brake,                       # CARPHYS-1 S6: the brake system object; its calipers from the fit
+                  brk.kF ~ Tbrake_max*bias/(brk.P_full*0.535), brk.kR ~ Tbrake_max*(1 - bias)/(brk.P_full*(1 - 0.535))])
+    System(eqs, t, vars, ps; systems = [FL, FR, RL, RR, mount..., road..., wheel..., strut..., tyrev..., arb..., col, brk], name)
 end

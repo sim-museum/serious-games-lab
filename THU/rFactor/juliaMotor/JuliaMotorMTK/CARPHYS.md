@@ -31,12 +31,13 @@ velocity v, flow force f), Modelica's `Translational.Interfaces.Flange` plus its
 | `WheelMass` | corner | unsprung mass `m_u` (hand-set 20 kg) |
 | `TyreVertical` | corner | carcass `kt`, `ct`, static load (hand-set rates) |
 | `BrushTyre` | corner | μ, μx, Cα, Cκ, kμ, sliding drop, camber (fitted) |
+| `BrakeSystem` | car | line pressure 122.2 bar at full pedal × garage BrakeBias (gold); caliper N·m/bar front/rear (BRAKE-2 fit, S6) |
 | `SteeringColumn` | car | rack ratio 10 (setup), effective trail 4.78 cm (fitted to SteeringWheelTorque, S5) |
 
 Assembly per corner: mount → coil-over (+ the axle's bar) → wheel → tyre carcass → road. `tools/carphys_regress.jl`
 proves the assembly reproduces the single-block model: same 23/24 unknowns, every channel within 1e-10 over six
-manoeuvres and both setups. Still inline in `DrivenVehicle3D` (next objects): brakes, clutch, gearbox, LSD, engine,
-aero, the rigid body's planar motion, steering.
+manoeuvres and both setups. Still inline in `DrivenVehicle3D` (next objects): clutch, gearbox, LSD, engine, aero, the rigid body's planar
+motion. (S5 added the steering column, S6 the brake system.)
 
 ## Inventory: every physical quantity the .ibt carries, and what the model has
 
@@ -56,7 +57,7 @@ aero, the rigid body's planar motion, steering.
 | ToeIn front / rear | wheel toe | per wheel | ✅ |
 | SteeringRatio, SteeringWheelAngle(Max) | **Steering rack / column** | ratio maps wheel to road angle; MAXSTEER 0.30 rad | 🟡 |
 | SteeringWheelTorque (60 Hz; 360 Hz in _ST) | **Steering column** (= force feedback) | `SteeringColumn` object: front axle Fy on a 4.78 cm effective trail through the 10:1 rack, fitted to the gold (tools/steerfit_261009.jl: R² 0.982, 1.8 N·m RMS, same on both setups; tyre Mz and a centring term add nothing); FFB reads it with 15 ms smoothing (was a hand trail curve and two 50 ms low-passes) | ✅ (CARPHYS-1 S5) |
-| BrakeBias, brakeLinePress ×4 | **Master cylinder + calipers** (pressure → torque per wheel) | pedal → total torque (fitted 2956 N·m) split front/rear by a fitted torque ratio; line pressures unused | 🟡 |
+| BrakeBias, brakeLinePress ×4 | **Master cylinder + calipers** (pressure → torque per wheel) | `BrakeSystem` object: 122.2 bar × pedal split by the garage bias (= the gold's line pressures, 65.4/66.0 bar front at 53.5/54 %), calipers 26.45 / 21.59 N·m per bar per axle from the BRAKE-2 fit; line pressures exported to the sim's .ibt | ✅ (CARPHYS-1 S6) |
 | — | brake temperature / fade | none | ❌ (not in the ibt) |
 | Gear ratios, FinalDrive | **Gearbox, final drive** | from the session | ✅ |
 | Differential: preload, ramps, plates | **LSD** (ramp clutch-pack) | ramp LSD, one friction constant fitted to the gold's wheel-speed split | ✅ |

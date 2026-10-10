@@ -91,6 +91,19 @@ function AntiRollBar(; name, k)
     System(eqs, t, vars, ps; systems = [mL, wL, mR, wR], name)
 end
 
+"""Brake system (CARPHYS-1 S6): master cylinder, bias valve and calipers, as iRacing's Lotus 49 records them.
+The pedal makes `P_full` bar of line pressure at full travel, split front/rear by the garage's BrakeBias `bias_p`
+(the gold: LF 65.4 bar at full pedal with 53.5 %, 66.0 with 54 % -- 122.2 bar × bias; the pressure share is the
+setting to the third decimal). Each axle's calipers and discs turn pressure into torque, `kF`/`kR` [N·m per bar,
+axle]: inputs here, set by the vehicle from its fitted brake (BRAKE-2: 2956 N·m and a 0.585 torque split at full
+pedal with 53.5 %), so a different bias moves the split AND the total the way the hardware does. `pF`/`pR` are the
+.ibt's brakeLinePress channels; `TF`/`TR` the axle torques."""
+function BrakeSystem(; name, bias_p = 0.535, P_full = 122.2)
+    ps = @parameters bias_p=bias_p P_full=P_full
+    vars = @variables pedal(t) kF(t) kR(t) pF(t) pR(t) TF(t) TR(t)
+    System([pF ~ P_full*bias_p*pedal, pR ~ P_full*(1 - bias_p)*pedal, TF ~ kF*pF, TR ~ kR*pR], t, vars, ps; name)
+end
+
 """Steering column (CARPHYS-1 S5): the torque the front tyres send up the column to the rim -- the force feedback.
 `Fy` is the front axle's lateral force (the two tyres, N), `τ` the rim torque (N·m, positive turns the rim left).
 Fitted to iRacing's SteeringWheelTorque (tools/steerfit_261009.jl, 19 gold skidpad events through the session car):

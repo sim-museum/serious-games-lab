@@ -16,22 +16,27 @@ const REF = get(ENV, "JM_REGRESS_REF", "HEAD")
 const TOL = parse(Float64, get(ENV, "JM_REGRESS_TOL", "1e-6"))
 
 # the reference vehicle, renamed, evaluated in DriveRT3D's scope (its helpers and constants)
+const REFSRC = Ref("")
 let src = read(Cmd(`git show $REF:./src/components/vehicle_3d.jl`; dir = joinpath(@__DIR__, "..")), String)
+    REFSRC[] = src
     src = replace(src, "function DrivenVehicle3D(" => "function DrivenVehicle3D_ref(")
     f = tempname() * ".jl"; write(f, src); Base.include(D3, f); rm(f)
 end
 
 const CH_DEFAULT = D3.Chassis()
 const CH_WW103 = D3.Chassis(diff = (41.0, 35.0, 85.0, 4.0), toe = (D3.toe_rad(-6), D3.toe_rad(3; rear = true)),
-                            karb = (1758.0, 19940.0), cscale = (1.00, 1.15), bias = D3.bias_torque(54.0),
+                            karb = (1758.0, 19940.0), cscale = (1.00, 1.15), bias = D3.bias_torque(54.0), bias_p = 0.54,
                             camber = Tuple(deg2rad.((-0.4, 0.0, -0.4, 0.2))))
 
 function build(builder, ch)
     D3.set_chassis!(ch)
     KS = D3.KS[]
+    kw = D3._chassis_kw(ch)
+    # a reference from before CARPHYS-1 S6 has no BrakeSystem: it takes the garage bias as the torque split `bias`
+    builder === D3.DrivenVehicle3D_ref && !occursin("brake_bias_p", REFSRC[]) && (kw = (; (k => v for (k, v) in pairs(kw) if k !== :brake_bias_p)..., bias = ch.bias))
     sys = mtkcompile(builder(name = :car, brush = true, final = D3.FINAL[], m = D3.MASS[], front_frac = D3.FRONT_FRAC[],
                      fl_corner = D3._corner(:f, KS[1]), fr_corner = D3._corner(:f, KS[2]),
-                     rl_corner = D3._corner(:r, KS[3]), rr_corner = D3._corner(:r, KS[4]); D3._chassis_kw(ch)...))
+                     rl_corner = D3._corner(:r, KS[3]), rr_corner = D3._corner(:r, KS[4]); kw...))
     sys
 end
 

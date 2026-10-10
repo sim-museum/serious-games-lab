@@ -24636,3 +24636,20 @@ WW103), section by section, plus full-throttle acceleration by speed for GPL, Ju
 * Gate `steercol_smoke` (new): the column's torque law and sign in a left turn, its magnitude against the gold's range,
   the FFB wiring and smoothing.
 * Gates: 52/52 pass (`GATES_SKIP=road_clear_smoke`, with steercol_smoke).
+
+### CARPHYS-1 S6 (2026-10-09): the brake system as an object, from the gold's line pressures
+* **Measured first** (all 261004/261005 gold files with braking): iRacing's line pressure is linear in the pedal and
+  its front share IS the garage BrakeBias -- 0.535 / 0.540 to the third decimal; full pedal gives 65.4 bar front at
+  53.5 % and 66.0 at 54 %, i.e. one total of 122.2 bar × pedal, split by the bias.
+* **Object:** `BrakeSystem` in `chassis_parts.jl` -- master cylinder (P_full 122.2 bar), bias valve (`bias_p` = the
+  session's garage BrakeBias), calipers + discs per axle `kF`/`kR` [N·m per bar]: 26.45 / 21.59, from the BRAKE-2 fit
+  (2956 N·m and a 0.585 torque split at full pedal with 53.5 %), which the vehicle keeps as its reference. The wheel
+  equations take the object's axle torques; `DriveRT3D.brakepress3d`; the sim's .ibt now carries
+  LF/RF/LR/RRbrakeLinePress (they were zeros).
+* **One physics change, deliberate:** before, a different bias moved only the torque split with the total held at
+  2956 N·m; with fixed calipers (the hardware) the total moves too. WW103's 54 %: front +0.13 %, rear +0.07 %
+  (`carphys_regress`: default setup identical to 3e-14; WW103 differs only in the braking manoeuvre). At 58 % (on the
+  PO's evening iRacing list, IRTEST-261009 #3): split 0.629, total 2983 N·m -- that run will test it.
+* Gate `brakesys_smoke` (new): the gold's pressures at 53.5 and 54 %, the BRAKE-2 torques at the reference, the bias
+  moving split and total, the .ibt channels.
+* Gates: 53/53 pass (`GATES_SKIP=road_clear_smoke`, with brakesys_smoke).
