@@ -5,6 +5,25 @@ section. Move an item to a STATUS doc under `docs/` when it's picked up.
 
 ## Backlog
 
+- **Fixed computational effort per decision, not a fixed time.** biq's
+  strength must not depend on machine load or CPU speed. Today several
+  searches stop on a wall clock:
+  `alphamu.py` (deadline = BIQ_AMU_BUDGET 12 s per card, a third of it
+  in one phase; used for defence and the alpha-mu declarer),
+  `defender_search.py` (time_budget 5 s), and the safety caps in
+  `bid_sim.py` (3 x BIQ_BID_SIM_BUDGET 6 s) and `lead_sim.py`
+  (3 x 8 s). Evidence it matters: replaying boards 185-369 of run
+  261007 with unchanged defence code, biq's defence gave up 92 DD tricks
+  vs 82 the first time (-64 IMP); on 2026-10-09 a benchmark pushed the
+  load average to 38 during the 2/1 run. Replace each clock with a
+  count (sampled worlds, search nodes / DDS calls, sampler tries),
+  calibrated so that an idle machine plays as strongly as now; keep a
+  wall clock only as a hang guard at a large multiple, and log when it
+  fires. Same counts on any machine = same cards, which also makes
+  replays and the agreement benchmark (`tools/qplus_agreement.py`)
+  exactly repeatable. Check: the same benchmark sample twice, once
+  idle and once under load, gives identical decisions.
+
 - **2/1 match program vs Q-Plus (decided 2026-10-09).** biq's two main
   systems are Precision (primary, also the beginner track) and 2/1 game
   forcing (`TwoOverOne`, Q-Plus `A-2-1-A.RCE`); SAYC/Acol/French stay
