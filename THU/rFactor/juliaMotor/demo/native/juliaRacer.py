@@ -303,13 +303,34 @@ def profile_for(name):
     return None
 
 
+def _mapkey(m):
+    c = lambda x: (x.axis, x.a, x.b)
+    return (c(m.steer), c(m.throttle), c(m.brake), c(m.clutch), m.up_btn, m.dn_btn, m.clutch_btn, m.deadzone,
+            m.wheel_half_deg)
+
+
+def legacy_owner(conf):
+    """The per-device file holding the same map as `conf` (where a pre-CTRLCAL-1 conf was made), or None."""
+    if not os.path.isdir(PROFILE_DIR):
+        return None
+    k = _mapkey(JoyMap.load(conf))
+    for f in sorted(os.listdir(PROFILE_DIR)):
+        p = os.path.join(PROFILE_DIR, f)
+        if f.endswith(".conf") and _mapkey(JoyMap.load(p)) == k:
+            return p
+    return None
+
+
 def resolve(conf, name):
     """What the sim will use for device `name` -> (JoyMap, source text). Mirrors JoyCfg.resolve exactly (gated)."""
     meta = load_meta(conf); mode = meta.get("mode", "")
     if os.path.isfile(conf) and mode == "profile":
         return JoyMap.load(conf), f'saved profile "{meta.get("label", "?")}"' + (f' on "{name}"' if name else "")
     if os.path.isfile(conf) and mode != "autodetect":
-        return JoyMap.load(conf), "joystick.conf"
+        # a pre-CTRLCAL-1 conf: not used on a device other than the one it was made on (JoyCfg.legacy_owner)
+        owner = legacy_owner(conf)
+        if not name or owner is None or owner == device_file(name):
+            return JoyMap.load(conf), "joystick.conf"
     dev = meta.get("device", "")
     if os.path.isfile(conf) and (not name or dev == name):
         return JoyMap.load(conf), f'autodetect: calibration of "{dev or "?"}"'

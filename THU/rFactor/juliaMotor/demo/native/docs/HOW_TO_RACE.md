@@ -12,7 +12,12 @@ the track, then teaches the driving that makes these cars quick.
 ## 1. Your first session
 
 1. **Controller.** A wheel and pedals are best; a joystick or the keyboard work too. Plug the controller
-   in and map it once on the **Controller** tab: press **Start**, then hold each control as the wizard asks.
+   in and open the **Controller** tab. **Autodetect** (the default) finds the controller you plug in: a Thrustmaster TX
+   or a Logitech Extreme 3D Pro works straight away; any other controller -- or to fine-tune yours -- press **Start**:
+   centre and release everything, move every control through its full travel once, then use each control as the
+   wizard asks (it finds them by their movement, and a wheel's quarter turn left measures its range). Each controller
+   keeps its own calibration. **Saved profile** uses one profile -- built-in or one you calibrated -- whatever is
+   plugged in.
 2. **Race tab.** Pick a **Track** and **Session: Practice**. Leave the car on **iRacing default** and the
    gearbox on **Automatic** while you learn.
 3. Press **Start practice**. The first start compiles and loads the game, and the window can take a few

@@ -25050,3 +25050,20 @@ PO request); CARPHYS-1 S12 follows the rotation.
   wheel range is saved; negative control: nothing is assigned before the controls were seen at rest. ctrlcal_smoke +5
   (wheel range round trip, precedence, the sim's call).
 * Gates: 59/59 pass (`GATES_SKIP=road_clear_smoke`).
+
+### CTRLCAL-1 S3 (2026-10-10): an old joystick.conf stays on its own device; the image ships no calibration
+* Retro: S1-S2 made the choice and the GPL/iRacing wizard, but a conf from before CTRLCAL-1 (no `mode` line) still beat
+  everything on ANY device -- the PO's own conf is one (a TX calibration), so plugging in the Extreme 3D Pro would read
+  the stick through the TX map, the 2026-10-03 failure in reverse. And the AppImage copied the builder's joystick.conf
+  and joystick_profiles/ into every fresh install.
+* Fix (both resolvers, mirrored): the old launcher saved every calibration twice (joystick.conf + joystick_profiles/
+  <device>.conf), so a per-device file holding the SAME map names the device the old conf was made on. On that device,
+  with no device, or with no such file (origin unknown) the conf is used as before; on another device the device gets
+  autodetect (its own calibration / built-in / X3D + warning). The PO's real files, resolved read-only: TX ->
+  "joystick.conf" (their calibration, unchanged); Extreme 3D Pro -> the built-in X3D profile (was: the TX map).
+* AppImage: the build removes demo/native/joystick.conf and joystick_profiles/ from the image; a fresh install
+  autodetects, an update keeps the installed calibration (S1).
+* HOW_TO_RACE.md: the Controller step describes Autodetect / Saved profile and the sweep wizard.
+* Gate ctrlcal_smoke: +4 resolve cases (old conf on its TX; on an X3D; unknown origin; identical to another device's
+  file -- the case a first draft of the test got wrong, the rule was right), mirror agreement now 13/13, the image check.
+* Gates: run STOPPED at ~20/59 for the PO's shutdown (no failures so far); committed as WIP -- rerun the gates first on resume (RESUME_2026-10-10.md).

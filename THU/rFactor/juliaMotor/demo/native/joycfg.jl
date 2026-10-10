@@ -95,6 +95,18 @@ end
 "The file name a device's own calibration is kept under (the launcher's rule: non-alphanumerics -> '_')."
 device_file(name::AbstractString, dir = USER_DIR) = joinpath(dir, map(c -> isletter(c) || isdigit(c) ? c : '_', name) * ".conf")
 
+samemap(a::JoyMap, b::JoyMap) = all(getfield(a, f) == getfield(b, f) for f in fieldnames(JoyMap))
+
+"The per-device file holding the same map as `conf` (the device a pre-CTRLCAL-1 conf was made on), or nothing."
+function legacy_owner(conf, userdir)
+    isdir(userdir) || return nothing
+    m = loadmap(conf)
+    for f in sort(readdir(userdir; join = true))
+        endswith(f, ".conf") && samemap(loadmap(f), m) && return f
+    end
+    nothing
+end
+
 """Resolve the live map: (JoyMap, source) from the conf path and the connected device's name (see the mode notes)."""
 function resolve(conf::AbstractString, name::AbstractString; userdir = USER_DIR)
     meta = loadmeta(conf); mode = get(meta, "mode", "")
@@ -102,7 +114,14 @@ function resolve(conf::AbstractString, name::AbstractString; userdir = USER_DIR)
         return (loadmap(conf), "saved profile \"" * get(meta, "label", "?") * "\"" *
                 (isempty(name) ? "" : " on \"" * name * "\""))
     end
-    isfile(conf) && mode != "autodetect" && return (loadmap(conf), "joystick.conf")
+    if isfile(conf) && mode != "autodetect"
+        # A conf from before CTRLCAL-1 has no `mode` line and no device. The old launcher saved every calibration twice --
+        # joystick.conf and joystick_profiles/<device>.conf -- so an identical device file names the device it was made
+        # on. On ANOTHER device it is not used (the PO's TX calibration would read an Extreme 3D Pro through the TX
+        # map); on its own device, with no device, or when its origin is unknown, it is used as before.
+        owner = legacy_owner(conf, userdir)
+        (isempty(name) || owner === nothing || owner == device_file(name, userdir)) && return (loadmap(conf), "joystick.conf")
+    end
     dev = get(meta, "device", "")
     isfile(conf) && (isempty(name) || dev == name) &&
         return (loadmap(conf), "autodetect: calibration of \"" * (isempty(dev) ? "?" : dev) * "\"")

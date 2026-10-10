@@ -33,6 +33,10 @@ echo ">> project..."            ; cp -a "$PROJ"                  "$APP/usr/share
 # session capture folders (YYMMDD at the project root: frames, logs, A/B montages) are untracked work products, not the app
 # -- 2026-10-06 they added ~0.9 GB to the image. Drop them from the copy.
 find "$APP/usr/share/julia/juliaMotor" -maxdepth 1 -type d -regextype posix-extended -regex '.*/[0-9]{6}' -exec rm -rf {} +
+# CTRLCAL-1 S3: no controller calibration in the image -- joystick.conf and joystick_profiles/ are the BUILDER's devices
+# (a pre-CTRLCAL-1 conf is applied to any controller). A fresh install autodetects (built-in TX / Extreme 3D Pro
+# profiles, else the wizard); an update keeps the installed calibration (the refresh below copies it across).
+rm -rf "$APP/usr/share/julia/juliaMotor/demo/native/joystick.conf" "$APP/usr/share/julia/juliaMotor/demo/native/joystick_profiles"
 # STARTUP-1 / 2026-09-06 PO crash: the sim reads the GPL CARS (cars/cars67, 443 MB) and SOUND (63 MB)
 # next to the tracks; an older packer bundled them and its AppRun linked them per launch. This
 # script had lost both, so installs pointed at a dead mount and the Lotus load died with ENOENT.
