@@ -24847,3 +24847,20 @@ WW103), section by section, plus full-throttle acceleration by speed for GPL, Ju
 * For the PO's look: a Ring lap -- section boards (Hocheichen, Quiddelbacher Höhe, ...), traffic signs and km stones as
   in your GPL.
 * Gates: 57/57 pass (`GATES_SKIP=road_clear_smoke`, with tracksigns_smoke).
+
+## WGTD-1 -- retrospective at resumption (2026-10-10)
+* S1–S2 (10-09) fixed the diagonal map line (a lap spanning a restart) and added the human-laps filter; (a) came with
+  COCKPIT-2. Worked: reproducing in the PO's own replays. Open: (b) two replay files side by side + the rest of GPL
+  Replay Analyser, (e) the AI cool-down lap, (f) smooth brake marks, (g) the AI wide after the 90, (h) graphical
+  reports + the animated track map. Options: the analyser items are self-contained (Python, testable on synthetic
+  replays); (e)/(g) touch the race AI; (f) the renderer. Order: (h) map, (b), then (f)/(e)/(g).
+
+### WGTD-1 S3 (2026-10-10): (h) the animated track map
+* Analyser → Track map: **▶ Animate**, a time slider and a speed (1×–8×). Each selected lap shows a car silhouette at
+  the same lap time -- its recorded position, interpolated between frames, pointing the way it travels -- labelled
+  with its place among the selected laps at that moment (`261010/wgtd1/animated_track_map.png`: the PO's 1:23.549
+  against three AI laps, 37 s in, the PO P1 into Big Bend). As GPL Replay Analyser's animated map.
+* `tests/analyser_test.py` (run by launcher_smoke): on the synthetic circle, 10 s into a 50 m/s lap the car is 500 m
+  round, on the line, pointing anticlockwise; the 50 m/s lap is P1 against the 40 m/s one; the animation runs for the
+  longest selected lap; play advances the clock.
+* Gates: 57/57 pass (`GATES_SKIP=road_clear_smoke`; launcher_smoke runs the analyser test).

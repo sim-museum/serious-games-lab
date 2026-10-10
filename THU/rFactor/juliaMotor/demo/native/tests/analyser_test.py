@@ -86,6 +86,22 @@ check(hid_ai and all(lp.car == 0 for lp in w.selected()) and len(w.selected()) =
       f"lap filter: AI laps hidden, comparing your own laps ({[lp.label() for lp in w.selected()]})")
 w.show_ai.setChecked(True); app.processEvents()
 check(not any(w.table.isRowHidden(r) for r in range(len(w.rows))), "Show AI laps brings them back")
+# WGTD-1 (h): the animated track map -- each selected lap's car at the same lap time, on its line, in running order
+pa = [lp for lp in w.rep.laps if lp.car == 0][1]; aa = [lp for lp in w.rep.laps if lp.car == 1][1]   # full laps: 20 s and 25 s (the window's own Replay)
+for r, lp in enumerate(w.rows):
+    w.table.cellWidget(r, 0).setChecked(lp is pa or lp is aa)
+app.processEvents()
+x, z, dx, dz = w.map_full.lap_pose(pa, 10.0)
+d = w.map_full.lap_dist(pa, 10.0); a0 = math.atan2(pa.zs[0], pa.xs[0])
+ang = math.atan2(z, x) - a0; ang = (ang + math.pi) % (2 * math.pi) - math.pi
+check(abs(d - 500.0) < 3.0 and abs(math.hypot(x, z) - R) < 0.5 and abs(abs(ang) - math.pi) < 0.03,
+      f"animated map: 10 s into a 50 m/s lap the car is 500 m round, on the line ({d:.1f} m, {math.degrees(ang):.1f} deg)")
+check(dx * (-z) + dz * x > 0, "animated map: the car points the way it travels (anticlockwise on this circle)")
+check(abs(w._anim_len() - 25.0) < 0.05, f"animation runs for the longest selected lap ({w._anim_len():.2f} s)")
+w._anim_set(10.0); app.processEvents()
+check(w.map_full.lap_dist(pa, 10.0) > w.map_full.lap_dist(aa, 10.0), "running order: the 50 m/s lap is ahead at 10 s (P1)")
+w.anim_btn.setChecked(True); app.processEvents(); w._anim_step(); w.anim_btn.setChecked(False)
+check(w.map_full.anim_t > 10.0, "play advances the clock")
 w.grab()                                            # paints every widget once (an exception would fail the test)
 os.remove(path)
 

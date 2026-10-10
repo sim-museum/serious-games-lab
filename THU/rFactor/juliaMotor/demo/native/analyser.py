@@ -394,6 +394,7 @@ class TrackMap(QWidget):
         super().__init__()
         self.setMinimumSize(320, 260); self.setMouseTracking(True)
         self.rep = None; self.laps = []; self.cursor_d = None; self.speed_diff = False
+        self.anim_t = None                                   # WGTD-1 (h): lap time [s] the animated cars are shown at
         self.zoom = 1.0; self.pan = QPointF(0, 0); self._drag = None
 
     def set_data(self, rep, laps):
@@ -440,6 +441,8 @@ class TrackMap(QWidget):
             for x, z in zip(lp.xs, lp.zs):
                 q = f(x, z); (path.moveTo if first else path.lineTo)(q); first = False
             p.setPen(QPen(col, 2.0)); p.drawPath(path)
+            if self.anim_t is not None and lp.dist:
+                self._car(p, f, lp, col)
             if self.cursor_d is not None and lp.dist:
                 k = min(len(lp.dist) - 1, max(0, int(self.cursor_d / GRID_M)))
                 fx = lp.ch["time"][k] + lp.t0             # the car's position at that distance, by time
@@ -447,6 +450,42 @@ class TrackMap(QWidget):
                 c = self.rep.cars[lp.car]
                 p.setBrush(QBrush(col)); p.setPen(QPen(QColor("#000000"), 1.0)); p.drawEllipse(f(c["x"][j], c["z"][j]), 5, 5)
                 p.setBrush(Qt.BrushStyle.NoBrush)
+
+    def lap_pose(self, lp, t):
+        """Where lap `lp`'s car is `t` s into the lap: (x, z, dx, dz) -- position from the recorded frames, interpolated,
+        and the direction of travel from the next frame (screen-independent)."""
+        tt = lp.t0 + min(max(t, 0.0), (lp.time if lp.time is not None else lp.t1 - lp.t0))
+        T = self.rep.t; c = self.rep.cars[lp.car]
+        j = _nearest_time(T, tt, lp.i0, lp.i1); j = max(lp.i0 if lp.start else lp.i0 - 1, min(j, len(T) - 2))
+        if T[j] > tt and j > 0:
+            j -= 1
+        a = (tt - T[j]) / (T[j + 1] - T[j]) if T[j + 1] > T[j] else 0.0; a = min(max(a, 0.0), 1.0)
+        x = c["x"][j] + a * (c["x"][j + 1] - c["x"][j]); z = c["z"][j] + a * (c["z"][j + 1] - c["z"][j])
+        dx = c["x"][j + 1] - c["x"][j]; dz = c["z"][j + 1] - c["z"][j]
+        return x, z, dx, dz
+
+    def lap_dist(self, lp, t):
+        """Distance into the lap at lap time `t` (the time channel inverted) -- for the running order."""
+        ts = lp.ch["time"]; d = lp.dist
+        if t >= ts[-1]:
+            return d[-1] + (t - ts[-1]) * 1e-3                # finished laps keep their order by finishing time
+        return _interp(ts, d, [t])[0]
+
+    def _car(self, p, f, lp, col):
+        """WGTD-1 (h): GPL Replay Analyser's animated map -- a car silhouette at the lap's position at `anim_t`,
+        pointing where it travels, with its place among the selected laps at that moment."""
+        x, z, dx, dz = self.lap_pose(lp, self.anim_t)
+        q = f(x, z); e = f(x + dx, z + dz); ux, uy = e.x() - q.x(), e.y() - q.y()
+        n = math.hypot(ux, uy)
+        ux, uy = (ux / n, uy / n) if n > 1e-9 else (1.0, 0.0)
+        vx, vy = -uy, ux                                       # across the car
+        L, W = 9.0, 4.0                                        # px: half-length, half-width
+        pts = [(L, 0.0), (L * 0.35, W * 0.8), (-L, W), (-L, -W), (L * 0.35, -W * 0.8)]   # nose, flanks, tail
+        poly = [QPointF(q.x() + ux * a + vx * b, q.y() + uy * a + vy * b) for a, b in pts]
+        p.setBrush(QBrush(col)); p.setPen(QPen(QColor("#000000"), 1.2)); p.drawPolygon(poly)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        rank = 1 + sum(1 for o in self.laps if o is not lp and o.dist and self.lap_dist(o, self.anim_t) > self.lap_dist(lp, self.anim_t))
+        p.setPen(QColor("#e8eef3")); p.drawText(QPointF(q.x() + 11, q.y() - 8), f"P{rank}")
 
     def _speed_track(self, p, f):
         """Lap 1's line coloured by the speed difference to lap 2 at the same distance: green where lap 1 is
@@ -725,6 +764,19 @@ class AnalyserWindow(QDialog):
         self.speed_cb = QCheckBox("Colour by speed difference (first two laps)")
         self.speed_cb.toggled.connect(self._speed_mode); mv.addWidget(self.speed_cb)
         self.map_full = TrackMap(); mv.addWidget(self.map_full, 1)
+        # WGTD-1 (h): animate the selected laps on the map, as GPL Replay Analyser does
+        from PyQt6.QtCore import QTimer
+        from PyQt6.QtWidgets import QComboBox, QSlider
+        arow = QHBoxLayout()
+        self.anim_btn = QPushButton("▶ Animate"); self.anim_btn.setCheckable(True); self.anim_btn.toggled.connect(self._anim_toggle)
+        self.anim_slider = QSlider(Qt.Orientation.Horizontal); self.anim_slider.setRange(0, 1000)
+        self.anim_slider.valueChanged.connect(self._anim_seek)
+        self.anim_speed = QComboBox(); self.anim_speed.addItems(["1×", "2×", "4×", "8×"]); self.anim_speed.setCurrentIndex(1)
+        self.anim_lbl = QLabel("0:00.0"); self.anim_lbl.setMinimumWidth(60)
+        for w_ in (self.anim_btn, self.anim_slider, self.anim_speed, self.anim_lbl):
+            arow.addWidget(w_, 1 if w_ is self.anim_slider else 0)
+        mv.addLayout(arow)
+        self.anim_timer = QTimer(self); self.anim_timer.setInterval(33); self.anim_timer.timeout.connect(self._anim_step)
         self.tabs.addTab(mw, "Track map")
         self.circle = TractionCircle(); self.tabs.addTab(self.circle, "Traction circle")
         self.times = QTableWidget(); self.times.verticalHeader().setVisible(False)
@@ -800,6 +852,35 @@ class AnalyserWindow(QDialog):
         self.hint.setText(("No lap was completed: unfinished laps are drawn as far as they got. " if not self.rep.laps else "")
                           + ("Time difference is lap 2 minus lap 1 (above zero: lap 2 behind). " if len(sel) >= 2 else "")
                           + "Tick up to five laps. Wheel zooms, drag pans, double-click resets.")
+
+    def _anim_len(self):
+        sel = [lp for lp in self.selected() if lp.dist]
+        return max(((lp.time if lp.time is not None else lp.t1 - lp.t0) for lp in sel), default=0.0)
+
+    def _anim_set(self, t):
+        T = self._anim_len()
+        t = min(max(t, 0.0), T)
+        self.map_full.anim_t = t; self.map_full.update()
+        self.anim_lbl.setText(fmt_time(t)[:-2])
+        self.anim_slider.blockSignals(True); self.anim_slider.setValue(int(1000 * t / T) if T > 0 else 0); self.anim_slider.blockSignals(False)
+
+    def _anim_toggle(self, on):
+        self.anim_btn.setText("❚❚ Pause" if on else "▶ Animate")
+        if on:
+            if self.map_full.anim_t is None or self.map_full.anim_t >= self._anim_len():
+                self._anim_set(0.0)
+            self.anim_timer.start()
+        else:
+            self.anim_timer.stop()
+
+    def _anim_step(self):
+        k = (1, 2, 4, 8)[self.anim_speed.currentIndex()]
+        t = (self.map_full.anim_t or 0.0) + 0.033 * k
+        self._anim_set(t)
+        t >= self._anim_len() and self.anim_btn.setChecked(False)
+
+    def _anim_seek(self, v):
+        self._anim_set(v / 1000 * self._anim_len())
 
     def _coach(self):
         import coach
