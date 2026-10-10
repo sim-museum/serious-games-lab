@@ -24683,3 +24683,25 @@ WW103), section by section, plus full-throttle acceleration by speed for GPL, Ju
 * Gate `travelstop_smoke` (new): the travel from the gold setup, the parser, nothing carried when parked, a hanging
   wheel stopped near full droop (−91 vs −227 mm without stops).
 * Gates: 54/54 pass (`GATES_SKIP=road_clear_smoke`, with travelstop_smoke).
+
+### CARPHYS-1 S8 (2026-10-09): the part-throttle engine map, measured -- iRacing's throttle is progressive
+* **Measured** (`tools/throttlefit_261009.py`, new; 39,415 gold rows, both setups, straight-ish, clutch in, off the
+  brakes): crank torque from the accelerometer, drag, rolling and rotating inertia, as the fraction of the way from
+  engine drag (0) to WOT (1), by pedal:
+
+  | pedal | 0.10 | 0.20 | 0.30 | 0.40 | 0.50 | 0.60 | 0.70 | 0.80 | 0.90 |
+  |---|---|---|---|---|---|---|---|---|---|
+  | gold | 0.02 | 0.13 | 0.21 | 0.33 | 0.45 | 0.58 | 0.72 | 0.84 | 0.95 |
+  | model before S8 (linear) | 0.10 | 0.20 | 0.30 | 0.40 | 0.50 | 0.60 | 0.70 | 0.80 | 0.90 |
+
+  The same within ~0.02 on both setups and from 4,000 to 7,500 rpm. The linear blend made the first third of the pedal
+  too strong -- where a car is balanced on the throttle mid-corner.
+* **Model:** `throttle_map` (powertrain.jl THROTTLE_KNOTS) inside `engine_torque`, so every vehicle model shares it.
+  Closed and wide open are unchanged (WOT pulls, coasts, top speed exact). `JM_THROTTLE_LINEAR=1` restores the blend.
+* **Checked:** the gold's power-on/lift-off events replayed with the gold's own pedal (replay_261005): |Δβ| 1.78 →
+  1.70°, |Δ rear slip κ| 0.0695 → 0.0675, |Δay| 0.275 → 0.273 g (mostly WOT snaps, so small). Stability suite penalty
+  0; part-throttle step steers a little calmer (125 km/h, 7°: max β 5.9 → 5.3°).
+* **What the PO will feel:** the first 40 % of the pedal is gentler and finer -- more control holding a slide or a
+  corner on part throttle; full throttle unchanged.
+* Gate `throttlemap_smoke` (new): closed/WOT unchanged, the gold's knots, monotonic.
+* Gates: 55/55 pass (`GATES_SKIP=road_clear_smoke`, with throttlemap_smoke).

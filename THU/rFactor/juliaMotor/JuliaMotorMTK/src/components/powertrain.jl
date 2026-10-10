@@ -70,12 +70,33 @@ function wot_torque(rpm)
     T
 end
 
+# CARPHYS-1 S8: the part-throttle map, measured (tools/throttlefit_261009.py, 39,415 gold rows, both setups): the torque
+# FRACTION f = (T + drag)/(WOT + drag) at each pedal position. iRacing's Lotus 49 throttle is PROGRESSIVE -- 30 % pedal
+# gives 21 % of the way from engine drag to WOT, 10 % only 2 % -- and slightly ahead of linear above 70 % (80 % → 0.84).
+# The model before S8 blended linearly (f = pedal), which made the first third of the pedal too strong: the zone where a
+# car is balanced on the throttle mid-corner.
+const THROTTLE_KNOTS = ((0.0, 0.0), (0.1, 0.02), (0.2, 0.13), (0.3, 0.21), (0.4, 0.33), (0.5, 0.45), (0.6, 0.58),
+                        (0.7, 0.72), (0.8, 0.84), (0.9, 0.95), (1.0, 1.0))
+const THROTTLE_LINEAR = haskey(ENV, "JM_THROTTLE_LINEAR")           # A/B: the linear blend of before S8
+"Pedal → torque fraction through THROTTLE_KNOTS (straight lines, as Σ ramps: symbolic-safe)."
+function throttle_map(thr)
+    THROTTLE_LINEAR && return thr
+    k = THROTTLE_KNOTS
+    f = 0.0*thr; s0 = 0.0
+    for i in 1:length(k)-1
+        s = (k[i+1][2] - k[i][2]) / (k[i+1][1] - k[i][1])
+        f += (s - s0)*max(0.0, thr - k[i][1]); s0 = s
+    end
+    f
+end
+
 function engine_torque(rpm, throttle; redline = 9500.0, T0 = EFRIC_T0, k = EFRIC_K,
                        r0 = EFRIC_R0, w = EFRIC_W)
     wot = max(0.0, wot_torque(rpm))                                 # WOT (net) torque, measured
     cut = 0.5*(1 - tanh((rpm - redline)/200.0))                     # smooth redline fuel cut
     fric = (T0 + k*rpm) * 0.5*(1 + tanh((rpm - r0)/w))              # zero-throttle drag, fading at idle
-    throttle*wot*cut - (1 - throttle)*fric                          # blend WOT ↔ engine drag
+    f = throttle_map(throttle)                                      # CARPHYS-1 S8: the measured, progressive throttle
+    f*wot*cut - (1 - f)*fric                                        # blend WOT ↔ engine drag
 end
 
 # Straight-line longitudinal vehicle: states u (speed), ωf, ωr (axle wheel speeds).

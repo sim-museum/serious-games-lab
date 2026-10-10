@@ -63,7 +63,7 @@ motion. (S5 added the steering column, S6 the brake system.)
 | Gear ratios, FinalDrive | **Gearbox, final drive** | from the session | ✅ |
 | Differential: preload, ramps, plates | **LSD** (ramp clutch-pack) | ramp LSD, one friction constant fitted to the gold's wheel-speed split | ✅ |
 | Clutch / ClutchRaw | **Clutch** | slipping clutch, capacity 500 N·m (hand), c_c 60 | 🟡 |
-| RPM, ManifoldPress, shift light | **Engine** (torque map, friction, inertia) | WOT torque knots + friction fitted to the gold; part throttle = throttle × WOT; Ie 0.18 corroborated | ✅ / 🟡 (part throttle) |
+| RPM, ManifoldPress, shift light | **Engine** (torque map, friction, inertia) | WOT torque knots + friction fitted to the gold; part throttle through the measured progressive map (THROTTLE_KNOTS, S8: 30 % pedal = 21 % torque fraction); Ie 0.18 corroborated | ✅ (S8) |
 | LF/RF/LR/RRspeed | wheel rotation, rolling radius | front Rw 0.30 (hand), rear 0.334 (measured); wheel inertia Iw 1.0 (hand) | 🟡 |
 | tyre: ColdPressure, pressure, tempL/M/R + carcass ×4, wear | **Tyre** (brush) + its pressure and temperature | brush tyre fitted (μ, Cα, μx, Cκ, load sensitivity, camber, sliding drop); no pressure or temperature dependence in the sim (a thermal component exists in `components/tyre_thermal.jl`, not used) | 🟡 |
 | — (vertical) | tyre vertical stiffness / damping | hand-set kt 180/200 kN/m, ct 1000/1100 | 🟡 |
