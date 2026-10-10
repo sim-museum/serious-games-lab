@@ -588,7 +588,11 @@ include(joinpath(@__DIR__, "step_guard.jl")); using .StepGuard   # TERRAIN-STEP,
 include(joinpath(@__DIR__, "solid_geom.jl")); using .SolidGeom   # SOLID-BOX: disc/box gap + normal for every solid
 const REPLAY_FILE = get(ENV, "JM_REPLAY", "")    # E18: if set, PLAY BACK this .jmr recording instead of driving
 # REPLAY-2 S1: the analysis channels recorded per frame beside the poses (see the recorder in main)
-const REPLAY_TELE_P  = ["lap", "lapdist", "speed", "throttle", "brake", "steer", "clutch", "gear", "rpm", "lateral", "ontrack", "race"]
+const REPLAY_TELE_P  = ["lap", "lapdist", "speed", "throttle", "brake", "steer", "clutch", "gear", "rpm", "lateral", "ontrack", "race",
+                        # REPLAY-6: per tyre (FL FR RL RR) force, grip ellipse and slip -- DriveRT3D.tyregrip3d, low-passed 0.1 s;
+                        # forces in mg/4. Appended, so readers that look channels up by name (sim, analyser) take old and new files.
+                        [string(q, "_", w) for w in ("FL", "FR", "RL", "RR") for q in ("fx", "fy", "gx", "gy", "xi")]...]
+const REPLAY_TYRE_CH = [string(q, "_", w) for w in ("FL", "FR", "RL", "RR") for q in ("fx", "fy", "gx", "gy", "xi")]
 const REPLAY_TELE_AI = ["s", "speed", "lap", "lane"]
 _jstr(x::AbstractString) = "\"" * replace(x, "\\" => "\\\\", "\"" => "\\\"") * "\""
 _jarr(v) = "[" * join((x isa AbstractString ? _jstr(x) : string(x) for x in v), ",") * "]"
@@ -5709,6 +5713,7 @@ const PERF4_MARK = Ref(0)
 # --trace-compile does not list, a method whose result is a known constant (the first marker, `= nothing`, never appeared)
 @noinline perf4_reveal_marker() = (PERF4_MARK[] += 1; PERF4_MARK[])
 const HUD_BV = Float32[]; const HUD_TV = Float32[]; const HUD_ST = Float32[]   # PERF-4 S2: text/HUD buffers reused per frame
+const HUD_TY = Float32[]; const HUD_TYT = Float32[]   # REPLAY-6: the replay's tyre panel + its labels
 # PERF-4 S3: the GL driver may queue several finished frames ahead of the display (NVIDIA allows up to 3), and each
 # queued frame is ~17 ms between the controls being read and the picture showing them. JM_GPUQ=1 caps the queue at ONE
 # frame: after each swap the CPU waits until the GPU has finished the PREVIOUS frame (a fence), so the next frame's
@@ -12860,6 +12865,7 @@ function main()
     REPLAY_REC = isempty(REPLAY_FILE) && !haskey(ENV,"JM_NOREPLAY") && (!SMOKE || haskey(ENV,"JM_REPLAY_REC"))
     replay_buf = REPLAY_REC ? Float32[] : nothing; replay_t = Ref(-1.0); REPLAY_NCAR = 1 + length(AICARS)
     tele_buf = REPLAY_REC ? Float32[] : nothing
+    tyre_lp = Ref(ntuple(_ -> (0.0, 0.0, 0.0, 0.0, 0.0), 4))   # REPLAY-6: smoothed DriveRT3D.tyregrip3d (zeros = no tyre data)
     REPLAY_AUTOSAVE = parse(Float64, get(ENV, "JM_REPLAY_AUTOSAVE", "20"))
     replay_saved = Ref(time())
     replay_names = String[ent_name(i) for i in 0:length(AICARS)]   # REPLAY-2: "You", "Clark (Lotus)" ... (two Lotuses)
@@ -12904,16 +12910,20 @@ function main()
     # every frame; interpolate them at the replay clock (gear: nearest frame). Older recordings: nothing (as before).
     REP_NT = (REPLAY && hasproperty(repd, :tele) && !isempty(repd.tele)) ? length(repd.tele_p) + length(repd.tele_ai)*(repd.ncar-1) : 0
     REP_CH = REP_NT == 0 ? Dict{String,Int}() : Dict(nm => k for (k, nm) in enumerate(repd.tele_p))
+    REP_TYRES = all(c -> haskey(REP_CH, c), REPLAY_TYRE_CH)        # REPLAY-6: recorded since 2026-10-09
+    rep_tyres = Ref{Any}(nothing)                                  # the panel's data at the replay clock (player only)
+    rep_tyshow = Ref(get(ENV, "JM_REPLAY_TYRES", "1") != "0"); rep_pw = Ref(false)   # W toggles the panel
     function replay_tele(rt)
         tl = repd.tele; nf = length(tl) ÷ REP_NT; f = clamp(rt*repd.fps, 0.0, nf-1.0)
         i0 = floor(Int, f); i1 = min(i0+1, nf-1); g = f - i0
         ch(nm) = (k = get(REP_CH, nm, 0); k == 0 ? 0.0 : Float64(tl[i0*REP_NT+k])*(1-g) + Float64(tl[i1*REP_NT+k])*g)
         kg = get(REP_CH, "gear", 0)
         (speed = ch("speed"), rpm = ch("rpm"), steer = ch("steer"), throttle = ch("throttle"), brake = ch("brake"),
-         clutch = ch("clutch"), gear = kg == 0 ? 0 : round(Int, tl[(g < 0.5 ? i0 : i1)*REP_NT+kg]))
+         clutch = ch("clutch"), gear = kg == 0 ? 0 : round(Int, tl[(g < 0.5 ? i0 : i1)*REP_NT+kg]),
+         tyres = REP_TYRES ? ntuple(w -> ntuple(q -> ch(REPLAY_TYRE_CH[5(w-1)+q]), 5), 4) : nothing)   # REPLAY-6
     end
     REPLAY && println("  ▶ REPLAY: $(basename(REPLAY_FILE)) — $(repd.nframes) frames, $(round(rep_dur,digits=1))s, $(repd.ncar) cars\n" *
-        "  SPACE play/pause · ←/→ seek · PgUp/PgDn ±10 s · Home/End start/end · ↑/↓ speed · V switch ANGLE (cockpit/chase/TV/F10/nose/RR-susp) · C switch CAR · Esc quit")
+        "  SPACE play/pause · ←/→ seek · PgUp/PgDn ±10 s · Home/End start/end · ↑/↓ speed · V switch ANGLE (cockpit/chase/TV/F10/nose/RR-susp) · C switch CAR · W tyres panel · Esc quit")
     # PO 2026-08-27: this was hardcoded "zand_racer_" with a "@ Zandvoort" header on EVERY track,
     # so the Nurburgring run just recorded landed as zand_racer_*.txt claiming to be Zandvoort.
     # Telemetry that misnames its own track is worse than none: it is wrong in a file that outlives
@@ -13267,7 +13277,9 @@ function main()
                 rt_ = replay_tele(rep_rt[])
                 cs.v = rt_.speed; cs.rpm = rt_.rpm; cs.gear = rt_.gear
                 inp = DriveInput(throttle = rt_.throttle, brake = rt_.brake, steer = rt_.steer, clutch = rt_.clutch)
+                rep_tyres[] = rt_.tyres
             end
+            kw = key(GLFW.KEY_W); (kw && !rep_pw[]) && (rep_tyshow[] = !rep_tyshow[]); rep_pw[] = kw   # REPLAY-6: W = tyres
             # cockpit interior only renders for the player car in COCKPIT mode; every other angle shows the driver figure + full car
             CTL.view = (REPLAY_CAMS[rep_cam[]] === :cockpit && rep_focus[] == 0) ? 0 : 1
             @goto skipsim
@@ -14492,6 +14504,15 @@ function main()
                                         " m/s, d ", round(d, digits = 2), " m, scrub ", round(scrub, digits = 2), " m/s")
             end
         end
+        # REPLAY-6: the tyres' force/grip/slip for the replay's per-wheel panel, smoothed like the HUD's traction circle
+        # (0.1 s: the coarse-mesh Fz spikes would otherwise flicker the rings at the 15 Hz the replay samples them)
+        if replay_buf !== nothing && CAR3D
+            tg = DriveRT3D.tyregrip3d(cs)
+            if tg !== nothing
+                α_ty = clamp(dt/0.10, 0.0, 1.0)
+                tyre_lp[] = ntuple(i -> ntuple(j -> tyre_lp[][i][j] + (tg[i][j] - tyre_lp[][i][j])*α_ty, 5), 4)
+            end
+        end
         # E18: record all car poses (player + AI) at ~15 Hz once the race is GREEN, for replay
         cs.t < replay_t[] && (replay_t[] = cs.t - 1.0)   # REPLAY-2: a session restart (R) rewinds the clock -- keep recording
         if replay_buf !== nothing && race_go[] && !rst && length(ai_poses) == length(AICARS) && (cs.t - replay_t[]) >= 1/15
@@ -14502,6 +14523,7 @@ function main()
             push!(tele_buf, Float32(cs.laps), Float32(cs.lapdist), Float32(cs.v), Float32(inp.throttle), Float32(inp.brake),
                   Float32(inp.steer), Float32(inp.clutch), Float32(cs.gear), Float32(cs.rpm), Float32(cs.lateral),
                   Float32(cs.ontrack ? 1 : 0), Float32(phase[] == :race ? 1 : 0))
+            for w in tyre_lp[], q in w; push!(tele_buf, Float32(q)); end             # REPLAY-6
             for a in AICARS; push!(tele_buf, Float32(a.s), Float32(a.v), Float32(a.lap), Float32(a.lane)); end
             if time() - replay_saved[] > REPLAY_AUTOSAVE           # crash-safe: the session so far is on disk
                 replay_saved[] = time(); write_replay(replay_out[], replay_buf, tele_buf, REPLAY_NCAR, replay_names, CLINE; final = false)
@@ -15056,6 +15078,25 @@ function main()
                                # announced only in the window title and on stdout; show it in the
                                # game. player_finpos is set when race_done latches.
                                finished=(race_done ? player_finpos[] : 0)), W, H)
+        # REPLAY-6: zandracer's per-wheel panel on the replay screen -- each tyre's grip ellipse (the effective contact
+        # patch: μ·Fz, grows with load, a point when the wheel is in the air) and its force dot (the traction budget used;
+        # red = the patch is sliding). The player's car only (the AI cars run no tyre model); W hides it.
+        if REPLAY && rep_tyshow[] && rep_focus[] == 0 && rep_tyres[] !== nothing && any(t -> t[3] + t[4] > 0, rep_tyres[])
+            baseR = 18.0; pitch = 2*1.9*baseR + 12; pcx = W/2; pcy = H - pitch - 18.0
+            tyv = empty!(HUD_TY); Render.htyres!(tyv, pcx, pcy, baseR, rep_tyres[])
+            Render.hud_draw(hudprog, hudvao, hudvbo, tyv, W, H)
+            if FONT !== nothing
+                tt = empty!(HUD_TYT); lc = (0.75, 0.78, 0.82)
+                for (k, nm) in enumerate(("FL", "FR", "RL", "RR"))
+                    lx = pcx + (isodd(k) ? -1 : 1)*pitch/2 + (isodd(k) ? -1.9baseR - 4 - Render.text_width(FONT, nm) : 1.9baseR + 4)
+                    ly = pcy + (k <= 2 ? -1 : 1)*pitch/2 - FONT.lineh/2
+                    Render.text!(tt, FONT, lx, ly, nm, lc)
+                end
+                cap = "tyres: ring = grip, dot = force"
+                Render.text!(tt, FONT, pcx - Render.text_width(FONT, cap)/2, pcy - pitch - 4 - FONT.lineh, cap, lc)
+                Render.text_draw(textprog, textvao, textvbo, FONT, tt, W, H)
+            end
+        end
         # TEXTHUD-1 (GOLDMATCH-JR-1 S1, 2026-09-17): the gold's timing overlay, in its layout -- lap
         # rows top-left (I = this lap, B = best, L = last), Track Position top-right with names and
         # metres to each car, the player's row amber. Only what the sim can honestly report is

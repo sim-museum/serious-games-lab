@@ -807,6 +807,40 @@ function htraction!(v,cx,cy,baseR,tc)
     hquad!(v,cx+dx-4,cy+dy-4,8,8,col)              # force dot: inside=grip in hand, outside=skidding
 end
 
+# REPLAY-6 (PO 2026-10-09: "add the effective contact patch and traction budget for all 4 wheels overlay from zandracer
+# ... to the replay screen"). zandracer (/home/g/zand_racer, render.jl htraction!) drew a ring per wheel sized by the
+# tyre's grip and a dot for its force. Here the ring is the tyre model's own FRICTION ELLIPSE -- semi-axes μx·Fz
+# (longitudinal, vertical) and μy·Fz (lateral, horizontal), with μ load-sensitive and scaled off-road, so it is the
+# effective contact patch in force terms: it swells on the loaded wheel and shrinks to a point on a lifted one. The dim
+# circle is GRIP_REF (a wheel at static load). The dot is the tyre's force (Fx up = drive, Fy left = to the left) at the
+# same scale -- the budget used -- coloured by the brush model's normalised slip ξ: green < 0.7, amber < 1, red = the
+# whole patch sliding (beyond the peak a sliding tyre's force falls INSIDE its ellipse, which is why the colour is the
+# slip and not the dot's distance from the ring). `t` = (Fx, Fy, μx·Fz, μy·Fz, ξ), forces in mg/4.
+function hellipse!(v,cx,cy,rx,ry,t,c;seg=28)
+    px,py=cx+rx,cy
+    for i in 1:seg; a=2π*i/seg; qx,qy=cx+rx*cos(a),cy+ry*sin(a); hline!(v,px,py,qx,qy,t,c); px,py=qx,qy; end
+end
+function htyre!(v,cx,cy,baseR,t)
+    fx,fy,gx,gy,ξ = Float64(t[1]),Float64(t[2]),Float64(t[3]),Float64(t[4]),Float64(t[5])
+    s = baseR / GRIP_REF                                  # pixels per mg/4, shared by the ellipse and the dot
+    rmax = 1.9*baseR
+    hquad!(v,cx-rmax-3,cy-rmax-3,2rmax+6,2rmax+6,(0.09,0.10,0.13))   # opaque cell: no road behind the dot
+    hcircle!(v,cx,cy,baseR,1.0,(0.30,0.33,0.38))          # static-load reference
+    rx = clamp(gy*s, 2.0, rmax); ry = clamp(gx*s, 2.0, rmax)
+    hellipse!(v,cx,cy,rx,ry,2.5,(0.62,0.68,0.76))          # the grip available now
+    col = ξ < 0.7 ? (0.40,0.80,0.40) : ξ < 1.0 ? (0.92,0.80,0.32) : (0.95,0.32,0.28)
+    dx = -fy*s; dy = -fx*s
+    m = hypot(dx,dy); m > rmax && (dx *= rmax/m; dy *= rmax/m)
+    hquad!(v,cx+dx-4,cy+dy-4,8,8,col)
+end
+"""REPLAY-6: the four tyres as a 2×2 panel (FL FR / RL RR) centred at (cx, cy). Returns the cell pitch."""
+function htyres!(v,cx,cy,baseR,ty)
+    sp = 2*1.9*baseR + 12
+    htyre!(v,cx-sp/2,cy-sp/2,baseR,ty[1]); htyre!(v,cx+sp/2,cy-sp/2,baseR,ty[2])
+    htyre!(v,cx-sp/2,cy+sp/2,baseR,ty[3]); htyre!(v,cx+sp/2,cy+sp/2,baseR,ty[4])
+    sp
+end
+
 """Render a lap time `secs` as 7-segment M:SS.t at (x,y) in colour c."""
 function htime!(v,x,y,secs,c; Wd=18,Hd=30,T=4,gap=6)
     secs = max(0.0, Float64(secs)); m = floor(Int, secs/60); s = secs - 60m

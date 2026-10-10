@@ -39,7 +39,7 @@ this index was written; that is what it exists to stop.
 | **HANDLING-1** | The PO's car often oversteers and washes out in a non-physical way -- at the Ring (DEFAULT setup) as at Spa (WW103) (PO 2026-10-08) | open -- with both setups it points at the tyre model beyond the grip peak, not the setup (cf. WW103-GPL-1's 50° steady slide); ✅ S1–S3 done, rotated (2026-10-09): the PO's slides are caught by the CARPHYS-1 tyre; the AI-contact knock that launched the WG s≈1612 slide is now a rigid-body impulse |
 | **TRACKGUIDE-1** | For the post-race analysis, use the GPL track guides under `~/sgl/THU` (PO 2026-10-09) -- `DOC/trackGuidesAndSetups_LOR/` (Lights Out Racing, 11 tracks, the Ring 71 pages: per-section, per-turn gear, braking and line) and `DOC/trackGuides_fs/` (7 tracks) | open |
 | **TRACKSEG-5** | More track-section names for the on-screen banner, from the track maps under `~/sgl/THU` -- the Ring shows only a subset of the names the PO has seen there (PO 2026-10-09). Known source: the BAPOM maps (`DOC/trackMaps/`, `WP/drive_c/Sierra/GPL/tracks/*/map-*.pdf`); for the Ring they add Breidscheid, Angstkurve, Hocheichen, Eiskurve, Hohenrain-Schikane, Pflanzgarten I/II | open |
-| **REPLAY-6** | Add zandracer's per-wheel overlay to the replay screen: the effective contact patch and the traction budget for all four wheels (PO 2026-10-09). zandracer = `/home/g/zand_racer` (rF1-based): `src/render.jl` `htraction!` -- a 2×2 of rings, each sized by that tyre's grip, with a force dot coloured by utilisation | open |
+| **REPLAY-6** | Add zandracer's per-wheel overlay to the replay screen: the effective contact patch and the traction budget for all four wheels (PO 2026-10-09). zandracer = `/home/g/zand_racer` (rF1-based): `src/render.jl` `htraction!` -- a 2×2 of rings, each sized by that tyre's grip, with a force dot coloured by utilisation | ✅ **S1 (2026-10-09), AWAITING THE PO's look:** every replay recorded from now on shows a 2×2 tyre panel for your car -- ring = that tyre's grip ellipse (μ·Fz, grows with load), dot = its force, red = sliding; W toggles |
 | **REPLAY-5** | Replay: jump to the beginning or the end with one command; at the end the replay gets stuck and cannot be backed up -- the only way out is to exit (PO 2026-10-08) | ✅ **CLOSED (2026-10-09), for the PO's look:** replay pauses at its end (no more sticking), Space there replays from the start, Home/End jump to start/end, PgUp/PgDn ±10 s |
 | **AIHELMET-1** | The AI drivers' helmets render as a dark dome (black lobes from the front) where GPL's are the driver's skin -- found 2026-10-07 during HANDS-2 | ✅ **S1 (2026-10-07):** each AI driver's own helmet skin bound to the shell (`261007/helmet/`) |
 | **TRACKSEG-3** | Preferences switch: show/hide the track-section names ("Front Straight", "Big Bend" at WG), default ON (PO 2026-10-06) | ✅ **DONE (S1, 2026-10-06):** launcher Graphics group, "Show track section names", default ON, remembered; OFF = `JM_SEGNAME_SECS=0`, also for replays; gate `segnames_smoke` |
@@ -24487,3 +24487,28 @@ What is there (surveyed 2026-10-09):
 Queue: HANDLING-1 S3 (gates, commit) -> **REPLAY-6** -> **TRACKSEG-5** -> **TRACKGUIDE-1** -> WW103-GPL-1 -> CARPHYS-1.
 The three new items are small and visible; REPLAY-6 also shows the car-physics work (each tyre's budget in a slide).
 
+
+## REPLAY-6 -- retrospective at start (2026-10-09)
+* HANDLING-1 closed on a finding no tyre fit could make (the contact knock). Carry-over lesson: a "feel" request must
+  not change the physics silently -- REPLAY-6 adds a display only; the physics is read, never touched.
+
+### REPLAY-6 S1 (2026-10-09): zandracer's per-wheel grip panel on the replay screen
+* Source: zandracer = `/home/g/zand_racer` (`src/render.jl` `htraction!`, fed by `cs.tc` in its rF1-based
+  `JuliaMotor/src/drive.jl`): a ring per wheel sized by the tyre's grip, a dot for its force.
+* Ours reads the MTK tyre itself -- `DriveRT3D.tyregrip3d(car)`: per tyre (Fx, Fy, μx·Fz, μy·Fz, ξ), forces in mg/4.
+  The ring is the brush tyre's FRICTION ELLIPSE (μx·Fz tall, μy·Fz wide; μ load-sensitive and scaled off-road) = the
+  effective contact patch in force terms; the dim circle is a wheel at static load. The dot is the force (up = drive,
+  down = brake, left = force to the left) = the traction budget used, coloured by the brush's normalised slip ξ:
+  green < 0.7, amber < 1, red = the whole patch sliding (a sliding tyre's force drops INSIDE its ellipse, so the
+  colour, not the dot's radius, says "sliding").
+* Recorded: 20 player channels (`fx_FL fy_FL gx_FL gy_FL xi_FL` … RR), low-passed 0.1 s, appended to the replay's
+  `tele_player` -- the sim and the analyser look channels up by name, so old replays still load (no panel for them).
+* Drawn: a 2×2 panel (FL FR / RL RR) bottom centre in replay, for the player's car (the AI cars run no tyre model);
+  **W** toggles it, `JM_REPLAY_TYRES=0` starts it hidden.
+* Verified: an autodriven WG session recorded and played back (`parity/replay6/tyre_panel_wg_t10.png`): in a right-hand
+  corner the loaded left tyres show the bigger ellipses, all four dots point right (into the turn), the rears sit up
+  and on their rings (power slide, red), the fronts inside theirs (green/amber).
+* Gate `tyrepanel_smoke` (new): left-turn load transfer (outer ellipse 2.3–2.8× inner), +Fy into the turn, gripping
+  tyres inside their ellipse, braking −Fx on both axles with μx·Fz > μy·Fz, and the recording/draw wiring.
+  Gates: 50/50 pass (`GATES_SKIP=road_clear_smoke`, with tyrepanel_smoke; run beside a DVD conversion at 7 cores).
+* For the PO's look: open any replay recorded from now on, chase or cockpit view on your own car; W hides the panel.

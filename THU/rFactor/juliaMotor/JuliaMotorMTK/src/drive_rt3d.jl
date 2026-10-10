@@ -825,6 +825,26 @@ function telemetry3d(c::Car3D)
      pitch=c.pitch, roll=c.roll, rh=c.rh, grounded=c.grounded)
 end
 
+const _GRIP3D = IdDict{Any,Any}()
+"""REPLAY-6: each tyre's force and grip, FL FR RL RR, as (Fx, Fy, μx·Fz, μy·Fz, ξ) -- forces in mg/4 (the static corner
+weight), the friction ellipse's semi-axes from the tyre model's own load-sensitive, off-road-scaled μ, and ξ the brush's
+normalised slip (1 = the whole contact patch sliding). `nothing` for a tyre model without those variables (JM_MAGIC)."""
+function tyregrip3d(c::Car3D)
+    g = get!(_GRIP3D, c.sys) do
+        s = c.sys
+        try
+            ModelingToolkit.getsym(s, [s.FL.Fx, s.FR.Fx, s.RL.Fx, s.RR.Fx, s.FL.Fy, s.FR.Fy, s.RL.Fy, s.RR.Fy,
+                                       s.FL.Fz, s.FR.Fz, s.RL.Fz, s.RR.Fz, s.FL.μxe, s.FR.μxe, s.RL.μxe, s.RR.μxe,
+                                       s.FL.μye, s.FR.μye, s.RL.μye, s.RR.μye, s.FL.ξ, s.FR.ξ, s.RL.ξ, s.RR.ξ])
+        catch
+            nothing
+        end
+    end
+    g === nothing && return nothing
+    a = g(c.integ); mg4 = 617.0*9.80665/4
+    ntuple(i -> (a[i]/mg4, a[4+i]/mg4, a[12+i]*max(a[8+i], 0.0)/mg4, a[16+i]*max(a[8+i], 0.0)/mg4, a[20+i]), 4)
+end
+
 "Fence collision: snap onto the boundary (xnew,znew) + bleed speed (E7).
 E42: `settle` zeroes the VERTICAL subsystem and re-anchors zref to the terrain under the
 snap point — without it, snapping back from a steep off-world slide leaves the suspension
