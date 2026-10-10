@@ -90,6 +90,17 @@ rm(conf; force = true); writeconf(["mode" => "profile", "label" => "x"], CUSTOM)
 out = readchomp(addenv(`python3 -I $pyf $NATIVE $conf $ud $TX`, "QT_QPA_PLATFORM" => "offscreen"))
 check("NEGATIVE CONTROL: a profile conf is not reported as autodetect", !occursin("autodetect", out), out)
 
+# 5. S2: the wizard's 90° step (iRacing) -> wheel_half_deg, saved and read back; the sim prefers the kernel's range, then
+# the measurement, then the TX name default; a joystick (no measurement, unknown name) stays on endpoint steering.
+mw = JoyMap(TXDOC.steer, TXDOC.throttle, TXDOC.brake, TXDOC.clutch, 2, 1, 0, 0.06, 450.0)
+savemap(joinpath(dir, "w.conf"), mw)
+check("wheel range saved and read back", loadmap(joinpath(dir, "w.conf")).wheel_half_deg == 450.0)
+check("old 8-field maps still build (wheel range 0)", JoyCfg.txmap().wheel_half_deg == 0.0)
+check("unknown wheel with a measured range -> physical steering", JoyCfg.wheel_half_range_deg("Some Wheel"; measured = 270.0) == 270.0)
+check("unknown device, no measurement -> endpoint steering", JoyCfg.wheel_half_range_deg("Some Wheel") == 0.0)
+check("the sim passes the calibration's range", occursin("wheel_half_range_deg(JOYNAME; measured = JOYMAP.wheel_half_deg)",
+      read(joinpath(NATIVE, "drive_native_mtk.jl"), String)))
+
 # 4. AppImage update keeps the autodetect store
 sh = read(normpath(joinpath(@__DIR__, "..", "..", "tools", "appimage", "build_julia.sh")), String)
 check("AppImage update keeps joystick.conf AND joystick_profiles/", occursin("demo/native/joystick.conf\" \"\$W", sh) &&

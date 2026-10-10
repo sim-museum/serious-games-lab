@@ -183,6 +183,7 @@ class JoyMap:
         self.clutch = Ctrl(0, 0.0, 1.0)
         self.up_btn, self.dn_btn, self.clutch_btn = 1, 2, 3
         self.deadzone = 0.06
+        self.wheel_half_deg = 0.0      # CTRLCAL-1 S2: from iRacing's 90° step; 0 = ask the kernel / the device name
 
     def apply(self, axes, btns):
         clamp = lambda v, lo, hi: max(lo, min(hi, v))
@@ -213,6 +214,8 @@ class JoyMap:
                 f.write(f"{nm}.axis {c.axis}\n{nm}.a {c.a}\n{nm}.b {c.b}\n")
             f.write(f"up_btn {self.up_btn}\ndn_btn {self.dn_btn}\n")
             f.write(f"clutch_btn {self.clutch_btn}\ndeadzone {self.deadzone}\n")
+            if self.wheel_half_deg > 0:
+                f.write(f"wheel_half_deg {self.wheel_half_deg}\n")
 
     @classmethod
     def load(cls, path):
@@ -240,6 +243,7 @@ class JoyMap:
         m.dn_btn = round(d.get("dn_btn", m.dn_btn))
         m.clutch_btn = round(d.get("clutch_btn", m.clutch_btn))
         m.deadzone = d.get("deadzone", m.deadzone)
+        m.wheel_half_deg = d.get("wheel_half_deg", 0.0)
         return m
 
 
@@ -388,20 +392,94 @@ class Bar(QProgressBar):
 # ---------------------------------------------------------------------------
 # Calibration wizard — a small state machine driven by live updates.
 # ---------------------------------------------------------------------------
+CENTRED_LO = 1.0 - 2 ** -0.5      # GPL's monotonic-quadratic test, solved: rest within 29.3-70.7 % of the travel
+
+
+class Sweep:
+    """CTRLCAL-1 S2: calibration the way GPL (gpl.exe FUN_004c2990/2d90/2ab0) and iRacing do it. `start` snapshots every
+    axis at rest (GPL: centre = current value, min = max = it); `update`, every frame, grows each axis's min/max while the
+    driver moves every control through its full travel. Each axis then classifies itself: rest within 29.3-70.7 % of its
+    travel = CENTRED (steering, a stick's push/pull); nearer an end = a PEDAL resting there. An axis that moved less than
+    10 % of a ±1 range is inactive (GPL: range < 0.2 x centre reads 0). 2 % of the travel at each end saturates."""
+    MIN_RANGE = 0.2
+    END = 0.02
+
+    def __init__(self):
+        self.centre, self.lo, self.hi = [], [], []
+
+    def start(self, axes):
+        self.centre = list(axes); self.lo = list(axes); self.hi = list(axes)
+
+    def update(self, axes):
+        if len(axes) != len(self.centre):
+            return
+        for i, v in enumerate(axes):
+            if v < self.lo[i]:
+                self.lo[i] = v
+            if v > self.hi[i]:
+                self.hi[i] = v
+
+    def range(self, i):
+        return self.hi[i] - self.lo[i]
+
+    def kind(self, i):
+        """'centred', 'pedal' or None (not moved enough)."""
+        r = self.range(i)
+        if r < self.MIN_RANGE:
+            return None
+        p = (self.centre[i] - self.lo[i]) / r
+        return "centred" if CENTRED_LO <= p <= 1.0 - CENTRED_LO else "pedal"
+
+    def travel(self, i, v):
+        """How far value v is from rest toward the far end on its side, 0..1 (signed side via `side`)."""
+        c = self.centre[i]
+        end = self.hi[i] if v >= c else self.lo[i]
+        return 0.0 if abs(end - c) < 1e-9 else (v - c) / (end - c)
+
+    def pedal_ctrl(self, i, v):
+        """A Ctrl for a control pressed toward value v on axis i: from rest (0) to the swept end on v's side (1), with
+        GPL's 2 % saturation at both ends. For a pedal the rest is an end; for a centred axis (a stick's push or pull)
+        it is the centre."""
+        c = self.centre[i]
+        if self.kind(i) == "pedal":
+            rest = self.lo[i] if (c - self.lo[i]) < (self.hi[i] - c) else self.hi[i]
+        else:
+            rest = c
+        far = self.hi[i] if v >= c else self.lo[i]
+        d = far - rest
+        return rest + self.END * d, far - self.END * d
+
+    def steer_ctrl(self, i, left_value):
+        """(a, b) for steering on centred axis i: symmetric about the rest centre (so centre = straight ahead), a on the
+        side the driver turned LEFT, half-width = the smaller swept half less 2 %."""
+        c = self.centre[i]
+        h = min(c - self.lo[i], self.hi[i] - c) * (1.0 - self.END)
+        return (c - h, c + h) if left_value < c else (c + h, c - h)
+
+
+# CTRLCAL-1 S2: the wizard follows GPL and iRacing -- a rest snapshot, ONE sweep of every control through its full travel
+# (which sets every axis's range and kind), then each function found by using it (iRacing assigns by pressing; the axis
+# that moves, and which way, is taken -- no Capture click per pedal), and iRacing's 90° step for a wheel's range.
 STEPS = [
     ("idle", ""),
-    ("rest", "Step 1 — CENTER the wheel/stick and RELEASE every pedal, then click Capture."),
-    ("steer_l", "Step 2 — Hold STEER fully LEFT, then click Capture."),
-    ("steer_r", "Step 3 — Hold STEER fully RIGHT, then click Capture."),
-    ("throttle", "Step 4 — Press the ACCELERATOR fully, then click Capture."),
-    ("brake", "Step 5 — Press the BRAKE fully, then click Capture."),
-    ("clutch", "Step 6 — Press the CLUTCH pedal fully and click 'Capture pedal' — "
+    ("rest", "Step 1 — CENTRE the wheel/stick and RELEASE every pedal, then click Next."),
+    ("sweep", "Step 2 — Move EVERY control through its FULL travel: turn the wheel lock to lock (stick: every way), press "
+              "each pedal to the floor and let it back, run any slider end to end. Then click Next."),
+    ("steer", "Step 3 — Turn the wheel (or push the stick) to the LEFT."),
+    ("wheel90", "Step 4 — WHEEL: turn it exactly 90° LEFT (a quarter turn: the top of the rim at 9 o'clock) and click "
+                "Capture. Joystick, or a wheel the game already knows: Skip."),
+    ("throttle", "Step 5 — Press the ACCELERATOR fully (stick: push forward), then release."),
+    ("brake", "Step 6 — Press the BRAKE fully (stick: pull back), then release."),
+    ("clutch", "Step 7 — Press the CLUTCH pedal fully (or run the clutch slider), then release — "
                "or click 'Use button' / 'No clutch'."),
-    ("clutch_btn", "Step 6b — Press the button you want to use as CLUTCH."),
-    ("up", "Step 7 — Press the SHIFT-UP paddle/button."),
-    ("dn", "Step 8 — Press the SHIFT-DOWN paddle/button."),
+    ("clutch_btn", "Step 7b — Press the button you want to use as CLUTCH."),
+    ("up", "Step 8 — Press the SHIFT-UP paddle/button."),
+    ("dn", "Step 9 — Press the SHIFT-DOWN paddle/button."),
     ("done", "Done — review the live preview below, then Save."),
 ]
+STEP = {k: i for i, (k, _) in enumerate(STEPS)}
+PRESS = 0.6        # a control counts as used once it has moved 60 % of its swept travel from rest ...
+RELEASED = 0.2     # ... and the next step waits until every control is back within 20 % of rest
 
 
 class CalibrateTab(QWidget):
@@ -412,6 +490,8 @@ class CalibrateTab(QWidget):
         self.map = JoyMap.load(CONF)
         self.work = JoyMap.load(CONF)   # map being edited by the wizard
         self.rest = []
+        self.sweep = Sweep()
+        self._used = set()                      # (axis index, side) pairs already assigned in this run
         self.step = 0
         self._btn_armed = True
         self._sax = 0
@@ -498,7 +578,7 @@ class CalibrateTab(QWidget):
         self.alt_b.clicked.connect(self.clutch_use_button)
         self.alt_b.hide()
         self.skip_b = QPushButton("No clutch")
-        self.skip_b.clicked.connect(self.clutch_skip)
+        self.skip_b.clicked.connect(self.skip)
         self.skip_b.hide()
         for x in (self.start_b, self.cap_b, self.alt_b, self.skip_b):
             brow.addWidget(x)
@@ -548,12 +628,12 @@ class CalibrateTab(QWidget):
                 it = self.axes_box.takeAt(0)
                 if it.widget():
                     it.widget().deleteLater()
-            self.axis_bars = []
+            self.axis_bars = []; self.axis_labels = []
             for i in range(len(j.axes)):
                 row = QHBoxLayout()
-                row.addWidget(QLabel(f"axis {i + 1}"))
+                lab = QLabel(f"axis {i + 1}"); lab.setMinimumWidth(110); row.addWidget(lab)
                 bar = Bar(); row.addWidget(bar, 1)
-                self.axis_bars.append(bar)
+                self.axis_bars.append(bar); self.axis_labels.append(lab)
                 w = QWidget(); w.setLayout(row)
                 self.axes_box.addWidget(w)
         if len(self.btn_lamps) != len(j.buttons):
@@ -582,8 +662,16 @@ class CalibrateTab(QWidget):
         self.pv["clutch"].set_norm(clu, clu)
         self.shiftl.setText(f"shift:  up {'▼' if up else '·'}   down {'▼' if dn else '·'}")
         # auto-capture for button steps
-        if STEPS[self.step][0] in ("up", "dn", "clutch_btn"):
+        key = STEPS[self.step][0]
+        if key not in ("idle", "rest") and self.sweep.centre:
+            self.sweep.update(j.axes)           # the sweep keeps growing through the whole run (GPL: every frame)
+            for i, lab in enumerate(getattr(self, "axis_labels", [])):
+                k = self.sweep.kind(i) if i < len(self.sweep.centre) else None
+                lab.setText(f"axis {i + 1}" + (f" · {k}" if k else ""))
+        if key in ("up", "dn", "clutch_btn"):
             self._auto_button()
+        elif key in ("steer", "throttle", "brake", "clutch"):
+            self._auto_axis()
 
     # ---- wizard flow ----
     # ---- CTRLCAL-1: autodetect / saved profile ----
@@ -643,28 +731,32 @@ class CalibrateTab(QWidget):
                                 "Plug in the controller (as joystick #1) and try again.")
             return
         self.work = JoyMap()
-        self.step = 1
+        self.sweep = Sweep(); self._used = set()
+        self._goto("rest")
+
+    def _goto(self, key):
+        self.step = STEP[key]
         self._show_step()
 
     def _show_step(self):
         key, txt = STEPS[self.step]
         self.instr.setText(txt)
-        self.cap_b.setEnabled(key not in ("idle", "done", "up", "dn", "clutch_btn"))
-        self.cap_b.setVisible(key not in ("up", "dn", "clutch_btn", "done", "idle"))
+        self.cap_b.setText("Capture" if key == "wheel90" else "Next")
+        self.cap_b.setVisible(key in ("rest", "sweep", "wheel90"))
+        self.cap_b.setEnabled(key in ("rest", "sweep", "wheel90"))
         self.alt_b.setVisible(key == "clutch")
-        self.skip_b.setVisible(key == "clutch")
+        self.skip_b.setVisible(key in ("clutch", "wheel90"))
+        self.skip_b.setText("Skip" if key == "wheel90" else "No clutch")
         self.start_b.setText("Restart" if key != "idle" else "Start")
         # a button step must first see all buttons released, so a button still held
-        # from the previous step (e.g. the clutch button) isn't grabbed immediately.
+        # from the previous step (e.g. the clutch button) isn't grabbed immediately; an axis step likewise waits for
+        # every control to be back at rest.
         self._btn_armed = key not in ("up", "dn", "clutch_btn")
+        self._ax_armed = False
         if key == "done":
             self.cap_b.setEnabled(False)
             self.capl.setText("Calibration captured. Review the preview, then Save.")
         self.summl.setText(self._summary())
-
-    def _advance(self):
-        self.step += 1
-        self._show_step()
 
     def capture(self):
         key = STEPS[self.step][0]
@@ -673,48 +765,76 @@ class CalibrateTab(QWidget):
             return
         if key == "rest":
             self.rest = list(ax)
-            self.capl.setText("Rest captured.")
-            self._advance()
-        elif key == "steer_l":
-            i = self._most_moved()
-            self.work.steer.axis = i + 1
-            self.work.steer.a = ax[i]
-            self._sax = i
-            self.capl.setText(f"Steer = axis {i + 1}, left @ {ax[i]:.2f}")
-            self._advance()
-        elif key == "steer_r":
-            i = getattr(self, "_sax", self.work.steer.axis - 1)
-            self.work.steer.b = ax[i]
-            self.capl.setText(f"Steer right @ {ax[i]:.2f}")
-            self._advance()
-        elif key == "throttle":
-            i = self._most_moved()
-            self.work.throttle = Ctrl(i + 1, self.rest[i], ax[i])
-            self.capl.setText(f"Throttle = axis {i + 1}: {self.rest[i]:.2f} → {ax[i]:.2f}")
-            self._advance()
-        elif key == "brake":
-            i = self._most_moved()
-            self.work.brake = Ctrl(i + 1, self.rest[i], ax[i])
-            self.capl.setText(f"Brake = axis {i + 1}: {self.rest[i]:.2f} → {ax[i]:.2f}")
-            self._advance()
-        elif key == "clutch":
-            i = self._most_moved()
-            self.work.clutch = Ctrl(i + 1, self.rest[i], ax[i])
-            self.work.clutch_btn = 0
-            self.capl.setText(f"Clutch pedal = axis {i + 1}: {self.rest[i]:.2f} → {ax[i]:.2f}")
-            self.step = 8   # → shift-up
-            self._show_step()
+            self.sweep.start(ax)
+            self.capl.setText("Rest captured. Now the sweep.")
+            self._goto("sweep")
+        elif key == "sweep":
+            act = [i for i in range(len(ax)) if self.sweep.kind(i)]
+            if not act:
+                self.capl.setText("No control has moved yet — move each one through its full travel.")
+                return
+            self.capl.setText("Swept: " + ", ".join(f"axis {i + 1} {self.sweep.kind(i)}" for i in act))
+            self._goto("steer")
+        elif key == "wheel90":
+            i = self.work.steer.axis - 1
+            d = abs(ax[i] - self.sweep.centre[i]) if 0 <= i < len(ax) else 0.0
+            if d < 0.02:
+                self.capl.setText("The wheel hasn't turned — turn it 90° left, or Skip.")
+                return
+            self.work.wheel_half_deg = round(90.0 / d, 1)       # GLFW's ±1 = half the wheel's range
+            self.capl.setText(f"Wheel range {2 * self.work.wheel_half_deg:.0f}° (lock to lock)")
+            self._goto("throttle")
+
+    def skip(self):
+        if STEPS[self.step][0] == "wheel90":
+            self.work.wheel_half_deg = 0.0
+            self._goto("throttle")
+        else:
+            self.clutch_skip()
 
     def clutch_use_button(self):
         self.work.clutch = Ctrl(0, 0.0, 1.0)
-        self.step = 7  # clutch_btn
-        self._show_step()
+        self._goto("clutch_btn")
 
     def clutch_skip(self):
         self.work.clutch = Ctrl(0, 0.0, 1.0)
         self.work.clutch_btn = 0
-        self.step = 8  # shift up
-        self._show_step()
+        self._goto("up")
+
+    def _auto_axis(self):
+        """Steer / throttle / brake / clutch: the control the driver uses now is found by its movement (the axis that
+        moved most, past PRESS of its swept travel, on a side not assigned yet); the ranges come from the sweep."""
+        key = STEPS[self.step][0]
+        ax = self.joy.axes; sw = self.sweep
+        if len(ax) != len(sw.centre):
+            return
+        tr = [abs(sw.travel(i, v)) if sw.kind(i) else 0.0 for i, v in enumerate(ax)]
+        if not self._ax_armed:                  # wait until everything is back at rest
+            if max(tr, default=0.0) < RELEASED:
+                self._ax_armed = True
+            return
+        side = lambda i: 1 if ax[i] >= sw.centre[i] else -1
+        if key == "steer":
+            cand = [i for i in range(len(ax)) if sw.kind(i) == "centred"]
+        else:
+            cand = [i for i in range(len(ax)) if i != self.work.steer.axis - 1 and (i, side(i)) not in self._used]
+        cand = [i for i in cand if tr[i] >= PRESS]
+        if not cand:
+            return
+        i = max(cand, key=lambda k: tr[k])
+        self._used.add((i, side(i)))
+        if key == "steer":
+            a, b = sw.steer_ctrl(i, ax[i])
+            self.work.steer = Ctrl(i + 1, a, b)
+            self.capl.setText(f"Steer = axis {i + 1} ({sw.kind(i)}), centre {sw.centre[i]:.2f}")
+            self._goto("wheel90")
+            return
+        c = Ctrl(i + 1, *sw.pedal_ctrl(i, ax[i]))
+        setattr(self.work, key, c)
+        if key == "clutch":
+            self.work.clutch_btn = 0
+        self.capl.setText(f"{key.capitalize()} = axis {i + 1} ({sw.kind(i)}): {c.a:.2f} → {c.b:.2f}")
+        self._goto({"throttle": "brake", "brake": "clutch", "clutch": "up"}[key])
 
     def _auto_button(self):
         bs = self.joy.buttons
@@ -728,24 +848,16 @@ class CalibrateTab(QWidget):
                 if key == "clutch_btn":
                     self.work.clutch_btn = i + 1
                     self.capl.setText(f"Clutch button = {i + 1}")
-                    self.step = 8
+                    self._goto("up")
                 elif key == "up":
                     self.work.up_btn = i + 1
                     self.capl.setText(f"Shift-up button = {i + 1}")
-                    self.step = 9
+                    self._goto("dn")
                 elif key == "dn":
                     self.work.dn_btn = i + 1
                     self.capl.setText(f"Shift-down button = {i + 1}")
-                    self.step = 10
-                self._show_step()
+                    self._goto("done")
                 return
-
-    def _most_moved(self):
-        ax = self.joy.axes
-        if not self.rest or len(self.rest) != len(ax):
-            self.rest = [0.0] * len(ax)
-        devs = [abs(ax[i] - self.rest[i]) for i in range(len(ax))]
-        return max(range(len(devs)), key=lambda i: devs[i]) if devs else 0
 
     def _summary(self):
         m = self.work

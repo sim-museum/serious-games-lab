@@ -23,7 +23,9 @@ struct JoyMap
     dn_btn::Int
     clutch_btn::Int
     deadzone::Float64
+    wheel_half_deg::Float64   # CTRLCAL-1 S2: half the wheel's range from the wizard's 90° step (iRacing's); 0 = unknown
 end
+JoyMap(s, t, b, c, u, d, cb, dz) = JoyMap(s, t, b, c, u, d, cb, dz, 0.0)
 
 "Default = the original hardcoded mapping: steer=axis1, throttle/brake=axis2 (push/
 pull), buttons 1/2/3 = up/down/clutch.  `apply` then reduces to the old formulas."
@@ -122,9 +124,9 @@ end
 # calibration then only supplies the centre and the direction. Joysticks keep endpoint calibration.
 
 """Half the wheel's rotation range in degrees (raw ±1), from the kernel's per-device `range` attribute
-(hid-tmff2 et al.), matched on the GLFW name; 450 (= 900°) for a Thrustmaster TX if the attribute is
-absent; 0 when the device is not a wheel (no physical steering)."""
-function wheel_half_range_deg(name::AbstractString)
+(hid-tmff2 et al.), matched on the GLFW name; else `measured` (the calibration's 90° step) if given; else 450 (= 900°)
+for a Thrustmaster TX; 0 when the device is not a wheel (no physical steering)."""
+function wheel_half_range_deg(name::AbstractString; measured::Real = 0.0)
     isempty(name) && return 0.0
     try
         for d in readdir("/sys/bus/hid/devices"; join = true)
@@ -137,6 +139,7 @@ function wheel_half_range_deg(name::AbstractString)
         end
     catch
     end
+    measured > 0 && return Float64(measured)   # CTRLCAL-1 S2: the wizard's 90° step, when the kernel reports no range
     n = lowercase(name)
     occursin("thrustmaster", n) && occursin("tx", n) && return 450.0
     0.0
@@ -190,6 +193,7 @@ function savemap(path, m::JoyMap)
         end
         println(io, "up_btn $(m.up_btn)"); println(io, "dn_btn $(m.dn_btn)")
         println(io, "clutch_btn $(m.clutch_btn)"); println(io, "deadzone $(m.deadzone)")
+        m.wheel_half_deg > 0 && println(io, "wheel_half_deg $(m.wheel_half_deg)")
     end
 end
 
@@ -208,7 +212,7 @@ function loadmap(path)
     JoyMap(ctrl("steer",dm.steer), ctrl("throttle",dm.throttle), ctrl("brake",dm.brake),
            ctrl("clutch",dm.clutch),
            round(Int, get(d,"up_btn",dm.up_btn)), round(Int, get(d,"dn_btn",dm.dn_btn)),
-           round(Int, get(d,"clutch_btn",dm.clutch_btn)), get(d,"deadzone",dm.deadzone))
+           round(Int, get(d,"clutch_btn",dm.clutch_btn)), get(d,"deadzone",dm.deadzone), get(d, "wheel_half_deg", 0.0))
 end
 
 end # module

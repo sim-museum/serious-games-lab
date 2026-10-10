@@ -21,7 +21,7 @@ this index was written; that is what it exists to stop.
 
 | item | what | state |
 |---|---|---|
-| **CTRLCAL-1** | Controller calibration should have two options -- **autodetect** or **saved profile**; saved profiles include the Thrustmaster TX and the Logitech Extreme 3D Pro ("3Dx Pro"); for autodetect, look at how GPL and iRacing do it (PO 2026-10-10) | 🟡 **S1 (2026-10-10):** GPL's and iRacing's calibration studied (gpl.exe decoded + the PO's own GPL TX controls.cfg); the Controller tab now offers Autodetect (per-device calibration, as both do) or a Saved profile (TX, Extreme 3D Pro, + your wizard calibrations); built-in profiles are one file each for sim and launcher; AppImage updates keep per-device calibrations; gate `ctrlcal_smoke`. Next: S2 the GPL/iRacing-style sweep calibration in the wizard |
+| **CTRLCAL-1** | Controller calibration should have two options -- **autodetect** or **saved profile**; saved profiles include the Thrustmaster TX and the Logitech Extreme 3D Pro ("3Dx Pro"); for autodetect, look at how GPL and iRacing do it (PO 2026-10-10) | 🟡 **S1 (2026-10-10):** GPL's and iRacing's calibration studied (gpl.exe decoded + the PO's own GPL TX controls.cfg); the Controller tab now offers Autodetect (per-device calibration, as both do) or a Saved profile (TX, Extreme 3D Pro, + your wizard calibrations); built-in profiles are one file each for sim and launcher; AppImage updates keep per-device calibrations; gate `ctrlcal_smoke`. **S2:** the wizard is GPL's/iRacing's sweep (rest, one full sweep, each control found by using it, the 90° wheel-range step, 2 % ends) |
 | **LOADHANG-1** | Why did the AppImage's Spa race load "hang" (≈15 min, the PO stopped it at the AI cars) after a Ring race, a WG race and a replay in the same launcher session? Little time if data is lacking -- but how to avoid / diagnose such issues in future (PO 2026-10-07 night) | ✅ **CLOSED (S1–S4, 2026-10-08):** the first Spa launch from the install decoded every texture cold at 125 ms each -- a boxed closure in the alpha bleed; now 1.7 ms (pixels identical), a cold Spa race loads in 232 s like a warm one; launches log flushed stage stamps + first-run texture progress; gate `texcold_smoke`; smoke runs no longer read the PO's wheel (netcollide repaired) |
 | **COCKPIT-2** | Cockpits need work: in REPLAY the cockpit is static (wheel doesn't turn, hands don't move, mirrors black, gauges have no dials); the Lotus wrists are see-through while driving; ALL cockpits incl. AI cockpits in replay as close to the gold as possible; the shifter at right moves when the player shifts (as in the gold) (PO 2026-10-07 night). Carries E64's open mirror-camera finding | 🟡 **S1–S4 (2026-10-09), for the PO's look:** replay cockpit from the recording (wheel, gloves, needles, HUD) + live mirrors in replay; moving gear lever in GPL's gate; all dials (DIALS-1); see-through wrists closed. Open: AI cockpits in replay, right glove to the lever on shifts, sleeve look |
 | **TRACKS-TD-1** | Track fixes from test drives (PO 2026-10-07 night): (a) Ring: start fences L+R flicker (also in the mirrors); artifacts at middle distance at times; at Ex-Mühle the hill ahead from the dip before the left turn is missing until you're about to turn, then pops in. (b) Spa: AI go off the road -- inside at Eau Rouge ("red water"), hit the PO's car parked across that inside path instead of dodging left; replay shows AI off inside/outside at times; long openings in the ground just after Stavelot showing another view through the ground | 🟡 **S1–S3 (2026-10-10):** (b) Stavelot "openings" FIXED for the PO's look -- the far Les Combes hilltop drawn 2.5–3+ km off as a floating band; the track mesh now has a draw range (2.4 km) as in GPL. (a) the Ring's three items not reproduced: needs the PO's video moment or a located gold frame. Video (moved): `~/Videos/old/261007_spa_race.mp4` |
@@ -25023,6 +25023,30 @@ PO request); CARPHYS-1 S12 follows the rotation.
   resolve() agrees with JoyCfg's on all 9; the AppImage keep) and `tests/ctrlcal_test.py` under launcher_smoke (the tab
   flow: default Autodetect writes nothing, pick/use a profile, remembered, back to Autodetect, wizard save per device,
   another device plugged in). controls_smoke's X3D label updated.
+* Gates: 59/59 pass (`GATES_SKIP=road_clear_smoke`); commit 76c5c709.
 * Next (S2): the wizard becomes GPL/iRacing's sweep -- rest snapshot, "move every control through its full travel",
   axes classified centred/pedal by GPL's rule, functions found by pressing them, 2 % end saturation, and iRacing's 90°
   step to measure a wheel's range where the kernel doesn't report one.
+
+### CTRLCAL-1 S2 (2026-10-10): the wizard is GPL's and iRacing's sweep calibration
+* Retro: S1 gave the choice and the profiles; the wizard itself was still one Capture click per endpoint, which
+  records wherever the driver happened to stop (the PO's 2026-10-03 "full lock" was ±100° of a 900° wheel) and makes
+  the driver say which control is which.
+* New flow (launcher Controller tab): (1) centre/release -> Next = GPL's rest snapshot; (2) one SWEEP of every control
+  through its full travel -> Next; min/max grow every frame for the whole run, and each axis labels itself live
+  ("centred" / "pedal") by GPL's rule -- solved exactly: GPL's monotonic-quadratic test is "rest within 29.3-70.7 % of
+  the travel" (1 − 1/√2; checked against gpl.exe's own coefficient formulas on 999 rest points, 0 mismatches);
+  (3) turn LEFT -> the steering axis and its direction are found by movement; (4) iRacing's 90° step -> the wheel's
+  range (`wheel_half_deg`; Skip for a joystick); (5-7) press the accelerator, the brake, the clutch -> each found by
+  movement (≥ 60 % of its swept travel, on an axis HALF not yet used -- GPL's N< / N> binding, so a stick's push/pull
+  gives throttle and brake on one axis), and the next step waits until every control is back within 20 % of rest;
+  (8-9) shift buttons as before. Ranges come from the sweep with GPL's 2 % saturation at both ends; steering is
+  symmetric about the rest centre.
+* `wheel_half_deg` is a new optional key (JoyMap field in both languages; 8-field maps still build). The sim's
+  physical steering now takes the kernel's range, else the wizard's measurement, else the TX name default.
+* Tests: `tests/ctrlcal_test.py` drives a synthetic TX and a synthetic Extreme 3D Pro through the wizard by movement
+  alone: both reach Done with the built-in profiles' axes and buttons and behave like them (rest = 0, floored = 1, same
+  steering direction; X3D push = throttle only, pull = brake only), the TX measures 900°, kinds are classified, the
+  wheel range is saved; negative control: nothing is assigned before the controls were seen at rest. ctrlcal_smoke +5
+  (wheel range round trip, precedence, the sim's call).
+* Gates: 59/59 pass (`GATES_SKIP=road_clear_smoke`).

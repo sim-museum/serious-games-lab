@@ -86,7 +86,7 @@ end
 const JOYMAP, JOYSRC = JoyCfg.resolve(_JOYCONF, JOYNAME)
 println("  controller: ", JOYSRC)
 # physical steering (wheels): set once the session's steering ratio is known (E100 block below)
-const WHEEL_HALF_DEG = JoyCfg.wheel_half_range_deg(JOYNAME)
+const WHEEL_HALF_DEG = JoyCfg.wheel_half_range_deg(JOYNAME; measured = JOYMAP.wheel_half_deg)
 const STEER_GAIN = Ref(0.0)        # normalised steer per raw unit; 0 = endpoint calibration (joysticks)
 
 # PO 2026-08-27, standing: "I like the clutch attached to a slider - that way I can ride the
