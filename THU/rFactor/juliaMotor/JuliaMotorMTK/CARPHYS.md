@@ -49,7 +49,7 @@ manoeuvres and both setups. Still inline in `DrivenVehicle3D` (next objects): ge
 | .ibt quantity (setup YAML / channel) | Physical object | In the model today | State |
 |---|---|---|---|
 | CornerWeight ×4, FuelLevel | sprung + unsprung masses, CG | total mass + front share from the four weights; sprung/unsprung split hand-set (m_u 20 kg); fuel mass fixed for the session | 🟡 |
-| — (not in the ibt) | inertias Ixx Iyy Izz, CG height | hand-set (120 / 850 / 890 kg·m², h 0.30 m) | 🟡 |
+| — (not in the ibt) | inertias Ixx Iyy Izz, CG height | hand-set (120 / 850 / 890 kg·m², h 0.30 m); Izz tested in S10 (tools/izzval_261010.jl): 600–1300 kg·m² moves the gold-event yaw-rate error by 5 %, so it isn't identifiable and isn't the cause of the sim's quick yaw response (the tyre has no relaxation length) | 🟡 |
 | SpringRate ×4 | **Spring** per corner | wheel rate = rate × motion ratio² (MR measured: front 0.78, rear 0.648) | ✅ (inline) |
 | SpringPerchOffset ×4, RideHeight ×4 | spring preload / static ride height | static ride heights taken from the ibt; perch offsets unused | 🟡 |
 | Packer ×4, ShockDeflection (static, max) | **Bump stop / packer**, travel limits | `TravelStops` object per corner: bump stop at (max − static − packer)/MR, top-out at −static/MR (default +55/−79 front, +85/−90 rear mm of wheel travel), 500 / 20 kN/m chosen on the gold's Flugplatz passes; JM_NOSTOPS for A/B | ✅ (CARPHYS-1 S7) |
@@ -70,9 +70,11 @@ manoeuvres and both setups. Still inline in `DrivenVehicle3D` (next objects): ge
 | — (vertical) | tyre vertical stiffness / damping | hand-set kt 180/200 kN/m, ct 1000/1100 | 🟡 |
 | AirDensity, coast-downs | **Aero drag**, rolling resistance | CdA 0.480, Crr 0.0139 fitted; ρ fixed 1.10 rather than the session's | ✅ / 🟡 |
 | — | aero lift / downforce | none (the 1967 car has no wings — right) | ✅ |
-| — | **Traction control** | a throttle-cutting aid above 25 m/s, ON by default — no such device in the real car, iRacing's or GPL's | ❌ non-physical |
+| — | **Traction control** | none by default (the old throttle-cutting aid is opt-in, `JM_TC=1`) — as in the real car, iRacing's and GPL's | ✅ |
 
 ## Non-physical behaviour found so far (2026-10-09)
+
+(Items 1 and 2 have since been fixed: the sliding grip and the traction aid, now opt-in. Item 3 was fixed in S5.)
 
 1. **Sliding is too slippery.** Once the car slides at 15–60° of body slip, iRacing's Lotus keeps 1.03–1.11 g of
    total grip on the skidpad and about 1.0 g at the Ring. Julia's keeps 0.80–0.87 g in the PO's races of 10-08 (on

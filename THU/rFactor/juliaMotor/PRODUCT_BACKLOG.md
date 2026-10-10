@@ -24940,3 +24940,20 @@ WW103), section by section, plus full-throttle acceleration by speed for GPL, Ju
   thing" into one GPL rule (the lap window), fixed in one sprint. Didn't -- per-turn gold comparison away from
   anchors; the Ring's anchor table is too sparse for 100 m questions. Options next time: anchor more landmarks
   (anchor_align.py), or ask the PO for replay timestamps of (a)–(c), the cheapest route.
+
+### CARPHYS-1 S10 (2026-10-10): yaw inertia Izz against the gold -- not identifiable; the tyre has no relaxation length
+* Retro (S1–S9): the regression harness, then one Modelica-style object per sprint, each fitted to the gold: steering
+  column (FFB R² 0.982), brake system (line pressures), travel stops (landing error 0.20 → 0.13 g), progressive throttle
+  map, clutch bite point (launch error 2.04 → 1.35 m/s). Worked: one object per sprint, each with its own acceptance
+  tool. Didn't: the damper refit, rejected by the crest test. Still hand-set: inertias, CG height, wheel inertia, tyre
+  vertical stiffness, damper rates. Options: fit what the gold can identify, and test the rest by replay.
+* Direct fit: Izz·r' = L·Fyf − b·m·ay, with Fyf from the rim torque through the S5 column. R² < 0.03 at every smoothing
+  window (0.08–1 s), skidpad and Ring alike. The column's ~10 % front-force error near the limit is ~650 N·m of yaw
+  moment, as large as Izz·r', so Izz can't be identified this way.
+* Replay: `tools/izzval_261010.jl` replays all 19 gold skidpad events (power-on and lift-off, both setups) for 2 s with
+  the gold's inputs at Izz 600 / 750 / 890 / 1050 / 1300. Mean yaw-rate RMS 3.76 / 3.69 / 3.63 / 3.60 / 3.57 deg/s;
+  sideslip RMS 1.38 → 1.44°, moving the opposite way. A 5 % effect over a factor of two: Izz stays 890.
+* Read: most events prefer slower yaw, even at 1300 kg·m², which is implausible for the car. The sim's yaw responds
+  faster than the gold's. The brush tyre makes its force instantly from the slip (no relaxation length); a real
+  tyre builds it over σ ≈ 0.3–0.6 m of rolling. That is the next object: transient slip per tyre, judged by izzval.
+* CARPHYS.md: traction-control row corrected (opt-in since the slide sprint), the Izz finding added.
