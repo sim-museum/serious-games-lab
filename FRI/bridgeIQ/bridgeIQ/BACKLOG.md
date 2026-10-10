@@ -5,6 +5,16 @@ section. Move an item to a STATUS doc under `docs/` when it's picked up.
 
 ## Backlog
 
+- **2/1 match program vs Q-Plus (decided 2026-10-09).** biq's two main
+  systems are Precision (primary, also the beginner track) and 2/1 game
+  forcing (`TwoOverOne`, Q-Plus `A-2-1-A.RCE`); SAYC/Acol/French stay
+  supported but are not a focus. 2/1 has had no live Q-Plus run yet. Steps:
+  set the three Q-Plus windows to 2/1 (convention-card / B-PREFER.CFG
+  check), run the TM with `--system TwoOverOne --remote N,E,W`, mine the
+  bidding divergences as was done for Precision, and add 2/1 par A/Bs next
+  to SAYC/Precision in the bidder test runs. Alternate Precision and 2/1
+  matches after that.
+
 - **Declarer play after the Monte-Carlo switch (2026-10-09).** decl1
   replay now 987 tricks vs Q-Plus 1005 (alpha-mu was 945). Belief-level
   diagnostic (scratch `decl_diag.py`, 60 samples per costly card):
