@@ -102,8 +102,24 @@ w._anim_set(10.0); app.processEvents()
 check(w.map_full.lap_dist(pa, 10.0) > w.map_full.lap_dist(aa, 10.0), "running order: the 50 m/s lap is ahead at 10 s (P1)")
 w.anim_btn.setChecked(True); app.processEvents(); w._anim_step(); w.anim_btn.setChecked(False)
 check(w.map_full.anim_t > 10.0, "play advances the clock")
+# WGTD-1 (b): a second replay of the same track joins the list and its laps compare with the first file's
+speeds[0] = 45.0; path2 = make(); speeds[0] = 50.0
+nrows = len(w.rows)
+check(w.add_replay(path2) is None and len(w.rows) > nrows, f"a second replay of the track adds its laps ({len(w.rows) - nrows})")
+p2 = [lp for lp in w.rows[nrows:] if lp.car == 0 and lp.time is not None and not lp.start]
+check(len(p2) >= 1 and abs(p2[0].time - L / 45.0) < 0.03, f"its laps keep their own times ({p2[0].time:.3f} s)")
+check(all("[" in lp.driver for lp in w.rows), "every lap is named with its file once two are loaded")
+dd = A.delta(pa, p2[0])
+check(abs(dd[-1] - (L / 45.0 - L / 50.0)) < 0.05, f"time difference across files: {dd[-1]:.3f} s (expected {L / 45.0 - L / 50.0:.3f})")
+x2, z2, _, _ = w.map_full.lap_pose(p2[0], 5.0)
+check(abs(math.hypot(x2, z2) - R) < 0.5 and p2[0].rep is not pa.rep, "the map places the second file's car from its own replay")
+hdr["track"] = "elsewhere"; path3 = make(); hdr["track"] = "synthetic"
+check(w.add_replay(path3) is not None, "a replay of another track is refused")
+for r, lp in enumerate(w.rows):
+    w.table.cellWidget(r, 0).setChecked(lp is pa or lp is p2[0])
+app.processEvents()
 w.grab()                                            # paints every widget once (an exception would fail the test)
-os.remove(path)
+os.remove(path); os.remove(path2); os.remove(path3)
 
 # REPLAY-3/4: a race started on a grid BEHIND the line (a restart puts every car there): the run to the line is not lap 1
 start_saved = list(start); start[0] = L - 40.0; start[1] = L - 60.0

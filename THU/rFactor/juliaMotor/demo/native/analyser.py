@@ -39,7 +39,7 @@ def jrt_path(jmr):
 class Lap:
     """One timed lap of one car, resampled onto a common distance grid (metres along the player's lap)."""
     __slots__ = ("car", "driver", "num", "t0", "t1", "time", "i0", "i1", "dist", "ch", "xs", "zs", "ds", "splits", "clean",
-                 "start", "reached", "full")
+                 "start", "reached", "full", "rep")
 
     def label(self):
         if self.time is None:                      # REPLAY-3: an unfinished lap (crash, retirement, end of recording)
@@ -152,6 +152,7 @@ class Replay:
             lp = Lap()
             # numbered as racing does: the lap completed at its END (the lap from the start is lap 1)
             lp.car = c; lp.driver = self.names[c] if c < len(self.names) else f"car {c}"; lp.num = la + 1
+            lp.rep = self                          # WGTD-1 (b): a lap knows its own replay (two files in one window)
             lp.start = fresh; lp.i0 = k0
             if ta is not None and tb is not None:
                 lp.t0 = ta; lp.t1 = tb; lp.time = tb - ta; lp.i1 = k1
@@ -446,8 +447,8 @@ class TrackMap(QWidget):
             if self.cursor_d is not None and lp.dist:
                 k = min(len(lp.dist) - 1, max(0, int(self.cursor_d / GRID_M)))
                 fx = lp.ch["time"][k] + lp.t0             # the car's position at that distance, by time
-                j = _nearest_time(self.rep.t, fx, lp.i0, lp.i1)
-                c = self.rep.cars[lp.car]
+                j = _nearest_time(lp.rep.t, fx, lp.i0, lp.i1)
+                c = lp.rep.cars[lp.car]
                 p.setBrush(QBrush(col)); p.setPen(QPen(QColor("#000000"), 1.0)); p.drawEllipse(f(c["x"][j], c["z"][j]), 5, 5)
                 p.setBrush(Qt.BrushStyle.NoBrush)
 
@@ -455,7 +456,7 @@ class TrackMap(QWidget):
         """Where lap `lp`'s car is `t` s into the lap: (x, z, dx, dz) -- position from the recorded frames, interpolated,
         and the direction of travel from the next frame (screen-independent)."""
         tt = lp.t0 + min(max(t, 0.0), (lp.time if lp.time is not None else lp.t1 - lp.t0))
-        T = self.rep.t; c = self.rep.cars[lp.car]
+        T = lp.rep.t; c = lp.rep.cars[lp.car]
         j = _nearest_time(T, tt, lp.i0, lp.i1); j = max(lp.i0 if lp.start else lp.i0 - 1, min(j, len(T) - 2))
         if T[j] > tt and j > 0:
             j -= 1
@@ -721,27 +722,18 @@ class AnalyserWindow(QDialog):
         for cb in (self.show_ai, self.show_unf):
             cb.toggled.connect(self._filter); frow.addWidget(cb)
         frow.addStretch(1); lv.addLayout(frow)
-        self.table = QTableWidget(len(allaps), 4)
+        self.table = QTableWidget(0, 4)
         self.table.setHorizontalHeaderLabels(["", "Driver", "Lap", "Time"])
         self.table.verticalHeader().setVisible(False); self.table.setAlternatingRowColors(True)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.reps = [self.rep]                                 # WGTD-1 (b): more replays of the same track join with "Add replay…"
         self.rows = []
-        for r, lp in enumerate(sorted(allaps, key=lambda lp: (lp.car, lp.num, lp.i0))):
-            self.rows.append(lp)
-            cb = QCheckBox(); cb.toggled.connect(self._changed)
-            self.table.setCellWidget(r, 0, cb)
-            self.table.setItem(r, 1, QTableWidgetItem(lp.driver + ("" if lp.clean else "  (off track)")))
-            self.table.setItem(r, 2, QTableWidgetItem(str(lp.num)))
-            it = QTableWidgetItem(fmt_time(lp.time) + ("  (from the start)" if lp.start else "") if lp.time is not None
-                                  else _untimed(lp))
-            if lp.time is None:
-                it.setForeground(QColor("#8aa0b2"))
-            elif best is not None and abs(lp.time - best) < 1e-9:
-                it.setForeground(QColor("#7fd1ae"))
-            self.table.setItem(r, 3, it)
-        self.table.resizeColumnsToContents()
+        self._fill_rows(allaps, best)
         lv.addWidget(self.table, 1)
+        add_b = QPushButton("Add replay…")
+        add_b.setToolTip("Load another replay of this track: its laps join the list, to compare with these (as GPL Replay Analyser)")
+        add_b.clicked.connect(self._add_replay); lv.addWidget(add_b)
         self.hint = QLabel("Tick up to five laps. Wheel zooms, drag pans, double-click resets."); self.hint.setObjectName("hint")
         self.hint.setWordWrap(True); lv.addWidget(self.hint)
         coach_b = QPushButton("Coaching (Claude)…")          # REPLAY-2 S4: optional, shows what it sends first
@@ -814,6 +806,58 @@ class AnalyserWindow(QDialog):
                 self.table.cellWidget(r, 0).setChecked(True)
         self._filter()
         self._changed()
+
+    def _fill_rows(self, laps, best):
+        """Append `laps` to the lap list (one row each, ordered by car, lap, start)."""
+        for lp in sorted(laps, key=lambda lp: (lp.car, lp.num, lp.i0)):
+            r = self.table.rowCount(); self.table.insertRow(r)
+            self.rows.append(lp)
+            cb = QCheckBox(); cb.toggled.connect(self._changed)
+            self.table.setCellWidget(r, 0, cb)
+            self.table.setItem(r, 1, QTableWidgetItem(lp.driver + ("" if lp.clean else "  (off track)")))
+            self.table.setItem(r, 2, QTableWidgetItem(str(lp.num)))
+            it = QTableWidgetItem(fmt_time(lp.time) + ("  (from the start)" if lp.start else "") if lp.time is not None
+                                  else _untimed(lp))
+            if lp.time is None:
+                it.setForeground(QColor("#8aa0b2"))
+            elif best is not None and abs(lp.time - best) < 1e-9:
+                it.setForeground(QColor("#7fd1ae"))
+            self.table.setItem(r, 3, it)
+        self.table.resizeColumnsToContents()
+
+    def add_replay(self, jrt):
+        """WGTD-1 (b) (PO 2026-10-08: "two replay files of the same track side by side"): load another replay of this track;
+        its laps join the list, named with the session's time so the two files can be told apart. Returns an error string
+        or None."""
+        try:
+            other = Replay(jrt)
+        except Exception as e:
+            return f"could not read {os.path.basename(jrt)} ({e})"
+        if other.h.get("track") != self.rep.h.get("track"):
+            return f"{os.path.basename(jrt)} is {other.h.get('track')}, this analysis is {self.rep.h.get('track')}"
+        if abs(other.laplen - self.rep.laplen) > 0.02 * self.rep.laplen:
+            return "the lap lengths differ -- not the same track layout"
+        def tag(r):                                        # the session's clock time: the LAST hh-mm-ss in the name (after the date)
+            m = __import__("re").findall(r"\d\d-\d\d-\d\d", os.path.basename(r.path))
+            return m[-1] if m else os.path.basename(r.path)[:16]
+        if len(self.reps) == 1:                            # name the first file's laps too, now that there are two
+            for r_, lp in enumerate(self.rows):
+                lp.driver = f"{lp.driver} [{tag(self.rep)}]"
+                self.table.item(r_, 1).setText(lp.driver + ("" if lp.clean else "  (off track)"))
+        for lp in other.laps + other.unfinished:
+            lp.driver = f"{lp.driver} [{tag(other)}]"
+        self.reps.append(other)
+        best = min((lp.time for r in self.reps for lp in r.laps), default=None)
+        self._fill_rows(other.laps + other.unfinished, best)
+        self._filter()
+        return None
+
+    def _add_replay(self):
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        path, _ = QFileDialog.getOpenFileName(self, "Add a replay of this track", os.path.dirname(self.rep.path), "Julia Racer replays (*.jrt)")
+        if path:
+            err = self.add_replay(path)
+            err and QMessageBox.warning(self, "Add replay", err)
 
     def _filter(self, *_):
         """WGTD-1: hide AI / unfinished laps per the two switches; a hidden lap is also unticked."""

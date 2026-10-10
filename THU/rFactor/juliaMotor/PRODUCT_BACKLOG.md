@@ -24864,3 +24864,13 @@ WW103), section by section, plus full-throttle acceleration by speed for GPL, Ju
   round, on the line, pointing anticlockwise; the 50 m/s lap is P1 against the 40 m/s one; the animation runs for the
   longest selected lap; play advances the clock.
 * Gates: 57/57 pass (`GATES_SKIP=road_clear_smoke`; launcher_smoke runs the analyser test).
+
+### WGTD-1 S4 (2026-10-10): (b) a second replay of the same track, side by side
+* Analyser → **Add replay…**: another `.jrt` of the same track joins the lap list; every lap is then named with its
+  session's clock time (`You [21-46-50]`), so laps from both files tick, overlay on the graphs and the map, give the
+  time difference and animate together (each lap now carries its own replay, so the map places it from its own frames).
+  A replay of another track or layout is refused with the reason.
+* `tests/analyser_test.py`: a second synthetic replay (45 m/s) adds its laps with their own times, the time difference
+  across the files is the analytic 2.222 s, the map places the second file's car from its own replay, another track is
+  refused. (The PO's other WG replays of 10-08 hold no timed lap, so the real-data check is a session against itself.)
+* Gates: 57/57 pass (`GATES_SKIP=road_clear_smoke`). Process slip: for ~1 minute during this run drive_native_mtk.jl carried the next sprint's groove change (reverted at once and re-applied after); one early smoke may have loaded it -- the next sprint's full run covers both.
