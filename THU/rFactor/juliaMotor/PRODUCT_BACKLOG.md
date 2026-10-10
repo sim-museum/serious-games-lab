@@ -24336,7 +24336,7 @@ rotated to honour the 4-sprint cap. The evening iRacing test list grows in `IRTE
 ## IRTEST-261009 -- iRacing tests cued for the PO's evening session (grows as items need them)
 Every test: Lotus 49, 360 Hz logging ON, setup named in the test, one .ibt per test (exit to the garage between tests).
 Order = value to the model; about 50 min of driving in all. BOTH setups (PO 2026-10-10: both must feel authentic):
-the default for all six; then WW103 again for #1 (LSD, camber, bars), #2 (springs, dampers, bars) and #6 (front toe-out, camber). #3 and #4 need the default only
+the default for #1-#4 and #6; then WW103 again for #1 (LSD, camber, bars), #2 (springs, dampers, bars) and #6 (front toe-out, camber). #3 and #4 need the default only
 (brake hardware and the bar law are the same in both). About 65 min in all (#5 dropped). (2026-10-10 corrections: #2/#6 said
 "Centripetal's straight" -- Centripetal is a circle; a banked oval such as Charlotte is a poor substitute: short
 straights, and banking adds load and roll.)
