@@ -6740,7 +6740,12 @@ end
 tstamp("  [E80] trackside objects + billboards + trees begin")
 const DATPACK = TRACKDAT     # trackside objects come from the track's own .dat (generic across tracks)
 const TMPOBJ = mktempdir()
-objpath(nm) = (p=joinpath(ZD, nm*".3do"); isfile(p) ? p :
+# TRACKSIGNS-1 (2026-10-10): GPL runs on Windows, where file names are case-blind; the PO's Ring carries the "Traffic-signs"
+# add-on as UPPER-case loose files (TS_HB.3do, SI_OR.3do, KM_02_4.3do) placed as ts_hb, si_or, km_02_4 -- on Linux the
+# exact-case lookup missed all 360 of them ("NO MESH"). The track folder is indexed by lower-case name once.
+const _ZD_LC = Dict(lowercase(f) => f for f in (isdir(ZD) ? readdir(ZD) : String[]))
+_zd_file(nm) = (f = get(_ZD_LC, lowercase(nm), nothing); f === nothing ? joinpath(ZD, nm) : joinpath(ZD, f))
+objpath(nm) = (p=_zd_file(nm*".3do"); isfile(p) ? p :
     (v=get(DATPACK, lowercase(nm*".3do"), nothing); v===nothing ? "" :
      (tp=joinpath(TMPOBJ, nm*".3do"); isfile(tp)||write(tp,v); tp)))
 # stands-only crowd policy (user): KEEP the seated grandstand/pit-wall crowds, so we no
@@ -6805,6 +6810,8 @@ let objnames=Set{String}()
     obj_extra_excl(nm) = (nm=="startbox" && !haskey(ENV,"JM_STARTBOX_KEEP")) ?
         ("sfbox01","sfbox02","sfbox03","hay01","hay02", _zpeople...) : _zpeople
     objmesh=Dict{String,Any}(); ymn=Dict{String,Float32}(); ymx=Dict{String,Float32}(); bbinfo=Dict{String,Any}()
+    # the "under 1 m tall" rule drops ground decals and stubs; TRACKSIGNS-1: the add-on's km stones (0.45 m) are real
+    tallenough(nm) = (get(ymx,nm,0f0)-get(ymn,nm,0f0)) > 1.0f0 || startswith(lowercase(nm), "km_")
     lxmn=Dict{String,Float32}(); lxmx=Dict{String,Float32}(); lzmn=Dict{String,Float32}(); lzmx=Dict{String,Float32}()
     objverts=Dict{String,Any}()   # SOLID-BOX ground truth: the parts, so a hook can transform real vertices   # E71-S8 local horizontal AABB
     lverts=Dict{String,Vector{Tuple{Float32,Float32}}}()   # E71-S9 decimated local (x,z) footprint points
@@ -7329,7 +7336,7 @@ let objnames=Set{String}()
                 # count is an upper bound. Apply the same keep-test the OBJECTS comprehension uses.
                 kept = get(objmesh,i.name,nothing) !== nothing && !drop(i.name) &&
                        !onroad_crowd(i) && !perp_crowd(i) && !onroad_bldg(i) && !onroad_fp(i) &&
-                       (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && onground(i)
+                       tallenough(i.name) && onground(i)
                 # E71-S17: an intruder's ORIGIN lateral and its yaw RELATIVE TO THE ROAD. The
                 # census has only ever reported how close the footprint gets, which cannot separate
                 # "authored beside the road" from "placed beside the road and turned across it".
@@ -7515,7 +7522,7 @@ let objnames=Set{String}()
         end
     end
     objkeep(i) = get(objmesh,i.name,nothing) !== nothing &&
-                 !drop(i.name) && !onroad_crowd(i) && !perp_crowd(i) && !onroad_bldg(i) && !onroad_fp(i) && (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && onground(i)
+                 !drop(i.name) && !onroad_crowd(i) && !perp_crowd(i) && !onroad_bldg(i) && !onroad_fp(i) && tallenough(i.name) && onground(i)
     global OBJECTS = [(objitems(i), Render.translate(Float32[i.x, plozfp(i), -i.y]) * Render.roty(Float32(OBJ_YAW_SIGN * objyawsign(i.name) * -i.yaw + objyawfix(i.name))) *
                        Render.rotz(Float32(OBJ_PR[1]*i.pitch)) * Render.rotx(Float32(OBJ_PR[2]*i.roll)), istree(i.name) && (graze_mesh || !(MONZA || WATGLEN)), (Float32(i.x), plozfp(i), Float32(-i.y)), lowercase(i.name))
                       for i in insts if objkeep(i)]
@@ -7573,7 +7580,7 @@ let objnames=Set{String}()
                 perp_crowd(i)             ? "perp_crowd" :
                 onroad_bldg(i)            ? "onroad_bldg" :
                 onroad_fp(i)              ? "onroad_fp (footprint on road)" :
-                !((get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0) ? "under 1 m tall" :
+                !(tallenough(i.name)) ? "under 1 m tall" :
                 !onground(i)              ? "not on ground" : ""
             r == "" ? (kept += 1) : (why[r] = get(why,r,0)+1)
         end
@@ -7606,7 +7613,7 @@ let objnames=Set{String}()
                      perp_crowd(i)             ? "perp_crowd" :
                      onroad_bldg(i)            ? "onroad_bldg" :
                      onroad_fp(i)              ? "onroad_fp (footprint on road)" :
-                     !((get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0) ? "under 1 m tall" :
+                     !(tallenough(i.name)) ? "under 1 m tall" :
                      !onground(i)              ? "not on ground" : "kept"
                 push!(_rows, (_hr.lapdist, lowercase(String(i.name)), _hr.lateral, _r))
             end
@@ -8270,7 +8277,7 @@ let objnames=Set{String}()
                     perp_crowd(i)             ? "perp_crowd" :
                     onroad_bldg(i)            ? "onroad_bldg" :
                     onroad_fp(i)              ? "onroad_fp (footprint on road)" :
-                    !((get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0) ? "under 1 m tall" :
+                    !(tallenough(i.name)) ? "under 1 m tall" :
                     !onground(i)              ? "not on ground" : "DRAWN"
                 println("   ", rpad(i.name, 10), " at (", round(Float64(i.x), digits=1), ", ", round(Float64(i.y), digits=1),
                         ")  dist=", round(d, digits=1), " m  -> ", r)
@@ -8601,7 +8608,7 @@ let objnames=Set{String}()
         # what is actually rendered"; now it does.  JM_OBJINSTS_LOOSE=1 restores the old 3-filter set.
         kmesh  = ismesh && !drop(i.name) && !onroad_crowd(i) && !perp_crowd(i) &&
                  (get(ENV,"JM_OBJINSTS_LOOSE","0") != "0" || (!onroad_bldg(i) && !onroad_fp(i))) &&
-                 (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 && og
+                 tallenough(i.name) && og
         kbb    = isbb   && !drop(i.name) && !(standcrowd(i.name) && on_road(i.x, i.y, ROAD_HALFW+1.0)) && og && !on_road(i.x, i.y, ROAD_HALFW)   # E68 S8b: billboard crowds are camera-facing (yaw meaningless) — drop only when ON the road; perp_crowd wiped Spa's Eau Rouge line
         issolid = solidR(lowercase(i.name)) > 0.0 && og && !on_road(i.x, i.y, SOLID_EXCL_HW)
         (i.name, Float32(i.x), Float32(i.y), ploz(i), kmesh ? :mesh : kbb ? :bb : :dropped, issolid)
@@ -8806,7 +8813,7 @@ let objnames=Set{String}()
         onroad_objs = NTuple{4,Any}[]
         for i in insts
             (get(objmesh,i.name,nothing)===nothing || drop(i.name) || !onground(i)) && continue
-            (get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0 || continue
+            tallenough(i.name) || continue
             hr = JuliaMotor.hat(TRKSURF, Float64(i.x), Float64(i.y))
             # road tangent angle from perp (lateral unit vec rotated -90°); object yaw RELATIVE to it:
             # |relyaw| near 0/180 = wall runs PARALLEL to the road, near ±90 = PERPENDICULAR storefront (E41)

@@ -40,7 +40,7 @@ this index was written; that is what it exists to stop.
 | **TRACKGUIDE-1** | For the post-race analysis, use the GPL track guides under `~/sgl/THU` (PO 2026-10-09) -- `DOC/trackGuidesAndSetups_LOR/` (Lights Out Racing, 11 tracks, the Ring 71 pages: per-section, per-turn gear, braking and line) and `DOC/trackGuides_fs/` (7 tracks) | ✅ **S1 (2026-10-09), AWAITING THE PO's look:** analyser "Track guide" tab -- every corner of the guide (Ring 70, Zandvoort 9, Spa 7, WG 5, Monza 5) placed on your lap: guide vs your entry / slowest speed / time through, the guide's advice per corner; the coaching quotes it; the AppImage carries the guides as text |
 | **TRACKSEG-5** | More track-section names for the on-screen banner, from the track maps under `~/sgl/THU` -- the Ring shows only a subset of the names the PO has seen there (PO 2026-10-09). Known source: the BAPOM maps (`DOC/trackMaps/`, `WP/drive_c/Sierra/GPL/tracks/*/map-*.pdf`); for the Ring they add Breidscheid, Angstkurve, Hocheichen, Eiskurve, Hohenrain-Schikane, Pflanzgarten I/II | ✅ **S1 (2026-10-09), AWAITING THE PO's look:** the Ring 26 → 34 names from the PO's own GPL add-on boards (TS_*) + the BAPOM map; Wippermann (360 m early) and Brünnchen/Eschbach (swapped) corrected; the other tracks' maps add nothing |
 | **REPLAY-6** | Add zandracer's per-wheel overlay to the replay screen: the effective contact patch and the traction budget for all four wheels (PO 2026-10-09). zandracer = `/home/g/zand_racer` (rF1-based): `src/render.jl` `htraction!` -- a 2×2 of rings, each sized by that tyre's grip, with a force dot coloured by utilisation | ✅ **S1 (2026-10-09), AWAITING THE PO's look:** every replay recorded from now on shows a 2×2 tyre panel for your car -- ring = that tyre's grip ellipse (μ·Fz, grows with load), dot = its force, red = sliding; W toggles |
-| **TRACKSIGNS-1** | (found by TRACKS-TD-1 S3, 2026-10-10) The PO's GPL Ring carries the "Traffic-signs" add-on -- 140+ period traffic signs (`SI_*`), km stones (`km_*`/`KM_*`) and section boards (`TS_*`) as loose .3do files in the track folder; our object path reports the `SI_*`/`km_*` placements as "no-mesh, UNRESOLVED (vanishes)", so none are drawn. Resolve them like the other loose objects | open |
+| **TRACKSIGNS-1** | (found by TRACKS-TD-1 S3, 2026-10-10) The PO's GPL Ring carries the "Traffic-signs" add-on -- 140+ period traffic signs (`SI_*`), km stones (`km_*`/`KM_*`) and section boards (`TS_*`) as loose .3do files in the track folder; our object path reports the `SI_*`/`km_*` placements as "no-mesh, UNRESOLVED (vanishes)", so none are drawn. Resolve them like the other loose objects | ✅ **S1 (2026-10-10), for the PO's look:** the object lookup was case-sensitive (GPL is on Windows); 331 of the 360 add-on signs now draw (section boards, traffic signs, km stones); Zandvoort's VW vans and truck appear too |
 | **REPLAY-5** | Replay: jump to the beginning or the end with one command; at the end the replay gets stuck and cannot be backed up -- the only way out is to exit (PO 2026-10-08) | ✅ **CLOSED (2026-10-09), for the PO's look:** replay pauses at its end (no more sticking), Space there replays from the start, Home/End jump to start/end, PgUp/PgDn ±10 s |
 | **AIHELMET-1** | The AI drivers' helmets render as a dark dome (black lobes from the front) where GPL's are the driver's skin -- found 2026-10-07 during HANDS-2 | ✅ **S1 (2026-10-07):** each AI driver's own helmet skin bound to the shell (`261007/helmet/`) |
 | **TRACKSEG-3** | Preferences switch: show/hide the track-section names ("Front Straight", "Big Bend" at WG), default ON (PO 2026-10-06) | ✅ **DONE (S1, 2026-10-06):** launcher Graphics group, "Show track section names", default ON, remembered; OFF = `JM_SEGNAME_SECS=0`, also for replays; gate `segnames_smoke` |
@@ -24825,3 +24825,25 @@ WW103), section by section, plus full-throttle acceleration by speed for GPL, Ju
   `pepsi`/`pepsi2` object is a CALTEX board, as in the PO's GPL. Nothing blank found in the current build; if the PO
   still sees blank boards at Tarzan: which view (cockpit/chase/replay/mirror) and from where?
 * Gates: 56/56 pass (`GATES_SKIP=road_clear_smoke`).
+
+## TRACKSIGNS-1 -- retrospective at start (2026-10-10)
+* New item (found by TRACKS-TD-1 S3). Nothing done before. Options: find why the add-on's placements are
+  "UNRESOLVED / NO MESH"; resolve them like the other loose objects.
+
+### TRACKSIGNS-1 S1 (2026-10-10): the PO's Ring signs are drawn -- the object lookup was case-sensitive
+* `JM_OBJFIND="^si_|^km_|^ts_"` on the Ring: 360 placements, ALL dropped. Reasons (`JM_OBJDIAG_AT`): the add-on's
+  `TS_*` boards, `SI_*` traffic signs and `KM_*` stones are UPPER-case loose files (`TS_HB.3do`) placed under
+  lower-case names (`ts_hb`): GPL runs on Windows, case-blind; our exact-case lookup on Linux missed every one ("NO
+  MESH"). The km stones (0.45 m) would then also fall to the "under 1 m tall" rule.
+* Papyrus's own boards (`s_*`) are 1×1 quads with the ESCOL placeholder in the PO's install -- the add-on blanked them
+  and replaced them with its `TS_*` boards -- so dropping `s_*` is right.
+* Fix: the track folder is indexed by lower-case name once (`_ZD_LC`, `objpath`), and `tallenough` (the height rule,
+  seven sites) lets `km_*` through. Now 331 of the 360 placements draw (6 dropped by other rules); the Hatzenbach
+  board stands beside the road, legible (`261010/tracksigns1/ring_signs_now.png`). Side effect, wanted: Zandvoort's
+  upper-case loose objects resolve too -- a truck and four VW vans (`Ftruck`, `VWvan1-4`) the PO's GPL shows; the other
+  tracks have no upper-case files.
+* Gate `tracksigns_smoke` (new): the case-blind lookup, the km-stone exemption, and (with the GPL install) that the
+  add-on's files resolve.
+* For the PO's look: a Ring lap -- section boards (Hocheichen, Quiddelbacher Höhe, ...), traffic signs and km stones as
+  in your GPL.
+* Gates: 57/57 pass (`GATES_SKIP=road_clear_smoke`, with tracksigns_smoke).
