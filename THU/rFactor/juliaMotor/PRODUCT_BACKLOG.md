@@ -24926,3 +24926,17 @@ WW103), section by section, plus full-throttle acceleration by speed for GPL, Ju
 * trackrange_smoke: +10 checks (the Karussell case out, ±800 m in, the wrap across the line, range arithmetic mid-lap
   and across the line, unknown eye draws all, the loops use it, the default).
 * Gates: 57/57 pass (`GATES_SKIP=road_clear_smoke`).
+
+### BLINDTURN-1 S6 (2026-10-10): the Ring's named blind turns -- analysis; BLINDTURN-1 rotates
+* (c) Ex-Mühle (TS_EM s 9925): our cockpit at s 9700–9960 against gold 452–474 s (anchors 9200↔439 / 13900↔596).
+  The gold valley frames don't line up with ours at that resolution; the 9880 teleport sits pitched on a slope.
+  Not judged.
+* (a) After the start/finish line: gold 110–128 s (anchor 0↔110) is already forest with a yellow marker straight ahead
+  at a left-hander (116 s), while ours at s 150–950 is the open pit straight, the Südkehre (grandstands + Shell board
+  on the far side) and meadow at s 950 (nothing straight ahead; the pick hits the castle backdrop 2.1 km away). So the
+  "0↔110" anchor does not hold for the first kilometre, or the gold lap starts elsewhere. Next: re-anchor the first
+  2 km on landmarks (the Südkehre grandstands) before calling any object missing.
+* **Rotation retro (S5–S6):** worked -- the pixel pick on the PO's replay plus the decompiled renderer turned "floating
+  thing" into one GPL rule (the lap window), fixed in one sprint. Didn't -- per-turn gold comparison away from
+  anchors; the Ring's anchor table is too sparse for 100 m questions. Options next time: anchor more landmarks
+  (anchor_align.py), or ask the PO for replay timestamps of (a)–(c), the cheapest route.
