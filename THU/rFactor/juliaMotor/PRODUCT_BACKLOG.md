@@ -24336,9 +24336,8 @@ rotated to honour the 4-sprint cap. The evening iRacing test list grows in `IRTE
 ## IRTEST-261009 -- iRacing tests cued for the PO's evening session (grows as items need them)
 Every test: Lotus 49, 360 Hz logging ON, setup named in the test, one .ibt per test (exit to the garage between tests).
 Order = value to the model; about 50 min of driving in all. BOTH setups (PO 2026-10-10: both must feel authentic):
-the default for all six; then WW103 again for #1 (LSD, camber, bars), #2 (springs, dampers, bars), #5 (its 18 N/mm
-front spring is the likeliest to hit the bump stops) and #6 (front toe-out, camber). #3 and #4 need the default only
-(brake hardware and the bar law are the same in both). About 80 min in all. (2026-10-10 corrections: #2/#6 said
+the default for all six; then WW103 again for #1 (LSD, camber, bars), #2 (springs, dampers, bars) and #6 (front toe-out, camber). #3 and #4 need the default only
+(brake hardware and the bar law are the same in both). About 65 min in all (#5 dropped). (2026-10-10 corrections: #2/#6 said
 "Centripetal's straight" -- Centripetal is a circle; a banked oval such as Charlotte is a poor substitute: short
 straights, and banking adds load and roll.)
 1. **Held slides** (Centripetal, default setup, ~10 min): from a steady circle at 100–140 km/h, provoke the rear (lift
@@ -24358,7 +24357,9 @@ straights, and banking adds load and roll.)
 4. **Front anti-roll bar arms** (Centripetal, default setup otherwise, ~10 min): steady circles at ~1.0 g, both
    directions, 20 s each way, with the FRONT bar arms at the softest, middle and stiffest positions. The bar object's
    stiffness law (diameter⁴ ÷ arm²) has only two setups behind it today; the arms are ignored.
-5. **Big kerb and compression** (Nordschleife Touristenfahrten, default setup, ~7 min): one lap at a steady pace
+5. ~~**Big kerb and compression**~~ **DROPPED 2026-10-10:** the PO's 261004/261005 Ring files already reach full
+   travel in both setups (ShockDeflection limits 104.6 mm front / 113.0 mm rear; LF 104, RF 105-114, LR 111-117, RR 113,
+   and ~0 = full droop) -- the bump stops can be fitted from those. Original text: **Big kerb and compression** (Nordschleife Touristenfahrten, default setup, ~7 min): one lap at a steady pace
    taking the Fuchsröhre compression flat, plus two passes over a high kerb (e.g. Hatzenbach) -- the shock deflection
    near its ShockDeflection limit identifies the bump stops/packers the model does not have.
 6. **Steering flicks** (CARPHYS-1 S11, 2026-10-10; a long FLAT straight as #2 -- Monza if owned, else Döttinger Höhe;
