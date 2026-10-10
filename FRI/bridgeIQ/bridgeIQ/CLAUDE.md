@@ -1,5 +1,20 @@
 # biq — Claude Code project notes
 
+## STATUS — defence searches 40 layouts; agreement benchmark (2026-10-10)
+* `nopeek._AMU_WORLDS` default 10 -> 40 (defence alpha-mu; declarer uses the
+  Monte-Carlo branch). Card benchmark, 4000 Q-Plus cards: defence after the
+  opening lead 56 DD tricks given up vs 78 / 74 with 10 layouts (two runs,
+  noise ~6), Q-Plus 45; all cards 126 vs 145 / 139, Q-Plus 125. Live 12 s
+  budget: 2.6 s mean, 7 s p90, 2 / 150 budget hits. Opening leads (26 vs
+  Q-Plus 19, lead_sim) unchanged: next card-play target.
+* Agreement benchmark `tools/qplus_agreement.py` (UNCOMMITTED): biq vs
+  every recorded Q-Plus Precision call (73.4% same call; competitive 63.7%,
+  uncontested 57.5%) and a fixed 4000-card sample (65.8% same card, 96.9%
+  DD-equal). Results in tools/runs/agreement/.
+* 2/1 run `tools/runs/bluechip/261009_qplus_21_biqS`: -593 / 186 boards
+  (-3.19/bd) on the 10-layout code; from board 187 on, 40 layouts.
+  Q-Plus windows froze twice when the user touched them (RESUME.txt).
+
 ## STATUS — Monte-Carlo declarer; run 2 at 369 boards (2026-10-09, UNCOMMITTED)
 * Run `tools/runs/bluechip/261007_qplus_biqS` resumed at 185 and stopped
   again at 370 (the East window hung, as before; RESUME.txt there): boards

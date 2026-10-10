@@ -526,7 +526,12 @@ import os
 # 10 layouts / 12 s: measured 2026-09-26 (nopeek_eval with auction, 2 seeds x
 # 40 deals): 106 tricks lost vs DD, against 121 with 6 / 5 s — the user asked
 # for strength over speed.
-_AMU_WORLDS = int(os.environ.get("BIQ_AMU_WORLDS", "10"))  # sampled layouts/decision
+# 40 layouts (2026-10-10, qplus_agreement card benchmark, 4000 Q-Plus cards):
+# defence after the opening lead gave up 56 DD tricks vs 78 / 74 with 10 (two
+# runs; noise ~6), Q-Plus 45; 3rd/4th seat 14 vs 28 / 24. At the live 12 s
+# budget a defensive card took 2.6 s mean, 7 s p90, budget hit on 2 of 150.
+# Declarer uses the Monte-Carlo branch (_DECL_PIMC), so this is defence only.
+_AMU_WORLDS = int(os.environ.get("BIQ_AMU_WORLDS", "40"))  # sampled layouts/decision
 _AMU_DEPTH = int(os.environ.get("BIQ_AMU_DEPTH", "2"))     # alpha-mu depth in tricks
 _AMU_BUDGET = float(os.environ.get("BIQ_AMU_BUDGET", "12"))  # per-decision seconds
 _AMU_DEFENSE = os.environ.get("BIQ_AMU_DEFENSE", "1") == "1"  # defence alpha-mu
