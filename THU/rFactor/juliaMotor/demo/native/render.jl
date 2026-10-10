@@ -2604,7 +2604,7 @@ const WBAL = let v = get(ENV,"JM_WBAL","")
     end
 end
 
-function draw(prog, item::Item, vp, model; bright::Real=1.0, spec::Real=0.0, ambfill::Real=0.0, graze::Bool=false, alpha::Real=1.0, tint=(1f0,1f0,1f0), mirrorglass::Bool=false, unlit::Bool=false, depthbias::Bool=false)
+function draw(prog, item::Item, vp, model; bright::Real=1.0, spec::Real=0.0, ambfill::Real=0.0, graze::Bool=false, alpha::Real=1.0, tint=(1f0,1f0,1f0), mirrorglass::Bool=false, unlit::Bool=false, depthbias::Bool=false, first::Integer=0, count::Integer=-1)
     # E106-S8 (PO: "flicker, especially around visor and mirrors"): z-fighting between the lotd
     # cockpit shell -- whose slot-bound windscreen-frame/mirror-pod faces escape the old
     # texture-name excludes -- and the separately drawn windscreen/mirror glass at the same depth.
@@ -2634,7 +2634,7 @@ function draw(prog, item::Item, vp, model; bright::Real=1.0, spec::Real=0.0, amb
         glUniform1i(uloc(prog,"uHasTex"),0)
     end
     flip = negdet(model); flip && glFrontFace(GL_CW)    # CARHAND-1 (see negdet)
-    glBindVertexArray(item.vao); glDrawArrays(GL_TRIANGLES,0,item.n)
+    glBindVertexArray(item.vao); glDrawArrays(GL_TRIANGLES, first, count < 0 ? item.n : count)   # BLINDTURN-1: a vertex range (the lap window)
     flip && glFrontFace(GL_CCW)
     NDRAW[] += 1; NTRI[] += item.n ÷ 3
     depthbias && glDisable(GLenum(0x8037))

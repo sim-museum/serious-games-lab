@@ -20,5 +20,27 @@ chk("the frame's uniforms default it off", occursin("glUniform1f(uloc(prog,\"uMa
 # twice drew dark blocks -- with 20 cm keys, its doubles lying a few cm apart
 chk("the groove is deduplicated like the rails (20 cm keys)", occursin("(GROOVE_DEDUP && startswith(lt,\"groove\"))", src) &&
     occursin("q = startswith(lowercase(part.tex), \"groove\") ? (5, 10) : (50, 100)", src))
+# BLINDTURN-1 S5: GPL draws the track over a LAP window (914 m ahead/behind along the road), not by eye distance --
+# the Ring's Karussell plateau (1380 m ahead by road, 560 m away) hung in the sky from s 12500. The window functions are
+# lifted from the sim and run on a synthetic 22.8 km lap of 100 m bins holding one triangle each.
+fl = match(r"\nlapwin_in\(s, c\) = [^\n]*", src); fr = match(r"\nfunction lapranges\(off, c\)\n.*?\nend\n"s, src)
+chk("the lap-window functions are in the sim", fl !== nothing && fr !== nothing)
+if fl !== nothing && fr !== nothing
+    M = Module(:LW)
+    Core.eval(M, :(const LAPWIN = 914.0; const LAPBIN = 100.0; const _LW = (L = 22800.0,); const LAPNB = 228))
+    Base.include_string(M, fl.match * fr.match)
+    off = Int32[3k for k in 0:228]
+    chk("the Karussell (1380 m ahead by road) is outside the window", !M.lapwin_in(13880.0, 12500.0))
+    chk("800 m ahead and 800 m behind are inside", M.lapwin_in(13300.0, 12500.0) && M.lapwin_in(11700.0, 12500.0))
+    chk("the window wraps across the line", M.lapwin_in(100.0, 22700.0) && M.lapwin_in(22700.0, 100.0))
+    chk("mid-lap: one range of bins 40..59", M.lapranges(off, 5000.0) == ((120, 60), (0, 0)))
+    chk("across the line: bins 221..227 and 0..12", M.lapranges(off, 300.0) == ((663, 21), (0, 39)))
+    chk("an unknown eye position draws the whole part", M.lapranges(off, NaN) == ((0, 684), (0, 0)))
+end
+chk("the track loop draws the window's ranges; draw takes a range", occursin("for (f0, n0) in lapranges(TRACKLAPOFF[ti], _clap)", src) &&
+    occursin("glDrawArrays(GL_TRIANGLES, first, count < 0 ? item.n : count)", rnd))
+chk("objects get the same window (backdrops exempt)", occursin("!lapwin_in(OBJLAP[oi], _olap)) && continue", src) &&
+    occursin("isbackdrop(lowercase(String(o[5]))) ? NaN", src))
+chk("on by default at the Ring (914 m, GPL's 18,000,000 TRK)", occursin("get(ENV, \"JM_LAPWIN\", NURB ? \"914\" : \"0\")", src))
 println(fails[] == 0 ? "ALL PASS" : "FAILURES: $(fails[])")
 exit(fails[] == 0 ? 0 : 1)

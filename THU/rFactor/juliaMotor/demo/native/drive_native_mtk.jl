@@ -1457,9 +1457,11 @@ function gpl_scenery(ztrk, datpack, ribbon)
     n_veil_clear = Ref(0)                                    # E109-S6: veil faces kept, road part transparent
     veil_tex = Ref{Any}(nothing); veil_rgba = Dict{String,Any}()
     scene_names=Dict{String,Int}()
+    scene_excl = Set(lowercase.(split(get(ENV, "JM_SCENE_EXCLUDE", ""), ",", keepempty = false)))   # BLINDTURN-1: A/B a placement
     for (nm,t) in pls
         n_offered += 1
         scene_names[nm] = get(scene_names,nm,0) + 1
+        lowercase(nm) in scene_excl && continue
         if startswith(nm,"treesrb"); n_treesrb += 1; continue; end   # forest-BACKDROP "paintings"
         # TRACKGOLD-1 S3b (2026-09-06): the Ring's lines of people are MESH placements here too --
         # `peoplefl` is a 6-triangle flat quad, so it passed the sprite-only rule and the scene census
@@ -6300,6 +6302,69 @@ tstamp("  texture INDEX built")   # E80: split the "texture load" phase -- at Sp
                                   # a 900 s run never reaches the frame loop, so which HALF matters.
 const TRACK_BRIGHT = parse(Float32, get(ENV,"JM_TRACK_BRIGHT","0.72"))
 const TRACK_AMB    = parse(Float32, get(ENV,"JM_TRACK_AMB","0.34"))
+# BLINDTURN-1 S5 (2026-10-10): GPL draws the track by LAP DISTANCE, not by distance from the eye. Its track renderer
+# (gpl.exe FUN_00485960, called with 18,000,000 TRK units ahead and behind unless the track gives a table) draws every
+# segment tree from the camera's lap position minus 914 m to plus 914 m -- capped at half a lap -- and nothing else. We
+# drew everything within 2.4 km of the eye, so ground that is close in a straight line but far along the road showed:
+# at the Ring from s 12500 the Karussell plateau (1380 m ahead by road, 560 m away) hung in the sky with none of the
+# climb under it (the gold shows the crest's trees there). Each track part's triangles are sorted into 100 m lap bins
+# (a triangle's bin = the lap distance of the centreline node nearest its centroid -- GPL's segment trees hold the
+# geometry of their own stretch), so the window is one or two vertex ranges per part; objects get the same window by
+# position. JM_LAPWIN=<m> sets it, 0 = off (the eye-distance rule alone). The backdrop panoramas keep their own rule.
+const LAPWIN = parse(Float64, get(ENV, "JM_LAPWIN", NURB ? "914" : "0"))
+const LAPBIN = 100.0
+const _LW = (LAPWIN > 0 && (@isdefined TRKSURF)) ? let P = TRKSURF.pos, c = 50.0
+        xs = [p[1] for p in P]; zs = [p[3] for p in P]; x0 = minimum(xs) - 1; z0 = minimum(zs) - 1
+        g = Dict{Tuple{Int,Int},Vector{Int}}()
+        for i in eachindex(P); push!(get!(g, (floor(Int, (xs[i]-x0)/c), floor(Int, (zs[i]-z0)/c)), Int[]), i); end
+        (xs = xs, zs = zs, S = TRKSURF.lapdist, g = g, x0 = x0, z0 = z0, c = c, L = TRKSURF.lap_length)
+    end : nothing
+"lap distance of the centreline node nearest the horizontal point (GPL x, y) -- any distance from the road"
+function lapnear(x, z)
+    W = _LW; cx = floor(Int, (x - W.x0)/W.c); cz = floor(Int, (z - W.z0)/W.c); bd = Inf; bi = 0
+    for r in 0:400
+        for dx in -r:r, dz in -r:r
+            (abs(dx) == r || abs(dz) == r) || continue
+            v = get(W.g, (cx + dx, cz + dz), nothing); v === nothing && continue
+            for i in v; d = (W.xs[i] - x)^2 + (W.zs[i] - z)^2; d < bd && (bd = d; bi = i); end
+        end
+        bi > 0 && bd <= (r*W.c)^2 && break                # nothing unvisited is nearer than r cells
+    end
+    bi == 0 ? NaN : W.S[bi]
+end
+lapwin_in(s, c) = (L = _LW.L; abs(mod(s - c + L/2, L) - L/2) <= LAPWIN + LAPBIN)
+const LAPNB = _LW === nothing ? 0 : ceil(Int, _LW.L / LAPBIN)
+const TRACKLAPOFF = Vector{Int32}[]                       # per part: vertex offset where each bin starts (LAPNB + 1)
+const OBJLAP = Float64[]                                  # per object: its lap distance (filled on the first frame)
+if _LW !== nothing
+    let t0 = time()
+        for tp in TRACK
+            v = tp.verts; nt = length(v) ÷ 33
+            b = Vector{Int32}(undef, nt)
+            for t in 0:nt-1
+                o = 33t
+                cx = (v[o+1] + v[o+12] + v[o+23]) / 3; cz = (v[o+3] + v[o+14] + v[o+25]) / 3
+                sl = lapnear(cx, -cz)
+                b[t+1] = isnan(sl) ? Int32(0) : clamp(floor(Int32, sl / LAPBIN), Int32(0), Int32(LAPNB - 1))
+            end
+            ord = sortperm(b; alg = MergeSort)
+            w = similar(v); for (k, t) in enumerate(ord); copyto!(w, 33(k-1) + 1, v, 33(t-1) + 1, 33); end
+            v .= w
+            off = zeros(Int32, LAPNB + 1); for x in b; off[x + 2] += 3; end
+            push!(TRACKLAPOFF, cumsum(off))
+        end
+        println("  [lapwin] track drawn ", LAPWIN, " m ahead/behind along the lap (GPL); ", length(TRACK), " parts in ",
+                LAPNB, " bins of ", LAPBIN, " m (", round(time() - t0, digits = 1), " s; JM_LAPWIN=0 reverts)")
+    end
+end
+"the part's vertex ranges inside the lap window round lap distance `c` (one, or two across the line)"
+function lapranges(off, c)
+    isnan(c) && return ((0, Int(off[end])), (0, 0))
+    b0 = clamp(floor(Int, mod(c - LAPWIN, _LW.L) / LAPBIN), 0, LAPNB - 1)
+    b1 = clamp(floor(Int, mod(c + LAPWIN, _LW.L) / LAPBIN), 0, LAPNB - 1)
+    b0 <= b1 ? ((Int(off[b0+1]), Int(off[b1+2] - off[b0+1])), (0, 0)) :
+               ((Int(off[b0+1]), Int(off[end] - off[b0+1])), (0, Int(off[b1+2])))
+end
 const trackItems = Render.build_gpl(TRACK, TEXIDX)   # PERF-3: const -- an untyped global boxed every per-frame read
 tstamp("  build_gpl done (GL uploads)")   # E80
 # PERF-3 (PO 2026-09-26: "30 is OK, but not very good. Gold standard is a solid 60 fps"): every track part
@@ -14764,6 +14829,7 @@ function main()
             secfrom = (@isdefined SEC_FROM) ? SEC_FROM : typemax(Int)
             PROF_DEPTH[] += time() - _tp_d; _tp_t = time()
             glUniform1f(Render.uloc(prog,"uMaxDist"), TRACK_MAXD)    # TRACKS-TD-1 S2: the track mesh's draw range
+            _clap = _LW === nothing ? 0.0 : lapnear(Float64(eye_[1]), -Float64(eye_[3]))   # BLINDTURN-1: the eye's lap position
             for (ti, it) in enumerate(trackItems)                        # ambfill lifts shadowed walls/fences out of the "carbonized" black under the flat overcast light
                 # RING-HAIRPIN-1 S3: with the tessellated road on, the .3do's asphalt/groove strips are not drawn
                 # SKIDPAD-GOLD-1 S2: same guard as RINGSPRITES above -- ROADTESS is a const defined
@@ -14796,7 +14862,13 @@ function main()
                     # gold (asphalt R-B: gold -2.5..-5.3, native +7.8..+12.7 across three tracks
                     # each) can be attributed rather than guessed at.
                     gg = ti <= length(TRACKGAIN) ? TRACKGAIN[ti] : 1f0   # GRADEGOLD-1
-                    Render.draw(prog, it, vp_, Render.IDENT; bright=TRACK_BRIGHT*gg, ambfill=TRACK_AMB*gg)
+                    if _LW !== nothing && ti <= length(TRACKLAPOFF)     # BLINDTURN-1 S5: GPL's lap window
+                        for (f0, n0) in lapranges(TRACKLAPOFF[ti], _clap)
+                            n0 > 0 && Render.draw(prog, it, vp_, Render.IDENT; bright=TRACK_BRIGHT*gg, ambfill=TRACK_AMB*gg, first=f0, count=n0)
+                        end
+                    else
+                        Render.draw(prog, it, vp_, Render.IDENT; bright=TRACK_BRIGHT*gg, ambfill=TRACK_AMB*gg)
+                    end
                 end
             end
             glUniform1f(Render.uloc(prog,"uMaxDist"), 0f0)
@@ -14819,12 +14891,20 @@ function main()
             # (a top allocation site). Passing them in lets the loop compile for their concrete types.
             (function (_OBJS, _BND)
             _cseg = gplvis_seg(eye_[1], eye_[3])
+            _olap = _LW === nothing ? 0.0 : lapnear(Float64(eye_[1]), -Float64(eye_[3]))
+            if _LW !== nothing && length(OBJLAP) != length(_OBJS)                 # BLINDTURN-1 S5: each object's lap position
+                resize!(OBJLAP, length(_OBJS))
+                for (k, o) in enumerate(_OBJS)
+                    OBJLAP[k] = isbackdrop(lowercase(String(o[5]))) ? NaN : lapnear(Float64(o[4][1]), -Float64(o[4][3]))
+                end
+            end
             for (oi,(items,mat,grz,opos,onm)) in enumerate(_OBJS)   # trackside objects
                 LAYOFF_OBJ && continue   # (trees graze-fade; uBackFlip stays 1 when un-culled)
                 _ocl = oi <= length(OBJCLIP) ? OBJCLIP[oi] : nothing                 # GPLVIS-1 S4: GPL's cells (clipped)
                 (_ocl === nothing && _cseg > 0 && oi <= length(OBJVIS) && OBJVIS[oi] !== nothing && !OBJVIS[oi][_cseg]) && continue   # GREY-1: GPL's window
                 (OBJ_SCENEDUP[oi] && _ocl === nothing && !(oi <= length(OBJVIS) && OBJVIS[oi] !== nothing)) && continue   # RING-GOLD-1 S3 (E109-S15: not the veils -- their scenery copy is hidden; GPLVIS-1: nor a cell-clipped object)
                 bc, br = oi <= length(_BND) ? _BND[oi] : ((opos[1], opos[2], opos[3]), 80f0)   # CULLBOUND-1: the object's real bounding sphere
+                (_LW !== nothing && oi <= length(OBJLAP) && !isnan(OBJLAP[oi]) && !isnan(_olap) && !lapwin_in(OBJLAP[oi], _olap)) && continue   # BLINDTURN-1 S5
                 max(sqrt((eye_[1]-bc[1])^2+(eye_[2]-bc[2])^2+(eye_[3]-bc[3])^2) - br, 0f0)^2 > (flip ? MIR_OBJ_CULL2 : OBJ_CULL2) && continue   # distance cull (mirror gets its own radius, S14)
                 FRUSTUM_CULL && !infrustum(vp_, bc, br) && continue
                 # PERF-1: size cull -- an object whose bounding sphere covers < JM_MINPIX pixels is not drawn
@@ -15424,6 +15504,7 @@ function main()
                     open(joinpath(SHOTS_DIR, ts.name * ".ppm"),"w") do io; write(io,"P6\n$W $H\n255\n")
                         for y in H:-1:1, x in 1:W; o=((y-1)*W+(x-1))*3; write(io,buf[o+1],buf[o+2],buf[o+3]); end; end
                     println("  JM_SHOT_AT: dumped ", ts.name); flush(stdout)
+                    isempty(PICKS) || pick_report(vp, eye, ts.name)   # BLINDTURN-1: name pixels in replay captures too
                     SHOTS_AT_ARMED[k] = -2
                     all(==(-2), SHOTS_AT_ARMED) && haskey(ENV, "JM_SHOT_AT_EXIT") && break
                 end
