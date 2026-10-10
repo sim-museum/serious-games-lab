@@ -24343,8 +24343,8 @@ straights, and banking adds load and roll.)
    or squeeze) and HOLD the slide 3–5 s at 20–50° of body slip with counter-steer, both directions, 6+ slides. Today
    the beyond-peak tyre has only spins and lift-offs behind it; held slides separate the sideways sliding friction
    from the yaw dynamics.
-2. **Slalom / sine steer** (a long FLAT straight -- Monza's straights if owned, else Döttinger Höhe on the
-   Nordschleife; split across several straights as needed; default setup, ~8 min of straights): at a steady 100 km/h
+2. **Slalom / sine steer** (a long FLAT straight -- best the Indianapolis oval (two dead-flat ~1 km straights, ~50 s laps),
+   else Monza, Fuji, or Döttinger Höhe on the Nordschleife; split across several straights as needed; default setup, ~8 min of straights): at a steady 100 km/h
    and again at 150 km/h, weave left-right steadily -- slow (one full cycle in ~2 s), medium (~1 s), quick (~0.5 s) --
    10 cycles each, throttle held. Identifies the yaw inertia (hand-set 890 kg·m²) and how fast the tyres build force
    (no tyre lag in the model today).
