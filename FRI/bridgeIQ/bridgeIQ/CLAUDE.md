@@ -1,5 +1,24 @@
 # biq — Claude Code project notes
 
+## STATUS — forced-pass and advancer bidding fixes (2026-10-10)
+* 2/1 run boards 187-292 sorted by contract vs play (DD): bidding -265 IMP,
+  play -36. Two bugs, fixed in `native_bidder.py`:
+  - partner's forcing call with no rule fell through to a reasonless pass
+    (4m after my NT, 1NT-2C-x-3m, cue after a super-accept, 2NT game try
+    after 1x-1M-2M): `_forced_continuation` via sanity check 2k; its
+    "Forcing:" calls are kept from the bidding simulation;
+  - the advancer was routed to `_overcaller_rebid` ("no clear extras,
+    pass"): `_advancer_rebid`; also leaping Michaels in `_michaels_by` and
+    the takeout X after our 1NT overcall (Q-Plus C-1NT-takeout.after-nat-2).
+* Only the decisions whose rule call changed were rerun (simulation + cost):
+  Precision 29 of 10924, same call as Q-Plus 6 -> 15, IMP vs Q-Plus's call
+  -107 -> +53; 2/1 21 of 5007, 4 -> 12, -102 -> -7. Live in the 2/1 run
+  from board 320 (RESUME.txt there).
+* Open: biq reads 4NT after a cue-bid as quantitative (so the 4m slam try
+  signs off in 5m); the TM does not pass Q-Plus's alerts to biq.
+* A worktree outside FRI/ finds no Q-Plus .RCE files (bidding_systems walks
+  up for WP/): export WINEPREFIX=~/sgl/FRI/WP there.
+
 ## STATUS — defence searches 40 layouts; agreement benchmark (2026-10-10)
 * `nopeek._AMU_WORLDS` default 10 -> 40 (defence alpha-mu; declarer uses the
   Monte-Carlo branch). Card benchmark, 4000 Q-Plus cards: defence after the
@@ -7,7 +26,7 @@
   noise ~6), Q-Plus 45; all cards 126 vs 145 / 139, Q-Plus 125. Live 12 s
   budget: 2.6 s mean, 7 s p90, 2 / 150 budget hits. Opening leads (26 vs
   Q-Plus 19, lead_sim) unchanged: next card-play target.
-* Agreement benchmark `tools/qplus_agreement.py` (UNCOMMITTED): biq vs
+* Agreement benchmark `tools/qplus_agreement.py`: biq vs
   every recorded Q-Plus Precision call (73.4% same call; competitive 63.7%,
   uncontested 57.5%) and a fixed 4000-card sample (65.8% same card, 96.9%
   DD-equal). Results in tools/runs/agreement/.
