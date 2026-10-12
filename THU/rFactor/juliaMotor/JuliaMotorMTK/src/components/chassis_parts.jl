@@ -162,3 +162,15 @@ function TyreVertical(; name, kt, ct, Fz_static, ε = 80.0)
     eqs = [Fz ~ smoothpos(Fz_static + kt*(b.s - a.s) + ct*(b.v - a.v), ε), a.f ~ -Fz, b.f ~ Fz]
     System(eqs, t, vars, ps; systems = [a, b], name)
 end
+
+"""IRGOLD-1 / FUEL-1: the FUEL TANK. The car is built with the session's fuel already in its corner weights (mass, CG,
+corner masses); as the engine burns fuel, `m_burn` [kg] -- a runtime parameter the game advances from the measured burn
+law -- leaves the car at the tank's position `x` [m ahead of the CG]: the in-plane mass, the sprung mass the springs carry
+(the body rises as it burns, as a real car does) and a pitch moment (the front, where the tank's weight mostly sits,
+rises more). Where the tank sits is measured: in the PO's 261011 fuel test the extra fuel's weight went 66 % to the front
+axle at 20.5 → 43.2 L and at 145.4 → 179.5 L alike, i.e. 0.82 m behind the front axle (FUEL_TANK_X_FRONT)."""
+function FuelTank(; name, x = 0.5)
+    ps = @parameters m_burn = 0.0 x = x
+    vars = @variables dm(t)
+    System([dm ~ m_burn], t, vars, ps; name)
+end

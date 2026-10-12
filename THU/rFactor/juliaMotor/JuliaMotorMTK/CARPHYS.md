@@ -35,6 +35,9 @@ velocity v, flow force f), Modelica's `Translational.Interfaces.Flange` plus its
 | `Clutch` | car | capacity vs engagement from the gold's launches (bite point, S9) |
 | `BrakeSystem` | car | line pressure 122.2 bar at full pedal × garage BrakeBias (gold); caliper N·m/bar front/rear (BRAKE-2 fit, S6) |
 | `SteeringColumn` | car | rack ratio 10 (setup), effective trail 4.78 cm (fitted to SteeringWheelTorque, S5) |
+| `FuelTank` | car | position 0.82 m behind the front axle (66 % front, IRGOLD-1 test 7); burnt mass `m_burn` (runtime) leaves the in-plane mass, the springs' load and the pitch balance; burn law `fuel_rate_kgh` (gold, pedal × rpm) |
+| free front hubs (`front_hubs`) | front axle | each front wheel its own rotation (ωf mean + ωfd half-difference); the gold's fronts split 1.145·r. Was a spool. `JM_FRONTHUBS` until the tyre is refitted |
+| tyre inflation (`BrushTyre.prel`, `kpμ`, `kpc`) | tyre | (p − 152 kPa)/152 from the gold's running pressures; the skidpad runs 152 L / 207 R, every road setup 152 |
 
 Assembly per corner: mount → coil-over (+ the axle's bar) → wheel → tyre carcass → road. `tools/carphys_regress.jl`
 proves the assembly reproduces the single-block model: same 23/24 unknowns, every channel within 1e-10 over six
@@ -71,6 +74,21 @@ manoeuvres and both setups. Still inline in `DrivenVehicle3D` (next objects): ge
 | AirDensity, coast-downs | **Aero drag**, rolling resistance | CdA 0.480, Crr 0.0139 fitted; ρ fixed 1.10 rather than the session's | ✅ / 🟡 |
 | — | aero lift / downforce | none (the 1967 car has no wings — right) | ✅ |
 | — | **Traction control** | none by default (the old throttle-cutting aid is opt-in, `JM_TC=1`) — as in the real car, iRacing's and GPL's | ✅ |
+
+## IRGOLD-1 (2026-10-11): the acceptance metric and what it found
+
+`tools/irgold_replay.jl` replays EVERY window of the PO's 261010/11 iRacing test session (24 files: held slides, slalom,
+brake-bias sweep, bar arms, steering flicks, fuel loads; both setups) through that file's session car with the gold's own
+steering, throttle, brake, clutch and gear, and scores yaw rate, lateral g, sideslip, speed and rim torque;
+`tools/irgold_fit.jl` fits runtime parameters through it (Distributed). Found:
+
+* the front axle was a SPOOL (fixed: free hubs); the vertical model ignored the session's weights (fixed: corner masses
+  and CG from the corner weights, `JM_MASS1`); the steering stopped at 17° of road angle where iRacing's Lotus locks at
+  42° (fixed for wheels: `WHEEL_LOCK_DEG`);
+* in the linear range the car follows the gold almost sample for sample; the gaps are at the limit: the sim's rear lets
+  go first (gold: its front saturates), it holds 1.14 g steady on the skidpad against the gold's 1.2-1.25, and its
+  cornering drag is ~2/3 of the gold's above 1 g;
+* in fast steering the gold's yaw lags the sim's by 13-18 ms (a relaxation length σ ≈ 0.4-0.5 m).
 
 ## Non-physical behaviour found so far (2026-10-09)
 

@@ -83,7 +83,7 @@ groundz(x, z) = lin(prof_s, prof_h, Float64(x))
 SIDE == "ww" && (P = passes(("00-59-42",)))
 let fn = fpath(SIDE == "ww" ? "00-59-42" : "13-34-46"), p = setup_params(ibt_open(fn).yaml)
     DriveRT3D.set_transmission!(p.gear_ratios, p.final_drive; source = basename(fn))
-    m, ff = DriveRT3D.mass_from_corner_weights(p.corner_weight_N); DriveRT3D.set_mass!(m, ff; source = basename(fn))
+    DriveRT3D.set_corner_weights!(p.corner_weight_N; source = basename(fn))
     s = p.spring_rate_Npmm
     DriveRT3D.set_suspension!(wheel_rate(s[:LF]), wheel_rate(s[:RF]), wheel_rate(s[:LR]; rear = true), wheel_rate(s[:RR]; rear = true); source = basename(fn))
     get(ENV, "JM_CREST_CHASSIS", "1") == "1" && DriveRT3D.set_chassis!(DriveRT3D.chassis_from_setup(p; source = basename(fn)))

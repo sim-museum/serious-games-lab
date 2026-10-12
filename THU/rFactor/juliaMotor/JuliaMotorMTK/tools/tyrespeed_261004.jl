@@ -8,7 +8,7 @@ using ModelingToolkit, OrdinaryDiffEq
 skid4 = first(filter(f -> occursin("skidpad", f) && endswith(f, ".ibt"), readdir(D4; join = true)))
 let p = setup_params(ibt_open(skid4).yaml)
     DriveRT3D.set_transmission!(p.gear_ratios, p.final_drive; source = basename(skid4))
-    m, ff = DriveRT3D.mass_from_corner_weights(p.corner_weight_N); DriveRT3D.set_mass!(m, ff; source = basename(skid4))
+    DriveRT3D.set_corner_weights!(p.corner_weight_N; source = basename(skid4))
 end
 const VS = 130/3.6
 car = DriveRT3D.build_car3d(; v0 = VS)

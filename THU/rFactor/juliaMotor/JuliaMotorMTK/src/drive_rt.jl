@@ -119,7 +119,7 @@ end
 driver works the clutch + gears, else the adapter auto-clutches and auto-shifts."
 function step_car!(c::Car, throttle, brake, steer, dt;
                    clutch = 0.0, up = false, dn = false, manual = false,
-                   groundz = (x,z)->0.0)
+                   groundz = (x,z)->0.0, lock = 1.0)                # `lock` is the 3-D car's (IRGOLD-1); the 2-D car keeps ±1
     held = abs(c.v) < 1.0 && throttle < 0.05         # auto-hold at a standstill (AUTO mode only)
     if manual                                        # driver clutch + manual gears — NO auto-clutch.
         c.s_clu(c.integ, clamp(clutch, 0, 1))        # clutch is 100% the driver's: you must slip it

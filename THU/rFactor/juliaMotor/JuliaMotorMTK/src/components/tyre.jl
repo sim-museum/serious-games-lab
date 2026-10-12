@@ -19,16 +19,20 @@ include("brush_tyre.jl") # PHYSICS-BASED brush: brush_forces + BRUSH_FRONT/REAR 
 function BrushTyre(; name, μ = BRUSH_FRONT.μ, μx = BRUSH_FRONT.μx, Cα = BRUSH_FRONT.Cα,
                    Cκ = BRUSH_FRONT.Cκ, kμ = BRUSH_FRONT.kμ, Fz0 = BRUSH_FRONT.Fz0, t0 = 0.035, μscale = 1.0,
                    rs = BRUSH_FRONT.rs, ws = BRUSH_FRONT.ws, camber = false, Cγ = CAMBER_CG, kγ = CAMBER_KG,
-                   ns = BRUSH_NS, rsy = rs)
+                   ns = BRUSH_NS, rsy = rs, prel = 0.0, kpμ = 0.0, kpc = 0.0, nsh = 3.0)
     # E56: μscale is a per-wheel SURFACE friction multiplier (1 = tarmac; <1 = grass/verge).  Driving it
     # from the game makes "off the racing line" a REAL per-tyre grip loss the model integrates — a wheel
     # dropping onto the grass loses grip and pulls the car — not a bumpX! drag/yaw state hack.
-    ps = @parameters μ=μ μx=μx Cα=Cα Cκ=Cκ kμ=kμ Fz0=Fz0 t0=t0 μscale=μscale rs=rs ws=ws ns=ns rsy=rsy
+    # IRGOLD-1: INFLATION PRESSURE. prel = (p − p_ref)/p_ref with p_ref 152 kPa, every road setup's pressure (both game
+    # setups, the Ring and Monza gold); the Centripetal skidpad forces oval pressures (152 left / 207 right, prel +0.36 on
+    # the right). Friction × (1 + kpμ·prel), slip stiffnesses × (1 + kpc·prel); kpμ = kpc = 0 is the tyre before IRGOLD-1.
+    ps = @parameters μ=μ μx=μx Cα=Cα Cκ=Cκ kμ=kμ Fz0=Fz0 t0=t0 μscale=μscale rs=rs ws=ws ns=ns rsy=rsy prel=prel kpμ=kpμ kpc=kpc nsh=nsh
     vars = @variables Fz(t) α(t) κ(t) Fy(t) Fx(t) Mz(t) μye(t) μxe(t) ξx(t) ξy(t) ξ(t) sat(t) saty(t)
     # TYRE-2: stiffness LOAD SENSITIVITY. The slip stiffnesses are CFα = Cα·Fz·(Fz/Fz0)^(ns−1) ∝ Fz^ns: ns = 1 is the
     # plain brush (stiffness ∝ load, the pre-TYRE-2 model, exact), ns < 1 the real tyre's (the patch grows slower than the
     # load): an axle under load transfer gets softer, and an unloaded wheel relatively stiffer.
-    lsens = clamp(Fz/Fz0, 0.2, 3.0)^(ns - 1.0)
+    lsens = clamp(Fz/Fz0, 0.2, 3.0)^(ns - 1.0) * (1.0 + kpc*prel)
+    pmu = 1.0 + kpμ*prel
     # CAMBER-1 (2026-10-06): γ is the wheel's inclination to the ROAD, + = top leaning toward the tyre's +y (the
     # direction its camber thrust pushes). Without `camber` the tyre is upright, exactly as before.
     if camber
@@ -41,20 +45,23 @@ function BrushTyre(; name, μ = BRUSH_FRONT.μ, μx = BRUSH_FRONT.μx, Cα = BRU
         cthr = 0.0; cmu = 1.0
     end
     eqs = [
-        μye  ~ μscale * μ  * clamp(1.0 - kμ*(Fz/Fz0 - 1.0), 0.4, 1.6) * cmu,  # lateral friction (load-sensitive, clamped >0)
-        μxe  ~ μscale * μx * clamp(1.0 - kμ*(Fz/Fz0 - 1.0), 0.4, 1.6),  # longitudinal friction (anisotropic, clamped >0)
-        ξx   ~ lsens*Cκ*κ      / (3.0*μxe),            # per-axis NORMALIZED slip (1 = friction limit)
-        ξy   ~ lsens*(Cα*sin(α) + cthr) / (3.0*μye),   # — the ellipse lives here, no 1/0 at zero slip
+        μye  ~ μscale * pmu * μ  * clamp(1.0 - kμ*(Fz/Fz0 - 1.0), 0.4, 1.6) * cmu,  # lateral friction (load-sensitive, clamped >0)
+        μxe  ~ μscale * pmu * μx * clamp(1.0 - kμ*(Fz/Fz0 - 1.0), 0.4, 1.6),  # longitudinal friction (anisotropic, clamped >0)
+        # IRGOLD-1: the saturation SHAPE exponent nsh: F/μFz = 1 − (1 − ξ)^nsh with ξ = stiffness·slip/(nsh·μ), so the
+        # low-slip stiffness is the same for any nsh; 3 = the parabolic-pressure brush (exactly the tyre before), > 3
+        # saturates more progressively and peaks at a larger slip (the gold's tyres run larger slips near the limit).
+        ξx   ~ lsens*Cκ*κ      / (nsh*μxe),            # per-axis NORMALIZED slip (1 = friction limit)
+        ξy   ~ lsens*(Cα*sin(α) + cthr) / (nsh*μye),   # — the ellipse lives here, no 1/0 at zero slip
         ξ    ~ sqrt(ξx^2 + ξy^2 + 1e-9),               # floor INSIDE the sqrt → autodiff Jacobian finite at
-        sat  ~ (1.0 - (1.0 - min(ξ, 1.0))^3) * brush_slide(ξ, rs, ws),   # zero slip (sqrt(0)' = 0/0 = NaN breaks the solver)
+        sat  ~ (1.0 - (1.0 - min(ξ, 1.0))^nsh) * brush_slide(ξ, rs, ws),   # zero slip (sqrt(0)' = 0/0 = NaN breaks the solver)
         # CARPHYS-1: the lateral force's own SLIDING fraction rsy (rs was fitted to locked-wheel braking; the gold's
         # sideways slides keep more, tools/slidefit_261009.jl). Below the peak (ξ ≤ 1) both are the brush exactly; rsy = rs
         # is the old tyre. Fully sliding, the force lies on a sliding-friction ellipse with semi-axes rs·μx, rsy·μy.
-        saty ~ (1.0 - (1.0 - min(ξ, 1.0))^3) * brush_slide(ξ, rsy, ws),
+        saty ~ (1.0 - (1.0 - min(ξ, 1.0))^nsh) * brush_slide(ξ, rsy, ws),
         Fx   ~ μxe*Fz * sat * ξx/ξ,                    # along the deflection dir; magnitude on the ellipse
         Fy   ~ μye*Fz * saty * ξy/ξ,
         # pneumatic trail collapses as the patch slides; camber thrust acts at the patch centre (no trail)
-        Mz   ~ -t0 * (1.0 - min(ξ, 1.0)) * (camber ? μye*Fz * saty * (lsens*Cα*sin(α)/(3.0*μye))/ξ : Fy),
+        Mz   ~ -t0 * (1.0 - min(ξ, 1.0)) * (camber ? μye*Fz * saty * (lsens*Cα*sin(α)/(nsh*μye))/ξ : Fy),
     ]
     System(eqs, t, vars, ps; name)
 end

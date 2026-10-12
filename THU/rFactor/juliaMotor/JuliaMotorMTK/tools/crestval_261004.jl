@@ -72,7 +72,7 @@ groundz(x, z) = lin(prof_s, prof_h, Float64(x))
 
 let p = setup_params(ibt_open(fpath("13-34-46")).yaml)
     DriveRT3D.set_transmission!(p.gear_ratios, p.final_drive; source = "261004 Ring")
-    m, ff = DriveRT3D.mass_from_corner_weights(p.corner_weight_N); DriveRT3D.set_mass!(m, ff; source = "261004 Ring")
+    DriveRT3D.set_corner_weights!(p.corner_weight_N; source = "261004 Ring")
 end
 
 function drive(sl)

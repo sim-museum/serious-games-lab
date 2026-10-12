@@ -58,6 +58,16 @@ function DrivenVehicle3D(; name,
         # CARPHYS-1 S11: tyre relaxation lengths (σ front, σ rear) [m] (TyreRelaxation); `nothing` = the force follows the
         # kinematic slip at once (the model before S11). σ is a parameter of each rxFL..rxRR, settable without a rebuild.
         relax = nothing,
+        # IRGOLD-1 S2: `front_hubs = true` gives each front wheel its own rotation (the real car's free front hubs). Before,
+        # one ωf drove both front wheels like a SPOOL: in a corner the inside and outside fronts were forced to one
+        # speed, so their slip differed by ±(r·tf/2)/u and the pair made opposing Fx -- a yaw-resisting moment (understeer)
+        # that grows as the radius shrinks (±0.8 % slip on the skidpad, ±5 % in a 15 m hairpin). States: ωf stays (the
+        # axle MEAN, so every caller that sets it still works) plus ωfd, the half-difference: ωFL = ωf + ωfd,
+        # ωFR = ωf − ωfd. `false` = the spool (the model before IRGOLD-1 S2).
+        front_hubs = false,
+        # IRGOLD-1 / FUEL-1: the fuel tank's position [m ahead of the CG] (FuelTank, chassis_parts.jl); the fuel in the
+        # tank at build time is in `m`, `front_frac` and the corner masses already, the burnt part leaves through tank.dm
+        tank_x = 0.5,
         CdA = CDA_IBT, ρair = 1.10, g = 9.80665,
         throttle0 = 0.0, brake0 = 0.0, steer0 = 0.0, gear0 = 1.72, brush = false,
         # PO: ct (tyre vertical DAMPING) was 300 ≈ 8% of critical for the unsprung mass → the car
@@ -102,6 +112,7 @@ function DrivenVehicle3D(; name,
     gv, kfv, krv = g, karb_f, karb_r                     # numeric values for the parts' own parameters (the next line rebinds the names)
     ps = @parameters m=m Izz=Izz Ixx=Ixx Iyy=Iyy a=a b=b tf=tf tr=tr h=h mf=mf mr=mr L=L M_s=M_s g=g Rw_f=Rw_f Rw_r=Rw_r Iw=Iw η=η final=final bias=bias Tbrake_max=Tbrake_max CdA=CdA ρair=ρair throttle=throttle0 brake=brake0 δ=steer0 gear=gear0 clutch=0.0 Ie=0.18 c_c=60.0 T_cap=500.0 k_idle=0.5 idle_rpm=2000.0 zrFL=0.0 zrFR=0.0 zrRL=0.0 zrRR=0.0 vrFL=0.0 vrFR=0.0 vrRL=0.0 vrRR=0.0 Fx_ext=0.0 Fy_ext=0.0 Mz_ext=0.0 CdA_scale=1.0 c_abl=C_ABL toe_f=toe_f toe_r=toe_r karb_f=karb_f karb_r=karb_r
     brk = BrakeSystem(; name = :brk, bias_p = brake_bias_p)   # CARPHYS-1 S6 (chassis_parts.jl)
+    tank = FuelTank(; name = :tank, x = tank_x)               # IRGOLD-1 / FUEL-1
     if cmb
         append!(ps, @parameters camFL=camber[1] camFR=camber[2] camRL=camber[3] camRR=camber[4] rc_f=rc[1] rc_r=rc[2])
     end
@@ -113,7 +124,7 @@ function DrivenVehicle3D(; name,
     # in-plane + powertrain states
     # with an LSD the axle speed ωr is the MEAN of the two rear wheels (observed, so it must carry no start value)
     if lsd; @variables ωr(t); else; @variables ωr(t)=0.0; end
-    vplane = [@variables(u(t)=0.0, v(t)=0.0, r(t)=0.0, ωf(t)=0.0)...; ωr; @variables ωe(t)=209.4 ωRL(t)=0.0 ωRR(t)=0.0 Tlsd(t) ay(t) ax(t) az(t) rpm(t) X(t)=0.0 Y(t)=0.0 ψ(t)=0.0]
+    vplane = [@variables(u(t)=0.0, v(t)=0.0, r(t)=0.0, ωf(t)=0.0)...; ωr; (front_hubs ? @variables(ωfd(t)=0.0) : [])...; @variables ωe(t)=209.4 ωRL(t)=0.0 ωRR(t)=0.0 Tlsd(t) ay(t) ax(t) az(t) rpm(t) X(t)=0.0 Y(t)=0.0 ψ(t)=0.0]
     # vertical / attitude states (sprung): heave z, pitch th, roll ph + rates
     vatt = @variables z(t)=0.0 w(t)=0.0 th(t)=0.0 q(t)=0.0 ph(t)=0.0 pp(t)=0.0
     vfz  = @variables FzFL(t) FzFR(t) FzRL(t) FzRR(t)     # tyre vertical loads (observed)
@@ -126,7 +137,11 @@ function DrivenVehicle3D(; name,
     # hedge/haybale = weak spring + strong damper): the game loop computes F = kδ + cδ̇ from penetration
     # and feeds it here, so the impulse is INTEGRATED by the ODE (no ad-hoc bumpX!).
     gr = gear*final; drag = 0.5*ρair*CdA*CdA_scale*u*abs(u)
-    rr = CRR_IBT*m*g*tanh(u/0.12)                       # E91-S10: CdA/Crr from the ibt coast-downs (powertrain.jl)
+    # the car's mass now: the fuel burnt since the build has left it. The tank's PARAMETER, not its observed `dm`: a mass
+    # coefficient that depends on a variable makes MTK keep a mass matrix, and the integrator then re-initialised every
+    # outside state edit away (a teleport snapped back to the spawn on the next step -- netcollide_smoke, IRGOLD-1 S2)
+    mc = m - tank.m_burn
+    rr = CRR_IBT*mc*g*tanh(u/0.12)                      # E91-S10: CdA/Crr from the ibt coast-downs (powertrain.jl)
     εF = 80.0                                             # contact/clamp rounding scale [N]
 
     #            tyre  xi    yi    steer axle  corner spec  zr    vr    Fz    key
@@ -167,7 +182,7 @@ function DrivenVehicle3D(; name,
         pidx = isodd(idx) ? idx + 1 : idx - 1                 # the other corner of this axle
         bar = arb[axle == :f ? 1 : 2]; left = isodd(idx)
         Rw  = axle == :f ? Rw_f : Rw_r
-        ωax = axle == :f ? ωf : !lsd ? ωr : idx == 3 ? ωRL : ωRR
+        ωax = axle == :f ? (!front_hubs ? ωf : idx == 1 ? ωf + ωfd : ωf - ωfd) : !lsd ? ωr : idx == 3 ? ωRL : ωRR
         mt, rd, wh, so, tv = mount[idx], road[idx], wheel[idx], strut[idx], tyrev[idx]
         zu = wh.zu
         append!(eqs, [
@@ -229,28 +244,30 @@ function DrivenVehicle3D(; name,
     push!(eqs,
         rpm ~ ωe*60/(2π),
         # ---- in-plane body (total mass m; Fz now load-transferred by the suspension) ----
-        ax ~ (ΣFx - drag - rr - abl + Fx_ext)/m,
-        ay ~ (ΣFy + Fy_ext)/m,
-        m*(D(u) - v*r) ~ ΣFx - drag - rr - abl + Fx_ext,
-        m*(D(v) + u*r) ~ ΣFy + Fy_ext,
+        ax ~ (ΣFx - drag - rr - abl + Fx_ext)/mc,
+        ay ~ (ΣFy + Fy_ext)/mc,
+        mc*(D(u) - v*r) ~ ΣFx - drag - rr - abl + Fx_ext,
+        mc*(D(v) + u*r) ~ ΣFy + Fy_ext,
         Izz*D(r) ~ a*(Fyb[1]+Fyb[2]) - b*(Fyb[3]+Fyb[4])
                    - tf/2*(Fxb[1]-Fxb[2]) - tr/2*(Fxb[3]-Fxb[4]) + Mz[1]+Mz[2]+Mz[3]+Mz[4] + Mz_ext,
         # ---- sprung body vertical / attitude (explicit gravity → can go airborne) ----
         D(z) ~ w,
-        M_s*D(w) ~ ΣFs - M_s*g,
+        (M_s - tank.m_burn)*D(w) ~ ΣFs - (M_s - tank.m_burn)*g,     # FUEL-1: burnt fuel no longer weighs on the springs
         az ~ D(w) + g,                                    # accelerometer specific force (≈ g static, 0 in free-fall)
         D(th) ~ q,
-        Iyy*D(q) ~ (xs[1]*Fsusp[1]+xs[2]*Fsusp[2]+xs[3]*Fsusp[3]+xs[4]*Fsusp[4]) + h*ΣFx,   # pitch: susp + braking dive
+        Iyy*D(q) ~ (xs[1]*Fsusp[1]+xs[2]*Fsusp[2]+xs[3]*Fsusp[3]+xs[4]*Fsusp[4]) + h*ΣFx + tank.m_burn*g*tank.x,   # pitch: susp + braking dive (+ FUEL-1: the burnt fuel's weight gone at the tank)
         D(ph) ~ pp,
         Ixx*D(pp) ~ (ys[1]*Fsusp[1]+ys[2]*Fsusp[2]+ys[3]*Fsusp[3]+ys[4]*Fsusp[4]) + h*ΣFy,  # roll: susp + cornering
         # ---- powertrain (identical to DrivenVehicleRT) ----
         Ie*D(ωe) ~ (engine_torque(rpm, throttle) + Tidle)*run - (1.0 - run)*45.0*ωe - Tcl,
-        2*Iw*D(ωf) ~ -brk.TF*tanh(ωf) - (Fx_f[1]+Fx_f[2])*Rw_f,
+        (front_hubs ? 2*Iw*D(ωf) ~ -brk.TF/2*(tanh(ωf + ωfd) + tanh(ωf - ωfd)) - (Fx_f[1]+Fx_f[2])*Rw_f :
+                      2*Iw*D(ωf) ~ -brk.TF*tanh(ωf) - (Fx_f[1]+Fx_f[2])*Rw_f),
         # ---- world pose for rendering ----
         D(X) ~ u*cos(ψ) - v*sin(ψ),
         D(Y) ~ u*sin(ψ) + v*cos(ψ),
         D(ψ) ~ r,
     )
+    front_hubs && push!(eqs, 2*Iw*D(ωfd) ~ -brk.TF/2*(tanh(ωf + ωfd) - tanh(ωf - ωfd)) - (Fx_f[1]-Fx_f[2])*Rw_f)
     if !lsd
         push!(eqs, 2*Iw*D(ωr) ~ Tcl*gr*η - brk.TR*tanh(ωr) - (Fx_r[1]+Fx_r[2])*Rw_r)
     else
@@ -278,6 +295,6 @@ function DrivenVehicle3D(; name,
     push!(eqs, col.Fy ~ FL.Fy + FR.Fy)
     append!(eqs, [brk.pedal ~ brake,                       # CARPHYS-1 S6: the brake system object; its calipers from the fit
                   brk.kF ~ Tbrake_max*bias/(brk.P_full*0.535), brk.kR ~ Tbrake_max*(1 - bias)/(brk.P_full*(1 - 0.535))])
-    System(eqs, t, vars, ps; systems = [FL, FR, RL, RR, mount..., road..., wheel..., strut..., tyrev..., arb..., col, brk, clu, (stops === nothing ? [] : stops)...,
+    System(eqs, t, vars, ps; systems = [FL, FR, RL, RR, mount..., road..., wheel..., strut..., tyrev..., arb..., col, brk, clu, tank, (stops === nothing ? [] : stops)...,
                                         (rlx === nothing ? [] : rlx)...], name)
 end

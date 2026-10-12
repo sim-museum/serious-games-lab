@@ -48,7 +48,7 @@ end
 function rho_fullthrottle(fn)
     p = sp(fn)
     DriveRT3D.set_transmission!(p.gear_ratios, p.final_drive; source = basename(fn))
-    m, ff = DriveRT3D.mass_from_corner_weights(p.corner_weight_N); DriveRT3D.set_mass!(m, ff; source = basename(fn))
+    DriveRT3D.set_corner_weights!(p.corner_weight_N; source = basename(fn))
     DriveRT3D.set_chassis!(DriveRT3D.chassis_from_setup(p; source = basename(fn)))
     car = DriveRT3D.build_car3d(; v0 = 30.0); sys = car.sys
     gs = ModelingToolkit.getsym(sys, [sys.u, sys.r, sys.ay, sys.ωRL, sys.ωRR])
@@ -80,7 +80,7 @@ check(ρd < -0.5, "default (75° drive ramp) lets the inside rear wheel spin up 
 function front_slip_lr(fn)
     p = sp(fn)
     DriveRT3D.set_transmission!(p.gear_ratios, p.final_drive; source = basename(fn))
-    m, ff = DriveRT3D.mass_from_corner_weights(p.corner_weight_N); DriveRT3D.set_mass!(m, ff; source = basename(fn))
+    DriveRT3D.set_corner_weights!(p.corner_weight_N; source = basename(fn))
     DriveRT3D.set_chassis!(DriveRT3D.chassis_from_setup(p; source = basename(fn)))
     car = DriveRT3D.build_car3d(; v0 = 24.0); sys = car.sys; u0 = copy(car.integ.u)
     hasproperty(sys, :rc_f) || return NaN

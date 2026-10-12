@@ -146,3 +146,26 @@ function LongitudinalVehicle(; name,
     ]
     System(eqs, t, vars, ps; name)
 end
+
+# IRGOLD-1 / FUEL-1 (2026-10-11): FUEL BURN, measured. The gold's FuelUsePerHour [kg/h] (its integral matches the fall in
+# FuelLevel at 0.74 kg/L) by pedal and rpm, median over every 261010 Monza and Ring row above 10 m/s (261011/tools):
+# closed throttle 1.7-2.6 kg/h, wide open 45 (4,000 rpm) to 78 (8,000). Bilinear in (pedal, rpm), held at the ends.
+const FUEL_RPM   = (4000.0, 5000.0, 6000.0, 7000.0, 8000.0)
+const FUEL_PEDAL = (0.0, 0.25, 0.5, 0.75, 1.0)
+const FUEL_KGH   = ((1.7, 2.0, 2.2, 2.3, 2.6),        # pedal 0
+                    (8.9, 10.5, 12.4, 11.8, 10.6),    # 0.25-0.35
+                    (22.0, 27.2, 30.8, 33.1, 32.0),   # 0.5-0.6
+                    (38.6, 48.4, 56.3, 64.7, 65.4),   # 0.75-0.85
+                    (44.8, 57.5, 67.5, 75.7, 77.9))   # WOT
+const FUEL_KG_PER_L = 0.75                           # ibt DriverCarFuelKgPerLtr
+const FUEL_MAX_L    = 179.5                          # ibt DriverCarFuelMaxLtr (179.529)
+function _interp1(xs, x)
+    x <= xs[1] && return (1, 0.0); x >= xs[end] && return (length(xs) - 1, 1.0)
+    i = findlast(k -> xs[k] <= x, 1:length(xs)); (i, (x - xs[i])/(xs[i+1] - xs[i]))
+end
+"Fuel burn [kg/h] at pedal `thr` (0-1) and `rpm` (the gold's table, bilinear)."
+function fuel_rate_kgh(thr, rpm)
+    i, fi = _interp1(FUEL_PEDAL, clamp(thr, 0, 1)); j, fj = _interp1(FUEL_RPM, rpm)
+    a = FUEL_KGH[i][j]*(1 - fj) + FUEL_KGH[i][j+1]*fj; b = FUEL_KGH[i+1][j]*(1 - fj) + FUEL_KGH[i+1][j+1]*fj
+    a*(1 - fi) + b*fi
+end

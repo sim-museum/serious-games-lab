@@ -991,8 +991,18 @@ class DriveTab(QWidget):
                                 "(C) and shift (E/Q or the paddles). G toggles in-game.")
         self.gearbox.setCurrentIndex(min(max(int(st.value("car/gearbox", 0)), 0), 1))
         cform.addWidget(self.gearbox, 1, 1)
+        # FUEL-1 (PO 2026-10-10): "what the event needs (qualifying or race) + 2 laps, and a full tank" (JM_FUEL)
+        cform.addWidget(QLabel("Fuel:"), 2, 0)
+        self.fuel = QComboBox()
+        self.fuel.addItems(["Race distance + 2 laps", "Full tank (179.5 L)"])
+        self.fuel.setToolTip("Race distance + 2 laps: enough for the race's laps (practice: 10) plus two, as the "
+                             "iRacing burn measured on the Lotus 49.\nFull tank: 179.5 L, about 100 kg more than a "
+                             "short race -- the car is heavier, softer and slower until it burns off.")
+        self.fuel.setCurrentIndex(min(max(int(st.value("car/fuel", 0)), 0), 1))
+        self.fuel.currentIndexChanged.connect(lambda i: QSettings("juliaRacer", "launcher").setValue("car/fuel", i))
+        cform.addWidget(self.fuel, 2, 1)
         cform.setColumnStretch(1, 1)
-        cform.setRowStretch(2, 1)
+        cform.setRowStretch(3, 1)
 
         # Settings-tab widgets (built here so launch() keeps reading them; shown by settings_page())
         self.mute = QCheckBox("Mute the engine sound")
@@ -1425,6 +1435,7 @@ class DriveTab(QWidget):
         qenv.insert("JM_AI_PCT", str(self.ai_pct.value()))
         qenv.insert("ZAND_SHIFT", "auto" if self.gearbox.currentIndex() == 0 else "manual")
         qenv.insert("JM_CARSETUP", ["default", "ww103"][self.carsetup.currentIndex()])
+        qenv.insert("JM_FUEL", ["event", "full"][self.fuel.currentIndex()])
         timing_env(qenv)   # LOADHANG-1
         if self.mute.isChecked():
             qenv.insert("JM_NOSOUND", "1")

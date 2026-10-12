@@ -69,7 +69,7 @@ end
 # the car on the 261004 Ring setup (gearbox, corner weights)
 let p = setup_params(ibt_open(RING[1]).yaml)
     DriveRT3D.set_transmission!(p.gear_ratios, p.final_drive; source = basename(RING[1]))
-    m, ff = DriveRT3D.mass_from_corner_weights(p.corner_weight_N); DriveRT3D.set_mass!(m, ff; source = basename(RING[1]))
+    DriveRT3D.set_corner_weights!(p.corner_weight_N; source = basename(RING[1]))
 end
 const CAR = DriveRT3D.build_car3d(; v0 = 40.0)
 const U0 = copy(CAR.integ.u)

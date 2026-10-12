@@ -166,10 +166,11 @@ end
 
 """Physical steering output in [-1,1] (fraction of the sim's full road-wheel lock) for a wheel:
 centre and sign from the map's calibration, gain = (half range °/ steering ratio) / max road angle °."""
-function steer_physical(m::JoyMap, js, gain::Float64)
+function steer_physical(m::JoyMap, js, gain::Float64; lim::Float64 = 1.0)
     c = m.steer; (c.axis < 1 || js === nothing || c.axis > length(js)) && return 0.0
     centre = 0.5*(c.a + c.b); sgn = c.b >= c.a ? 1.0 : -1.0          # a = full-left -> +1, as `apply`
-    clamp(-sgn*(Float64(js[c.axis]) - centre)*gain, -1.0, 1.0)
+    # IRGOLD-1: `lim` > 1 lets a wheel reach the car's own lock (iRacing's 420° at the rim) beyond the normaliser MAXSTEER
+    clamp(-sgn*(Float64(js[c.axis]) - centre)*gain, -lim, lim)
 end
 
 """MANUAL shift gate (PO 2026-10-03: "let me blip the clutch rather than stomping on it"; a downshift

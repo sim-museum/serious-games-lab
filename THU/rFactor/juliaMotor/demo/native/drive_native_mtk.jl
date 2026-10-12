@@ -88,6 +88,9 @@ println("  controller: ", JOYSRC)
 # physical steering (wheels): set once the session's steering ratio is known (E100 block below)
 const WHEEL_HALF_DEG = JoyCfg.wheel_half_range_deg(JOYNAME; measured = JOYMAP.wheel_half_deg)
 const STEER_GAIN = Ref(0.0)        # normalised steer per raw unit; 0 = endpoint calibration (joysticks)
+# IRGOLD-1 S2: the normalised steer a WHEEL may reach -- iRacing's lock (420° at the rim / the ratio) over MAXSTEER, so a
+# 900° wheel turned 300° gives 30° of road angle as in iRacing instead of stopping at 17°. 1 = joysticks/keys (unchanged).
+const STEER_LIM = Ref(1.0)
 
 # PO 2026-08-27, standing: "I like the clutch attached to a slider - that way I can ride the
 # clutch. The clutch should be an axis." A joystick.conf written by juliaRacer.py or calibrate.jl
@@ -587,6 +590,23 @@ println("  → mode: ", uppercasefirst(MODE),
 # is honest.  Practice/Training get a generous tank; the skidpad has no laps → no fuel.
 const FUEL_LPK    = clamp(tryparse(Float64, get(ENV,"JM_FUEL_LPK","0.55")) |> x-> x===nothing ? 0.55 : x, 0.05, 5.0)
 const FUEL_MARGIN = max(0, tryparse(Int, get(ENV,"JM_FUEL_MARGIN","10")) |> x-> x===nothing ? 10 : x)   # generous margin so a long session can't strand you
+# IRGOLD-1 / FUEL-1 (PO 2026-10-10: "at least two fuel settings: what the event needs (qualifying or race) + 2 laps, and a
+# full tank"). JM_FUEL = event (default) | full | <litres> | legacy (E10's massless distance tank above).
+#   event = the race's laps (practice/training: 10) + 2, at FUEL_PLAN_LPK, the gold's Ring burn scaled to racing duty
+#           (0.22-0.27 L/km at a mean pedal ~0.4 in every Ring gold file; ~0.40 L/km flat out);
+#   full  = iRacing's tank, 179.5 L (+102 kg over the gold's 43.2 L, ~17 % of the car).
+# The fuel's mass is in the car (corner weights, CG, sprung masses; the FuelTank object) and burns off by the gold's
+# measured burn law (powertrain.jl fuel_rate_kgh: pedal x rpm).
+const FUEL_MODE = lowercase(strip(get(ENV, "JM_FUEL", "event")))
+const FUEL_PLAN_LPK = 0.40
+const FUEL_SETUP_L = Ref(NaN)          # the litres in the session ibt's own corner weights (set with them)
+const FUEL_START_L = Ref(NaN)          # what this session starts with
+function fuel_start_litres(laplen_m)
+    FUEL_MODE == "full" && return DriveRT3D.FUEL_MAX_L
+    x = tryparse(Float64, FUEL_MODE); x !== nothing && return clamp(x, 1.0, DriveRT3D.FUEL_MAX_L)
+    laps = (IS_RACE ? RACE_LAPS : 10) + 2
+    clamp(laps*FUEL_PLAN_LPK*laplen_m/1000, 1.0, DriveRT3D.FUEL_MAX_L)
+end
 
 # ---- iRacing .ibt telemetry export (JM_IBT=1) ----
 # Record the lap in iRacing's exact .ibt format so juliaMotor laps can be diffed
@@ -839,8 +859,9 @@ let
             DriveRT3D.set_transmission!(pp.gear_ratios, pp.final_drive; source = basename(IBTTMPL))
             isfinite(pp.shift_rpm) && DriveRT3D.set_shift_rpm!(pp.shift_rpm; source = basename(IBTTMPL))   # AUTO up-shift = shift light
             # E100 S2: mass and its front share come from the same session's CornerWeights.
-            (mm, ff) = DriveRT3D.mass_from_corner_weights(pp.corner_weight_N)
-            DriveRT3D.set_mass!(mm, ff; source = basename(IBTTMPL))
+            # IRGOLD-1 MASS-1: and each corner's sprung mass and the CG position (set_corner_weights! also sets the mass).
+            DriveRT3D.set_corner_weights!(pp.corner_weight_N; source = basename(IBTTMPL))
+            FUEL_SETUP_L[] = isfinite(pp.fuel_L) ? pp.fuel_L : 43.2      # FUEL-1: the fuel in those corner weights
             # E100 S4: and the SPRING RATES, which are per-corner and asymmetric in real setups.
             # The model used to share one spec per axle, so the rates could not follow the session
             # at all; they stayed frozen wherever they were once copied from. wheel_rate() carries
@@ -878,9 +899,10 @@ let
         isfinite(ratio) && ratio > 1 || (ratio = 10.0)
         if WHEEL_HALF_DEG > 0
             STEER_GAIN[] = WHEEL_HALF_DEG / ratio / rad2deg(DriveRT3D.MAXSTEER)
+            STEER_LIM[] = max(1.0, min(WHEEL_HALF_DEG, DriveRT3D.WHEEL_LOCK_DEG) / ratio / rad2deg(DriveRT3D.MAXSTEER))
             println("  steering: wheel ±", round(Int, WHEEL_HALF_DEG), "° / ratio ", ratio, ":1 -> full lock (",
-                    round(rad2deg(DriveRT3D.MAXSTEER), digits = 1), "° road) at ±", round(Int, rad2deg(DriveRT3D.MAXSTEER)*ratio),
-                    "° of wheel   <- ", src)
+                    round(rad2deg(DriveRT3D.MAXSTEER)*STEER_LIM[], digits = 1), "° road) at ±", round(Int, rad2deg(DriveRT3D.MAXSTEER)*STEER_LIM[]*ratio),
+                    "° of wheel (iRacing's lock ", round(Int, DriveRT3D.WHEEL_LOCK_DEG), "°)   <- ", src)
         else
             println("  steering: endpoint calibration (not a wheel with a known rotation range)")
         end
@@ -10487,7 +10509,7 @@ function read_input()
     if js !== nothing && !isempty(js)
         bs = GLFW.GetJoystickButtons(GLFW.JOYSTICK_1)
         str, thr, brk, clu, up, dn = JoyCfg.apply(JOYMAP, js, bs)   # configurable mapping (calibrate.jl)
-        STEER_GAIN[] > 0 && (str = JoyCfg.steer_physical(JOYMAP, js, STEER_GAIN[]))   # wheels: angle / ratio
+        STEER_GAIN[] > 0 && (str = JoyCfg.steer_physical(JOYMAP, js, STEER_GAIN[]; lim = STEER_LIM[]))   # wheels: angle / ratio, to the car's lock
     end
     # keyboard (adds to / overrides stick)
     key(GLFW.KEY_W) && (thr=1.0); key(GLFW.KEY_S) && (brk=1.0)
@@ -10608,7 +10630,7 @@ function read_input()
                 "at the clutch-in end; move it to the other end to release.")
         flush(stdout)
     end
-    (DriveInput(throttle=clamp(thr,0,1), brake=clamp(brk,0,1), steer=clamp(str,-1,1),
+    (DriveInput(throttle=clamp(thr,0,1), brake=clamp(brk,0,1), steer=clamp(str,-STEER_LIM[],STEER_LIM[]),
                 clutch=(WRECKED[] ? 1.0 : clu),        # E95: wrecked = engine PERMANENTLY disconnected
                 shift_up=(WRECKED[] ? false : upE), shift_down=(WRECKED[] ? false : dnE),
                 autoshift=(WRECKED[] && false) || CTL.auto), rst, recover, restart)
@@ -11305,6 +11327,15 @@ function main()
             acc += hypot(ALIGNED[j+1][1]-ALIGNED[j][1], ALIGNED[j+1][2]-ALIGNED[j][2]); j += 1
         end
         atan(ALIGNED[j][2]-ALIGNED[base][2], ALIGNED[j][1]-ALIGNED[base][1])
+    end
+    # IRGOLD-1 / FUEL-1: the fuel the car starts with goes into its corner weights before the build (mass, CG, corner masses)
+    if FUEL_MODE != "legacy" && !SKIDPAD && DriveRT3D.CORNER_W[] !== nothing && isfinite(FUEL_SETUP_L[])
+        FUEL_START_L[] = fuel_start_litres(LAPLEN)
+        w = DriveRT3D.CORNER_W[]
+        cw = DriveRT3D.corner_weights_with_fuel(Dict(:LF => w[1], :RF => w[2], :LR => w[3], :RR => w[4]), FUEL_SETUP_L[], FUEL_START_L[])
+        DriveRT3D.set_corner_weights!(cw; source = "setup + fuel $(round(FUEL_START_L[], digits = 1)) L ($FUEL_MODE)")
+        println("  fuel:    ", round(FUEL_START_L[], digits = 1), " L (", FUEL_MODE, ")  -> mass ", round(DriveRT3D.MASS[], digits = 1),
+                " kg, front ", round(100DriveRT3D.FRONT_FRAC[], digits = 1), " %   (setup ibt ", FUEL_SETUP_L[], " L)")
     end
     tstamp("physics build (mtkcompile) begins")
     cs = build_carX(x0=cs0.x, z0=cs0.z, θ0=θ0spawn, v0=0.0, y0=y0spawn)   # MTK car — standing start (planar or full-3D)
@@ -12908,6 +12939,12 @@ function main()
     burn_lap  = FUEL_ON ? FUEL_LPK * LAPLEN/1000 : 0.0          # litres per lap (distance-based)
     fuel_laps = IS_RACE ? (RACE_LAPS + FUEL_MARGIN) : 40        # practice/training: a generous tank
     fuel      = Ref(FUEL_ON ? burn_lap * fuel_laps : 0.0)
+    FUEL1     = FUEL_ON && isfinite(FUEL_START_L[])                 # IRGOLD-1 / FUEL-1: a real tank with mass
+    if FUEL1
+        burn_lap = FUEL_PLAN_LPK * LAPLEN/1000; fuel_laps = FUEL_START_L[]/max(burn_lap, 1e-6); fuel[] = FUEL_START_L[]
+    end
+    refuel!() = (fuel[] = FUEL1 ? FUEL_START_L[] : burn_lap * fuel_laps; CAR3D && FUEL1 && DriveRT3D.set_fuel_burnt!(cs, 0.0))
+    fuel_mass_t = Ref(-1e9)
     if FUEL_ON
         println("  → fuel: ", round(fuel[],digits=1), " L = ", fuel_laps, " laps",
                 IS_RACE ? " ($RACE_LAPS race + $FUEL_MARGIN margin)" : "",
@@ -13210,7 +13247,8 @@ function main()
                 (!DO_QUAL && HOLD_START) && (player_grid[] = form_grid!(Inf))
                 GPLAI_F[] = nothing                                       # AIGPL-2: rebuilt from the new grid
             end
-            FUEL_ON && (fuel[] = burn_lap * fuel_laps)
+            # restart refuels (restart_smoke checks for the `fuel[] =` reset here); FUEL-1: and the tank's burnt mass back to 0
+            FUEL_ON && (fuel[] = FUEL1 ? FUEL_START_L[] : burn_lap * fuel_laps; CAR3D && FUEL1 && DriveRT3D.set_fuel_burnt!(cs, 0.0))
             println("  [restart] session reset on ", TRACKSEL, " in ",
                     round((time() - t_restart)*1000, digits=1), " ms (track NOT reloaded)")
             flush(stdout)
@@ -13413,7 +13451,7 @@ function main()
             cd_t0[] = cs.t                              # countdown starts when the grid forms
             cs.laps = 0; last_lap = 0.0; best_lap = 0.0; race_done = false; lap_t0 = cs.t
             launch_done[] = false                       # re-arm the launch assist for the actual race start
-            FUEL_ON && (fuel[] = burn_lap * fuel_laps)   # always start the race on a FULL tank (no practice carry-over)
+            FUEL_ON && refuel!()   # always start the race on a FULL tank (no practice carry-over)
         end
         enterPrev = accelNow
         # COUNTDOWN start (PO 2026-08-31). While it runs, nobody moves and the HUD shows the
@@ -13505,7 +13543,14 @@ function main()
         # E10: burn fuel by distance (only once the race is GREEN — never while you sit on the grid
         # waiting to launch, or you could starve the tank before you've even pressed the throttle).
         if FUEL_ON && race_go[] && !rst
-            fuel[] = max(0.0, fuel[] - FUEL_LPK * cs.v * (dt > 1e-4 ? dt : 1/60) / 1000)
+            if FUEL1      # FUEL-1: the gold's burn law (pedal x rpm), and the burnt mass leaves the car twice a second
+                fuel[] = max(0.0, fuel[] - DriveRT3D.fuel_rate_kgh(inp.throttle, cs.rpm)/3600*(dt > 1e-4 ? dt : 1/60)/DriveRT3D.FUEL_KG_PER_L)
+                if CAR3D && cs.t - fuel_mass_t[] >= 0.5
+                    fuel_mass_t[] = cs.t; DriveRT3D.set_fuel_burnt!(cs, (FUEL_START_L[] - fuel[])*DriveRT3D.FUEL_KG_PER_L)
+                end
+            else
+                fuel[] = max(0.0, fuel[] - FUEL_LPK * cs.v * (dt > 1e-4 ? dt : 1/60) / 1000)
+            end
             fuel[] <= 0 && (inp = DriveInput(throttle=0.0, brake=inp.brake, steer=inp.steer,
                             clutch=inp.clutch, shift_up=inp.shift_up, shift_down=inp.shift_down, autoshift=inp.autoshift))
         end
@@ -13522,7 +13567,7 @@ function main()
                     " | auto=", CTL.auto, " race_go=", race_go[])
             flush(stdout)
         end
-        rst && FUEL_ON && (fuel[] = burn_lap * fuel_laps)        # respawn refuels
+        rst && FUEL_ON && refuel!()        # respawn refuels
         if recover && CLINE !== nothing && CAR3D
             # SHIFT-R: drop back onto the centreline at the CURRENT lap position, upright + stopped.
             sR = RaceAI.project(CLINE, cs.x, cs.z)[1]; pR = RaceAI.pose_at(CLINE, sR, 0.0)
@@ -13784,7 +13829,7 @@ function main()
             (JOLT_MS > 0 && CAR3D && !SKIDPAD && !rst) && (JOLT_PRE[] = (WVX[], WVZ[], cfx, cfy, cpk, GPLW_STAT[].hits, GPLW_STAT[].clamps,
                                           OBS_STAT[].hits, OBS_STAT[].clamps, STEP_GUARD_HITS[]))   # SPATD-1
             _tps = time()
-            step_carX!(cs, inp.throttle * DriveRT3D.engine_power(), inp.brake, inp.steer, dt > 1e-4 ? dt : 1/60;
+            step_carX!(cs, inp.throttle * DriveRT3D.engine_power(), inp.brake, inp.steer, dt > 1e-4 ? dt : 1/60; lock = STEER_LIM[],
                         clutch=inp.clutch, up=inp.shift_up, dn=inp.shift_down, manual=!inp.autoshift,
                         groundz=groundz_phys)
             DS_SIM[1] += time() - _tps

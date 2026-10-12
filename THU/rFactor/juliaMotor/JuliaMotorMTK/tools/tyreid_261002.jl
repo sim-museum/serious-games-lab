@@ -31,13 +31,13 @@ end
 skid = first(filter(f -> occursin("skidpad 2026-10-02 23", f), readdir(REF; join = true)))
 let p = setup_params(ibt_open(skid).yaml)
     DriveRT3D.set_transmission!(p.gear_ratios, p.final_drive; source = basename(skid))
-    m, ff = DriveRT3D.mass_from_corner_weights(p.corner_weight_N); DriveRT3D.set_mass!(m, ff; source = basename(skid))
+    DriveRT3D.set_corner_weights!(p.corner_weight_N; source = basename(skid))
 end
 # WWSETUP-1: JM_STAB_IBT=<ibt> runs the checks on THAT session's whole car (gearbox, mass, springs, and the chassis:
 # LSD, bars, dampers, toe, brake split) -- the stability suite for each selectable setup (tools/stability_check.jl).
 haskey(ENV, "JM_STAB_IBT") && let fn = ENV["JM_STAB_IBT"], p = setup_params(ibt_open(fn).yaml), s = p.spring_rate_Npmm
     DriveRT3D.set_transmission!(p.gear_ratios, p.final_drive; source = basename(fn))
-    m, ff = DriveRT3D.mass_from_corner_weights(p.corner_weight_N); DriveRT3D.set_mass!(m, ff; source = basename(fn))
+    DriveRT3D.set_corner_weights!(p.corner_weight_N; source = basename(fn))   # IRGOLD-1 MASS-1: mass, CG, corner masses
     DriveRT3D.set_suspension!(wheel_rate(s[:LF]), wheel_rate(s[:RF]), wheel_rate(s[:LR]; rear = true), wheel_rate(s[:RR]; rear = true); source = basename(fn))
     DriveRT3D.set_chassis!(DriveRT3D.chassis_from_setup(p; source = basename(fn)))
     println("stability car: ", DriveRT3D.describe_chassis())

@@ -81,6 +81,45 @@ Install the car mass and its front share, derived from an ibt session's CornerWe
 set_transmission!, this must run BEFORE a Car3D is built — m and front_frac are MTK parameters
 baked in at construction.
 """
+# IRGOLD-1 S2 (MASS-1): the session's four CORNER WEIGHTS also set each corner's sprung mass (weight/g − the unsprung
+# mass) and the CG's position along the wheelbase (a = rear share × L, b = front share × L). Before, only the in-plane
+# mass followed the session: the vertical model kept hand-set 120/148 kg corners and the CG at 45.5 % front, so a full
+# tank (707 kg, 48.1 % front) or any other load reached neither the springs, nor the load transfer, nor the yaw arms --
+# and even at the gold's 43 L the in-plane car weighed 605 kg and the vertical one 616. `nothing` = not set (hand-set
+# corners). Opt-in with JM_MASS1=1 until judged on the IRGOLD-1 metric with the refitted tyre.
+const CORNER_W = Ref{Union{Nothing,NTuple{4,Float64}}}(nothing)     # LF RF LR RR [N]
+const MASS_LEGACY = get(ENV, "JM_MASS1", "0") != "1"
+const WHEELBASE = 2.41
+function set_corner_weights!(cw; source::AbstractString = "unknown")
+    w = (float(cw[:LF]), float(cw[:RF]), float(cw[:LR]), float(cw[:RR]))
+    all(x -> x > 0, w) || error("set_corner_weights!: $w")
+    CORNER_W[] = w
+    set_mass!(sum(w)/9.81, (w[1] + w[2])/sum(w); source)
+end
+# IRGOLD-1 / FUEL-1: where the tank sits (measured, chassis_parts.jl FuelTank): 0.82 m behind the front axle, so 66 % of
+# any fuel's weight is carried by the front wheels.
+const FUEL_TANK_X_FRONT = 0.82
+const FUEL_FRONT_SHARE = 1 - FUEL_TANK_X_FRONT/WHEELBASE
+"""The corner weights [N] with `litres` in the tank instead of the setup's `setup_litres`: the difference at
+FUEL_KG_PER_L, split FUEL_FRONT_SHARE front, half each side."""
+function corner_weights_with_fuel(cw, setup_litres, litres)
+    dW = (litres - setup_litres)*FUEL_KG_PER_L*9.81
+    Dict(:LF => cw[:LF] + dW*FUEL_FRONT_SHARE/2, :RF => cw[:RF] + dW*FUEL_FRONT_SHARE/2,
+         :LR => cw[:LR] + dW*(1 - FUEL_FRONT_SHARE)/2, :RR => cw[:RR] + dW*(1 - FUEL_FRONT_SHARE)/2)
+end
+const _TANK3D = IdDict{Any,Any}()
+"FUEL-1: the fuel burnt since this car was built [kg] (the FuelTank's runtime parameter)."
+function set_fuel_burnt!(c, kg)
+    s = get!(_TANK3D, c.sys) do
+        try ModelingToolkit.setp(c.sys, c.sys.tank.m_burn) catch; nothing end
+    end
+    s === nothing || s(c.integ, float(kg))
+    nothing
+end
+
+"CG arms (a, b) [m] for the vehicle: from the session's front share, or the shipped 1.314 / 1.096."
+cg_arms() = (MASS_LEGACY || CORNER_W[] === nothing) ? (1.314, 1.096) : ((1 - FRONT_FRAC[])*WHEELBASE, FRONT_FRAC[]*WHEELBASE)
+
 function set_mass!(m::Real, front_frac::Real; source::AbstractString="unknown")
     m > 0 || error("set_mass!: non-positive mass $m")
     0.0 < front_frac < 1.0 || error("set_mass!: front_frac out of range: $front_frac")
@@ -403,6 +442,10 @@ function mass_from_corner_weights(cw)
     (tot / 9.81, (cw[:LF] + cw[:RF]) / tot)
 end
 const MAXSTEER = 0.30
+# IRGOLD-1 S2: the Lotus 49's steering LOCK in iRacing: SteeringWheelAngleMax 420° at the rim (every 261010 file), so
+# ±42° of road angle at the 10:1 rack. MAXSTEER stays the normaliser every caller (AI, tools, joystick) scales by; only a
+# caller that passes `lock` (the player's wheel) may go beyond ±1 normalised, up to WHEEL_LOCK_DEG / ratio.
+const WHEEL_LOCK_DEG = 420.0
 const RW_R = 0.334    # E91-S10: measured, gear·final·Speed/ω_engine over the whole gold store (0.3333-0.3357)
 # E100 S5: STATIC RIDE HEIGHT is session data too, and per corner. The single 0.075 m constant was
 # wrong for both axles and carried NO RAKE: the Nordschleife session sets 82.9 mm front / 105.2 mm
@@ -520,12 +563,18 @@ end
 # ratio, so a rear roll-only coupling keeps exactly that: per side ks + 2·karb = spring x MR2, as before. Heave and
 # pitch take the measured rate; the cornering balance is unchanged.
 _karb_r(ks) = 0.5 * float(ks) * (MR2/MR2_R - 1.0)
-_corner(axle::Symbol, ks::Real; ch::Chassis = CHASSIS[]) = axle === :f ?
-    (ks = float(ks), cs = 2500.0*ch.cscale[1], karb = 0.0, m_s = 120.0, m_u = 20.0, kt = 180_000.0, ct = 1000.0) :
-    (ks = float(ks), cs = 3000.0*ch.cscale[2], karb = _karb_r(ks), m_s = 148.0, m_u = 20.0, kt = 200_000.0, ct = 1100.0)
+_corner(axle::Symbol, ks::Real; ch::Chassis = CHASSIS[], i::Int = 0) = axle === :f ?
+    (ks = float(ks), cs = 2500.0*ch.cscale[1], karb = 0.0, m_s = _msprung(i, 120.0), m_u = 20.0, kt = 180_000.0, ct = 1000.0) :
+    (ks = float(ks), cs = 3000.0*ch.cscale[2], karb = _karb_r(ks), m_s = _msprung(i, 148.0), m_u = 20.0, kt = 200_000.0, ct = 1100.0)
+# MASS-1: corner i's sprung mass from the session's corner weight (unsprung 20 kg), else the shipped value
+_msprung(i, dflt) = (MASS_LEGACY || CORNER_W[] === nothing || i == 0) ? dflt : CORNER_W[][i]/9.80665 - 20.0
 # WWSETUP-1: the vehicle keywords the chassis state adds (diff, toe, brake split) -- one place, both builders.
 _chassis_kw(ch::Chassis = CHASSIS[]) = (diff = ch.diff, toe_f = ch.toe[1], toe_r = ch.toe[2], brake_bias_p = ch.bias_p, travel = ch.travel, karb_f = ch.karb[1], karb_r = ch.karb[2],
-                                        camber = ch.camber, relax = RELAX)
+                                        camber = ch.camber, relax = RELAX, front_hubs = FRONT_HUBS[],
+                                        tank_x = cg_arms()[1] - FUEL_TANK_X_FRONT)
+# IRGOLD-1 S1: free front hubs (vehicle_3d.jl `front_hubs`), opt-in with JM_FRONTHUBS=1 until the tyre is refitted
+# with them (every tyre fit so far absorbed the spool's understeer moment); JM_FRONTSPOOL=1 forces the spool.
+const FRONT_HUBS = Ref(get(ENV, "JM_FRONTHUBS", "0") == "1" && !haskey(ENV, "JM_FRONTSPOOL"))
 # CARPHYS-1 S11: tyre relaxation lengths "σf,σr" [m]; unset = none (the force follows the kinematic slip at once)
 const RELAX = let e = get(ENV, "JM_RELAX", ""); isempty(e) ? nothing : Tuple(parse.(Float64, split(e, ",")))[1:2] end
 # initial wheel speeds: the per-wheel rear states exist only with an LSD
@@ -534,8 +583,9 @@ _wheel_u0(sys, v0) = CHASSIS[].diff === nothing ? [sys.ωr => v0/RW_R] : [sys.ω
 function build_car3d(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0, y0 = 0.0,
                      brush = !haskey(ENV, "JM_MAGIC"), dt = 1/300)
     sys = mtkcompile(DrivenVehicle3D(name = :car, brush = brush, final = FINAL[], m = MASS[], front_frac = FRONT_FRAC[],
-                    fl_corner = _corner(:f, KS[][1]), fr_corner = _corner(:f, KS[][2]),
-                    rl_corner = _corner(:r, KS[][3]), rr_corner = _corner(:r, KS[][4]); _chassis_kw()...))   # physics brush by DEFAULT; JM_MAGIC ⇒ Magic-Formula tyre
+                    fl_corner = _corner(:f, KS[][1]; i = 1), fr_corner = _corner(:f, KS[][2]; i = 2),
+                    rl_corner = _corner(:r, KS[][3]; i = 3), rr_corner = _corner(:r, KS[][4]; i = 4),
+                    a = cg_arms()[1], b = cg_arms()[2]; _chassis_kw()...))   # physics brush by DEFAULT; JM_MAGIC ⇒ Magic-Formula tyre
     println(brush ? "  TYRE (3-D): physics-based brush model (default)" : "  TYRE (3-D): Magic-Formula tyre (JM_MAGIC)")
     prob = ODEProblem(sys, [sys.u => v0, sys.ωf => v0/0.30, _wheel_u0(sys, v0)...,
                             sys.ωe => 209.4, sys.X => x0, sys.Y => z0, sys.ψ => θ0], (0.0, 1e7))
@@ -571,8 +621,9 @@ end
 3-D AI doesn't pay N× mtkcompile).  `poses` = Vector of (x0,z0,θ0,v0)."""
 function build_cars3d(poses; brush = !haskey(ENV, "JM_MAGIC"), dt = 1/300)
     sys = mtkcompile(DrivenVehicle3D(name = :car, brush = brush, final = FINAL[], m = MASS[], front_frac = FRONT_FRAC[],
-                    fl_corner = _corner(:f, KS[][1]), fr_corner = _corner(:f, KS[][2]),
-                    rl_corner = _corner(:r, KS[][3]), rr_corner = _corner(:r, KS[][4]); _chassis_kw()...))
+                    fl_corner = _corner(:f, KS[][1]; i = 1), fr_corner = _corner(:f, KS[][2]; i = 2),
+                    rl_corner = _corner(:r, KS[][3]; i = 3), rr_corner = _corner(:r, KS[][4]; i = 4),
+                    a = cg_arms()[1], b = cg_arms()[2]; _chassis_kw()...))
     s_thr=setp(sys,sys.throttle); s_brk=setp(sys,sys.brake); s_st=setp(sys,sys.δ)
     s_gr=setp(sys,sys.gear); s_clu=setp(sys,sys.clutch); s_we=ModelingToolkit.setu(sys,sys.ωe)
     s_zr=(setp(sys,sys.zrFL),setp(sys,sys.zrFR),setp(sys,sys.zrRL),setp(sys,sys.zrRR))
@@ -619,7 +670,7 @@ end
 gives terrain elevation (used to drive the suspension under each wheel)."
 function step_car3d!(c::Car3D, throttle, brake, steer, dt;
                      clutch = 0.0, up = false, dn = false, manual = false,
-                     groundz = (x,z)->0.0)
+                     groundz = (x,z)->0.0, lock = 1.0)
     if manual
         c.s_clu(c.integ, clamp(clutch, 0, 1))
         up && c.gear < 5 && (c.gear += 1; c.s_gr(c.integ, gearratio(c.gear)))
@@ -658,7 +709,7 @@ function step_car3d!(c::Car3D, throttle, brake, steer, dt;
         end
     end
     c.s_thr(c.integ, thr); c.s_brk(c.integ, clamp(brake, 0, 1))
-    c.s_st(c.integ, clamp(steer, -1, 1) * MAXSTEER)
+    c.s_st(c.integ, clamp(steer, -lock, lock) * MAXSTEER)
     # --- advance in solver-rate SUBSTEPS, resampling the road under each wheel every
     #     substep so the road input is CONTINUOUS (not a per-frame staircase), and
     #     feed-forward the road VERTICAL VELOCITY vr = d(zr)/dt into the tyre contact

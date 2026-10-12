@@ -13,7 +13,7 @@ using ModelingToolkit, OrdinaryDiffEq
 function install!(fn)
     sp = setup_params(ibt_open(fn).yaml)
     DriveRT3D.set_transmission!(sp.gear_ratios, sp.final_drive; source = basename(fn))
-    m, ff = DriveRT3D.mass_from_corner_weights(sp.corner_weight_N); DriveRT3D.set_mass!(m, ff; source = basename(fn))
+    DriveRT3D.set_corner_weights!(sp.corner_weight_N; source = basename(fn))
     s = sp.spring_rate_Npmm; wr = DriveRT3D.wheel_rate
     DriveRT3D.set_suspension!(wr(s[:LF]), wr(s[:RF]), wr(s[:LR]; rear = true), wr(s[:RR]; rear = true); source = basename(fn))
     DriveRT3D.set_chassis!(DriveRT3D.chassis_from_setup(sp; source = basename(fn)))
