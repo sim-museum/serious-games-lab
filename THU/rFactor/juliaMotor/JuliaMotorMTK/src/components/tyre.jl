@@ -19,7 +19,7 @@ include("brush_tyre.jl") # PHYSICS-BASED brush: brush_forces + BRUSH_FRONT/REAR 
 function BrushTyre(; name, μ = BRUSH_FRONT.μ, μx = BRUSH_FRONT.μx, Cα = BRUSH_FRONT.Cα,
                    Cκ = BRUSH_FRONT.Cκ, kμ = BRUSH_FRONT.kμ, Fz0 = BRUSH_FRONT.Fz0, t0 = 0.035, μscale = 1.0,
                    rs = BRUSH_FRONT.rs, ws = BRUSH_FRONT.ws, camber = false, Cγ = CAMBER_CG, kγ = CAMBER_KG,
-                   ns = BRUSH_NS, rsy = rs, prel = 0.0, kpμ = 0.0, kpc = 0.0, nsh = 3.0)
+                   ns = BRUSH_NS, rsy = rs, prel = 0.0, kpμ = 0.0, kpc = 0.0, nsh = 3.0, kin = false)
     # E56: μscale is a per-wheel SURFACE friction multiplier (1 = tarmac; <1 = grass/verge).  Driving it
     # from the game makes "off the racing line" a REAL per-tyre grip loss the model integrates — a wheel
     # dropping onto the grass loses grip and pulls the car — not a bumpX! drag/yaw state hack.
@@ -63,6 +63,17 @@ function BrushTyre(; name, μ = BRUSH_FRONT.μ, μx = BRUSH_FRONT.μx, Cα = BRU
         # pneumatic trail collapses as the patch slides; camber thrust acts at the patch centre (no trail)
         Mz   ~ -t0 * (1.0 - min(ξ, 1.0)) * (camber ? μye*Fz * saty * (lsens*Cα*sin(α)/(nsh*μye))/ξ : Fy),
     ]
+    if kin
+        # IRGOLD-1 S5: the same force law at the KINEMATIC slip αk (before the tyre's relaxation) -- what the steering
+        # column feels: with the front's lag partly steering compliance, the rim torque leads the relaxed tyre force
+        # (the gold's rim torque ran 1.24-1.30 × the column's relaxed-force torque in Monza's fast steering)
+        kv = @variables αk(t) Fyk(t) ξyk(t) ξk(t) satyk(t)
+        append!(vars, kv)
+        append!(eqs, [ξyk ~ lsens*(Cα*sin(αk) + cthr) / (nsh*μye),
+                      ξk ~ sqrt(ξx^2 + ξyk^2 + 1e-9),
+                      satyk ~ (1.0 - (1.0 - min(ξk, 1.0))^nsh) * brush_slide(ξk, rsy, ws),
+                      Fyk ~ μye*Fz * satyk * ξyk/ξk])
+    end
     System(eqs, t, vars, ps; name)
 end
 

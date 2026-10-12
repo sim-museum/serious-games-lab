@@ -141,6 +141,9 @@ const TYRE2 = (μf = 1.347, μr = 1.494, Cαf = 26.17, Cαr = 27.77)
 # cells 17 -> 8; the transient replay metric 2.412 -> 2.260 (all 245 windows, both setups).
 const TYRE3 = (μf = 1.40, μr = 1.65, Cαf = 24.0, Cαr = 27.77, nshf = 5.0, nshr = 5.0, kμ = 0.082, cabl = 0.40)
 const USE_TYRE3 = !haskey(ENV, "JM_TYRE2")
+# IRGOLD-1 S5: with relaxation the steering column reads the front force at the KINEMATIC slip (vehicle_3d.jl);
+# JM_COLUMN_RELAXED=1 = the relaxed force (S4)
+const COLUMN_KIN = !haskey(ENV, "JM_COLUMN_RELAXED")
 
 # TYRE-2 (2026-10-06): the slip stiffnesses' load exponent (BrushTyre `ns`): CFα, CFκ ∝ Fz^ns. 1 = the plain brush.
 const BRUSH_NS = 1.0

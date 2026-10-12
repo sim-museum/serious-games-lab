@@ -30,7 +30,31 @@ include(joinpath(@__DIR__, "replay_261005.jl"))             # settle!, install!,
 using ModelingToolkit, OrdinaryDiffEq
 
 const DG = expanduser("~/gold standard/julia racer/261010")
+
+# IRGOLD-1 S6 trial (JM_MAP2D=1): the part-throttle map by rpm -- measured on every 261010 row (261011/tools, the S8 method):
+# the torque fraction falls with rpm at part throttle (pedal 0.5: 0.48 at 4-5.5k, 0.43 at 5.5-7k, 0.41 at 7-8k rpm).
+# Overrides DriveRT3D.engine_torque in THIS process before any car is built (src untouched while gates run).
+if get(ENV, "JM_MAP2D", "0") == "1"
+    @eval DriveRT3D begin
+        const _TK_LO = ((0.0, 0.0), (0.1, 0.02), (0.2, 0.12), (0.3, 0.22), (0.4, 0.34), (0.5, 0.48), (0.6, 0.62), (0.7, 0.77), (0.8, 0.90), (0.9, 0.96), (1.0, 1.0))
+        const _TK_HI = ((0.0, 0.0), (0.1, 0.02), (0.2, 0.11), (0.3, 0.19), (0.4, 0.27), (0.5, 0.41), (0.6, 0.53), (0.7, 0.70), (0.8, 0.87), (0.9, 0.95), (1.0, 1.0))
+        _ramps(thr, k) = (f = 0.0*thr; s0 = 0.0; for i in 1:length(k)-1; s = (k[i+1][2] - k[i][2])/(k[i+1][1] - k[i][1]); f += (s - s0)*max(0.0, thr - k[i][1]); s0 = s; end; f)
+        function engine_torque(rpm, throttle; redline = 9500.0, T0 = EFRIC_T0, k = EFRIC_K, r0 = EFRIC_R0, w = EFRIC_W)
+            wot = max(0.0, wot_torque(rpm)); cut = 0.5*(1 - tanh((rpm - redline)/200.0))
+            fric = (T0 + k*rpm) * 0.5*(1 + tanh((rpm - r0)/w))
+            wr = min(max((rpm - 4750.0)/2750.0, 0.0), 1.4)
+            f = _ramps(throttle, _TK_LO) + wr*(_ramps(throttle, _TK_HI) - _ramps(throttle, _TK_LO))
+            f*wot*cut - (1 - f)*fric
+        end
+    end
+    println("JM_MAP2D: the 2-D part-throttle map is ON in this process")
+end
 const IRG_SECS = parse(Float64, get(ENV, "JM_IRG_SECS", "5"))
+# Files that did not use the setup the test plan stipulated (PO 2026-10-12: "the chronologically first monza .ibt was
+# using the wrong setup"; tools 261011/tools/setupcheck2.py): 19-30-13 ran the SKIDPAD variant (raised perches, right
+# tyres 179 kPa) instead of the road setup for test 2. Excluded from every IRGOLD analysis.
+const IRG_EXCLUDE = ("19-30-13",)
+irg_files(fs) = filter(f -> !any(x -> occursin(x, f), IRG_EXCLUDE), fs)
 
 "Test label per file (IRGOLD-1 table in PRODUCT_BACKLOG.md), from the file's clock time."
 function testof(fn)
@@ -140,6 +164,16 @@ simget(car) = get!(GETSYM, car.sys) do
     s = car.sys
     ModelingToolkit.getsym(s, [s.u, s.v, s.r, s.ay, s.ph, s.ωRL, s.ωRR, s.ωf, s.rpm])
 end
+const GETCOL = IdDict{Any,Any}()
+"The front tyres' summed lateral force the column reads and their mean normalised slip ξ (kinematic when relaxed)."
+function simcol(car)
+    g = get!(GETCOL, car.sys) do
+        s = car.sys
+        try ModelingToolkit.getsym(s, [s.FL.Fyk, s.FR.Fyk, s.FL.ξk, s.FR.ξk]) catch
+            ModelingToolkit.getsym(s, [s.FL.Fy, s.FR.Fy, s.FL.ξ, s.FR.ξ]) end
+    end
+    a = g(car.integ); (a[1] + a[2], 0.5*(a[3] + a[4]))
+end
 const GETSUSP = IdDict{Any,Any}()
 "The sim's suspension roll per axle [deg]: (left compression − right) / track, compression = wheel up relative to its mount."
 function simroll(car)
@@ -247,15 +281,15 @@ function replay(car, sp, u0, g, w; warm = nothing)
                               clutch = 1.0 - clamp(c["Clutch"][j], 0, 1), up = up, dn = dn, manual = true)
         u, v, r, ay, ph, wl, wr, wf, rpm = get(car.integ)
         τ = something(DriveRT3D.rimtorque3d(car), NaN)
-        sroll = simroll(car)
+        sroll = simroll(car); scol = simcol(car)
         push!(sim, (r = rad2deg(r), ay = ay/G, β = rad2deg(atan(v, max(u, 1.0))), v = 3.6*hypot(u, v), roll = rad2deg(ph),
                     τ = τ, rpm = rpm, δ = rad2deg(δ), κr = (wl + wr)/2*DriveRT3D.RW_R/max(u, 1.0) - 1, thr = c["Throttle"][j],
-                    rollF = sroll[1], rollR = sroll[2]))
+                    rollF = sroll[1], rollR = sroll[2], fyf = scol[1], xif = scol[2]))
         push!(gold, (r = rad2deg(c["YawRate"][j]), ay = c["LatAccel"][j]/G, β = β_of(c, j), v = 3.6c["Speed"][j],
                      roll = haskey(c, "Roll") ? rad2deg(c["Roll"][j]) : NaN, τ = c["SteeringWheelTorque"][j], rpm = c["RPM"][j],
                      δ = rad2deg(c["SteeringWheelAngle"][j])/sr,
                      κr = (c["LRspeed"][j] + c["RRspeed"][j])/2/max(c["Speed"][j], 1.0) - 1, thr = c["Throttle"][j],
-                     rollF = c["rollF"][j], rollR = c["rollR"][j]))
+                     rollF = c["rollF"][j], rollR = c["rollR"][j], fyf = NaN, xif = NaN))
         (isfinite(u) && u > 3) || break
         abs(rad2deg(atan(v, max(u, 1.0)))) > 60 && break
     end
@@ -288,6 +322,7 @@ function main()
         append!(files, sort(filter(f -> endswith(f, ".ibt"), readdir(expanduser("~/gold standard/julia racer/$dd"); join = true))))
     end
     isempty(only) || (files = filter(f -> any(o -> occursin(o, f), only), files))
+    files = irg_files(files)
     rows = NamedTuple[]; fails = NamedTuple[]
     for fn in files
         g = goldfile(fn); W = windows(g)
@@ -316,11 +351,11 @@ function main()
                     isfinite(x.δss) ? @sprintf("  δss err %+.2f°", x.δss) : "", (x.spun_g || x.spun_s) ? "  SPIN gold $(x.spun_g) sim $(x.spun_s)" : "")
             if !isempty(dump)
                 open(joinpath(dump, @sprintf("%s_%07.1f.csv", stem, x.t)), "w") do io
-                    println(io, "k,g_r,s_r,g_ay,s_ay,g_b,s_b,g_v,s_v,g_roll,s_roll,g_tau,s_tau,g_d,s_d,g_kr,s_kr,thr,g_rpm,s_rpm,g_rollF,s_rollF,g_rollR,s_rollR")
+                    println(io, "k,g_r,s_r,g_ay,s_ay,g_b,s_b,g_v,s_v,g_roll,s_roll,g_tau,s_tau,g_d,s_d,g_kr,s_kr,thr,g_rpm,s_rpm,g_rollF,s_rollF,g_rollR,s_rollR,s_fyf,s_xif")
                     for k in 1:min(length(gold), length(sim))
                         a, b = gold[k], sim[k]
-                        @printf(io, "%d,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.3f,%.3f,%.4f,%.4f,%.3f,%.3f,%.4f,%.4f,%.4f,%.4f,%.3f,%.0f,%.0f,%.4f,%.4f,%.4f,%.4f\n", k, a.r, b.r, a.ay, b.ay, a.β, b.β,
-                                a.v, b.v, a.roll, b.roll, a.τ, b.τ, a.δ, b.δ, a.κr, b.κr, a.thr, a.rpm, b.rpm, a.rollF, b.rollF, a.rollR, b.rollR)
+                        @printf(io, "%d,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.3f,%.3f,%.4f,%.4f,%.3f,%.3f,%.4f,%.4f,%.4f,%.4f,%.3f,%.0f,%.0f,%.4f,%.4f,%.4f,%.4f,%.1f,%.4f\n", k, a.r, b.r, a.ay, b.ay, a.β, b.β,
+                                a.v, b.v, a.roll, b.roll, a.τ, b.τ, a.δ, b.δ, a.κr, b.κr, a.thr, a.rpm, b.rpm, a.rollF, b.rollF, a.rollR, b.rollR, b.fyf, b.xif)
                     end
                 end
             end

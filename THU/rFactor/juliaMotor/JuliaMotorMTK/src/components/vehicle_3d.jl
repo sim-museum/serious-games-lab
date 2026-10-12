@@ -116,8 +116,9 @@ function DrivenVehicle3D(; name,
     # 0.2605/0.2353/0.2320/0.2321/0.2437: a minimum near 1,040 kg·m²) -- for the session car it was fitted on; 890 (hand-set)
     # for a setup-less car. An explicit Izz wins.
     Izz = Izz !== nothing ? Izz : cmb && USE_TYRE3 ? 1040.0 : 890.0
-    FL = brush ? BrushTyre(; name=:FL, bf..., camber=cmb, nsh=nshf) : Tyre(; name=:FL, TYRE_SKIDPAD_FRONT...)
-    FR = brush ? BrushTyre(; name=:FR, bf..., camber=cmb, nsh=nshf) : Tyre(; name=:FR, TYRE_SKIDPAD_FRONT...)
+    kinF = brush && relax !== nothing && COLUMN_KIN         # IRGOLD-1 S5: the column reads the front force at the kinematic slip
+    FL = brush ? BrushTyre(; name=:FL, bf..., camber=cmb, nsh=nshf, kin=kinF) : Tyre(; name=:FL, TYRE_SKIDPAD_FRONT...)
+    FR = brush ? BrushTyre(; name=:FR, bf..., camber=cmb, nsh=nshf, kin=kinF) : Tyre(; name=:FR, TYRE_SKIDPAD_FRONT...)
     RL = brush ? BrushTyre(; name=:RL, br...,  camber=cmb, nsh=nshr) : Tyre(; name=:RL, TYRE_SKIDPAD_REAR...)
     RR = brush ? BrushTyre(; name=:RR, br...,  camber=cmb, nsh=nshr) : Tyre(; name=:RR, TYRE_SKIDPAD_REAR...)
 
@@ -217,6 +218,7 @@ function DrivenVehicle3D(; name,
             append!(eqs, [ty.Fz ~ Fz, ty.α ~ α, ty.κ ~ κ])
         else                                                  # CARPHYS-1 S11: the tyre sees the relaxed slip
             append!(eqs, [ty.Fz ~ Fz, rlx[idx].α_in ~ α, rlx[idx].V ~ Vref, ty.α ~ rlx[idx].α, ty.κ ~ κ])
+            kinF && idx <= 2 && push!(eqs, ty.αk ~ α)                 # the kinematic slip for the column's force
         end
         if cmb
             # CAMBER-1: inclination to the road, + = top toward +y (the tyre's thrust side). The garage's camber is
@@ -303,8 +305,10 @@ function DrivenVehicle3D(; name,
             ωr ~ (ωRL + ωRR)/2,
         ])
     end
-    col = SteeringColumn(; name = :col)                    # CARPHYS-1 S5: the rim torque (force feedback), chassis_parts.jl
-    push!(eqs, col.Fy ~ FL.Fy + FR.Fy)
+    # CARPHYS-1 S5: the rim torque (force feedback), chassis_parts.jl; IRGOLD-1 S5: with the trail law on the session car
+    col = kinF ? SteeringColumn(; name = :col, trail = COLUMN_TRAIL[1], tp = COLUMN_TRAIL[2]) : SteeringColumn(; name = :col)
+    push!(eqs, col.Fy ~ (kinF ? FL.Fyk + FR.Fyk : FL.Fy + FR.Fy))
+    push!(eqs, col.ξ ~ (kinF ? 0.5*(FL.ξk + FR.ξk) : brush ? 0.5*(FL.ξ + FR.ξ) : 1.0))
     append!(eqs, [brk.pedal ~ brake,                       # CARPHYS-1 S6: the brake system object; its calipers from the fit
                   brk.kF ~ Tbrake_max*bias/(brk.P_full*0.535), brk.kR ~ Tbrake_max*(1 - bias)/(brk.P_full*(1 - 0.535))])
     System(eqs, t, vars, ps; systems = [FL, FR, RL, RR, mount..., road..., wheel..., strut..., tyrev..., arb..., col, brk, clu, tank, (stops === nothing ? [] : stops)...,

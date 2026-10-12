@@ -136,7 +136,7 @@ function main()
                  [f for d in ("261004", "261005") for f in readdir(expanduser("~/gold standard/julia racer/$d"); join = true) if occursin("skidpad", f) && endswith(f, ".ibt")])
     only = split(get(ENV, "JM_ST_FILES", ""), ","; keepempty = false)
     isempty(only) || (files = filter(f -> any(o -> occursin(o, f), only), files))
-    files = sort(files; by = filesize, rev = true)
+    files = sort(irg_files(files); by = filesize, rev = true)  # minus the wrong-setup files (IRG_EXCLUDE)
     ws = workers(); share = [String[] for _ in ws]
     for (i, f) in enumerate(files); push!(share[mod1(i, length(ws))], f); end
     ncell = sum(fetch.([remotecall(load_steady!, w, share[i]) for (i, w) in enumerate(ws)]))

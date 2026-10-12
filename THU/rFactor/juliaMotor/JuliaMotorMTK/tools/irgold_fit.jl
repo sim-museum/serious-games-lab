@@ -80,6 +80,7 @@ function main()
     files = sort(filter(f -> endswith(f, ".ibt"), readdir(DG; join = true)); by = f -> match(r"2026-(.*)\.ibt", f).captures[1])
     only = split(get(ENV, "JM_IRG_FILES", ""), ","; keepempty = false)
     files = isempty(only) ? filter(f -> !occursin("skidpad", f), files) : filter(f -> any(o -> occursin(o, f), only), files)
+    files = irg_files(files)                                   # the wrong-setup files (irgold_replay.jl IRG_EXCLUDE)
     # spread the files over the workers by size (big files first, round robin)
     files = sort(files; by = filesize, rev = true)
     ws = workers(); share = [String[] for _ in ws]

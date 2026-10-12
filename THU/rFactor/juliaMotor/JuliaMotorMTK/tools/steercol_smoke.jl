@@ -19,5 +19,25 @@ chk("the FFB road term reads the column's torque by default", occursin("τrim = 
     occursin("const FFB_PHYS    = !haskey(ENV, \"JM_FFB_LEGACY\")", src))
 chk("15 ms smoothing (the gold has no measurable lag), legacy keeps 50 ms",
     occursin("haskey(ENV, \"JM_FFB_LEGACY\") ? \"0.05\" : \"0.015\"", src) && occursin("FFB_PHYS ? \"0.015\" : \"0.05\"", src))
+# IRGOLD-1 S5: a SESSION car (the game's -- setup, camber, relaxation) carries the trail law: mechanical 4.50 cm +
+# pneumatic 1.55 cm × (1 − ξ) on the kinematic-slip front force (fitted on the 261011 Monza + skidpad rim torque)
+include(joinpath(@__DIR__, "..", "src", "setup.jl")); include(joinpath(@__DIR__, "..", "src", "ibt.jl")); using ModelingToolkit
+let fn = expanduser("~/gold standard/julia racer/lotus49_nurburgring nordschleife 2026-06-24 15-53-11.ibt")
+    if isfile(fn)
+        sp = Setup.setup_params(IBT.ibt_open(fn).yaml)
+        DriveRT3D.set_transmission!(sp.gear_ratios, sp.final_drive; source = basename(fn))
+        DriveRT3D.set_corner_weights!(sp.corner_weight_N; source = basename(fn))
+        DriveRT3D.set_chassis!(DriveRT3D.chassis_from_setup(sp; source = basename(fn)))
+        cs = DriveRT3D.build_car3d(; v0 = 25.0)
+        for _ in 1:300; DriveRT3D.step_car3d!(cs, 0.40, 0.0, 0.08, 1/60; clutch = 0.0, manual = true); end
+        sy = cs.sys
+        fyk, xi, τs = ModelingToolkit.getsym(sy, [sy.FL.Fyk + sy.FR.Fyk, 0.5*(sy.FL.ξk + sy.FR.ξk), sy.col.τ])(cs.integ)
+        law = -(DriveRT3D.COLUMN_TRAIL[1] + DriveRT3D.COLUMN_TRAIL[2]*(1 - min(xi, 1.0)))*fyk/10
+        chk("session car: τ = -(4.50 cm + 1.55 cm·(1-ξ))·ΣFyk / 10", isapprox(τs, law; rtol = 1e-6), "τ $(round(τs, digits = 2)) N·m, ξ $(round(xi, digits = 2))")
+        chk("session car: heavier than the constant 4.78 cm at moderate slip", abs(τs) > 0.0478*abs(fyk)/10, "")
+    else
+        println("  (no June Ring template on this machine: session-car checks skipped)")
+    end
+end
 println(fails[] == 0 ? "ALL PASS" : "FAILURES: $(fails[])")
 exit(fails[] == 0 ? 0 : 1)

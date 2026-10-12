@@ -25326,3 +25326,54 @@ test order) checked against each file's content and setup:
   skidpad circles and WW slide yaw better, the default held slides and the stops worse) -- kept S4's tyre. The rear's
   behaviour past its peak under drive wants a better law than the brush's, not more tuning of it.
 * Gates (S4 commit, 03:51-04:40): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).
+
+### IRGOLD-1 S5 (2026-10-12): the steering-wheel torque (force feedback) against the gold's fast steering
+* **Retro:** the column (CARPHYS-1 S5) was fitted on 19 skidpad events -- near the limit, slow steering. With S4's front
+  relaxation the column read a LAGGING force. On the 261011 Monza flicks/slaloms the gold's rim torque was 1.24-1.30 × the
+  column's plus a steering-rate term (−1.0 N·m per rad/s) -- it looked like damping.
+* **The column reads the front force at the KINEMATIC slip** (BrushTyre `kin`: the same law evaluated at the slip before
+  relaxation -- with the front's lag partly steering compliance, the torque at the rim leads the relaxed tyre force;
+  `JM_COLUMN_RELAXED=1` reverts). With it the steering-rate term VANISHES (+0.04 N·m per rad/s): it was the lag, not a
+  damper (the prepared FFB damping term is therefore not added). Monza residual 2.95-3.15 → 2.51 N·m.
+* **The trail shrinks with slip**: the gold's torque was a steady 1.21-1.23 × the column's below 0.9 g, falling to 1.15
+  at 1 g and 1.07 near the limit (not tyre pressure: left/right turns on the skidpad's 152/207 kPa agree, 1.03/1.02).
+  The column now has a mechanical + pneumatic trail: 4.50 cm + 1.55 cm × (1 − ξ), ξ the front's normalised slip
+  (least squares on 55,201 gold samples, both setups; a constant trail would need 5.59 cm -- too light in ordinary
+  corners or too heavy at the limit). Skidpad residuals 2.16 → 1.31 N·m (arms 4), 2.24 → 1.98 (firm).
+* **What the PO will feel:** the wheel ~20 % heavier through ordinary corners, lightening toward the limit as the front
+  saturates, and it no longer trails the steering in quick inputs -- iRacing's. If it is too heavy: the FFB gain.
+* Car motion unchanged (the column is an output). steercol_smoke + 2 checks on a session car (the law, heavier than the
+  old constant at moderate slip).
+* Launches (measured with the S5 car, tools/launchval_261009.jl): unchanged from CARPHYS-1 S9, mean |Δv| at 1/2/3 s
+  1.36 m/s; hard launches ~20 % slow. The gold's hard launch is a CLUTCH-SLIP start: clutch held at 0.34-0.36 for 1 s,
+  the engine falls 8,900 → ~2,000 rpm within 0.4 s and holds 1,600-1,900 rpm, rear wheel slip ~0, 0.63-0.70 g; the
+  sim's engine stays at 6,000-7,600 rpm. Falling that fast (≈ 1,800 rad/s²) needs the clutch to out-torque the
+  part-throttle engine by ~300 N·m at Ie 0.18 -- either iRacing's engine gives less at high rpm on part throttle than
+  THROTTLE_KNOTS (fitted 4,000-7,500 rpm, clutch IN) or its effective inertia is smaller. Next rotation.
+* **Correction (S6 preview, 2026-10-12):** most of the steady-state "cornering drag" gaps above were the ENGINE MAP, not the
+  tyres: the gold's drag is estimated through the part-throttle map, which S6 finds falls with rpm. With the 2-D map
+  (S6) the gaps at ≥ 0.9 g shrink WW +173 → +75 N, default −140 → −60 N (the two setups corner at different revs --
+  WW's long gearing -- and the 1-D map biased them in opposite directions); below 0.9 g both ~−30..−55 N.
+
+### IRGOLD-1 -- setup audit of every 261010/11 .ibt against the test plan (PO 2026-10-12: "the cronologically first monza
+### .ibt was using the wrong setup. Check all .ibt's vs the test plan")
+`261011/tools/setupcheck2.py` (setup name, car version and every mechanical field per file):
+* **19-30-13 (Monza, test 2) -- WRONG SETUP, confirmed:** `261010_rung_official_raised_for_skidpad.sto`, the skidpad
+  variant (raised perches, right tyres 179 kPa) instead of the road setup. **Excluded from every IRGOLD tool**
+  (`IRG_EXCLUDE` in irgold_replay.jl, used by irgold_fit / irgold_steady). It was in S4's relaxation and Izz fits (6 Monza
+  files): those are re-scored without it.
+* 19-33-54 / 19-34-35 (test 2): `261004_nurburgring.sto` -- mechanically identical to `261010_rung_official` (OK).
+* Test 3 (Ring stops): `261010_rung_official`, bias 50 / 50 / 50 / 53.5 / 58 / 58 % -- as planned.
+* Test 4 (skidpad): the skidpad variant (the oval pressures iRacing forces), front arms soft / 4 / firm -- as planned.
+* Test 6 (Monza flicks): `261010_rung_official` -- as planned.
+* Test 7 (fuel): as the PO's pdf describes; the two raised-perch runs (179.5 / 145.4 L) also carry bias 54.0 % (not
+  53.5), camber re-set to −0.3/−0.2° and, at 145.4 L, front toe −2 mm (the pdf's B column) -- each file's own setup is what
+  the tools build, so this is modelled, not an error.
+* WW103 (16-19-11, 16-43-06, 16-53-12, 17-03-15): `261005_jr_ww103.sto` -- identical to the game's WW103 template.
+* **Found on the way -- the game's DEFAULT car is not this setup.** Its template (drive_native_mtk.jl IBTTMPL_DEFAULT) is
+  the June file `nurburgring.sto` (car version 2026.06.01.01): front arms 3, rear bar 0.625"/4, diff 55°/60° with 6
+  plates, final 4.11, 59.1 L. Every recent gold session (261004 `261004_nurburgring`, 261010 `261010_rung_official`, car
+  2026.08-09) runs front arms 2, rear 0.6875"/5, diff 75°/60° 4 plates, final 4.22. All of IRGOLD-1's fitting is on the
+  latter. Recommendation (the PO's call, since "julia default = the iRacing Ring default"): make `261010_rung_official`
+  (15-03-24, unmodified, bias 53.5 %) the default template.
+* Gates (S5 commit, 04:54-05:42): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).

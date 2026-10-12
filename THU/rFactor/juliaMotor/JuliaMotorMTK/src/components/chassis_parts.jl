@@ -146,11 +146,18 @@ Fitted to iRacing's SteeringWheelTorque (tools/steerfit_261009.jl, 19 gold skidp
 the rim torque is the front force on one effective trail -- 4.78 cm at the 10:1 rack (R² 0.982, 1.8 N·m RMS, the
 same across both setups). A separate aligning-moment term (the brush Mz) and a centring term on the wheel angle add
 nothing on the gold, so the column carries none: the rim goes light near the limit because the front FORCE does."""
-function SteeringColumn(; name, ratio = 10.0, trail = 0.0478)
-    ps = @parameters ratio=ratio trail=trail
-    vars = @variables Fy(t) τ(t)
-    System([τ ~ -trail*Fy/ratio], t, vars, ps; name)
+#
+# IRGOLD-1 S5 (2026-10-12): the 261011 Monza flicks and slaloms -- small slip, the skidpad fit's blind spot -- show the gold's
+# rim torque a steady 1.21-1.23 × the column's below 0.9 g, falling to 1.07 near the limit: iRacing's trail SHRINKS as the
+# front approaches sliding (pneumatic trail). Now trail = `trail` (mechanical) + `tp`·(1 − ξ), ξ the front tyres' mean
+# normalised slip (0 rolling, 1 fully sliding; the brush's own ξ, at the kinematic slip when the tyre relaxes).
+# tp = 0 is the column of CARPHYS-1 S5 exactly. Fitted with the column reading the kinematic-slip force (tyre.jl `kin`).
+function SteeringColumn(; name, ratio = 10.0, trail = 0.0478, tp = 0.0)
+    ps = @parameters ratio=ratio trail=trail tp=tp
+    vars = @variables Fy(t) τ(t) ξ(t)
+    System([τ ~ -(trail + tp*(1.0 - min(ξ, 1.0)))*Fy/ratio], t, vars, ps; name)
 end
+const COLUMN_TRAIL = (0.0450, 0.0155)      # IRGOLD-1 S5: (mechanical, pneumatic) trail [m] for the session car
 
 """Tyre, vertical: the carcass as a spring `kt` and damper `ct` between the wheel (`a`) and the road (`b`), loaded to
 `Fz_static` at rest. It can only push -- a wheel off the ground carries nothing (rounding `ε` N). `Fz` is the load
