@@ -284,12 +284,14 @@ function replay(car, sp, u0, g, w; warm = nothing)
         sroll = simroll(car); scol = simcol(car)
         push!(sim, (r = rad2deg(r), ay = ay/G, β = rad2deg(atan(v, max(u, 1.0))), v = 3.6*hypot(u, v), roll = rad2deg(ph),
                     τ = τ, rpm = rpm, δ = rad2deg(δ), κr = (wl + wr)/2*DriveRT3D.RW_R/max(u, 1.0) - 1, thr = c["Throttle"][j],
-                    rollF = sroll[1], rollR = sroll[2], fyf = scol[1], xif = scol[2]))
+                    rollF = sroll[1], rollR = sroll[2], fyf = scol[1], xif = scol[2],
+                    κL = wl*DriveRT3D.RW_R/max(u, 1.0) - 1, κR = wr*DriveRT3D.RW_R/max(u, 1.0) - 1))
         push!(gold, (r = rad2deg(c["YawRate"][j]), ay = c["LatAccel"][j]/G, β = β_of(c, j), v = 3.6c["Speed"][j],
                      roll = haskey(c, "Roll") ? rad2deg(c["Roll"][j]) : NaN, τ = c["SteeringWheelTorque"][j], rpm = c["RPM"][j],
                      δ = rad2deg(c["SteeringWheelAngle"][j])/sr,
                      κr = (c["LRspeed"][j] + c["RRspeed"][j])/2/max(c["Speed"][j], 1.0) - 1, thr = c["Throttle"][j],
-                     rollF = c["rollF"][j], rollR = c["rollR"][j], fyf = NaN, xif = NaN))
+                     rollF = c["rollF"][j], rollR = c["rollR"][j], fyf = NaN, xif = NaN,
+                     κL = c["LRspeed"][j]/max(c["Speed"][j], 1.0) - 1, κR = c["RRspeed"][j]/max(c["Speed"][j], 1.0) - 1))
         (isfinite(u) && u > 3) || break
         abs(rad2deg(atan(v, max(u, 1.0)))) > 60 && break
     end
@@ -351,11 +353,11 @@ function main()
                     isfinite(x.δss) ? @sprintf("  δss err %+.2f°", x.δss) : "", (x.spun_g || x.spun_s) ? "  SPIN gold $(x.spun_g) sim $(x.spun_s)" : "")
             if !isempty(dump)
                 open(joinpath(dump, @sprintf("%s_%07.1f.csv", stem, x.t)), "w") do io
-                    println(io, "k,g_r,s_r,g_ay,s_ay,g_b,s_b,g_v,s_v,g_roll,s_roll,g_tau,s_tau,g_d,s_d,g_kr,s_kr,thr,g_rpm,s_rpm,g_rollF,s_rollF,g_rollR,s_rollR,s_fyf,s_xif")
+                    println(io, "k,g_r,s_r,g_ay,s_ay,g_b,s_b,g_v,s_v,g_roll,s_roll,g_tau,s_tau,g_d,s_d,g_kr,s_kr,thr,g_rpm,s_rpm,g_rollF,s_rollF,g_rollR,s_rollR,s_fyf,s_xif,g_kL,s_kL,g_kR,s_kR")
                     for k in 1:min(length(gold), length(sim))
                         a, b = gold[k], sim[k]
-                        @printf(io, "%d,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.3f,%.3f,%.4f,%.4f,%.3f,%.3f,%.4f,%.4f,%.4f,%.4f,%.3f,%.0f,%.0f,%.4f,%.4f,%.4f,%.4f,%.1f,%.4f\n", k, a.r, b.r, a.ay, b.ay, a.β, b.β,
-                                a.v, b.v, a.roll, b.roll, a.τ, b.τ, a.δ, b.δ, a.κr, b.κr, a.thr, a.rpm, b.rpm, a.rollF, b.rollF, a.rollR, b.rollR, b.fyf, b.xif)
+                        @printf(io, "%d,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.3f,%.3f,%.4f,%.4f,%.3f,%.3f,%.4f,%.4f,%.4f,%.4f,%.3f,%.0f,%.0f,%.4f,%.4f,%.4f,%.4f,%.1f,%.4f,%.4f,%.4f,%.4f,%.4f\n", k, a.r, b.r, a.ay, b.ay, a.β, b.β,
+                                a.v, b.v, a.roll, b.roll, a.τ, b.τ, a.δ, b.δ, a.κr, b.κr, a.thr, a.rpm, b.rpm, a.rollF, b.rollF, a.rollR, b.rollR, b.fyf, b.xif, a.κL, b.κL, a.κR, b.κR)
                     end
                 end
             end

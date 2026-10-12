@@ -34,6 +34,8 @@ function main()
         install!(fn)
         for k in L.ks
             car = DriveRT3D.build_car3d(; v0 = 0.0)
+            # IRGOLD-1: JM_LAUNCH_IE=<kg m²> tries another engine inertia (the gold's engine falls 8,900 -> 2,000 rpm in 0.4 s)
+            haskey(ENV, "JM_LAUNCH_IE") && ModelingToolkit.setp(car.sys, car.sys.Ie)(car.integ, parse(Float64, ENV["JM_LAUNCH_IE"]))
             car.gear = 1; car.s_gr(car.integ, DriveRT3D.gearratio(1)); car.s_we(car.integ, L.rpm[k]*2π/60)
             sv = Float64[]; sr = Float64[]
             for j in 0:239

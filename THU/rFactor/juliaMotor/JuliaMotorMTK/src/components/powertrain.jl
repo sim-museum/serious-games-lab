@@ -78,16 +78,34 @@ end
 const THROTTLE_KNOTS = ((0.0, 0.0), (0.1, 0.02), (0.2, 0.13), (0.3, 0.21), (0.4, 0.33), (0.5, 0.45), (0.6, 0.58),
                         (0.7, 0.72), (0.8, 0.84), (0.9, 0.95), (1.0, 1.0))
 const THROTTLE_LINEAR = haskey(ENV, "JM_THROTTLE_LINEAR")           # A/B: the linear blend of before S8
-"Pedal → torque fraction through THROTTLE_KNOTS (straight lines, as Σ ramps: symbolic-safe)."
-function throttle_map(thr)
-    THROTTLE_LINEAR && return thr
-    k = THROTTLE_KNOTS
+# IRGOLD-1 S6 (2026-10-12): the map depends on RPM. On every 261010 row (the S8 method, 261011/tools) the fraction FALLS
+# with rpm at part throttle -- pedal 0.5: 0.48 at 4,000-5,500 rpm, 0.43 at 5,500-7,000, 0.41 at 7,000-8,000; pedal 0.6:
+# 0.62 / 0.55 / 0.53 -- a fixed throttle opening chokes more as the engine speeds up. S8's single map was in effect the
+# low-rpm column, so at high revs on part throttle the engine was 10-20 % too strong (the sim gained 4-8 km/h per 5 s on
+# the gold's pedal round the skidpad, and did not bog on a clutch-slip launch). Two measured columns, at 4,750 and
+# 7,500 rpm, blended linearly in rpm (extrapolated to 1.4× the span, i.e. 8,600 rpm, then held); closed and WOT unchanged.
+# The replay metric over 245 windows: 1.887 -> 1.212 (handling unchanged, the speed errors collapse). JM_THROTTLE_1D=1 = S8.
+const THROTTLE_KNOTS_LO = ((0.0, 0.0), (0.1, 0.02), (0.2, 0.12), (0.3, 0.22), (0.4, 0.34), (0.5, 0.48), (0.6, 0.62),
+                           (0.7, 0.77), (0.8, 0.90), (0.9, 0.96), (1.0, 1.0))      # 4,750 rpm (4,000-5,500)
+const THROTTLE_KNOTS_HI = ((0.0, 0.0), (0.1, 0.02), (0.2, 0.11), (0.3, 0.19), (0.4, 0.27), (0.5, 0.41), (0.6, 0.53),
+                           (0.7, 0.70), (0.8, 0.87), (0.9, 0.95), (1.0, 1.0))      # 7,500 rpm (7,000-8,000)
+const THROTTLE_1D = haskey(ENV, "JM_THROTTLE_1D")
+"Pedal → torque fraction through a knot table (straight lines, as Σ ramps: symbolic-safe)."
+function _knots(thr, k)
     f = 0.0*thr; s0 = 0.0
     for i in 1:length(k)-1
         s = (k[i+1][2] - k[i][2]) / (k[i+1][1] - k[i][1])
         f += (s - s0)*max(0.0, thr - k[i][1]); s0 = s
     end
     f
+end
+"Pedal (and rpm) → torque fraction: IRGOLD-1 S6's two columns blended by rpm; without rpm, or JM_THROTTLE_1D, S8's map."
+function throttle_map(thr, rpm = nothing)
+    THROTTLE_LINEAR && return thr
+    (rpm === nothing || THROTTLE_1D) && return _knots(thr, THROTTLE_KNOTS)
+    wr = min(max((rpm - 4750.0)/2750.0, 0.0), 1.4)
+    lo = _knots(thr, THROTTLE_KNOTS_LO)
+    lo + wr*(_knots(thr, THROTTLE_KNOTS_HI) - lo)
 end
 
 # CARPHYS-1 S9: the clutch's torque capacity against engagement (1 = fully in), measured from the gold's 289 standing
@@ -115,7 +133,7 @@ function engine_torque(rpm, throttle; redline = 9500.0, T0 = EFRIC_T0, k = EFRIC
     wot = max(0.0, wot_torque(rpm))                                 # WOT (net) torque, measured
     cut = 0.5*(1 - tanh((rpm - redline)/200.0))                     # smooth redline fuel cut
     fric = (T0 + k*rpm) * 0.5*(1 + tanh((rpm - r0)/w))              # zero-throttle drag, fading at idle
-    f = throttle_map(throttle)                                      # CARPHYS-1 S8: the measured, progressive throttle
+    f = throttle_map(throttle, rpm)                                 # CARPHYS-1 S8 / IRGOLD-1 S6: progressive, by rpm
     f*wot*cut - (1 - f)*fric                                        # blend WOT ↔ engine drag
 end
 

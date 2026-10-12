@@ -25377,3 +25377,62 @@ test order) checked against each file's content and setup:
   latter. Recommendation (the PO's call, since "julia default = the iRacing Ring default"): make `261010_rung_official`
   (15-03-24, unmodified, bias 53.5 %) the default template.
 * Gates (S5 commit, 04:54-05:42): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).
+
+### IRGOLD-1 S6 (2026-10-12): the part-throttle engine map depends on rpm -- the largest single gain of the epic
+* **Retro (S1-S5):** from S1 on, the replay's SPEED term dominated J and was read as tyre/cornering drag (S3's drag fits,
+  S4's "WW drags 150-200 N too much"). Launch analysis (the gold bogs to ~1,800 rpm on a clutch-slip start, the sim does
+  not) pointed at the engine instead.
+* **Measured** (all 261010 rows, CARPHYS-1 S8's method, by rpm band): the torque fraction falls with rpm at part throttle
+  -- pedal 0.4: 0.34 / 0.31 / 0.27, 0.5: 0.48 / 0.43 / 0.41, 0.6: 0.62 / 0.55 / 0.53 at 4,000-5,500 / 5,500-7,000 /
+  7,000-8,000 rpm. S8's single map was in effect the low-rpm column.
+* **Model:** `throttle_map(thr, rpm)` -- two measured columns (4,750 and 7,500 rpm) blended in rpm, extrapolated to 1.4×
+  the span (8,600 rpm) then held; closed and WOT unchanged at every rpm (`JM_THROTTLE_1D=1` = S8).
+* **Replay metric, 245 windows: 1.887 → 1.212** (handling columns unchanged; the speed errors collapse): bar circles
+  3.39 → 1.28, fuel 20 L 5.92 → 1.77, held slides 3.69 → 2.75, WW slides 2.10 → 1.51, WW slalom 1.60 → 1.01, flicks
+  0.88 → 0.51. **Since the start of IRGOLD-1: 2.065 → 1.212 (−41 %).** (Final number on the source change, without the
+  wrong-setup file: below.)
+* Checks: throttlemap_smoke + 4 rpm checks PASS; longval median sim/gold 1.006 over 30 bands (WOT and coast unchanged);
+  stability penalty 0 both setups; launches unchanged (1.36 m/s; the engine dips to 6,971 rpm, not the gold's 1,600 --
+  the launch gap is the clutch/engine-inertia side, not the map).
+* **What the PO will feel:** on part throttle at high revs (mid-corner, balancing a slide) the car pulls less -- as
+  iRacing's; full throttle and lifting off unchanged.
+* Re-check of S4 without the wrong-setup Monza file: Izz 1,040 confirmed (890 / 1,190 worse), front σ minimum broad
+  (0.85 ≈ 1.25 m; 0.45 and 1.65 worse) -- both kept.
+* **S6 on the source change, without the wrong-setup file (19-30-13): J 1.223 (5 failed)** -- the default slalom now 14 valid windows (J 0.81); every other test as the in-process trial.
+
+### IRGOLD-1 S7 (2026-10-12): a drive-side longitudinal friction -- measured, tried, NOT shipped
+* Gold-only: in straight-line wheelspin (full throttle, ≤ 3rd, |ay| < 0.2 g) the drive force reaches 0.90 / 1.14 / 1.28 ×
+  the dynamic rear load at 3-8 / 8-15 / 15+ % slip -- a brush with the braking μx 1.498 would give ~1.48; a drive-side
+  μxd ≈ 1.30-1.35 reproduces all three bands.
+* Built in an isolated copy (BrushTyre μxd for κ > 0, braking untouched; the default must be computed numerically -- a
+  default referencing the symbolic μx made MTK a dependent, non-tunable parameter). Steady cells: modest gain (high-g
+  sideslip gap 0.73 → 0.63° at μxd 1.35; with nsh 9 / μ 1.70 0.48°, drag within 5 N).
+* Replay metric: μxd 1.35 → 1.291, + progressive rear → 1.324, against S6's 1.223 -- WORSE: the held slides 2.75 → 3.74,
+  WW slides 1.51 → 1.73 (on power out of a slide the sim then accelerates less than the gold). The rear's drive capacity
+  IN a slide is higher than straight-line wheelspin says; one drive μ cannot carry both. Kept out of the source.
+* Launch follow-up (S6 car): a smaller engine inertia barely helps (mean |Δv| 1.36 / 1.30 / 1.25 m/s at Ie 0.18 / 0.11 /
+  0.07, `JM_LAUNCH_IE` in launchval_261009.jl); the hard launches stay ~20 % slow and the sim's engine never falls below
+  ~5,100 rpm where the gold's sits at 1,575. Not the inertia, not the map -- next: a trace of the clutch torque and the
+  rear tyre through a gold launch (the gold transmits ~150 N·m at 0.34-0.36 engagement with ~0 wheel slip).
+* **Launch trace (12-03-22 #8307, S6 car):** the clutch-slip phase matches (both transmit ~140-150 N·m at 0.34-0.36,
+  similar g) but the gold's engine falls 8,781 → 2,085 rpm by 0.4 s while the sim's stays ~7,400; when the clutch closes
+  (t ≈ 1 s) the sim's revving engine spins the rears up 21-26 m/s, to the limiter, the tyre stuck on its sliding force
+  (~3.4 kN) for the rest of the launch -- the gold closes the clutch bogged, ~0 wheel slip, ~0.75 g. A fall of
+  ~2,260 rad/s² against ~150 N·m of clutch needs a near-zero part-throttle torque at 8-9k rpm and/or an effective
+  engine inertia far below 0.18 -- neither is measurable from clutch-in rows. **New iRacing test cued (IRTEST-261012,
+  for the PO):** (a) in NEUTRAL, stationary, stab the throttle to ~9,000 rpm and release, 5×, and hold steady 50 % and
+  25 % pedal for 3 s each at whatever rpm results -- the free rev-up/decay gives the engine inertia and drag, the steady
+  holds the part-throttle torque at high rpm; (b) 5 standing starts at a fixed ~50 % pedal with a slow clutch release.
+  Default setup, any track, ~5 min.
+* **Held slides narrowed (S6 car, test 1, per-wheel slip now in the traces):** under power at the limit the rear wheel
+  slips MATCH (inside 0.144 gold / 0.141 sim, outside 0.076 / 0.076 over 8 windows) -- the diff and the wheelspin are
+  right -- yet the gold carries 1-1.8° more sideslip in every window: with the same drive slip, iRacing's rear loses more
+  SIDE force than the brush's combined-slip ellipse lets it. Next modelling target: the combined-slip law (lateral
+  capacity vs longitudinal slip), not the friction levels.
+* Tried on the S6 car, NOT shipped: a combined-slip p-norm (rear pc 1.7 / 1.5 -- more side force lost under drive slip):
+  1.380 / 1.540 against 1.223, the slides much worse (the sim now SPINS where the gold holds its drift: held slides
+  2.75 → 4.15 / 4.39, WW slides 1.51 → 2.62 / 4.66); progressive rears (nsh 9 μ 1.70: 1.254; nsh 7 μ 1.65: 1.248) --
+  slightly worse. The held slides stay at J ≈ 2.75 in every variant tried (friction levels, drive μ, combined-slip
+  exponent, rear shape): the gold holds a LARGER drift angle STABLY -- a rear that keeps its side force sliding at a
+  larger angle -- and part of the residual is the open-loop replay of an unstable manoeuvre. Open for the next rotation.
+* Gates (S6 commit, 05:55-06:48): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).
