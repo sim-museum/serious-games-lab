@@ -21,7 +21,7 @@ this index was written; that is what it exists to stop.
 
 | item | what | state |
 |---|---|---|
-| **IRGOLD-1** | **EPIC (PO 2026-10-11, 25-sprint cap): julia default = iRacing Ring default, julia loose = iRacing WW103 -- "indistinguishable from the iRacing Lotus 49"**, MTK objects, from the PO's 261010/11 test session (24 ibt) | 🔴 in progress. S1: `tools/irgold_replay.jl` -- every gold window replayed with the gold's own inputs (the acceptance metric). S2: free front hubs (the front axle was a SPOOL), corner masses + CG from the session, FuelTank + FUEL-1 settings, iRacing's 420° wheel lock. S3: TYRE3 refitted on steady-state cells; hubs + masses + TYRE3 are the default; replay metric 2.065 → 1.976. Next (S4+): relaxation σ ≈ 0.45 m, the default slalom / WW-slide yaw, cornering drag on the skidpad, bars' arms, brake bias. |
+| **IRGOLD-1** | **EPIC (PO 2026-10-11, 25-sprint cap): julia default = iRacing Ring default, julia loose = iRacing WW103 -- "indistinguishable from the iRacing Lotus 49"**, MTK objects, from the PO's 261010/11 test session (24 ibt) | 🔴 in progress, **S8 of 25**. Replay metric over every gold window (lower = closer): **2.065 at the start → 1.22** (S6). S1 the metric; S2 free front hubs (the front axle was a SPOOL), corner masses + CG, FuelTank + FUEL-1 settings, iRacing's 420° wheel lock; S3 TYRE3 on steady-state cells; S4 relaxation, Izz 1040, front bar arms; S5 force feedback (kinematic-slip column, pneumatic trail); S6 the part-throttle map by rpm (−36 %); S7 drive μ / combined slip tried, not shipped; S8 default car = the official Ring setup. Setup audit: 19-30-13 used the skidpad setup (excluded). Open: held slides (the gold drifts wider, stably), launches (engine bog -- iRacing test cued: IRTEST-261012), WW high-g drag. |
 | **CTRLCAL-1** | Controller calibration should have two options -- **autodetect** or **saved profile**; saved profiles include the Thrustmaster TX and the Logitech Extreme 3D Pro ("3Dx Pro"); for autodetect, look at how GPL and iRacing do it (PO 2026-10-10) | 🟡 **S1 (2026-10-10):** GPL's and iRacing's calibration studied (gpl.exe decoded + the PO's own GPL TX controls.cfg); the Controller tab now offers Autodetect (per-device calibration, as both do) or a Saved profile (TX, Extreme 3D Pro, + your wizard calibrations); built-in profiles are one file each for sim and launcher; AppImage updates keep per-device calibrations; gate `ctrlcal_smoke`. **S2:** the wizard is GPL's/iRacing's sweep (rest, one full sweep, each control found by using it, the 90° wheel-range step, 2 % ends) |
 | **FUEL-1** | At least two fuel settings in julia: what the event needs (qualifying or race) + 2 laps, and a full tank (PO 2026-10-10) | open -- data: iRacing Lotus 49 tank 179.5 L at 0.75 kg/L (ibt DriverCarFuelMaxLtr / KgPerLtr): full = 134.6 kg vs the 32.4 kg (43.2 L) every gold session ran, +102 kg (~17 % of the car). Burn rate from the gold's FuelUsePerHour vs rpm/throttle (all files have it) -> litres per lap on any track from a simulated lap; fuel burns off during the session. Where the tank sits (front/rear split, CG height) is unknown -- every gold file has the same fuel: IRTEST-261009 #7 gives the corner weights at three fuel levels |
 | **LOADHANG-1** | Why did the AppImage's Spa race load "hang" (≈15 min, the PO stopped it at the AI cars) after a Ring race, a WG race and a replay in the same launcher session? Little time if data is lacking -- but how to avoid / diagnose such issues in future (PO 2026-10-07 night) | ✅ **CLOSED (S1–S4, 2026-10-08):** the first Spa launch from the install decoded every texture cold at 125 ms each -- a boxed closure in the alpha bleed; now 1.7 ms (pixels identical), a cold Spa race loads in 232 s like a warm one; launches log flushed stage stamps + first-run texture progress; gate `texcold_smoke`; smoke runs no longer read the PO's wheel (netcollide repaired) |
@@ -25436,3 +25436,48 @@ test order) checked against each file's content and setup:
   exponent, rear shape): the gold holds a LARGER drift angle STABLY -- a rear that keeps its side force sliding at a
   larger angle -- and part of the residual is the open-loop replay of an unstable manoeuvre. Open for the next rotation.
 * Gates (S6 commit, 05:55-06:48): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).
+
+### IRGOLD-1 S8 (2026-10-12): the default car is iRacing's CURRENT official Ring setup
+* From the setup audit: the game's default template was the June `nurburgring.sto` (car 2026.06.01 -- front arms 3, rear
+  bar 0.625"/4, diff 55°/60° 6 plates, final 4.11, 59.1 L), while every gold session since 261004 -- and all of
+  IRGOLD-1's fitting -- runs `261004_nurburgring` = `261010_rung_official` (car 2026.08-09: arms 2, rear 0.6875"/5, diff
+  75°/60° 4 plates, final 4.22). The PO's epic: "julia racer default, for which the gold standard is the iracing
+  nuremberg default model".
+* `IBTTMPL_DEFAULT` now finds the default by CONTENT: the newest unmodified Ring session whose setup is `*rung_official*`
+  (today: 261010 15-03-24), reading only each file's session YAML (the header's offset/length -- not the 10-40 MB file);
+  otherwise the old rule. `JM_DEFAULT_TEMPLATE=june` keeps the June car. Checked: a headless launch builds final 4.22,
+  diff 75/60 4 plates, bars at the identified arms 2, 605 kg; the stability suite on that car: penalty 0, 318 km/h.
+* **PO decision welcome:** if "the iRacing Nürburgring default" was meant to be the June file, `JM_DEFAULT_TEMPLATE=june`
+  (or revert this sprint) -- all IRGOLD-1 fitting is on the official setup either way.
+
+### IRGOLD-1 -- what the PO will feel after S5-S8 (in addition to S1-S4 above)
+* **Steering wheel weight (S5):** ~20 % heavier through ordinary corners, lightening as the front saturates, and no lag
+  behind quick inputs -- iRacing's rim torque. If too heavy for the TX: the FFB gain.
+* **Part throttle at high revs (S6):** less pull mid-corner / balancing a slide in the upper rev range, as iRacing's;
+  full throttle and lifting off unchanged. This was most of the remaining speed difference against iRacing.
+* **The default car (S8)** is now iRacing's current official Ring setup (diff 75° ramp with 4 plates, rear bar 0.6875"/5,
+  final 4.22) instead of the June one (55°/6 plates, 0.625"/4, 4.11): a slightly more locked-under-power diff and a
+  stiffer rear bar -- the car every gold session ran. `JM_DEFAULT_TEMPLATE=june` for the old car.
+* Still different: holding a big power drift (iRacing's rear carries a wider angle, stably), hard launches (iRacing's
+  engine bogs at the bite and the rears hook up; julia's spin -- new iRacing test cued), WW103 at the very limit.
+
+## IRTEST-261012 -- iRacing tests cued for the PO's next session (IRGOLD-1)
+Lotus 49, 360 Hz logging, the official Ring setup (`261010_rung_official`), one .ibt per test, about 10 minutes:
+1. **Free revs in neutral** (any track, stationary, in neutral): stab the throttle to ~9,000 rpm and release, 5 times;
+   then hold a steady 25 % and a steady 50 % pedal for ~3 s each. The rev-up and the decay give the engine's inertia and
+   drag directly; the steady holds give the part-throttle torque at high rpm (unmeasurable with the clutch in).
+2. **Standing starts at a fixed pedal** (a straight, e.g. Monza's pit straight): 5 starts holding ~50 % throttle while
+   releasing the clutch slowly (~1 s), then full throttle. Why: iRacing's engine bogs from ~9,000 to ~1,800 rpm at the
+   bite and the rears hook up; julia's engine stays high and spins the rears.
+3. (optional) **Held power drifts on a ROAD course at 152 kPa** (e.g. a long Monza corner such as Parabolica): hold a
+   2-3 s power-on drift at 5-10° of body slip, 4-6 times. Why: the skidpad's oval pressures cloud the held slides, which
+   are now julia's largest remaining difference.
+* Tried (S8, not shipped): rebalancing μ front/rear 1.45/1.55 and 1.43/1.58 -- 1.584 / 1.306 vs 1.223: fewer unholdable cells (2) but the slides much worse (the sim spins out of power drifts the gold holds). Every rear-grip reduction tried makes the sim spin; the held-slide residual is not the grip LEVEL.
+* **Roll timing (S8 analysis):** the axle roll gradient from the shocks matches (default −1.19 gold / −1.16 sim °/g, WW
+  −1.16 / −1.13) but the sim's body rolls LATER: roll lags lateral g 74-81 ms vs the gold's 42-47 (Monza, both setups).
+  Ixx 120 → 80: no effect (74 ms); dampers × 0.6: 48 ms (gold 46) with the metric unchanged (1.2216), but the crest
+  test then regresses (default airtime 0.142 → 0.190 s; WW airtime 0.090 → 0.153 s, landing 0.22 → 0.13 g). One damper
+  scale cannot serve roll (opposed L/R strokes) and heave (the crest): the bump/rebound asymmetry the gold's shock data
+  show (suspfit_261004, rejected on the crest alone in IRFIT-261004) is the next thing to build, judged on BOTH. Not
+  shipped. (`JM_IRG_PARAMS` lets irgold_replay apply runtime parameters, ixx/csf/csr added to irgold_params.)
+* Gates (S8 commit, 06:52-07:37): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).

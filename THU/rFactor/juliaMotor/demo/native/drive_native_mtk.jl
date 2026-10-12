@@ -778,11 +778,38 @@ const IBTNAME = get(Dict("nurburgring" => "nurburgring nordschleife",
 # reference set that is addressed by an exact timestamp breaks the moment it is re-captured, which
 # is the opposite of what a reference is for.
 include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","setup.jl"))); using .Setup
+# IRGOLD-1 S8 (2026-10-12): the DEFAULT car is iRacing's CURRENT official Nürburgring setup, found by CONTENT (as
+# WW103's below): the newest unmodified Ring session whose setup is `*rung_official*` (the PO's 261010 session; car
+# 2026.09.25 -- front arms 2, rear bar 0.6875"/5, diff 75°/60° 4 plates, final 4.22, the setup of every gold session
+# since 261004 and of all IRGOLD-1 fitting). Before, the first Ring file by NAME won: the June `nurburgring.sto` (car
+# 2026.06 -- arms 3, rear 0.625"/4, diff 55° 6 plates, final 4.11). JM_DEFAULT_TEMPLATE=june keeps the June car.
+"The session YAML only (header: sessionInfoLen @16, sessionInfoOffset @20) -- no need to read a 40 MB file to see its setup."
+function _ibt_yaml(path)
+    open(path) do io
+        h = read(io, 112); length(h) < 112 && return ""
+        len = Int(reinterpret(Int32, h[17:20])[1]); off = Int(reinterpret(Int32, h[21:24])[1])
+        seek(io, off); String(read(io, len))
+    end
+end
+function _official_ring(dir)
+    best = ""; bestv = ""
+    for (r, _, fs) in (isdir(dir) ? walkdir(dir) : ()), fn in fs
+        (startswith(lowercase(fn), "lotus49_nurburgring") && endswith(lowercase(fn), ".ibt")) || continue
+        y = try _ibt_yaml(joinpath(r, fn)) catch; continue end
+        m = match(r"DriverSetupName: (.*)", y); md = match(r"DriverSetupIsModified: (\d)", y); cv = match(r"DriverCarVersion: (\S+)", y)
+        (m !== nothing && occursin("rung_official", m.captures[1]) && !occursin("skidpad", m.captures[1]) &&
+         md !== nothing && md.captures[1] == "0") || continue
+        v = cv === nothing ? "" : cv.captures[1]
+        (v > bestv || (v == bestv && fn > basename(best))) && (best = joinpath(r, fn); bestv = v)
+    end
+    best
+end
 const IBTTMPL_DEFAULT = let want = (SKIDPAD ? "lotus49_skidpad" : "lotus49_nurburgring"),
                     cands = isdir(IBTDIR) ? sort(filter(f -> startswith(lowercase(f), want) &&
                                                              endswith(lowercase(f), ".ibt"),
                                                         readdir(IBTDIR))) : String[]
-    isempty(cands) ? joinpath(IBTDIR, want * " (none found).ibt") : joinpath(IBTDIR, cands[1])
+    off = (SKIDPAD || lowercase(get(ENV, "JM_DEFAULT_TEMPLATE", "")) == "june") ? "" : _official_ring(IBTDIR)
+    !isempty(off) ? off : isempty(cands) ? joinpath(IBTDIR, want * " (none found).ibt") : joinpath(IBTDIR, cands[1])
 end   # zandvoort/spa/monza/watkins borrow the Nordschleife layout (channel set is the same)
 
 # ---- WWSETUP-1: the CAR SETUP is a choice of ibt session -------------------------------------------------------
