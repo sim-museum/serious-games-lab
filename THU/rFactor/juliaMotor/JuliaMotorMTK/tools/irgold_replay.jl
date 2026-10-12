@@ -272,14 +272,26 @@ function replay(car, sp, u0, g, w; warm = nothing)
     get = simget(car)
     gold = NamedTuple[]; sim = NamedTuple[]
     gcur = gr
+    # IRGOLD-1 S13: JM_IRG_CLOSED=1 -- a DRIVER on top of the gold's steering: PI on the yaw-rate error (sim's previous
+    # step vs the gold's), scaled by wheelbase/speed (gain 1 = the neutral-steer correction), integral time 0.3 s.
+    # The open-loop replay judges a held slide by whether the car follows the gold's own corrections; this one asks
+    # how much DIFFERENT steering the car needs to follow the gold's path -- what the PO would have to do differently.
+    # The sim's δ (and the dumps' s_d) then include the correction; s_d - g_d is the correction.
+    closed = Base.get(ENV, "JM_IRG_CLOSED", "0") == "1"; cint = 0.0; rlast = c["YawRate"][w.k0]
     for j in w.k0:w.k0 + w.L - 1
         gj = clamp(round(Int, c["Gear"][j]), 0, 5)
         up = gj > gcur && gj > 0; dn = gj < gcur && gj > 0; (up || dn) && (gcur = gj)
         δ = δ0 + deg2rad(rad2deg(c["SteeringWheelAngle"][j]) - off)/sr
+        if closed
+            ek = (c["YawRate"][j] - rlast)*LWB/max(c["Speed"][j], 5.0)
+            cint = clamp(cint + ek*(1/60)/0.3, -0.15, 0.15)
+            δ += clamp(0.5ek + cint, -0.2, 0.2)
+        end
         car.s_fx(car.integ, -m*G*sin(atan(c["grade"][j])))
         DriveRT3D.step_car3d!(car, c["Throttle"][j], c["Brake"][j], δ/DriveRT3D.MAXSTEER, 1/60;
                               clutch = 1.0 - clamp(c["Clutch"][j], 0, 1), up = up, dn = dn, manual = true)
         u, v, r, ay, ph, wl, wr, wf, rpm = get(car.integ)
+        rlast = r
         τ = something(DriveRT3D.rimtorque3d(car), NaN)
         sroll = simroll(car); scol = simcol(car)
         push!(sim, (r = rad2deg(r), ay = ay/G, β = rad2deg(atan(v, max(u, 1.0))), v = 3.6*hypot(u, v), roll = rad2deg(ph),
@@ -332,7 +344,12 @@ function main()
         test = testof(fn); stem = match(r"(\d\d-\d\d-\d\d)\.ibt$", fn).captures[1]
         @printf("\n== %s  %s  (%d windows)\n", stem, test, length(W)); flush(stdout)
         isempty(W) && continue
-        sp = install!(fn); car = DriveRT3D.build_car3d(; v0 = 30.0); u0 = copy(car.integ.u)
+        sp = install!(fn); car = DriveRT3D.build_car3d(; v0 = 30.0)
+        if !isempty(get(ENV, "JM_IRG_PARAMS", ""))           # IRGOLD-1: runtime parameters for A/B (irgold_params.jl names)
+            isdefined(Main, :PARAM_MAP) || (Base.eval(Main, :(using ModelingToolkit)); include(joinpath(@__DIR__, "irgold_params.jl")))
+            Base.invokelatest(setparams!, car, Dict(String(strip(split(x, "=")[1])) => parse(Float64, split(x, "=")[2]) for x in split(ENV["JM_IRG_PARAMS"], ",")))
+        end
+        u0 = copy(car.integ.u)
         for w in W
             gold, sim, δ0 = replay(car, sp, u0, g, w)
             if gold === nothing

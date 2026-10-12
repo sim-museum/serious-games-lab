@@ -45,8 +45,12 @@ function slice(f, k)
     ch(n) = channel(f, n)[rows]
     va = hs(f, "VertAccel")[6(k-1)+1:6r1]
     rh = (ch("LFrideHeight") .+ ch("RFrideHeight") .+ ch("LRrideHeight") .+ ch("RRrideHeight")) ./ 4
-    (s = ld[rows], alt = ch("Alt") .- rh, v = ch("Speed"), thr = ch("Throttle"), brk = ch("Brake"), gear = ch("Gear"), va = va)
+    (s = ld[rows], alt = ch("Alt") .- rh, rh = rh, v = ch("Speed"), thr = ch("Throttle"), brk = ch("Brake"), gear = ch("Gear"), va = va)
 end
+# the distance of each 360 Hz sample, from its row's LapDist (sample j lies (j-1)/6 rows after the slice's first row).
+# NOT a linear range from the first to the last s: the car slows through the slice (0.61 -> 0.42 m per row on the
+# reference pass) and a linear map put the crest row at s 3123 instead of 3143, so gold and sim windows disagreed.
+s360(sl) = (rs = collect(1.0:length(sl.s)); ss = collect(Float64, sl.s); [lin(rs, ss, 1 + (j - 1)/6) for j in eachindex(sl.va)])
 lin(xs, ys, x) = (i = clamp(searchsortedlast(xs, x), 1, length(xs) - 1); w = clamp((x - xs[i])/(xs[i+1] - xs[i] + 1e-9), 0, 1); ys[i] + w*(ys[i+1] - ys[i]))
 function metrics(s360, va)
     air = va .< 0.5G
@@ -60,7 +64,7 @@ end
 
 P = passes()
 ref = let ps = [(p, slice(p[2], p[3])) for p in P]
-    i = argmin(map(x -> (sl = x[2]; abs(mean(sl.v) - 122/3.6) + 100*(metrics(range(sl.s[1], sl.s[end], length = length(sl.va)), sl.va).air > 0)), ps))
+    i = argmin(map(x -> (sl = x[2]; abs(mean(sl.v) - 122/3.6) + 100*(metrics(s360(sl), sl.va).air > 0)), ps))
     ps[i][2]
 end
 @printf("road profile: pass at %.0f km/h (mean), %d rows over s %.0f..%.0f\n", 3.6mean(ref.v), length(ref.s), ref.s[1], ref.s[end])
@@ -69,9 +73,15 @@ end
 # curvature over these distances, so Alt cannot give the shape. The shape comes from the 360 Hz VertAccel, double
 # integrated; Alt only anchors its slow drift (start height, start velocity and an accelerometer bias, least squares
 # against the quantised Alt) -- a complementary filter. Then a 0.5 m grid, smoothed over 2 m.
+# IRGOLD-1 S10: the double integral is the BODY's path; the road is that minus the ride height (60 Hz, smooth), whose
+# swing over the crest is +25-38 mm (the springs extend as the body flies on). Before S10 only the slow drift had the
+# ride height removed, so the "road" was the gold body's own path, rounded by the gold's suspension -- the sim's
+# suspension then filtered it a second time. JM_CREST_ROAD=body keeps that profile.
+const CREST_ROAD = get(ENV, "JM_CREST_ROAD", "road")
 prof_s, prof_h = let n = length(ref.va), dt = 1/360
     vz = cumsum((ref.va .- G) .* dt); zz = cumsum(vz .* dt)            # double integral of the vertical accel
     rows = 1:length(ref.s); t = (rows .- 1) ./ 60; zi = [zz[clamp(6(r-1)+1, 1, n)] for r in rows]
+    CREST_ROAD == "body" || (zi = zi .- ref.rh)                         # body path - ride height = the road
     M = hcat(ones(length(t)), t, t.^2); c = M \ (ref.alt .- zi)        # ref.alt is already Alt - ride height
     road = zi .+ M*c
     s0 = collect(ref.s); xs = collect(s0[1]:0.5:s0[end]); hh = [lin(s0, road, x) for x in xs]
@@ -92,6 +102,10 @@ end
 
 function drive(sl)
     c = DriveRT3D.build_car3d(; x0 = S0, z0 = 0.0, θ0 = 0.0, v0 = sl.v[1], y0 = groundz(S0, 0.0))
+    if !isempty(get(ENV, "JM_IRG_PARAMS", ""))           # IRGOLD-1: runtime parameters for A/B (irgold_params.jl names)
+        isdefined(Main, :PARAM_MAP) || (Base.eval(Main, :(using ModelingToolkit)); include(joinpath(@__DIR__, "irgold_params.jl")))
+        Base.invokelatest(setparams!, c, Dict(String(strip(split(x, "=")[1])) => parse(Float64, split(x, "=")[2]) for x in split(ENV["JM_IRG_PARAMS"], ",")))
+    end
     g = Int(sl.gear[1])
     g >= 1 || (g = something(findfirst(i -> sl.v[1]/DriveRT3D.RW_R*DriveRT3D.GEARS[i]*DriveRT3D.FINAL[]*60/2π < 8500, 1:5), 5))   # neutral in the gold
     c.gear = g; c.s_gr(c.integ, DriveRT3D.gearratio(g))
@@ -115,7 +129,7 @@ function run_all(label; quiet = false)
     for (tag, f, k) in P
         sl = slice(f, k)
         length(sl.s) > 100 || continue                # a LapDist wrap, not a pass
-        gm = metrics(range(sl.s[1], sl.s[end], length = length(sl.va)), sl.va)
+        gm = metrics(s360(sl), sl.va)
         ss, va = drive(sl)
         sm = metrics(ss, va)
         quiet || @printf("   %s %3.0f km/h thr %.2f | %5.2f    %+5.2f    %5.2f  | %5.2f    %+5.2f    %5.2f\n", tag, 3.6lin(sl.s, sl.v, CREST - 50),

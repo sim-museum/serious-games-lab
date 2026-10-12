@@ -576,9 +576,17 @@ end
 # ratio, so a rear roll-only coupling keeps exactly that: per side ks + 2·karb = spring x MR2, as before. Heave and
 # pitch take the measured rate; the cornering balance is unchanged.
 _karb_r(ks) = 0.5 * float(ks) * (MR2/MR2_R - 1.0)
-_corner(axle::Symbol, ks::Real; ch::Chassis = CHASSIS[], i::Int = 0) = axle === :f ?
-    (ks = float(ks), cs = 2500.0*ch.cscale[1], karb = 0.0, m_s = _msprung(i, 120.0), m_u = 20.0, kt = 180_000.0, ct = 1000.0) :
-    (ks = float(ks), cs = 3000.0*ch.cscale[2], karb = _karb_r(ks), m_s = _msprung(i, 148.0), m_u = 20.0, kt = 200_000.0, ct = 1100.0)
+_corner(axle::Symbol, ks::Real; ch::Chassis = CHASSIS[], i::Int = 0) = (d = _dknee(ch); axle === :f ?
+    (ks = float(ks), cs = 2500.0*ch.cscale[1]*d.scale, clo = d.clo, vk = d.vk, karb = 0.0, m_s = _msprung(i, 120.0), m_u = 20.0, kt = 180_000.0, ct = 1000.0) :
+    (ks = float(ks), cs = 3000.0*ch.cscale[2]*d.scale, clo = d.clo, vk = d.vk, karb = _karb_r(ks), m_s = _msprung(i, 148.0), m_u = 20.0, kt = 200_000.0, ct = 1100.0))
+# IRGOLD-1 S9/S10 (2026-10-12): PROGRESSIVE dampers on the session car (a car built from a setup, as the relaxation):
+# the full rate × 1.3, falling to 0.30 of it below ~0.08 m/s (CoilOver clo/vk). Linear dampers made the body roll
+# 75 ms behind lateral g on the 261011 Monza transients where the gold rolls 46 ms behind (both setups); this gives 55,
+# with the corrected Flugplatz crest (crestval_261005, S10) 0.061 -> 0.069 s airtime / 0.17 -> 0.18 g landing (default)
+# and 0.062 -> 0.067 s / 0.21 g (WW), the replay metric neutral (1.2226 -> 1.2236). JM_DAMPER_LINEAR=1 = the linear
+# dampers of before. Setup-less (tool/test) cars keep linear dampers.
+const DAMPER_LINEAR = haskey(ENV, "JM_DAMPER_LINEAR")
+_dknee(ch::Chassis) = (DAMPER_LINEAR || ch.camber === nothing) ? (scale = 1.0, clo = 1.0, vk = 0.10) : (scale = 1.3, clo = 0.30, vk = 0.08)
 # MASS-1: corner i's sprung mass from the session's corner weight (unsprung 20 kg), else the shipped value
 _msprung(i, dflt) = (MASS_LEGACY || CORNER_W[] === nothing || i == 0) ? dflt : CORNER_W[][i]/9.80665 - 20.0
 # WWSETUP-1: the vehicle keywords the chassis state adds (diff, toe, brake split) -- one place, both builders.

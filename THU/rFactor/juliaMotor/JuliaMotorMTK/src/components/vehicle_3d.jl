@@ -174,7 +174,8 @@ function DrivenVehicle3D(; name,
     road  = [PrescribedMotion(; name = Symbol(:r, s[10])) for s in spec]
     wheel = [WheelMass(; name = Symbol(:w, s[10]), m_u = s[6].m_u, g = gv) for s in spec]
     strut = [CoilOver(; name = Symbol(:s, s[10]), ks = s[6].ks, P = s[6].m_s*gv, cs = s[6].cs,
-                      cb = hasproperty(s[6], :cb) ? s[6].cb : NaN, cr = hasproperty(s[6], :cr) ? s[6].cr : NaN, ε = εF)
+                      cb = hasproperty(s[6], :cb) ? s[6].cb : NaN, cr = hasproperty(s[6], :cr) ? s[6].cr : NaN,
+                      clo = hasproperty(s[6], :clo) ? s[6].clo : 1.0, vk = hasproperty(s[6], :vk) ? s[6].vk : 0.10, ε = εF)
              for s in spec]
     tyrev = [TyreVertical(; name = Symbol(:tv, s[10]), kt = s[6].kt, ct = s[6].ct, Fz_static = (s[6].m_s + s[6].m_u)*gv, ε = εF)
              for s in spec]

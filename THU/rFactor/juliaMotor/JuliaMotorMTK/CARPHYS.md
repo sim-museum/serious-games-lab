@@ -43,6 +43,7 @@ velocity v, flow force f), Modelica's `Translational.Interfaces.Flange` plus its
 | `AntiRollBar` arm law | front axle | soft / 2 / 4 / firm = 567 / 1535 / 3535 / 6804 N/m identified from test 4 (ARB_ARM_FRONT; rear arms: no test) |
 | yaw inertia Izz | body | 1,040 kg·m², identified on the flicks/weaves (was hand-set 890) |
 | `SteeringColumn` trail law (S5) | car | reads the front force at the KINEMATIC slip (BrushTyre `kin`); trail 4.50 cm + 1.55 cm × (1 − ξ) (pneumatic trail collapses as the front slides), least squares on 55,201 gold rim-torque samples |
+| progressive dampers (S9/S10) | CoilOver | session car: rate × 1.3, × 0.30 below ~0.08 m/s stroke speed (`clo`/`vk`); the body's roll lag behind lateral g 75/81 → 55/61 ms (gold 46/47, default/WW), crest neutral; `JM_DAMPER_LINEAR=1` |
 | part-throttle map by rpm (S6) | engine | `throttle_map(thr, rpm)`: measured 4,750 / 7,500 rpm columns (pedal 0.5: 0.48 / 0.41) -- the largest single fidelity gain of IRGOLD-1 |
 
 Assembly per corner: mount → coil-over (+ the axle's bar) → wheel → tyre carcass → road. `tools/carphys_regress.jl`
@@ -98,7 +99,9 @@ steering, throttle, brake, clutch and gear, and scores yaw rate, lateral g, side
   (σ front 1.25 m, rear ≈ 0) and Izz is identifiable on these inputs (1,040 kg·m²);
 * S3: the tyre refitted on 75 steady-state cells (tools/irgold_steady.jl) -> TYRE3; S4: relaxation, Izz, the bar arms.
   Replay metric over 245 windows: 2.065 (start) -> 1.976 (S3) -> 1.887 (S4) -> 1.22 (S6, the rpm-dependent throttle map:
-  most of the "speed" errors were the engine, not the tyres). S8: the default car is the current official Ring setup.
+  most of the "speed" errors were the engine, not the tyres). S8: the default car is the current official Ring setup. S10: the crest acceptance (crestval_261005) now places
+  the gold's 360 Hz samples by row LapDist and takes the road as the body path minus the ride height -- airtime error
+  0.146 → 0.061 s (default) / 0.101 → 0.062 s (WW) with no car change.
 
 ## Non-physical behaviour found so far (2026-10-09)
 

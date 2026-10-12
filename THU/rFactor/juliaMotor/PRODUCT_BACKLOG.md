@@ -21,7 +21,7 @@ this index was written; that is what it exists to stop.
 
 | item | what | state |
 |---|---|---|
-| **IRGOLD-1** | **EPIC (PO 2026-10-11, 25-sprint cap): julia default = iRacing Ring default, julia loose = iRacing WW103 -- "indistinguishable from the iRacing Lotus 49"**, MTK objects, from the PO's 261010/11 test session (24 ibt) | 🔴 in progress, **S8 of 25**. Replay metric over every gold window (lower = closer): **2.065 at the start → 1.22** (S6). S1 the metric; S2 free front hubs (the front axle was a SPOOL), corner masses + CG, FuelTank + FUEL-1 settings, iRacing's 420° wheel lock; S3 TYRE3 on steady-state cells; S4 relaxation, Izz 1040, front bar arms; S5 force feedback (kinematic-slip column, pneumatic trail); S6 the part-throttle map by rpm (−36 %); S7 drive μ / combined slip tried, not shipped; S8 default car = the official Ring setup. Setup audit: 19-30-13 used the skidpad setup (excluded). Open: held slides (the gold drifts wider, stably), launches (engine bog -- iRacing test cued: IRTEST-261012), WW high-g drag. |
+| **IRGOLD-1** | **EPIC (PO 2026-10-11, 25-sprint cap): julia default = iRacing Ring default, julia loose = iRacing WW103 -- "indistinguishable from the iRacing Lotus 49"**, MTK objects, from the PO's 261010/11 test session (24 ibt) | 🔴 in progress, **S12 of 25**. Replay metric over every gold window (lower = closer): **2.065 at the start → 1.22** (S6). S1 the metric; S2 free front hubs (the front axle was a SPOOL), corner masses + CG, FuelTank + FUEL-1 settings, iRacing's 420° wheel lock; S3 TYRE3 on steady-state cells; S4 relaxation, Izz 1040, front bar arms; S5 force feedback (kinematic-slip column, pneumatic trail); S6 the part-throttle map by rpm (−36 %); S7 drive μ / combined slip tried, not shipped; S8 default car = the official Ring setup; S9/S10 progressive dampers (roll timing), crest tool fixed. Setup audit: 19-30-13 used the skidpad setup (excluded). Open: held slides (the gold drifts wider, stably), launches (engine bog -- iRacing test cued: IRTEST-261012), WW high-g drag. |
 | **CTRLCAL-1** | Controller calibration should have two options -- **autodetect** or **saved profile**; saved profiles include the Thrustmaster TX and the Logitech Extreme 3D Pro ("3Dx Pro"); for autodetect, look at how GPL and iRacing do it (PO 2026-10-10) | 🟡 **S1 (2026-10-10):** GPL's and iRacing's calibration studied (gpl.exe decoded + the PO's own GPL TX controls.cfg); the Controller tab now offers Autodetect (per-device calibration, as both do) or a Saved profile (TX, Extreme 3D Pro, + your wizard calibrations); built-in profiles are one file each for sim and launcher; AppImage updates keep per-device calibrations; gate `ctrlcal_smoke`. **S2:** the wizard is GPL's/iRacing's sweep (rest, one full sweep, each control found by using it, the 90° wheel-range step, 2 % ends) |
 | **FUEL-1** | At least two fuel settings in julia: what the event needs (qualifying or race) + 2 laps, and a full tank (PO 2026-10-10) | open -- data: iRacing Lotus 49 tank 179.5 L at 0.75 kg/L (ibt DriverCarFuelMaxLtr / KgPerLtr): full = 134.6 kg vs the 32.4 kg (43.2 L) every gold session ran, +102 kg (~17 % of the car). Burn rate from the gold's FuelUsePerHour vs rpm/throttle (all files have it) -> litres per lap on any track from a simulated lap; fuel burns off during the session. Where the tank sits (front/rear split, CG height) is unknown -- every gold file has the same fuel: IRTEST-261009 #7 gives the corner weights at three fuel levels |
 | **LOADHANG-1** | Why did the AppImage's Spa race load "hang" (≈15 min, the PO stopped it at the AI cars) after a Ring race, a WG race and a replay in the same launcher session? Little time if data is lacking -- but how to avoid / diagnose such issues in future (PO 2026-10-07 night) | ✅ **CLOSED (S1–S4, 2026-10-08):** the first Spa launch from the install decoded every texture cold at 125 ms each -- a boxed closure in the alpha bleed; now 1.7 ms (pixels identical), a cold Spa race loads in 232 s like a warm one; launches log flushed stage stamps + first-run texture progress; gate `texcold_smoke`; smoke runs no longer read the PO's wheel (netcollide repaired) |
@@ -25481,3 +25481,114 @@ Lotus 49, 360 Hz logging, the official Ring setup (`261010_rung_official`), one 
   show (suspfit_261004, rejected on the crest alone in IRFIT-261004) is the next thing to build, judged on BOTH. Not
   shipped. (`JM_IRG_PARAMS` lets irgold_replay apply runtime parameters, ixx/csf/csr added to irgold_params.)
 * Gates (S8 commit, 06:52-07:37): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).
+
+### IRGOLD-1 S9 (2026-10-12): damper SHAPE for the roll lag -- trials
+* Retro: S8 found the body rolls ~30 ms late (sim 74-81 ms behind lateral g, gold 42-47) with the gradient matched;
+  softer dampers fix roll but lose the crest. Roll centre ruled out on paper: matching the gradient with a raised
+  roll centre needs softer bars, which LENGTHENS the roll time constant (c/k).
+* Bump/rebound asymmetry (default car), crest (airtime / landing error; symmetric 0.142 s / 0.13 g) and roll lag (75 ms):
+  rebound 0.4× → 0.181 s / 0.17 g, 53 ms; bump 0.5× → 0.162 s / 0.17 g, 57 ms. Both lose the crest: NOT the lever.
+* The split is in shock SPEED: transient roll strokes the shocks ~3 cm/s, the crest 30-100 cm/s -- a PROGRESSIVE damper
+  (soft below a knee) is the candidate. CoilOver gains `clo`/`vk` (rate × clo at low speed, full above ~vk), trial in a copy.
+* Progressive knee results (default crest airtime / landing error; roll lag, gold 46 ms):
+  | variant | crest default | crest WW | roll lag | metric |
+  |---|---|---|---|---|
+  | symmetric (shipped) | 0.142 s / 0.13 g | 0.090 s / 0.22 g | 75 ms | 1.2226 |
+  | 0.4× below 0.10 m/s | 0.162 / 0.14 | | 49 ms | |
+  | 0.5× below 0.20 m/s | 0.175 / 0.15 | | 47 ms | |
+  | 1.2× rate, 0.35× below 0.06 | 0.145 / 0.09 | 0.113 / 0.21 | 60 ms | |
+  | **P4** 1.3× rate, 0.30× below 0.08 | 0.152 / 0.08 | 0.115 / 0.21 | 55 ms | 1.2236 |
+  (gold shock speeds: Monza transients median 1.5-2.6 cm/s, Ring p99 24-29 cm/s -- the knee sits between them.)
+* **Not shipped yet:** P4 brings the roll timing most of the way (75 → 55 ms vs 46) and the landing g (0.13 → 0.08),
+  metric neutral, but crest AIRTIME is mixed (default +0.010 s, WW +0.025 s). The airtime error is dominated by a bias
+  that is NOT the dampers: on the slow passes the gold never leaves the ground (0.00 s) while the sim flies 0.14-0.21 s
+  in every damper variant. That bias is S10; P4 is re-judged after it.
+
+### IRGOLD-1 S10 (2026-10-12): the crest tool measured the wrong road -- fixed; S9's progressive dampers SHIPPED
+* `crestval_261005` had two faults, both in the measurement (tools only):
+  1. the gold's 360 Hz VertAccel was placed on distance by a LINEAR range from the slice's first to last LapDist, but
+     the car slows through it (0.61 → 0.42 m/row): the crest row landed at s 3123 instead of 3143, while the sim side
+     used its true position -- gold and sim windows covered different road. Now each sample takes its row's LapDist.
+  2. the "road" was the gold BODY's path (the double-integrated VertAccel; ride height removed only from the slow
+     drift), which the gold suspension had already rounded (ride height +25-38 mm over the crest) -- the sim then
+     filtered it again. Now road = body path − ride height (`JM_CREST_ROAD=body` = the old profile).
+  Checked: the profile's implied g at the reference speed reproduces the gold's VertAccel within ±0.02 g along the crest.
+* The shipped (linear) car on the corrected tool: **default airtime error 0.146 → 0.061 s, WW 0.101 → 0.062 s**; the
+  slow passes now match exactly (gold 0.00 s, crest +0.53/+0.54 g; sim 0.00-0.01 s, +0.50/+0.54 g). The "sim flies
+  where the gold stays down" bias of S9 was the tool. Remaining: landings 0.17-0.21 g SOFTER than the gold's
+  (1.08-1.34 vs 1.37-1.86 g) in every damper variant -- not damping (bump stops / tyre vertical: next).
+* Re-judged on it, the PROGRESSIVE damper (S9 P4: rate × 1.3, × 0.30 below ~0.08 m/s) is shipped on session cars
+  (`_dknee`, CoilOver `clo`/`vk`; `JM_DAMPER_LINEAR=1` reverts; setup-less cars stay linear):
+  | | roll lag behind ay, default (gold 46 ms) | WW (gold 47 ms) | crest default | crest WW | metric |
+  |---|---|---|---|---|---|
+  | linear | 75 ms | 81 ms | 0.061 s / 0.17 g | 0.062 s / 0.21 g | 1.2226 |
+  | progressive | **55 ms** | **61 ms** | 0.069 s / 0.18 g | 0.069 s / 0.21 g | 1.2233 |
+  Stability suite (JM_STAB_IBT = 15-03-24 / 16-53-12): penalty 0 both, 318 / 314 km/h, trail braking 8.6° / 11.8°.
+  (The suite WITHOUT JM_STAB_IBT -- the setup-less test car -- fails at HEAD too, 1.08 rad heading drift on the WOT
+  pull: pre-existing, not a car the game builds; logged for later.)
+* **What the PO will feel:** the car settles onto its outside wheels sooner on turn-in and in quick direction changes
+  (body roll ~20 ms quicker, iRacing's timing within ~10 ms); bumps and crests as before.
+* Tooling: `JM_IRG_PARAMS="name=v,..."` applies irgold_params runtime parameters in irgold_replay and crestval;
+  new names cbf/crf/cbr/crr, clo/vk, ixx, csf/csr.
+
+### IRGOLD-1 S11 (2026-10-12): crest LANDINGS -- diagnosis (no change shipped)
+* After S10 the crest's residual is the landing: the sim lands at 1.07-1.22 g in every variant (dampers linear or
+  progressive, tyre vertical rate 1.0/1.5/2.0×: landing error 0.18-0.21 g throughout) where the gold lands at 1.29-1.86.
+* Ruled out: bump stops (the gold front compresses +26-29 mm of its ~55 mm bump travel on landing); the accelerometer's
+  position (sim landing peak at ±0.5/±1 m along the car from the CG: unchanged on 9 of 11 passes); the tyre's vertical
+  rate (1.5× / 2× → airtime 0.064 / 0.056 s, landing unchanged).
+* Found: at 200+ km/h the gold's REAR shocks top out (deflection 0.0 mm) at the crest exactly where its VertAccel goes
+  BELOW free fall (−0.10 g; WW −0.39 g at 184 km/h): the wheels hit full droop and yank the body down. At 166-179 km/h
+  they do not top out, yet the gold spends LESS time unloaded than the sim (0.34 vs 0.41 s) and lands 0.2 g harder:
+  more spring force near full droop, or more unsprung mass (the sim's is a hand-set 20 kg/corner). Next: identify the
+  unsprung mass from the gold's wheel-hop content (shock velocity spectra) before any change.
+* Unsprung mass checked from the gold's wheel-hop frequency (whitened 360 Hz shock-velocity spectra, Ring, >30 m/s):
+  front 15.8 Hz (default) / 15.5 Hz (WW) vs the sim's √((180 kN/m + ~23 kN/m)/20 kg)/2π ≈ 16 Hz -- consistent, so the
+  front unsprung mass and tyre rate are not the landing gap; the rear peaks are weak and disagree (21.8 / 34.5 Hz).
+  **Crest landing parked** (open: spring force near full droop; the droop-stop yank at 200+ km/h). Back to handling.
+
+### IRGOLD-1 S12 (2026-10-12): the steady limit -- the gold's REAR runs closer to its peak
+* Retro: three open items (held slides "the gold drifts wider", skidpad drag "+75/-60 N at the limit", T4/T7 windows
+  ending 3.8-4.4 km/h fast) were chased separately in S6-S8 (μ levels, drive μ, combined-slip exponent, rear shape).
+* Per-cell steady state (irgold_steady, current car, score 11.718 / 9 failed): at ≥ 1.05 g the gold and sim use the
+  same steer, but the gold carries 0.7-1.9° more body slip. The FRONT slip matches (sim 8.3-8.8° vs gold 8.3-8.5° at
+  1.12-1.16 g); the REAR runs 1.3-1.7° short (sim 4.0-4.2° vs gold 5.3-5.9°) in every limit cell, both setups, while
+  at low g the rear slips match (0.67 g: 1.51 vs 1.53°). The extra slip is the drag gap: ~11 kN × sin(1.5-1.9°) ≈
+  300-360 N (measured gap 100-400 N), and the gold holds 1.15-1.22 g cells the sim cannot. One mechanism for all three.
+* So the gold's rear works much nearer its peak at 1.15 g than the sim's (μ 1.65 leaves margin). nsh on both axles
+  9 / 13: score 11.69 / 12.34, the rear slip +0.15-0.2° only, steer up -- shape alone cannot do it.
+* Running: steady Nelder-Mead on the limit cells (15-24-06, 15-54-13, 16-07-12, 17-46-09, WW 16-19-11), free rear μ,
+  rear Cα, rear nsh and load sensitivity kμ. Then through the transient metric and the stability suite -- the earlier
+  rear-grip cuts spun the sim in the slides, so the fit must hold the gold's 1.15-1.22 g cells, not just lose grip.
+* Results (steady score, all files: current 11.718 / 9 failed; transient metric: current 1.2233):
+  | rear | steady | transient | slides default / WW |
+  |---|---|---|---|
+  | current (μ 1.65, Cα 27.77, nsh 5, kμ 0.082) | 11.718 (9 failed) | 1.2233 | 2.75 / 1.49 |
+  | steady NM fit μ 1.593, Cα 24.94, nsh 5.38, kμ 0.087 (subset 18.3 → 13.2) | 10.874 (17 failed) | 1.530 | 4.18 / 3.29 |
+  | Cα 24.94 only | 10.905 (9 failed) | 1.332 | 3.25 / 2.24 |
+  The steady limit wants a softer rear; the open-loop transients reject it (the sim rotates more than the gold on the
+  gold's own inputs). Post-peak drop is not it (lateral slide fraction rsy 0.975: flat). Hypothesis: a coupled
+  difference -- the gold's front/yaw dynamics in transients offset a softer rear. Running: a transient coordinate
+  search with the steady rear (Cα 24.94) fixed and the transient-only terms free (σf, σr, Izz).
+* Coordinate search (rear Cα 24.94 fixed; σf ±0.4, σr ±0.15, Izz ±120): no neighbour beats 1.3323 (σr 0.20: 1.354,
+  σf 0.85: 1.365, Izz 920: 1.366) -- the transient terms do NOT absorb the softer rear. Stopped after iteration 1.
+* **S12 conclusion, nothing shipped:** steady state and open-loop transients disagree about the rear at the limit, and
+  no coupled transient term reconciles them. Open question for S13: is the OPEN-LOOP replay a fair judge of a held
+  slide? The gold's inputs there are the corrections the gold car needed; a car with a different rear diverges from
+  them whatever its feel. A closed-loop variant (a driver correcting yaw on top of the gold's steer; score = the
+  correction needed = how differently the PO would have to drive) answers it.
+
+### IRGOLD-1 S13 (2026-10-12): a CLOSED-LOOP judge for the slides
+* `JM_IRG_CLOSED=1` (irgold_replay): a driver on top of the gold's steering -- PI on the yaw-rate error, gain 1 = the
+  neutral-steer correction (wheelbase/speed), integral time 0.3 s; dumps' s_d − g_d = the correction needed.
+* Three rears, closed loop (RMS steer correction / β error), slides and flicks, both setups:
+  | rear | default slides | WW slides | default flicks | WW flicks |
+  |---|---|---|---|---|
+  | current | 1.43° / 4.28° | 0.80° / 2.68° | 0.15° / 0.30° | 0.42° / 0.82° |
+  | Cα 24.94 | 1.34° / 4.13° | 0.82° / 2.68° | 0.17° / 0.33° | 0.39° / 0.78° |
+  | steady fit | 1.37° / 4.20° | 0.82° / 2.66° | 0.17° / 0.33° | 0.37° / 0.71° |
+  In closed loop the three rears are nearly indistinguishable (< 0.1° of correction): S12's open-loop penalty for the
+  softer rear (1.22 → 1.33-1.53) is mostly DIVERGENCE of an unstable manoeuvre, not a difference the driver would
+  have to steer around. What closed loop does show: tracking the gold's yaw, the sim carries ~4° LESS body slip in the
+  default slides (2.7° WW) -- the gold's drift angle is the real gap, and it is not the rear's steady stiffness.
+* Gates (S9-S13 commit): **ALL 59 PASS**. Status for the PO: STATUS_2026-10-12.md.

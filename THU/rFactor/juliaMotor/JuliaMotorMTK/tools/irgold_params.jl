@@ -12,6 +12,9 @@ const PARAM_MAP = Dict(
     "cabl" => (:veh, :c_abl), "trail" => (:col, :trail), "nsh" => ((:FL, :FR, :RL, :RR), :nsh),
     "nshf" => ((:FL, :FR), :nsh), "nshr" => ((:RL, :RR), :nsh), "rho" => (:veh, :ρair),
     "nsf" => ((:FL, :FR), :ns), "nsr" => ((:RL, :RR), :ns),
+    "cbf" => ((:sFL, :sFR), :cb), "crf" => ((:sFL, :sFR), :cr), "cbr" => ((:sRL, :sRR), :cb), "crr" => ((:sRL, :sRR), :cr),
+    "clo" => ((:sFL, :sFR, :sRL, :sRR), :clo), "vk" => ((:sFL, :sFR, :sRL, :sRR), :vk),
+    "ixx" => (:veh, :Ixx), "csf" => ((:sFL, :sFR), :cs), "csr" => ((:sRL, :sRR), :cs),
     "toef" => (:veh, :toe_f), "toer" => (:veh, :toe_r))
 function setparams!(car, pv)
     sys = car.sys

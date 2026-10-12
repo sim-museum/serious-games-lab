@@ -58,16 +58,20 @@ end
 
 """Coil-over: the coil SPRING (rate `ks` at the wheel, static preload `P` = the corner's sprung weight) and the DAMPER
 (bump `cb` / rebound `cr`, blended through zero velocity; one symmetric `cs` when cb/cr are NaN) on one strut.
+The damper may be PROGRESSIVE (IRGOLD-1 S9): the rate × `clo` at low stroke speed, rising smoothly to the full rate above
+~`vk` m/s (clo = 1 = linear). Transient roll strokes the shocks a few cm/s, a crest tens of cm/s -- a linear damper
+cannot give both the gold's roll timing and its crest.
 The strut can only push: the SEAT clamps the sum smoothly at zero (rounding `ε` N). That clamp stands in for the
 strut's travel limits (droop) until they are modelled from the ibt's ShockDeflection; `Fbar` is the anti-roll bar's
 force at this wheel, which today acts through the same seat (as it did in the single block -- see AntiRollBar)."""
-function CoilOver(; name, ks, P, cs, cb = NaN, cr = NaN, ε = 80.0)
+function CoilOver(; name, ks, P, cs, cb = NaN, cr = NaN, clo = 1.0, vk = 0.10, ε = 80.0)
     @named a = Flange(); @named b = Flange()
     ps = @parameters ks=ks P=P ε=ε
     asym = isfinite(cb) && isfinite(cr)
     append!(ps, asym ? @parameters(cb=cb, cr=cr) : @parameters(cs=cs))
+    append!(ps, @parameters(clo=clo, vk=vk))
     vars = @variables c(t) vrel(t) Fk(t) Fd(t) Fbar(t) F(t)
-    cdmp = asym ? cr + (cb - cr)*0.5*(1 + tanh(vrel/0.01)) : cs
+    cdmp = (asym ? cr + (cb - cr)*0.5*(1 + tanh(vrel/0.01)) : cs)*(clo + (1 - clo)*vrel^2/(vrel^2 + vk^2))
     eqs = [c ~ b.s - a.s, vrel ~ b.v - a.v,
            Fk ~ P + ks*c,                       # spring
            Fd ~ cdmp*vrel,                      # damper
