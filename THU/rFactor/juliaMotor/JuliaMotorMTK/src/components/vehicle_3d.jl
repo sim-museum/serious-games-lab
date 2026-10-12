@@ -26,7 +26,7 @@ using ModelingToolkit: t_nounits as t, D_nounits as D
 smoothpos(x, ε) = 0.5*(x + sqrt(x^2 + ε^2))
 
 function DrivenVehicle3D(; name,
-        m = 617.0, Izz = 890.0, Ixx = 120.0, Iyy = 850.0,
+        m = 617.0, Izz = nothing, Ixx = 120.0, Iyy = 850.0,
         a = 1.314, b = 1.096, tf = 1.50, tr = 1.50, h = 0.30, front_frac = 0.455,
         Rw_f = 0.30, Rw_r = 0.334, Iw = 1.0, η = 0.9, final = 4.11,
         # PO 2026-08-27: "the car physics should be determined entirely by the iracing ibt data,
@@ -112,6 +112,10 @@ function DrivenVehicle3D(; name,
     # without a session setup carries the upright TYRE-1 tyre, which was fitted with the spool, and keeps the spool:
     # hubs + TYRE-1 spins at 8.6° of lock at 90 km/h (tyrepanel_smoke's control), the pairing the old fit never saw.
     front_hubs = front_hubs && cmb && USE_TYRE3
+    # IRGOLD-1 S4: the yaw inertia identified on the PO's 261011 flicks and weaves (handling J by Izz 690/890/990/1090/1290 =
+    # 0.2605/0.2353/0.2320/0.2321/0.2437: a minimum near 1,040 kg·m²) -- for the session car it was fitted on; 890 (hand-set)
+    # for a setup-less car. An explicit Izz wins.
+    Izz = Izz !== nothing ? Izz : cmb && USE_TYRE3 ? 1040.0 : 890.0
     FL = brush ? BrushTyre(; name=:FL, bf..., camber=cmb, nsh=nshf) : Tyre(; name=:FL, TYRE_SKIDPAD_FRONT...)
     FR = brush ? BrushTyre(; name=:FR, bf..., camber=cmb, nsh=nshf) : Tyre(; name=:FR, TYRE_SKIDPAD_FRONT...)
     RL = brush ? BrushTyre(; name=:RL, br...,  camber=cmb, nsh=nshr) : Tyre(; name=:RL, TYRE_SKIDPAD_REAR...)

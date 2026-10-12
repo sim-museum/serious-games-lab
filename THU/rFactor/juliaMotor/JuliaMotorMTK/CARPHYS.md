@@ -38,6 +38,10 @@ velocity v, flow force f), Modelica's `Translational.Interfaces.Flange` plus its
 | `FuelTank` | car | position 0.82 m behind the front axle (66 % front, IRGOLD-1 test 7); burnt mass `m_burn` (runtime) leaves the in-plane mass, the springs' load and the pitch balance; burn law `fuel_rate_kgh` (gold, pedal × rpm) |
 | free front hubs (`front_hubs`) | front axle | each front wheel its own rotation (ωf mean + ωfd half-difference); the gold's fronts split 1.145·r. Was a spool. `JM_FRONTHUBS` until the tyre is refitted |
 | tyre inflation (`BrushTyre.prel`, `kpμ`, `kpc`) | tyre | (p − 152 kPa)/152 from the gold's running pressures; the skidpad runs 152 L / 207 R, every road setup 152 |
+| saturation shape (`BrushTyre.nsh`) | tyre | F/μFz = 1 − (1 − ξ)^nsh, same low-slip stiffness for any nsh; TYRE3 nsh 5 front and rear (the gold's tyres run larger slips near the limit) |
+| `TyreRelaxation` (on by default) | tyre | front σ 1.25 m, rear 0.05 m, fitted on the 261011 flicks/slaloms (IRGOLD-1 S4) |
+| `AntiRollBar` arm law | front axle | soft / 2 / 4 / firm = 567 / 1535 / 3535 / 6804 N/m identified from test 4 (ARB_ARM_FRONT; rear arms: no test) |
+| yaw inertia Izz | body | 1,040 kg·m², identified on the flicks/weaves (was hand-set 890) |
 
 Assembly per corner: mount → coil-over (+ the axle's bar) → wheel → tyre carcass → road. `tools/carphys_regress.jl`
 proves the assembly reproduces the single-block model: same 23/24 unknowns, every channel within 1e-10 over six
@@ -88,7 +92,10 @@ steering, throttle, brake, clutch and gear, and scores yaw rate, lateral g, side
 * in the linear range the car follows the gold almost sample for sample; the gaps are at the limit: the sim's rear lets
   go first (gold: its front saturates), it holds 1.14 g steady on the skidpad against the gold's 1.2-1.25, and its
   cornering drag is ~2/3 of the gold's above 1 g;
-* in fast steering the gold's yaw lags the sim's by 13-18 ms (a relaxation length σ ≈ 0.4-0.5 m).
+* in fast steering the gold's yaw lags the sim's by 13-18 ms; fitted through the car it sits at the front axle
+  (σ front 1.25 m, rear ≈ 0) and Izz is identifiable on these inputs (1,040 kg·m²);
+* S3: the tyre refitted on 75 steady-state cells (tools/irgold_steady.jl) -> TYRE3; S4: relaxation, Izz, the bar arms.
+  Replay metric over 245 windows: 2.065 (start) -> 1.976 (S3) -> 1.887 (S4).
 
 ## Non-physical behaviour found so far (2026-10-09)
 

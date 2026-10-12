@@ -25289,3 +25289,40 @@ test order) checked against each file's content and setup:
   (the game's bars are baked in at build and were never affected) -- flagged in the tool.
 * Open (next rotation): at 1.1-1.2 g the gold drifts (β −5..−6°, both axles saturated, the driver winding on lock)
   where the sim stays at −3.5° and keeps more speed -- the rear's behaviour at and past its peak under drive.
+* **Ships (S4):** relaxation on by default (front 1.25 / rear 0.05 m, `JM_RELAX=none` = off), Izz 1,040 kg·m² and the
+  front arm law -- for session cars (every car in the game); setup-less tool cars keep the model they were written
+  against. **All 245 windows: 1.976 → 1.887 (5 failed); against the car at the start of IRGOLD-1 (2.065): −8.6 %.**
+  Held slides 3.81 → 3.69, flicks 1.05 → 0.88, WW slides 2.23 → 2.10, WW slalom 1.75 → 1.60, bias 53.5 % 1.66 → 1.33;
+  worse: the firm-bar circles (4.48 with relaxation alone → 5.36 with the identified firm bar: the rear/front roll split
+  wants the rear arms too -- no test for them). Stability penalty 0 both setups (the default template's front bar,
+  arms 3: 1121 → 1850 N/m), crest unchanged (0.142 s / 0.13 g; WW 0.090 s / 0.22 g), carsetup_smoke and relax_smoke
+  (now: on by default, `none` turns it off) PASS.
+* Open, measured (S4): at 1.1-1.2 g the GOLD WW103 car dissipates far less than the gold default (cornering drag
+  ~650-940 vs ~1,000-1,300 N); the sim gives both ~900-1,200 N -- WW +150-200 N too much, the source of its
+  −3.4 km/h per window in the Monza slalom. Not the camber gain (kγ 2/4/6: lower is worse everywhere), not the LSD
+  (k 0.03-0.20: unchanged), and the sim's WW tyres slip LESS than the gold's there (front −0.5°, rear −0.6°): drag that
+  is not lateral slip. Next suspects: the 6 mm front toe-out's scrub, the gold estimate's WW gearing.
+
+### IRGOLD-1 -- what the PO will feel after S1-S4 (both setups)
+* **Steering lock:** with the TX the wheel now turns the road wheels up to iRacing's 42° (420° at the rim) instead of
+  stopping at 17° (172°): catching a slide with a big armful of counter-steer works as in iRacing.
+* **Turn-in and quick direction changes:** the front axle responds a touch later (relaxation, ~40 ms at 100 km/h) and
+  the car yaws a little more slowly and fully (Izz 1,040) -- closer to iRacing's flicks and slaloms.
+* **At the limit:** the front no longer has spare grip where iRacing's is saturated (free front hubs + TYRE3): mid-corner
+  balance and the steady 1.1-1.2 g are closer; corner entry on the brakes rotates more, as iRacing's does (3-6° of
+  sideslip where the old car stayed at 2-3°).
+* **Fuel:** the launcher has Fuel = "Race distance + 2 laps" or "Full tank (179.5 L)"; a full tank adds ~100 kg at the
+  tank (66 % front), the car rides lower, rolls more and lightens as it burns (iRacing's measured burn).
+* **Front anti-roll bar arms** now matter (soft ... firm), and the default setup's arms 3 is a little stiffer than before.
+* Still different (next): in a power drift at 1.1-1.2 g iRacing's rear slides more (−5..−6° body slip) and scrubs more
+  speed; WW103 loses ~3 km/h more than iRacing through a Monza slalom; the steering-wheel torque in very fast inputs is
+  ~25 % lighter than iRacing's (S5 in progress).
+* Tried and NOT shipped (S4, after the commit candidate): the rear's limit drift. Steady cells (grid mode fixed on the
+  way: setp is persistent, so a row inherited the previous row's parameters -- two rows came out identical; every row now
+  starts from the car's own values): a lower rear μx (1.35) and a more progressive rear (nsh 7-9) close the high-g rear
+  slip / sideslip gaps (−0.73/+0.72° → ~0/−0.01° at nsh 7, μ 1.50, μx 1.35) but the sim then cannot hold up to 18 of the
+  gold's 1.2 g cells -- the gold holds 1.2 g WITH 5-6° of rear slip, which this brush can do only partly
+  (nsh 9, μ 1.70, μx 1.35: gaps 0.48°, 9 unholdable cells). On the replay metric that set is a wash (1.8869 → 1.8815:
+  skidpad circles and WW slide yaw better, the default held slides and the stops worse) -- kept S4's tyre. The rear's
+  behaviour past its peak under drive wants a better law than the brush's, not more tuning of it.
+* Gates (S4 commit, 03:51-04:40): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).

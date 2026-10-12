@@ -1,14 +1,15 @@
 # CARPHYS-1 S11: tyre relaxation (TyreRelaxation, chassis_parts.jl) -- σ·dα/ds = α_in − α, ds = V·dt.
 #   * standalone: a 0.1 rad step in kinematic slip at 20 m/s reaches 1 − 1/e of it after rolling σ (0.4 m = 20 ms);
 #   * in the car: a steering step at 30 m/s builds yaw rate later with a long σ than a short one (the lag is real);
-#   * off by default (JM_RELAX unset): the car is built without it, the model of S10 and before.
+#   * ON by default since IRGOLD-1 S4 (JM_RELAX unset = RELAX_DEFAULT, front 1.25 m / rear 0.05 m, fitted on the gold's
+#     flicks); JM_RELAX=none builds the instant-force tyre of before.
 haskey(ENV, "JM_RELAX") && delete!(ENV, "JM_RELAX")
 include(joinpath(@__DIR__, "..", "src", "drive_rt3d.jl")); using .DriveRT3D
 using ModelingToolkit, OrdinaryDiffEq
 using ModelingToolkit: t_nounits as t
 fails = Ref(0)
 chk(name, ok, detail = "") = (println("  ", rpad(name, 70), ok ? "PASS" : "FAIL", "   ", detail); ok || (fails[] += 1); ok)
-chk("off by default", DriveRT3D.RELAX === nothing)
+chk("on by default at the fitted σ (front 1.25, rear 0.05 m)", DriveRT3D.RELAX == DriveRT3D.RELAX_DEFAULT == (1.25, 0.05))
 @named rx = DriveRT3D.TyreRelaxation(; σ = 0.4)
 @named top = System([rx.α_in ~ 0.1, rx.V ~ 20.0], t; systems = [rx])
 s = mtkcompile(top)
@@ -29,6 +30,9 @@ function yaw50(σ)
 end
 y1 = yaw50(0.05); y2 = yaw50(2.0)
 chk("car: steering step, yaw rate at 50 ms lower with σ 2 m than 0.05 m", y2 < 0.6*y1, "$(round(y1, digits = 2)) vs $(round(y2, digits = 2)) deg/s")
+ENV["JM_RELAX"] = "none"
+include(joinpath(@__DIR__, "..", "src", "drive_rt3d.jl")); using .DriveRT3D
+chk("JM_RELAX=none turns it off (the tyre before)", DriveRT3D.RELAX === nothing)
 delete!(ENV, "JM_RELAX")
 println(fails[] == 0 ? "ALL PASS" : "FAILURES: $(fails[])")
 exit(fails[] == 0 ? 0 : 1)

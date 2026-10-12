@@ -232,7 +232,17 @@ end
 const ARB_ID = Dict{Tuple{String,String},NTuple{2,Float64}}(
     ("0.375\" 2", "0.6875\" 5")    => (1121.0, 12714.0),       # 261004 default (Ring "identical to nurburgring")
     ("0.375\" 5", "0.6875\" firm") => (1758.0, 19940.0),       # 261005 WW103
+    # IRGOLD-1 S4 (2026-10-12): the PO's 261011 test 4, front arms soft / 4 / firm on the default car, each identified through
+    # the shipped car (tools/arbarms_261011.jl: the front bar object's stiffness that gives that session's gold roll gradient)
+    ("0.375\" soft", "0.6875\" 5") => (567.0, 12714.0),
+    ("0.375\" 4", "0.6875\" 5")    => (3535.0, 12714.0),
+    ("0.375\" firm", "0.6875\" 5") => (6804.0, 12714.0),
 )
+# The FRONT bar's arm law (IRGOLD-1 S4, test 4): stiffness relative to arms 2, from the identified soft / 2 / 4 / firm
+# (567 / 1535 / 3535 / 6804 N/m; arms 2 is the mean of two sessions) -- a torsion bar shortened by its arm. The garage's
+# positions are soft, 2, 3, 4, 5, firm; 3 and 5 are interpolated. The REAR arms have no test: still ignored.
+const ARB_ARM_FRONT = Dict("soft" => 0.37, "1" => 0.37, "2" => 1.0, "3" => 1.65, "4" => 2.30, "5" => 3.37, "firm" => 4.43, "6" => 4.43)
+_armof(s) = (m = match(r"\"\s*(\S+)\s*$", s); m === nothing ? "" : lowercase(m.captures[1]))
 _firstnum(s) = (m = match(r"[-+]?\d+(?:\.\d+)?", s); m === nothing ? NaN : parse(Float64, m.match))
 const ARB_REF = (("0.375\" 2", "0.6875\" 5"), 0.375, 0.6875)   # the reference for bars with no gold run
 const DAMPER_ID = Dict{NTuple{4,Float64},NTuple{2,Float64}}(
@@ -257,8 +267,11 @@ function chassis_from_setup(sp; source::AbstractString = "unknown")
         dr = occursin(r"(?i)disc", sp.arb_rear)  ? 0.0 : _firstnum(sp.arb_rear)
         ref = ARB_ID[ARB_REF[1]]
         if isfinite(df) && isfinite(dr)
-            push!(notes, "bars $(sp.arb_front) / $(sp.arb_rear) estimated from 261004's by diameter⁴")
-            (ref[1]*(df/ARB_REF[2])^4, ref[2]*(dr/ARB_REF[3])^4)
+            # front: diameter⁴ × the arm law (IRGOLD-1 S4) relative to the reference's arms 2; rear: diameter⁴ only
+            af = get(ARB_ARM_FRONT, _armof(sp.arb_front), NaN)/ARB_ARM_FRONT["2"]
+            isfinite(af) || (af = 1.0; push!(notes, "front arms $(_armof(sp.arb_front)) unknown: arms 2"))
+            push!(notes, "bars $(sp.arb_front) / $(sp.arb_rear) estimated from 261004's by diameter⁴ (front × arm law $(round(af, digits = 2)))")
+            (ref[1]*(df/ARB_REF[2])^4*af, ref[2]*(dr/ARB_REF[3])^4)
         else
             push!(notes, "bars $(sp.arb_front) / $(sp.arb_rear) unreadable: 261004's"); ref
         end
@@ -570,13 +583,23 @@ _corner(axle::Symbol, ks::Real; ch::Chassis = CHASSIS[], i::Int = 0) = axle === 
 _msprung(i, dflt) = (MASS_LEGACY || CORNER_W[] === nothing || i == 0) ? dflt : CORNER_W[][i]/9.80665 - 20.0
 # WWSETUP-1: the vehicle keywords the chassis state adds (diff, toe, brake split) -- one place, both builders.
 _chassis_kw(ch::Chassis = CHASSIS[]) = (diff = ch.diff, toe_f = ch.toe[1], toe_r = ch.toe[2], brake_bias_p = ch.bias_p, travel = ch.travel, karb_f = ch.karb[1], karb_r = ch.karb[2],
-                                        camber = ch.camber, relax = RELAX, front_hubs = FRONT_HUBS[],
+                                        # the default relaxation is the session car's (fitted on it); a setup-less car gets it only when
+                                        # JM_RELAX asks, so the tool/test cars stay the model they were written against
+                                        camber = ch.camber, relax = (ch.camber === nothing && !haskey(ENV, "JM_RELAX")) ? nothing : RELAX,
+                                        front_hubs = FRONT_HUBS[],
                                         tank_x = cg_arms()[1] - FUEL_TANK_X_FRONT)
 # IRGOLD-1 S1/S3: free front hubs (vehicle_3d.jl `front_hubs`) -- the default since the tyre was refitted with them
 # (TYRE3); JM_FRONTSPOOL=1 = the old one-speed front axle, for A/B.
 const FRONT_HUBS = Ref(!haskey(ENV, "JM_FRONTSPOOL"))
 # CARPHYS-1 S11: tyre relaxation lengths "σf,σr" [m]; unset = none (the force follows the kinematic slip at once)
-const RELAX = let e = get(ENV, "JM_RELAX", ""); isempty(e) ? nothing : Tuple(parse.(Float64, split(e, ",")))[1:2] end
+# IRGOLD-1 S4 (2026-10-12): ON by default, fitted through the car on the PO's 261011 flicks and slaloms (Monza, both
+# setups; tools/irgold_fit.jl, handling-only objective): front 1.25 m, rear 0.05 m -- the gold's yaw lags the instant-force
+# tyre by 13-18 ms in fast steering, and the lag sits at the FRONT axle (tyre relaxation + steering compliance). All 245
+# windows: 1.976 -> 1.905. JM_RELAX="σf,σr" overrides, JM_RELAX=none = the instant-force tyre of before.
+const RELAX_DEFAULT = (1.25, 0.05)
+const RELAX = let e = lowercase(get(ENV, "JM_RELAX", ""))
+    e == "none" ? nothing : isempty(e) ? RELAX_DEFAULT : Tuple(parse.(Float64, split(e, ",")))[1:2]
+end
 # initial wheel speeds: the per-wheel rear states exist only with an LSD
 _wheel_u0(sys, v0) = CHASSIS[].diff === nothing ? [sys.ωr => v0/RW_R] : [sys.ωRL => v0/RW_R, sys.ωRR => v0/RW_R]
 

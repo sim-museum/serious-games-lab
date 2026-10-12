@@ -11,7 +11,8 @@ const PARAM_MAP = Dict(
     "sigf" => ((:rxFL, :rxFR), :σ), "sigr" => ((:rxRL, :rxRR), :σ),   # tyre relaxation (cars built with JM_RELAX)
     "cabl" => (:veh, :c_abl), "trail" => (:col, :trail), "nsh" => ((:FL, :FR, :RL, :RR), :nsh),
     "nshf" => ((:FL, :FR), :nsh), "nshr" => ((:RL, :RR), :nsh), "rho" => (:veh, :ρair),
-    "nsf" => ((:FL, :FR), :ns), "nsr" => ((:RL, :RR), :ns))
+    "nsf" => ((:FL, :FR), :ns), "nsr" => ((:RL, :RR), :ns),
+    "toef" => (:veh, :toe_f), "toer" => (:veh, :toe_r))
 function setparams!(car, pv)
     sys = car.sys
     for (k, v) in pv

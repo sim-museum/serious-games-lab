@@ -147,13 +147,26 @@ function main()
     report_steady(rows); flush(stdout)
     if get(ENV, "JM_ST_MODE", "eval") == "grid"
         # JM_ST_GRID="name=val,...;name=val,...;..." -- each set is applied ON TOP of JM_ST_PARAMS
-        for set in split(get(ENV, "JM_ST_GRID", ""), ";"; keepempty = false)
-            p2 = merge(pv, parsepv(set)); S2, rows2 = evaluate_steady(p2)
+        sets = [parsepv(x) for x in split(get(ENV, "JM_ST_GRID", ""), ";"; keepempty = false)]
+        # every parameter any row touches is reset to the car's own value before each row: setp is persistent, so a row
+        # that does not name a parameter otherwise inherited the previous row's (two rows came out identical)
+        touched = unique(vcat([collect(keys(x)) for x in sets]...))
+        base = remotecall_fetch(names -> begin
+                car = SJOBS[1][1]; out = Dict{String,Float64}()
+                for k in names
+                    w, sy = PARAM_MAP[k]
+                    sub = w === :veh ? car.sys : w === :col ? car.sys.col : getproperty(car.sys, w[1])
+                    out[k] = ModelingToolkit.getp(car.sys, getproperty(sub, sy))(car.integ)
+                end
+                out end, workers()[1], touched)
+        println("grid base: ", base)
+        for set in sets
+            p2 = merge(base, pv, set); S2, rows2 = evaluate_steady(p2)
             fails = filter(r -> r.sim === nothing || r.sim.fail, rows2); ok = filter(r -> !(r.sim === nothing || r.sim.fail), rows2)
             hi = filter(r -> abs(r.gold.ay) >= 0.9, ok); lo = filter(r -> abs(r.gold.ay) < 0.9, ok)
             m(f, R) = isempty(R) ? NaN : mean(f(r) for r in R)
             @printf("GRID %-60s score %7.3f  fail %2d | <0.9 g: Δsteer %+.2f Δβ %+.2f Δαf %+.2f Δαr %+.2f Δdrag %+4.0f | ≥0.9 g: Δsteer %+.2f Δβ %+.2f Δαf %+.2f Δαr %+.2f Δdrag %+4.0f\n",
-                    set, S2, length(fails),
+                    join(["$k=$v" for (k, v) in set], ","), S2, length(fails),
                     m(r -> (r.sim.δ - r.gold.δ)*r.dir, lo), m(r -> (r.sim.β - r.gold.β)*r.dir, lo), m(r -> (r.sim.αf - r.gold.αf)*r.dir, lo), m(r -> (r.sim.αr - r.gold.αr)*r.dir, lo), m(r -> r.sim.drag - r.gold.drag, lo),
                     m(r -> (r.sim.δ - r.gold.δ)*r.dir, hi), m(r -> (r.sim.β - r.gold.β)*r.dir, hi), m(r -> (r.sim.αf - r.gold.αf)*r.dir, hi), m(r -> (r.sim.αr - r.gold.αr)*r.dir, hi), m(r -> r.sim.drag - r.gold.drag, hi))
             flush(stdout)
