@@ -107,6 +107,13 @@ function windows(g)
             L > 60 && push!(W, (kind = :brake, k0, L, spun))
             k = k0 + max(L, 60) + 1; last = k; continue
         end
+        # :trail -- the brake applied while cornering (0.2-1.2 g): corner entry, where the car rotates under braking
+        if c["Brake"][k] > 0.1 && all(j -> c["Brake"][j] < 0.02, k-30:k-1) && v[k] > 25 && 0.2 < abs(ay[k]) < 1.2 &&
+           all(j -> ontrack(c, j), k-30:k) && abs(β_of(c, k)) < 6
+            k0 = k - 15; L, spun = wlen(k0)
+            L > 60 && push!(W, (kind = :trail, k0, L, spun))
+            k = k0 + max(L, 60) + 1; last = k; continue
+        end
         if quiet(k)
             # the event: the first row after k that leaves the quiet envelope
             e = findfirst(j -> abs(sw[j] - sw[k]) > 6 || abs(r[j] - r[k]) > 3 || c["Brake"][j] > 0.1 || abs(c["Throttle"][j] - c["Throttle"][k]) > 0.3,
@@ -169,17 +176,19 @@ function settle_vr!(car, sp, u0, V, R, gr; δcap = 0.3, warm = nothing, δg = no
     for k in 1:nset
         u, v, r = get(car.integ)
         δ = clamp(δ + clamp(0.35*(R - r)/60*(30/max(V, 15)), -0.0006, 0.0006), -δcap, δcap)
-        thr = thrg === nothing ? clamp(0.3 + 0.3*(V - u) + ie, 0, 1) : clamp(thrg + clamp(0.1*(V - u) + ie, -0.2, 0.2), 0, 1)
-        ie = thrg === nothing ? clamp(ie + 0.01*(V - u), -0.4, 0.8) : clamp(ie + 0.005*(V - u), -0.2, 0.2)
+        # from the gold's pedal, a gentle PI over the full range (the ±0.2 trim could not hold the speed when the gold was
+        # coasting into a brake -- the sim started 10-15 km/h slow and the replay read it as over-braking)
+        thr = thrg === nothing ? clamp(0.3 + 0.3*(V - u) + ie, 0, 1) : clamp(thrg + 0.1*(V - u) + ie, 0, 1)
+        ie = thrg === nothing ? clamp(ie + 0.01*(V - u), -0.4, 0.8) : clamp(ie + 0.004*(V - u), -0.8, 0.8)
         DriveRT3D.step_car3d!(car, thr, 0.0, δ/DriveRT3D.MAXSTEER, 1/60; clutch = 0.0, manual = true)
     end
     SETTLED[] = (copy(car.integ.u), δ, ie)
     u, v, r = get(car.integ)
     # settled = the gold's yaw rate held within 5 % (or 0.5 °/s) without sliding; otherwise the sim cannot sustain the
     # gold's steady state at the gold's steering (+2°) -- reported as a failed window, not replayed
-    ok = abs(r - R) < max(0.05abs(R), deg2rad(0.5)) && abs(atan(v, max(u, 1.0))) < deg2rad(10)
+    ok = abs(r - R) < max(0.05abs(R), deg2rad(0.5)) && abs(atan(v, max(u, 1.0))) < deg2rad(10) && abs(u - V) < 0.5
     LASTSETTLE[] = (r = rad2deg(r), R = rad2deg(R), δ = rad2deg(δ), δcap = rad2deg(δcap), β = rad2deg(atan(v, max(u, 1.0))), u = 3.6u,
-                    thr = thrg === nothing ? clamp(0.3 + 0.3*(V - u) + ie, 0, 1) : clamp(thrg + clamp(0.1*(V - u) + ie, -0.2, 0.2), 0, 1))
+                    thr = thrg === nothing ? clamp(0.3 + 0.3*(V - u) + ie, 0, 1) : clamp(thrg + 0.1*(V - u) + ie, 0, 1))
     δ, ok
 end
 const LASTSETTLE = Ref{Any}(nothing)
@@ -202,13 +211,16 @@ end
 
 "Replay window `w` of gold file `g` through `car`; returns (gold, sim) traces as vectors of NamedTuples."
 function replay(car, sp, u0, g, w; warm = nothing)
+    # the job's own gearbox: step_car3d!'s shifts read the GLOBAL GEARS, which hold whichever file this process installed
+    # last -- with several files per worker a WW103 upshift used the default box (and vice versa) until IRGOLD-1 S3
+    length(sp.gear_ratios) == length(DriveRT3D.GEARS) && (DriveRT3D.GEARS .= sp.gear_ratios)
     setprel!(car, g.prel)
     # the session's own air density (the sim's is fixed at 1.10; Monza ran 1.151, the skidpad 1.135, the Ring 1.099)
     haskey(g.c, "AirDensity") && ModelingToolkit.setp(car.sys, car.sys.ρair)(car.integ, median(g.c["AirDensity"]))
-    c = g.c; m = DriveRT3D.MASS[]; sr = sp.steering_ratio
+    c = g.c; m = sum(values(sp.corner_weight_N))/9.81; sr = sp.steering_ratio
     gr = clamp(round(Int, c["Gear"][w.k0]), 1, 5)
     off = rad2deg(c["SteeringWheelAngle"][w.k0])
-    if w.kind === :steady || w.kind === :brake
+    if w.kind === :steady || w.kind === :brake || w.kind === :trail
         δg = abs(c["SteeringWheelAngle"][w.k0])/sr
         k0 = w.k0
         δ0, ok = settle_vr!(car, sp, u0, c["VelocityX"][k0], c["YawRate"][k0], gr; δcap = δg + deg2rad(2), warm,
@@ -271,6 +283,10 @@ function main()
     dump = get(ENV, "JM_IRG_DUMP", "")
     isempty(dump) || mkpath(dump)
     files = sort(filter(f -> endswith(f, ".ibt"), readdir(DG; join = true)); by = f -> match(r"2026-(.*)\.ibt", f).captures[1])
+    # JM_IRG_DIRS="261004,261005": the earlier gold sessions too (their Ring laps hold most of the trail-braking entries)
+    for dd in split(get(ENV, "JM_IRG_DIRS", ""), ","; keepempty = false)
+        append!(files, sort(filter(f -> endswith(f, ".ibt"), readdir(expanduser("~/gold standard/julia racer/$dd"); join = true))))
+    end
     isempty(only) || (files = filter(f -> any(o -> occursin(o, f), only), files))
     rows = NamedTuple[]; fails = NamedTuple[]
     for fn in files

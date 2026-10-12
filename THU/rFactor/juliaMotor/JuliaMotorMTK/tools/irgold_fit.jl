@@ -46,7 +46,8 @@ nprocs() == 1 && addprocs(NW; exeflags = "--project=$(dirname(@__DIR__))", env =
                 s === nothing && (push!(out, (; test, stem, t = w.k0/60, J = 10.0, ok = false)); continue)
                 rβ = sqrt(mean([p.β^2 for p in gold])); ray = sqrt(mean([p.ay^2 for p in gold]))
                 # + the speed: RMS km/h error over the window, on a 2 km/h scale (braking, drive, cornering drag)
-                J = (s.er/(s.rr + 2))^2 + (s.eay/(ray + 0.05))^2 + (s.eβ/(rβ + 0.5))^2 + (s.ev/2.0)^2
+                J = (s.er/(s.rr + 2))^2 + (s.eay/(ray + 0.05))^2 + (s.eβ/(rβ + 0.5))^2 +
+                    (get(ENV, "JM_FIT_NOSPEED", "0") == "1" ? 0.0 : (s.ev/2.0)^2)   # JM_FIT_NOSPEED: handling only
                 push!(out, (; test, stem, t = w.k0/60, J = min(J, 10.0), ok = true, s...))
             end
         end

@@ -28,7 +28,7 @@ nprocs() == 1 && addprocs(NW; exeflags = "--project=$(dirname(@__DIR__))", env =
     "Drive force at the wheels [N] from pedal, rpm and the total ratio, through the sim's own engine tables."
     drive_force(thr, rpm, Gt) = DriveRT3D.engine_torque(rpm, thr)*Gt*0.9/DriveRT3D.RW_R
     function gold_cells(g, sp)
-        c = g.c; n = g.n; m = DriveRT3D.MASS[]; sr = sp.steering_ratio
+        c = g.c; n = g.n; m = sum(values(sp.corner_weight_N))/9.81; sr = sp.steering_ratio
         a, b = DriveRT3D.cg_arms()
         v = smooth(c["Speed"], 61); dv = [0.0; diff(v)] .* 60; r = c["YawRate"]; rd = abs.(smooth([0.0; diff(smooth(r, 15))] .* 60, 61))
         ay = smooth(c["LatAccel"], 31) ./ G; ρ = median(c["AirDensity"]); dvs = abs.(smooth(dv, 61))
@@ -69,6 +69,7 @@ nprocs() == 1 && addprocs(NW; exeflags = "--project=$(dirname(@__DIR__))", env =
         sum(length(j[5]) for j in SJOBS; init = 0)
     end
     function sim_cell(car, sp, u0, g, cl)
+        length(sp.gear_ratios) == length(DriveRT3D.GEARS) && (DriveRT3D.GEARS .= sp.gear_ratios)
         setprel!(car, g.prel); ModelingToolkit.setp(car.sys, car.sys.ρair)(car.integ, median(g.c["AirDensity"]))
         # the gold's own pedal as the start, trimmed ±0.2 to hold the speed (a free PI loop overshot to full throttle at the
         # limit and spun the car before it settled)
@@ -79,7 +80,7 @@ nprocs() == 1 && addprocs(NW; exeflags = "--project=$(dirname(@__DIR__))", env =
         s = car.sys
         u, v, r, rpm = ModelingToolkit.getsym(s, [s.u, s.v, s.r, s.rpm])(car.integ)
         a = ModelingToolkit.getp(s, s.a)(car.integ); b = ModelingToolkit.getp(s, s.b)(car.integ)
-        Gt = sp.gear_ratios[cl.gr]*sp.final_drive; m = DriveRT3D.MASS[]; ρ = median(g.c["AirDensity"])
+        Gt = sp.gear_ratios[cl.gr]*sp.final_drive; m = sum(values(sp.corner_weight_N))/9.81; ρ = median(g.c["AirDensity"])
         drag = drive_force(LASTSETTLE[].thr, rpm, Gt) - 0.5*ρ*DriveRT3D.CDA_IBT*u^2 - DriveRT3D.CRR_IBT*m*G
         (fail = false, δ = rad2deg(δ), β = rad2deg(atan(v, u)), drag, αf = rad2deg(δ - atan(v + a*r, u)), αr = rad2deg(-atan(v - b*r, u)), thr = LASTSETTLE[].thr)
     end
@@ -161,7 +162,7 @@ function main()
     end
     get(ENV, "JM_ST_MODE", "eval") == "nm" || return
     free = split(get(ENV, "JM_ST_FREE", ""), ","; keepempty = false)
-    x0 = [pv[k] for k in free]; h = [0.05*abs(x) + 1e-3 for x in x0]
+    x0 = [pv[k] for k in free]; h = [parse(Float64, get(ENV, "JM_ST_STEP", "0.05"))*abs(x) + 1e-3 for x in x0]
     f(x) = (p2 = copy(pv); for (k, xi) in zip(free, x); p2[k] = xi; end; s = evaluate_steady(p2)[1]; @printf("  %s  score %.4f\n", join([@sprintf("%s=%.4f", k, xi) for (k, xi) in zip(free, x)], " "), s); flush(stdout); s)
     # Nelder-Mead (plain, bounded by the caller's sense of the parameters)
     n = length(x0); P = [copy(x0)]; for i in 1:n; xi = copy(x0); xi[i] += h[i]; push!(P, xi); end

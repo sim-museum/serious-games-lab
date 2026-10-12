@@ -102,15 +102,23 @@ function DrivenVehicle3D(; name,
     cmb = brush && camber !== nothing
     # CAMBER-1 / TYRE-2: the camber tyre's lateral side is its own fit (TYRE2): the upright μ (the upright model's already
     # carries the lean loss) and the cornering stiffness refitted with camber, the LSD and the bars in the car
-    bf = cmb ? merge(BRUSH_FRONT, (μ = TYRE2.μf*_GRIP, Cα = TYRE2.Cαf)) : BRUSH_FRONT
-    br = cmb ? merge(BRUSH_REAR,  (μ = TYRE2.μr*_GRIP, Cα = TYRE2.Cαr)) : BRUSH_REAR
-    FL = brush ? BrushTyre(; name=:FL, bf..., camber=cmb) : Tyre(; name=:FL, TYRE_SKIDPAD_FRONT...)
-    FR = brush ? BrushTyre(; name=:FR, bf..., camber=cmb) : Tyre(; name=:FR, TYRE_SKIDPAD_FRONT...)
-    RL = brush ? BrushTyre(; name=:RL, br...,  camber=cmb) : Tyre(; name=:RL, TYRE_SKIDPAD_REAR...)
-    RR = brush ? BrushTyre(; name=:RR, br...,  camber=cmb) : Tyre(; name=:RR, TYRE_SKIDPAD_REAR...)
+    # IRGOLD-1 S3: TYRE3 (shape nsh, kμ, ablation too) unless JM_TYRE2
+    bf = !cmb ? BRUSH_FRONT : USE_TYRE3 ? merge(BRUSH_FRONT, (μ = TYRE3.μf*_GRIP, Cα = TYRE3.Cαf, kμ = TYRE3.kμ)) :
+                                          merge(BRUSH_FRONT, (μ = TYRE2.μf*_GRIP, Cα = TYRE2.Cαf))
+    br = !cmb ? BRUSH_REAR  : USE_TYRE3 ? merge(BRUSH_REAR,  (μ = TYRE3.μr*_GRIP, Cα = TYRE3.Cαr, kμ = TYRE3.kμ)) :
+                                          merge(BRUSH_REAR,  (μ = TYRE2.μr*_GRIP, Cα = TYRE2.Cαr))
+    nshf = cmb && USE_TYRE3 ? TYRE3.nshf : 3.0; nshr = cmb && USE_TYRE3 ? TYRE3.nshr : 3.0
+    # IRGOLD-1 S3: free front hubs go WITH the tyre refitted with them (TYRE3, the session car's camber tyre). A car built
+    # without a session setup carries the upright TYRE-1 tyre, which was fitted with the spool, and keeps the spool:
+    # hubs + TYRE-1 spins at 8.6° of lock at 90 km/h (tyrepanel_smoke's control), the pairing the old fit never saw.
+    front_hubs = front_hubs && cmb && USE_TYRE3
+    FL = brush ? BrushTyre(; name=:FL, bf..., camber=cmb, nsh=nshf) : Tyre(; name=:FL, TYRE_SKIDPAD_FRONT...)
+    FR = brush ? BrushTyre(; name=:FR, bf..., camber=cmb, nsh=nshf) : Tyre(; name=:FR, TYRE_SKIDPAD_FRONT...)
+    RL = brush ? BrushTyre(; name=:RL, br...,  camber=cmb, nsh=nshr) : Tyre(; name=:RL, TYRE_SKIDPAD_REAR...)
+    RR = brush ? BrushTyre(; name=:RR, br...,  camber=cmb, nsh=nshr) : Tyre(; name=:RR, TYRE_SKIDPAD_REAR...)
 
     gv, kfv, krv = g, karb_f, karb_r                     # numeric values for the parts' own parameters (the next line rebinds the names)
-    ps = @parameters m=m Izz=Izz Ixx=Ixx Iyy=Iyy a=a b=b tf=tf tr=tr h=h mf=mf mr=mr L=L M_s=M_s g=g Rw_f=Rw_f Rw_r=Rw_r Iw=Iw η=η final=final bias=bias Tbrake_max=Tbrake_max CdA=CdA ρair=ρair throttle=throttle0 brake=brake0 δ=steer0 gear=gear0 clutch=0.0 Ie=0.18 c_c=60.0 T_cap=500.0 k_idle=0.5 idle_rpm=2000.0 zrFL=0.0 zrFR=0.0 zrRL=0.0 zrRR=0.0 vrFL=0.0 vrFR=0.0 vrRL=0.0 vrRR=0.0 Fx_ext=0.0 Fy_ext=0.0 Mz_ext=0.0 CdA_scale=1.0 c_abl=C_ABL toe_f=toe_f toe_r=toe_r karb_f=karb_f karb_r=karb_r
+    ps = @parameters m=m Izz=Izz Ixx=Ixx Iyy=Iyy a=a b=b tf=tf tr=tr h=h mf=mf mr=mr L=L M_s=M_s g=g Rw_f=Rw_f Rw_r=Rw_r Iw=Iw η=η final=final bias=bias Tbrake_max=Tbrake_max CdA=CdA ρair=ρair throttle=throttle0 brake=brake0 δ=steer0 gear=gear0 clutch=0.0 Ie=0.18 c_c=60.0 T_cap=500.0 k_idle=0.5 idle_rpm=2000.0 zrFL=0.0 zrFR=0.0 zrRL=0.0 zrRR=0.0 vrFL=0.0 vrFR=0.0 vrRL=0.0 vrRR=0.0 Fx_ext=0.0 Fy_ext=0.0 Mz_ext=0.0 CdA_scale=1.0 c_abl=(cmb && USE_TYRE3 ? TYRE3.cabl : C_ABL) toe_f=toe_f toe_r=toe_r karb_f=karb_f karb_r=karb_r
     brk = BrakeSystem(; name = :brk, bias_p = brake_bias_p)   # CARPHYS-1 S6 (chassis_parts.jl)
     tank = FuelTank(; name = :tank, x = tank_x)               # IRGOLD-1 / FUEL-1
     if cmb

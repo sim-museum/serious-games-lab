@@ -86,9 +86,9 @@ baked in at construction.
 # mass followed the session: the vertical model kept hand-set 120/148 kg corners and the CG at 45.5 % front, so a full
 # tank (707 kg, 48.1 % front) or any other load reached neither the springs, nor the load transfer, nor the yaw arms --
 # and even at the gold's 43 L the in-plane car weighed 605 kg and the vertical one 616. `nothing` = not set (hand-set
-# corners). Opt-in with JM_MASS1=1 until judged on the IRGOLD-1 metric with the refitted tyre.
+# corners). The default since IRGOLD-1 S3 (with TYRE3); JM_MASS_LEGACY=1 = the hand-set corners, for A/B.
 const CORNER_W = Ref{Union{Nothing,NTuple{4,Float64}}}(nothing)     # LF RF LR RR [N]
-const MASS_LEGACY = get(ENV, "JM_MASS1", "0") != "1"
+const MASS_LEGACY = haskey(ENV, "JM_MASS_LEGACY")
 const WHEELBASE = 2.41
 function set_corner_weights!(cw; source::AbstractString = "unknown")
     w = (float(cw[:LF]), float(cw[:RF]), float(cw[:LR]), float(cw[:RR]))
@@ -572,9 +572,9 @@ _msprung(i, dflt) = (MASS_LEGACY || CORNER_W[] === nothing || i == 0) ? dflt : C
 _chassis_kw(ch::Chassis = CHASSIS[]) = (diff = ch.diff, toe_f = ch.toe[1], toe_r = ch.toe[2], brake_bias_p = ch.bias_p, travel = ch.travel, karb_f = ch.karb[1], karb_r = ch.karb[2],
                                         camber = ch.camber, relax = RELAX, front_hubs = FRONT_HUBS[],
                                         tank_x = cg_arms()[1] - FUEL_TANK_X_FRONT)
-# IRGOLD-1 S1: free front hubs (vehicle_3d.jl `front_hubs`), opt-in with JM_FRONTHUBS=1 until the tyre is refitted
-# with them (every tyre fit so far absorbed the spool's understeer moment); JM_FRONTSPOOL=1 forces the spool.
-const FRONT_HUBS = Ref(get(ENV, "JM_FRONTHUBS", "0") == "1" && !haskey(ENV, "JM_FRONTSPOOL"))
+# IRGOLD-1 S1/S3: free front hubs (vehicle_3d.jl `front_hubs`) -- the default since the tyre was refitted with them
+# (TYRE3); JM_FRONTSPOOL=1 = the old one-speed front axle, for A/B.
+const FRONT_HUBS = Ref(!haskey(ENV, "JM_FRONTSPOOL"))
 # CARPHYS-1 S11: tyre relaxation lengths "σf,σr" [m]; unset = none (the force follows the kinematic slip at once)
 const RELAX = let e = get(ENV, "JM_RELAX", ""); isempty(e) ? nothing : Tuple(parse.(Float64, split(e, ",")))[1:2] end
 # initial wheel speeds: the per-wheel rear states exist only with an LSD

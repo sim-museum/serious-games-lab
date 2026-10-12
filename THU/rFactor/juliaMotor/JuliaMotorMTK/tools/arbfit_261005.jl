@@ -109,6 +109,8 @@ function main()
     for k in (side === :both ? (:default, :ww) : (side,))
         sp = install!(FILES[k]); car = DriveRT3D.build_car3d(; v0 = 30.0); u0 = copy(car.integ.u)
         println("\n== $k   ", DriveRT3D.describe_chassis())
+        # ⚠️ IRGOLD-1 (2026-10-12): since CARPHYS-1 S2 the bars are objects (arbF.k / arbR.k); these vehicle-level karb_f /
+        # karb_r are NOT connected to them any more, so this grid changes nothing -- use arbF.k / arbR.k (arbarms_261011.jl)
         setkf = setp(car.sys, car.sys.karb_f); setkr = setp(car.sys, car.sys.karb_r)
         pts = haskey(ENV, "JM_ARB_EVAL") ? [Tuple(parse.(Float64, split(ENV["JM_ARB_EVAL"], ',')))] :
               k === :default ? [(0.0, 0.0), (0.0, 5000.0), (5000.0, 0.0), (5000.0, 5000.0)] :

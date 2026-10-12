@@ -131,6 +131,17 @@ const CAMBER_MU = (1.36, 1.446) # CAMBER-1 S1's upright μ; superseded by TYRE2 
 # limit 0.10) -- see the stability suite (tools/stability_check.jl, JM_STAB_IBT) for both setups.
 const TYRE2 = (μf = 1.347, μr = 1.494, Cαf = 26.17, Cαr = 27.77)
 
+# IRGOLD-1 S3 (2026-10-12): the setup car's tyre refitted on the STEADY-STATE cells of every 261010/11 gold file and the
+# 261004/5 skidpads (tools/irgold_steady.jl), with free front hubs and the session's corner masses in the car: per axle
+# μ, Cα and the saturation shape nsh (BrushTyre), the load sensitivity kμ and the ablation drag c_abl. (Values: see the
+# IRGOLD-1 S3 log in PRODUCT_BACKLOG.md.) JM_TYRE2=1 = the TYRE-2 set (spool-era).
+# Front: softer (Cα 24.0, the gold slips ~0.2° more at every g) and more progressive (nsh 5); rear: TYRE-2's stiffness
+# with the same progressive shape and more grip (μ 1.65 upright, before the camber law). Steady state against the gold
+# (75 cells): high-g errors β/αf/αr 0.71/0.78/0.72° -> 0.2-0.4°, cornering drag at the limit -177 -> ~-40 N, unholdable
+# cells 17 -> 8; the transient replay metric 2.412 -> 2.260 (all 245 windows, both setups).
+const TYRE3 = (μf = 1.40, μr = 1.65, Cαf = 24.0, Cαr = 27.77, nshf = 5.0, nshr = 5.0, kμ = 0.082, cabl = 0.40)
+const USE_TYRE3 = !haskey(ENV, "JM_TYRE2")
+
 # TYRE-2 (2026-10-06): the slip stiffnesses' load exponent (BrushTyre `ns`): CFα, CFκ ∝ Fz^ns. 1 = the plain brush.
 const BRUSH_NS = 1.0
 

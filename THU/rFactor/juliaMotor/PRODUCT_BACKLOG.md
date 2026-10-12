@@ -21,6 +21,7 @@ this index was written; that is what it exists to stop.
 
 | item | what | state |
 |---|---|---|
+| **IRGOLD-1** | **EPIC (PO 2026-10-11, 25-sprint cap): julia default = iRacing Ring default, julia loose = iRacing WW103 -- "indistinguishable from the iRacing Lotus 49"**, MTK objects, from the PO's 261010/11 test session (24 ibt) | 🔴 in progress. S1: `tools/irgold_replay.jl` -- every gold window replayed with the gold's own inputs (the acceptance metric). S2: free front hubs (the front axle was a SPOOL), corner masses + CG from the session, FuelTank + FUEL-1 settings, iRacing's 420° wheel lock. S3: TYRE3 refitted on steady-state cells; hubs + masses + TYRE3 are the default; replay metric 2.065 → 1.976. Next (S4+): relaxation σ ≈ 0.45 m, the default slalom / WW-slide yaw, cornering drag on the skidpad, bars' arms, brake bias. |
 | **CTRLCAL-1** | Controller calibration should have two options -- **autodetect** or **saved profile**; saved profiles include the Thrustmaster TX and the Logitech Extreme 3D Pro ("3Dx Pro"); for autodetect, look at how GPL and iRacing do it (PO 2026-10-10) | 🟡 **S1 (2026-10-10):** GPL's and iRacing's calibration studied (gpl.exe decoded + the PO's own GPL TX controls.cfg); the Controller tab now offers Autodetect (per-device calibration, as both do) or a Saved profile (TX, Extreme 3D Pro, + your wizard calibrations); built-in profiles are one file each for sim and launcher; AppImage updates keep per-device calibrations; gate `ctrlcal_smoke`. **S2:** the wizard is GPL's/iRacing's sweep (rest, one full sweep, each control found by using it, the 90° wheel-range step, 2 % ends) |
 | **FUEL-1** | At least two fuel settings in julia: what the event needs (qualifying or race) + 2 laps, and a full tank (PO 2026-10-10) | open -- data: iRacing Lotus 49 tank 179.5 L at 0.75 kg/L (ibt DriverCarFuelMaxLtr / KgPerLtr): full = 134.6 kg vs the 32.4 kg (43.2 L) every gold session ran, +102 kg (~17 % of the car). Burn rate from the gold's FuelUsePerHour vs rpm/throttle (all files have it) -> litres per lap on any track from a simulated lap; fuel burns off during the session. Where the tank sits (front/rear split, CG height) is unknown -- every gold file has the same fuel: IRTEST-261009 #7 gives the corner weights at three fuel levels |
 | **LOADHANG-1** | Why did the AppImage's Spa race load "hang" (≈15 min, the PO stopped it at the AI cars) after a Ring race, a WG race and a replay in the same launcher session? Little time if data is lacking -- but how to avoid / diagnose such issues in future (PO 2026-10-07 night) | ✅ **CLOSED (S1–S4, 2026-10-08):** the first Spa launch from the install decoded every texture cold at 125 ms each -- a boxed closure in the alpha bleed; now 1.7 ms (pixels identical), a cold Spa race loads in 232 s like a warm one; launches log flushed stage stamps + first-run texture progress; gate `texcold_smoke`; smoke runs no longer read the PO's wheel (netcollide repaired) |
@@ -25227,3 +25228,64 @@ test order) checked against each file's content and setup:
   `refuel!()` call) -- the reset is written out again and restart_smoke passes alone: 59/59. netcollide_smoke passed
   in the run (the tank fix). Physics defaults are UNCHANGED in this commit (spool, hand-set corner masses, no
   relaxation: all opt-in); the game's new defaults are FUEL-1's tank (`JM_FUEL=event`) and the wheel's 420° lock.
+
+### IRGOLD-1 S3 (2026-10-12): the tyre refitted with the new structure, on steady-state cells -- free hubs, corner masses and TYRE3 ship
+* **Retro (S1-S2):** the replay metric found the structural defects; fitting tyre constants THROUGH 245 transient
+  windows did not converge: the objective was dominated by discrete events (settle failures, spins) that flip with 1 %
+  parameter steps; NM and coordinate search stalled twice. **Changed method:** `tools/irgold_steady.jl` -- the gold's
+  quasi-steady cells (every 261010/11 file and the 261004/5 skidpads, each its own session car, both directions, 0.1 g
+  bands: 75 cells), the sim settled on each cell's speed and yaw rate from the gold's own pedal (±0.2 trim, 8 s), and the
+  steer angle, sideslip, axle slip angles and cornering drag compared; a cell the sim cannot hold is scored by its
+  yaw-rate shortfall. Deterministic and smooth; grids of the per-band errors steer the choice.
+* **Two more harness traps, fixed:** (1) a 4 s settle was too short at speed -- the sim's "limit" fell with speed
+  (1.10 → 1.04 g, 112 → 162 km/h) only because the loop had not converged; with 8 s it is 1.12 / 1.11 / 1.10 g
+  (the skidpad is flat: world roll = suspension roll at every radius, altitude constant). (2) a replay's gear change read
+  the GLOBAL gearbox, i.e. the last file installed in that worker -- WW103 upshifts used the default box in mixed runs.
+* **What the gold says at steady state** (TYRE-2, hubs + corner masses): below 0.9 g the slips agree within ~0.2°
+  (front slightly too little); above 0.9 g the gold slips progressively more -- β +0.71°, front −0.78°, rear −0.72°
+  (sim − gold) -- and its cornering drag is ~180 N higher; lowering Cα fixes the limit but overshoots at low g; the
+  saturation SHAPE (nsh > 3: same low-slip stiffness, a later, more progressive peak) does both.
+* **TYRE3** (brush_tyre.jl; `JM_TYRE2=1` = TYRE-2): front μ 1.40, Cα 24.0, nsh 5; rear μ 1.65, Cα 27.77, nsh 5;
+  kμ 0.082, c_abl 0.40. Steady state: high-g errors ~0.2-0.4°, drag gap ~−40 N, unholdable cells 17 → 8.
+* **Transient replay (245 windows, both setups), today's car → shipped car: J 2.412 → 2.260, failures 8 → 5.**
+  Better: skidpad circles (bar arms J 4.64/6.03/2.73 → 3.36/5.26/2.31, fuel 145 3.32 → 2.81), flicks (yaw err
+  1.80 → 1.62 °/s), WW slalom (1.57 → 1.40 °/s). Worse: the default slalom (yaw err 5.61 → 6.24 °/s) and the WW103 held
+  slides' yaw (5.72 → 7.62 °/s; their J improves only through speed) -- S4's targets.
+* **Ships as the default:** free front hubs (`JM_FRONTSPOOL=1` reverts), corner masses + CG from the session
+  (`JM_MASS_LEGACY=1`), TYRE3 (`JM_TYRE2=1`).
+* Gates (S3 commit, 02:49-03:43): 58/59; the failure, tyrepanel_smoke, built a car WITHOUT a session setup -- the upright
+  TYRE-1 tyre (fitted with the spool) on free hubs, which spins at 8.6° of lock (its control check). Free hubs now go
+  with the refitted tyre only (session cars = every car in the game); a setup-less car keeps spool + TYRE-1 exactly as
+  before. tyrepanel_smoke passes alone: 59/59.
+* Addendum (harness): the settle could not hold the gold's speed when the gold was coasting (a ±0.2 pedal trim) -- the
+  sim started 10-15 km/h slow and the trail-brake windows read it as over-braking. The settle now runs a gentle PI over
+  the full pedal range from the gold's pedal and must also match the speed (±0.5 m/s); 8 s settles. Rescored on that:
+  **today's car 2.065 (7 failed) → shipped car 1.976 (5 failed)**, same per-test pattern as above. New `:trail` windows
+  (brake applied at 0.2-1.2 g; 10 on the 261004/5 Ring laps): yaw err 42 → 37 %, β err 1.40 → 1.18° (the old car
+  rotated 2.1-2.8° where the gold rotates 3-6°). Stability suite penalty 0 on both setups (step steers ≤ 7.4°, WOT
+  blips decay, 314-323 km/h straight); trail braking from 250 km/h rotates more (default 8.5-8.8°, WW 12.5° at light
+  pedal; the old car 5.4-7.7°) -- within the gold's range (2.4-10.7° in 26 gold trail-brake entries). Crest:
+  default airtime 0.142 s (was 0.174), landing 0.13 g; WW 0.090 s / 0.22 g. carsetup_smoke PASS.
+
+### IRGOLD-1 S4 (2026-10-12): the transient parameters the new tests can identify -- relaxation, yaw inertia, the bar arms
+* **Retro (S3):** steady-state cells fixed the limit balance and the cornering drag (skidpad drag now within ±30 N of the
+  gold at 0.7-1.1 g); the transient regressions left were the default slalom and the WW slides' yaw. S10/S11 had found
+  Izz and σ "not identifiable" -- from slow, throttle-driven skidpad events. The 261011 flicks and weaves are fast
+  steering inputs, so both are tried again, on a handling-only objective (`JM_FIT_NOSPEED=1`: the speed term is the
+  same for both and is noise for a steering-transient parameter).
+* **Tyre relaxation, fitted** (Monza flicks + slaloms, both setups): front σ 1.25 m, rear 0.05 m (≈ none) -- the lag
+  sits at the front axle (relaxation + steering compliance; 1.25 m ≈ 40 ms at 30 m/s; the gold's yaw lags the
+  instant-force tyre 13-18 ms in the flicks). Handling J 0.2527 → 0.2365; the full metric (245 windows) 1.976 → 1.905:
+  flicks 1.05 → 0.91, held slides 3.81 → 3.71, WW slides 2.23 → 2.13, firm-bar circles 5.23 → 4.48; worse only the
+  default slalom (1.08 → 1.22, whose largest errors are windows where the GOLD spun).
+* **Yaw inertia, identified:** handling J by Izz 690 / 890 / 990 / 1090 / 1290 kg·m² = 0.2605 / 0.2353 / 0.2320 /
+  0.2321 / 0.2437 -- a clear minimum near 1,040 (the hand-set 890 is ~15 % low). In the big weaves the gold's yaw and
+  sideslip lag the sim's by 0.2-0.3 s by the third cycle and swing wider -- a slower, less damped yaw.
+* **Front bar arms, identified** (`tools/arbarms_261011.jl`; the bar object's stiffness that reproduces each session's
+  gold roll gradient): soft 567, 2 1190-1880 (two sessions), 4 3535, firm 6804 N/m -- a torsion bar shortened by its
+  arm, ×4.4 from 2 to firm. Was: diameter⁴, arms ignored (soft = 4 = firm). Front arm law ARB_ARM_FRONT (3 and 5
+  interpolated); rear arms still ignored (no test). The game's default template runs front arms 3 (×1.65 of 2).
+  Found on the way: `arbfit_261005.jl`'s karb_f/karb_r knob has been dead since CARPHYS-1 S2 made the bars objects
+  (the game's bars are baked in at build and were never affected) -- flagged in the tool.
+* Open (next rotation): at 1.1-1.2 g the gold drifts (β −5..−6°, both axles saturated, the driver winding on lock)
+  where the sim stays at −3.5° and keeps more speed -- the rear's behaviour at and past its peak under drive.
