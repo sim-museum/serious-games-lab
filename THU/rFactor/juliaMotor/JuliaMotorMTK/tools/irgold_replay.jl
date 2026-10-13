@@ -27,7 +27,10 @@
 using Printf, Statistics
 ENV["JM_NOTC"] = "1"
 include(joinpath(@__DIR__, "replay_261005.jl"))             # settle!, install!, ibt_open, ch, setup_params, DriveRT3D, G, LWB
-DriveRT3D.ANTISTALL[] = false     # IRGOLD-1 S15: the replays feed iRacing's ENGAGEMENT (Clutch), which already holds its anti-stall
+# IRGOLD-1 S17: the replays feed the driver's PEDAL (ClutchRaw) through the car's own anti-stall (S15) -- the gold's input is the
+# foot; iRacing's engagement (Clutch) is its anti-stall's OUTPUT. JM_IRG_CLUTCH=engaged feeds Clutch with the anti-stall off (S1-S16).
+const IRG_RAWCLUTCH = get(ENV, "JM_IRG_CLUTCH", "raw") != "engaged"
+DriveRT3D.ANTISTALL[] = IRG_RAWCLUTCH
 using ModelingToolkit, OrdinaryDiffEq
 
 const DG = expanduser("~/gold standard/julia racer/261010")
@@ -80,7 +83,7 @@ sub(f, n) = hcat((channel(f, n; idx = i) for i in 1:6)...)        # 360 Hz sub-s
 function goldfile(fn)
     f = ibt_open(fn); sp = setup_params(f.yaml)
     c = Dict{String,Vector{Float64}}()
-    for n in ("Speed", "SteeringWheelAngle", "Throttle", "Brake", "Clutch", "Gear", "RPM", "Alt", "IsOnTrackCar", "AirDensity",
+    for n in ("Speed", "SteeringWheelAngle", "Throttle", "Brake", "Clutch", "ClutchRaw", "Gear", "RPM", "Alt", "IsOnTrackCar", "AirDensity",
               "PlayerTrackSurface", "Roll", "LFspeed", "RFspeed", "LRspeed", "RRspeed")
         x = ch(f, n); x === nothing || (c[n] = x)
     end
@@ -295,7 +298,8 @@ function replay(car, sp, u0, g, w; warm = nothing)
         end
         car.s_fx(car.integ, -m*G*sin(atan(c["grade"][j])))
         DriveRT3D.step_car3d!(car, c["Throttle"][j], c["Brake"][j], δ/DriveRT3D.MAXSTEER, 1/60;
-                              clutch = 1.0 - clamp(c["Clutch"][j], 0, 1), up = up, dn = dn, manual = true)
+                              clutch = 1.0 - clamp((IRG_RAWCLUTCH && haskey(c, "ClutchRaw") ? c["ClutchRaw"] : c["Clutch"])[j], 0, 1),
+                              up = up, dn = dn, manual = true)
         u, v, r, ay, ph, wl, wr, wf, rpm = get(car.integ)
         rlast = r
         τ = something(DriveRT3D.rimtorque3d(car), NaN)

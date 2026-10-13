@@ -25703,3 +25703,21 @@ usual rotation (≤ 6 per item).
   A/B), `JM_STAB_SET` (any parameter on the stability car), `driftdump.py`, `driftalpha.py`.
 * Next (S17): the replay's start windows feed iRacing's ENGAGEMENT, so they cannot use S15's anti-stall (WW T10 starts J
   3.1); the driver's input is the pedal -- feed ClutchRaw with the anti-stall on.
+
+### IRGOLD-1 S17 (2026-10-13): the replay feeds the driver's pedal; the low-gear WOT deficit; banking (diagnosis)
+* **Judge:** irgold_replay now feeds ClutchRaw (the foot) through the car's anti-stall (S15) -- iRacing's Clutch channel
+  is its anti-stall's OUTPUT. `JM_IRG_CLUTCH=engaged` = the S1-S16 judge. Metric unchanged within noise (open 1.1658 →
+  1.1649, closed 1.2172 → 1.2183): no window starts from rest (windows begin > 10 m/s).
+* The WW T10 windows (J 3.1) are the accelerations after the starts: in 2nd at WOT, 3,500-5,600 rpm, the sim gains 44 km/h
+  in 2.75 s where the gold gains 50 (similar rear slip) -- 12 % short. In the shipped frame (0.18 effective at the crank in
+  gear) gears 3-5 read the S6 WOT table within 2-3 N·m but 2nd reads +15-23 N·m and 1st +35-50 (`wotframe.py`): too much
+  inertia charged to the low gears, the S14 finding (the remainder belongs behind the gearbox).
+* **Tried, NOT shipped:** the coherent axle frame -- remainder behind the box, its own WOT table (`inertiafit.py`) and a
+  part-throttle map refitted in it (`throttlefit2.py`, 118,451 rows of 261004-261012): metric **1.3318** vs 1.1649. The
+  skidpad cells improve a lot (T4 arb firm 1.15 → 0.57, T7 fuel20 0.90 → 0.23), Monza / slalom / slides end slow (WW T2
+  slalom 1.01 → 1.41). A global longitudinal refit trades venues: the frame question is inside the session-to-session
+  spread of the gold. Parked; the S6 frame stays.
+* **Banking:** the Glen's drift corner (s 2,150-2,400 m) is banked 4-6° (accelerometer vs kinematic lateral acceleration,
+  repeatable lap to lap within 0.3°, `bank.py`) -- why the Glen windows want more slip on both axles. Per sample the
+  estimate is too noisy for the replay (sd 2.75° on flat Monza after the body-roll correction). A clean source is the
+  track's own geometry (GPL .trk banking at the iRacing LapDist) -- an option for a later sprint.
