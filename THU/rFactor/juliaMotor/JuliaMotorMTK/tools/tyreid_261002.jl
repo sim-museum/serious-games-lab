@@ -60,6 +60,12 @@ if haskey(ENV, "JM_CAMB_TRY") && hasproperty(SYS, :rc_f)
         println("camber law tried: Cγ $(θ[1]) kγ $(θ[2]) rc $(θ[3])/$(θ[4])")
     end
 end
+# IRGOLD-1 S16: JM_STAB_SET="RL.ns=0.7,RR.ns=0.7" sets any subsystem parameter on the stability car (A/B a tyre change)
+for kv in split(get(ENV, "JM_STAB_SET", ""), ","; keepempty = false)
+    path, val = split(kv, "="); ps = Symbol.(split(path, "."))
+    obj = SYS; for q in ps; obj = getproperty(obj, q); end
+    setp(SYS, obj)(CAR.integ, parse(Float64, val)); println("stability car: ", path, " = ", val)
+end
 
 function settyre!(μf, μr, Cf, Cr, kμ)
     for w in (:FL, :FR); SETW[(w,:μ)](CAR.integ, μf); SETW[(w,:Cα)](CAR.integ, Cf); SETW[(w,:kμ)](CAR.integ, kμ); end

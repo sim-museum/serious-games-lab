@@ -139,7 +139,7 @@ const TYRE2 = (μf = 1.347, μr = 1.494, Cαf = 26.17, Cαr = 27.77)
 # with the same progressive shape and more grip (μ 1.65 upright, before the camber law). Steady state against the gold
 # (75 cells): high-g errors β/αf/αr 0.71/0.78/0.72° -> 0.2-0.4°, cornering drag at the limit -177 -> ~-40 N, unholdable
 # cells 17 -> 8; the transient replay metric 2.412 -> 2.260 (all 245 windows, both setups).
-const TYRE3 = (μf = 1.40, μr = 1.65, Cαf = 24.0, Cαr = 27.77, nshf = 5.0, nshr = 5.0, kμ = 0.082, cabl = 0.40)
+const TYRE3 = (μf = 1.40, μr = 1.65, Cαf = 24.0, Cαr = parse(Float64, get(ENV, "JM_TYRE3_CAR", "27.77")), nshf = 5.0, nshr = 5.0, kμ = 0.082, cabl = 0.40)   # IRGOLD-1 S16: JM_TYRE3_CAR A/B
 const USE_TYRE3 = !haskey(ENV, "JM_TYRE2")
 # IRGOLD-1 S5: with relaxation the steering column reads the front force at the KINEMATIC slip (vehicle_3d.jl);
 # JM_COLUMN_RELAXED=1 = the relaxed force (S4)

@@ -25691,3 +25691,15 @@ usual rotation (≤ 6 per item).
 * Gates (S14+S15 commit, 2026-10-12 23:27 - 10-13 00:10): 58 of 59 PASS at first; `throttlemap_smoke` pinned S9's clutch
   knots (71/202/407 at 0.25/0.45/0.65) -- updated to S14's measured 77.4/212.3/245.5 at 0.25/0.40/0.45 and re-run: PASS.
   **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).
+* **Rear Cα 24.94 fails the stability suite** (JM_STAB_IBT 15-03-24 / 16-53-12): penalty 6,231 / 390 -- the 200/240 km/h
+  WOT 0.5° yaw pulse no longer decays (0.47 / 0.79 of the peak left at 3 s); TYRE-1 raised the rear stiffness for this.
+  The gold needs the extra rear slip at the LIMIT, not in a straight line: a LOAD-dependent stiffness. Rear `ns` (CFα ∝
+  Fz^ns, `nsr`) 0.7 / 0.5: stability penalty 0 both setups; Monza drifts at nsr 0.5: β 4.79/4.23° (gold 4.79/4.39), rear
+  slip 5.72/4.82° (5.77/5.00), steer correction 0.65/0.54° (was 0.83/0.68) -- the front's slip then runs 0.4-0.7° over.
+* Whole metric, nsr 0.5 vs the S15 car: open loop (233 windows) 1.1658 → 1.1608 (failures 6 → 4); closed loop (383
+  windows incl. 261012) 1.2172 → 1.2346. The skidpad steady cells improve (T4 arb firm 0.93 → 0.54, T7 fuel20 1.49 →
+  0.92, β errors down), the big skidpad slides lose (T1 1.86 → 2.56, WW T1 1.15 → 1.69: speed error in 20-50° slides at
+  oval pressures) and the WW Glen laps (1.10 → 1.31). **Mixed: NOT shipped.** Tools kept: `JM_TYRE3_CAR` (TYRE3 rear Cα
+  A/B), `JM_STAB_SET` (any parameter on the stability car), `driftdump.py`, `driftalpha.py`.
+* Next (S17): the replay's start windows feed iRacing's ENGAGEMENT, so they cannot use S15's anti-stall (WW T10 starts J
+  3.1); the driver's input is the pedal -- feed ClutchRaw with the anti-stall on.
