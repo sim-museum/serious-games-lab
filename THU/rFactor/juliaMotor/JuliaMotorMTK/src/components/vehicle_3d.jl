@@ -108,6 +108,8 @@ function DrivenVehicle3D(; name,
     br = !cmb ? BRUSH_REAR  : USE_TYRE3 ? merge(BRUSH_REAR,  (μ = TYRE3.μr*_GRIP, Cα = TYRE3.Cαr, kμ = TYRE3.kμ)) :
                                           merge(BRUSH_REAR,  (μ = TYRE2.μr*_GRIP, Cα = TYRE2.Cαr))
     nshf = cmb && USE_TYRE3 ? TYRE3.nshf : 3.0; nshr = cmb && USE_TYRE3 ? TYRE3.nshr : 3.0
+    nsrv = cmb && USE_TYRE3 ? TYRE3.nsr : BRUSH_NS               # IRGOLD-1 S20: the rears' stiffness load exponent
+    claf = cmb && USE_TYRE3 && IRG_S20 ? AERO_CLAF : 0.0         # IRGOLD-1 S20: the measured front lift (session car)
     # IRGOLD-1 S3: free front hubs go WITH the tyre refitted with them (TYRE3, the session car's camber tyre). A car built
     # without a session setup carries the upright TYRE-1 tyre, which was fitted with the spool, and keeps the spool:
     # hubs + TYRE-1 spins at 8.6° of lock at 90 km/h (tyrepanel_smoke's control), the pairing the old fit never saw.
@@ -119,11 +121,11 @@ function DrivenVehicle3D(; name,
     kinF = brush && relax !== nothing && COLUMN_KIN         # IRGOLD-1 S5: the column reads the front force at the kinematic slip
     FL = brush ? BrushTyre(; name=:FL, bf..., camber=cmb, nsh=nshf, kin=kinF) : Tyre(; name=:FL, TYRE_SKIDPAD_FRONT...)
     FR = brush ? BrushTyre(; name=:FR, bf..., camber=cmb, nsh=nshf, kin=kinF) : Tyre(; name=:FR, TYRE_SKIDPAD_FRONT...)
-    RL = brush ? BrushTyre(; name=:RL, br...,  camber=cmb, nsh=nshr) : Tyre(; name=:RL, TYRE_SKIDPAD_REAR...)
-    RR = brush ? BrushTyre(; name=:RR, br...,  camber=cmb, nsh=nshr) : Tyre(; name=:RR, TYRE_SKIDPAD_REAR...)
+    RL = brush ? BrushTyre(; name=:RL, br...,  camber=cmb, nsh=nshr, ns=nsrv) : Tyre(; name=:RL, TYRE_SKIDPAD_REAR...)
+    RR = brush ? BrushTyre(; name=:RR, br...,  camber=cmb, nsh=nshr, ns=nsrv) : Tyre(; name=:RR, TYRE_SKIDPAD_REAR...)
 
     gv, kfv, krv = g, karb_f, karb_r                     # numeric values for the parts' own parameters (the next line rebinds the names)
-    ps = @parameters m=m Izz=Izz Ixx=Ixx Iyy=Iyy a=a b=b tf=tf tr=tr h=h mf=mf mr=mr L=L M_s=M_s g=g Rw_f=Rw_f Rw_r=Rw_r Iw=Iw η=η final=final bias=bias Tbrake_max=Tbrake_max CdA=CdA ρair=ρair throttle=throttle0 brake=brake0 δ=steer0 gear=gear0 clutch=0.0 hrc_f=0.0 hrc_r=0.0 antistall=0.0 as_r0=1957.0 as_k=495.0 as_w=490.0 Ie=(ENGINE_LUMPED ? 0.18 : IE_ENGINE) Igb=(ENGINE_LUMPED ? 0.0 : DRIVELINE_INPUT ? 0.18 - IE_ENGINE : IE_DRIVELINE) c_c=60.0 T_cap=500.0 k_idle=0.5 idle_rpm=2000.0 zrFL=0.0 zrFR=0.0 zrRL=0.0 zrRR=0.0 vrFL=0.0 vrFR=0.0 vrRL=0.0 vrRR=0.0 Fx_ext=0.0 Fy_ext=0.0 Mz_ext=0.0 CdA_scale=1.0 c_abl=(cmb && USE_TYRE3 ? TYRE3.cabl : C_ABL) toe_f=toe_f toe_r=toe_r karb_f=karb_f karb_r=karb_r
+    ps = @parameters m=m Izz=Izz Ixx=Ixx Iyy=Iyy a=a b=b tf=tf tr=tr h=h mf=mf mr=mr L=L M_s=M_s g=g Rw_f=Rw_f Rw_r=Rw_r Iw=Iw η=η final=final bias=bias Tbrake_max=Tbrake_max CdA=CdA ρair=ρair throttle=throttle0 brake=brake0 δ=steer0 gear=gear0 clutch=0.0 hrc_f=0.0 hrc_r=0.0 ClAf=claf ClAr=0.0 antistall=0.0 as_r0=1957.0 as_k=495.0 as_w=490.0 Ie=(ENGINE_LUMPED ? 0.18 : IE_ENGINE) Igb=(ENGINE_LUMPED ? 0.0 : DRIVELINE_INPUT ? 0.18 - IE_ENGINE : IE_DRIVELINE) c_c=60.0 T_cap=500.0 k_idle=0.5 idle_rpm=2000.0 zrFL=0.0 zrFR=0.0 zrRL=0.0 zrRR=0.0 vrFL=0.0 vrFR=0.0 vrRL=0.0 vrRR=0.0 Fx_ext=0.0 Fy_ext=0.0 Mz_ext=0.0 CdA_scale=1.0 c_abl=(cmb && USE_TYRE3 ? TYRE3.cabl : C_ABL) toe_f=toe_f toe_r=toe_r karb_f=karb_f karb_r=karb_r
     brk = BrakeSystem(; name = :brk, bias_p = brake_bias_p)   # CARPHYS-1 S6 (chassis_parts.jl)
     tank = FuelTank(; name = :tank, x = tank_x)               # IRGOLD-1 / FUEL-1
     if cmb
@@ -150,6 +152,10 @@ function DrivenVehicle3D(; name,
     # hedge/haybale = weak spring + strong damper): the game loop computes F = kδ + cδ̇ from penetration
     # and feeds it here, so the impulse is INTEGRATED by the ODE (no ad-hoc bumpX!).
     gr = gear*final; drag = 0.5*ρair*CdA*CdA_scale*u*abs(u)
+    # IRGOLD-1 S20: aerodynamic LIFT per axle (+ = downforce), ½ρ·ClA·u² acting on the sprung body over each axle. The gold's
+    # front suspension EXTENDS with speed on every straight beyond the drag/thrust couple (261012/tools/aerolift.py):
+    # iRacing's wingless Lotus 49 lifts at the nose. ClAf = ClAr = 0 is the car before S20.
+    Laf = 0.5*ρair*ClAf*u^2; Lar = 0.5*ρair*ClAr*u^2
     # the car's mass now: the fuel burnt since the build has left it. The tank's PARAMETER, not its observed `dm`: a mass
     # coefficient that depends on a variable makes MTK keep a mass matrix, and the integrator then re-initialised every
     # outside state edit away (a teleport snapped back to the spawn on the next step -- netcollide_smoke, IRGOLD-1 S2)
@@ -289,10 +295,10 @@ function DrivenVehicle3D(; name,
                    - tf/2*(Fxb[1]-Fxb[2]) - tr/2*(Fxb[3]-Fxb[4]) + Mz[1]+Mz[2]+Mz[3]+Mz[4] + Mz_ext,
         # ---- sprung body vertical / attitude (explicit gravity → can go airborne) ----
         D(z) ~ w,
-        (M_s - tank.m_burn)*D(w) ~ ΣFs - (M_s - tank.m_burn)*g,     # FUEL-1: burnt fuel no longer weighs on the springs
+        (M_s - tank.m_burn)*D(w) ~ ΣFs - (M_s - tank.m_burn)*g - Laf - Lar,     # S20: downforce pushes the body down     # FUEL-1: burnt fuel no longer weighs on the springs
         az ~ D(w) + g,                                    # accelerometer specific force (≈ g static, 0 in free-fall)
         D(th) ~ q,
-        Iyy*D(q) ~ (xs[1]*Fsusp[1]+xs[2]*Fsusp[2]+xs[3]*Fsusp[3]+xs[4]*Fsusp[4]) + h*ΣFx + tank.m_burn*g*tank.x,   # pitch: susp + braking dive (+ FUEL-1: the burnt fuel's weight gone at the tank)
+        Iyy*D(q) ~ (xs[1]*Fsusp[1]+xs[2]*Fsusp[2]+xs[3]*Fsusp[3]+xs[4]*Fsusp[4]) + h*ΣFx + tank.m_burn*g*tank.x - a*Laf + b*Lar,   # pitch: susp + braking dive (+ FUEL-1: the burnt fuel's weight gone at the tank)
         D(ph) ~ pp,
         Ixx*D(pp) ~ (ys[1]*Fsusp[1]+ys[2]*Fsusp[2]+ys[3]*Fsusp[3]+ys[4]*Fsusp[4]) + h*ΣFy,  # roll: susp + cornering
         # ---- powertrain (identical to DrivenVehicleRT) ----

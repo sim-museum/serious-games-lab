@@ -45,6 +45,11 @@ using ModelingToolkit: t_nounits as t, D_nounits as D
 #               Below 3,700 rpm and above 8,900 rpm the table holds its end slope.
 const CDA_IBT = 0.480                 # m², at the model's ρair 1.10 (the Ring session's AirDensity 1.099)
 const CRR_IBT = 0.0139
+# IRGOLD-1 S20: front LIFT area [m²] (+ = downforce). The gold's front suspension extends with speed on every straight
+# (39 of 39 sessions' straights pooled: dF/dq −0.29 m² incl. the drag/thrust couple; on flat Monza/Charlotte −0.10..−0.27),
+# 261012/tools/aerolift.py; −0.12 reproduces flat Monza's +7..+10 mm of front wheel droop at 216 km/h in the sim (no lift:
+# −2 mm). The rear is neutral within its scatter. ~260 N of lift at 216 km/h, ~480 N at 300.
+const AERO_CLAF = -0.12
 # WWSETUP-1 (2026-10-06): the rear LSD (DrivenVehicle3D `diff`). LSD_K = friction faces × μ × radius ratio per
 # clutch plate, the one constant the iRacing garage does not show; identified from the gold's rear wheel-speed split
 # with both setups' ramps on the same value (tools/lsdfit_261005.jl). LSD_WEPS = the stick-slip regularisation [rad/s].

@@ -139,7 +139,15 @@ const TYRE2 = (μf = 1.347, μr = 1.494, Cαf = 26.17, Cαr = 27.77)
 # with the same progressive shape and more grip (μ 1.65 upright, before the camber law). Steady state against the gold
 # (75 cells): high-g errors β/αf/αr 0.71/0.78/0.72° -> 0.2-0.4°, cornering drag at the limit -177 -> ~-40 N, unholdable
 # cells 17 -> 8; the transient replay metric 2.412 -> 2.260 (all 245 windows, both setups).
-const TYRE3 = (μf = 1.40, μr = 1.65, Cαf = 24.0, Cαr = parse(Float64, get(ENV, "JM_TYRE3_CAR", "27.77")), nshf = 5.0, nshr = 5.0, kμ = 0.082, cabl = 0.40)   # IRGOLD-1 S16: JM_TYRE3_CAR A/B
+# IRGOLD-1 S20 (2026-10-13): from S19's joint closed-loop search over every gold window incl. IRTEST-261012, judged on fresh
+# evaluations: the REAR's slip stiffness falls with load (nsr 0.75: CFα ∝ Fz^0.75 on the rears -- the gold's rear runs
+# ~0.8° more slip at the limit, in the Parabolica drifts and the skidpad holds alike, without softening the straight-line
+# rear the 200/240 km/h WOT check needs), front Cα 24 → 23 and the slip-work drag 0.40 → 0.35; with the measured front lift
+# (vehicle_3d ClAf) closed loop 1.2183 → 1.1623, open loop 1.1649 → 1.1692 (its open-loop slide windows are chaotic),
+# stability suite clean. JM_IRG_S20=0 = the S19 tyre (and no lift).
+const IRG_S20 = get(ENV, "JM_IRG_S20", "1") != "0"
+const TYRE3 = (μf = 1.40, μr = 1.65, Cαf = IRG_S20 ? 23.0 : 24.0, Cαr = parse(Float64, get(ENV, "JM_TYRE3_CAR", "27.77")),
+               nshf = 5.0, nshr = 5.0, kμ = 0.082, cabl = IRG_S20 ? 0.35 : 0.40, nsr = IRG_S20 ? 0.75 : 1.0)   # IRGOLD-1 S16: JM_TYRE3_CAR A/B
 const USE_TYRE3 = !haskey(ENV, "JM_TYRE2")
 # IRGOLD-1 S5: with relaxation the steering column reads the front force at the KINEMATIC slip (vehicle_3d.jl);
 # JM_COLUMN_RELAXED=1 = the relaxed force (S4)

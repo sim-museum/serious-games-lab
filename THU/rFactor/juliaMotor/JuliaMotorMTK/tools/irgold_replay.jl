@@ -84,7 +84,7 @@ function goldfile(fn)
     f = ibt_open(fn); sp = setup_params(f.yaml)
     c = Dict{String,Vector{Float64}}()
     for n in ("Speed", "SteeringWheelAngle", "Throttle", "Brake", "Clutch", "ClutchRaw", "Gear", "RPM", "Alt", "IsOnTrackCar", "AirDensity",
-              "PlayerTrackSurface", "Roll", "LFspeed", "RFspeed", "LRspeed", "RRspeed")
+              "PlayerTrackSurface", "Roll", "LFspeed", "RFspeed", "LRspeed", "RRspeed", "LapDist")
         x = ch(f, n); x === nothing || (c[n] = x)
     end
     for n in ("YawRate", "LatAccel", "LongAccel", "VelocityX", "VelocityY", "SteeringWheelTorque", "RollRate",
@@ -102,6 +102,30 @@ function goldfile(fn)
         ds = s[k+60] - s[k-60]; ds > 30 && (grade[k] = (c["Alt"][k+60] - c["Alt"][k-60])/ds)
     end
     c["grade"] = grade
+    # IRGOLD-1 S20: the road's BANK/CAMBER, measured by the gold itself (JM_IRG_BANK=1). The accelerometer reads the tyres'
+    # force (specific force); the kinematic lateral acceleration is dVy/dt + Vx·r; the difference is gravity's lateral
+    # component g·sin(bank), plus the accelerometer's tilt with the body's own roll (shock deflections). Per sample that is
+    # noisy (sd ~2.7° on flat Monza), so it is averaged by position: 25 m LapDist bins, the median of each pass's median,
+    # kept where ≥ 2 passes saw the bin (else 0). The replay applies it as Fy_ext = m·g·sin(bank): the sim's tyres then
+    # need the gold's tyre force (its accelerometer), not the flat-road v·r. 0 everywhere without JM_IRG_BANK.
+    bank = zeros(n)
+    if get(ENV, "JM_IRG_BANK", "0") == "1" && haskey(c, "LapDist")
+        vy = c["VelocityY"]; dvy = similar(vy); dvy .= 0.0
+        for k in 7:n-6; dvy[k] = (vy[k+6] - vy[k-6])*60/12; end
+        est = [asin(clamp((dvy[k] + c["VelocityX"][k]*c["YawRate"][k] - c["LatAccel"][k])/G, -1.0, 1.0)) +
+               deg2rad(0.5*(c["rollF"][k] + c["rollR"][k])) for k in 1:n]
+        ld = c["LapDist"]; pass = cumsum([0; diff(ld) .< -500])
+        bins = Dict{Int,Dict{Int,Vector{Float64}}}()
+        for k in 1:n
+            (v[k] > 15 && isfinite(ld[k]) && ld[k] >= 0) || continue
+            push!(get!(get!(bins, floor(Int, ld[k]/25), Dict{Int,Vector{Float64}}()), pass[k], Float64[]), est[k])
+        end
+        bmap = Dict(b => median([median(x) for x in values(P)]) for (b, P) in bins if length(P) >= 2)
+        for k in 1:n
+            isfinite(ld[k]) && ld[k] >= 0 && (bank[k] = get(bmap, floor(Int, ld[k]/25), 0.0))
+        end
+    end
+    c["bank"] = bank
     # running tyre pressures (median while moving) relative to the 152 kPa reference: BrushTyre `prel`
     mv = v .> 15
     prel = Tuple(begin x = ch(f, w*"pressure"); x === nothing || !any(mv) ? 0.0 : median(x[mv])/152 - 1 end for w in ("LF", "RF", "LR", "RR"))
@@ -261,6 +285,7 @@ function replay(car, sp, u0, g, w; warm = nothing)
     # the session's own air density (the sim's is fixed at 1.10; Monza ran 1.151, the skidpad 1.135, the Ring 1.099)
     haskey(g.c, "AirDensity") && ModelingToolkit.setp(car.sys, car.sys.ρair)(car.integ, median(g.c["AirDensity"]))
     c = g.c; m = sum(values(sp.corner_weight_N))/9.81; sr = sp.steering_ratio
+    car.s_fy(car.integ, m*G*sin(c["bank"][w.k0]))                 # S20: the settle on the window start's bank (0 if off)
     gr = clamp(round(Int, c["Gear"][w.k0]), 1, 5)
     off = rad2deg(c["SteeringWheelAngle"][w.k0])
     if w.kind === :steady || w.kind === :brake || w.kind === :trail
@@ -297,6 +322,7 @@ function replay(car, sp, u0, g, w; warm = nothing)
             δ += clamp(0.5ek + cint, -0.2, 0.2)
         end
         car.s_fx(car.integ, -m*G*sin(atan(c["grade"][j])))
+        car.s_fy(car.integ, m*G*sin(c["bank"][j]))                 # S20 (JM_IRG_BANK): 0 on a flat road
         DriveRT3D.step_car3d!(car, c["Throttle"][j], c["Brake"][j], δ/DriveRT3D.MAXSTEER, 1/60;
                               clutch = 1.0 - clamp((IRG_RAWCLUTCH && haskey(c, "ClutchRaw") ? c["ClutchRaw"] : c["Clutch"])[j], 0, 1),
                               up = up, dn = dn, manual = true)

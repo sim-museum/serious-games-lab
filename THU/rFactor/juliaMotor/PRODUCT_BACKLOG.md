@@ -25737,3 +25737,42 @@ usual rotation (≤ 6 per item).
   front runs 0.3-0.6° more slip than the gold's at 1.14-1.17 g at 152 kPa (the steady skidpad cells, where the front
   matched, run 152/207). Open: the front's pressure sensitivity.
 * Gates (S18 commit: RollCentreLink, the p-norm build switch, neutral by default): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).
+
+### IRGOLD-1 S19 (2026-10-13): a joint search, closed loop, over the rear's load sensitivity, the front stiffness, the slip drag
+* Retro: S7/S8/S12/S13/S16/S18 each tried ONE lever on the rear at the limit; each fixed the drifts and lost elsewhere. A
+  joint coordinate search (irgold_fit coord, JM_IRG_CLOSED=1, all 383 windows incl. 261012): nsr (rear ns), caf (front
+  Cα), cabl (slip-work drag -- the big-slide speed errors that sank nsr alone).
+* Path: start 1.2183; cabl 0.30 → 1.2137; nsr 0.75 → 1.1944; cabl 0.35 → 1.1711; caf 23 → 1.1704. The FINAL re-evaluation
+  of the same point gave 1.1913: inside one process the metric is path-dependent (each settle warm-starts from the previous
+  evaluation) by ±0.02 -- the size of many of the effects chased since S12. Fresh single-evaluation runs reproduce exactly
+  (the baseline gave 1.2183 twice). **Lesson: judge candidates only with fresh eval runs; treat in-search J as a guide.**
+* Best point nsr 0.75, caf 23.0, cabl 0.35 (closed 1.2183 → 1.1913 fresh). Judged next with the open-loop metric and the
+  stability suite (S20) before any shipping.
+
+### IRGOLD-1 S20 (2026-10-13): the S19 tyre + the measured FRONT LIFT -- shipped
+* **Front lift, found:** on every session's straights (|ay| < 0.05 g, |ax| < 0.08 g) the gold's front suspension EXTENDS
+  with speed (`261012/tools/aeroload.py`, `aerolift.py`): front axle load vs ½ρv² −0.29 m² pooled (90 % CI −0.36..−0.22,
+  35 of 39 files negative), −0.10..−0.27 on flat Monza/Charlotte, against a drag/thrust couple of −0.06; the rear is
+  neutral within its scatter. iRacing's wingless Lotus 49 lifts at the nose. New in `vehicle_3d.jl`: `ClAf`/`ClAr`, ½ρ·ClA·u²
+  on the sprung body over each axle (heave + pitch). Validated on the suspension itself: in the sim's straight-line test
+  ClAf −0.12 gives +9.0 mm of front wheel droop at 60 m/s (flat Monza gold +7.2..+9.9 mm; without lift −2.0 mm).
+* **Bank map** (`JM_IRG_BANK=1` in irgold_replay): the gold's own accelerometer-vs-kinematic difference, roll-corrected and
+  averaged by 25 m LapDist bins over passes. At the Glen it moves the front slip 7.18 → 6.75° (gold 5.60): banking is not
+  the Glen's front gap. Kept as an option (off).
+* **Fresh evaluations** (S19's lesson), all 23 files open loop / 34 files closed loop:
+  | car | open | closed |
+  |---|---|---|
+  | S15-S18 car | 1.1649 | 1.2183 |
+  | S19 point (nsr 0.75, caf 23, cabl 0.35) | 1.1629 | 1.2071 |
+  | front lift −0.12 alone | 1.1852 | 1.1909 |
+  | **both (shipped)** | **1.1692** | **1.1623** |
+  Open loop the lift loses only on the WW skidpad slides (60-90 km/h, where lift is ~40 N: the chaotic open-loop slide
+  windows of S13) and wins the fast Ring windows (T3 bias53.5 1.19 → 1.15, T7 fuel145/180/20 0.60/0.27/0.90 →
+  0.56/0.21/0.77). Stability suite (both setups): penalty 0; trail braking from 250 km/h calmer (max β 9.1° / 11.2° at
+  pedal 0.4, was 16.9° / 25.7°).
+* **Shipped** on the session car (TYRE3): rear ns 0.75, front Cα 23, c_abl 0.35, ClAf −0.12 (`powertrain.jl AERO_CLAF`).
+  The defaults reproduce 1.1623 exactly. `JM_IRG_S20=0` = the S19 car.
+* **What the PO will feel:** at high speed the nose gets lighter -- less front bite and a lighter wheel on the Döttinger
+  Höhe, Monza's straights and the Glen's fast sweepers (~260 N of lift at 216 km/h, ~480 N at 300); under power at the
+  limit the rear lets go a little more progressively and holds a slightly wider drift, as iRacing's does.
+* Gates (S20 commit): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).
