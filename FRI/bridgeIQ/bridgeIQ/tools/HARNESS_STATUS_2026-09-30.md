@@ -867,3 +867,70 @@ attitude 89->92%, 5C 87->96%. Paired defence vs DD declarer, 160 deals:
 Open: biq's second-seat rise with A/K on declarer's low lead is unstable
 run to run (search budget) where Q-Plus always ducks; the probe design gave
 East a spade sequence, so low-card heart holdings were led away from.
+
+## 2/1 run boards 385-569 on bf28628b; worst boards; bidding probes (2026-10-11)
+
+Run 261009_qplus_21_biqS resumed at 385 after a PC reboot, stopped at 06:17
+(West silent, ~7.5 h in): boards 385-569 -230 IMP / 185 (-1.24/bd); all of
+bf28628b (320-569) -319 / 250 (-1.28/bd) vs -3.3/bd on boards 1-319. Paused
+at 570 (RESUME.txt) for a probe run.
+
+Our side in BOTH rooms is biq South + Q-Plus North; closed-room hands are
+rotated (closed S = open E). biq IMP = imp(open.ns_score + closed.ns_score).
+Worst boards, biq's call replayed through the rule bidder (TwoOverOne):
+* 493 (-21) closed: KQ63.-.AKQT8732.2, 1D-(2C)-P-(P): rules 2D, bid_sim
+  jumped to 5D (+5.5 predicted); Q-Plus partner pulled to 5H, 5HX -2000.
+  Q-Plus with the same hand reopened 2S (open room).
+* 535 (-19): closed P-3S-4H-4S-6H-P-P, biq AK82.-.KJ963.Q976 passed (no rule;
+  6S makes); open: biq -.QJ754.Q82.AT432 passed 5S ("overcaller rebid"
+  route, biq was the advancer); Q-Plus with that hand bid 6H at once.
+* 408 (-15) open: 1NT-2C(Q-Plus partner)-P: biq passed, 2CX -6 = -1400.
+  A-2-1-A plays O-1NT.Multi-Landy; biq's TwoOverOne has neither Landy nor
+  Multi-Landy (SAYC/Precision have Landy), so the advance rule never fires.
+* 458 (-15): closed dealer A964.AQT73.-.T653 passed ("insufficient values";
+  Q-Plus opens 1H); open 19-count passed 5H after partner's 4S ("respect
+  signoff"; X = +200); defence lost 3 DD tricks across the rooms.
+* 481 (-14) open: AK8.-.AQT932.AJ73 over partner's weak 2S: 4S ("game in
+  major preempt"); 7S cold, Q-Plus 2NT ask -> 7S.
+* 557 (-14) closed: 2C-2D-2H-3H-3S: biq 4S ("Sanity: raise partner's
+  suit": a cue-bid after hearts were agreed read as natural); Q-Plus took
+  spades as trumps, 6S -2 (6H/7H cold).
+* 553 (-13) closed: 1D-X-1H-P-2D-X-P: biq 3D ("advance takeout double:
+  minor" - their suit) with 62.T765.9732.AJ3; partner 4S on four, -200.
+* 454 (-12): closed 1D-1S-(3C)-3S-(4C)-P-P: rules 4D, bid_sim P (+4.4
+  predicted), 4S makes; open 1D-P-1S-3C-X-P-3D-P-4C: "simple raise of
+  overcall [legalized from 4C]" became 5C, 5CX -800.
+Themes: Multi-Landy missing in 2/1; partnership reads of Q-Plus partner's
+cue-bids; slam tries opposite weak twos; 5/6-level competition after a
+raised preempt; bid_sim overrides at high levels (493, 454); legalizer
+lifting a raise to the 5-level (454).
+
+Probe run prepared: tools/qplus_probe.py families mlandy (Multi-Landy
+overcall + advance), wslam (strong hand opposite a weak two), hicomp
+(5/6-level after a raised preempt, both sides), second (second hand in a
+4S contract: side suit both directions + trumps). Deck
+tools/runs/probes/bid21second1 (seed 261011, 339 bidding then 118 play),
+run dir tools/runs/bluechip/probe_bid21second1 (RESUME.txt). Smoke-tested
+with bluechip_test_client: scripted calls, per-board dealer/vul and the
+scripted probe lead all work.
+
+### Probe run bid21second1, interim read (2026-10-11, boards 1-229 of 457)
+Reader: tools/qplus_probe_read21.py (asks biq's TwoOverOne bidder for its call at every
+Q-Plus call; DD of each contract). Interim scoring scripts sum21.py/alt21.py in the session scratchpad.
+- Multi-Landy (mlandy): Q-Plus 2C* = both majors (5-5 always, 5-4 often; 4-4 passes, so the
+  13 "advance 44M" boards tested nothing), 2D* = one six-card major, 2H*/2S* = that major + a
+  five-card minor, 2NT* = minors (rare), X = strong balanced (rare); passes single minors and
+  most 5-4 major-minor. Advancer over 2C bids the longer major (2D with equal), over 2D bids 2H
+  pass-or-correct, over 2H/2S uses 2NT to ask for the minor. biq has none of it: passes the
+  two-suiters, bids its long major naturally, and answers partner's 2C/2D naturally.
+  DD vs 1NT passed out: overcalls about break-even (+3 IMPs / 23), advances +105 / 70.
+  The value for biq is mainly understanding partner Q-Plus's calls (board 408).
+- Weak-two slams (wslam): Q-Plus opened the intended weak two on 25 of 38 boards (else 1-level, 3-level, pass).
+  West asks with 2NT or a forcing new suit, then cue-bids / RKCB: 14 slams made DD, 2 failed;
+  +124 IMPs over 38 boards vs simply playing game in East's suit. biq's West jumps straight to
+  game at the first turn. **Bug: biq as weak-two opener passed partner's forcing 2NT in 5 of
+  17 cases** (boards 34, 91, 130, 170, 175).
+- High competition (hicomp): Q-Plus's East saves at the 5/6 level (5S over 5H, 6S over 6H) gained
+  +282 IMPs DD on 30 boards (28 better, 2 worse) vs passing; biq would pass in 22 of them. As
+  the sac-side West, Q-Plus's bids over 4S/5S: +99 IMPs on 18 boards (11 better, 7 worse). Q-Plus opens
+  some 7-card spade hands 2S (14 of 49) where biq opens 3S or passes.

@@ -499,6 +499,15 @@ BIDDING_SYSTEMS = [
     ("M-64", "(3D)-?: 13 HCP with both majors doubles for takeout",
      "Precision90M", "N", "NS", "p 3d", "S", "AKT2.A954.T94.Q7",
      "P", {"X"}),
+    ("21-790", "(3S)-?: ten hearts AKQJ (11 playing tricks) bids game, never passes",
+     "TwoOverOne", "E", "None", "3s", "S", "-.AKQJT65432.K4.6",
+     "P", {"4H"}),
+    ("21-779", "4S-(5H)-5S-(6H): our 5S was a save over partner's preempt, no double of their slam",
+     "TwoOverOne", "N", "None", "4s 5h 5s 6h p p", "S", "K86.7.QT9876.J42",
+     "X", {"P"}),
+    ("P-862", "1C-(P)-2D-(2H)-3D-(3H)-P-(P)-4H: partner's cue of their suit is never passed",
+     "Precision90M", "N", "NS", "1c p 2d 2h 3d 3h p p 4h p", "S", "K942.K53.Q8652.9",
+     "P", {"4S", "5D"}),
 ]
 
 

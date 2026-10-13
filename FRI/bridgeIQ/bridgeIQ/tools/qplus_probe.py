@@ -337,9 +337,316 @@ def decl_boards(rng, k=8):
     return boards
 
 
+# ---------------------------------------------------------------------------
+# Bidding probes (2026-10-11), from the worst boards of the 2/1 run
+# (tools/runs/bluechip/261009_qplus_21_biqS, boards 385-569). biq N/S make
+# scripted calls and Q-Plus E/W bid freely on its A-2-1-A card; each family
+# holds the scripted calls fixed and moves one thing in a Q-Plus hand, so
+# Q-Plus's calls can be read against it. Hands are dealt seat by seat to
+# exact shapes and HCP ranges.
+
+def _lens(h):
+    return {s: sum(1 for c in h if c[0] == s) for s in "SHDC"}
+
+
+def _balanced(h):
+    return sorted(_lens(h).values()) in ([3, 3, 3, 4], [2, 3, 4, 4], [2, 3, 3, 5])
+
+
+def _shapes(ok):
+    """Every (S, H, D, C) shape accepted by ok(shape dict)."""
+    out = []
+    for s, h, d in itertools.product(range(14), repeat=3):
+        c = 13 - s - h - d
+        if c >= 0 and ok({"S": s, "H": h, "D": d, "C": c}):
+            out.append((s, h, d, c))
+    return out
+
+
+def _draw(rng, pool, fixed, shapes, ok, tries=400):
+    """13 cards: `fixed` plus cards from `pool`, with one of `shapes` (exact
+    suit lengths; None = any) and accepted by ok(hand)."""
+    for _ in range(tries):
+        if shapes:
+            h = list(fixed)
+            for s, n in zip("SHDC", rng.choice(shapes)):
+                need = n - sum(1 for c in fixed if c[0] == s)
+                cs = [c for c in pool if c[0] == s]
+                if need < 0 or need > len(cs):
+                    break
+                h += rng.sample(cs, need)
+            else:
+                if ok is None or ok(h):
+                    return h
+        else:
+            h = list(fixed) + rng.sample(pool, 13 - len(fixed))
+            if ok is None or ok(h):
+                return h
+    return None
+
+
+def _deal(rng, specs, order, tries=3000):
+    """Deal seat by seat in `order`; the last seat takes what is left. specs:
+    {seat: {"shapes": [...], "fixed": [cards], "ok": hand -> bool}}; a seat's
+    fixed cards are kept out of the other seats' draws."""
+    full = [(s, r) for s in "SHDC" for r in RK]
+    reserved = {c for sp in specs.values() for c in sp.get("fixed", ())}
+    for _ in range(tries):
+        left, hands = list(full), {}
+        for i, seat in enumerate(order):
+            sp = specs.get(seat, {})
+            if i == 3:
+                h = left
+                if sp.get("shapes") and tuple(_lens(h)[s] for s in "SHDC") not in sp["shapes"]:
+                    break
+                if sp.get("ok") and not sp["ok"](h):
+                    break
+            else:
+                mine = set(sp.get("fixed", ()))
+                pool = [c for c in left if c not in reserved and c not in mine]
+                h = _draw(rng, pool, sp.get("fixed", ()), sp.get("shapes"), sp.get("ok"))
+                if h is None:
+                    break
+            hands[seat] = h
+            left = [c for c in left if c not in h]
+        else:
+            return hands
+    raise RuntimeError("no deal found")
+
+
+def _band(lo, hi, extra=None):
+    return lambda h: lo <= hcp(h) <= hi and (extra is None or extra(h))
+
+
+def _pass(n=10):
+    return ["P"] * n
+
+
+def _board(family, hands, dealer, vul, calls, **design):
+    return {"family": family, "dealer": dealer, "vul": vul, "calls": calls,
+            "hands": {x: pbn_hand(hands[x]) for x in SEATS}, **design}
+
+
+# Family "mlandy": Q-Plus over a 1NT opening (A-2-1-A plays Multi-Landy:
+# O-1NT.Multi-Landy). N opens 1NT (15-17 balanced, no five-card major), S
+# passes. Part "overcall": East's hand type moves (both majors, one major,
+# major + minor, minors, a strong balanced hand, a light 4-4), at both
+# vulnerabilities. Part "advance": East's hand is FIXED per type and West's
+# major lengths and strength move, so West's answer to East's call shows.
+# Board 408 (-15): biq passed partner's 2C (both majors) as natural, 2CX -6.
+_NT_OPENER = {"ok": lambda h: 15 <= hcp(h) <= 17 and _balanced(h) and max(_lens(h)["S"], _lens(h)["H"]) <= 4}
+_ML_TYPES = {
+    "44M": (lambda x: x["S"] == 4 and x["H"] == 4 and min(x.values()) >= 1, 8, 14),
+    "54M": (lambda x: x["S"] == 5 and x["H"] == 4 and min(x.values()) >= 1, 8, 14),
+    "45M": (lambda x: x["S"] == 4 and x["H"] == 5 and min(x.values()) >= 1, 8, 14),
+    "55M": (lambda x: x["S"] == 5 and x["H"] == 5, 6, 14),
+    "6S": (lambda x: x["S"] == 6 and x["H"] <= 3 and max(x["D"], x["C"]) <= 3, 8, 14),
+    "6H": (lambda x: x["H"] == 6 and x["S"] <= 3 and max(x["D"], x["C"]) <= 3, 8, 14),
+    "5S5m": (lambda x: x["S"] == 5 and x["H"] <= 2 and max(x["D"], x["C"]) == 5, 8, 14),
+    "5H5m": (lambda x: x["H"] == 5 and x["S"] <= 2 and max(x["D"], x["C"]) == 5, 8, 14),
+    "5S4m": (lambda x: x["S"] == 5 and x["H"] <= 2 and max(x["D"], x["C"]) == 4, 9, 14),
+    "5H4m": (lambda x: x["H"] == 5 and x["S"] <= 2 and max(x["D"], x["C"]) == 4, 9, 14),
+    "6m": (lambda x: max(x["D"], x["C"]) == 6 and max(x["S"], x["H"]) <= 3 and min(x["D"], x["C"]) <= 3, 8, 14),
+    "55m": (lambda x: x["D"] >= 5 and x["C"] >= 5, 7, 13),
+    "bal": (lambda x: sorted(x.values()) in ([3, 3, 3, 4], [2, 3, 4, 4]), 15, 18),
+    "44M_light": (lambda x: x["S"] == 4 and x["H"] == 4 and min(x.values()) >= 1, 4, 7),
+}
+_ML_ADVANCE = {         # East type -> West (spades, hearts) lengths to try
+    "44M": [(2, 2), (3, 2), (2, 3), (3, 3), (4, 2), (2, 4), (1, 3), (3, 1)],
+    "54M": [(2, 2), (3, 2), (2, 3), (3, 3), (4, 2), (2, 4), (1, 3), (3, 1)],
+    "45M": [(2, 2), (3, 2), (2, 3), (3, 3), (4, 2), (2, 4), (1, 3), (3, 1)],
+    "55M": [(2, 2), (3, 2), (2, 3), (3, 3), (4, 2), (2, 4), (1, 3), (3, 1)],
+    "6S": [(1, 1), (2, 1), (1, 2), (3, 1), (1, 3), (2, 2), (3, 2), (2, 3)],
+    "6H": [(1, 1), (2, 1), (1, 2), (3, 1), (1, 3), (2, 2), (3, 2), (2, 3)],
+    "5S5m": [(1, 3), (2, 3), (3, 2), (4, 2)],
+    "5H5m": [(3, 1), (3, 2), (2, 3), (2, 4)],
+}
+_ML_W_BANDS = ((2, 6), (9, 12))
+
+
+def mlandy_boards(rng, per_type=2):
+    boards = []
+    calls = {"N": ["1NT"] + _pass(9), "S": _pass()}
+    for et, (shape_ok, lo, hi) in _ML_TYPES.items():
+        e_spec = {"shapes": _shapes(shape_ok), "ok": _band(lo, hi)}
+        for vul in ("None", "Both"):
+            for _ in range(per_type):
+                hands = _deal(rng, {"E": e_spec, "N": _NT_OPENER}, "ENWS")
+                boards.append(_board("mlandy", hands, "N", vul, calls, part="overcall", etype=et,
+                                     E=pbn_hand(hands["E"])))
+    for et, w_lens in _ML_ADVANCE.items():
+        shape_ok, lo, hi = _ML_TYPES[et]
+        mid = (max(lo, 10), min(hi, 12))      # a clear overcall, so West gets to answer
+        e_hand = _deal(rng, {"E": {"shapes": _shapes(shape_ok), "ok": _band(*mid)}, "N": _NT_OPENER}, "ENWS")["E"]
+        for sp, hr in w_lens:
+            for wlo, whi in _ML_W_BANDS:
+                w_ok = _band(wlo, whi, lambda h, sp=sp, hr=hr: _lens(h)["S"] == sp and _lens(h)["H"] == hr
+                             and max(_lens(h)["D"], _lens(h)["C"]) <= 6)
+                hands = _deal(rng, {"E": {"fixed": e_hand}, "N": _NT_OPENER, "W": {"ok": w_ok}}, "ENWS")
+                boards.append(_board("mlandy", hands, "N", "None", calls, part="advance", etype=et,
+                                     E=pbn_hand(e_hand), w_sp=sp, w_hr=hr, w_band=f"{wlo}-{whi}"))
+    return boards
+
+
+# Family "wslam": slam bidding opposite partner's weak two. East (dealer) holds
+# a weak two (six cards in S, H or D, 6-10 HCP, a top honour); West's strength,
+# fit and shape move; N/S pass. Board 481 (-14): biq jumped to 4S over
+# partner's 2S with AK8.-.AQT932.AJ73; Q-Plus asked with 2NT and bid 7S.
+_WS_TYPES = {           # name: (West's length in East's suit -> ok, shape ok, HCP range)
+    "fit3_void": (lambda k: k == 3, lambda x: min(x.values()) == 0, 15, 19),
+    "fit3_bal": (lambda k: k == 3, lambda x: min(x.values()) >= 2, 17, 20),
+    "fit3_big": (lambda k: k == 3, lambda x: True, 20, 22),
+    "fit4_short": (lambda k: k == 4, lambda x: min(x.values()) == 1, 14, 18),
+    "fit2_own": (lambda k: k == 2, lambda x: max(x.values()) >= 6, 17, 21),
+    "fit2_bal": (lambda k: k == 2, lambda x: min(x.values()) >= 2 and max(x.values()) <= 4, 16, 19),
+    "fit01_own": (lambda k: k <= 1, lambda x: max(x.values()) >= 6, 16, 20),
+}
+
+
+def wslam_boards(rng, per=3):
+    boards = []
+    calls = {"N": _pass(), "S": _pass()}
+    for suit in "SHD":
+        others = [s for s in "SH" if s != suit]
+        e_shapes = _shapes(lambda x: x[suit] == 6 and all(x[s] <= 3 for s in others) and min(x.values()) >= 1)
+        e_ok = _band(6, 10, lambda h: sum(1 for c in h if c[0] == suit and c[1] in "AKQ") >= 1
+                     and sum(HCP.get(c[1], 0) for c in h if c[0] == suit) >= 4)
+        for wt, (k_ok, sh_ok, lo, hi) in _WS_TYPES.items():
+            w_shapes = _shapes(lambda x: k_ok(x[suit]) and sh_ok(x) and max(x.values()) <= 7)
+            for _ in range(per):
+                hands = _deal(rng, {"E": {"shapes": e_shapes, "ok": e_ok},
+                                    "W": {"shapes": w_shapes, "ok": _band(lo, hi)}}, "EWNS")
+                boards.append(_board("wslam", hands, "E", "None", calls, suit=suit, wtype=wt,
+                                     E=pbn_hand(hands["E"]), W=pbn_hand(hands["W"])))
+    return boards
+
+
+# Family "hicomp": the 5-6 level after a raised preempt (board 535, -19).
+# Part "raise": W (Q-Plus, dealer) holds a 3S preempt, N overcalls 4H, East is
+# the raiser (spade support, heart shortness and strength move), S jumps to 5H
+# or 6H; read East's raise and both Q-Plus hands' answer to 5H/6H.
+# Part "sac": N opens 3S, East (6-7 hearts, 14-17) overcalls, S raises to 4S
+# and later bids 5S; West (heart support, spade shortness, strength move)
+# decides whether to save / bid on at the 5- and 6-level.
+def hicomp_boards(rng):
+    boards = []
+    w_pre = {"shapes": _shapes(lambda x: x["S"] == 7 and x["H"] <= 2 and max(x["D"], x["C"]) <= 3),
+             "ok": _band(5, 9, lambda h: sum(1 for c in h if c[0] == "S" and c[1] in "AKQ") >= 1)}
+    n_ovc = {"shapes": _shapes(lambda x: x["H"] >= 6 and x["S"] <= 1), "ok": _band(13, 17)}
+    s_fit = {"shapes": _shapes(lambda x: x["H"] >= 4 and x["S"] <= 2), "ok": _band(6, 12)}
+    for k in (3, 4):
+        for hr in (0, 1, 2):
+            for lo, hi in ((6, 9), (10, 13), (14, 17)):
+                e = {"shapes": _shapes(lambda x, k=k, hr=hr: x["S"] == k and x["H"] == hr and max(x.values()) <= 6),
+                     "ok": _band(lo, hi)}
+                for jump in ("5H", "6H"):
+                    for vul in ("None", "Both"):
+                        hands = _deal(rng, {"W": w_pre, "N": n_ovc, "E": e, "S": s_fit}, "WNES")
+                        calls = {"N": ["4H"] + _pass(9), "S": [jump] + _pass(9)}
+                        boards.append(_board("hicomp", hands, "W", vul, calls, part="raise", e_sp=k, e_hr=hr,
+                                             e_band=f"{lo}-{hi}", jump=jump, E=pbn_hand(hands["E"])))
+    n_pre = {"shapes": _shapes(lambda x: x["S"] == 7 and x["H"] <= 2 and max(x["D"], x["C"]) <= 3),
+             "ok": _band(6, 10, lambda h: sum(1 for c in h if c[0] == "S" and c[1] in "AKQ") >= 1)}
+    e_ovc = {"shapes": _shapes(lambda x: x["H"] in (6, 7) and x["S"] <= 1 and max(x["D"], x["C"]) <= 4),
+             "ok": _band(14, 17)}
+    s_rai = {"shapes": _shapes(lambda x: x["S"] >= 3), "ok": _band(10, 15)}
+    for k in (3, 4, 5):
+        for sp in (0, 1, 2):
+            for lo, hi in ((2, 6), (7, 11)):
+                w = {"shapes": _shapes(lambda x, k=k, sp=sp: x["H"] == k and x["S"] == sp and max(x.values()) <= 6),
+                     "ok": _band(lo, hi)}
+                for vul in ("None", "Both"):
+                    hands = _deal(rng, {"N": n_pre, "E": e_ovc, "W": w, "S": s_rai}, "NEWS")
+                    calls = {"N": ["3S"] + _pass(9), "S": ["4S", "5S"] + _pass(8)}
+                    boards.append(_board("hicomp", hands, "N", vul, calls, part="sac", w_hr=k, w_sp=sp,
+                                         w_band=f"{lo}-{hi}", W=pbn_hand(hands["W"])))
+    return boards
+
+
+# Family "second": second-hand play in a SUIT contract (BACKLOG; the earlier
+# probes saw Q-Plus second in hand only in 3NT). N opens 4S, all pass; East
+# leads from a QJT9 sequence and declarer's side wins with the A-K. Then the
+# leader (N, or dummy S when it holds the A-K) leads its lowest card of the
+# probe suit toward the third hand's honours (dummy's K-x, K-Q-x, Q-x ...);
+# the second-hand Q-Plus defender holds A-x, A-x-x, K-x ... or two small
+# (control); the fourth hand gets the rest of the suit. Part "trump": the
+# same with trumps (N leads low from Q-J-T-x-x-x toward dummy's K-x / K-x-x,
+# East holds A-x / A-x-x).
+_SH_THIRD = ("Kx", "Kxx", "KQx", "KJx", "Qx", "QJx")
+_SH_SECOND = ("Ax", "Axx", "Axxx", "Kx", "Kxx", "xx")
+
+
+def _ranks_for(rng, pattern, used):
+    """Ranks for an honour pattern like 'KQx': the honours, spots from 2-9."""
+    hon = [r for r in pattern if r != "x"]
+    spots = [r for r in "98765432" if r not in used and r not in hon]
+    return hon + rng.sample(spots, pattern.count("x"))
+
+
+def second_boards(rng, fills=2):
+    designs = []
+    for third in _SH_THIRD:
+        for sec in _SH_SECOND:
+            if set(third) & set(sec) - {"x"}:
+                continue
+            for lead_from in ("N", "S"):
+                designs.append(("side", third, sec, lead_from))
+    for third in ("Kx", "Kxx"):
+        for sec in ("Ax", "Axx"):
+            designs.append(("trump", third, sec, "N"))
+    boards = []
+    calls = {"N": ["4S"] + _pass(9), "S": _pass()}
+    ew_ok = _band(0, 10, lambda h: max(_lens(h).values()) <= 6)
+    for part, third, sec, lead_from in designs:
+        for _ in range(fills):
+            lsuit, psuit = rng.sample("HDC", 2)
+            if part == "trump":
+                psuit = "S"
+            o = {"N": "S", "S": "N"}
+            leader, third_seat = lead_from, o[lead_from]
+            second_seat = "E" if leader == "N" else "W"
+            fourth_seat = "W" if second_seat == "E" else "E"
+            used = []
+            t_r = _ranks_for(rng, third, used)
+            s_r = _ranks_for(rng, sec, used + t_r)
+            if part == "trump":
+                l_r = ["Q", "J", "T"] + rng.sample([r for r in "98765432" if r not in t_r + s_r], 3)
+            else:
+                l_r = rng.sample([r for r in "T98765432" if r not in t_r + s_r], 3)
+            f_r = [r for r in RK if r not in t_r + s_r + l_r]
+            if not 0 <= len(f_r) <= 6:
+                continue
+            fixed = {leader: [(psuit, r) for r in l_r], third_seat: [(psuit, r) for r in t_r],
+                     second_seat: [(psuit, r) for r in s_r], fourth_seat: [(psuit, r) for r in f_r]}
+            # trick 1: East leads from QJT9 in lsuit, the leader holds A-K-x there
+            fixed["E"] += [(lsuit, r) for r in "QJT9"]
+            fixed[leader] += [(lsuit, r) for r in "AK"]
+            if part == "side":       # declarer N holds six trumps with the A-K
+                fixed["N"] += [("S", r) for r in "AK"]
+            specs = {"N": {"fixed": fixed["N"], "ok": lambda h: _lens(h)["S"] == 6 and _lens(h)[lsuit] <= 3},
+                     "S": {"fixed": fixed["S"], "ok": lambda h: 2 <= _lens(h)["S"] <= 3},
+                     "E": {"fixed": fixed["E"], "ok": ew_ok},
+                     "W": {"fixed": fixed["W"], "ok": ew_ok}}
+            if part == "trump":
+                specs["N"]["ok"] = lambda h: _lens(h)[lsuit] <= 3
+                specs["S"]["ok"] = None
+            try:
+                hands = _deal(rng, specs, "NSEW")
+            except RuntimeError:
+                continue
+            lead = psuit + min(l_r, key=lambda r: -RK.index(r))
+            boards.append(_board("second", hands, "N", "None", calls, part=part, psuit=psuit, lsuit=lsuit,
+                                 third=third, second=sec, lead_from=leader, second_seat=second_seat,
+                                 P={leader: "".join(l_r), third_seat: "".join(t_r), second_seat: "".join(s_r),
+                                    fourth_seat: "".join(f_r)},
+                                 leads=[lead]))
+    return boards
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("family", choices=["count", "count2", "att", "all", "decl"])
+    ap.add_argument("family", choices=["count", "count2", "att", "all", "decl", "mlandy", "wslam", "hicomp",
+                                       "bid21", "second", "bid21second"])
     ap.add_argument("--out", required=True)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--max", type=int, default=60)
@@ -373,14 +680,35 @@ def main(argv=None):
         boards = (att_boards("3NT", "att") + att_boards("5C", "attS") + leads_boards(rng, a.lead_hands)
                   + count2_boards("KQJ98", ("N", "E", "W"), "count3")
                   + count2_boards("QJT98", ("N", "E", "W"), "count3"))
+    if a.family == "mlandy":
+        boards = mlandy_boards(rng)
+    if a.family == "wslam":
+        boards = wslam_boards(rng)
+    if a.family == "hicomp":
+        boards = hicomp_boards(rng)
+    if a.family in ("bid21", "bid21second"):
+        boards = mlandy_boards(rng) + wslam_boards(rng) + hicomp_boards(rng)
+    n_first = len(boards)
+    if a.family == "second":
+        boards = second_boards(rng)
+    if a.family == "bid21second":
+        boards += second_boards(rng)
     order = list(range(len(boards))) * a.repeat
-    if a.family in ("all", "decl"):
+    if a.family in ("all", "decl", "bid21", "second"):
         rng.shuffle(order)      # interleave the families / combinations
+    if a.family == "bid21second":
+        # bidding boards first (interleaved), then the card-play boards
+        first = [i for i in order if i < n_first]
+        then = [i for i in order if i >= n_first]
+        rng.shuffle(first)
+        rng.shuffle(then)
+        order = first + then
     pbn, script, design = [], [], []
     for n, bi in enumerate(order, 1):
         b = boards[bi]
         deal = "N:" + " ".join(b["hands"][x] for x in SEATS)
-        pbn += [f'[Board "{n}"]', '[Dealer "N"]', '[Vulnerable "None"]', f'[Deal "{deal}"]', ""]
+        pbn += [f'[Board "{n}"]', f'[Dealer "{b.get("dealer", "N")}"]',
+                f'[Vulnerable "{b.get("vul", "None")}"]', f'[Deal "{deal}"]', ""]
         x = {"board": n, "calls": {k: list(v) for k, v in b["calls"].items()}}
         for k in ("leads", "follows", "low"):
             if k in b:

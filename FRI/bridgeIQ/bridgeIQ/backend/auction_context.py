@@ -204,6 +204,7 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
     # natural — without the cut-off, the responder's `5♣ = 0/3 keys`
     # answer would mis-promote to trump candidate.
     first_4nt_idx = None
+    fallback_natural = False        # an unalerted suit bid seen by my side
     for idx, (s, b) in enumerate(state.bids):
         if b.level == 4 and b.suit == _NT and not b.is_pass:
             first_4nt_idx = idx
@@ -258,8 +259,14 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
         if s not in my_side:
             continue  # opponents (from MY-side POV) — skip
 
-        # Fallback-last-suit tracking (used by _agreed_trump legacy path)
-        ctx.fallback_last_suit = b.suit
+        # Fallback-last-suit tracking (used by _agreed_trump legacy path).
+        # An alerted call after a natural suit is a feature / cue-bid, not
+        # a trump suggestion: 2S-2NT-3C(feature)-4NT is RKCB for spades.
+        if not b.alert:
+            ctx.fallback_last_suit = b.suit
+            fallback_natural = True
+        elif not fallback_natural:
+            ctx.fallback_last_suit = b.suit
 
         # --- Trump-set detection (only fires once) ---------------
         if ctx.trump is None:

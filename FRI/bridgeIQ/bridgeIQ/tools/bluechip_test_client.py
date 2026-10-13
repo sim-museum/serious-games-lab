@@ -14,6 +14,7 @@ import argparse
 import re
 import socket
 import sys
+import time
 
 SEATS = ["North", "East", "South", "West"]
 RANKS = "AKQJT98765432"
@@ -27,6 +28,10 @@ class Client:
         self.sock = socket.create_connection((a.host, a.port))
         self.buf = b""
         self.verbose = not a.quiet
+        self.freeze_after = a.freeze_after   # stop answering after N messages (a frozen robot)
+        self.die_after = a.die_after         # disconnect after N messages
+        self.n_recv = 0
+        self.in_board = False
 
     def send(self, s):
         if self.verbose:
@@ -44,6 +49,16 @@ class Client:
         self.buf = self.buf[i + 1:]
         if self.verbose:
             print(f"{self.me} <- {line}", flush=True)
+        self.n_recv += 1
+        if self.freeze_after and self.n_recv >= self.freeze_after:
+            print(f"{self.me}: freezing after {self.n_recv} messages", flush=True)
+            time.sleep(10 ** 6)
+        if self.die_after and self.n_recv >= self.die_after:
+            print(f"{self.me}: disconnecting after {self.n_recv} messages", flush=True)
+            self.sock.close()
+            raise SystemExit(0)
+        if self.in_board and line.lower() == "start of board":
+            raise Restart()                  # the TM replays the board (a robot failed over)
         return line
 
     @staticmethod
@@ -99,19 +114,28 @@ class Client:
         self.send(f"{self.me} ready for teams")
         self.recv()                                  # Teams : ...
         self.send(f"{self.me} ready to start")
+        restart = False
         while True:
-            line = self.recv()
-            if line.lower().startswith("end of session"):
-                return
-            if line.lower() != "start of board":
-                continue                             # Timing etc.
-            self.send(f"{self.me} ready for deal")
-            info = self.recv()
-            m = re.search(r"Dealer (\w+)\.", info)
-            dealer_i = SEATS.index(m.group(1).title())
-            self.send(f"{self.me} ready for cards")
-            self.hand = self.parse_hand(self.recv())
-            self.board(dealer_i)
+            if not restart:
+                line = self.recv()
+                if line.lower().startswith("end of session"):
+                    return
+                if line.lower() != "start of board":
+                    continue                             # Timing etc.
+            restart = False
+            try:
+                self.in_board = True
+                self.send(f"{self.me} ready for deal")
+                info = self.recv()
+                m = re.search(r"Dealer (\w+)\.", info)
+                dealer_i = SEATS.index(m.group(1).title())
+                self.send(f"{self.me} ready for cards")
+                self.hand = self.parse_hand(self.recv())
+                self.board(dealer_i)
+            except Restart:
+                restart = True
+            finally:
+                self.in_board = False
 
     def board(self, dealer_i):
         auction = []
@@ -189,12 +213,18 @@ class Client:
             or (len(a) == 4 and all(b == "P" for b in a))
 
 
+class Restart(Exception):
+    pass
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seat", required=True)
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=2000)
     ap.add_argument("--quiet", action="store_true")
+    ap.add_argument("--freeze-after", type=int, default=0)
+    ap.add_argument("--die-after", type=int, default=0)
     Client(ap.parse_args()).run()
 
 

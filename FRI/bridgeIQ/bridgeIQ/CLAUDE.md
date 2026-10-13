@@ -1,5 +1,31 @@
 # biq — Claude Code project notes
 
+## STATUS — continuous Q-Plus match, live code swaps, 11 h unattended (2026-10-13)
+* Run `tools/runs/bluechip/261009_qplus_21_biqS` (RESUME.txt there): boards
+  755-1038 unattended 00:06-11:12, 2/1 for 100 boards then a scheduled
+  handover to a second set of Q-Plus windows playing Precision; stopped when
+  a Precision window froze 185 boards in (the known Q-Plus limit). Random
+  boards: 2/1 -2.78/bd (SE 0.87, 49), Precision -3.38 (SE 0.75, 65); the
+  match before was -2.46 over 754: no measurable change either way.
+* TM (`biq_bluechip_tm.py --continuous`): queue.jsonl deals, hot code swap
+  from immutable snapshots (tools/runs/code/, `tools/biq_deploy.py` with
+  regression gates), spare windows + failover, segments.json (bidding
+  system per window set, scheduled or on-failure handover).
+  `tools/biq_planner.py`: random + Thompson-sampled targeted families,
+  report.md per segment / code version; targeted deals now use natural
+  shape frequencies (uniform shapes dealt 10-13 card suits).
+* Bidding fixes deployed live (each with benchmark evidence, in
+  native_bidder): double-their-save only over our constructive game, their
+  first 5-level call, not after their 4NT (boards 1-962: 31 spots, 22 down,
+  +88 IMP); game on 8.5+ playing tricks over a preempt; sanity 2l never
+  passes partner's cue-bid of their suit (benchmark: 18 spots, Q-Plus bid
+  on in all). Also from 10-11/12: Multi-Landy for 2/1, weak-two 2NT
+  forcing, save over partner's preempt raise, 3rd/4th-seat strong 4-card
+  majors, no 1NT with a strong 5-card spade suit.
+* Open: hand evaluation on wild distribution (overcaller passes 7-5 /
+  two-suiters, missed slams); GF after interference (877: 1NT-(2S)-3H-(3S)
+  -P-(P)-4D passed); defence giving 1-3 tricks over DD (758, 797, 858).
+
 ## STATUS — forced-pass and advancer bidding fixes (2026-10-10)
 * 2/1 run boards 187-292 sorted by contract vs play (DD): bidding -265 IMP,
   play -36. Two bugs, fixed in `native_bidder.py`:
