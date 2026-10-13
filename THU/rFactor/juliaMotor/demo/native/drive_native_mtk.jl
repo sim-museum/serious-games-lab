@@ -13126,6 +13126,30 @@ function main()
         for k in 1:(repd.ncar-1); o = 5 + 4*(k-1); push!(ais, (lerp(o+1), lerp(o+2), lerp(o+3), lerpθ(o+4))); end
         (player, ais)
     end
+    # COCKPIT-2 S5 (PO 2026-10-07: "ALL cockpits incl. AI cockpits in replay"): with the replay camera in COCKPIT on an AI
+    # LOTUS (Clark, Hill -- the player's own car model), the roles swap for the frame: the focus car's recorded pose drives
+    # the cockpit pipeline (interior, dials, wheel, gloves, lever) and the player's recorded pose takes that AI's draw slot
+    # (its external Lotus). The AI channels carry no steer/rpm (GPL's AI is kinematic), so they are derived: the road-wheel
+    # angle from the recorded path's curvature (wheelbase × yaw rate / speed), the revs from the speed through the highest
+    # gear that keeps them above 5,000 rpm. Other teams keep the external view (their own ?d.3do sets: not yet).
+    # JM_REPLAY_AICOCKPIT=0 = before.
+    rep_swap = Ref(false)
+    REP_AICOCKPIT = get(ENV, "JM_REPLAY_AICOCKPIT", "1") != "0"
+    rep_ai_lotus(k) = REPLAY && k >= 1 && k + 1 <= length(repd.names) && occursin("Lotus", repd.names[k+1])
+    function rep_ai_inputs(rt, k)
+        h = 0.1
+        _, a0 = replay_poses(max(rt - h, 0.0)); _, a1 = replay_poses(min(rt + h, rep_dur))
+        dθ = mod(a1[k][4] - a0[k][4] + π, 2π) - π
+        ds = hypot(a1[k][1] - a0[k][1], a1[k][3] - a0[k][3]); dtt = max(min(rt + h, rep_dur) - max(rt - h, 0.0), 1e-3)
+        v = ds/dtt; r = dθ/dtt
+        δ = v > 2.0 ? atan(2.41*r/v) : 0.0
+        g = 1
+        for gg in 1:length(DriveRT3D.GEARS)
+            (v/DriveRT3D.RW_R*DriveRT3D.GEARS[gg]*DriveRT3D.FINAL[]*60/(2π) >= 5000.0) && (g = gg)
+        end
+        rpm = clamp(v/DriveRT3D.RW_R*DriveRT3D.GEARS[g]*DriveRT3D.FINAL[]*60/(2π), 2000.0, 9500.0)
+        (v = v, steer = clamp(δ/DriveRT3D.MAXSTEER, -1.0, 1.0), rpm = rpm, gear = g)
+    end
     # COCKPIT-2 S1 (PO 2026-10-07: "During replay, there is no movement in cockpits - the wheel doesn't turn, the hands
     # don't move, the mirrors are black, there are no dials"): the replay set only the pose, so the cockpit drew the LIVE
     # controller's steer and a parked car's rpm/speed. A v2 recording (REPLAY-2) carries the player's inputs and engine
@@ -13496,6 +13520,10 @@ function main()
             cf = key(GLFW.KEY_C); (cf && !rep_pn[]) && (rep_focus[] = mod(rep_focus[]+1, repd.ncar)); rep_pn[] = cf   # E25: switch CAR
             cvv = key(GLFW.KEY_V); (cvv && !rep_pv[]) && (rep_cam[] = mod1(rep_cam[]+1, length(REPLAY_CAMS))); rep_pv[] = cvv  # E25: switch ANGLE
             (pp, rep_ai_raw) = replay_poses(rep_rt[])
+            rep_swap[] = REP_AICOCKPIT && REPLAY_CAMS[rep_cam[]] === :cockpit && rep_ai_lotus(rep_focus[])
+            if rep_swap[]                                   # COCKPIT-2 S5: ride in the AI Lotus's cockpit
+                k_ = rep_focus[]; rep_ai_raw = copy(rep_ai_raw); (pp, rep_ai_raw[k_]) = (rep_ai_raw[k_], pp)
+            end
             cs.x = pp[1]; cs.y = pp[2]; cs.z = pp[3]; cs.θ = pp[4]; cs.v = 0.0; cs.pitch = 0.0; cs.roll = 0.0
             if REP_NT > 0     # COCKPIT-2 S1: wheel, gloves, needles and HUD follow the recording, not the live controller
                 rt_ = replay_tele(rep_rt[])
@@ -13503,9 +13531,14 @@ function main()
                 inp = DriveInput(throttle = rt_.throttle, brake = rt_.brake, steer = rt_.steer, clutch = rt_.clutch)
                 rep_tyres[] = rt_.tyres
             end
+            if rep_swap[]                                   # COCKPIT-2 S5: the AI's derived steer / revs / gear
+                ai_ = rep_ai_inputs(rep_rt[], rep_focus[])
+                cs.v = ai_.v; cs.rpm = ai_.rpm; cs.gear = ai_.gear; rep_tyres[] = nothing
+                inp = DriveInput(throttle = 0.0, brake = 0.0, steer = ai_.steer, clutch = 0.0)
+            end
             kw = key(GLFW.KEY_W); (kw && !rep_pw[]) && (rep_tyshow[] = !rep_tyshow[]); rep_pw[] = kw   # REPLAY-6: W = tyres
             # cockpit interior only renders for the player car in COCKPIT mode; every other angle shows the driver figure + full car
-            CTL.view = (REPLAY_CAMS[rep_cam[]] === :cockpit && rep_focus[] == 0) ? 0 : 1
+            CTL.view = (REPLAY_CAMS[rep_cam[]] === :cockpit && (rep_focus[] == 0 || rep_swap[])) ? 0 : 1
             @goto skipsim
         end
         # E9: end qualifying on ENTER (or it auto-ends on a clean lap).  This guarantees you
@@ -14441,7 +14474,7 @@ function main()
         cam_roll  += ((roll_ter  + rollv    ) - cam_roll ) * αcam
         vp, eye = camera(cs, cam_pitch, cam_roll)     # head = low-pass tilt; body keeps full tilt → high-freq rock shows on the chassis
         if REPLAY     # E25: cinematic cameras follow the FOCUS car (player or any AI) from its recorded pose
-            fp = rep_focus[] == 0 ? (cs.x, cs.y, cs.z, cs.θ) :
+            fp = (rep_focus[] == 0 || rep_swap[]) ? (cs.x, cs.y, cs.z, cs.θ) :
                  (rf = rep_ai_raw[rep_focus[]]; (rf[1], rf[2], rf[3], rf[4]))
             vp, eye = replay_camera(REPLAY_CAMS[rep_cam[]], fp[1], fp[2], fp[3], fp[4])
         end

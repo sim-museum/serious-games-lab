@@ -25917,3 +25917,19 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   belong by nearest-centreline to another stretch. The window is GPL's own rule; our approximation of its ownership is
   not good enough on these two tracks. Closing this thread unless a gold comparison at those spots says otherwise.
 * Gates (IRGOLD-1 S23 tools + BLINDTURN-1 S9 commit): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).
+
+### COCKPIT-2 S5 (2026-10-13): AI cockpits in replay -- the AI Lotuses (Clark, Hill) ride in the Lotus cockpit
+* Retro: S1-S4 made the PLAYER's replay cockpit live; with the camera in COCKPIT on an AI car the renderer fell back to
+  the chase drawing (the AI's external mesh, the eye at its seat) -- the PO's 261007 "Clark's cockpit" complaint.
+* Built (`drive_native_mtk.jl`, `JM_REPLAY_AICOCKPIT=0` = before): for an AI whose recorded name is a Lotus, the roles swap
+  for the frame -- its recorded pose drives the cockpit pipeline (interior, dials, wheel, gloves, lever, mirrors) and the
+  player's recorded pose takes that AI's draw slot (its external Lotus). AI recordings carry no steer/rpm (GPL's AI is
+  kinematic), so they are derived: road-wheel angle = atan(wheelbase × yaw rate / speed) from the recorded path ±0.1 s,
+  revs from the speed through the highest gear above 5,000 rpm.
+* Checked on the PO's 10-08 WG replay (`JM_REPLAY_CAM=1`, `JM_SHOT_AT` 25/35 s): Clark's view is the Lotus cockpit, 5th at
+  241 km/h / 6,828 rpm, 3rd at 122 km/h / 5,378 rpm, the wheel following his line; the player's cockpit unchanged; Bonnier
+  (Cooper) keeps the external view -- other teams need their own `?d.3do` cockpit sets (next).
+* Seen, pre-existing (the player's own replay cockpit shows it too): cornering, the LEFT sleeve fills the lower-left corner
+  as a flat white quad -- the gold's sleeves are white too at that place, but show folds and a red stripe. For the
+  sleeve-look item (judged against the 260801/260802 gold cockpit frames).
+* Gates (COCKPIT-2 S5 commit): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`). Other teams' cockpits (their own ?d.3do: brad, brmd, covd, eagd, ferd) = a multi-sprint job without gold references; next pass.
