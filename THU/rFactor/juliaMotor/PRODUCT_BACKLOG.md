@@ -25881,3 +25881,39 @@ usual rotation (≤ 6 per item).
 * Checked offscreen on the PO's 10-08 WG race (6 cars, 3 laps: Clark leads lap 1, the PO from lap 2 -- as the text lap
   chart) and the 10-08 Ring race (1 lap). For the PO's look.
 * Gates (BLINDTURN-1 S8 + WGTD-1 S8 commit): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).
+
+# Scrum resumed (PO 2026-10-13 morning, verbatim): "run scrum on prioritized backlog items that do not need my intervention"
+Order (highest priority first, PO-free only): IRGOLD-1 (epic, S23+; new angle: the low-gear driveline and the rear's drive
+slip fitted TOGETHER on launches + 2nd-gear accelerations + braking) -> BLINDTURN-1 (Zandvoort/Spa lap window vs their gold
+videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts) -> SPATD-1 / RINGTD-1 remainders.
+
+### IRGOLD-1 S23 (2026-10-13): the rear's drive friction and the low-gear driveline TOGETHER -- tried, NOT shipped
+* Retro (S7, S14-S22): the 2nd-gear WOT deficit (~12 %) and the rear's drive slip were each tried alone; S22's lighter
+  low-gear driveline lost on the standing starts (the rears spun up). Hypothesis: a drive-only friction/slide law that
+  holds the spinning rear would let both ship. The brush with nsh 5 does not slide below ~30 % drive slip, so at 15-60 %
+  it makes ~1.5·Fz where `driveslip.py` measured ~1.2; beyond 60 % the existing slide gives ~1.0 like the gold -- so the
+  lever is the drive friction LEVEL: `kxd` (μx × kxd while κ > 0, braking untouched; built, evaluated, reverted).
+* Fresh evaluations (open 233 / closed 383 windows / raw-pedal launches): base 1.1692 / 1.1623 / 0.55 m/s; kxd 0.88
+  (S7's μxd 1.32) 1.2140 / 1.2086 / **1.30 m/s**; + igblow 0.03 1.2218 / 1.1994 / 1.35 m/s. The launches -- traction-
+  limited, the gold puts down ~0.9 g -- refute a lower drive μ; driveslip.py's 1.2 was an artefact of its Fz estimate.
+* Conclusion: with the data in hand the 2nd-gear deficit cannot be fixed without breaking the launches or braking --
+  inertia is the only gear-dependent term and the low gears want two contradictory values. **Needs data (PO):** cued as
+  IRTEST-261013 below. `launchval_261009.jl` keeps a `JM_IRG_PARAMS` hook (tools only).
+
+## IRTEST-261013 -- proposed iRacing test (for the PO's next session; IRGOLD-1)
+1. **Gentle WOT pulls in 2nd and in 3rd, no wheelspin** (Monza main straight, official Ring setup): roll at ~60 km/h in
+   2nd, then squeeze to full throttle over ~1 s and hold to ~8,500 rpm; repeat in 3rd from ~80 km/h. 3 each. Why: julia
+   accelerates ~12 % slower than iRacing in 2nd but matches in 4th/5th; a clean pull per gear separates the engine
+   (same in every gear) from the driveline inertia (charged ∝ the gear's ratio).
+2. **Clutch-out coasts in 2nd and 4th** (press the clutch at ~150 km/h, coast 5 s, in gear): the driveline's own drag and
+   inertia with the engine decoupled -- what the clutch-out lock-ups (S21) depend on.
+
+### BLINDTURN-1 S9 (2026-10-13): the hidden triangles AHEAD of the driver (Zandvoort, Spa)
+* `JM_LAPWIN_DIAG_AHEAD=1` keeps only triangles in a ±50° cone around the track heading. Zandvoort: hay bales 55 m ahead
+  at s 4076, grass 97 / 138 m ahead at s 4025 / 3977 (3 of 82 positions within 150 m). Spa: nothing within 150 m ahead
+  (nearest grass 164 m at s 13101, approaching La Source).
+* Decision: both stay OFF. At Spa, BLINDTURN-1 S1-S3 established that GPL SHOWS the hillside beyond La Source -- the very
+  ground our nearest-centreline binning would hide there (GPL's sections own it differently); at Zandvoort the bales ahead
+  belong by nearest-centreline to another stretch. The window is GPL's own rule; our approximation of its ownership is
+  not good enough on these two tracks. Closing this thread unless a gold comparison at those spots says otherwise.
+* Gates (IRGOLD-1 S23 tools + BLINDTURN-1 S9 commit): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).

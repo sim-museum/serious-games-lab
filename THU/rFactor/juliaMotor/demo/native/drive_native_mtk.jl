@@ -6424,13 +6424,20 @@ if _LW !== nothing
             P = TRKSURF.pos; Sd = TRKSURF.lapdist; worst = Tuple{Float64,Float64,String}[]
             for k in 1:max(1, round(Int, 50/max(Sd[min(end, 2)] - Sd[1], 1e-3))):length(P)
                 ex, ez = P[k][1], P[k][3]; c = Sd[k]; best = (Inf, "")
+                kn = k < length(P) ? k + 1 : 1; hx = P[kn][1] - ex; hz = P[kn][3] - ez; hn = hypot(hx, hz) + 1e-9
+                AHEAD = get(ENV, "JM_LAPWIN_DIAG_AHEAD", "0") == "1"      # S9: only triangles in a ±50° forward cone
                 for (pi, tp) in enumerate(TRACK)
                     v = tp.verts; off = TRACKLAPOFF[pi]
                     for b in 0:LAPNB-1
                         lapwin_in(b*LAPBIN + LAPBIN/2, c) && continue
                         for t in div(off[b+1], 3):div(off[b+2], 3)-1
                             o = 33t; cx = (v[o+1] + v[o+12] + v[o+23])/3; cz = -(v[o+3] + v[o+14] + v[o+25])/3
-                            d = (cx - ex)^2 + (cz - ez)^2; d < best[1]^2 && (best = (sqrt(d), string(tp.tex)))
+                            d = (cx - ex)^2 + (cz - ez)^2
+                            if AHEAD
+                                cosb = ((cx - ex)*hx + (cz - ez)*hz) / (sqrt(d) + 1e-9) / hn
+                                cosb < cosd(50) && continue
+                            end
+                            d < best[1]^2 && (best = (sqrt(d), string(tp.tex)))
                         end
                     end
                 end

@@ -49,6 +49,11 @@ function main()
             # IRGOLD-1: JM_LAUNCH_IE=<kg m²> tries another engine inertia (the gold's engine falls 8,900 -> 2,000 rpm in 0.4 s)
             haskey(ENV, "JM_LAUNCH_IE") && ModelingToolkit.setp(car.sys, car.sys.Ie)(car.integ, parse(Float64, ENV["JM_LAUNCH_IE"]))
             # IRGOLD-1 S15: AS[] = (as_r0, as_k, as_w) overrides the anti-stall law (tools/antistall_fit_261012.jl)
+            # IRGOLD-1 S23: JM_IRG_PARAMS="name=v,..." (irgold_params.jl names) on the launch car too
+            if !isempty(get(ENV, "JM_IRG_PARAMS", ""))
+                isdefined(Main, :PARAM_MAP) || include(joinpath(@__DIR__, "irgold_params.jl"))
+                Base.invokelatest(setparams!, car, Dict(String(strip(split(x, "=")[1])) => parse(Float64, split(x, "=")[2]) for x in split(ENV["JM_IRG_PARAMS"], ",")))
+            end
             AS[] === nothing || for (nm, x) in zip((:as_r0, :as_k, :as_w), AS[])
                 ModelingToolkit.setp(car.sys, getproperty(car.sys, nm))(car.integ, x)
             end
