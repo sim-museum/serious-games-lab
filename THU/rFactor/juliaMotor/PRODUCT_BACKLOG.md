@@ -25965,3 +25965,16 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   (4) La Source's far side = BLINDTURN-1's finding (GPL shows terrain our binning would hide; the lap window stays off at
   Spa). For the PO's look. Rotates.
 * Gates (SPATD-1 S6 commit): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).
+
+### WGTD-1 S9 (2026-10-13): (e) "stop in the pits, as GPL" -- the cool-down lap now ends in GPL's pit lane
+* Retro: S6 (2026-10-10) gave the AI a cool-down lap after the flag, ending at the edge of the straight 300 m past the
+  line -- "our AI have no pit line yet".
+* GPL has one: `pit.lp` (Watkins Glen, Monza, Zandvoort, Spa; not the Ring), the same LP format as the race line, a full
+  lap that in its last ~300 m swings 14-16.5 m off the race line at 9-13 m/s. New `GPLAI.PIT` line (+ `join_pit!`; the
+  race corridor's clamp does not apply on it); `PIT_IN` = where pit.lp leaves the race line for the pit lane, `PIT_BOX` =
+  its slowest point. On the cool-down lap each car joins the pit line at PIT_IN − 60 m, follows it at pit speed and stops
+  at its box (15 m apart). `JM_AI_PITLINE=0` = the stop at the edge of the straight (and the Ring keeps it).
+* WG, 1-lap race, 5 AI (`JM_AI_COOLDIAG=1`): pit line in at 3255 m, boxes round 3579 m of 3756; all five cars finished,
+  ran the cool-down lap and stopped at 3549 / 3564 / 3579 / 3594 / 3609 m. AI off-road counter over the run: 0.03 %
+  centre / 0.12 % edge frames, all at s 3400-3500 (the crossing from the straight into the pit lane); none in the boxes.
+* Gates (WGTD-1 S9 commit): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).

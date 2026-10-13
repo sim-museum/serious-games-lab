@@ -232,6 +232,7 @@ end
 
 # ---------------------------------------------------------------------------------------------- track
 const RACE, MINR, MAXR, PASS1, PASS2 = 0, 1, 2, 3, 4
+const PIT = 5                                   # WGTD-1 S9: GPL's pit.lp -- the cool-down lap's way into the pit lane
 const CAR_LEN = 4.0; const CAR_W = 1.75
 const EDGE = 0.30                         # the goal keeps this far inside the corridor (ours, not GPL's: see goal)
 const GLASS = 0.10                        # track.ini glass_wall_offset (-0.1): the in-corridor test's tolerance
@@ -320,6 +321,7 @@ function goal(T::Track, c::Car, F::Fuzzy)
         gv = ((1 - c.w)*c.dv0 + c.w*gv) * (c.mode == 2 ? 0.1 : 0.2)
         ff = (1 - c.w)*dlatv_ds(Lo, s)*v + c.w*ff
     end
+    (c.line == PIT || (c.mode != 0 && c.fromline == PIT)) && return (g, gv, ff)   # WGTD-1 S9: the pit lane is outside the race corridor
     lo, hi = corridor(T, s)
     la, ha = corridor(T, s + 0.5*v)                  # ... and inside where it will be in half a second (a narrowing edge)
     if lo - GLASS <= c.d <= hi + GLASS               # in the corridor (glass_wall_offset): the goal stays inside it,
@@ -329,6 +331,17 @@ function goal(T::Track, c::Car, F::Fuzzy)
         ff *= 0.33                                    # outside and the feed-forward pushes further out
     end
     (g, gv, ff)
+end
+
+"WGTD-1 S9: move onto GPL's pit line (offset 0) through an ordinary line transition"
+function join_pit!(T::Track, c::Car)
+    haskey(T.lines, PIT) || return false
+    c.line == PIT && return false
+    F = T.P.basic; _, gv, _ = goal(T, c, T.P.follow)
+    c.why = :pit; c.fromline = c.line; c.d0 = c.d; c.dv0 = gv
+    c.line = PIT; c.offset = 0.0
+    c.mode = 1; c.dw = 1/max(abs(c.dv) < F.vsw ? F.T : F.Tc, 1.0); c.w = c.dw
+    true
 end
 
 "join the nearest of RACE/PASS1/PASS2 at dlat `want` through a line transition (GPL 0x4477c0 + 0x4451d0)"

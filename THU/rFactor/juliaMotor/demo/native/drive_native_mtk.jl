@@ -230,6 +230,8 @@ const RACE_LAPS = max(1, tryparse(Int, get(ENV, "JM_LAPS", "3")) |> x -> x === n
 const AI_COOLDOWN = get(ENV, "JM_AI_COOLDOWN", "1") != "0"      # WGTD-1 (e): the AI's cool-down lap and stop after the flag
 const AI_COOL_DIAG = get(ENV, "JM_AI_COOLDIAG", "0") != "0"
 const AI_COOL = Dict{Int,Tuple{Symbol,Float64,Float64}}()        # AI index -> (state, its race pace, where the stop began)
+const AI_PITLINE = get(ENV, "JM_AI_PITLINE", "1") != "0"         # WGTD-1 S9: the cool-down lap ends in GPL's pit lane
+const PIT_IN = Ref(NaN); const PIT_BOX = Ref(NaN)
 const PRACTICE_SEC = 60.0 * (tryparse(Float64, get(ENV, "JM_PRACTICE_MIN", "15")) |> x -> x === nothing ? 15.0 : x)   # GPL-style practice session length before the race (T = accelerate time)
 # In REPLAY the field size comes from the RECORDING (so every recorded car gets a chassis to
 # draw + camera-focus), not JM_AI — else focusing the replay camera on an AI shows empty track.
@@ -12658,6 +12660,19 @@ function main()
         try
             lines = Dict(k => GPLAI.read_line(joinpath(ZD, f * ".lp")) for (k, f) in
                          ((GPLAI.RACE, "race"), (GPLAI.MINR, "minrace"), (GPLAI.MAXR, "maxrace"), (GPLAI.PASS1, "pass1"), (GPLAI.PASS2, "pass2")))
+            # WGTD-1 S9 (PO 2026-10-08: "after the race the AI do one slow lap and stop in the pits, as GPL"): GPL's pit.lp
+            # (all but the Ring have one) -- in the last ~300 m of the lap it swings 14-16 m off the race line at pit speed.
+            # PIT_IN: where it leaves the race line for the pit lane; PIT_BOX: its slowest point there (the pit boxes).
+            if AI_PITLINE && isfile(joinpath(ZD, "pit.lp"))
+                lines[GPLAI.PIT] = GPLAI.read_line(joinpath(ZD, "pit.lp"))
+                let lp = lines[GPLAI.PIT], lr = lines[GPLAI.RACE], n = length(lp.d)
+                    k = n; while k > 1 && abs(lp.d[k-1] - lr.d[min(k-1, length(lr.d))]) > 3.0; k -= 1; end
+                    PIT_IN[] = 3.0*(k - 1)
+                    kb = k - 1 + argmin([lp.v[j] for j in k:n]); PIT_BOX[] = 3.0*(kb - 1)
+                    println("  [pit] GPL pit line: in at ", round(Int, PIT_IN[]), " m, slowest (boxes) at ", round(Int, PIT_BOX[]),
+                            " m of ", round(Int, 3.0*n), " (JM_AI_PITLINE=0: stop at the edge of the straight, as before)")
+                end
+            end
             trkb = read(track_file(GPLNAME, ".trk"))
             secs = GPLAI.trk_sections(trkb)
             r0 = GPLAI.Ref(secs...)
@@ -14681,6 +14696,15 @@ function main()
                             AI_COOL[i] = (:cool, gc.pace, 0.0); gc.pace = 0.6*gc.pace
                             AI_COOL_DIAG && println("  [cooldown] ", ent_name(i), " finished (lap ", AICARS[i].lap, "): cool-down lap")
                         end
+                    elseif st[1] === :cool && isfinite(PIT_IN[]) && haskey(GPLAI_T.lines, GPLAI.PIT) &&
+                           PIT_IN[] - 60.0 <= gc.s < PIT_BOX[]                      # WGTD-1 S9: into GPL's pit lane
+                        q = 15.0*count(v -> v[1] === :pit, values(AI_COOL))          # boxes 15 m apart, the first car furthest on
+                        GPLAI.join_pit!(GPLAI_T, gc); gc.hold = typemax(Int) ÷ 4
+                        AI_COOL[i] = (:pit, st[2], PIT_BOX[] + 30.0 - q)
+                        AI_COOL_DIAG && println("  [cooldown] ", ent_name(i), " into the pits, box at ", round(Int, PIT_BOX[] + 30.0 - q), " m")
+                    elseif st[1] === :pit
+                        rem = st[3] - gc.s                                           # metres to its box
+                        gc.pace = st[2] * clamp(rem / 40.0, 0.0, 1.0); gc.hold = typemax(Int) ÷ 4
                     elseif st[1] === :cool && crossed[i]
                         # each car stops 25 m beyond the one before it, so they line up along the edge
                         q = 25.0*count(v -> v[1] === :stop, values(AI_COOL))
