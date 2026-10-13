@@ -25721,3 +25721,19 @@ usual rotation (≤ 6 per item).
   repeatable lap to lap within 0.3°, `bank.py`) -- why the Glen windows want more slip on both axles. Per sample the
   estimate is too noisy for the replay (sd 2.75° on flat Monza after the body-roll correction). A clean source is the
   track's own geometry (GPL .trk banking at the iRacing LapDist) -- an option for a later sprint.
+
+### IRGOLD-1 S18 (2026-10-13): two structural candidates for the rear at the limit -- roll centres, combined-slip p-norm
+* Closed-loop skidpad slides (T1 / WW T1, oval pressures), 3-10° rows: the same signature as Parabolica -- the sim's rear
+  0.7-1.1° short (6.35/5.46°, 4.97/3.85°, 5.60/4.93° gold/sim), the front close. One mechanism at both venues.
+* **RollCentreLink** (new MTK object, chassis_parts.jl; `hrc_f`/`hrc_r`, default 0 = the car before, exactly): the links'
+  share of an axle's lateral load transfer, ±F_y·h_rc/track between mount and wheel (it can pull, unlike the coil-over).
+  Rear 0.08 / 0.15 m on the Monza drifts: rear slip +0.18 / +0.36° (WW), +0.05 / +0.11° (default) -- the right way but
+  weak: with ns = 1 the stiffness follows the load, and at matched body roll a roll centre is indistinguishable from the
+  bar stiffness the arb fit already absorbed. Kept as an object (`hrcf`/`hrcr` in irgold_params), not used.
+* **Combined-slip p-norm** (S7's, ported; `JM_TYRE_PC=1` builds it, `pc` 2 = the circle, identical): rear pc 1.7 fixes the
+  drift rear (5.92/4.66° vs 5.77/5.00°, β 4.96/4.09°, steer correction 0.46/0.51°) and passes the stability suite, but
+  the whole metric loses: open 1.1649 → 1.3273, closed 1.2183 → 1.3696. Not shipped.
+* After any rear fix (ns 0.5, pc 1.7, Cα 24.94) the drifts keep ~0.5° of steering correction from the FRONT: the sim's
+  front runs 0.3-0.6° more slip than the gold's at 1.14-1.17 g at 152 kPa (the steady skidpad cells, where the front
+  matched, run 152/207). Open: the front's pressure sensitivity.
+* Gates (S18 commit: RollCentreLink, the p-norm build switch, neutral by default): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).

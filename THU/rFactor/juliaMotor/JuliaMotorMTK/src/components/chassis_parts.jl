@@ -131,6 +131,18 @@ function TravelStops(; name, c_bump, c_reb, k = 5e5, kr = k, w = 0.002)
            systems = [a, b], name)
 end
 
+"""Roll-centre link (IRGOLD-1 S18): the suspension LINKS' share of an axle's lateral load transfer. A wishbone axle reacts
+its tyres' lateral force F_y partly through the links, at the roll centre's height h_rc: the links then move load from
+the inside to the outside wheel directly, ΔF = F_y·h_rc/track, without rolling the body, and the springs and bar see
+only (h − h_rc)·F_y of roll moment. Between a corner's body mount (`a`) and its wheel (`b`), like the coil-over, but
+unlike its seat it can pull (it is a rigid link): `F` > 0 pushes the wheel down and the mount up (the outside wheel).
+`F` is an input -- the vehicle sets ±F_y,axle·h_rc/track from its own tyre forces."""
+function RollCentreLink(; name)
+    @named a = Flange(); @named b = Flange()
+    vars = @variables F(t)
+    System([a.f ~ -F, b.f ~ F], t, vars, []; systems = [a, b], name)
+end
+
 """Brake system (CARPHYS-1 S6): master cylinder, bias valve and calipers, as iRacing's Lotus 49 records them.
 The pedal makes `P_full` bar of line pressure at full travel, split front/rear by the garage's BrakeBias `bias_p`
 (the gold: LF 65.4 bar at full pedal with 53.5 %, 66.0 with 54 % -- 122.2 bar × bias; the pressure share is the

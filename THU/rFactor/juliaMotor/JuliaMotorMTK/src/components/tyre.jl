@@ -16,10 +16,11 @@ include("brush_tyre.jl") # PHYSICS-BASED brush: brush_forces + BRUSH_FRONT/REAR 
 # Same Fz/α/κ → Fx/Fy/Mz interface as `Tyre`, but the force is the contact-patch
 # brush law F = μ·Fz·(1−(1−ξ)³) (smooth/branchless via min for the symbolic graph),
 # with PHYSICAL parameters (μ, Cα, Cκ, kμ) — no Magic-Formula Cy/Ey, no grip fudge.
+const TYRE_PC = haskey(ENV, "JM_TYRE_PC")   # IRGOLD-1 S18: build the combined-slip p-norm (parameter pc, default 2)
 function BrushTyre(; name, μ = BRUSH_FRONT.μ, μx = BRUSH_FRONT.μx, Cα = BRUSH_FRONT.Cα,
                    Cκ = BRUSH_FRONT.Cκ, kμ = BRUSH_FRONT.kμ, Fz0 = BRUSH_FRONT.Fz0, t0 = 0.035, μscale = 1.0,
                    rs = BRUSH_FRONT.rs, ws = BRUSH_FRONT.ws, camber = false, Cγ = CAMBER_CG, kγ = CAMBER_KG,
-                   ns = BRUSH_NS, rsy = rs, prel = 0.0, kpμ = 0.0, kpc = 0.0, nsh = 3.0, kin = false)
+                   ns = BRUSH_NS, rsy = rs, prel = 0.0, kpμ = 0.0, kpc = 0.0, nsh = 3.0, kin = false, pc = 2.0)
     # E56: μscale is a per-wheel SURFACE friction multiplier (1 = tarmac; <1 = grass/verge).  Driving it
     # from the game makes "off the racing line" a REAL per-tyre grip loss the model integrates — a wheel
     # dropping onto the grass loses grip and pulls the car — not a bumpX! drag/yaw state hack.
@@ -27,6 +28,7 @@ function BrushTyre(; name, μ = BRUSH_FRONT.μ, μx = BRUSH_FRONT.μx, Cα = BRU
     # setups, the Ring and Monza gold); the Centripetal skidpad forces oval pressures (152 left / 207 right, prel +0.36 on
     # the right). Friction × (1 + kpμ·prel), slip stiffnesses × (1 + kpc·prel); kpμ = kpc = 0 is the tyre before IRGOLD-1.
     ps = @parameters μ=μ μx=μx Cα=Cα Cκ=Cκ kμ=kμ Fz0=Fz0 t0=t0 μscale=μscale rs=rs ws=ws ns=ns rsy=rsy prel=prel kpμ=kpμ kpc=kpc nsh=nsh
+    TYRE_PC && append!(ps, @parameters pc=pc)        # IRGOLD-1 S18: the combined-slip p-norm (JM_TYRE_PC builds)
     vars = @variables Fz(t) α(t) κ(t) Fy(t) Fx(t) Mz(t) μye(t) μxe(t) ξx(t) ξy(t) ξ(t) sat(t) saty(t)
     # TYRE-2: stiffness LOAD SENSITIVITY. The slip stiffnesses are CFα = Cα·Fz·(Fz/Fz0)^(ns−1) ∝ Fz^ns: ns = 1 is the
     # plain brush (stiffness ∝ load, the pre-TYRE-2 model, exact), ns < 1 the real tyre's (the patch grows slower than the
@@ -52,7 +54,9 @@ function BrushTyre(; name, μ = BRUSH_FRONT.μ, μx = BRUSH_FRONT.μx, Cα = BRU
         # saturates more progressively and peaks at a larger slip (the gold's tyres run larger slips near the limit).
         ξx   ~ lsens*Cκ*κ      / (nsh*μxe),            # per-axis NORMALIZED slip (1 = friction limit)
         ξy   ~ lsens*(Cα*sin(α) + cthr) / (nsh*μye),   # — the ellipse lives here, no 1/0 at zero slip
-        ξ    ~ sqrt(ξx^2 + ξy^2 + 1e-9),               # floor INSIDE the sqrt → autodiff Jacobian finite at
+        # IRGOLD-1 S7b/S18: with JM_TYRE_PC the combined slip is a p-norm of the two normalised slips: pc = 2 the brush's
+        # circle, pc < 2 saturates earlier when slips combine (driving or braking while cornering); pure slip untouched.
+        ξ    ~ (TYRE_PC ? ((ξx^2 + 1e-12)^(pc/2) + (ξy^2 + 1e-12)^(pc/2) + 1e-9)^(1/pc) : sqrt(ξx^2 + ξy^2 + 1e-9)),               # floor INSIDE the sqrt → autodiff Jacobian finite at
         sat  ~ (1.0 - (1.0 - min(ξ, 1.0))^nsh) * brush_slide(ξ, rs, ws),   # zero slip (sqrt(0)' = 0/0 = NaN breaks the solver)
         # CARPHYS-1: the lateral force's own SLIDING fraction rsy (rs was fitted to locked-wheel braking; the gold's
         # sideways slides keep more, tools/slidefit_261009.jl). Below the peak (ξ ≤ 1) both are the brush exactly; rsy = rs
@@ -70,7 +74,7 @@ function BrushTyre(; name, μ = BRUSH_FRONT.μ, μx = BRUSH_FRONT.μx, Cα = BRU
         kv = @variables αk(t) Fyk(t) ξyk(t) ξk(t) satyk(t)
         append!(vars, kv)
         append!(eqs, [ξyk ~ lsens*(Cα*sin(αk) + cthr) / (nsh*μye),
-                      ξk ~ sqrt(ξx^2 + ξyk^2 + 1e-9),
+                      ξk ~ (TYRE_PC ? ((ξx^2 + 1e-12)^(pc/2) + (ξyk^2 + 1e-12)^(pc/2) + 1e-9)^(1/pc) : sqrt(ξx^2 + ξyk^2 + 1e-9)),
                       satyk ~ (1.0 - (1.0 - min(ξk, 1.0))^nsh) * brush_slide(ξk, rsy, ws),
                       Fyk ~ μye*Fz * satyk * ξyk/ξk])
     end

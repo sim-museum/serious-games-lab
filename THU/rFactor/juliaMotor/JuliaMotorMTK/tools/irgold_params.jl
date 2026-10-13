@@ -15,7 +15,9 @@ const PARAM_MAP = Dict(
     "cbf" => ((:sFL, :sFR), :cb), "crf" => ((:sFL, :sFR), :cr), "cbr" => ((:sRL, :sRR), :cb), "crr" => ((:sRL, :sRR), :cr),
     "clo" => ((:sFL, :sFR, :sRL, :sRR), :clo), "vk" => ((:sFL, :sFR, :sRL, :sRR), :vk),
     "ixx" => (:veh, :Ixx), "csf" => ((:sFL, :sFR), :cs), "csr" => ((:sRL, :sRR), :cs),
-    "toef" => (:veh, :toe_f), "toer" => (:veh, :toe_r))
+    "toef" => (:veh, :toe_f), "toer" => (:veh, :toe_r),
+    "hrcf" => (:veh, :hrc_f), "hrcr" => (:veh, :hrc_r),
+    "pcf" => ((:FL, :FR), :pc), "pcr" => ((:RL, :RR), :pc))   # JM_TYRE_PC builds only     # IRGOLD-1 S18: roll-centre heights [m]
 function setparams!(car, pv)
     sys = car.sys
     for (k, v) in pv

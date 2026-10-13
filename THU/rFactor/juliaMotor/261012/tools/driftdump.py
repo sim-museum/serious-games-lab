@@ -7,7 +7,7 @@ rows = {}
 for f in sorted(glob.glob(os.path.join(D, "*.csv"))):
     a = np.genfromtxt(f, delimiter=",", names=True)
     if a.size < 10: continue
-    m = (np.abs(a["g_b"]) >= 3) & (a["thr"] >= 0.4) & (a["k"] > 15)
+    m = (np.abs(a["g_b"]) >= float(os.environ.get("BMIN", "3"))) & (np.abs(a["g_b"]) <= float(os.environ.get("BMAX", "90"))) & (a["thr"] >= 0.4) & (a["k"] > 15)
     if m.sum() < 6: continue
     stem = os.path.basename(f)[:8]
     sg = np.sign(np.median(a["g_ay"][m]))      # orient so + = the drift's own direction

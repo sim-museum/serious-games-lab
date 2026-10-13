@@ -123,7 +123,7 @@ function DrivenVehicle3D(; name,
     RR = brush ? BrushTyre(; name=:RR, br...,  camber=cmb, nsh=nshr) : Tyre(; name=:RR, TYRE_SKIDPAD_REAR...)
 
     gv, kfv, krv = g, karb_f, karb_r                     # numeric values for the parts' own parameters (the next line rebinds the names)
-    ps = @parameters m=m Izz=Izz Ixx=Ixx Iyy=Iyy a=a b=b tf=tf tr=tr h=h mf=mf mr=mr L=L M_s=M_s g=g Rw_f=Rw_f Rw_r=Rw_r Iw=Iw η=η final=final bias=bias Tbrake_max=Tbrake_max CdA=CdA ρair=ρair throttle=throttle0 brake=brake0 δ=steer0 gear=gear0 clutch=0.0 antistall=0.0 as_r0=1957.0 as_k=495.0 as_w=490.0 Ie=(ENGINE_LUMPED ? 0.18 : IE_ENGINE) Igb=(ENGINE_LUMPED ? 0.0 : DRIVELINE_INPUT ? 0.18 - IE_ENGINE : IE_DRIVELINE) c_c=60.0 T_cap=500.0 k_idle=0.5 idle_rpm=2000.0 zrFL=0.0 zrFR=0.0 zrRL=0.0 zrRR=0.0 vrFL=0.0 vrFR=0.0 vrRL=0.0 vrRR=0.0 Fx_ext=0.0 Fy_ext=0.0 Mz_ext=0.0 CdA_scale=1.0 c_abl=(cmb && USE_TYRE3 ? TYRE3.cabl : C_ABL) toe_f=toe_f toe_r=toe_r karb_f=karb_f karb_r=karb_r
+    ps = @parameters m=m Izz=Izz Ixx=Ixx Iyy=Iyy a=a b=b tf=tf tr=tr h=h mf=mf mr=mr L=L M_s=M_s g=g Rw_f=Rw_f Rw_r=Rw_r Iw=Iw η=η final=final bias=bias Tbrake_max=Tbrake_max CdA=CdA ρair=ρair throttle=throttle0 brake=brake0 δ=steer0 gear=gear0 clutch=0.0 hrc_f=0.0 hrc_r=0.0 antistall=0.0 as_r0=1957.0 as_k=495.0 as_w=490.0 Ie=(ENGINE_LUMPED ? 0.18 : IE_ENGINE) Igb=(ENGINE_LUMPED ? 0.0 : DRIVELINE_INPUT ? 0.18 - IE_ENGINE : IE_DRIVELINE) c_c=60.0 T_cap=500.0 k_idle=0.5 idle_rpm=2000.0 zrFL=0.0 zrFR=0.0 zrRL=0.0 zrRR=0.0 vrFL=0.0 vrFR=0.0 vrRL=0.0 vrRR=0.0 Fx_ext=0.0 Fy_ext=0.0 Mz_ext=0.0 CdA_scale=1.0 c_abl=(cmb && USE_TYRE3 ? TYRE3.cabl : C_ABL) toe_f=toe_f toe_r=toe_r karb_f=karb_f karb_r=karb_r
     brk = BrakeSystem(; name = :brk, bias_p = brake_bias_p)   # CARPHYS-1 S6 (chassis_parts.jl)
     tank = FuelTank(; name = :tank, x = tank_x)               # IRGOLD-1 / FUEL-1
     if cmb
@@ -169,7 +169,7 @@ function DrivenVehicle3D(; name,
     # VERTICAL carcass and the ROAD under it; per axle one ANTI-ROLL BAR. The mounts and roads are flanges whose motion
     # this model prescribes (the body's heave/pitch/roll, the adapter's road input); the parts are joined by connect().
     karb(c) = hasproperty(c, :karb) ? c.karb : 0.0
-    mount, road, wheel, strut, tyrev, arb, stops = quiet_flanges() do        # (MTK's false flange warning, chassis_parts.jl)
+    mount, road, wheel, strut, tyrev, arb, stops, rcl = quiet_flanges() do        # (MTK's false flange warning, chassis_parts.jl)
     mount = [PrescribedMotion(; name = Symbol(:m, s[10])) for s in spec]
     road  = [PrescribedMotion(; name = Symbol(:r, s[10])) for s in spec]
     wheel = [WheelMass(; name = Symbol(:w, s[10]), m_u = s[6].m_u, g = gv) for s in spec]
@@ -183,9 +183,10 @@ function DrivenVehicle3D(; name,
     # setup's bar (WWSETUP-1 karb_f / karb_r, from the garage's ArbDiameter/ArbArms through ARB_ID)
     arb = [AntiRollBar(; name = :arbF, k = 0.5*(karb(fl_corner) + karb(fr_corner)) + kfv),
            AntiRollBar(; name = :arbR, k = 0.5*(karb(rl_corner) + karb(rr_corner)) + krv)]
+    rcl = [RollCentreLink(; name = Symbol(:rc, s[10])) for s in spec]   # IRGOLD-1 S18: the links' load transfer per corner
     stops = travel === nothing ? nothing :
         [TravelStops(; name = Symbol(:ts, s[10]), c_bump = travel[i][1], c_reb = travel[i][2], k = k_stop, kr = k_stop_reb) for (i, s) in enumerate(spec)]
-    (mount, road, wheel, strut, tyrev, arb, stops)
+    (mount, road, wheel, strut, tyrev, arb, stops, rcl)
     end
 
     rlx = relax === nothing ? nothing :
@@ -203,10 +204,10 @@ function DrivenVehicle3D(; name,
             mt.s ~ z + xi*th + yi*ph,                         # the sprung body's point above this wheel (small-angle, up +)
             mt.v ~ w + xi*q  + yi*pp,
             rd.s ~ zr, rd.v ~ vr,                             # the road under it (adapter input)
-            (stops === nothing ? connect(mt.fl, so.a, left ? bar.mL : bar.mR) :
-                                 connect(mt.fl, so.a, left ? bar.mL : bar.mR, stops[idx].a)),
-            (stops === nothing ? connect(so.b, wh.fl, tv.a, left ? bar.wL : bar.wR) :
-                                 connect(so.b, wh.fl, tv.a, left ? bar.wL : bar.wR, stops[idx].b)),
+            (stops === nothing ? connect(mt.fl, so.a, left ? bar.mL : bar.mR, rcl[idx].a) :
+                                 connect(mt.fl, so.a, left ? bar.mL : bar.mR, stops[idx].a, rcl[idx].a)),
+            (stops === nothing ? connect(so.b, wh.fl, tv.a, left ? bar.wL : bar.wR, rcl[idx].b) :
+                                 connect(so.b, wh.fl, tv.a, left ? bar.wL : bar.wR, stops[idx].b, rcl[idx].b)),
             connect(tv.b, rd.fl),
             so.Fbar ~ (left ? bar.FL : bar.FR),
             Fz ~ tv.Fz])
@@ -238,6 +239,10 @@ function DrivenVehicle3D(; name,
         push!(Pslip, sqrt((ty.Fy*sin(α))^2 + 1.0))       # |Fy·sinα| (smooth at 0): the brush's slip projection
         axle == :f ? push!(Fx_f, ty.Fx) : push!(Fx_r, ty.Fx)
     end
+    # IRGOLD-1 S18: roll centres. An axle's lateral force F_y (+y = left) moves F_y·h_rc/track from the left (+y) wheel to
+    # the right one through the links: the right link pushes (F > 0), the left pulls. hrc_f = hrc_r = 0: no link load.
+    append!(eqs, [rcl[1].F ~ -(Fyb[1] + Fyb[2])*hrc_f/tf, rcl[2].F ~ (Fyb[1] + Fyb[2])*hrc_f/tf,
+                  rcl[3].F ~ -(Fyb[3] + Fyb[4])*hrc_r/tr, rcl[4].F ~ (Fyb[3] + Fyb[4])*hrc_r/tr])
     # TYRE-1 (2026-10-03): ABLATION. The PO, after Kaemmer: the tyre does not interact elastically with the
     # road, it ablates, and that absorbs energy in a corner. Measured on the 261002 gold: steady cornering
     # coasts lose MORE speed than the brush's own slip projection Σ|Fy|·sin|α| accounts for (P = 0.008,
@@ -333,5 +338,5 @@ function DrivenVehicle3D(; name,
     append!(eqs, [brk.pedal ~ brake,                       # CARPHYS-1 S6: the brake system object; its calipers from the fit
                   brk.kF ~ Tbrake_max*bias/(brk.P_full*0.535), brk.kR ~ Tbrake_max*(1 - bias)/(brk.P_full*(1 - 0.535))])
     System(eqs, t, vars, ps; systems = [FL, FR, RL, RR, mount..., road..., wheel..., strut..., tyrev..., arb..., col, brk, clu, tank, (stops === nothing ? [] : stops)...,
-                                        (rlx === nothing ? [] : rlx)...], name)
+                                        (rlx === nothing ? [] : rlx)..., rcl...], name)
 end
