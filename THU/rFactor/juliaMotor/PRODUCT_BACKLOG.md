@@ -25776,3 +25776,16 @@ usual rotation (≤ 6 per item).
   Höhe, Monza's straights and the Glen's fast sweepers (~260 N of lift at 216 km/h, ~480 N at 300); under power at the
   limit the rear lets go a little more progressively and holds a slightly wider drift, as iRacing's does.
 * Gates (S20 commit): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).
+
+### IRGOLD-1 S21 (2026-10-13): braking with the clutch out; the PO's "iRacing's Glen was slower" (data)
+* Gold: the PO presses the clutch in HALF of all hard braking (5,257 of 10,990 rows with brake > 0.6 above 15 m/s), and
+  then the rears lock in 68 % of the rows (clutch in: 22 %). With S14's remainder on the gearbox input, a clutch-out rear
+  axle in 2nd carries ~6 kg·m² of driveline (the wheels 2). A/B `JM_GB_COUPLED` (the remainder present only as far as the
+  clutch PEDAL engages): braking tests a little better (T3 bias50 0.118 → 0.113, bias53.5 1.158 → 1.140), the skidpad
+  arb windows worse; whole metric open 1.1692 → 1.1810, closed 1.1623 → 1.1770. **Not shipped**, patch reverted.
+* **The PO's note (session summary): "The iRacing Watkins Glen was slower than the julia racer Watkins Glen."** Measured
+  (`261012/tools/glencompare.py`, laps aligned by speed-trace cross-correlation): the PO's best iRacing Glen Classic lap
+  (WW103) is 81.12 s, the PO's best julia WG lap 83.07 s (10-10 19:07, the pre-S14 car); mid-lap julia is SLOWER
+  everywhere -- corner minima 10-40 km/h lower, the back straight 265 vs 282 km/h. GPL's Glen is 3,750 m, iRacing's
+  Classic 3,882 m (+3.5 %). If julia's Glen FEELS faster, it is not the car's speed: candidates are the visual speed cues
+  (FOV, eye height, road width/scale) -- a question for the PO (GLENFEEL-1, AWAITING THE PO).
