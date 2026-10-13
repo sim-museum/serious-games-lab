@@ -6172,7 +6172,10 @@ const OBJ_RECZ_TOL = parse(Float64, get(ENV, "JM_OBJ_RECZ_TOL", "0.5"))
 # tuned by eye -- so, as Spa's `gstands` needed +90, Watkins' `grandl` gets +180 by name.
 # JM_GRANDL_YAW=<deg> overrides (0 = the old facing).
 const GRANDL_YAW = deg2rad(parse(Float64, get(ENV, "JM_GRANDL_YAW", OBJ_YAW_SIGN > 0 ? "180" : "0")))   # YAWSIGN-1: +180 compensated the sign
-objyawfix(nm) = (startswith(lowercase(nm), "gstand") ? GSTAND_YAW : lowercase(nm) == "grandl" ? GRANDL_YAW : 0.0) + OBJ_YAW_ADD
+# SPATD-1 S6: JM_OBJYAW_FIX="name=deg,..." adds a per-object yaw [deg] (diagnostic: test a placement before changing a rule)
+const OBJYAW_FIX = Dict(lowercase(String(strip(split(x, "=")[1]))) => deg2rad(parse(Float64, split(x, "=")[2]))
+                        for x in split(get(ENV, "JM_OBJYAW_FIX", ""), ","; keepempty = false))
+objyawfix(nm) = (startswith(lowercase(nm), "gstand") ? GSTAND_YAW : lowercase(nm) == "grandl" ? GRANDL_YAW : 0.0) + OBJ_YAW_ADD + get(OBJYAW_FIX, lowercase(nm), 0.0)
 # ZANDGRAND-1 (PO 2026-09-26, Zandvoort: "the grandstand just behind the start/finish line on the left,
 # which should be parallel to the track, but in fact is angled such that the edge farthest from the
 # start/finish line actually protrudes into the track"). GPL's record agrees with the PO: `gstand` is
@@ -7314,7 +7317,14 @@ let objnames=Set{String}()
                   startswith(nm,"hotel") || startswith(nm,"bld") ||
                   (_bldg_wide && (occursin(r"^(ho|bu)\d", nm) || startswith(nm,"casa") ||
                                   startswith(nm,"clhouse") || occursin("hotel", nm)))
-    onroad_bldg(i) = bldgish(lowercase(i.name)) && !any(k -> startswith(lowercase(i.name), lowercase(k)), _keeptest) && begin   # SPATD-1 S5: JM_KEEPTEST reaches this rule too
+    # SPATD-1 S6 (PO 2026-10-08: "a building belongs on the outside of that turn: put it back"): Spa's house46 is GPL's
+    # building on the outside of the downhill left into Burnenville. Both on-road rules measure against the TRKSURF
+    # centreline, which at that junction sits metres toward the village (SPATD-1 S2); GPL's own wall data has the houses at
+    # the kerb (a raised wall at +4.5 m). A yaw sweep (0/90/180/270°) confirmed the recorded heading: at 0° it stands at the
+    # end of the straight with the road turning left in front of it, as in the gold. JM_KEEP_BLDG=0 drops it again.
+    _keep_bldg = (SPA && get(ENV, "JM_KEEP_BLDG", "1") != "0") ? ("house46",) : ()
+    onroad_bldg(i) = bldgish(lowercase(i.name)) && !any(k -> startswith(lowercase(i.name), lowercase(k)), _keeptest) &&
+                     !(lowercase(i.name) in _keep_bldg) && begin   # SPATD-1 S5: JM_KEEPTEST reaches this rule too
         hr = JuliaMotor.hat(TRKSURF, Float64(i.x), Float64(i.y))
         hit = hr.found && abs(hr.lateral) < 4.0
         hit && println("  E68: building ", i.name, " centred ON the road (lat=", round(hr.lateral,digits=1), " m, s=", round(Int,hr.lapdist), ") — dropped")
@@ -7391,7 +7401,7 @@ let objnames=Set{String}()
                    (get(ENV,"JM_ONROAD_FP_BLDG","1") != "0" && bldgish(nm)) ||
                    (get(ENV,"JM_ONROAD_FP_ARMCO","1") != "0" && startswith(nm,"arm")) ||   # SPA-SF-1: the S/F armco drawn diagonally across the road (arm_sf0)
                    (NURB && get(ENV,"JM_ONROAD_FP_ALL","1") != "0")
-    onroad_fp(i) = get(ENV,"JM_ONROAD_FP","1") != "0" && vegcrowd(lowercase(i.name)) && begin
+    onroad_fp(i) = get(ENV,"JM_ONROAD_FP","1") != "0" && vegcrowd(lowercase(i.name)) && !(lowercase(i.name) in _keep_bldg) && begin
         vs = get(lverts, i.name, nothing)
         if vs === nothing || isempty(vs)
             false

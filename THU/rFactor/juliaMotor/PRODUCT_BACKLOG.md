@@ -25951,3 +25951,17 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
 * Next: house46's placement against GPL's (yaw sign at Spa, YAWSIGN-1) before restoring it; the three reference frames
   (TRKSURF lapdist 5179 ↔ shot s 5200 ↔ the "Burnenville" banner at shot s 3350) need one table.
 * Gates (SPATD-1 S5 commit): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).
+
+### SPATD-1 S6 (2026-10-13): (2) the building on the outside of the Burnenville left -- RESTORED (house46)
+* Yaw sweep (`JM_OBJYAW_FIX="house46=0|90|180|270"`, new diagnostic): at the recorded heading (0°) house46 stands at the
+  end of the straight on the RIGHT with the road turning left in front of it -- the outside of the downhill left, as the
+  PO described and the gold shows (260802 Spa cockpit t≈95 s: a building on the right while turning left); 90° and 180°
+  put it across the road, 270° alongside it. The placement is GPL's; the drops were the TRKSURF-centreline tests at a
+  junction where that centreline is metres off (S2). GPL's wall data agrees (a raised wall at +4.5 m: houses at the kerb).
+* **Shipped:** a named exception for Spa's house46 in both on-road rules (`JM_KEEP_BLDG=0` drops it again). Autodrive from
+  s 4900 on the race lane through the corner (2,400 frames, 43.6 m/s): 0 contacts ([jolt]) with and without it.
+* Still seen: the parked cars on the square (GPL objects) intersect its wall -- their placement, not the house's (open).
+* **SPATD-1 after 6 sprints:** (1) AI pace and line, (2) the invisible barrier AND the building, (3) the jolts -- done;
+  (4) La Source's far side = BLINDTURN-1's finding (GPL shows terrain our binning would hide; the lap window stays off at
+  Spa). For the PO's look. Rotates.
+* Gates (SPATD-1 S6 commit): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).
