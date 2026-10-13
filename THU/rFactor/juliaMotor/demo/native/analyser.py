@@ -781,6 +781,8 @@ class AnalyserWindow(QDialog):
         rr.addWidget(QLabel("Report:")); rr.addWidget(self.rep_combo); rr.addStretch(1); rr.addWidget(exp); rv.addLayout(rr)
         self.report = QTextBrowser(); self.report.setObjectName("guide"); rv.addWidget(self.report, 1)
         self.tabs.addTab(rw, "Reports")
+        import racegraphs                                   # WGTD-1 (h): GPL Replay Analyser's graphical race reports
+        self.racegraphs = racegraphs.RaceGraphs(self.rep, _cum); self.tabs.addTab(self.racegraphs, "Race graphs")
         import guidetab                                     # TRACKGUIDE-1: the GPL track guide against your lap
         self.guide = guidetab.TrackGuide(self.rep); self.tabs.addTab(self.guide, "Track guide")
         self._report(0)

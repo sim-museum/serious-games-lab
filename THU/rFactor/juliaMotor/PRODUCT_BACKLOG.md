@@ -25854,3 +25854,30 @@ usual rotation (≤ 6 per item).
   and the skidpad arb windows. The low-gear inertia also sets wheelspin and lock-up dynamics: it cannot be fitted to the
   WOT rows alone. Next angle (when IRGOLD-1 resumes): fit it jointly with the rear's drive-slip law (S7's drive μ), on the
   launches + the T10 windows + braking, closed loop.
+
+### BLINDTURN-1 S8 (2026-10-13): Zandvoort's centreline sat on the road's edge -- the road-only oracle now there too
+* From S7's side finding (shot teleports landing off the road at s 2350-3600). Zandvoort had been left OUT of the road-only
+  HAT (the centreline's align/recentre oracle) because a census found its centreline POINT on a road triangle 17/17.
+  Photographed (chase view, `JM_SHOTS` s 2350/2600/3100/3600, `261012`-session scratch): with the shipped line the car
+  sits on the road's edge or half on the verge at all four (airborne sideways at 2350); with the oracle (`JM_ROADHAT=1`)
+  it is centred on the tarmac at all four. The census tested the centre point, not the car on it.
+* And the AI off-road counter was BLIND at Zandvoort: without a road-only HAT its "road" test is the full terrain, so the
+  WGTD-1 S7 known positive (cars moved 3 m) read **0 %** there. With the oracle: positive 39.4 %, the AI 0 % centre /
+  0.09 % edge off (s 0-100, the grid), race line 100 % on our road -- the AI unaffected.
+* **Shipped:** Zandvoort joins WG/Ring/Monza/Spa on the road-only oracle (recentre 4 passes: mean shift 2.31 → 0.84 m by
+  pass 2). `JM_ROADHAT=0` now forces it OFF everywhere (before: only "1" did anything). **For the PO's look:** the line the
+  PO once verified at Zandvoort moves by ~2 m onto the tarmac's centre; spawns, restarts and lap progress follow it.
+
+### WGTD-1 S8 (2026-10-13): (h) GPL's GRAPHICAL race reports in the analyser
+* GPL Replay Analyser's graphical reports (its own manual, "Reports"): the **Race History Graph** ("all drivers compared to
+  a virtual driver whose laptimes are consistent and equal to the winner's average laptime") and the **Graphical Race
+  Report** (race + lap-by-lap shown as a picture). New `demo/native/racegraphs.py`, tab **"Race graphs"** in the analyser
+  (after Reports): a selector (race history / lap chart as position-per-lap lines, lap 0 = the grid), the player's line
+  thicker, a legend, "Save picture…" (PNG).
+* Built on the SAME data as the text reports: the recording's timed laps (+ the lap counter for a first lap), so the
+  pictures and the tables agree. Two traps found on the PO's 10-08 WG race and handled: a distance-based crossing
+  disagreed with the text lap chart (a respawn moves the car back along the road), and that recording spans a restart
+  (laps 1 and 2 complete 300 s apart) -- so the history uses RACE time (the sum of lap times), not the clock.
+* Checked offscreen on the PO's 10-08 WG race (6 cars, 3 laps: Clark leads lap 1, the PO from lap 2 -- as the text lap
+  chart) and the 10-08 Ring race (1 lap). For the PO's look.
+* Gates (BLINDTURN-1 S8 + WGTD-1 S8 commit): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).

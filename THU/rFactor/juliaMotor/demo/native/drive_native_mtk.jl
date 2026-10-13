@@ -2002,9 +2002,15 @@ else
         # census, which is the standard E73-S5 set: photographed at s=750 and s=10000, the shipped
         # line has the car riding the grass verge (grass under the car 29.6% and 19.8% of the lower
         # frame); with the oracle it is centred on tarmac (0.6% and 0.1%).
-        # ZANDVOORT deliberately NOT included: under the corrected census its shipped line is already
-        # 17/17 clean, so it needs no change — which also preserves the line the PO verified.
-        if (WATGLEN || NURB || MONZA || SPA || get(ENV,"JM_ROADHAT","0") != "0") && nroad >= 200
+        # ZANDVOORT was left out: under the corrected census its shipped line was 17/17 clean (the centreline POINT on a
+        # road triangle). BLINDTURN-1 S8 (2026-10-13): the census is too lenient -- photographed (chase, JM_SHOTS s 2350 /
+        # 2600 / 3100 / 3600) the car sits on the road's edge or half on the verge with the shipped line and centred on
+        # the tarmac with the oracle (recentre pass 1 mean shift 2.31 m, max 4 m); and without a road-only HAT the AI
+        # off-road counter is BLIND here (its 3 m known positive read 0 %: the "road" test was the full terrain). With
+        # it: the positive reads 39 %, the AI 0 % centre / 0.09 % edge off (the grid only), race line 100 % on our road.
+        # JM_ROADHAT=0 = before (Zandvoort on the full-terrain oracle).
+        rh_env = get(ENV, "JM_ROADHAT", "")
+        if (rh_env == "" ? (WATGLEN || NURB || MONZA || SPA || ZANDV) : rh_env != "0") && nroad >= 200
             h = GPLTrack.build_hat(TRACKMESH0; exclude=HAT_EXCLUDE, exclude_pred=(lt -> !rp(lt)), drop_overpass=MONZA, road_pred=ROAD_PRED)
             println("  road-only HAT: ", nroad, " road tris (align/recentre oracle)"); h
         else
