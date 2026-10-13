@@ -25843,3 +25843,14 @@ usual rotation (≤ 6 per item).
   from these numbers with 4th/5th left at today's (the throttle map was measured mostly there); judged on fresh open +
   closed evaluations, launchval (raw pedal) and the WW T10 acceleration windows (2nd gear 12 % short today).
 * Gates (BLINDTURN-1 S7 commit): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).
+
+### IRGOLD-1 S22 (2026-10-13): a per-gear driveline inertia -- tried, NOT shipped
+* Built (`261012/tools/patch_s22_pergear_inertia.py`, applied, evaluated, reverted): `Igb_low` in the gears above the
+  2nd/3rd ratio midpoint, a parameter-only coefficient (no mass matrix); neutral at its default (fresh evals reproduce
+  1.1692 / 1.1623 exactly).
+* `igblow` 0.03 (the WOT fit's 1st/2nd value): open 1.1692 → 1.2247, closed 1.1623 → 1.1823. Its target improves (WW T10
+  acceleration windows 2.99 → 2.45, WW drifts 1.01 → 0.91) but the default-setup starts lose (1.48 → 3.34, ending 5 km/h
+  slow: a lighter driveline lets the rears spin up), as do the fast braking test with downshifts (T3 bias53.5 0.33 → 1.01)
+  and the skidpad arb windows. The low-gear inertia also sets wheelspin and lock-up dynamics: it cannot be fitted to the
+  WOT rows alone. Next angle (when IRGOLD-1 resumes): fit it jointly with the rear's drive-slip law (S7's drive μ), on the
+  launches + the T10 windows + braking, closed loop.
