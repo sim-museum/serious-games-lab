@@ -54,12 +54,49 @@ const EFRIC_T0 = 14.24                # N·m   engine drag at zero throttle: (T0
 const EFRIC_K  = 0.00389              # N·m/rpm
 const EFRIC_R0 = 2353.0               # rpm   ... × ½(1 + tanh((rpm − R0)/W)), the fade toward idle
 const EFRIC_W  = 351.0                # rpm
+# IRGOLD-1 S14 (2026-10-12): the ENGINE alone, measured with the drivetrain decoupled (IRTEST-261012 test 1: free revs,
+# standing, 11 files, 261012/tools/freerev2.py). At WOT the rpm rises at a rate that tracks the WOT torque at one constant
+# ratio from 5,000 to 8,700 rpm (Ie = 0.0522, IQR 0.0520-0.0524): the crank inertia is 0.052 kg·m², not 0.18. The rest
+# of the in-gear inertia sits BEHIND the gearbox: a joint least squares over every WOT row of every session (21,294 rows,
+# gears 1-5, 261012/tools/inertiafit.py) puts 0.0013 on the gearbox input and 0.151 on its output (crank-referred in top-
+# gear-free units, i.e. the same Igb·final² at the rear axle in every gear); with that split all five gears read the same
+# torque within a few N·m, where 0.18 on the input made 1st gear read 20-40 N·m strong (so a launch was too slow).
+# Likewise the closed-throttle decay gives the engine's own drag (4.84 + 0.00276·rpm)·fade (n 2498, sd 5.2 N·m),
+# 12-20 N·m below the in-gear coast drag EFRIC: the rest is the gearbox's, applied while the clutch is in. Where the clutch
+# slips or is out -- blips, downshifts, launches -- the engine now behaves as iRacing's: at the bite it falls 8,900 ->
+# 2,000 rpm in ~0.4 s, which julia's 3.5× heavier crank did not. JM_ENGINE_LUMPED=1 = the model before S14 (Ie 0.18 at
+# the crank, all drag on the engine, the S6 WOT table).
+const ENGINE_LUMPED = haskey(ENV, "JM_ENGINE_LUMPED")
+const IE_ENGINE = 0.0522              # kg·m²  crank (engine + flywheel), free revs
+const IE_DRIVELINE = 0.1482           # kg·m²  behind the gearbox, crank-referred without the gear: Igb·final²·η at the axle
+# WHERE the in-gear remainder (0.18 − 0.0522 = 0.128) sits is decided by the replay metric, not the gear-agreement fit: on the
+# gearbox INPUT (reflected ×gr², so a locked clutch gives S6's car exactly) the 233-window metric is 1.1658, behind the gearbox
+# 1.2189, the lumped car 1.2018 -- the WOT table and the part-throttle map were measured in the input frame. Default: input.
+# JM_DRIVELINE_AXLE=1 = behind the gearbox (IE_DRIVELINE·final² at the axle, every gear), the open alternative.
+const DRIVELINE_INPUT = !haskey(ENV, "JM_DRIVELINE_AXLE")
+const EFREE_T0 = 4.84                 # N·m    the engine's own zero-throttle drag (T0 + k·rpm)·fade, same fade as EFRIC
+const EFREE_K  = 0.00276              # N·m/rpm
+"The engine's own zero-throttle drag [N·m] (S14, free revs)."
+engine_drag_free(rpm) = (EFREE_T0 + EFREE_K*rpm) * 0.5*(1 + tanh((rpm - EFRIC_R0)/EFRIC_W))
+"The gearbox's share of the in-gear coast drag [N·m at the input shaft]: EFRIC minus the engine's own, × (1 − f) like it."
+gearbox_drag(rpm, throttle) = (1 - throttle_map(throttle, rpm)) *
+    ((EFRIC_T0 - EFREE_T0) + (EFRIC_K - EFREE_K)*rpm) * 0.5*(1 + tanh((rpm - EFRIC_R0)/EFRIC_W))
 
 # (rpm, N·m) knots: median WOT crank torque per 250-rpm band of the gold, sim frame (torquefit_261004.jl)
-const WOT_KNOTS = ((3500.0, 235.5), (4400.0, 236.5), (4900.0, 255.0), (5400.0, 273.5), (5900.0, 288.5),
+# IRGOLD-1 S14: below 3,500 rpm the S6 table only held its first value; the 261012 launches pull 1st gear from 1,600 rpm.
+# Measured there (inertiafit.py, 250-rpm bands, the split drivetrain, every session, gradient removed): 219 N·m at
+# 1,875 rising to the S6 table's 235.5 at 3,500. Above 3,500 the S6 table is kept AS IS -- a full refit in the split
+# frame (1-4 N·m higher, with the road load and coast drag refitted to match) made the replay metric WORSE
+# (1.2018 → 1.2627: the part-throttle map is a fraction between EFRIC and this table, so moving either moves every
+# part-throttle torque the map was measured with). The longitudinal frame (EFRIC, CdA, Crr, WOT ≥ 3,500, the map) stays S6's.
+const WOT_KNOTS_S14 = ((1875.0, 219.0), (2125.0, 231.0), (2375.0, 235.5), (3500.0, 235.5), (4400.0, 236.5), (4900.0, 255.0),
+                       (5400.0, 273.5), (5900.0, 288.5), (6400.0, 302.5), (6850.0, 311.0), (7150.0, 312.0), (7650.0, 307.5),
+                       (8100.0, 300.5), (8650.0, 284.5), (8900.0, 278.5))
+const WOT_KNOTS_S6 = ((3500.0, 235.5), (4400.0, 236.5), (4900.0, 255.0), (5400.0, 273.5), (5900.0, 288.5),
                    (6400.0, 302.5), (6850.0, 311.0), (7150.0, 312.0), (7650.0, 307.5), (8100.0, 300.5),
                    (8650.0, 284.5), (8900.0, 278.5))
 "Measured WOT crank torque: the knots joined by straight lines, as Σ ramps (symbolic-safe: max only)."
+const WOT_KNOTS = ENGINE_LUMPED ? WOT_KNOTS_S6 : WOT_KNOTS_S14
 function wot_torque(rpm)
     k = WOT_KNOTS
     T = k[1][2] + 0.0*rpm; s0 = 0.0                     # flat below the first knot
@@ -113,8 +150,17 @@ end
 # at 0.15 -- then 71 / 142 / 202 / 321 / 407 N·m at 0.25 … 0.65. Above 0.65 the launches have locked up; the 0.45–0.65
 # slope is extended to 760 N·m at full engagement (it only matters for shift shocks). The model before S9 had a linear
 # 500 N·m × engagement: grabbing too early (125 N·m at 0.25) and too soft late (325 at 0.65).
-const CLUTCH_KNOTS = ((0.0, 0.0), (0.05, 1.0), (0.15, 14.0), (0.25, 71.0), (0.35, 142.0), (0.45, 202.0), (0.55, 321.0),
-                      (0.65, 407.0), (1.0, 760.0))
+const CLUTCH_KNOTS_S9 = ((0.0, 0.0), (0.05, 1.0), (0.15, 14.0), (0.25, 71.0), (0.35, 142.0), (0.45, 202.0), (0.55, 321.0),
+                         (0.65, 407.0), (1.0, 760.0))
+# IRGOLD-1 S14: re-measured over every session (41,691 slipping rows incl. IRTEST-261012's fixed-pedal starts;
+# 261012/tools/clutchfit2.py) in narrow ±0.02 windows, with the per-file mass, LongAccel's 360 Hz sub-samples and the S14
+# driveline inertia on the car side. S9's 0.1-wide bands smeared a steep curve: at 0.40 engagement the clutch passes
+# 212 N·m (IQR 196-222), S9's knots gave 172 -- less than the engine's ~230 at 2,000 rpm, so in a launch the sim's engine
+# flared to 8,000 rpm where the gold's bogs to ~1,600 and the clutch then closed onto a revving engine (rears to the
+# limiter). No dependence on slip speed or engine rpm. Above 0.60 the 0.25-0.60 slope (~9.6 N·m per 0.01) is extended.
+const CLUTCH_KNOTS_S14 = ((0.0, 0.0), (0.05, 0.5), (0.10, 2.0), (0.15, 16.7), (0.20, 47.7), (0.25, 77.4), (0.30, 117.6),
+                          (0.35, 162.4), (0.40, 212.3), (0.45, 245.5), (0.50, 300.5), (0.55, 338.3), (0.60, 412.8), (1.0, 797.0))
+const CLUTCH_KNOTS = ENGINE_LUMPED ? CLUTCH_KNOTS_S9 : CLUTCH_KNOTS_S14
 const CLUTCH_LINEAR = haskey(ENV, "JM_CLUTCH_LINEAR")               # A/B: 500 N·m × engagement, as before S9
 "Clutch torque capacity [N·m] at engagement `e` (0 out … 1 in), through CLUTCH_KNOTS (Σ ramps: symbolic-safe)."
 function clutch_capacity(e)
@@ -135,6 +181,12 @@ function engine_torque(rpm, throttle; redline = 9500.0, T0 = EFRIC_T0, k = EFRIC
     fric = (T0 + k*rpm) * 0.5*(1 + tanh((rpm - r0)/w))              # zero-throttle drag, fading at idle
     f = throttle_map(throttle, rpm)                                 # CARPHYS-1 S8 / IRGOLD-1 S6: progressive, by rpm
     f*wot*cut - (1 - f)*fric                                        # blend WOT ↔ engine drag
+end
+"The ENGINE alone (IRGOLD-1 S14): as engine_torque, with the engine's own drag instead of the in-gear total."
+function engine_torque_free(rpm, throttle; redline = 9500.0)
+    wot = max(0.0, wot_torque(rpm)); cut = 0.5*(1 - tanh((rpm - redline)/200.0))
+    f = throttle_map(throttle, rpm)
+    f*wot*cut - (1 - f)*engine_drag_free(rpm)
 end
 
 # Straight-line longitudinal vehicle: states u (speed), ωf, ωr (axle wheel speeds).

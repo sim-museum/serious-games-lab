@@ -611,6 +611,9 @@ end
 # initial wheel speeds: the per-wheel rear states exist only with an LSD
 _wheel_u0(sys, v0) = CHASSIS[].diff === nothing ? [sys.ωr => v0/RW_R] : [sys.ωRL => v0/RW_R, sys.ωRR => v0/RW_R]
 
+# IRGOLD-1 S15: iRacing's anti-stall clutch on every car this process builds (vehicle_3d.jl `antistall`). JM_ANTISTALL=0 turns it
+# off; tools that replay iRacing's ENGAGEMENT (Clutch channel, which already contains it) set ANTISTALL[] = false first.
+const ANTISTALL = Ref(get(ENV, "JM_ANTISTALL", "1") != "0")
 function build_car3d(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0, y0 = 0.0,
                      brush = !haskey(ENV, "JM_MAGIC"), dt = 1/300)
     sys = mtkcompile(DrivenVehicle3D(name = :car, brush = brush, final = FINAL[], m = MASS[], front_frac = FRONT_FRAC[],
@@ -623,6 +626,7 @@ function build_car3d(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0, y0 = 0.0,
     # the divergence guard handles recovery from the rare hard-landing solver abort; a finer
     # `dt` (e.g. 1/1200) reduces those recoverable warnings further at some CPU cost.
     integ = init(prob, Rosenbrock23(); save_everystep = false, dense = false, adaptive = false, dt = dt)
+    ModelingToolkit.setp(sys, sys.antistall)(integ, ANTISTALL[] ? 1.0 : 0.0)      # IRGOLD-1 S15
     getall = ModelingToolkit.getsym(sys, [sys.X, sys.Y, sys.ψ, sys.u, sys.v, sys.rpm,
         sys.FL.Fx, sys.FR.Fx, sys.RL.Fx, sys.RR.Fx, sys.FL.Fy, sys.FR.Fy, sys.RL.Fy, sys.RR.Fy,
         sys.z, sys.th, sys.ph, sys.az, sys.FzFL, sys.FzFR, sys.FzRL, sys.FzRR, sys.ωr])

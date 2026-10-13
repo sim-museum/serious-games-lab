@@ -25598,3 +25598,96 @@ Lotus 49, 360 Hz logging, the official Ring setup (`261010_rung_official`), one 
   have to steer around. What closed loop does show: tracking the gold's yaw, the sim carries ~4° LESS body slip in the
   default slides (2.7° WW) -- the gold's drift angle is the real gap, and it is not the rear's steady stiffness.
 * Gates (S9-S13 commit): **ALL 59 PASS**. Status for the PO: STATUS_2026-10-12.md.
+
+## IRGOLD-1 -- resumed 2026-10-12 ~22:20 with the IRTEST-261012 data (PO, verbatim)
+*"run scrum on the julia racer project, starting with at most 25 sprints tuning the julia racer car model to the iracing
+gold standard. The iracing .ibt files resulting from the test plan created today by this project are on in the attached
+USB stick, along with a pdf describing these .ibt files. Proceed autonomously, running scrum for the next 10 hours
+without human intervention"* -- read as a fresh budget of at most 25 sprints for IRGOLD-1 from S14 (S14-S38), then the
+usual rotation (≤ 6 per item).
+* **Data:** 11 ibt (`~/gold standard/julia racer/261012/`, copied from the stick with the plan and the PO's
+  session_summary_261012.pdf). Setups verified from each file's session info: 21-10-22/21-14-35/21-16-02/21-22-33 =
+  WW103 (tests 1-3), 21-36-40/21-38-38/21-41-42 = the official Ring setup (tests 1-3), 21-52-34/21-53-58/21-55-38 =
+  official at Watkins Glen Classic (free laps), 21-57-57 = WW103 at the Glen. All 152 kPa, 43.2 L. Every test was driven
+  at Monza (the drifts too: Parabolica / Monza corners), the Glen files are ordinary laps. No notes_261012.txt.
+* **Logging is unchanged** (PO asked): every iRacing .ibt stores its rows at 60 Hz (header tick 60) -- the 360 Hz option
+  adds 6 sub-samples per row to some channels (here SteeringWheelTorque_ST, and LongAccel/LatAccel/VertAccel carry 6 per
+  row). The 261010/11 files and these have the identical layout (276 channels). Tools that read LongAccel must average
+  the 6 (CARPHYS-1's clutchfit read only the first).
+
+## IRGOLD-1 -- retrospective at resumption
+* **Done S1-S13:** replay metric 2.065 → 1.22 (free hubs, corner masses, tank, TYRE3, relaxation, Izz, bar arms, FFB
+  trail, the rpm-dependent part-throttle map, official default setup, progressive dampers, closed-loop judge).
+* **Worked:** measure on the gold first, one object at a time, judge on the whole metric; steady cells for the tyre;
+  asking the PO for tests that isolate one unknown (the 261010/11 session made S2-S6 possible).
+* **Didn't:** chasing launches and held slides through the tyre and the throttle map (S7, S8, S12) -- the launch needed
+  data the session did not hold (the engine decoupled), the slides an honest judge (S13).
+* **Options now:** (a) test 1 → engine inertia/drag directly; (b) test 2 → the launch bite with the light engine;
+  (c) test 3 drifts → new IRGOLD windows, judged closed loop. In that order (RESUME_2026-10-12.md).
+
+### IRGOLD-1 S14 (2026-10-12 night): the engine alone (test 1) and the clutch bite (test 2) -- light crank, measured clutch
+* **Test 1, free revs** (`261012/tools/freerev.py`, `freerev2.py`; 36,695 decoupled standing rows): at WOT the rpm rises
+  at a rate that is the WOT table ÷ one constant from 5,000 to 8,700 rpm: **crank inertia 0.0522 kg·m²** (IQR
+  0.0520-0.0524), not the 0.18 the car had. The closed-throttle decays give the engine's OWN drag (4.84 + 0.00276·rpm)·fade
+  (n 2,498, sd 5.2 N·m), 12-20 N·m below the in-gear coast drag (EFRIC): the rest is the gearbox's.
+* **But 0.18 is right in gear** (torquefit with 0.052 splits 3rd/4th/5th by ~10 N·m). So the drivetrain is a light crank
+  plus ~0.128 kg·m² beyond the clutch. Where exactly: a joint least squares over 21,294 WOT rows of every session
+  (`inertiafit.py`, gradient removed) prefers it BEHIND the gearbox (input 0.001, output 0.151; all five gears agree within
+  a few N·m), but the replay metric prefers it on the gearbox INPUT (S6's frame, in which the WOT table and the part-
+  throttle map were measured): 233 windows, lumped 1.2018 / behind 1.2189 / **input 1.1658**. Shipped: input.
+* **Tried, NOT shipped:** refitting the whole longitudinal frame around the split (road load CdA 0.4967 / Crr 0.0144,
+  EFRIC 12.43 + 0.003916·rpm, WOT +1-4 N·m): metric 1.2627 -- the part-throttle map is a fraction between EFRIC and the WOT
+  table, so moving either moves every part-throttle torque. The S6 frame stays; only WOT below 3,500 rpm (unmeasured
+  before; 219 N·m at 1,875 from the launches) is new.
+* **Test 2, the bite** (`launchval_261009.jl` with JM_LAUNCH_DIR / JM_LAUNCH_TRACE, 34 launches of 261012): the sim's
+  engine flared to 8,000 rpm at clutch 0.40 where the gold's bogs to 1,600, then the clutch closed on a revving engine and
+  the rears ran to the limiter at 0.53 g (the gold: 0.85-0.9 g, < 1 % slip). Cause: the clutch map. CARPHYS-1's 0.1-wide
+  bands smeared a steep curve (172 N·m at 0.40; measured **212**, IQR 196-222) and its tool read only the first of
+  LongAccel's six 360 Hz sub-samples. Re-measured (`clutchfit2.py`, 41,691 rows, narrow windows, per-file mass): no
+  dependence on slip speed or rpm. **Launch error 1.49 → 0.90 m/s** (mean |Δv| at 1/2/3 s), the hard launches from
+  ~4 m/s slow at 3 s to ~1.
+* Longitudinal check (longval_261002): unchanged within 1 % (clutch locked = the S6 car).
+* Found for S15: **iRacing has an ANTI-STALL clutch** -- in 81 % of all partly-engaged rows the driver's pedal (ClutchRaw)
+  is out further than the engagement (Clutch): standing in gear with the pedal released the engagement is 0 (engine idling
+  at 1,800-2,000), in a full-throttle launch it holds ~0.40 at ~1,600 rpm (`antistall.py`). julia passes the pedal through
+  and stalls. And for S16: the gold's rear holds Fx/Fz ≈ 1.21-1.24 from 15 % to 60 % drive slip (`driveslip.py`); the
+  sim's falls to ~0.8 once spinning -- S7's drive-μ question, now with the closed-loop judge.
+* A/B switches: `JM_ENGINE_LUMPED=1` (the whole pre-S14 powertrain), `JM_DRIVELINE_AXLE=1` (the remainder behind the box).
+
+### IRGOLD-1 S15 (2026-10-12 night): iRacing's ANTI-STALL clutch, as an object
+* What iRacing does (S14's find, `261012/tools/antistall.py`): the clutch's engagement is limited below the driver's pedal
+  whenever the engine would be dragged down -- standing in gear with the pedal out it stays OPEN (engine idles 1,800-2,000),
+  in a launch it slips at ~0.40 holding the engine at ~1,600. julia passed the pedal straight through: the same foot that
+  launches an iRacing Lotus stalls julia's (E98 then drops to AUTO), or flares it.
+* Built: `vehicle_3d.jl` engagement = min(pedal, emax), emax = clamp((rpm − (as_r0 − as_k·throttle))/as_w) -- an MTK
+  equation, so the stiff loop runs inside the implicit solver, not at frame rate. On for the player's car
+  (`DriveRT3D.ANTISTALL`, `JM_ANTISTALL=0` turns it off); off where a tool feeds iRacing's engagement (irgold_replay,
+  launchval's default mode); AI cars keep AUTO's own clutch.
+* Fitted on the 34 IRTEST-261012 launches driven by the driver's RAW pedal (`tools/antistall_fit_261012.jl`, launchval
+  `JM_LAUNCH_RAW=1`): **as_r0 1957, as_k 495, as_w 490 → mean |Δv| 0.55 m/s** (start 2107/623/400: 0.95; iRacing's own
+  engagement fed in: 0.90; the raw pedal with no anti-stall stalls). The hard launches (gold 19.2-20.9 m/s at 3 s) now
+  18.5-20.7.
+* Standing in 1st, pedal out, no throttle, 5 s: idles at 1,995 rpm, creeps 0.05 m/s (without: stalls at once). Dumping
+  the clutch at 50 % throttle: 0 → 8.8 m/s in 2 s, the engine dipping to ~1,870.
+* **What the PO will feel (S14 + S15):** launches like iRacing's -- let the clutch out at any speed with any throttle and
+  the engine bogs to ~1,600-1,900 and pulls away instead of stalling or flaring into wheelspin; standing in gear with the
+  pedal released no longer stalls; blips and downshifts rev up and fall ~3.5× faster (iRacing's light crank). Clutch
+  fully in, nothing changes. `JM_ANTISTALL=0` / `JM_ENGINE_LUMPED=1` revert.
+
+### IRGOLD-1 S16 (2026-10-13): the held drifts (test 3) as replay windows -- the rear's slip at the limit, second witness
+* The 261012 files are IRGOLD tests now (`testof`: T8 drifts / WW T8 drifts = the Parabolica power drifts, T9 Glen /
+  WW T9 Glen = Watkins Glen Classic laps, T10 starts); `irgold_fit.jl` takes `JM_IRG_DIRS=261012` like irgold_replay.
+  Held drifts found (`261012/tools/drifts.py`): 8 WW + 5 default at Parabolica (β 4-6°, 1.1-1.3 g, throttle 0.5-0.7,
+  0.8-3.3 s), 14 WW on the Glen laps. The default setup holds the same 5° with 37-119° of steering, WW103 with 11-35°.
+* Closed-loop replay (S13's judge) of the current car, drift rows only (`driftdump.py`, `driftalpha.py`): at Monza the
+  FRONT slip matches (6.05/6.28°, 6.17/6.22° gold/sim) and the sim's REAR runs ~0.8° short (5.77/4.98°, 5.00/4.22°), so
+  it carries 0.7° less body slip and needs 0.7-0.8° more road-wheel steer (10-15° at the rim) -- S12's steady-limit finding
+  on a second, independent kind of driving. The Glen windows want more slip on BOTH axles (front +1.6°): the replay's road
+  is flat and the Glen's corners are not (banking) -- not used for the rear.
+* Levers on the Monza drifts (closed loop): rear μx 1.35 / 1.25 (less side force under drive slip): β closer but the rear
+  wheelspin overshoots (κ 0.087 vs 0.072) and the WW Glen laps spin -- no. **Rear Cα 24.94 (S12's steady fit): β
+  4.70/4.31° vs gold 4.79/4.39°, rear slip 5.63/4.88° vs 5.77/5.00°, steer correction halved**; Cα 22 overshoots
+  (β 5.5/5.1°).
+* Gates (S14+S15 commit, 2026-10-12 23:27 - 10-13 00:10): 58 of 59 PASS at first; `throttlemap_smoke` pinned S9's clutch
+  knots (71/202/407 at 0.25/0.45/0.65) -- updated to S14's measured 77.4/212.3/245.5 at 0.25/0.40/0.45 and re-run: PASS.
+  **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).

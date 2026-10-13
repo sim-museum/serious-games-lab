@@ -29,8 +29,10 @@ const REF = get(ENV, "JM_REFDIR", expanduser("~/gold standard/julia racer/261002
 const WOTREF = get(ENV, "JM_WOTDIR", dirname(REF))
 # the sim's constants (DrivenVehicle3D defaults) -- the frame the fit is expressed in
 const RW_F = 0.30; const RW_R = parse(Float64, get(ENV, "JM_FIT_RWR", "0.33"))
-const IW = 1.0; const IE = 0.18; const ETA = 0.9
-const M_W = 2IW/RW_F^2 + 2IW/RW_R^2
+const IW = 1.0; const IE = parse(Float64, get(ENV, "JM_FIT_IE", "0.18")); const ETA = 0.9   # IRGOLD-1 S14: JM_FIT_IE
+# IRGOLD-1 S14: JM_FIT_IOUT = the driveline inertia behind the gearbox (powertrain.jl IE_DRIVELINE), always on the rear axle
+const IOUT = parse(Float64, get(ENV, "JM_FIT_IOUT", "0.0")); const FD = 4.22
+const M_W = 2IW/RW_F^2 + 2IW/RW_R^2 + IOUT*FD^2*ETA/RW_R^2
 const HW = 15                                     # half-window for derivatives: ±0.25 s
 
 ch(f, n) = try channel(f, n) catch; nothing end

@@ -123,7 +123,7 @@ function DrivenVehicle3D(; name,
     RR = brush ? BrushTyre(; name=:RR, br...,  camber=cmb, nsh=nshr) : Tyre(; name=:RR, TYRE_SKIDPAD_REAR...)
 
     gv, kfv, krv = g, karb_f, karb_r                     # numeric values for the parts' own parameters (the next line rebinds the names)
-    ps = @parameters m=m Izz=Izz Ixx=Ixx Iyy=Iyy a=a b=b tf=tf tr=tr h=h mf=mf mr=mr L=L M_s=M_s g=g Rw_f=Rw_f Rw_r=Rw_r Iw=Iw η=η final=final bias=bias Tbrake_max=Tbrake_max CdA=CdA ρair=ρair throttle=throttle0 brake=brake0 δ=steer0 gear=gear0 clutch=0.0 Ie=0.18 c_c=60.0 T_cap=500.0 k_idle=0.5 idle_rpm=2000.0 zrFL=0.0 zrFR=0.0 zrRL=0.0 zrRR=0.0 vrFL=0.0 vrFR=0.0 vrRL=0.0 vrRR=0.0 Fx_ext=0.0 Fy_ext=0.0 Mz_ext=0.0 CdA_scale=1.0 c_abl=(cmb && USE_TYRE3 ? TYRE3.cabl : C_ABL) toe_f=toe_f toe_r=toe_r karb_f=karb_f karb_r=karb_r
+    ps = @parameters m=m Izz=Izz Ixx=Ixx Iyy=Iyy a=a b=b tf=tf tr=tr h=h mf=mf mr=mr L=L M_s=M_s g=g Rw_f=Rw_f Rw_r=Rw_r Iw=Iw η=η final=final bias=bias Tbrake_max=Tbrake_max CdA=CdA ρair=ρair throttle=throttle0 brake=brake0 δ=steer0 gear=gear0 clutch=0.0 antistall=0.0 as_r0=1957.0 as_k=495.0 as_w=490.0 Ie=(ENGINE_LUMPED ? 0.18 : IE_ENGINE) Igb=(ENGINE_LUMPED ? 0.0 : DRIVELINE_INPUT ? 0.18 - IE_ENGINE : IE_DRIVELINE) c_c=60.0 T_cap=500.0 k_idle=0.5 idle_rpm=2000.0 zrFL=0.0 zrFR=0.0 zrRL=0.0 zrRR=0.0 vrFL=0.0 vrFR=0.0 vrRL=0.0 vrRR=0.0 Fx_ext=0.0 Fy_ext=0.0 Mz_ext=0.0 CdA_scale=1.0 c_abl=(cmb && USE_TYRE3 ? TYRE3.cabl : C_ABL) toe_f=toe_f toe_r=toe_r karb_f=karb_f karb_r=karb_r
     brk = BrakeSystem(; name = :brk, bias_p = brake_bias_p)   # CARPHYS-1 S6 (chassis_parts.jl)
     tank = FuelTank(; name = :tank, x = tank_x)               # IRGOLD-1 / FUEL-1
     if cmb
@@ -249,10 +249,27 @@ function DrivenVehicle3D(; name,
 
     # --- slipping clutch / launch (identical to DrivenVehicleRT) ---
     ωgb = ωr*gr
-    engage = (1.0 - clutch) * clamp(gear/0.5, 0.0, 1.0)
+    # IRGOLD-1 S15: iRacing's ANTI-STALL clutch. In the gold the driver's pedal (ClutchRaw) is out further than the clutch's
+    # actual engagement (Clutch) in 81 % of all partly-engaged in-gear rows: standing in gear with the pedal released the
+    # engagement is 0 and the engine idles at 1,800-2,000 rpm; in a full-throttle launch it holds ~0.40 with the engine at
+    # ~1,550-1,700 (261012/tools/antistall.py). The sim limits the engagement to emax = clamp((rpm − (as_r0 − as_k·throttle))
+    # /as_w): at zero throttle it closes just below the 2,000 rpm idle (no stall, ~no creep) and falls with throttle so a
+    # launch can load the engine down to ~1,600. Fitted (tools/antistall_fit_261012.jl) on the 34 IRTEST-261012 launches
+    # driven by the RAW pedal: as_r0 1957, as_k 495, as_w 490 -> mean |Δv| at 1/2/3 s 0.55 m/s (iRacing's own engagement
+    # fed instead: 0.90; the pedal without anti-stall: 1.4+). `antistall` = 1 on the game's cars (DriveRT3D.ANTISTALL); 0 where a tool
+    # feeds iRacing's resulting engagement (which already contains it).
+    epedal = (1.0 - clutch) * clamp(gear/0.5, 0.0, 1.0)
+    emax   = clamp((ωe*60/(2π) - (as_r0 - as_k*throttle))/as_w, 0.0, 1.0)
+    engage = epedal - antistall*max(0.0, epedal - emax)
     clu = Clutch(; name = :clu)                            # CARPHYS-1 S9: the measured bite point (chassis_parts.jl)
     append!(eqs, [clu.engage ~ engage, clu.slip ~ ωe - ωgb])
     Tcl   = clu.T
+    # IRGOLD-1 S14: the engine alone on the crank (Ie 0.052, its own drag); the driveline behind the gearbox carries Igb
+    # (at the rear axle Igb·final²·η, in every gear) and the gearbox takes the rest of the in-gear coast drag, `Tgd` at its
+    # input shaft, while the clutch is in (`engage`: so a clutch-out coast keeps the E91 road load it was fitted with).
+    # JM_ENGINE_LUMPED=1 builds the lumped engine of before (Ie 0.18 at the crank, EFRIC drag on it).
+    Teng  = ENGINE_LUMPED ? engine_torque(rpm, throttle) : engine_torque_free(rpm, throttle)
+    Tgd   = ENGINE_LUMPED ? 0.0 : engage*gearbox_drag(ωgb*60/(2π), throttle)
     Tidle = clamp(k_idle*max(0.0, idle_rpm - rpm), 0.0, 120.0) * (1.0 - engage)
     run   = clamp((rpm - 300.0)/150.0, 0.0, 1.0)
 
@@ -274,7 +291,7 @@ function DrivenVehicle3D(; name,
         D(ph) ~ pp,
         Ixx*D(pp) ~ (ys[1]*Fsusp[1]+ys[2]*Fsusp[2]+ys[3]*Fsusp[3]+ys[4]*Fsusp[4]) + h*ΣFy,  # roll: susp + cornering
         # ---- powertrain (identical to DrivenVehicleRT) ----
-        Ie*D(ωe) ~ (engine_torque(rpm, throttle) + Tidle)*run - (1.0 - run)*45.0*ωe - Tcl,
+        Ie*D(ωe) ~ (Teng + Tidle)*run - (1.0 - run)*45.0*ωe - Tcl,
         (front_hubs ? 2*Iw*D(ωf) ~ -brk.TF/2*(tanh(ωf + ωfd) + tanh(ωf - ωfd)) - (Fx_f[1]+Fx_f[2])*Rw_f :
                       2*Iw*D(ωf) ~ -brk.TF*tanh(ωf) - (Fx_f[1]+Fx_f[2])*Rw_f),
         # ---- world pose for rendering ----
@@ -284,7 +301,7 @@ function DrivenVehicle3D(; name,
     )
     front_hubs && push!(eqs, 2*Iw*D(ωfd) ~ -brk.TF/2*(tanh(ωf + ωfd) - tanh(ωf - ωfd)) - (Fx_f[1]-Fx_f[2])*Rw_f)
     if !lsd
-        push!(eqs, 2*Iw*D(ωr) ~ Tcl*gr*η - brk.TR*tanh(ωr) - (Fx_r[1]+Fx_r[2])*Rw_r)
+        push!(eqs, (2*Iw + Igb*(DRIVELINE_INPUT ? gr : final)^2*η)*D(ωr) ~ (Tcl - Tgd)*gr*η - brk.TR*tanh(ωr) - (Fx_r[1]+Fx_r[2])*Rw_r)
     else
         # WWSETUP-1 LSD: a ramp-type (Salisbury) clutch-pack diff. The input torque Tin = Tcl·gr·η splits equally,
         # as in an open diff; the clutch packs then pass torque Tlsd from the faster half-shaft to the slower one,
@@ -296,13 +313,16 @@ function DrivenVehicle3D(; name,
         # k (LSD_K, powertrain.jl) is the one constant the garage does not give -- friction faces × μ × the
         # ramp/clutch radius ratio -- and is identified from the gold's rear wheel-speed split
         # (tools/lsdfit_261005.jl), with BOTH setups' ramps on the same k.
-        Tin  = Tcl*gr*η
+        Tin  = (Tcl - Tgd)*gr*η
+        Igr  = Igb*(DRIVELINE_INPUT ? gr : final)^2*η/4                 # S14: the driveline's inertia at the carrier, ¼ in each half-shaft's row
+        RLt  = Tin/2 + Tlsd/2 - brk.TR/2*tanh(ωRL) - Fx_r[1]*Rw_r
+        RRt  = Tin/2 - Tlsd/2 - brk.TR/2*tanh(ωRR) - Fx_r[2]*Rw_r
         wdr  = 0.5*(1 + tanh(Tin/10.0))
         Tcap = lsd_pre + lsd_k*lsd_plates*(wdr*lsd_cotd + (1 - wdr)*lsd_cotc)*sqrt(Tin^2 + 1.0)
         append!(eqs, [
             Tlsd ~ Tcap*tanh((ωRR - ωRL)/lsd_weps),                       # >0: RR faster, torque passes to RL
-            Iw*D(ωRL) ~ Tin/2 + Tlsd/2 - brk.TR/2*tanh(ωRL) - Fx_r[1]*Rw_r,
-            Iw*D(ωRR) ~ Tin/2 - Tlsd/2 - brk.TR/2*tanh(ωRR) - Fx_r[2]*Rw_r,
+            D(ωRL) ~ ((Iw + Igr)*RLt - Igr*RRt)/(Iw*(Iw + 2*Igr)),          # [Iw+Igr Igr; Igr Iw+Igr]·ω̇ = torques, solved
+            D(ωRR) ~ ((Iw + Igr)*RRt - Igr*RLt)/(Iw*(Iw + 2*Igr)),          # explicitly (a coupled form keeps a mass matrix)
             ωr ~ (ωRL + ωRR)/2,
         ])
     end

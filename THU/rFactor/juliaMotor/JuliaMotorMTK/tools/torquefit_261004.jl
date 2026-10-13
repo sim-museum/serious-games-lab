@@ -20,7 +20,7 @@ include(joinpath(T, "fit", "fitutil.jl")); using .FitUtil
 
 const G = 9.80665; const DT = 1/60
 const STORE = get(ENV, "JM_WOTDIR", expanduser("~/gold standard/julia racer"))
-const RW_F = 0.30; const RW_R = 0.334; const IW = 1.0; const IE = 0.18; const ETA = 0.9
+const RW_F = 0.30; const RW_R = 0.334; const IW = 1.0; const IE = parse(Float64, get(ENV, "JM_FIT_IE", "0.18")); const ETA = 0.9   # IRGOLD-1 S14: JM_FIT_IE
 const CDA = 0.480; const CRR = 0.0139                       # powertrain.jl CDA_IBT / CRR_IBT
 const HW = 15
 ch(f, n) = try channel(f, n) catch; nothing end

@@ -27,6 +27,7 @@
 using Printf, Statistics
 ENV["JM_NOTC"] = "1"
 include(joinpath(@__DIR__, "replay_261005.jl"))             # settle!, install!, ibt_open, ch, setup_params, DriveRT3D, G, LWB
+DriveRT3D.ANTISTALL[] = false     # IRGOLD-1 S15: the replays feed iRacing's ENGAGEMENT (Clutch), which already holds its anti-stall
 using ModelingToolkit, OrdinaryDiffEq
 
 const DG = expanduser("~/gold standard/julia racer/261010")
@@ -64,7 +65,12 @@ function testof(fn)
              "15-03-24" => "T3 bias53.5", "15-07-27" => "T3 bias58", "15-09-41" => "T3 bias58", "15-20-13" => "T4 arb soft",
              "15-24-06" => "T4 arb 4", "15-28-20" => "T4 arb firm", "15-34-40" => "T6 flicks", "15-35-50" => "T6 flicks",
              "15-45-00" => "T6 flicks", "15-54-13" => "T7 fuel20", "16-07-12" => "T7 fuel180", "16-12-38" => "T7 fuel145",
-             "16-19-11" => "WW T1 slides", "16-43-06" => "WW T1 slides", "16-53-12" => "WW T6 flicks", "17-03-15" => "WW T2 slalom")
+             "16-19-11" => "WW T1 slides", "16-43-06" => "WW T1 slides", "16-53-12" => "WW T6 flicks", "17-03-15" => "WW T2 slalom",
+             # IRTEST-261012 (IRGOLD-1 S16): test 3 power drifts at Monza (Parabolica), free laps at Watkins Glen Classic,
+             # tests 1-2 (free revs, standing starts) in the rest
+             "21-22-33" => "WW T8 drifts", "21-41-42" => "T8 drifts", "21-52-34" => "T9 Glen", "21-53-58" => "T9 Glen",
+             "21-55-38" => "T9 Glen", "21-57-57" => "WW T9 Glen", "21-10-22" => "WW T10 starts", "21-14-35" => "WW T10 starts",
+             "21-16-02" => "WW T10 starts", "21-36-40" => "T10 starts", "21-38-38" => "T10 starts")
     occursin("261004", fn) ? "261004 skid" : occursin("261005", fn) ? "261005 skid" : get(d, t, "?")
 end
 

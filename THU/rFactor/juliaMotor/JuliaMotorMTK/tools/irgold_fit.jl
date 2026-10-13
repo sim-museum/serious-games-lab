@@ -78,6 +78,10 @@ end
 
 function main()
     files = sort(filter(f -> endswith(f, ".ibt"), readdir(DG; join = true)); by = f -> match(r"2026-(.*)\.ibt", f).captures[1])
+    # IRGOLD-1 S16: JM_IRG_DIRS="261012" adds other gold sessions (as irgold_replay.jl does)
+    for dd in split(get(ENV, "JM_IRG_DIRS", ""), ","; keepempty = false)
+        append!(files, sort(filter(f -> endswith(f, ".ibt"), readdir(expanduser("~/gold standard/julia racer/$dd"); join = true))))
+    end
     only = split(get(ENV, "JM_IRG_FILES", ""), ","; keepempty = false)
     files = isempty(only) ? filter(f -> !occursin("skidpad", f), files) : filter(f -> any(o -> occursin(o, f), only), files)
     files = irg_files(files)                                   # the wrong-setup files (irgold_replay.jl IRG_EXCLUDE)
