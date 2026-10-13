@@ -25469,9 +25469,14 @@ Lotus 49, 360 Hz logging, the official Ring setup (`261010_rung_official`), one 
 2. **Standing starts at a fixed pedal** (a straight, e.g. Monza's pit straight): 5 starts holding ~50 % throttle while
    releasing the clutch slowly (~1 s), then full throttle. Why: iRacing's engine bogs from ~9,000 to ~1,800 rpm at the
    bite and the rears hook up; julia's engine stays high and spins the rears.
-3. (optional) **Held power drifts on a ROAD course at 152 kPa** (e.g. a long Monza corner such as Parabolica): hold a
-   2-3 s power-on drift at 5-10° of body slip, 4-6 times. Why: the skidpad's oval pressures cloud the held slides, which
-   are now julia's largest remaining difference.
+3. (optional) **Held power drifts at 152 kPa all round**, best at **Watkins Glen Classic** (same layout as julia's
+   Glen: corners both ways, and the PO can repeat the same drifts in julia racer); Monza's Parabolica works too (right
+   only). Official Ring setup first; WW103 the same way if time. Gear for 7,000-8,000 rpm mid-corner (official
+   gearing: 2nd ~57, 3rd ~44 rpm per km/h), ~80-90 % of normal corner speed. Settle ~1 s at ~30 % throttle, squeeze to
+   60-100 % over ~0.5 s until the rear steps out, catch it small with opposite lock, then HOLD 2-3 s at 5-10° of body
+   slip with throttle and steering nearly constant (throttle sets the angle, steering points the nose). Never lift
+   abruptly. 4-6 holds each direction; then 2-3 normal laps. Why: the skidpad slides (T1) were 20-50° at oval
+   pressures 152/207; the gap between the gold and julia is largest between the steady limit and those big slides.
 * Tried (S8, not shipped): rebalancing μ front/rear 1.45/1.55 and 1.43/1.58 -- 1.584 / 1.306 vs 1.223: fewer unholdable cells (2) but the slides much worse (the sim spins out of power drifts the gold holds). Every rear-grip reduction tried makes the sim spin; the held-slide residual is not the grip LEVEL.
 * **Roll timing (S8 analysis):** the axle roll gradient from the shocks matches (default −1.19 gold / −1.16 sim °/g, WW
   −1.16 / −1.13) but the sim's body rolls LATER: roll lags lateral g 74-81 ms vs the gold's 42-47 (Monza, both setups).
