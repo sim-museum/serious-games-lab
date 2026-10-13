@@ -6363,7 +6363,11 @@ const TRACK_AMB    = parse(Float32, get(ENV,"JM_TRACK_AMB","0.34"))
 # (a triangle's bin = the lap distance of the centreline node nearest its centroid -- GPL's segment trees hold the
 # geometry of their own stretch), so the window is one or two vertex ranges per part; objects get the same window by
 # position. JM_LAPWIN=<m> sets it, 0 = off (the eye-distance rule alone). The backdrop panoramas keep their own rule.
-const LAPWIN = parse(Float64, get(ENV, "JM_LAPWIN", NURB ? "914" : "0"))
+# BLINDTURN-1 S7 (2026-10-13): on at Watkins Glen and Monza too -- JM_LAPWIN_DIAG (below) finds no hidden triangle within
+# 200 m of any eye position there (WG ≥ 229 m, Monza ≥ 200 m: only far-along-the-lap ground, as GPL hides it); Zandvoort
+# (54-120 m at s 920-970 / 4030-4180) and Spa (126-150 m round La Source) hide nearby folds and stay off until each is
+# checked against its gold video.
+const LAPWIN = parse(Float64, get(ENV, "JM_LAPWIN", (NURB || WATGLEN || MONZA) ? "914" : "0"))
 const LAPBIN = 100.0
 const _LW = (LAPWIN > 0 && (@isdefined TRKSURF)) ? let P = TRKSURF.pos, c = 50.0
         xs = [p[1] for p in P]; zs = [p[3] for p in P]; x0 = minimum(xs) - 1; z0 = minimum(zs) - 1
@@ -6407,6 +6411,30 @@ if _LW !== nothing
         end
         println("  [lapwin] track drawn ", LAPWIN, " m ahead/behind along the lap (GPL); ", length(TRACK), " parts in ",
                 LAPNB, " bins of ", LAPBIN, " m (", round(time() - t0, digits = 1), " s; JM_LAPWIN=0 reverts)")
+        # BLINDTURN-1 S7: JM_LAPWIN_DIAG=1 -- for an eye on the centreline every 50 m, the NEAREST triangle the window hides.
+        # GPL hides far-along-the-lap geometry by design; a hidden triangle within ~150 m of the eye is a candidate HOLE
+        # (our nearest-centreline binning giving a fold of the track -- a hairpin's other leg -- to the wrong stretch).
+        if get(ENV, "JM_LAPWIN_DIAG", "0") == "1"
+            P = TRKSURF.pos; Sd = TRKSURF.lapdist; worst = Tuple{Float64,Float64,String}[]
+            for k in 1:max(1, round(Int, 50/max(Sd[min(end, 2)] - Sd[1], 1e-3))):length(P)
+                ex, ez = P[k][1], P[k][3]; c = Sd[k]; best = (Inf, "")
+                for (pi, tp) in enumerate(TRACK)
+                    v = tp.verts; off = TRACKLAPOFF[pi]
+                    for b in 0:LAPNB-1
+                        lapwin_in(b*LAPBIN + LAPBIN/2, c) && continue
+                        for t in div(off[b+1], 3):div(off[b+2], 3)-1
+                            o = 33t; cx = (v[o+1] + v[o+12] + v[o+23])/3; cz = -(v[o+3] + v[o+14] + v[o+25])/3
+                            d = (cx - ex)^2 + (cz - ez)^2; d < best[1]^2 && (best = (sqrt(d), string(tp.tex)))
+                        end
+                    end
+                end
+                push!(worst, (c, best[1], best[2]))
+            end
+            sort!(worst, by = x -> x[2])
+            println("  [lapwin diag] nearest HIDDEN triangle by eye position (lap m: distance m, texture), the 12 closest:")
+            for w in worst[1:min(end, 12)]; println("      s ", round(Int, w[1]), ": ", round(w[2], digits = 1), " m  ", w[3]); end
+            println("  [lapwin diag] eye positions with a hidden triangle within 150 m: ", count(w -> w[2] < 150, worst), " of ", length(worst))
+        end
     end
 end
 "the part's vertex ranges inside the lap window round lap distance `c` (one, or two across the line)"

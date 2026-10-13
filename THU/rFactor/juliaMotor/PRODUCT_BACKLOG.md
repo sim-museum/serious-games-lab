@@ -25811,3 +25811,35 @@ usual rotation (≤ 6 per item).
   after the 90" is then the AI using the whole DRAWN surface (kerbs included) where GPL's AI stay further in -- a judgement
   against the gold video: (g) goes to the PO's look.
 * Gates (WGTD-1 S7 commit): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).
+
+### BLINDTURN-1 S7 (2026-10-13): GPL's lap window on the other four tracks -- on at WG and Monza
+* Retro: S5 put GPL's 914 m lap-distance draw window (gpl.exe FUN_00485960) on at the Ring only, "until each track is
+  checked against its gold". Pixel A/B renders (JM_SHOTS every 250 m, window on/off) proved useless as a judge: a
+  teleport's settle is not reproducible run to run (Zandvoort s 2350: the SAME arm differs from itself by 40 %; the car
+  lands on grass and rolls), so the differences were the car's pose, not geometry. (Side finding: at Zandvoort the shot
+  teleport lands off the road at s 2350-3600.)
+* Geometric judge instead, `JM_LAPWIN_DIAG=1` (load-time): for an eye on the centreline every 50 m, the NEAREST triangle
+  the window hides. GPL hides far-along-the-lap ground by design; a hidden triangle close to the eye is a candidate hole
+  (our nearest-centreline binning handing a fold of the track to the wrong stretch):
+  | track | nearest hidden | eye positions with one within 150 m |
+  |---|---|---|
+  | Watkins Glen | 229.6 m (grass) | 0 of 74 |
+  | Monza | 200.5 m (grass) | 0 of 113 |
+  | Zandvoort | 54.0 m (grass, s 917), 56.5 m (hay bales, s 4078) | 10 of 83 |
+  | Spa | 126.2 m (forest, s 102), trees round La Source | 5 of 277 |
+* **Shipped:** the window is on by default at Watkins Glen and Monza (`JM_LAPWIN=0` reverts); Zandvoort and Spa stay off
+  until those spots are compared with their gold videos (260801 Zandvoort / 260802 Spa cockpit). trackrange_smoke updated.
+
+### IRGOLD-1 -- groundwork for S22 (2026-10-13, analysis only, during the BLINDTURN-1 gates)
+* The low-gear WOT excess is SYSTEMATIC, not session noise (`261012/tools/wotsession.py`, shipped frame, 3,500-6,000 rpm,
+  WOT − S6 table): 2nd gear +18.2 / +14.6 / +2.5 / +19.6 / +17.4 N·m in 261002/04/05/10/12; 3rd +10.4 / +6.9 / +0.1 / −1.2 /
+  +9.4; 4th +1.6 / −0.4 / −0.3 / +2.2 / +6.5.
+* Per-gear effective in-gear inertia that zeroes each gear's residual (crank-referred, least squares / median ratio):
+  1st 0.081 / 0.055, 2nd 0.079 / −0.004, 3rd 0.238 / 0.112, 4th 0.261 / 0.148, 5th 0.76 (ill-conditioned) / 0.161.
+  1st/2nd behave as the crank alone; 3rd-5th near the shipped 0.18. No single location of the remainder gives this
+  (input: ∝ 1, behind the box: ∝ 1/r²); either iRacing's drivetrain has a per-gear inertia, or the engine pulls harder in
+  the low gears at the same rpm.
+* **S22 plan:** a per-gear `Igb` (a runtime parameter, set at each shift like the gear ratio -- no mass-matrix trap),
+  from these numbers with 4th/5th left at today's (the throttle map was measured mostly there); judged on fresh open +
+  closed evaluations, launchval (raw pedal) and the WW T10 acceleration windows (2nd gear 12 % short today).
+* Gates (BLINDTURN-1 S7 commit): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).

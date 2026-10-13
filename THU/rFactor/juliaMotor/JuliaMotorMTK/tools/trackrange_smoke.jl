@@ -41,6 +41,6 @@ chk("the track loop draws the window's ranges; draw takes a range", occursin("fo
     occursin("glDrawArrays(GL_TRIANGLES, first, count < 0 ? item.n : count)", rnd))
 chk("objects get the same window (backdrops exempt)", occursin("!lapwin_in(OBJLAP[oi], _olap)) && continue", src) &&
     occursin("isbackdrop(lowercase(String(o[5]))) ? NaN", src))
-chk("on by default at the Ring (914 m, GPL's 18,000,000 TRK)", occursin("get(ENV, \"JM_LAPWIN\", NURB ? \"914\" : \"0\")", src))
+chk("on by default at the Ring, WG and Monza (914 m, GPL's 18,000,000 TRK; BLINDTURN-1 S7)", occursin("get(ENV, \"JM_LAPWIN\", (NURB || WATGLEN || MONZA) ? \"914\" : \"0\")", src))
 println(fails[] == 0 ? "ALL PASS" : "FAILURES: $(fails[])")
 exit(fails[] == 0 ? 0 : 1)
