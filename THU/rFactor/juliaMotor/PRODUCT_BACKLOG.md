@@ -25933,3 +25933,21 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   as a flat white quad -- the gold's sleeves are white too at that place, but show folds and a red stripe. For the
   sleeve-look item (judged against the 260801/260802 gold cockpit frames).
 * Gates (COCKPIT-2 S5 commit): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`). Other teams' cockpits (their own ?d.3do: brad, brmd, covd, eagd, ferd) = a multi-sprint job without gold references; next pass.
+
+### SPATD-1 S5 (2026-10-13): (2) "a building belongs on the outside of that turn" -- found, NOT restored
+* Retro: S1-S4 fixed the invisible barrier there (GPL's right wall registered onto our centreline at the Burnenville
+  junction, s≈5160-5240 in the TRKSURF frame); the building was left open. GPL's own data: a raised wall at +4.5 m = the
+  village houses at the kerb.
+* NO MESH is not it: the many NO MESH drops near the corner (tr22, t106, hatzia, thomasa, x34, people*, high3do*) are
+  references to models this GPL install does not ship (not as loose files, case-blind, nor in spa.dat's 421 entries) --
+  GPL cannot draw them either.
+* The candidate is **house46**, dropped twice: E68 (origin 3.0 m from the TRKSURF centreline) and E69-S5 (footprint 2.6 m
+  from it). With both bypassed (`JM_KEEPTEST=house46 JM_ONROAD_FP=0`; JM_KEEPTEST now also reaches the E68 rule -- it did
+  not before) it appears at shot position s 5200: a large white/grey building on the pink paved square beside the road,
+  off the main asphalt -- but its wall cuts through the parked yellow car, so its placement (offset/yaw) or the cars'
+  is suspect, and it does not obviously match the gold's long grey barn on the outside of the left (260802 Spa cockpit,
+  t≈95 s). A rule change (buildings decided by drawn tarmac, not the TRKSURF centreline) restored nothing on any of the
+  five tracks (house46's origin is on the paved square, which the road classifier counts) -- reverted.
+* Next: house46's placement against GPL's (yaw sign at Spa, YAWSIGN-1) before restoring it; the three reference frames
+  (TRKSURF lapdist 5179 ↔ shot s 5200 ↔ the "Burnenville" banner at shot s 3350) need one table.
+* Gates (SPATD-1 S5 commit): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).

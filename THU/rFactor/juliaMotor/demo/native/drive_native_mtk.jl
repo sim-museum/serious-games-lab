@@ -7314,7 +7314,7 @@ let objnames=Set{String}()
                   startswith(nm,"hotel") || startswith(nm,"bld") ||
                   (_bldg_wide && (occursin(r"^(ho|bu)\d", nm) || startswith(nm,"casa") ||
                                   startswith(nm,"clhouse") || occursin("hotel", nm)))
-    onroad_bldg(i) = bldgish(lowercase(i.name)) && begin
+    onroad_bldg(i) = bldgish(lowercase(i.name)) && !any(k -> startswith(lowercase(i.name), lowercase(k)), _keeptest) && begin   # SPATD-1 S5: JM_KEEPTEST reaches this rule too
         hr = JuliaMotor.hat(TRKSURF, Float64(i.x), Float64(i.y))
         hit = hr.found && abs(hr.lateral) < 4.0
         hit && println("  E68: building ", i.name, " centred ON the road (lat=", round(hr.lateral,digits=1), " m, s=", round(Int,hr.lapdist), ") — dropped")
