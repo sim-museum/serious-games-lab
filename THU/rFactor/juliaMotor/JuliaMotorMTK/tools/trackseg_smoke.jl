@@ -19,9 +19,13 @@ check(section_label("Stavelot") == "Stavelot (Stable Lot)", "a place name now re
 # TRACKSEG-5: the Ring's names from the PO's add-on boards + the BAPOM map, in lap order, the two old errors fixed
 ring = [n for (_s, n) in TRACK_SECTIONS["nurburgring"].secs]; rs = [x for (x, _n) in TRACK_SECTIONS["nurburgring"].secs]
 check(length(ring) >= 34 && issorted(rs), "the Ring has the boards' and the map's names, in lap order ($(length(ring)))")
-check(all(n -> n in ring, ("Hocheichen", "Quiddelbacher Höhe", "Breidscheid", "Angstkurve", "Eiskurve", "Pflanzgarten II", "Galgenkopf", "Hohenrain")),
+check(all(n -> n in ring, ("Hocheichen", "Quiddelbacher Höhe", "Breidscheid", "Angstkurve / Mutkurve", "Eiskurve", "Pflanzgarten II", "Galgenkopf", "Hohenrain")),
       "the TRACKSEG-5 names are there")
 check(findfirst(==("Eschbach"), ring) < findfirst(==("Brünnchen"), ring), "Eschbach comes before Brünnchen (the real order, the add-on boards and the map)")
+# RINGNAMES-1 (PO 2026-10-13): iRacing's Nordschleife names that exist on the 1967 lap, in lap order between GPL's boards
+check(all(n -> n in ring, ("Kottenborn", "Postbrücke", "Kompression", "Spiegelkurve", "Dreifach-Rechts", "Lauda Links", "Steilstrecke",
+                           "Posten 147", "Hedwigshöhe", "Stefan-Bellof-S", "Großer Sprunghügel", "Kleines Karussell")), "the iRacing names are there")
+check(findfirst(==("Dreifach-Rechts"), ring) == findfirst(==("Wehrseifen"), ring) - 1, "Dreifach-Rechts leads into Wehrseifen")
 src = read(joinpath(ROOT, "drive_native_mtk.jl"), String)
 check(occursin("get(ENV, \"JM_SEGNAME_SECS\", \"6.0\")", src), "names stay up 6 s by default (was 3)")
 println("TRACKSEG GATE: ", ok ? "PASS" : "FAIL"); exit(ok ? 0 : 1)

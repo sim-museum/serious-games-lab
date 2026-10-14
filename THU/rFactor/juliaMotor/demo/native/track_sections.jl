@@ -33,28 +33,40 @@ const TRACK_SECTIONS = Dict(
         (3337.1,  "Hocheichen"),             # TS_HO   (TRACKSEG-5: new)
         (3726.7,  "Quiddelbacher Höhe"),     # TS_QH   (new)
         (4175.5,  "Flugplatz"),              # TS_FL
+        (4405.0,  "Kottenborn"),             # RINGNAMES-1 (iRacing): the sweeps after Flugplatz's two rights
         (5290.6,  "Schwedenkreuz"),          # TS_SK
         (5613.0,  "Aremberg"),               # TS_AB
+        (5850.0,  "Postbrücke"),             # RINGNAMES-1 (iRacing): the descent after Aremberg
         (6365.4,  "Fuchsröhre"),             # TS_FR
+        (6650.0,  "Kompression"),            # RINGNAMES-1 (iRacing): the bottom of the Foxhole
         (6924.3,  "Adenauer Forst"),         # TS_AF
         (7738.4,  "Metzgesfeld"),            # TS_MF
         (8257.0,  "Kallenhard"),             # TS_KH
+        (8465.0,  "Spiegelkurve"),           # RINGNAMES-1 (iRacing): the left kinks after Kallenhard
+        (8740.0,  "Dreifach-Rechts"),        # RINGNAMES-1 (iRacing): the three rights into Wehrseifen
         (9157.1,  "Wehrseifen"),             # s_wehr (the add-on's TS_WS is not placed in this nurburg.3do)
         (9700.0,  "Breidscheid"),            # map, the valley floor (TS_BS not placed)   (new)
         (9925.5,  "Ex-Mühle"),               # TS_EM
+        (10420.0, "Lauda Links"),            # RINGNAMES-1 (iRacing): the left kink before Bergwerk
         (10742.4, "Bergwerk"),               # TS_BW
         (11798.4, "Kesselchen"),             # TS_KE
-        (12647.0, "Angstkurve"),             # map   (new)
+        (12647.0, "Angstkurve / Mutkurve"),  # map; # RINGNAMES-1 (iRacing) names the same corner Mutkurve
         (13133.8, "Klostertal"),             # s_klos
+        (13560.0, "Steilstrecke"),           # RINGNAMES-1 (iRacing): the climb from the Klostertal hairpin to the Karussell
         (13759.9, "Karussell"),              # TS_KA
+        (14300.0, "Posten 147"),             # RINGNAMES-1 (iRacing): the climb after the Karussell
         (14845.4, "Hohe Acht"),              # TS_HA
+        (15030.0, "Hedwigshöhe"),            # RINGNAMES-1 (iRacing): after Hohe Acht
         (15409.6, "Wippermann"),             # TS_WM  (was s_wipp 15046.9, 360 m early)
         (15912.1, "Eschbach"),               # TS_EB
         (16296.3, "Brünnchen"),              # TS_BR  (was s_brun 15501.0, BEFORE Eschbach)
         (16616.0, "Eiskurve"),               # map   (new)
         (16822.9, "Pflanzgarten I"),         # TS_PG
         (17925.0, "Pflanzgarten II"),        # map   (new)
+        (18000.0, "Stefan-Bellof-S"),        # RINGNAMES-1 (iRacing): the right-left S after Pflanzgarten II
+        (18150.0, "Großer Sprunghügel"),     # RINGNAMES-1 (iRacing): the jump before Schwalbenschwanz
         (18308.8, "Schwalbenschwanz"),       # TS_SS
+        (18500.0, "Kleines Karussell"),      # RINGNAMES-1 (iRacing): the banked left inside Schwalbenschwanz
         (19249.3, "Galgenkopf"),             # TS_GK   (new)
         (19829.7, "Döttinger Höhe"),         # TS_DH
         (21557.4, "Antoniusbuche"),          # s_anten
@@ -130,7 +142,12 @@ const SECTION_EN = Dict(
     "Eschbach" => "Ash Brook",
     # TRACKSEG-5: the add-on boards' and the map's extra Ring names
     "Hocheichen" => "High Oaks", "Quiddelbacher Höhe" => "Quiddelbach Heights", "Breidscheid" => "Broad Divide",
-    "Angstkurve" => "Fear Curve", "Eiskurve" => "Ice Curve", "Galgenkopf" => "Gallows Head", "Hohenrain" => "High Ridge",
+    "Angstkurve / Mutkurve" => "Fear / Courage Curve", "Eiskurve" => "Ice Curve", "Galgenkopf" => "Gallows Head", "Hohenrain" => "High Ridge",
+    # RINGNAMES-1 (PO 2026-10-13: "at the ring, include the Iracing track section names (along with English translations)")
+    "Kottenborn" => "Kotten Spring", "Postbrücke" => "Post Bridge", "Kompression" => "Compression",
+    "Spiegelkurve" => "Mirror Curve", "Dreifach-Rechts" => "Triple Right", "Lauda Links" => "Lauda's Left",
+    "Steilstrecke" => "Steep Stretch", "Posten 147" => "Marshal Post 147", "Hedwigshöhe" => "Hedwig's Heights",
+    "Großer Sprunghügel" => "Big Jump Hill", "Stefan-Bellof-S" => "Stefan Bellof's S", "Kleines Karussell" => "Little Carousel",
     "Della Roggia" => "Of the Irrigation Ditch", "Lesmos" => "Lazy Bends", "Serraglio" => "Seraglio", "Ascari" => "Ascari's Corner",
     "Les Combes" => "The Hollows", "Burnenville" => "Burning Town", "Malmedy" => "Bad Medicine", "Masta" => "Mast Village",
     "Stavelot" => "Stable Lot", "Blanchimont" => "White Mount",
