@@ -26281,3 +26281,17 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
 * **TD261013-1 after S1-S7:** every PO sub-item has a fix built and checked against the gold or the PO's own recordings,
   except (b2) -- the PO's call on Spa's invisible wall. Open nice-to-haves: Spa guardrails, the team levers on the left
   cowl. Rotates per the 6-sprint rule (the PO's 25-sprint budget keeps 18 sprints).
+
+### IRGOLD-1 S25 (2026-10-14, analysis, nothing shipped): the PO's Ring wreck of 10-13 -- an input, not a physics fault
+* New angle: the PO's first julia drives on the S14-S20 car (10-13). The Ring 22:53 wreck (s 11,713, 166 km/h): from
+  s 11,638 the steering goes 0.07 → 0.52 in 0.35 s and to 0.95 of FULL LOCK (~136° of wheel) by s 11,700 at 170-180 km/h,
+  on a joystick (endpoint calibration). The fronts saturate (ξ 1 → 2, side force = their grip), lateral 0.1-0.15 g, the
+  car runs off the road and hits a solid. No crest at that moment (vertical g and ride heights normal from s 11,636; the
+  crest at s 11,482 had passed). Any car ploughs with that input at that speed -- not a physics fault.
+* Measured on the way (REPLAY-6 panel channels, all three 10-13 runs, wheels straight): front grip (μy·Fz) ≈ 0.95-1.13 of
+  the static corner weight, rear ≈ 1.76-1.92 -- F/R 0.50-0.54 at the Ring and WG, 0.60 at Spa -- flat with speed (the S20
+  front lift costs ~2 % at 240 km/h). With 45 % front weight that is a front-limited car (effective μ ~1.1 front vs ~1.6
+  rear: TYRE3 μf 1.40 / μr 1.65 before camber and load sensitivity). It agrees with S16-S18 (the gold's rear runs ~0.8°
+  more slip at the limit) and S24 (the PO stops at 1.24 g at julia's Glen), but S3's steady-state fit put the high-g
+  cells within 0.2-0.4° -- so the balance question needs gold limit data, not another fit on the same cells. **IRTEST
+  cue:** a few skidpad laps at the limit in both directions with a steady throttle (understeer gradient past 1.2 g).
