@@ -26272,3 +26272,12 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   next occurrence logs itself: each run's log is now kept (`data/juliaracer/logs/`), and `[WRECK] cause:` says whether
   it was a drawn solid or a GPL wall, with the world position.
 * Gates (s41): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).
+
+### TD261013-1 S7 (2026-10-14, analysis, no code shipped): Spa's guardrails stay off; TD261013-1 ROTATES (7 of 25 used)
+* `JM_KEEP_ARMCO=1` with the rails' yaw flipped (`JM_OBJ_YAW_FLIP="armco1,armcow2,armcow3,armco3"`): every segment stands
+  ACROSS the road -- so the shipped yaw is right, and the sawtooth on the bend is not a yaw sign. Candidates for the next
+  look: per-segment pitch on the descent (GPL's placement pitch is zeroed beyond 1.6 rad only), the segments' authored
+  length vs their 9-10 m spacing. Not something the PO asked for (b1 named the house); left off.
+* **TD261013-1 after S1-S7:** every PO sub-item has a fix built and checked against the gold or the PO's own recordings,
+  except (b2) -- the PO's call on Spa's invisible wall. Open nice-to-haves: Spa guardrails, the team levers on the left
+  cowl. Rotates per the 6-sprint rule (the PO's 25-sprint budget keeps 18 sprints).
