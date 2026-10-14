@@ -13217,6 +13217,45 @@ function main()
     rep_swap = Ref(false)
     REP_AICOCKPIT = get(ENV, "JM_REPLAY_AICOCKPIT", "1") != "0"
     rep_ai_lotus(k) = REPLAY && k >= 1 && k + 1 <= length(repd.names) && occursin("Lotus", repd.names[k+1])
+    # COCKPIT-2 S6: the other teams ride in THEIR OWN cockpit -- the team's `?d.3do` (GPL's cockpit model per team: covd,
+    # brad, ferd, brmd, eagd), textured from its own folder, drawn whole as GPL authors it: its own static wheel, hands,
+    # lever, mirrors and screen. Only the driver's head and torso are left out (they fill the view from the eye, as
+    # DRIVER_TEX does for the Lotus) and GPL's two junk textures. The Lotus overlays (needles, dials, turning wheel,
+    # gloves, live mirrors, perspex) are not drawn over it: they are the Lotus's. JM_REPLAY_TEAMCOCKPIT=0 = external view.
+    REP_TEAMCOCKPIT = REP_AICOCKPIT && get(ENV, "JM_REPLAY_TEAMCOCKPIT", "1") != "0"
+    rep_team = Ref{Any}(nothing)
+    _team_cache = Dict{String,Any}()
+    _TEAM_D = Dict("Cooper" => ("coventry", "covd.3do"), "Ferrari" => ("ferrari", "ferd.3do"), "Brabham" => ("brabham", "brad.3do"),
+                   "BRM" => ("brm", "brmd.3do"), "Eagle" => ("eagle", "eagd.3do"))
+    _team_skip(t) = (t = lowercase(t); t in ("plaface", "plahelm", "knees", "neck", "front1", "front3", "lid", "cid", "rid", "fid", "eid", "bid",
+                                             "arms") || endswith(t, "helm") || endswith(t, "sho") || endswith(t, "arms"))
+    function rep_team_items(k)
+        (REPLAY && REP_TEAMCOCKPIT && k >= 1 && k + 1 <= length(repd.names)) || return nothing
+        key = nothing
+        for kk in keys(_TEAM_D); occursin("(" * kk * ")", repd.names[k+1]) && (key = kk); end
+        key === nothing && return nothing
+        get!(_team_cache, key) do
+            dir, f = _TEAM_D[key]; path = joinpath(AIBASE, dir, f)
+            isfile(path) || return nothing
+            ps = Render.extract_gpl_car(path; exclude = ("ltraymap", "lshad"), cockpit_clean = true,
+                                        maxlat = parse(Float32, get(ENV, "JM_COCKPIT_MAXLAT", "0.30")),
+                                        grey = (TUB_GREY, TUB_GREY + 0.01f0, TUB_GREY + 0.02f0))
+            # the eye: GPL keeps none per car, but each model seats its driver -- line the team's face (`plaface`) up with
+            # the Lotus's, so its cockpit sits under our (Lotus-tuned) eye as GPL authored it round its own driver
+            function fc(q)
+                pp = Render.extract_gpl_car(q; only = ("plaface",), cockpit_clean = true); xs = Float32[]; ys = Float32[]
+                for p in pp, i in 0:11:length(p.verts)-11; push!(xs, p.verts[i+1]); push!(ys, p.verts[i+2]); end
+                isempty(xs) ? nothing : (sum(xs)/length(xs), sum(ys)/length(ys))
+            end
+            ft = fc(path); fl = fc(joinpath(LOTDIR, "lotd.3DO"))
+            d = (ft === nothing || fl === nothing) ? (0f0, 0f0, 0f0) : (fl[1] - ft[1], fl[2] - ft[2], 0f0)
+            ps = filter(p -> !_team_skip(p.tex), ps)
+            for p in ps, i in 0:11:length(p.verts)-11; p.verts[i+1] += d[1]; p.verts[i+2] += d[2]; end
+            it = Render.build_gpl(ps, Render.gpl_texture_index(joinpath(AIBASE, dir)))
+            println("  [teamcockpit] ", key, ": ", f, " -- ", length(ps), " parts; seat moved ", round.(d; digits = 3), " m to the Lotus's")
+            it
+        end
+    end
     function rep_ai_inputs(rt, k)
         h = 0.1
         _, a0 = replay_poses(max(rt - h, 0.0)); _, a1 = replay_poses(min(rt + h, rep_dur))
@@ -13601,7 +13640,9 @@ function main()
             cf = key(GLFW.KEY_C); (cf && !rep_pn[]) && (rep_focus[] = mod(rep_focus[]+1, repd.ncar)); rep_pn[] = cf   # E25: switch CAR
             cvv = key(GLFW.KEY_V); (cvv && !rep_pv[]) && (rep_cam[] = mod1(rep_cam[]+1, length(REPLAY_CAMS))); rep_pv[] = cvv  # E25: switch ANGLE
             (pp, rep_ai_raw) = replay_poses(rep_rt[])
-            rep_swap[] = REP_AICOCKPIT && REPLAY_CAMS[rep_cam[]] === :cockpit && rep_ai_lotus(rep_focus[])
+            rep_team[] = (REP_TEAMCOCKPIT && REPLAY_CAMS[rep_cam[]] === :cockpit && rep_focus[] >= 1 && !rep_ai_lotus(rep_focus[])) ?
+                         rep_team_items(rep_focus[]) : nothing                                   # COCKPIT-2 S6
+            rep_swap[] = REP_AICOCKPIT && REPLAY_CAMS[rep_cam[]] === :cockpit && (rep_ai_lotus(rep_focus[]) || rep_team[] !== nothing)
             if rep_swap[]                                   # COCKPIT-2 S5: ride in the AI Lotus's cockpit
                 k_ = rep_focus[]; rep_ai_raw = copy(rep_ai_raw); (pp, rep_ai_raw[k_]) = (rep_ai_raw[k_], pp)
             end
@@ -15329,16 +15370,17 @@ function main()
         # evenly); lower spec so the cockpit floor stops reading as a "shining rug".
         # E106-S5: in cockpit view the body wears GPL'"'"'s interior skin (riveted aluminium);
         # every other view keeps the exterior body.
-        let _items = (CTL.view == 0 && !isempty(carItemsIn)) ? carItemsIn : carItems
+        _tm = REPLAY && CTL.view == 0 && rep_team[] !== nothing             # COCKPIT-2 S6: a team's own cockpit
+        let _items = _tm ? rep_team[] : (CTL.view == 0 && !isempty(carItemsIn)) ? carItemsIn : carItems
             for (i,it) in enumerate(_items); _in_car_range(i) || continue; Render.draw(prog, it, vp, bodyModel; bright=1.2, spec=0.08, ambfill=0.78); end
         end   # PO: lift the self-shadowed footwell/tub further out of black (GPL pre-lights the interior evenly)
         # COCKPIT-TACH-1: tachometer needles over the dash7 dial (cockpit view; the tell-tale holds the peak)
         TELLTALE[] = max(TELLTALE[], cs.rpm)
-        if CTL.view == 0 && !isempty(TACH_ITEMS)
+        if CTL.view == 0 && !isempty(TACH_ITEMS) && !_tm
             Render.draw(prog, TACH_ITEMS[1], vp, bodyModel * tach_model(tach_deg(TELLTALE[])); unlit=true)
             Render.draw(prog, TACH_ITEMS[2], vp, bodyModel * tach_model(tach_deg(cs.rpm)); unlit=true)
         end
-        if CTL.view == 0 && !isempty(DIAL_ITEMS)        # DIALS-1: the other five dials
+        if CTL.view == 0 && !isempty(DIAL_ITEMS) && !_tm        # DIALS-1: the other five dials
             dv = dials_update!(cs.rpm)
             for (d, it) in zip(DIALS, DIAL_ITEMS)
                 Render.draw(prog, it, vp, bodyModel * dial_model(d.f, dial_deg(d.spec.scale, getfield(dv, d.sym))); unlit=true)
@@ -15346,11 +15388,11 @@ function main()
         end
         # E106-S4: exhausts at hub height (chrome: a touch of spec so the megaphones catch the sun)
         let pm = bodyModel * Render.translate(0, PIPE_LIFT, 0)
-            for it in pipeItems; Render.draw(prog, it, vp, pm; bright=1.15, spec=0.25, ambfill=0.6); end
+            _tm || for it in pipeItems; Render.draw(prog, it, vp, pm; bright=1.15, spec=0.25, ambfill=0.6); end
         end
         # E106-S9: the driveshafts, horizontal from diff to hub
-        for it in axleItems; Render.draw(prog, it, vp, bodyModel; bright=1.1, spec=0.3, ambfill=0.55); end
-        for it in fsuspSynItems; Render.draw(prog, it, vp, bodyModel; bright=1.1, spec=0.3, ambfill=0.55); end
+        _tm || for it in axleItems; Render.draw(prog, it, vp, bodyModel; bright=1.1, spec=0.3, ambfill=0.55); end
+        _tm || for it in fsuspSynItems; Render.draw(prog, it, vp, bodyModel; bright=1.1, spec=0.3, ambfill=0.55); end
         if CTL.view != 0   # the driver figure occludes the cockpit from the in-car eye (E36 black band) → chase only
             if get(ENV,"JM_RSUSP2","0") == "1"   # E75-S8: OFF by default — raw parts are unfolded strips, see e75_exterior.md
                 for it in rsusp2Items; Render.draw(prog, it, vp, bodyModel; bright=1.15, spec=RS_SPEC, ambfill=0.55); end
@@ -15375,7 +15417,7 @@ function main()
         dash_b = parse(Float64, get(ENV,"JM_DASH_B","1.2")); dash_a = parse(Float64, get(ENV,"JM_DASH_A","0.9"))   # E62: gold cockpit dials read crisp white-on-black; 1.0/0.60 left ours dim — lift fill so the dial faces/markings are legible
         if CTL.view == 0
             glDisable(GL_DEPTH_TEST)
-            for it in gaugeItems; Render.draw(prog, it, vp, bodyModel*GAUGEFLIP; bright=dash_b, spec=0.0, ambfill=dash_a); end
+            _tm || for it in gaugeItems; Render.draw(prog, it, vp, bodyModel*GAUGEFLIP; bright=dash_b, spec=0.0, ambfill=dash_a); end
             glEnable(GL_DEPTH_TEST)
         else
             for it in gaugeItems; Render.draw(prog, it, vp, bodyModel*GAUGEFLIP; bright=dash_b, spec=0.0, ambfill=dash_a); end
@@ -15397,12 +15439,12 @@ function main()
             Render.draw(prog, it, vp, loosemat(lx,ly,lz,sp); bright=1.0, ambfill=0.75)
         end
         # front suspension wishbones — ahead of the cockpit, visible through the plexiglass (PO gold standard)
-        for it in fsuspItems; Render.draw(prog, it, vp, bodyModel; bright=1.1, spec=0.15, ambfill=0.5); end
+        _tm || for it in fsuspItems; Render.draw(prog, it, vp, bodyModel; bright=1.1, spec=0.15, ambfill=0.5); end
         # rear-view mirrors — re-placed onto the cowl/plexiglass, faces tilted toward the eye (GPL look).
         # E64: with the RTT live, the silver disc is just the RIM/backing — the glass quad on top
         # carries the actual rear view (round-masked sample of the mirror FBO, uMirrorGlass).
-        for it in mirrorItems; Render.draw(prog, it, vp, bodyModel*MIRRORMAT; bright=1.25, spec=0.30, ambfill=0.75, depthbias=true); end   # disc/rim (E106-S8: biased over the lotd pod faces)
-        if mirror_live
+        _tm || for it in mirrorItems; Render.draw(prog, it, vp, bodyModel*MIRRORMAT; bright=1.25, spec=0.30, ambfill=0.75, depthbias=true); end   # disc/rim (E106-S8: biased over the lotd pod faces)
+        if mirror_live && !_tm
             for it in mirGlassItems; Render.draw(prog, it, vp, bodyModel*MIRRORMAT; mirrorglass=true, depthbias=true); end   # live glass (E106-S8: biased)
         end
         # steering wheel — spin about its column axis with steering input
@@ -15410,8 +15452,8 @@ function main()
         # are a Y (two up, one down to the hub); ours had the single spoke UP. A half turn about the column
         # (JM_SW_ROT, degrees, default 180) puts the wheel as the gold has it; the steering input adds to it.
         swModel = bodyModel * Render.translate(SWCENTER) * Render.rotaxis(SWAXIS, Float32(HSIGN*inp.steer*2.5 + SW_ROT)) * Render.translate(-SWCENTER[1], -SWCENTER[2], -SWCENTER[3])
-        for it in swItems; Render.draw(prog, it, vp, swModel; bright=1.2, ambfill=0.34); end
-        if CTL.view == 0 && !isempty(shiftItems) && SHIFT_PIVOT !== nothing     # COCKPIT-2 S3: the lever follows the gear
+        _tm || for it in swItems; Render.draw(prog, it, vp, swModel; bright=1.2, ambfill=0.34); end
+        if CTL.view == 0 && !_tm && !isempty(shiftItems) && SHIFT_PIVOT !== nothing     # COCKPIT-2 S3: the lever follows the gear
             _tn = time(); _dt = SHIFT_TW[] == 0.0 ? 1f0 : Float32(clamp(_tn - SHIFT_TW[], 0.0, 0.1)); SHIFT_TW[] = _tn
             shm = bodyModel * shift_model(cs.gear, _dt)
             for it in shiftItems; Render.draw(prog, it, vp, shm; bright=0.95, ambfill=0.45); end   # gold: dark wood, not lit orange
@@ -15421,7 +15463,7 @@ function main()
         # The lotarms mesh is authored in a positioner-local frame (D12 posmat-clamp family): raw it
         # sits FORWARD of the wheel (x 0.68…1.01) and too high (y→0.52) → the old "giant silver arms".
         # ARMFIX mirrors it back through the wheel plane toward the driver + squashes it under the eye.
-        if HANDS && CTL.view == 0
+        if HANDS && CTL.view == 0 && !_tm
             _hcull = glIsEnabled(GL_CULL_FACE) == GL_TRUE
             HAND_CULL || glDisable(GL_CULL_FACE)          # HANDS-1 S2: A/B the gloves two-sided (inside-out fists?)
             if ARMS
@@ -15464,12 +15506,12 @@ function main()
         # plexiglass WINDSCREEN — drawn LAST, FAINTLY VISIBLE glass (PO: it had vanished at 0.16), depth-write
         # OFF so the front suspension + track read through it (GPL gold standard) but the screen still reads as
         # a tinted curved plexiglass, not a bright opaque gold rim.  JM_WIND_ALPHA tunes it.
-        if !isempty(visorItems) && VISOR_ALPHA > 0      # COCKPIT-GOLD-1: the perspex windscreen, every view
+        if !isempty(visorItems) && VISOR_ALPHA > 0 && !_tm      # COCKPIT-GOLD-1: the perspex windscreen, every view
             glDepthMask(GL_FALSE)
             for it in visorItems; Render.draw(prog, it, vp, bodyModel; bright=1.0, spec=0.35, ambfill=0.7, alpha=VISOR_ALPHA, depthbias=true); end
             glDepthMask(GL_TRUE)
         end
-        if WIND_ALPHA > 0
+        if WIND_ALPHA > 0 && !_tm
             glDepthMask(GL_FALSE)
             # PO: flatter, dimmer lighting so the leather scuttle reads as smooth matte tan — not stark
             # cream "plywood" wedges clashing with the dark footwell notch the (omitted) driver would fill.
