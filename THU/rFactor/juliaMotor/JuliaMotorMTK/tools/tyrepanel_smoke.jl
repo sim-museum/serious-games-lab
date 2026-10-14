@@ -26,6 +26,8 @@ chk("braking: the ellipse is μx·Fz tall by μy·Fz wide (μx > μy)", b[1][3] 
 src = read(joinpath(@__DIR__, "..", "..", "demo", "native", "drive_native_mtk.jl"), String)
 chk("the replay records the 20 tyre channels after the old 12", occursin("[string(q, \"_\", w) for w in (\"FL\", \"FR\", \"RL\", \"RR\") for q in (\"fx\", \"fy\", \"gx\", \"gy\", \"xi\")]...]", src) &&
     occursin("for w in tyre_lp[], q in w; push!(tele_buf, Float32(q)); end", src))
-chk("the panel is drawn in replay, player car only", occursin("if REPLAY && rep_tyshow[] && rep_focus[] == 0 && rep_tyres[] !== nothing", src))
+# TD261013-1 (a4) (PO 2026-10-13: "show it only in player nintendo view, not player cockpit view")
+chk("the panel is drawn in replay, player car only, chase view only",
+    occursin("if REPLAY && rep_tyshow[] && rep_focus[] == 0 && REPLAY_CAMS[rep_cam[]] === :chase && rep_tyres[] !== nothing", src))
 println(fails[] == 0 ? "ALL PASS" : "FAILURES: $(fails[])")
 exit(fails[] == 0 ? 0 : 1)

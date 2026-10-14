@@ -232,6 +232,7 @@ end
 
 # ---------------------------------------------------------------------------------------------- track
 const RACE, MINR, MAXR, PASS1, PASS2 = 0, 1, 2, 3, 4
+const PIT_FREE = Base.Ref(get(ENV, "JM_AI_PITCLAMP", "0") == "0")   # TD261013-1 (a3): JM_AI_PITCLAMP=1 = before
 const PIT = 5                                   # WGTD-1 S9: GPL's pit.lp -- the cool-down lap's way into the pit lane
 const CAR_LEN = 4.0; const CAR_W = 1.75
 const EDGE = 0.30                         # the goal keeps this far inside the corridor (ours, not GPL's: see goal)
@@ -557,6 +558,9 @@ function think!(T::Track, c::Car, others, rng, scale = 1.0)
     P = T.P; F = P.follow
     c.hold > 0 && (c.hold -= 1)
     c.squeezed = false
+    # TD261013-1 (a3): a car on the pit line has finished racing -- no passing, no side-by-side, and above all not the
+    # "out of the corridor: back to the pass line" rule below, which pulled every car off the pit line onto the straight
+    (PIT_FREE[] && c.line == PIT) && return nothing
     τs = F.st; t = τs*TICK
     m = look(T, c, others, τs, F)
     lo, hi = corridor(T, c.s)
@@ -650,7 +654,12 @@ function advance!(T::Track, c::Car, m_follow, scale, vcap_rel)
     c.s += c.v*dt                                        # GPL: dlong += dlong speed (no geometry in the motion)
     if c.s >= T.lap; c.s -= T.lap; c.lap += 1; end
     lo, hi = corridor(T, c.s)                            # GPL 0x496930: the authored corridor is a hard edge
-    if c.d < lo || c.d > hi
+    # TD261013-1 (a3) (PO 2026-10-13: "after the race, the AI cars come to a stop on the track, not in the pits"): WGTD-1 S9
+    # freed the pit line's GOAL from the corridor but not this hard edge, so every car steering for the pit lane (17 m right
+    # of the race line at Watkins Glen's boxes) was put back on the corridor's edge (-4.4 m) -- on the straight.
+    # The pit lane is outside the corridor by definition: a car on (or moving onto) the pit line is not held to it.
+    onpit = PIT_FREE[] && (c.line == PIT || (c.mode != 0 && c.fromline == PIT))
+    if !onpit && (c.d < lo || c.d > hi)
         Δ = clamp(c.d, lo, hi) - c.d                     # GPL adds the displacement to the rate and the acceleration too
         c.d += Δ; c.dv += Δ/dt; c.da += Δ/dt^2
     end

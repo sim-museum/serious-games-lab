@@ -229,6 +229,7 @@ const MODE      = lowercase(get(ENV, "JM_MODE", "practice"))   # practice | trai
 const RACE_LAPS = max(1, tryparse(Int, get(ENV, "JM_LAPS", "3")) |> x -> x === nothing ? 3 : x)
 const AI_COOLDOWN = get(ENV, "JM_AI_COOLDOWN", "1") != "0"      # WGTD-1 (e): the AI's cool-down lap and stop after the flag
 const AI_COOL_DIAG = get(ENV, "JM_AI_COOLDIAG", "0") != "0"
+const AI_COOL_STOPPED = Set{Int}()
 const AI_COOL = Dict{Int,Tuple{Symbol,Float64,Float64}}()        # AI index -> (state, its race pace, where the stop began)
 const AI_PITLINE = get(ENV, "JM_AI_PITLINE", "1") != "0"         # WGTD-1 S9: the cool-down lap ends in GPL's pit lane
 const PIT_IN = Ref(NaN); const PIT_BOX = Ref(NaN)
@@ -982,6 +983,13 @@ const NET_DIAG = parse(Int, get(ENV, "JM_NET_DIAG", "0"))
 # E85-S6: drive the player car from the racing line, for headless measurement runs.
 # E106-S15: driveability watch (see the per-frame block in the autodrive branch).
 const FIXED_DT    = parse(Float64, get(ENV, "JM_FIXED_DT", "0"))   # >0 = fixed sim step (headless sweeps)
+const RECOVER_AT  = Float64[parse(Float64, x) for x in split(get(ENV, "JM_RECOVER_AT", ""), ",") if !isempty(strip(x))]   # TD261013-1 (c3) test hook
+const RECOVER_I   = Ref(1)
+const WRECK_AT    = parse(Float64, get(ENV, "JM_WRECK_AT", "0"))   # TD261013-1 (c3) test hook: force a wreck at this sim time
+const WRECK_AT_DONE = Ref(false)
+import Random
+const AI_SEED = something(tryparse(Int, get(ENV, "JM_AI_SEED", "")), haskey(ENV, "JM_SMOKE") ? 1967 : rand(1:typemax(Int32)))   # TD261013-1 (a1)
+const AI_RNG  = Ref{Any}(nothing)
 const RESTART_AT  = Float64[parse(Float64, x) for x in split(get(ENV, "JM_RESTART_AT", ""), ",") if !isempty(strip(x))]   # REPLAY-4 test hook (smoke)
 const RESTART_I   = Ref(1)
 # SPATD-1 (PO 2026-10-08, Spa: "three strong jolts, like an earthquake, while riding along in the middle of the road").
@@ -12545,6 +12553,15 @@ function main()
         # without a rebuild; unset keeps 0.35 exactly.
         _temper = clamp(something(tryparse(Float64, get(ENV, "JM_AI_TEMPER", "0.35")), 0.35), 0.0, 1.0)
         for (i, c) in enumerate(AICARS); c.pace = 1.0 - _temper*(1.0 - pw[i]/pwmax); end
+        # TD261013-1 (a1) (PO 2026-10-13: "AI cars should not always start the same way, e.g. with the same car pulling left to
+        # pass in the same way on the front straight right after the start. GPL AI cars are not deterministic like this."):
+        # every input to the field was fixed -- the paces (chassis power/weight), the grid (by pace), the field's random
+        # stream (seed 1967) -- so every race replayed the same start. Each race now draws its own: a driver's form of
+        # the day (pace ±1.2 % sd, capped at ±2.4 %; the grid follows it, as qualifying would), the start reactions and
+        # the field's stream. JM_AI_SEED=<n> repeats one race; a smoke run is seeded 1967 unless JM_AI_SEED says otherwise.
+        AI_RNG[] = Random.MersenneTwister(AI_SEED)
+        _form = parse(Float64, get(ENV, "JM_AI_FORM", "0.012"))
+        for c in AICARS; c.pace *= 1.0 + _form*clamp(randn(AI_RNG[]), -2.0, 2.0); end
         # GRID by pace (fastest at the front — what qualifying would do) so the field spreads in the
         # RIGHT order: the quick cars lead and stretch the gap, instead of a fast car stuck mid-pack
         # behind a slower one on a tight track.  Keeps each car's identity; only the start slot moves.
@@ -12782,6 +12799,15 @@ function main()
                         " m, max ", round(maximum(abs, dsh), digits = 2), " m (JM_AI_ROADSHIFT=0 off)")
             end
             GPLAI_T = GPLAI.Track(lines, ref, glap, P, gh, dsh, 3.0)
+            if get(ENV, "JM_PIT_DIAG", "") != "" && haskey(lines, GPLAI.PIT)    # TD261013-1 (a3): where the pit line lands
+                for x in PIT_IN[]-60:30.0:glap-1
+                    dp = GPLAI.dlat(lines[GPLAI.PIT], x); dr = GPLAI.dlat(lines[GPLAI.RACE], x)
+                    wp = GPLAI.tworld(GPLAI_T, x, dp); wr = GPLAI.tworld(GPLAI_T, x, dr)
+                    println("  [pitdiag] s ", round(Int, x), " pit d ", round(dp, digits = 1), " race d ", round(dr, digits = 1),
+                            "  world gap ", round(hypot(wp[1] - wr[1], wp[2] - wr[2]), digits = 1), " m",
+                            "  pit on road ", JuliaMotor.hat3d(ROADHAT, wp[1], wp[2]; ref = Inf)[3], " corridor ", round.(GPLAI.corridor(GPLAI_T, x), digits = 1))
+                end
+            end
             gs = GPLAI.grip_scale(GPLAI_T)
             # natural lap at that pace (one car, headless): sets the pace knob against AI_TGT like AI_T0 does for the rail field
             c1 = GPLAI.Car(GPLAI_T, 1, 10.0, GPLAI.dlat(lines[GPLAI.RACE], 10.0); v = 30.0)
@@ -12850,10 +12876,10 @@ function main()
                 p = RaceAI.pose_at(AILINE, c.s, c.lane)
                 (s, d, _) = GPLAI.tlocate(GPLAI_T, p[1], p[3])
                 gc = GPLAI.Car(GPLAI_T, i, s, d; v = 0.0, pace = c.pace)
-                gc.react = round(Int, GPLAI_T.P.start_hiatus) + rand(0:12)
+                gc.react = round(Int, GPLAI_T.P.start_hiatus) + rand(AI_RNG[], 0:24)   # TD261013-1 (a1): 0.5-1.2 s, per race
                 push!(cars, gc)
             end
-            f = GPLAI.Field(GPLAI_T, cars); GPLAI_F[] = f
+            f = GPLAI.Field(GPLAI_T, cars; seed = rand(AI_RNG[], UInt32)); GPLAI_F[] = f
         end
         f
     end
@@ -13395,6 +13421,12 @@ function main()
         if SMOKE && !isempty(RESTART_AT) && RESTART_I[] <= length(RESTART_AT) && cs.t >= RESTART_AT[RESTART_I[]]
             restart = true; RESTART_I[] += 1; println("  [test] restart (R) at t=", round(cs.t, digits = 2)); flush(stdout)
         end
+        if SMOKE && !isempty(RECOVER_AT) && RECOVER_I[] <= length(RECOVER_AT) && cs.t >= RECOVER_AT[RECOVER_I[]]
+            recover = true; rst = true; RECOVER_I[] += 1; println("  [test] recover (SHIFT+R) at t=", round(cs.t, digits = 2)); flush(stdout)
+        end
+        if SMOKE && WRECK_AT > 0 && cs.t >= WRECK_AT && !WRECK_AT_DONE[]
+            WRECK_AT_DONE[] = true; wreck!(max(cs.v, 20.0); closing = 20.0, x = cs.x, z = cs.z)
+        end
         (rst || restart) && GPLW_ON && gplw_teleported!()
         CRASH_ON && (inp = JuliaMotor.DriveInput(throttle = 0.0, brake = 0.0, steer = 0.0, clutch = inp.clutch,
                                                  shift_up = false, shift_down = false, autoshift = true))
@@ -13814,6 +13846,16 @@ function main()
             cs.s_vreset(cs.integ, zeros(14))
             hR = groundz(pR[1], pR[3]; acquire=true); isfinite(hR) && (cs.zref = Float64(hR))
             cs.heave = 0.0; cs.pitch = 0.0; cs.roll = 0.0; cs.y = cs.zref
+            # TD261013-1 (c3) (PO 2026-10-13, the Ring: "the car doesn't respond to either downshifting or SHIFT R"): this
+            # branch and the respawn below are one if/elseif, and `rst` IS `recover` -- so SHIFT+R took this branch and never
+            # reached the respawn's reset. After a wreck the car was put on the road, then the still-latched WRECK_FROZEN
+            # pinned it back at the crash spot, with the engine out and every shift refused. A recovered car is a new car
+            # (E94-P4), as for the respawn. JM_RECOVER_KEEPWRECK=1 = before.
+            if get(ENV, "JM_RECOVER_KEEPWRECK", "0") == "0"
+                PLAYER_G[] = NaN; DriveRT3D.damage_reset!(); DC[].lastz = 0.0
+                WRECKED[] && println("  [recover] SHIFT+R: the wreck is cleared -- engine and gearbox back"); flush(stdout)
+                WRECKED[] = false; WRECK_FROZEN[] = false; empty!(LOOSE_WHEELS); CLUTCH_GATE[] = -1.0
+            end
         # E94-P4: a respawn is a NEW car, not a repaired one.
         elseif rst; PLAYER_G[] = NaN; respawnX!(cs; groundz=groundz_phys); DriveRT3D.damage_reset!(); DC[].lastz = 0.0
             WRECKED[] = false; WRECK_FROZEN[] = false; empty!(LOOSE_WHEELS); CLUTCH_GATE[] = -1.0   # ...and not a wreck
@@ -14802,6 +14844,12 @@ function main()
                     elseif st[1] === :pit
                         rem = st[3] - gc.s                                           # metres to its box
                         gc.pace = st[2] * clamp(rem / 40.0, 0.0, 1.0); gc.hold = typemax(Int) ÷ 4
+                        if AI_COOL_DIAG && gc.v < 0.3 && !(i in AI_COOL_STOPPED)
+                            push!(AI_COOL_STOPPED, i)                                  # once: where it stopped
+                            println("  [cooldown] ", ent_name(i), " stopped at s ", round(Int, gc.s), ", ", round(gc.d, digits = 1),
+                                    " m off GPL's centre (pit line ", round(GPLAI.dlat(GPLAI_T.lines[GPLAI.PIT], gc.s), digits = 1),
+                                    ", corridor ", round.(GPLAI.corridor(GPLAI_T, gc.s), digits = 1), ")")
+                        end
                     elseif st[1] === :cool && crossed[i]
                         # each car stops 25 m beyond the one before it, so they line up along the edge
                         q = 25.0*count(v -> v[1] === :stop, values(AI_COOL))
@@ -15539,7 +15587,8 @@ function main()
         # REPLAY-6: zandracer's per-wheel panel on the replay screen -- each tyre's grip ellipse (the effective contact
         # patch: μ·Fz, grows with load, a point when the wheel is in the air) and its force dot (the traction budget used;
         # red = the patch is sliding). The player's car only (the AI cars run no tyre model); W hides it.
-        if REPLAY && rep_tyshow[] && rep_focus[] == 0 && rep_tyres[] !== nothing && any(t -> t[3] + t[4] > 0, rep_tyres[])
+        # TD261013-1 (a4) (PO 2026-10-13: "show it only in player nintendo view, not player cockpit view")
+        if REPLAY && rep_tyshow[] && rep_focus[] == 0 && REPLAY_CAMS[rep_cam[]] === :chase && rep_tyres[] !== nothing && any(t -> t[3] + t[4] > 0, rep_tyres[])
             baseR = 18.0; pitch = 2*1.9*baseR + 12; pcx = W/2; pcy = H - pitch - 18.0
             tyv = empty!(HUD_TY); Render.htyres!(tyv, pcx, pcy, baseR, rep_tyres[])
             Render.hud_draw(hudprog, hudvao, hudvbo, tyv, W, H)
@@ -15554,6 +15603,18 @@ function main()
                 Render.text!(tt, FONT, pcx - Render.text_width(FONT, cap)/2, pcy - pitch - 4 - FONT.lineh, cap, lc)
                 Render.text_draw(textprog, textvao, textvbo, FONT, tt, W, H)
             end
+        end
+        # TD261013-1 (c3): a wreck refuses every shift and the throttle, by design (E95) -- and said so only on stdout, so
+        # the PO met a car that "doesn't respond". Say it where the driver is looking, with the way out.
+        if WRECKED[] && !REPLAY && FONT !== nothing && get(ENV, "JM_WRECK_NOTICE", "1") != "0"
+            m1 = "CAR WRECKED -- engine and gearbox out"; m2 = "SHIFT+R: back onto the track     R: restart the race"
+            bw = max(Render.text_width(FONT, m1), Render.text_width(FONT, m2)) + 40; by = H*0.30 - 14
+            bx = empty!(HUD_TY); Render.hquad!(bx, W/2 - bw/2, by, bw, 2.4*FONT.lineh + 28, (0.06, 0.06, 0.08))
+            Render.hud_draw(hudprog, hudvao, hudvbo, bx, W, H)
+            tt = empty!(HUD_TYT)
+            Render.text!(tt, FONT, W/2 - Render.text_width(FONT, m1)/2, H*0.30, m1, (1.0, 0.82, 0.25))
+            Render.text!(tt, FONT, W/2 - Render.text_width(FONT, m2)/2, H*0.30 + 1.4*FONT.lineh, m2, (0.92, 0.92, 0.92))
+            Render.text_draw(textprog, textvao, textvbo, FONT, tt, W, H)
         end
         # TEXTHUD-1 (GOLDMATCH-JR-1 S1, 2026-09-17): the gold's timing overlay, in its layout -- lap
         # rows top-left (I = this lap, B = best, L = last), Track Position top-right with names and

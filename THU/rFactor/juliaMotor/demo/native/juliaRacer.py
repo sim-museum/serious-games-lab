@@ -1554,6 +1554,13 @@ class DriveTab(QWidget):
                 self.progress.setFormat(f"{label}  %p%")
                 self._status("Loading: " + label)
 
+    def _keep_run_log(self):
+        try:
+            trk = ["zandvoort", "skidpad", "nurburgring", "watglen", "monza", "spa"][self.track.currentIndex()]
+        except (IndexError, AttributeError):
+            trk = None
+        keep_run_log(os.path.join(HERE, "last_sim_run.log"), getattr(self, "_launched_at", None), trk)
+
     def _done(self):
         self.log.appendPlainText("\n— game exited —")
         # PO 2026-09-03: "when you type ESC in the 3D view, have it go back to the pyQt gui, not
@@ -1592,12 +1599,35 @@ class DriveTab(QWidget):
                 f.close()
             except (OSError, ValueError, RuntimeError): pass
             self._sim_log = None
+            self._keep_run_log()
         # A fresh best/recent lap may have been recorded this race → refresh the AI-% preset.
         self._track_changed(self.track.currentIndex())
         # PO: show the result in a TAB, not a modal — robust even if the game crashed on exit (we just
         # read last_race_result.txt, which is written when the race finishes, before any exit crash).
         if self.on_result:
             self.on_result(getattr(self, "_result_path", os.path.join(HERE, "last_race_result.txt")))
+
+
+def _run_log_dir():
+    return os.path.join(os.path.dirname(os.path.dirname(HERE)), "data", "juliaracer", "logs")
+
+
+def keep_run_log(src, launched_at, track, keep=40):
+    """TD261013-1 (PO 2026-10-13 test drive): last_sim_run.log is rewritten by every launch, so of an evening's six runs
+    only the last one's log survived -- the Spa run whose wheels came off left nothing to read. Keep a copy of each run's
+    log next to the replays (data/juliaracer/logs/<track> <date time>.log), the newest `keep` of them."""
+    import shutil, time as _t
+    try:
+        d = _run_log_dir(); os.makedirs(d, exist_ok=True)
+        stamp = _t.strftime("%Y-%m-%d %H-%M-%S", _t.localtime(launched_at or _t.time()))
+        dst = os.path.join(d, "%s %s.log" % (track or "session", stamp))
+        shutil.copyfile(src, dst)
+        logs = sorted((os.path.join(d, n) for n in os.listdir(d) if n.endswith(".log")), key=os.path.getmtime)
+        for old in logs[:-keep]:
+            os.remove(old)
+        return dst
+    except OSError:
+        return None
 
 
 class ResultTab(QWidget):

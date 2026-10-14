@@ -26104,3 +26104,35 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   hands and lever. COCKPIT-2 has used its 6 sprints this pass: ROTATES (the moving wheel/lever and the windscreen in
   those cockpits continue under TD261013-1 (a4), the PO's newer report).
 * Gates (s34): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).
+
+### TD261013-1 S1 (2026-10-14): (c3) SHIFT+R after a wreck, (a3) the AI really in the pits, (a1) a new start each race, (a4) traction circles in the chase view only, a log per run
+* **(c3) "the car doesn't respond to either downshifting or SHIFT R" -- found.** The Ring 22:53 run ended in a wreck at
+  s 11,713 (166 km/h, the car left the road to the left; `[WRECK] CLOSING speed 14.9 m/s`). A wreck disconnects the engine
+  and refuses shifts by design (E95), said only on stdout. SHIFT+R should have recovered it, but the recover branch and
+  the respawn branch are one `if recover … elseif rst`, and `rst` IS `recover`: SHIFT+R placed the car on the road and
+  never reached the respawn's reset, so WRECK_FROZEN pinned it straight back at the crash spot, engine still out. Now a
+  recovered car is a new car (as the respawn, E94-P4): the wreck, damage and lost wheels are cleared
+  (`JM_RECOVER_KEEPWRECK=1` = before). And a wreck is said ON SCREEN: "CAR WRECKED -- engine and gearbox out / SHIFT+R:
+  back onto the track  R: restart the race" on a dark box (`JM_WRECK_NOTICE=0` hides it). Test hooks `JM_WRECK_AT=<t>`,
+  `JM_RECOVER_AT=<t>` (smoke): wreck at 8 s, SHIFT+R at 14 s -> `[recover] the wreck is cleared`, the car back in neutral
+  at 2,000 rpm, the notice gone (shots `scratchpad/s1/wr.png`).
+* **(a3) "the AI cars come to a stop on the track, not in the pits" -- found.** In the PO's WG race the five AI did go
+  into their pit state (they stopped 15 m apart at s 3,541-3,601, the boxes' queue) but within 0.4-1.9 m of the PO's own
+  racing path. `JM_PIT_DIAG=1`: GPL's pit line IS 15-20 m right of the race line there and on our drawn ground. Two things
+  held the cars on the straight: GPL's corridor hard edge (gplai `tick!`, 0x496930) clamped every car back to the
+  corridor (-4.4 m), and `think!`'s "out of the corridor: back to the pass line" rejoined them as soon as the move into
+  the pit lane finished. A car on the pit line has finished racing: it is exempt from both (`JM_AI_PITCLAMP=1` = before).
+  1-lap WG race: all five stop at 16.3-17.8 m right of centre at s 3,536-3,601, in the pit lane in front of the pit
+  building (replay shots `scratchpad/s1/pv.png`); AI centre off the drawn road 0 %. WGTD-1 S9 had checked the stop queue,
+  never where the cars stood -- the lesson again: photograph the car.
+* **(a1) "AI cars should not always start the same way".** Every input was fixed: the paces (chassis power/weight), the
+  grid (by pace) and the field's random stream (seed 1967). Each race now draws its own: a form of the day per driver
+  (pace ±1.2 % sd, capped ±2.4 %, `JM_AI_FORM`), the grid follows it as qualifying would, start reactions 0.5-1.2 s
+  (was 0.5-0.83 s) and the field's stream (`JM_AI_SEED=<n>` repeats a race; smoke runs stay seeded 1967).
+* **(a4, part) the replay's traction circles** show only on the player's car in the chase ("nintendo") view.
+* **A log per run.** `last_sim_run.log` was rewritten by every launch, so of the PO's six runs that evening only the last
+  one's log survived; the Spa run where the wheels came off (b2) left neither log nor replay. The launcher now keeps a
+  copy of every run's log in `data/juliaracer/logs/<track> <date time>.log` (newest 40). (My own slip: committing S6 I
+  restored the tracked `last_sim_run.log`, which discarded that Ring log after its wreck lines had been read out above.)
+* Gates (s35): 58/59, `tyrepanel_smoke` red on its source check of the old "drawn in every replay view" condition -- the
+  PO's (a4) changed that rule; the check now asserts "player car, chase view only" and passes (rerun alone).
