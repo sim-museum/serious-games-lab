@@ -6,7 +6,7 @@ const D = joinpath(@__DIR__, "..", "..", "demo", "native")
 src = read(joinpath(D, "drive_native_mtk.jl"), String)
 fails = Ref(0)
 chk(name, ok, detail = "") = (println("  ", rpad(name, 66), ok ? "PASS" : "FAIL", "   ", detail); ok || (fails[] += 1); ok)
-chk("object files are looked up case-blind", occursin("const _ZD_LC = Dict(lowercase(f) => f", src) && occursin("objpath(nm) = (p=_zd_file(nm*\".3do\")", src))
+chk("object files are looked up case-blind", occursin("const _ZD_LC = Dict(lowercase(f) => f", src) && occursin("objpath0(nm) = (p=_zd_file(nm*\".3do\")", src))   # TD261013-1: objpath = objpath0 + OBJ_ALIAS
 chk("km stones pass the height rule", occursin("tallenough(nm) = (get(ymx,nm,0f0)-get(ymn,nm,0f0)) > 1.0f0 || startswith(lowercase(nm), \"km_\")", src) &&
     !occursin("(get(ymx,i.name,0f0)-get(ymn,i.name,0f0)) > 1.0f0", src))
 ZD = expanduser("~/sgl/THU/WP/drive_c/Sierra/GPL/tracks/nurburg")

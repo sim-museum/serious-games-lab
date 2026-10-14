@@ -5745,7 +5745,13 @@ const AI_AMB    = parse(Float64, get(ENV, "JM_AI_AMB", "0.78"))   # AIGFX-1: the
 const MIR_OBJ_CULL2 = parse(Float32, get(ENV, "JM_MIRROR_OBJ_CULL_D", "450"))^2    # PERF-1: was 2200 -- see MINPIX_K_MIR
 const MIR_BB_CULL2  = parse(Float32, get(ENV, "JM_MIRROR_BB_CULL_D",  "250"))^2     # PERF-1: was 1300
 const SMOKE = haskey(ENV, "JM_SMOKE")     # headless self-test: hidden window, auto-exit
-const SMOKE_FRAMES = parse(Int, get(ENV, "JM_SMOKE_FRAMES", "40"))   # SPA-FPS-1 S8: 40 is JIT warm-up
+const SMOKE_FRAMES = parse(Int, get(ENV, "JM_SMOKE_FRAMES", "40"))
+# TD261013-1: where .ibt telemetry and replays are written. Test runs (JM_SMOKE) wrote theirs into the PO's own recordings
+# folder -- dozens of 1-60 s lotus49_*.ibt per day among the PO's sessions. A smoke run now writes to a temp folder unless
+# JM_IBT_DIR says otherwise.
+const REC_DIR = let d = get(ENV, "JM_IBT_DIR", SMOKE ? joinpath(tempdir(), "jm_smoke_rec") : joinpath(dirname(dirname(@__DIR__)), "data", "juliaracer"))
+    mkpath(d); d
+end   # SPA-FPS-1 S8: 40 is JIT warm-up
 # E59 multi-shot smoke: JM_SHOTS="s:view:name;s:view:name;…" photographs MANY points of the lap in ONE
 # session (Julia startup is ~2 min/track — the relaunch, not the render, is the expensive part).
 # s = metres along the centreline, view = 0 cockpit / 1 chase, name = output basename.  Each frame lands
@@ -6402,7 +6408,7 @@ const TRACK_AMB    = parse(Float32, get(ENV,"JM_TRACK_AMB","0.34"))
 # 200 m of any eye position there (WG ≥ 229 m, Monza ≥ 200 m: only far-along-the-lap ground, as GPL hides it); Zandvoort
 # (54-120 m at s 920-970 / 4030-4180) and Spa (126-150 m round La Source) hide nearby folds and stay off until each is
 # checked against its gold video.
-const LAPWIN = parse(Float64, get(ENV, "JM_LAPWIN", (NURB || WATGLEN || MONZA) ? "914" : "0"))
+const LAPWIN = parse(Float64, get(ENV, "JM_LAPWIN", (NURB || WATGLEN || MONZA || SPA) ? "914" : "0"))   # TD261013-1 (b5): + Spa
 const LAPBIN = 100.0
 const _LW = (LAPWIN > 0 && (@isdefined TRKSURF)) ? let P = TRKSURF.pos, c = 50.0
         xs = [p[1] for p in P]; zs = [p[3] for p in P]; x0 = minimum(xs) - 1; z0 = minimum(zs) - 1
@@ -6435,7 +6441,7 @@ lapwin_in(s, c) = (L = _LW.L; abs(mod(s - c + L/2, L) - L/2) <= LAPWIN + LAPBIN)
 # return straight and 13-40 m from the start straight). JM_LAPWIN_TWOLEG=0 =
 # nearest node only, as before.
 const LAPWIN_TWOLEG = get(ENV, "JM_LAPWIN_TWOLEG", "1") != "0"
-const LAPWIN_NEAR = parse(Float64, get(ENV, "JM_LAPWIN_NEAR", "75"))   # ... or within this many metres of it
+const LAPWIN_NEAR = parse(Float64, get(ENV, "JM_LAPWIN_NEAR", SPA ? "150" : "75"))   # Spa: La Source hillside (BLINDTURN-1 S9: 106-134 m)   # ... or within this many metres of it
 "(lap distance, plan distance²) of the centreline node nearest (GPL x, y) -- `lapnear` with its distance"
 function lapnear_d(x, z)
     W = _LW; cx = floor(Int, (x - W.x0)/W.c); cz = floor(Int, (z - W.z0)/W.c); bd = Inf; bi = 0
@@ -6466,6 +6472,8 @@ function lapnear2(x, z, s1, d1sq)
     end
     bi == 0 ? NaN : W.S[bi]
 end
+const LAPWIN_SPRITES = get(ENV, "JM_LAPWIN_SPRITES", "1") != "0"
+const BBLAP = Float64[]; const BBLAP2 = Float64[]               # TD261013-1 (b5): forest panels then sprites, lap positions
 const OBJLAP2 = Float64[]                                 # TD261013-1: per object, its second leg's lap distance (or NaN)
 const LAPNB = _LW === nothing ? 0 : ceil(Int, _LW.L / LAPBIN)
 const NDUP2 = Ref(0)
@@ -7017,9 +7025,17 @@ const TMPOBJ = mktempdir()
 # exact-case lookup missed all 360 of them ("NO MESH"). The track folder is indexed by lower-case name once.
 const _ZD_LC = Dict(lowercase(f) => f for f in (isdir(ZD) ? readdir(ZD) : String[]))
 _zd_file(nm) = (f = get(_ZD_LC, lowercase(nm), nothing); f === nothing ? joinpath(ZD, nm) : joinpath(ZD, f))
-objpath(nm) = (p=_zd_file(nm*".3do"); isfile(p) ? p :
+objpath0(nm) = (p=_zd_file(nm*".3do"); isfile(p) ? p :
     (v=get(DATPACK, lowercase(nm*".3do"), nothing); v===nothing ? "" :
      (tp=joinpath(TMPOBJ, nm*".3do"); isfile(tp)||write(tp,v); tp)))
+# TD261013-1 (b1) (PO 2026-10-13: "the house across the road from the 90 degree left turn downhill to Burnenville is
+# still missing"): at the downhill left after the haystack fields (s 2480-2650, gold 260802 Spa nintendo t 79-82) GPL shows
+# a white gabled house on the right. Its placement is `house1a` (s 2526, 21 m right), and spa67.dat (2,532 entries) has
+# no house1a.3do -- house1 and house1b only. Drawn with house1, its family's base model (the gold's white gabled house).
+# JM_OBJ_ALIAS="name=model,..." (empty = none).
+const OBJ_ALIAS = Dict(lowercase(strip(split(x, "=")[1])) => lowercase(strip(split(x, "=")[2]))
+                       for x in split(get(ENV, "JM_OBJ_ALIAS", "house1a=house1"), ","; keepempty = false) if occursin("=", x))
+objpath(nm) = (p = objpath0(nm); (p == "" && haskey(OBJ_ALIAS, lowercase(nm))) ? objpath0(OBJ_ALIAS[lowercase(nm)]) : p)
 # stands-only crowd policy (user): KEEP the seated grandstand/pit-wall crowds, so we no
 # longer strip their painted-on people textures — only the GPL shadow/tray artifacts go.
 # (Loose roadside people are dropped by name in drop() below, not by texture.)
@@ -7034,6 +7050,7 @@ const CROWD_TEX = ("ltraymap","lshad")
 let objnames=Set{String}()
     for f in readdir(ZD); endswith(lowercase(f),".3do") && push!(objnames, lowercase(replace(f,r"\.3do$"i=>""))); end
     for k in keys(DATPACK); endswith(k,".3do") && push!(objnames, replace(k,r"\.3do$"=>"")); end
+    for (a, m) in OBJ_ALIAS; m in objnames && push!(objnames, a); end   # TD261013-1 (b1): an aliased name places its stand-in
     insts = GPLTrack.trackside_objects(ZTRK; objnames=objnames)
     # E33 (Watkins): the pit/press building (`pitbldg`) sits ~13 m off the racing line at the S/F,
     # and its cantilevered balcony overhangs the road edge ("balcony support protrudes into the road").
@@ -7083,7 +7100,13 @@ let objnames=Set{String}()
         ("sfbox01","sfbox02","sfbox03","hay01","hay02", _zpeople...) : _zpeople
     objmesh=Dict{String,Any}(); ymn=Dict{String,Float32}(); ymx=Dict{String,Float32}(); bbinfo=Dict{String,Any}()
     # the "under 1 m tall" rule drops ground decals and stubs; TRACKSIGNS-1: the add-on's km stones (0.45 m) are real
-    tallenough(nm) = (get(ymx,nm,0f0)-get(ymn,nm,0f0)) > 1.0f0 || startswith(lowercase(nm), "km_")
+    # TD261013-1 (b1): Spa's guardrails (`armco*`, `armcow*`, ~0.7 m) are real barriers, not decals -- the gold shows them
+    # on the outside of the downhill left and the 90° left before it. But GPL draws them as ONE rail following the curve,
+    # and our rigid segments make a sawtooth with gaps on a bend (GPL evidently bends each along the track). OFF until
+    # they bend: JM_KEEP_ARMCO=1 shows them as rigid segments.
+    _keep_armco = SPA && get(ENV, "JM_KEEP_ARMCO", "0") != "0"
+    tallenough(nm) = (get(ymx,nm,0f0)-get(ymn,nm,0f0)) > 1.0f0 || startswith(lowercase(nm), "km_") ||
+                     (_keep_armco && startswith(lowercase(nm), "armco"))
     lxmn=Dict{String,Float32}(); lxmx=Dict{String,Float32}(); lzmn=Dict{String,Float32}(); lzmx=Dict{String,Float32}()
     objverts=Dict{String,Any}()   # SOLID-BOX ground truth: the parts, so a hook can transform real vertices   # E71-S8 local horizontal AABB
     lverts=Dict{String,Vector{Tuple{Float32,Float32}}}()   # E71-S9 decimated local (x,z) footprint points
@@ -7421,7 +7444,11 @@ let objnames=Set{String}()
     # centreline, which at that junction sits metres toward the village (SPATD-1 S2); GPL's own wall data has the houses at
     # the kerb (a raised wall at +4.5 m). A yaw sweep (0/90/180/270°) confirmed the recorded heading: at 0° it stands at the
     # end of the straight with the road turning left in front of it, as in the gold. JM_KEEP_BLDG=0 drops it again.
-    _keep_bldg = (SPA && get(ENV, "JM_KEEP_BLDG", "1") != "0") ? ("house46",) : ()
+    # TD261013-1 (b6) (PO 2026-10-13: "at the hairpin, restore what was on the other side of the road ... add trackside
+    # objects here per GPL"): `lasad1` -- La Source's composite of the Hotel La Source with its crowd and the Real /
+    # Ixelberg / CEAT / Esso board wall across the hairpin (gold 260802 Spa t 332-334 nintendo, 360-366 cockpit) -- was
+    # the footprint rule's drop: the hairpin's paved apron counts as road. Kept by name, like house46.
+    _keep_bldg = (SPA && get(ENV, "JM_KEEP_BLDG", "1") != "0") ? ("house46", "lasad1") : ()
     onroad_bldg(i) = bldgish(lowercase(i.name)) && !any(k -> startswith(lowercase(i.name), lowercase(k)), _keeptest) &&
                      !(lowercase(i.name) in _keep_bldg) && begin   # SPATD-1 S5: JM_KEEPTEST reaches this rule too
         hr = JuliaMotor.hat(TRKSURF, Float64(i.x), Float64(i.y))
@@ -7500,7 +7527,12 @@ let objnames=Set{String}()
                    (get(ENV,"JM_ONROAD_FP_BLDG","1") != "0" && bldgish(nm)) ||
                    (get(ENV,"JM_ONROAD_FP_ARMCO","1") != "0" && startswith(nm,"arm")) ||   # SPA-SF-1: the S/F armco drawn diagonally across the road (arm_sf0)
                    (NURB && get(ENV,"JM_ONROAD_FP_ALL","1") != "0")
-    onroad_fp(i) = get(ENV,"JM_ONROAD_FP","1") != "0" && vegcrowd(lowercase(i.name)) && !(lowercase(i.name) in _keep_bldg) && begin
+    # TD261013-1 (b6): at Spa the footprint rule dropped ten village houses and La Source's hotel/board composite (house4,
+    # ho17/18, house33-39, lasad1), each standing BESIDE the road on screen once kept -- the rule's centreline reference is
+    # metres off in Spa's villages (SPATD-1 S2). Spa's buildings are exempt; its barriers and bush rows keep the rule.
+    _spa_bldg_fp = SPA && get(ENV, "JM_KEEP_BLDG", "1") != "0"
+    onroad_fp(i) = get(ENV,"JM_ONROAD_FP","1") != "0" && vegcrowd(lowercase(i.name)) && !(lowercase(i.name) in _keep_bldg) &&
+                   !(_spa_bldg_fp && occursin(r"^(house|ho\d|lasad)", lowercase(i.name))) && begin
         vs = get(lverts, i.name, nothing)
         if vs === nothing || isempty(vs)
             false
@@ -13273,7 +13305,7 @@ function main()
         try
             tmpl = ibt_open(IBTTMPL)
             ts = Dates.format(Dates.now(), "yyyy-mm-dd HH-MM-SS")
-            odir = get(ENV, "JM_IBT_DIR", joinpath(dirname(dirname(@__DIR__)), "data", "juliaracer"))
+            odir = REC_DIR
             mkpath(odir)
             out = joinpath(odir, "lotus49_$(IBTNAME) $(ts).ibt"); n = 2   # iRacing filename convention
             while isfile(out); out = joinpath(odir, "lotus49_$(IBTNAME) $(ts) ($n).ibt"); n += 1; end
@@ -13302,7 +13334,7 @@ function main()
     # also"): a restart closes this session's replay and .ibt and opens new ones, so every run is its own entry in the
     # Replays list and the analyser. The path is a Ref because a restart replaces it.
     function new_replay_path()
-        _odir = get(ENV, "JM_IBT_DIR", joinpath(dirname(dirname(@__DIR__)), "data", "juliaracer"))
+        _odir = REC_DIR
         base = "replay_$(TRACKSEL) $(length(AICARS))ai $(Dates.format(Dates.now(), "yyyy-mm-dd HH-MM-SS"))"
         f = joinpath(_odir, base * ".jmr"); n = 2
         while isfile(f); f = joinpath(_odir, base * " ($n).jmr"); n += 1; end   # two restarts in one second
@@ -15395,23 +15427,37 @@ function main()
             end
             end)(OBJECTS, OBJBOUND)
             PROF_OBJ[] += time() - _tp_o; _tp_b = time()
-            for (it,pos,w,h,yaw) in STATICTREES                      # wide forest-edge panels (authored yaw, graze-fade)
+            # TD261013-1 (b5) (PO 2026-10-13, Spa: "around white mountain after stavelot you can see the road ribbon after the
+            # start/finish line like a suspended bridge in the distance"): the lap window (now on at Spa) hides that ground, so the
+            # sprites standing on it must go with it -- else a row of tree tops floats in the sky. Sprites and forest panels take
+            # the objects' window (either leg). JM_LAPWIN_SPRITES=0 = the distance cull only.
+            _blap = (_LW === nothing || !LAPWIN_SPRITES) ? NaN : lapnear(Float64(eye_[1]), -Float64(eye_[3]))
+            if !isnan(_blap) && length(BBLAP) != length(BILLBOARDS) + length(STATICTREES)
+                empty!(BBLAP); empty!(BBLAP2)
+                for (_, pos) in Iterators.flatten((((x[1], x[2]) for x in STATICTREES), ((x[1], x[2]) for x in BILLBOARDS)))
+                    sl, dsq = lapnear_d(Float64(pos[1]), -Float64(pos[3])); push!(BBLAP, sl); push!(BBLAP2, lapnear2(Float64(pos[1]), -Float64(pos[3]), sl, dsq))
+                end
+            end
+            _bbin(k) = isnan(_blap) || k > length(BBLAP) || isnan(BBLAP[k]) || lapwin_in(BBLAP[k], _blap) || (!isnan(BBLAP2[k]) && lapwin_in(BBLAP2[k], _blap))
+            for (_k, (it,pos,w,h,yaw)) in enumerate(STATICTREES)     # wide forest-edge panels (authored yaw, graze-fade)
+                _bbin(_k) || continue
                 (eye_[1]-pos[1])^2+(eye_[2]-pos[2])^2+(eye_[3]-pos[3])^2 > BB_CULL2 && continue
                 FRUSTUM_CULL && !infrustum(vp_, pos, max(w, h) + 5f0) && continue
                 Render.draw(prog, it, vp_, Render.translate(pos[1],pos[2],pos[3])*Render.roty(yaw)*Render.scalexyz(w,h,1f0); bright=1.3, ambfill=0.8, graze=true, unlit=!BB_LIT)   # E63/MZ3: the comment always claimed graze-fade but the call never passed it → a wide Monza forest strip seen EDGE-ON rendered as a dark triangular SLAB at the S/F. graze=true fades edge-on quads (uGraze) so the strip shows face-on as a tree-line and vanishes edge-on
             end
             OBJ_CULLFACE && glDisable(GL_CULL_FACE)
             glUniform1i(Render.uloc(prog,"uBackFlip"), 0)
-            (function (_BBS)   # PERF-1: function barrier (BILLBOARDS is an untyped global)
-            for (it,pos,w,h) in _BBS                            # trees/sprites
+            (function (_BBS, _nst, _bbin)   # PERF-1: function barrier (BILLBOARDS is an untyped global)
+            for (_k, (it,pos,w,h)) in enumerate(_BBS)            # trees/sprites
                 LAYOFF_BB && continue
+                _bbin(_nst + _k) || continue                     # TD261013-1 (b5): the lap window
                 _d2 = (eye_[1]-pos[1])^2+(eye_[2]-pos[2])^2+(eye_[3]-pos[3])^2
                 _d2 > (flip ? MIR_BB_CULL2 : BB_CULL2) && continue       # distance cull (mirror radius, S14)
                 max(w, h) < 2f0 * (flip ? MINPIX_K_MIR : MINPIX_K) * sqrt(_d2) && continue       # PERF-1: sub-pixel sprite
                 FRUSTUM_CULL && !infrustum(vp_, pos, max(w, h) + 5f0) && continue
                 Render.draw(prog, it, vp_, Render.billboard_model(pos,w,h,eye_); bright=BB_BRIGHT, ambfill=BB_AMB, unlit=!BB_LIT)  # E83-S3: unlit by default (GPL pre-lit art); E70-S7 tunables only matter with JM_BILLBOARD_LIT=1
             end
-            end)(BILLBOARDS)
+            end)(BILLBOARDS, length(STATICTREES), _bbin)
             PROF_BB[] += time() - _tp_b; _tp_c = time()
             # AI grid (Ferrari/Brabham/BRM/Eagle/Cooper). E106-S25: JM_NO_AI_WHEELS=1 suppresses the AI wheel draw
             # (the rods on the AI rear tyre were neither the wheel mesh nor the wrapper). PERF-3: typed barrier.

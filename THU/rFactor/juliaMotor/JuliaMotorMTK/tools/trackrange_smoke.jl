@@ -41,7 +41,8 @@ chk("the track loop draws the window's ranges; draw takes a range", occursin("fo
     occursin("glDrawArrays(GL_TRIANGLES, first, count < 0 ? item.n : count)", rnd))
 chk("objects get the same window (backdrops exempt; either leg, TD261013-1)", occursin("!lapwin_in(OBJLAP[oi], _olap) &&", src) && occursin("lapwin_in(OBJLAP2[oi], _olap))) && continue", src) &&
     occursin("if isbackdrop(lowercase(String(o[5])))\n                        OBJLAP[k] = NaN; OBJLAP2[k] = NaN", src))
-chk("on by default at the Ring, WG and Monza (914 m, GPL's 18,000,000 TRK; BLINDTURN-1 S7)", occursin("get(ENV, \"JM_LAPWIN\", (NURB || WATGLEN || MONZA) ? \"914\" : \"0\")", src))
+chk("on by default at the Ring, WG, Monza and Spa (914 m, GPL's 18,000,000 TRK; BLINDTURN-1 S7, TD261013-1 b5)", occursin("get(ENV, \"JM_LAPWIN\", (NURB || WATGLEN || MONZA || SPA) ? \"914\" : \"0\")", src))
+chk("sprites and forest panels take the lap window too (TD261013-1 b5)", occursin("_bbin(_nst + _k) || continue", src) && occursin("_bbin(_k) || continue", src))
 # TD261013-1 (c1): geometry near two legs of the lap (the Ring's pit row between the start straight and the return
 # straight) belongs to both; on by default, a copy of each such triangle in the second leg's bin
 chk("near two legs of the lap: drawn with either (JM_LAPWIN_TWOLEG, 75 m)", occursin("const LAPWIN_TWOLEG = get(ENV, \"JM_LAPWIN_TWOLEG\", \"1\") != \"0\"", src) &&

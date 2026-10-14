@@ -26159,3 +26159,47 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   the Nordkehre) the valley stays clear, so BILLBOARD-2's fix holds.
 * Gates (s36): 58/59, `trackrange_smoke` red on its source check of the object window's old line; the check now
   asserts the either-leg rule (+1 check for the two-leg binning) and passes (rerun alone).
+
+### TD261013-1 S3 (2026-10-14): Spa -- (b1) the house before the downhill left, (b5) the "suspended bridge", (b4) the strips after Stavelot
+* **Where the PO's corner is.** Not the Burnenville junction at s 5200 (SPATD-1's house46). The gold's Spa *nintendo*
+  view (260802, t 79-82) aligned to ours by the haystack fields (ours s 2030-2100): after them a white gabled house on
+  the right, then a downhill left with a guardrail on its outside and a long white barn (ours s 2430-2650).
+* **(b1) the house:** its placement is `house1a` (s 2522-2526, 21-24 m right; E111-S1 found it in 2026-08 but searched
+  `spa.dat`, not the `spa67.dat` we load). spa67.dat (2,532 entries) has no house1a.3do -- house1 and house1b only -- and
+  the placement was skipped before it reached any rule. It is now drawn with house1, its family's base model:
+  `JM_OBJ_ALIAS="house1a=house1"` (default; empty = none). Render: a white gabled house with a grey roof on the right before
+  the bend, as in the gold.
+* **The guardrail there (`armco1`, `armcow2/3`) is dropped as "under 1 m tall"** -- a real barrier, not a decal. Kept
+  (`JM_KEEP_ARMCO=1`) our rigid segments make a sawtooth with gaps on the bend where GPL draws one smooth rail following
+  the curve, so it stays OFF until segments bend along the track (open).
+* **(b5) "the road ribbon after the start/finish line like a suspended bridge in the distance":** seen at s 12150 (after
+  Blanchimont): a dark band hanging across the horizon -- far-along-the-lap road whose ground lies beyond the terrain's
+  reach. GPL's 914 m lap window hides exactly this; BLINDTURN-1 kept it off at Spa because nearest-node binning hid the
+  La Source hillside (106-134 m from the eye). With S2's two-leg rule (75 m; 150 m at Spa) it is now ON at Spa. Billboard
+  sprites and forest panels take the window too (`JM_LAPWIN_SPRITES=0` = distance cull only) -- else tree tops floated
+  where the band had been. Renders: Blanchimont clear; La Source approach (s 13120) and exit (s 100) unchanged; the Ring
+  at s 0 / 1050 / 12500 unchanged.
+* **(b4) "two long polygonal holes in the ground on the left, uphill after Stavelot":** the PO's own replay rendered at
+  replay t 222-256 (s 7.9-9.5 km; `JM_SHOT_AT` takes replay time in replay mode): no hole in the ground, but long grey
+  strips hanging over the horizon (the same far road) -- gone with the lap window (a hill with trees instead). Most likely
+  what the PO saw; to confirm at the PO's next Spa drive.
+* **(b6) La Source: "restore what was on the other side of the road at the hairpin".** Gold (Spa nintendo t 332-334,
+  cockpit 360-366): turning in, the Hotel La Source with its crowd and a wall of boards (Real, Ixelberg, CEAT, Esso,
+  Martini...) across the outside of the hairpin. Ours at s 13650: bare apron and distant hills. The whole composite is
+  ONE object, `lasad1`, dropped by the footprint-on-road rule (the hairpin's paved apron counts as road). Kept by name;
+  render at s 13650: hotel, crowd and the board wall straight ahead, as the gold.
+* **The same rule dropped ten Spa village houses** (house4 s 2754, ho17/ho18 Burnenville s 3850, house33/35/36/37/38/39
+  s 8620-10845 Stavelot-La Carrière): with it off (`JM_ONROAD_FP=0`) every one stands BESIDE the road (renders
+  `scratchpad/spa/hk.png`), parallel to it at 5.6-11 m like the houses already kept -- the rule's centreline reference is
+  metres off in Spa's villages (SPATD-1 S2). Spa's buildings (`house*`, `ho<n>`, `lasad*`) are now exempt
+  (`JM_KEEP_BLDG=0` = before); its barrier and bush row keep the rule (18 -> 2 drops). Autodrive on the right lane past
+  them (s 2600 / 8450 / 9850 / 10600, 35 m/s, lat -3): see below.
+* **Process slip (logged):** I edited `demo/native` (the lasad1 + village-house exemption) while the s37 gates were
+  running, so s37 tested a mix. s37: 58/59 -- `tracksigns_smoke` red on its source check of `objpath` (renamed
+  `objpath0` by the alias; check updated). The full gates are re-run (s38) on the final code before the commit.
+* Autodrive on the right lane (lat -3 m, target 35 m/s, 1,500 frames ≈ 600 m) from s 2600 / 8450 / 9850 / 10600 past every
+  restored house: 0 jolts, 0 wrecks (the car moves: 10 s from s 10594 reached 121 km/h).
+* **Test runs no longer write into the PO's recordings.** Every smoke run wrote its `lotus49_*.ibt` (and, with
+  JM_REPLAY_REC, its replay) into `data/juliaracer/` -- dozens of 1-60 s files a day among the PO's sessions. A smoke run
+  now records to `$TMPDIR/jm_smoke_rec` unless `JM_IBT_DIR` says otherwise (`REC_DIR`).
+* Gates (s38, the final S3 code): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).
