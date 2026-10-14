@@ -4377,6 +4377,7 @@ const RSUSPP_B = _RSONLY == "" ? Render.extract_gpl_car(LOT3DO; include_groups=(
 # gold standard"): the gear lever (texture lotshift; the same 54 triangles as shiftel.3do, placed by lotus.3do) is cut
 # out of the static cockpit body and drawn on its own, turned about its foot by the gear selected. JM_SHIFTER=0 = static.
 const SHIFTER_ON = get(ENV, "JM_SHIFTER", "1") != "0"
+const SHIFT_ONTOP = get(ENV, "JM_SHIFT_ONTOP", "1") != "0"   # TD261013-1 (a2)
 const SHIFT_TEX = SHIFTER_ON ? ("lotshift",) : ()
 const CARPIN = get(ENV,"JM_COCKPIT_DRESS","1") != "0" ?
     Render.extract_gpl_car(joinpath(LOTDIR,"lotd.3DO"); exclude=(_HAND_EXC...,_LOTBLACK_EXC...,_EXTRA_EXC...,_GARBAGE_EXC...,DRIVER_TEX...,MIRROR_TEX...,Render.STEER_TEX...,"pipe3","plaface","plahelm",SHIFT_TEX...), exclude_groups=Tuple(parse(Int, x) for x in split(get(ENV, "JM_CAR_EXCL_GROUPS", "6600,3560,27288,39792"), ",") if !isempty(strip(x))), cockpit_clean=true, maxlat=parse(Float32,get(ENV,"JM_COCKPIT_MAXLAT","0.30")), dedup=_CAR_DEDUP, grey=(TUB_GREY,TUB_GREY+0.01f0,TUB_GREY+0.02f0), visor=true) :   # E106-S10: dedup coincident stacks (visor/mirror flicker)
@@ -10521,6 +10522,11 @@ const EYE_RAW = (parse(Float64, get(ENV, "JM_EYE_X", "0.25")), parse(Float64, ge
 const ARM_ROLL = get(ENV, "JM_ARM_ROLL", "0") != "0"
 const SLEEVE_LASTR = Ref(Matrix(1.0I, 3, 3))
 const SLEEVE_HOLD = get(ENV, "JM_ARM_HOLDROLL", "1") != "0"
+const ARM_ROLLWHEEL = get(ENV, "JM_ARM_ROLLWHEEL", "0") != "0"   # TD261013-1 (a2)
+const ARM_LOCK_DEG = Tuple(parse.(Float64, split(get(ENV, "JM_ARM_LOCK_DEG", "50,130"), ",")))   # wheel angles: slide begins, ends
+const ARM_LOCK_S = let v = get(ENV, "JM_ARM_LOCK_S", "0.40,0.02,0.15")   # TD261013-1 (a2): the far end at full lock
+    isempty(v) ? nothing : Tuple(parse.(Float64, split(v, ",")))
+end
 const ARM_INTO = 0.06                        # COCKPIT-2 S4: sleeve runs 6 cm into the glove (sweep 0/3/6/9 cm, WG 2026-10-09); JM_ARM_INTO
 const SLEEVE_NREF = Any[nothing, nothing]          # per side: the face normal with the wheel straight (set on first draw)
 function sleeve_mat(W, E, H, S, nf; target = nothing)
@@ -10793,6 +10799,7 @@ function read_input()
     # keyboard (adds to / overrides stick)
     key(GLFW.KEY_W) && (thr=1.0); key(GLFW.KEY_S) && (brk=1.0)
     key(GLFW.KEY_A) && (str=1.0); key(GLFW.KEY_D) && (str=-1.0)
+    SMOKE && haskey(ENV, "JM_TEST_STEER") && (str = parse(Float64, ENV["JM_TEST_STEER"]))   # TD261013-1 (a2) test hook: hold the steering
     key(GLFW.KEY_C) && (clu=1.0)
     ku=key(GLFW.KEY_E); kd=key(GLFW.KEY_Q)
     upE = (ku && !CTL.prevUp) || (up && !CTL.prevUp); dnE = (kd && !CTL.prevDn) || (dn && !CTL.prevDn)
@@ -15656,7 +15663,13 @@ function main()
         if CTL.view == 0 && !_tm && !isempty(shiftItems) && SHIFT_PIVOT !== nothing     # COCKPIT-2 S3: the lever follows the gear
             _tn = time(); _dt = SHIFT_TW[] == 0.0 ? 1f0 : Float32(clamp(_tn - SHIFT_TW[], 0.0, 0.1)); SHIFT_TW[] = _tn
             shm = bodyModel * shift_model(cs.gear, _dt)
+            # TD261013-1 (a2) (PO 2026-10-13: "the wooden gear handle is partially see-through"): the knob's top stands inside
+            # the dash panel (x 0.73 m, the panel ~0.73-0.75), so the oil gauge's rim and needle won the depth test over it.
+            # GPL draws the knob in front of the dash's lower edge (gold WG cockpit). Drawn last of the cockpit furniture, over
+            # it; the gloves and sleeves (drawn after) still cover it. JM_SHIFT_ONTOP=0 = depth-tested, as before.
+            SHIFT_ONTOP && glDisable(GL_DEPTH_TEST)
             for it in shiftItems; Render.draw(prog, it, vp, shm; bright=0.95, ambfill=0.45); end   # gold: dark wood, not lit orange
+            SHIFT_ONTOP && glEnable(GL_DEPTH_TEST)
         end
         # E64 S2 (Z-CK4): gloved hands + forearms, cockpit view only (the chase driver figure has its
         # own DRIVER_TEX arms).  Hands turn with the wheel, forearms stay put — GPL-era articulation.
@@ -15675,6 +15688,15 @@ function main()
                         W, E, nf = SLEEVE_ENDS[k]
                         h = swRel * gripmat(sgn) * Float32[W[1], W[2], W[3], 1f0]
                         S = (SHOULDER[1], SHOULDER[2], sgn*SHOULDER[3])
+                        # TD261013-1 (a2) (PO 2026-10-13: "a large white triangle on the left when the player turns all the way
+                        # right"): at full lock (~143 deg) the glove crosses to the top of the rim and a strip from a shoulder
+                        # beside the eye lies broad across the view. GPL's sleeve then rises steeply from below (gold Spa La Source
+                        # t 361-363): the elbow drops and comes in. The far end slides toward ARM_LOCK_S as the wheel passes
+                        # 50 deg, fully by 130 deg; straight ahead it is the gold-fitted shoulder. JM_ARM_LOCK_S="" = fixed.
+                        if ARM_LOCK_S !== nothing
+                            _u = clamp((abs(HSIGN*inp.steer*2.5) - deg2rad(ARM_LOCK_DEG[1])) / deg2rad(ARM_LOCK_DEG[2] - ARM_LOCK_DEG[1]), 0.0, 1.0)
+                            S = (S[1] + _u*(ARM_LOCK_S[1] - S[1]), S[2] + _u*(ARM_LOCK_S[2] - S[2]), S[3] + _u*(sgn*ARM_LOCK_S[3] - S[3]))
+                        end
                         if SLEEVE_HOLD && SLEEVE_NREF[k] === nothing    # the straight-wheel face normal, once
                             sw0 = Render.translate(SWCENTER) * Render.rotaxis(SWAXIS, Float32(SW_ROT)) * Render.translate(-SWCENTER[1], -SWCENTER[2], -SWCENTER[3])
                             h0 = sw0 * gripmat(sgn) * Float32[W[1], W[2], W[3], 1f0]
@@ -15687,7 +15709,14 @@ function main()
                         _into = haskey(ENV, "JM_ARM_INTO") ? parse(Float64, ENV["JM_ARM_INTO"]) : ARM_INTO
                         _d = (h[1] - S[1], h[2] - S[2], h[3] - S[3]); _l = sqrt(_d[1]^2 + _d[2]^2 + _d[3]^2)
                         h = _l > 1e-6 ? (h[1] + _into*_d[1]/_l, h[2] + _into*_d[2]/_l, h[3] + _into*_d[3]/_l) : h
-                        Render.draw(prog, armLR[k], vp, bodyModel * sleeve_mat(W, E, (h[1], h[2], h[3]), S, nf; target = SLEEVE_HOLD ? SLEEVE_NREF[k] : nothing);
+                        # TD261013-1 (a2) (PO 2026-10-13: "the driver's left arm has a large white triangle on the left when the
+                        # player turns all the way right"): at full lock the wheel turns ~143 deg and the left glove sits top-right;
+                        # the strip, still held to its straight-wheel face, crossed the wheel FACE-ON -- the white sail. GPL turns
+                        # the arms with the wheel assembly (HANDS-1 S4), so the held face turns with the wheel too.
+                        # JM_ARM_ROLLWHEEL=0 = the straight-wheel face, as before.
+                        _tgt = SLEEVE_HOLD ? (ARM_ROLLWHEEL && SLEEVE_NREF[k] !== nothing ?
+                               (Render.rotaxis(SWAXIS, Float32(HSIGN*inp.steer*2.5)) * Float32[SLEEVE_NREF[k]..., 0f0])[1:3] : SLEEVE_NREF[k]) : nothing
+                        Render.draw(prog, armLR[k], vp, bodyModel * sleeve_mat(W, E, (h[1], h[2], h[3]), S, nf; target = _tgt);
                                     bright=1.35, spec=0.05, ambfill=0.85)
                     end
                 else

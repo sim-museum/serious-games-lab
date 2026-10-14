@@ -26203,3 +26203,20 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   JM_REPLAY_REC, its replay) into `data/juliaracer/` -- dozens of 1-60 s files a day among the PO's sessions. A smoke run
   now records to `$TMPDIR/jm_smoke_rec` unless `JM_IBT_DIR` says otherwise (`REC_DIR`).
 * Gates (s38, the final S3 code): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).
+
+### TD261013-1 S4 (2026-10-14): (a2) the white triangle at full lock and the see-through gear knob
+* Reproduced with a new smoke hook `JM_TEST_STEER=<-1..1>` (holds the steering): at full right lock (~143° of wheel) the
+  left sleeve -- a flat strip stretched from a fixed "shoulder" 7 cm behind and 18 cm below the eye to the glove, now at
+  the top of the rim -- lay broad across the lower-left view: the white triangle.
+* Tried and rejected (renders `scratchpad/ck`): rolling the strip's held face with the wheel (worse at every angle,
+  `JM_ARM_ROLLWHEEL=1`); GPL's rigid arms on the wheel assembly (`JM_ARMS2=0 JM_ARMS_ON_WHEEL=1`: in our frame they
+  stand straight up); a fixed lower/forward shoulder (2×2 sweep: a broad sheet at every point).
+* **Shipped:** the gold (Spa cockpit, La Source t 361-363) shows the sleeve rising steeply from below to the glove at
+  the top of the rim -- the elbow drops and comes in. The sleeve's far end now slides from the gold-fitted shoulder to
+  an elbow point (0.40, 0.02, ±0.15) as the wheel passes 50° → 130° (`JM_ARM_LOCK_S`, `JM_ARM_LOCK_DEG`; empty = fixed).
+  Straight ahead is unchanged; at full lock either way the sleeve is a narrow band rising to the glove, as the gold.
+* **The knob:** its top stands inside the dash panel (x 0.73 m), so the oil gauge's rim and needle won the depth test
+  over it -- "partly see-through". GPL draws the knob in front of the dash's lower edge (gold WG cockpit t 3). The lever
+  is now drawn over the cockpit furniture (depth test off; the gloves and sleeves, drawn after, still cover it).
+  `JM_SHIFT_ONTOP=0` = before.
+* Gates (s39): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).
