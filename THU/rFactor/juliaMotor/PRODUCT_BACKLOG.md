@@ -26220,3 +26220,29 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   is now drawn over the cockpit furniture (depth test off; the gloves and sleeves, drawn after, still cover it).
   `JM_SHIFT_ONTOP=0` = before.
 * Gates (s39): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).
+
+### TD261013-1 S5 (2026-10-14): (b3) "small jolts between Burnenville and Masta" -- found: the ground's frame kinks at ribbon nodes
+* The PO's Spa .ibt (22:44): 15-33 mm ride-height dips with vertical-g spikes at s 3329, 3817, 3854, 3899, 4436, 5227,
+  5727 -- steering and lateral g steady. An autodrive on the PO's line (lat +2.5 m, 160 km/h) dips at the same places
+  (3326/3341, 3813/3829, 3851, 3884, 4434): a property of the physics ground, not the PO's driving.
+* Not GPL's road: the spa67 .trk altitude cubics are C1 at every joint (|Δh| ≤ 0.01 cm, |Δslope| ≤ 0.17 %) and smooth
+  at the sites (|h''| < 2 mm/m²; lap p99 1.6). The dips sit 2.6-6 m past .trk section joints -- where the road's plan
+  curvature changes.
+* New probe `JM_GROUNDPROF="<s0>:<s1>:<lat>"` (straight chords between rail points 10 m apart, every 0.25 m: the
+  ribbon's lapdist/lateral, the spline, the mesh correction, the confidence, the ground, its 2nd difference). At
+  s 3326.75 the ground runs dead straight, then its slope kinks: the ribbon's lapdist starts advancing 8 % faster. hat()
+  puts the foot on a Catmull-Rom curve through the 3 m ribbon nodes (C1) with lapdist linear in its parameter; that
+  curve's CURVATURE jumps at every node, and 2.5 m off the centreline the lapdist rate is 1/(1 − lat·κ) -- it jumps
+  with it. On Spa's 4 % descents that is a 0.27-0.6 % slope kink, a 0.12-0.27 m/s vertical-velocity step at 160 km/h:
+  at the suspension's ~2.5 Hz, 8-17 mm of compression per node, largest where the ribbon bends most (the junctions
+  named in the load log's "re-centre junction pulls": 3821, 3880, 4420...).
+* Trying: the physics ground projects onto a Gaussian-smoothed copy of the ribbon (`JM_GROUND_RIBBON_SIGMA`, lapdist
+  rescaled to the lap; drawing, AI and lap counting keep TRKSURF). Lap-wide kink statistics per sigma below.
+* **Sigma sweep** (`JM_GROUNDPROF` over the whole lap at lat ±2.5 m; a kink as the vertical-velocity step it gives at
+  45 m/s): Spa, knocks > 0.1 m/s: sigma 0 → 175 / 141 (lat +2.5 / −2.5); 4 → 161 / 86; **10 → 107 / 27**; 20 → 138 / 147
+  (too wide: it breaks La Source). Between Burnenville and Masta (s 3250-6600): **41 / 38 → 5 / 3**, max 0.43 → 0.27 m/s.
+  Other tracks (lat +2.5, sigma 0 → 10): Watkins Glen 110 → 10; Zandvoort 212 → 8; the Ring 2,062 → 976 (p99 0.121 →
+  0.067); Monza 181 → 190, p99 unchanged (its one huge value, s 5702, is the probe's chord crossing the overpass in both).
+* **Shipped: sigma 10 m** (`JM_GROUND_RIBBON_SIGMA=0` = before). The physics ground only; drawn road, AI rail and lap
+  counting unchanged.
+* Gates (s40): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).

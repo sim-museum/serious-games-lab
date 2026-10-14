@@ -2319,6 +2319,24 @@ else
                               [TRACKMESH0C.groups; fill(0, length(SECTRI))])
     const TERRAIN  = (isempty(SECTRI) && !ROADCURVE_ON) ? TERRAIN0 : GPLTrack.build_hat(TRACKMESH; exclude=HAT_EXCLUDE, exclude_pred=HAT_EXCLUDE_PRED, drop_overpass=MONZA, road_pred=ROAD_PRED)
     const TRKSURF  = GPLTrack.build_surface(ALIGNED, TERRAIN)
+    # TD261013-1 (b3) (PO 2026-10-13, Spa: "small jolts several times between burnville and masta for no apparent reason"):
+    # the PO's .ibt and an autodrive on the PO's line both dip 15-33 mm at s 3326/3341, 3813/3829, 3851, 3884, 4434 -- and
+    # the load log names those very places as the re-centring's "junction pulls" (side roads). GPL's .trk road is smooth
+    # there (C1 joints, |h''| < 2 mm/m2); the ground is that spline read at the ribbon's (lapdist, lateral), and at the
+    # junctions the ribbon zigzags: its lapdist advanced 0.19-0.38 m per 0.25 m driven (JM_GROUNDPROF), so on the 4 % descent
+    # the height kinked. The physics ground now projects onto a Gaussian-smoothed copy of the ribbon (sigma 10 m), lapdist
+    # rescaled to the lap; the drawn road, the AI and the lap counting keep TRKSURF. JM_GROUND_RIBBON_SIGMA=0 = before.
+    const TRKSURF_G = let σ = parse(Float64, get(ENV, "JM_GROUND_RIBBON_SIGMA", "10.0")), P = collect(ALIGNED), n = length(P)
+        if σ <= 0 || n < 16
+            TRKSURF
+        else
+            ds = sum(hypot(P[mod1(i+1, n)][1] - P[i][1], P[mod1(i+1, n)][2] - P[i][2]) for i in 1:n) / n
+            si = max(σ / ds, 0.5); W = ceil(Int, 3si); w = [exp(-(q/si)^2/2) for q in -W:W]; w ./= sum(w)
+            Q = [(sum(w[q+W+1]*P[mod1(i+q, n)][1] for q in -W:W), sum(w[q+W+1]*P[mod1(i+q, n)][2] for q in -W:W)) for i in 1:n]
+            GPLTrack.build_surface(eltype(P) <: Tuple ? convert(Vector{eltype(P)}, Q) : Q, TERRAIN)
+        end
+    end
+    const TRKSURF_G_K = TRKSURF.lap_length / TRKSURF_G.lap_length
     # SEAM-1 (PO 2026-09-26): the CLOSED lap length, not maximum(lapdist). `lapdist[end]` is the
     # distance from node 1 to the LAST node, which leaves the closing segment (last node -> node 1) out
     # of the lap -- one node, ~4 m at Watkins Glen. hat() correctly reports lapdist out to
@@ -11536,12 +11554,12 @@ function main()
         # TRACKSMOOTH-3: on the tarmac the ground is the .trk spline (C1 along the lap, linear across the
         # traces), blended into the mesh over the last TRK_BLEND metre of the road so the edge is a ramp.
         if TRK_CAL.on && !SKIDPAD
-            hr = JuliaMotor.hat(TRKSURF, x, y)
+            hr = JuliaMotor.hat(TRKSURF_G, x, y)                          # TD261013-1 (b3): the smoothed ribbon
             if hr.found
-                al = abs(hr.lateral)
+                al = abs(hr.lateral); _ld = hr.lapdist * TRKSURF_G_K
                 if al < TRK_ROAD_LAT + TRK_BLEND
-                    ht = trk_road(hr.lapdist, hr.lateral)
-                    w = smoothblend((TRK_ROAD_LAT + TRK_BLEND - al) / TRK_BLEND) * trk_conf(hr.lapdist, hr.lateral)   # SINK-1b: mesh where the spline is unreliable
+                    ht = trk_road(_ld, hr.lateral)
+                    w = smoothblend((TRK_ROAD_LAT + TRK_BLEND - al) / TRK_BLEND) * trk_conf(_ld, hr.lateral)   # SINK-1b: mesh where the spline is unreliable
                     # SEAM-1: the mesh half of the blend must be the ROAD, not a banner/bridge deck over
                     # it. `g` above is the topmost surface (and stays the step guard's input); for the
                     # blend, take the surface at or below the spline + 3 m where they differ.
@@ -11646,6 +11664,31 @@ function main()
     # multi-valued, so `project` flips between two feet and the controller's look-ahead jumps there.
     CLINE  = !SKIDPAD ? RaceAI.build_line(GPLTrack.defold(ALIGNED; label = "AI rail"),
                                           (x, z) -> (r = ground_road(x, z); r[2] ? r[1] : NaN)) : nothing
+    # TD261013-1 (b3) probe: JM_GROUNDPROF="<s0>:<s1>:<lat>" walks the centreline from s0 to s1 at lateral `lat` every 0.25 m
+    # and prints the physics ground and its layers -- the ribbon frame (lapdist, lateral), the .trk spline, the mesh
+    # correction, the spline confidence, the blended result -- then exits. Finds which layer makes a bump.
+    if get(ENV, "JM_GROUNDPROF", "") != "" && CLINE !== nothing
+        let f = split(ENV["JM_GROUNDPROF"], ":"), s0 = parse(Float64, f[1]), s1 = parse(Float64, f[2]), la = parse(Float64, f[3])
+            println("  [groundprof] s  x  z  | ribbon lapdist lateral | spline corr conf | ground  d2(ground) mm")
+            prev = (NaN, NaN)
+            for s in s0:0.25:s1
+                _a = 10.0*floor(s/10.0); _f = (s - _a)/10.0       # straight chords between rail points 10 m apart: a smooth path
+                pa = RaceAI.pose_at(CLINE, _a, la); pb = RaceAI.pose_at(CLINE, _a + 10.0, la)
+                x = pa[1] + _f*(pb[1] - pa[1]); z = pa[3] + _f*(pb[3] - pa[3])
+                hr = JuliaMotor.hat(TRKSURF, x, z)
+                sp = hr.found ? GPLTrack.trk_height(TRKALT, hr.lapdist * TRK_SSCALE, TRK_CAL.sign * hr.lateral) + TRK_CAL.off : NaN
+                co = hr.found ? trk_corr(hr.lapdist, hr.lateral) : NaN
+                cf = hr.found ? trk_conf(hr.lapdist, hr.lateral) : NaN
+                PLAYER_G[] = NaN; g = Float64(groundz_phys(x, z))
+                d2 = isnan(prev[1]) ? NaN : (g - 2prev[2] + prev[1]) * 1000
+                println("  [groundprof] ", round(s, digits = 2), "  ", round(x, digits = 2), " ", round(z, digits = 2), " | ",
+                        hr.found ? round(hr.lapdist, digits = 2) : NaN, " ", hr.found ? round(hr.lateral, digits = 2) : NaN, " | ",
+                        round(sp, digits = 4), " ", round(co, digits = 4), " ", round(cf, digits = 3), " | ", round(g, digits = 4), "  ", round(d2, digits = 2))
+                prev = (prev[2], g)
+            end
+        end
+        exit(0)
+    end
     CLINE !== nothing && println("  CLINE: centreline length = ", round(Int, CLINE.total), " m  (", TRACKSEL, ")")
     # BNDWRECK-1 S10: vertex DENSITY per 50 m. S9's other candidate for the bad projection is that
     # the line is sparse around lapdist 1750-1849 -- the band where |lat| reads 47-58 m and where
