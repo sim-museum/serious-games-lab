@@ -26317,3 +26317,18 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
 * SPATD-1's open note (parked cars cutting house46's wall): from the chase camera at s 5200 the yellow car stands at the
   house's corner on the pink square -- a marginal touch at most, not visible from the driver's line. Left as is.
 * Gates (s43): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).
+
+### TD261013-1 S9 (2026-10-14): Spa's guardrails drawn -- GPL's placement roll is the rail's slope
+* S7 ruled out the yaw. GPL's own placements (`armco1` at the downhill left): segments 11.32 m long (local y ±5.66), spaced
+  11.4 m, each tangent to the chord to its neighbour (yaw − chord constant to 0.01 rad) -- a smooth chain in GPL's data.
+  Each carries ROLL −2.4°, exactly the drop between placements (0.47 m per 11.4 m): the rail's long axis is its local y,
+  so GPL's "roll" tilts it along its length to follow the descent. Our objects apply placement roll with sign 0
+  (`JM_OBJ_PR` "-1,0", E81-S9: roll never tested) -- every rail lay level, the chain stepped: the sawtooth.
+* A/B at the downhill left and the 90° left (`JM_OBJ_PR="-1,±1"`, `scratchpad/spa/pr.png`): +1 = one smooth rail
+  following the bend, as the gold (Spa nintendo t 82); −1 = a worse sawtooth. **Shipped:** roll +1 for the rails only
+  (`armco*`; `JM_RAIL_ROLL=0` = level), every other object unchanged; Spa keeps its rails (91 of 93; `JM_KEEP_ARMCO=0`
+  drops them).
+* Note for (b2): the rails were ALREADY collision solids while undrawn (the S371 exempt list: they "render as track
+  geometry") -- at Spa they were not drawn, so a car leaving the road could strike a guardrail it could not see. Now drawn.
+  Autodrive at lat −3.6 m (car edge ~4.5 m out, the rail side) from s 1800 / 2450 / 3750, 30 m/s: 0 contacts, 0 wrecks.
+* Gates (s44): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).

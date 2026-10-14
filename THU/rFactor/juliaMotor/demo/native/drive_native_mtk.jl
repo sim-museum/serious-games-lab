@@ -450,6 +450,11 @@ const CARHALF = 1.4    # car collision half-extent (m)
 # nothing at the call sites -- the `global SOLIDS = ...` rebuilds below still work, they just have
 # to stay this type -- and lets the compiler specialise the scan.
 const OBJ_PR = Tuple(parse.(Float64, split(get(ENV, "JM_OBJ_PR", "-1,0"), ",")))   # E81-S9 pitch/roll signs (see OBJECTS)
+# TD261013-1 S9: GPL's guardrails (`armco*`) carry their slope along the rail as placement ROLL (Spa's descent: -2.4 deg per
+# 11.3 m segment, exactly the drop between placements) -- with roll off each rail lay level and the chain was a sawtooth of
+# steps. Applied (+1) to the rails only; every other object keeps OBJ_PR[2]. JM_RAIL_ROLL=0 = level rails.
+const RAIL_ROLL = parse(Float64, get(ENV, "JM_RAIL_ROLL", "1"))
+objrollsign(nm) = (OBJ_PR[2] == 0 && startswith(lowercase(nm), "armco")) ? RAIL_ROLL : OBJ_PR[2]
 const OBJ_CPU = Dict{String,Any}()   # GPLWALL-1: object name -> its CPU parts (object frame), for obstacle faces
 const SolidT    = Tuple{Float64,Float64,Float64,Symbol}
 const SolidBoxT = Union{Nothing,NTuple{3,Float64}}
@@ -7129,10 +7134,9 @@ let objnames=Set{String}()
     objmesh=Dict{String,Any}(); ymn=Dict{String,Float32}(); ymx=Dict{String,Float32}(); bbinfo=Dict{String,Any}()
     # the "under 1 m tall" rule drops ground decals and stubs; TRACKSIGNS-1: the add-on's km stones (0.45 m) are real
     # TD261013-1 (b1): Spa's guardrails (`armco*`, `armcow*`, ~0.7 m) are real barriers, not decals -- the gold shows them
-    # on the outside of the downhill left and the 90° left before it. But GPL draws them as ONE rail following the curve,
-    # and our rigid segments make a sawtooth with gaps on a bend (GPL evidently bends each along the track). OFF until
-    # they bend: JM_KEEP_ARMCO=1 shows them as rigid segments.
-    _keep_armco = SPA && get(ENV, "JM_KEEP_ARMCO", "0") != "0"
+    # on the outside of the downhill left and the 90° left before it. S9: with GPL's placement roll applied (RAIL_ROLL)
+    # they chain into one smooth rail as in the gold. JM_KEEP_ARMCO=0 drops them.
+    _keep_armco = SPA && get(ENV, "JM_KEEP_ARMCO", "1") != "0"
     tallenough(nm) = (get(ymx,nm,0f0)-get(ymn,nm,0f0)) > 1.0f0 || startswith(lowercase(nm), "km_") ||
                      (_keep_armco && startswith(lowercase(nm), "armco"))
     lxmn=Dict{String,Float32}(); lxmx=Dict{String,Float32}(); lzmn=Dict{String,Float32}(); lzmx=Dict{String,Float32}()
@@ -7863,7 +7867,7 @@ let objnames=Set{String}()
     objkeep(i) = get(objmesh,i.name,nothing) !== nothing &&
                  !drop(i.name) && !onroad_crowd(i) && !perp_crowd(i) && !onroad_bldg(i) && !onroad_fp(i) && tallenough(i.name) && onground(i)
     global OBJECTS = [(objitems(i), Render.translate(Float32[i.x, plozfp(i), -i.y]) * Render.roty(Float32(OBJ_YAW_SIGN * objyawsign(i.name) * -i.yaw + objyawfix(i.name))) *
-                       Render.rotz(Float32(OBJ_PR[1]*i.pitch)) * Render.rotx(Float32(OBJ_PR[2]*i.roll)), istree(i.name) && (graze_mesh || !(MONZA || WATGLEN)), (Float32(i.x), plozfp(i), Float32(-i.y)), lowercase(i.name))
+                       Render.rotz(Float32(OBJ_PR[1]*i.pitch)) * Render.rotx(Float32(objrollsign(i.name)*i.roll)), istree(i.name) && (graze_mesh || !(MONZA || WATGLEN)), (Float32(i.x), plozfp(i), Float32(-i.y)), lowercase(i.name))
                       for i in insts if objkeep(i)]
     # GREY-1: GPL's per-segment visibility for each drawn object (JM_GPLVIS=1, the Ring). OBJNODE runs parallel to OBJECTS.
     global OBJNODE = [i.node for i in insts if objkeep(i)]
