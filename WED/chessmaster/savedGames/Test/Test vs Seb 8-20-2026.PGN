@@ -1,0 +1,16 @@
+[Event "Chessmaster: Grandmaster Edition Rated Game"]
+[Site ""]
+[Date "2026.8.20"]
+[Round ""]
+[White "Test"]
+[Black "Seb"]
+[TimeControl "600+3"]
+[Result "1-0"]
+[ECO " "]
+
+1.a3 e5 2.c4 Nf6 3.b4 Ng4 4.Bb2 Qh4 5.g3 Qf6 6.Nf3 Qh6 7.Nxe5 Nxe5 8.Bxe5 Bxb4 9.axb4 Nc6 10.Bf4 g5 11.Bxc7 Qg6 12.b5 Nd4 13.d3 
+O-O 14.Bg2 d6 15.Ba5 Bg4 16.Nc3 Rae8 17.Ra2 b6 18.Bb4 Re6 19.O-O Kh8 20.Qd2 Qg7 21.Ne4 f6 22.e3 Ne2+ 23.Kh1 Rd8 24.f3 d5 25.fxg4
+dxc4 26.Qxe2 cxd3 27.Qb2 Rc8 28.Bc3 Qc7 29.Bxf6+ Kg8 30.Bxg5 h6 31.Nf6+ Kg7 32.Nd5+ Kh7 33.Bf4 Qf7 34.g5 a5 35.bxa6ep Rc2 
+36.Qxc2 dxc2 37.Rxc2 Kg6 38.gxh6 b5 39.Rc7 Qxc7 40.Nxc7 Re7 41.Nxb5 Re8 42.a7 Kf6 43.Be4 Ke7 44.h7 Kd7 45.a8=Q Rxa8 46.Bxa8 Ke7 
+47.h8=Q Kd7 48.Qh7+ Ke6 49.Qh6+ Kd7 50.Bc6+ Kc8 51.Qh8# 1-0
+
