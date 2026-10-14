@@ -444,11 +444,19 @@ void main(){
   o=vec4(outc, alpha*uAlpha);     // alpha → MSAA coverage (smooth cutout edges); uAlpha = glass
 }"""
 # depth-only program for the shadow pass (render the scene from the sun's POV)
+# RINGTD-1 S2 (PO 2026-10-08, Ring: "floating trees over (or nearly over) the track in the Adenauer Forst"): the depth
+# pass drew every face solid, so an alpha-cut tree panel (the Ring's 22 m `trow*` forest walls) cast the shadow of its
+# whole RECTANGLE -- a black slab lying across the road with straight edges. The texture's alpha now cuts the shadow
+# too, at the main pass's cutout threshold (0.5). JM_SHADOW_ALPHA=0 = the old solid shadows.
+const SHADOW_ALPHA = get(ENV, "JM_SHADOW_ALPHA", "1") != "0"
 const DEPTH_VS = """
 #version 330 core
-layout(location=0) in vec3 pos; uniform mat4 uLightVP; uniform mat4 uModel;
-void main(){ gl_Position=uLightVP*uModel*vec4(pos,1.0); }"""
-const DEPTH_FS = "#version 330 core\nvoid main(){}"
+layout(location=0) in vec3 pos; layout(location=3) in vec2 uv; uniform mat4 uLightVP; uniform mat4 uModel; out vec2 vUV;
+void main(){ vUV=uv; gl_Position=uLightVP*uModel*vec4(pos,1.0); }"""
+const DEPTH_FS = """
+#version 330 core
+in vec2 vUV; uniform sampler2D uTex; uniform int uHasTex;
+void main(){ if(uHasTex==1 && texture(uTex,vUV).a < 0.5) discard; }"""
 # Sky: a fullscreen triangle whose fragments reconstruct the world view ray and
 # shade a horizon→zenith gradient.  Drawn first, depth-test off.
 const SKY_VS = """
@@ -706,6 +714,11 @@ negdet(m) = (m[1,1]*(m[2,2]*m[3,3] - m[2,3]*m[3,2]) - m[1,2]*(m[2,1]*m[3,3] - m[
              m[1,3]*(m[2,1]*m[3,2] - m[2,2]*m[3,1])) < 0
 function draw_depth(depthprog, item, model)
     glUniformMatrix4fv(uloc(depthprog,"uModel"),1,GL_FALSE, umat(model))   # PERF-1: no copy
+    if SHADOW_ALPHA && item.tex != 0                                          # RINGTD-1 S2: alpha-cut shadows
+        glUniform1i(uloc(depthprog,"uHasTex"), 1); glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, item.tex)
+    else
+        glUniform1i(uloc(depthprog,"uHasTex"), 0)
+    end
     flip = negdet(model); flip && glFrontFace(GL_CW)
     glBindVertexArray(item.vao); glDrawArrays(GL_TRIANGLES,0,item.n)
     flip && glFrontFace(GL_CCW)

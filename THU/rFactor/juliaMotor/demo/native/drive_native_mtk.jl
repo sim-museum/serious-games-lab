@@ -1696,6 +1696,22 @@ function gpl_scenery(ztrk, datpack, ribbon)
                 end
                 continue
             end
+            # RINGTD-1 S2: JM_FACEDUMP=<name> prints every face of that object that reaches here (texture, lateral and
+            # height range against the road beside it, |n_up|) -- to name which face a reported shape is.
+            if get(ENV, "JM_FACEDUMP", "") != "" && lowercase(nm) == lowercase(ENV["JM_FACEDUMP"])
+                let hv = [JuliaMotor.hat(ribbon, w[k][1], w[k][2]) for k in 1:3]
+                    if all(h -> h.found, hv)
+                        ux=w[2][1]-w[1][1]; uy=w[2][2]-w[1][2]; uz=w[2][3]-w[1][3]; vx=w[3][1]-w[1][1]; vy=w[3][2]-w[1][2]; vz=w[3][3]-w[1][3]
+                        nzz=ux*vy-uy*vx; nll=sqrt((uy*vz-uz*vy)^2+(uz*vx-ux*vz)^2+nzz^2)
+                        println("   [facedump] ", nm, " ", rpad(tr.tex, 12), " s ", round(Int, minimum(h.lapdist for h in hv)), "..",
+                                round(Int, maximum(h.lapdist for h in hv)), " lat ", round(minimum(h.lateral for h in hv), digits=1), "..",
+                                round(maximum(h.lateral for h in hv), digits=1), " z-road ",
+                                round(minimum(w[k][3] - hv[k].height for k in 1:3), digits=1), "..",
+                                round(maximum(w[k][3] - hv[k].height for k in 1:3), digits=1), " nup ", round(nzz/max(nll,1f-9), digits=2),
+                                " col ", round.(tr.col, digits=2))
+                    end
+                end
+            end
             # DROP scenery that intrudes into the road corridor (mis-placed/tilted objects
             # poking through the track) — render AND collision.  GPL world (gx,gy,gz=up);
             # the racing ribbon is queried in (gx,gy), road height is hr.height.
@@ -9276,6 +9292,8 @@ const GPLVIS = GPLVIS_ALL || GPLVIS_VEIL
 isveil(nm) = (n = lowercase(nm); (startswith(n, "half") && length(n) == 6) || n in ("adena-r2", "bergw-r1", "breid-ra", "wehr-r1b") || n in VEILX)
 const GPLVIS_SEGS, GPLVIS_VIS = GPLVIS ? GPLTrack.segment_visibility(ZTRK) : (Float64[], Dict{Int,BitVector}())
 const _GV_ORD = filter(k -> isfinite(GPLVIS_SEGS[k]), sortperm(GPLVIS_SEGS)); const _GV_S = GPLVIS_SEGS[_GV_ORD]   # segments with a lap table
+const _GV_R = length(_GV_S) > 2 ? (_GV_S[end] + (_GV_S[end] - _GV_S[end-1])) / LAPLEN : 1.0    # GPL dlong per our lap metre
+const _GV_R_PRE = _GV_R
 # GREY-1 S5: a window's gaps under JM_GPLVIS_GAP m (default 200) are bridged. The walker does not follow the cells'
 # neighbour links, so short gaps (60-140 m in the hill caps' windows) are taken as the model's, not GPL's -- drawn
 # literally they would pop the object out and back in.
@@ -9292,8 +9310,46 @@ function _gv_bridge(v::BitVector)
     end
     w
 end
+# RINGTD-1 S2 (PO 2026-10-08: "the hill you turn to the left to avoid just before ex-mill suddenly appears when you're
+# about 10 car lengths away"): the PO's video and replay put it at s 9649-9662; the hill is `adena-r2`, whose camera window
+# starts at s 9631, so from s 9610 the view ahead was open valley and 35 m later a hillside filled the sky. GPL's cockpit
+# gold shows that hill rising over ~100 m of the descent. The walker's windows begin late (it does not follow the cells'
+# neighbour links -- the gaps S5 bridges), so the Ex-Mühle valley's two landmass objects draw from JM_GPLVIS_LEAD m (150)
+# before their window. Not `wehr-r1b`: led, its cap reaches back to s 7823 -- GREY-1's pyramid over Metzgesfeld (s 7860).
+# The `half*` veils keep their windows (GPL shows those only from ~25 m before). JM_GPLVIS_LEAD=0 reverts.
+const GPLVIS_LEAD = parse(Float64, get(ENV, "JM_GPLVIS_LEAD", "150"))
+const GPLVIS_LANDMASS = ("adena-r2", "breid-ra")
+function _gv_lead(v::BitVector, lead)
+    lead > 0 || return v
+    w = copy(v); L = lead * _GV_R
+    for k in _GV_ORD
+        v[k] || continue
+        sk = GPLVIS_SEGS[k]
+        for j in _GV_ORD; (sk - L <= GPLVIS_SEGS[j] < sk) && (w[j] = true); end
+    end
+    w
+end
 const OBJVIS = Union{Nothing,BitVector}[(GPLVIS_ALL || (GPLVIS_VEIL && isveil(OBJECTS[k][5]))) ?
-                                         (v = get(GPLVIS_VIS, OBJNODE[k], nothing); v === nothing ? nothing : _gv_bridge(v)) : nothing for k in eachindex(OBJNODE)]
+                                         (v = get(GPLVIS_VIS, OBJNODE[k], nothing); v === nothing ? nothing :
+                                          _gv_bridge(lowercase(OBJECTS[k][5]) in GPLVIS_LANDMASS ? _gv_lead(v, GPLVIS_LEAD) : v)) : nothing
+                                        for k in eachindex(OBJNODE)]
+# RINGTD-1 S2: JM_GPLVIS_DIAG=<name,...> prints each named object's camera windows (our lap metres) as drawn
+if GPLVIS && get(ENV, "JM_GPLVIS_DIAG", "") != ""
+    let want = Set(lowercase.(split(ENV["JM_GPLVIS_DIAG"], ",")))
+        for k in eachindex(OBJNODE)
+            lowercase(OBJECTS[k][5]) in want || continue
+            v = OBJVIS[k]; v === nothing && (println("  [gplvis] ", OBJECTS[k][5], " node ", OBJNODE[k], ": no window (drawn always)"); continue)
+            ss = sort([GPLVIS_SEGS[j] / _GV_R_PRE for j in _GV_ORD if v[j]])
+            runs = Tuple{Float64,Float64}[]
+            for x in ss
+                (isempty(runs) || x - runs[end][2] > 40.0) ? push!(runs, (x, x)) : (runs[end] = (runs[end][1], x))
+            end
+            hr = JuliaMotor.hat(TRKSURF, Float64(OBJECTS[k][4][1]), -Float64(OBJECTS[k][4][3]))
+            println("  [gplvis] ", OBJECTS[k][5], " node ", OBJNODE[k], " at s ", hr.found ? round(Int, hr.lapdist) : -1,
+                    ": camera windows ", [(round(Int, a), round(Int, b)) for (a, b) in runs])
+        end
+    end
+end
 # GPLVIS-1 S4: GPL draws each placement once per CELL that lists it, clipped to the cell's four planes (gpl.exe 0x4c5560).
 # JM_GPLCLIP=1 (the Ring) does the same for the veils (`isveil`), JM_GPLCLIP=all for every object with cells; a clipped
 # object drops its per-segment window (GPL draws it over its whole segment range). Planes GPL world (x, y, z up) ->
@@ -9307,7 +9363,7 @@ const OBJCLIP = Union{Nothing,Vector{NTuple{4,NTuple{4,Float32}}}}[
          end) : nothing for k in eachindex(OBJNODE)]
 GPLCLIP != "0" && println("  [gplclip] ", count(!isnothing, OBJCLIP), " objects drawn per GPL cell, ",
                           sum(x -> x === nothing ? 0 : length(x), OBJCLIP; init = 0), " cell draws")
-const _GV_R = length(_GV_S) > 2 ? (_GV_S[end] + (_GV_S[end] - _GV_S[end-1])) / LAPLEN : 1.0    # GPL dlong per our lap metre
+
 function gplvis_seg(ex, ez)     # the camera's GPL segment from the eye position (render coords), 0 = unknown (draw all)
     (GPLVIS && !isempty(_GV_S)) || return 0
     hr = JuliaMotor.hat(TRKSURF, Float64(ex), -Float64(ez)); hr.found || return 0
