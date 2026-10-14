@@ -26307,3 +26307,13 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   as in GPL. **On at Zandvoort** (`JM_LAPWIN_NEAR` 150 there, as at Spa; `JM_LAPWIN=0` reverts). trackrange_smoke: the
   default now names all five tracks.
 * Gates (s42): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).
+
+### TD261013-1 S8 (2026-10-14): the team levers off the left cowl; SPATD-1's parked cars checked
+* The five team levers as parsed stand over the LEFT cowl top (y 0.35-0.43 m); GPL's own over-the-shoulder Cooper shot
+  (gold `cooper/`) shows nothing there -- a positioner offset our parse does not apply, as the Lotus lever had (COCKPIT-2
+  S2). The team cockpits are seated to the Lotus eye (S6), so each team lever now stands in the Lotus lever's gate with
+  its lean and size, and shifts there (`JM_TEAM_LEVER_LOTUS=0` = as parsed). Renders (`scratchpad/a4/L.png`): Cooper,
+  Ferrari, Brabham -- nothing over the cowl, the lever low on the right.
+* SPATD-1's open note (parked cars cutting house46's wall): from the chase camera at s 5200 the yellow car stands at the
+  house's corner on the pink square -- a marginal touch at most, not visible from the driver's line. Left as is.
+* Gates (s43): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).

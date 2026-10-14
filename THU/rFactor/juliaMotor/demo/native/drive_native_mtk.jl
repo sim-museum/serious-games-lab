@@ -13445,6 +13445,7 @@ function main()
     _TEAM_D = Dict("Cooper" => ("coventry", "covd.3do"), "Ferrari" => ("ferrari", "ferd.3do"), "Brabham" => ("brabham", "brad.3do"),
                    "BRM" => ("brm", "brmd.3do"), "Eagle" => ("eagle", "eagd.3do"))
     REP_TEAMLIVE = get(ENV, "JM_REPLAY_TEAMLIVE", "1") != "0"                                   # TD261013-1 (a4)
+    TEAM_LEVER_AT_LOTUS = get(ENV, "JM_TEAM_LEVER_LOTUS", "1") != "0"                          # TD261013-1 S8
     _TEAM_WHEEL    = Set(["cteerh2", "csterlo", "fsteer2", "fsterlog", "rteerh2", "rsterlo", "sterbrm", "esterh1", "esterlo"])
     _TEAM_WHEEL_LO = Set(["cteerl2", "fsteer1", "rteerl2", "steerl3", "esterl1"])
     _TEAM_VISOR    = Dict("Eagle" => (0.87f0, 0.79f0, 0.69f0))
@@ -15671,9 +15672,21 @@ function main()
             let T = rep_team[]
                 wm = bodyModel * Render.translate(T.swc) * Render.rotaxis(T.swa, Float32(HSIGN*inp.steer*2.5)) * Render.translate(-T.swc[1], -T.swc[2], -T.swc[3])
                 for it in T.wheel; Render.draw(prog, it, vp, wm; bright=1.2, spec=0.05, ambfill=0.6); end
-                l, f = shift_target(cs.gear); inb = T.shp[3] > 0 ? -1f0 : 1f0
-                sm = bodyModel * Render.translate(T.shp) * Render.rotaxis(Float32[0, 0, 1], -deg2rad(SHIFT_FA * f)) *
-                     Render.rotaxis(Float32[1, 0, 0], inb * deg2rad(SHIFT_LAT * l)) * Render.translate(-T.shp[1], -T.shp[2], -T.shp[3])
+                l, f = shift_target(cs.gear)
+                if TEAM_LEVER_AT_LOTUS && SHIFT_PIVOT !== nothing
+                    # TD261013-1 S8: as extracted, each team's lever stands over the LEFT cowl top (y 0.35-0.43 m; GPL's
+                    # over-the-shoulder Cooper shows nothing there) -- a positioner offset our parse does not apply, as the
+                    # Lotus lever had (COCKPIT-2 S2). The team cockpit is seated to the Lotus eye, so its lever stands in
+                    # the Lotus lever's gate, with its lean and size. JM_TEAM_LEVER_LOTUS=0 = where the parse puts it.
+                    inb = SHIFT_PIVOT[3] > 0 ? -1f0 : 1f0
+                    sm = bodyModel * Render.translate(SHIFT_XYZ) * SHIFT_MOVE * Render.translate(SHIFT_PIVOT) * Render.rotaxis(Float32[0, 0, 1], -deg2rad(SHIFT_FA * f)) *
+                         Render.rotaxis(Float32[1, 0, 0], inb * deg2rad(SHIFT_LAT * l + SHIFT_LEAN)) * Render.scalexyz(SHIFT_S, SHIFT_SY, SHIFT_S) *
+                         Render.translate(-T.shp[1], -T.shp[2], -T.shp[3])
+                else
+                    inb = T.shp[3] > 0 ? -1f0 : 1f0
+                    sm = bodyModel * Render.translate(T.shp) * Render.rotaxis(Float32[0, 0, 1], -deg2rad(SHIFT_FA * f)) *
+                         Render.rotaxis(Float32[1, 0, 0], inb * deg2rad(SHIFT_LAT * l)) * Render.translate(-T.shp[1], -T.shp[2], -T.shp[3])
+                end
                 for it in T.shift; Render.draw(prog, it, vp, sm; bright=0.95, ambfill=0.45); end
             end
         end   # PO: lift the self-shadowed footwell/tub further out of black (GPL pre-lights the interior evenly)
