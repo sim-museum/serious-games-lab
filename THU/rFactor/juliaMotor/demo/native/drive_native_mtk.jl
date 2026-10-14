@@ -6427,7 +6427,7 @@ const TRACK_AMB    = parse(Float32, get(ENV,"JM_TRACK_AMB","0.34"))
 # 200 m of any eye position there (WG ≥ 229 m, Monza ≥ 200 m: only far-along-the-lap ground, as GPL hides it); Zandvoort
 # (54-120 m at s 920-970 / 4030-4180) and Spa (126-150 m round La Source) hide nearby folds and stay off until each is
 # checked against its gold video.
-const LAPWIN = parse(Float64, get(ENV, "JM_LAPWIN", (NURB || WATGLEN || MONZA || SPA) ? "914" : "0"))   # TD261013-1 (b5): + Spa
+const LAPWIN = parse(Float64, get(ENV, "JM_LAPWIN", (NURB || WATGLEN || MONZA || SPA || ZANDV) ? "914" : "0"))   # TD261013-1 (b5): + Spa; BLINDTURN-1 S10: + Zandvoort
 const LAPBIN = 100.0
 const _LW = (LAPWIN > 0 && (@isdefined TRKSURF)) ? let P = TRKSURF.pos, c = 50.0
         xs = [p[1] for p in P]; zs = [p[3] for p in P]; x0 = minimum(xs) - 1; z0 = minimum(zs) - 1
@@ -6460,7 +6460,7 @@ lapwin_in(s, c) = (L = _LW.L; abs(mod(s - c + L/2, L) - L/2) <= LAPWIN + LAPBIN)
 # return straight and 13-40 m from the start straight). JM_LAPWIN_TWOLEG=0 =
 # nearest node only, as before.
 const LAPWIN_TWOLEG = get(ENV, "JM_LAPWIN_TWOLEG", "1") != "0"
-const LAPWIN_NEAR = parse(Float64, get(ENV, "JM_LAPWIN_NEAR", SPA ? "150" : "75"))   # Spa: La Source hillside (BLINDTURN-1 S9: 106-134 m)   # ... or within this many metres of it
+const LAPWIN_NEAR = parse(Float64, get(ENV, "JM_LAPWIN_NEAR", (SPA || ZANDV) ? "150" : "75"))   # Spa: La Source hillside (BLINDTURN-1 S9: 106-134 m)   # ... or within this many metres of it
 "(lap distance, plan distance²) of the centreline node nearest (GPL x, y) -- `lapnear` with its distance"
 function lapnear_d(x, z)
     W = _LW; cx = floor(Int, (x - W.x0)/W.c); cz = floor(Int, (z - W.z0)/W.c); bd = Inf; bi = 0
@@ -6557,10 +6557,19 @@ if _LW !== nothing
                 AHEAD = get(ENV, "JM_LAPWIN_DIAG_AHEAD", "0") == "1"      # S9: only triangles in a ±50° forward cone
                 for (pi, tp) in enumerate(TRACK)
                     v = tp.verts; off = TRACKLAPOFF[pi]
+                    # TD261013-1: a triangle near two legs has a copy in the other leg's bin -- if that copy is drawn, it is not hidden
+                    shown = Set{NTuple{3,Int32}}()
+                    for b in 0:LAPNB-1
+                        lapwin_in(b*LAPBIN + LAPBIN/2, c) || continue
+                        for t in div(off[b+1], 3):div(off[b+2], 3)-1
+                            o = 33t; push!(shown, (round(Int32, 100*(v[o+1]+v[o+12]+v[o+23])), round(Int32, 100*(v[o+2]+v[o+13]+v[o+24])), round(Int32, 100*(v[o+3]+v[o+14]+v[o+25]))))
+                        end
+                    end
                     for b in 0:LAPNB-1
                         lapwin_in(b*LAPBIN + LAPBIN/2, c) && continue
                         for t in div(off[b+1], 3):div(off[b+2], 3)-1
                             o = 33t; cx = (v[o+1] + v[o+12] + v[o+23])/3; cz = -(v[o+3] + v[o+14] + v[o+25])/3
+                            (round(Int32, 100*(v[o+1]+v[o+12]+v[o+23])), round(Int32, 100*(v[o+2]+v[o+13]+v[o+24])), round(Int32, 100*(v[o+3]+v[o+14]+v[o+25]))) in shown && continue
                             d = (cx - ex)^2 + (cz - ez)^2
                             if AHEAD
                                 cosb = ((cx - ex)*hx + (cz - ez)*hz) / (sqrt(d) + 1e-9) / hn

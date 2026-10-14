@@ -26295,3 +26295,15 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   more slip at the limit) and S24 (the PO stops at 1.24 g at julia's Glen), but S3's steady-state fit put the high-g
   cells within 0.2-0.4° -- so the balance question needs gold limit data, not another fit on the same cells. **IRTEST
   cue:** a few skidpad laps at the limit in both directions with a steady throttle (understeer gradient past 1.2 g).
+
+### BLINDTURN-1 S10 (2026-10-14): GPL's lap window on at Zandvoort too -- all five tracks
+* Retro: S7 (10-13) kept the window off at Zandvoort and Spa -- nearest-node binning hid nearby folds (Zandvoort 54-120 m
+  at s 920-970 / 4030-4180). TD261013-1 S2 added the two-leg rule (geometry near two legs drawn with either) and S3
+  turned it on at Spa (150 m).
+* The diagnostic (`JM_LAPWIN_DIAG`) counted a triangle as hidden even when its copy in the other leg's bin is drawn --
+  now copy-aware. Zandvoort, forward cone: two-leg radius 75 m -> nearest hidden 66 m (curb at s 4076); **150 m -> nearest
+  hidden 178 m** (grass, s 867), in line with WG ≥ 229 m and Monza ≥ 200 m when they were turned on.
+* Renders off/on at s 867, 3977, 4076 (the nearest spots): identical; s 2000: only distant buildings far along the lap go,
+  as in GPL. **On at Zandvoort** (`JM_LAPWIN_NEAR` 150 there, as at Spa; `JM_LAPWIN=0` reverts). trackrange_smoke: the
+  default now names all five tracks.
+* Gates (s42): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).
