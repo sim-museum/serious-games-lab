@@ -170,6 +170,10 @@ class BiddingSystem:
     # Weak two opening style.
     weak_two_diamonds: bool = True
     weak_two_majors: bool = True
+    # Acol strong twos (`B-2D.strong`, `B-2MA.strong`): 6+ card suit,
+    # 18-22 HCP, forcing for one round.
+    strong_two_diamonds: bool = False
+    strong_two_majors: bool = False
     weak_two_min_hcp: int = 6
     weak_two_max_hcp: int = 11
     # Precision 1♦ opening; only used when strong_open_call == "1C".
@@ -275,14 +279,13 @@ def _apply_one_nt_range(sys_: BiddingSystem, rules: Dict[str, RCERule]) -> None:
 
 def _apply_two_nt_range(sys_: BiddingSystem, rules: Dict[str, RCERule]) -> None:
     # `B-2NT.strong-balanced.range-20-21` (no .pNN, embedded in flag name)
-    # — parse the trailing range.
-    for key in ("B-2NT.strong-balanced.range-20-21",
-                "B-2NT.strong-balanced.range-22-23"):
-        if key in rules:
-            m = re.search(r"range-(\d+)-(\d+)$", key)
-            if m:
-                sys_.two_nt_min_hcp = int(m.group(1))
-                sys_.two_nt_max_hcp = int(m.group(2))
+    # — parse the trailing range. Any range: Acol's is 21-22 (it used to be
+    # read as the default 20-21).
+    for key in rules:
+        m = re.match(r"B-2NT\.strong-balanced\.range-(\d+)-(\d+)$", key)
+        if m and rules[key].enabled:
+            sys_.two_nt_min_hcp = int(m.group(1))
+            sys_.two_nt_max_hcp = int(m.group(2))
             return
 
 
@@ -299,13 +302,18 @@ def _apply_strong_open(sys_: BiddingSystem, rules: Dict[str, RCERule]) -> None:
         sys_.strong_open_min_hcp = 16
     else:
         sys_.strong_open_call = "2C"
-        # SAYC: 22+ HCP or 8.5 quick tricks — we model the HCP arm.
-        sys_.strong_open_min_hcp = 22
+        # SAYC: 22+ HCP or 8.5 quick tricks — we model the HCP arm. Above
+        # the 2NT opening: Acol's 2NT is 21-22, so its 2C starts at 23.
+        sys_.strong_open_min_hcp = max(22, sys_.two_nt_max_hcp + 1)
 
 
 def _apply_two_diamonds(sys_: BiddingSystem, rules: Dict[str, RCERule]) -> None:
     if "B-2D.weak" in rules:
         sys_.weak_two_diamonds = True
+    elif "B-2D.strong" in rules:
+        # Acol strong two (6+ diamonds, 18-22), not a weak two.
+        sys_.weak_two_diamonds = False
+        sys_.strong_two_diamonds = True
     elif any(k.startswith("B-2D.Precision") for k in rules):
         sys_.weak_two_diamonds = False
         for k in rules:
@@ -352,6 +360,16 @@ def _apply_rebid_1nt(sys_: BiddingSystem, rules: Dict[str, RCERule]) -> None:
     # `R-1-1-1NT.hcp-range-3` means the rebid covers a 3-HCP range.
     # Q-Plus implies 12-14 for that; encode as (12, 14) unless we see
     # an explicit different range.
+    for k in rules:
+        m = re.match(r"R-1-1-2NT\.range-(\d+)-(\d+)$", k)
+        if m:
+            sys_.jump_rebid_two_nt_range = (int(m.group(1)), int(m.group(2)))
+    if sys_.one_nt_max_hcp <= 14:
+        # Weak notrump (Acol): a 1NT rebid is the band between the 1NT
+        # opening and the 2NT jump rebid (15-16 with 2NT = 17-18).
+        sys_.rebid_one_nt_range = (sys_.one_nt_max_hcp + 1,
+                                   sys_.jump_rebid_two_nt_range[0] - 1)
+        return
     for k in rules:
         m = re.match(r"R-1-1-1NT\.hcp-range-(\d+)$", k)
         if m:
@@ -432,6 +450,7 @@ def _apply_weak_two_majors(sys_: BiddingSystem,
     a weak 2 with these systems or the auction goes off the rails.
     """
     sys_.weak_two_majors = "B-2MA.weak" in rules
+    sys_.strong_two_majors = "B-2MA.strong" in rules
 
 
 def _synthesize_convention_aliases(sys_: BiddingSystem) -> None:

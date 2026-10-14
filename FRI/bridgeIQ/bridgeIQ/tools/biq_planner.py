@@ -29,6 +29,7 @@ its worst boards with both rooms' auctions and biq's reason for each call.
   python3 tools/biq_planner.py --out tools/runs/bluechip/<run> [--once] [--seed N]
 plan.json (optional, re-read every cycle) in the same folder:
   {"random_share": 0.5, "ahead": 3, "families": ["ml_adv", ...],
+   "families_by_segment": {"SAYC": [...], "Acol": [...]},  (segments.json label)
    "verify": ["wk2_resp"], "verify_boards": 12}
 """
 from __future__ import annotations
@@ -67,6 +68,7 @@ def _top2(h, s):
 
 _NT = {"ok": lambda h: 15 <= hcp(h) <= 17 and _balanced(h) and max(_lens(h)["S"], _lens(h)["H"]) <= 4}
 _WEAK = {"ok": lambda h: hcp(h) <= 9 and max(_lens(h).values()) <= 5}
+_WNT = {"ok": lambda h: 12 <= hcp(h) <= 14 and _balanced(h) and max(_lens(h)["S"], _lens(h)["H"]) <= 4}
 
 
 def _ml_hand(lo=8, hi=14):
@@ -81,6 +83,14 @@ def _weak_two(suits="DHS"):
     def ok(x):
         return any(x[s] == 6 and all(x[o] <= 3 for o in "SH" if o != s) for s in suits)
     return {"shapes": _shapes(ok), "ok": _band(6, 10)}
+
+
+def _strong_two(suits="DHS"):
+    """An Acol strong two (Q-Plus B-2MA.strong / B-2D.strong): a 6-7 card
+    diamond or major suit, 18-22 HCP."""
+    def ok(x):
+        return any(6 <= x[s] <= 7 and all(x[o] <= 4 for o in "SHDC" if o != s) for s in suits)
+    return {"shapes": _shapes(ok), "ok": _band(18, 22)}
 
 
 # Each family: (focus text, dealer, vul choices, specs, deal order, hit test on
@@ -120,6 +130,22 @@ FAMILIES = {
                      "S": {"shapes": _shapes(lambda x: max(x.values()) == 4 and max(x["S"], x["H"]) == 4),
                            "ok": _band(11, 14, lambda h: any(_lens(h)[s] == 4 and _top2(h, s) for s in "SH"))}},
                     "NESW", lambda a: len(a) > 2 and a[0] == "P" and a[1] == "P"),
+    # Weak notrump (Acol 12-14) and Acol strong twos.
+    "wnt_ovc": ("S holds a two-suiter or long suit over East's weak 1NT", "E",
+                {"E": _WNT, "S": _ml_hand()}, "ESNW",
+                lambda a: len(a) > 1 and a[0] == "1NT"),
+    "wnt_x": ("S opens a weak 1NT, West holds a strong notrump (penalty double, runouts)", "S",
+              {"S": _WNT, "W": {"ok": _band(15, 18, _balanced)}, "N": {"ok": _band(0, 7)}}, "SWNE",
+              lambda a: len(a) > 1 and a[0] == "1NT" and a[1] == "X"),
+    "wnt_5spade": ("S has 12-14 balanced with five spades", "S",
+                   {"S": {"shapes": [(5, 3, 3, 2), (5, 3, 2, 3), (5, 2, 3, 3)], "ok": _band(12, 14)}},
+                   "SNEW", lambda a: bool(a)),
+    "s2_open": ("S opens an Acol strong two (6-7 card suit, 18-22)", "S",
+                {"S": _strong_two(), "N": {"ok": _band(0, 12)}}, "SNEW",
+                lambda a: a and a[0] in ("2D", "2H", "2S")),
+    "s2_resp": ("partner opens an Acol strong two, S answers", "N",
+                {"N": _strong_two(), "S": {"ok": _band(0, 12)}}, "NSEW",
+                lambda a: a and a[0] in ("2D", "2H", "2S")),
 }
 VULS = ["None", "NS", "EW", "Both"]
 
@@ -198,8 +224,9 @@ def stats(bs):
 
 
 # ------------------------------------------------------------------ choice
-def choose(rng, st, plan, code_now):
-    fams = [f for f in plan.get("families", list(FAMILIES)) if f in FAMILIES]
+def choose(rng, st, plan, code_now, seg=None):
+    fams = (plan.get("families_by_segment") or {}).get(seg) or plan.get("families") or list(FAMILIES)
+    fams = [f for f in fams if f in FAMILIES]
     verify = set(plan.get("verify", []))
     vb = int(plan.get("verify_boards", 12))
     best, pick = None, None
@@ -218,6 +245,20 @@ def choose(rng, st, plan, code_now):
         if best is None or draw < best:
             best, pick = draw, f
     return pick
+
+
+def active_segment(out: Path):
+    """Label of the segment the TM is playing now (segments.json + one line
+    per handover in handovers.jsonl), or None without segments."""
+    try:
+        segs = json.loads((out / "segments.json").read_text()).get("segments") or []
+    except (OSError, ValueError):
+        return None
+    try:
+        k = sum(1 for line in open(out / "handovers.jsonl") if line.strip())
+    except OSError:
+        k = 0
+    return segs[min(k, len(segs) - 1)].get("label") if segs else None
 
 
 def unplayed_queue(out: Path, played):
@@ -245,7 +286,7 @@ def _auction_txt(r):
     return " ".join(out)
 
 
-def report(out: Path, rows, st, plan):
+def report(out: Path, rows, st, plan, seg=None):
     bs = boards(rows)
     by_code = defaultdict(list)
     for n, b in bs.items():
@@ -261,7 +302,7 @@ def report(out: Path, rows, st, plan):
         m = sum(v) / len(v)
         sd = math.sqrt(sum((x - m) ** 2 for x in v) / max(1, len(v) - 1)) if len(v) > 1 else 0
         lines.append(f"- {c}: {len(v)} boards, {m:+.2f} IMP/board (SE {sd / math.sqrt(len(v)):.2f})")
-    lines += ["", "## Targeted families", "",
+    lines += ["", "## Targeted families" + (f" (segment {seg}, the one playing now)" if seg else ""), "",
               "| family | focus | boards | IMP/board | SE | situation arose |", "|---|---|---|---|---|---|"]
     for f in sorted(st, key=lambda f: st[f]["mean"]):
         if f == "random":
@@ -316,7 +357,11 @@ def report(out: Path, rows, st, plan):
 def cycle(out: Path, rng, plan, log):
     rows = load(out)
     played = {r.get("qid") for r in rows if r.get("qid")}
-    st = stats(boards(rows, int(plan.get("since_board", 0))))
+    seg = active_segment(out)
+    bs = boards(rows, int(plan.get("since_board", 0)))
+    if seg is not None:                              # each system has its own weak spots
+        bs = {n: b for n, b in bs.items() if b["open"].get("segment") == seg}
+    st = stats(bs)
     code_now = rows[-1].get("code") if rows else None
     queue = unplayed_queue(out, played)
     ahead = int(plan.get("ahead", 3))
@@ -327,11 +372,11 @@ def cycle(out: Path, rng, plan, log):
             e = {"random": True}
             what = "random board"
         else:
-            fam = choose(rng, st, plan, code_now)
+            fam = choose(rng, st, plan, code_now, seg)
             if fam is None:
                 break
             e = make_deal(rng, fam)
-            what = FAMILIES[fam][0]
+            what = FAMILIES[fam][0] + (f" [{seg}]" if seg else "")
         tag = "random" if e.get("random") else e["tags"]["family"]
         e["qid"] = f"{tag}-{int(time.time() * 1000) % 10**10}-{rng.randrange(10**6)}"
         with open(out / "queue.jsonl", "a") as fh:
@@ -339,7 +384,7 @@ def cycle(out: Path, rng, plan, log):
         queue.append(e)
         added += 1
         log(f"queued {e['qid']} ({what})")
-    report(out, rows, st, plan)
+    report(out, rows, st, plan, seg)
     return added
 
 

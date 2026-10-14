@@ -1,5 +1,18 @@
 # biq — Claude Code project notes
 
+## STATUS — Standard Acol made playable vs Q-Plus; SAYC + Acol run prepared (2026-10-14, UNCOMMITTED)
+* Run `tools/runs/bluechip/261013_qplus_sayc_acol_biqS` (seed 261013, RESUME.txt there): SAYC
+  windows first, Standard Acol (B-ACL-S) spares, handover after 128 boards; plan.json
+  families_by_segment (planner `active_segment()`); new Acol families wnt_ovc, wnt_x, wnt_5spade,
+  s2_open, s2_resp. Not started yet: `bash restart_continuous.sh`, user joins N/E/W twice.
+* biq's Acol had read Q-Plus's strong twos (2D/2H/2S 18-22, forcing) as weak twos and played
+  transfers Q-Plus's Acol doesn't. Fixed, all gated by the .RCE flags (`_strong_two`,
+  `_nt_transfers`; BIQ_STRONG_TWOS=0 / BIQ_NAT_NT_ANSWERS=0): strong twos (open, 2NT negative,
+  positives, rebids, defence, inference), no weak 2D, 1NT without a 5-card major (rebid 2M with
+  12-14), natural 1NT/2NT answers, 2NT 21-22 / 2C 23+, rebid ranges 15-16 / 17-18 / 19+.
+  bidder_teams_ab Acol +94 / +72 IMP per 800; other systems 0 boards differ. A-* regression cases.
+* Open: SAYC 1m-2NT (Q-Plus file 13-15, biq 10-12); 1NT-X weak runouts in Acol (wnt_x family).
+
 ## STATUS — continuous Q-Plus match, live code swaps, 11 h unattended (2026-10-13)
 * Run `tools/runs/bluechip/261009_qplus_21_biqS` (RESUME.txt there): boards
   755-1038 unattended 00:06-11:12, 2/1 for 100 boards then a scheduled

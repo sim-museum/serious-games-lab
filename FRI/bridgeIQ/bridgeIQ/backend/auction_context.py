@@ -150,6 +150,24 @@ class AuctionContext:
 
 _NT = Suit.NOTRUMP
 _MAJORS = (Suit.HEARTS, Suit.SPADES)
+
+# The system of the decision being made (set by native_bidder.decide_bid), so
+# callers that pass no system still read 1NT-2D/2H right: natural weak
+# takeouts in Standard Acol (no transfers), Jacoby transfers elsewhere.
+_CURRENT_SYSTEM = None
+
+
+def set_current_system(system) -> None:
+    global _CURRENT_SYSTEM
+    _CURRENT_SYSTEM = system
+
+
+def _plays_transfers(system, nt_level: int) -> bool:
+    rr = getattr(system, "raw_rules", None) if system is not None else None
+    if not rr:
+        return True
+    pre = "A-1NT-Jacoby-transfer" if nt_level == 1 else "A-2NT-transfer"
+    return any(k.startswith(pre) for k in rr)
 _SUITS_LO_TO_HI = (Suit.CLUBS, Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES)
 _CUEBID_SUIT_RANK = {Suit.CLUBS: 0, Suit.DIAMONDS: 1,
                      Suit.HEARTS: 2, Suit.SPADES: 3,
@@ -498,6 +516,9 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
                     and partner_first_response.level
                         == ctx.opening_bid.level + 1):
                 ctx.convention = "STAYMAN"
+            elif not _plays_transfers(system if system is not None else _CURRENT_SYSTEM,
+                                      ctx.opening_bid.level):
+                pass                        # natural (Standard Acol: no transfers)
             # Jacoby transfer to hearts: 2D over 1NT, 3D over 2NT.
             elif (partner_first_response.suit == Suit.DIAMONDS
                     and partner_first_response.level

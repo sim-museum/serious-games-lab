@@ -1,0 +1,22 @@
+# BridgeIQ score sheet
+.version = 17.1
+.date = 2026-08-18
+scoring.method = Teams
+# Coach — You opened — this is your rebid. 13 HCP: rebid 1NT/2NT by strength, raise partner with support, or show a second suit; stay low when minimum. The opponents overcalled, and partner is limited, so don't overreach.
+# Coach — Defending ♥: go active — cash or set up winners before they're pitched; lead a trump if a cross-ruff looms. 6 tricks beats it.
+# Defenders' plan — need 6 tricks to beat it.
+# 1. Defending a suit contract: cash or set up winners before they're discarded; consider a forcing lead or a ruff. Lead trumps if declarer is cross-ruffing.
+# 2. You need 6 tricks to set it — count partner's likely cards from the bidding and signals; signal honestly to share the count.
+# Coach — Third hand high — play high to force declarer's honour (finesse against dummy only when it's marked).
+# Coach — Second hand low — keep your honours to capture declarer's, unless you must grab a setting trick.
+# Coach — On lead: continue your established suit or return partner's; shift only with a clear reason.
+
+board.1.number = 501
+board.1.pavlicek = 4eW1))TKa(hE6HOG
+board.1.contract = 2H
+board.1.declarer = W
+board.1.tricks = 7
+board.1.ns_score = 50
+board.1.ew_score = -50
+board.1.ns_system = BEN-NN
+board.1.ew_system = BEN-NN
