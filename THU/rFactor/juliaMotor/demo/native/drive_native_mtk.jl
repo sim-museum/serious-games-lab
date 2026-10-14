@@ -13435,6 +13435,10 @@ function main()
     _team_cache = Dict{String,Any}()
     _TEAM_D = Dict("Cooper" => ("coventry", "covd.3do"), "Ferrari" => ("ferrari", "ferd.3do"), "Brabham" => ("brabham", "brad.3do"),
                    "BRM" => ("brm", "brmd.3do"), "Eagle" => ("eagle", "eagd.3do"))
+    REP_TEAMLIVE = get(ENV, "JM_REPLAY_TEAMLIVE", "1") != "0"                                   # TD261013-1 (a4)
+    _TEAM_WHEEL    = Set(["cteerh2", "csterlo", "fsteer2", "fsterlog", "rteerh2", "rsterlo", "sterbrm", "esterh1", "esterlo"])
+    _TEAM_WHEEL_LO = Set(["cteerl2", "fsteer1", "rteerl2", "steerl3", "esterl1"])
+    _TEAM_VISOR    = Dict("Eagle" => (0.87f0, 0.79f0, 0.69f0))
     _team_skip(t) = (t = lowercase(t); t in ("plaface", "plahelm", "knees", "neck", "front1", "front3", "lid", "cid", "rid", "fid", "eid", "bid",
                                              "arms") || endswith(t, "helm") || endswith(t, "sho") || endswith(t, "arms"))
     function rep_team_items(k)
@@ -13447,7 +13451,8 @@ function main()
             isfile(path) || return nothing
             ps = Render.extract_gpl_car(path; exclude = ("ltraymap", "lshad"), cockpit_clean = true,
                                         maxlat = parse(Float32, get(ENV, "JM_COCKPIT_MAXLAT", "0.30")),
-                                        grey = (TUB_GREY, TUB_GREY + 0.01f0, TUB_GREY + 0.02f0))
+                                        grey = (TUB_GREY, TUB_GREY + 0.01f0, TUB_GREY + 0.02f0),
+                                        visor = REP_TEAMLIVE, visorcol = get(_TEAM_VISOR, key, (0.84f0, 0.84f0, 0.85f0)))
             # the eye: GPL keeps none per car, but each model seats its driver -- line the team's face (`plaface`) up with
             # the Lotus's, so its cockpit sits under our (Lotus-tuned) eye as GPL authored it round its own driver
             function fc(q)
@@ -13459,8 +13464,37 @@ function main()
             d = (ft === nothing || fl === nothing) ? (0f0, 0f0, 0f0) : (fl[1] - ft[1], fl[2] - ft[2], 0f0)
             ps = filter(p -> !_team_skip(p.tex), ps)
             for p in ps, i in 0:11:length(p.verts)-11; p.verts[i+1] += d[1]; p.verts[i+2] += d[2]; end
-            it = Render.build_gpl(ps, Render.gpl_texture_index(joinpath(AIBASE, dir)))
-            println("  [teamcockpit] ", key, ": ", f, " -- ", length(ps), " parts; seat moved ", round.(d; digits = 3), " m to the Lotus's")
+            # TD261013-1 (a4) (PO 2026-10-13: "the AI car cockpits should show the steering wheel turning, and the shifter
+            # shifting. Several cockpit views show the steering wheel at low resolution, several show the windscreen as a
+            # completely opaque low-polygon surface"): each team's cockpit carries its wheel TWICE -- a hi-res and a lo-res
+            # quad on the same plane (GPL picks one by distance); both drawn, the lo-res one showed. The lo-res quad goes
+            # (the smaller .mip of each pair; BRM's steerl3 has no .mip at all); the wheel, its hub logo and the gloves
+            # turn about the wheel's centre with the derived steering; the lever (`*shift`) tilts in GPL's gate with the
+            # derived gear; the perspex (`__visor__`, see visorcol) is drawn as glass. JM_REPLAY_TEAMLIVE=0 = S6's static.
+            idx = Render.gpl_texture_index(joinpath(AIBASE, dir))
+            REP_TEAMLIVE || return (body = Render.build_gpl(ps, idx), wheel = Render.Item[], shift = Render.Item[], glass = Render.Item[],
+                                    swc = Float32[0, 0, 0], swa = Float32[1, 0, 0], shp = Float32[0, 0, 0])
+            lw(t) = lowercase(t)
+            filter!(p -> !(lw(p.tex) in _TEAM_WHEEL_LO), ps)
+            isw(p) = lw(p.tex) in _TEAM_WHEEL || endswith(lw(p.tex), "hand")
+            iss(p) = endswith(lw(p.tex), "shift")
+            isg(p) = p.tex == "__visor__"
+            wp = filter(isw, ps); sp = filter(iss, ps); gp = filter(isg, ps); bp = filter(p -> !(isw(p) || iss(p) || isg(p)), ps)
+            # the wheel's centre and column axis from its hi-res quad (as extract_gpl_steering does for the Lotus)
+            q = filter(p -> lw(p.tex) in _TEAM_WHEEL, wp); c = zeros(3); nn = 0
+            for p in q, i in 0:11:length(p.verts)-11; c .+= p.verts[i+1:i+3]; nn += 1; end
+            swc = Float32.(nn > 0 ? c ./ nn : [0.0, 0.0, 0.0]); swa = Float32[1, 0, 0]
+            if !isempty(q) && length(q[1].verts) >= 33
+                v = q[1].verts; a = v[12:14] .- v[1:3]; b = v[23:25] .- v[1:3]; n3 = [a[2]*b[3]-a[3]*b[2], a[3]*b[1]-a[1]*b[3], a[1]*b[2]-a[2]*b[1]]
+                swa = Float32.(n3 ./ max(sqrt(sum(n3 .^ 2)), 1e-9)); sum(swa .* SWAXIS) < 0 && (swa = -swa)   # same sense as the Lotus's
+            end
+            ys = [p.verts[i+2] for p in sp for i in 0:11:length(p.verts)-11]
+            shp = isempty(ys) ? Float32[0, 0, 0] : let y0 = minimum(ys), L = [p.verts[i+1:i+3] for p in sp for i in 0:11:length(p.verts)-11 if p.verts[i+2] < y0 + 0.01f0]
+                Float32.(sum(L) ./ length(L)) end
+            it = (body = Render.build_gpl(bp, idx), wheel = Render.build_gpl(wp, idx), shift = Render.build_gpl(sp, idx),
+                  glass = Render.build_gpl(gp, idx), swc = swc, swa = swa, shp = shp)
+            println("  [teamcockpit] ", key, ": ", f, " -- ", length(bp), " parts + wheel/gloves ", length(wp), ", lever ", length(sp),
+                    ", glass ", length(gp), "; seat moved ", round.(d; digits = 3), " m to the Lotus's; wheel centre ", round.(swc; digits = 3))
             it
         end
     end
@@ -15621,8 +15655,18 @@ function main()
         # E106-S5: in cockpit view the body wears GPL'"'"'s interior skin (riveted aluminium);
         # every other view keeps the exterior body.
         _tm = REPLAY && CTL.view == 0 && rep_team[] !== nothing             # COCKPIT-2 S6: a team's own cockpit
-        let _items = _tm ? rep_team[] : (CTL.view == 0 && !isempty(carItemsIn)) ? carItemsIn : carItems
+        let _items = _tm ? rep_team[].body : (CTL.view == 0 && !isempty(carItemsIn)) ? carItemsIn : carItems
             for (i,it) in enumerate(_items); _in_car_range(i) || continue; Render.draw(prog, it, vp, bodyModel; bright=1.2, spec=0.08, ambfill=0.78); end
+        end
+        if _tm                                                               # TD261013-1 (a4): the team's wheel, gloves, lever
+            let T = rep_team[]
+                wm = bodyModel * Render.translate(T.swc) * Render.rotaxis(T.swa, Float32(HSIGN*inp.steer*2.5)) * Render.translate(-T.swc[1], -T.swc[2], -T.swc[3])
+                for it in T.wheel; Render.draw(prog, it, vp, wm; bright=1.2, spec=0.05, ambfill=0.6); end
+                l, f = shift_target(cs.gear); inb = T.shp[3] > 0 ? -1f0 : 1f0
+                sm = bodyModel * Render.translate(T.shp) * Render.rotaxis(Float32[0, 0, 1], -deg2rad(SHIFT_FA * f)) *
+                     Render.rotaxis(Float32[1, 0, 0], inb * deg2rad(SHIFT_LAT * l)) * Render.translate(-T.shp[1], -T.shp[2], -T.shp[3])
+                for it in T.shift; Render.draw(prog, it, vp, sm; bright=0.95, ambfill=0.45); end
+            end
         end   # PO: lift the self-shadowed footwell/tub further out of black (GPL pre-lights the interior evenly)
         # COCKPIT-TACH-1: tachometer needles over the dash7 dial (cockpit view; the tell-tale holds the peak)
         TELLTALE[] = max(TELLTALE[], cs.rpm)
@@ -15778,6 +15822,11 @@ function main()
         # plexiglass WINDSCREEN — drawn LAST, FAINTLY VISIBLE glass (PO: it had vanished at 0.16), depth-write
         # OFF so the front suspension + track read through it (GPL gold standard) but the screen still reads as
         # a tinted curved plexiglass, not a bright opaque gold rim.  JM_WIND_ALPHA tunes it.
+        if _tm && VISOR_ALPHA > 0 && !isempty(rep_team[].glass)     # TD261013-1 (a4): the team's perspex, as glass
+            glDepthMask(GL_FALSE)
+            for it in rep_team[].glass; Render.draw(prog, it, vp, bodyModel; bright=1.0, spec=0.35, ambfill=0.7, alpha=VISOR_ALPHA, depthbias=true); end
+            glDepthMask(GL_TRUE)
+        end
         if !isempty(visorItems) && VISOR_ALPHA > 0 && !_tm      # COCKPIT-GOLD-1: the perspex windscreen, every view
             glDepthMask(GL_FALSE)
             for it in visorItems; Render.draw(prog, it, vp, bodyModel; bright=1.0, spec=0.35, ambfill=0.7, alpha=VISOR_ALPHA, depthbias=true); end

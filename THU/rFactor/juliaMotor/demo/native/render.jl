@@ -1345,7 +1345,7 @@ function _clip_lat(t, maxlat::Float32)
                 t.tex, t.col, t.flat, t.ptype) for i in 2:length(verts)-1]   # a clipped piece keeps the original's shading kind
 end
 
-function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0.72f0,0.74f0,0.76f0), smooth=true, tint=nothing, track=false, mirror=false, exclude_groups=(), include_groups=(), cockpit_clean=false, maxedge=Inf32, uflip=nothing, vflip=nothing, maxlat=Inf32, trim=false, dedup=nothing, drop_green=false, min_component=0, min_component_tex=(), wheel_dress=nothing, cockpit_dress=nothing, skip_ptypes_kw=nothing, visor=false, skin=nothing)
+function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0.72f0,0.74f0,0.76f0), smooth=true, tint=nothing, track=false, mirror=false, exclude_groups=(), include_groups=(), cockpit_clean=false, maxedge=Inf32, uflip=nothing, vflip=nothing, maxlat=Inf32, trim=false, dedup=nothing, drop_green=false, min_component=0, min_component_tex=(), wheel_dress=nothing, cockpit_dress=nothing, skip_ptypes_kw=nothing, visor=false, skin=nothing, visorcol=(0.75f0, 0.64f0, 0.22f0))
     livery = lowercase(first(splitext(basename(String(path3do)))))   # S7: the wrapper's own texture name (lotd, ferd, ...) = the livery
     # text reads right when the texture mapping preserves handedness: the mirror=true
     # remap (gx,gz,-gy) is a rotation (no flip needed); mirror=false is a reflection
@@ -1661,8 +1661,10 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
         # tint -- across the cockpit front (x -0.06..0.99, z 0.23..0.34, never vertical); we painted them with the green
         # livery, opaque. visor=true (the player car) routes exactly those to "__visor__" in their own colour, for the
         # app to draw as glass; the silver/black flat polys (mirror stalks) keep their path. JM_VISOR=0 reverts.
-        isvisor = visor && VISOR_ON && liv_flat && abs(t.col[1] - 0.75f0) < 0.04f0 && abs(t.col[2] - 0.64f0) < 0.04f0 &&
-                  abs(t.col[3] - 0.22f0) < 0.04f0
+        # TD261013-1 (a4): the other teams' cockpits author their perspex the same way in their own colour (clear grey
+        # 0.84/0.84/0.85; the Eagle's 0.87/0.79/0.69) -- `visorcol` names it.
+        isvisor = visor && VISOR_ON && liv_flat && abs(t.col[1] - visorcol[1]) < 0.04f0 && abs(t.col[2] - visorcol[2]) < 0.04f0 &&
+                  abs(t.col[3] - visorcol[3]) < 0.04f0
         FLATPOLY_GLASS && liv_flat && continue
         flatpoly = !isvisor && FLATPOLY_FIX && !FLATPOLY_PLANAR && liv_flat
         planar   = !isvisor && FLATPOLY_PLANAR && liv_flat
