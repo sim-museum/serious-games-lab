@@ -6424,19 +6424,70 @@ function lapnear(x, z)
     bi == 0 ? NaN : W.S[bi]
 end
 lapwin_in(s, c) = (L = _LW.L; abs(mod(s - c + L/2, L) - L/2) <= LAPWIN + LAPBIN)
+# TD261013-1 (c1/c2) (PO 2026-10-13, the Ring: "all the buildings and crowds on the right at the start/finish line are
+# suddenly missing"; "the billboards immediately on the left after the south hairpin and before the north hairpin"):
+# the 1967 lap runs down the start straight, round the Südkehre and back up a parallel straight 100-200 m behind the
+# pits. What stands between the two legs -- the pit row with its crowd, flags and timing tower, the boards of the return
+# straight -- is about as near one leg as the other, and nearest-node binning gave it to the leg 1.2 km round the lap,
+# outside the window while you are on the other. GPL's segment trees own such geometry by authoring; we cannot read
+# that, so geometry near TWO legs of the lap belongs to both: its second lap position is the nearest node more than
+# one window (914 + 100 m) round the lap from the first, if that node is within 1.6x the first distance + 25 m, or within 75 m (the Ring's pit row is 5-10 m from the
+# return straight and 13-40 m from the start straight). JM_LAPWIN_TWOLEG=0 =
+# nearest node only, as before.
+const LAPWIN_TWOLEG = get(ENV, "JM_LAPWIN_TWOLEG", "1") != "0"
+const LAPWIN_NEAR = parse(Float64, get(ENV, "JM_LAPWIN_NEAR", "75"))   # ... or within this many metres of it
+"(lap distance, plan distance²) of the centreline node nearest (GPL x, y) -- `lapnear` with its distance"
+function lapnear_d(x, z)
+    W = _LW; cx = floor(Int, (x - W.x0)/W.c); cz = floor(Int, (z - W.z0)/W.c); bd = Inf; bi = 0
+    for r in 0:400
+        for dx in -r:r, dz in -r:r
+            (abs(dx) == r || abs(dz) == r) || continue
+            v = get(W.g, (cx + dx, cz + dz), nothing); v === nothing && continue
+            for i in v; d = (W.xs[i] - x)^2 + (W.zs[i] - z)^2; d < bd && (bd = d; bi = i); end
+        end
+        bi > 0 && bd <= (r*W.c)^2 && break
+    end
+    bi == 0 ? (NaN, Inf) : (W.S[bi], bd)
+end
+"the lap distance of the OTHER leg near (x, z) (see above), NaN when there is none"
+function lapnear2(x, z, s1, d1sq)
+    (LAPWIN_TWOLEG && isfinite(s1)) || return NaN
+    W = _LW; L = W.L; far = LAPWIN + LAPBIN; lim = max(1.6*sqrt(d1sq) + 25.0, LAPWIN_NEAR)
+    cx = floor(Int, (x - W.x0)/W.c); cz = floor(Int, (z - W.z0)/W.c); bd = lim^2; bi = 0
+    for r in 0:(ceil(Int, lim/W.c) + 1)
+        for dx in -r:r, dz in -r:r
+            (abs(dx) == r || abs(dz) == r) || continue
+            v = get(W.g, (cx + dx, cz + dz), nothing); v === nothing && continue
+            for i in v
+                abs(mod(W.S[i] - s1 + L/2, L) - L/2) > far || continue
+                d = (W.xs[i] - x)^2 + (W.zs[i] - z)^2; d < bd && (bd = d; bi = i)
+            end
+        end
+    end
+    bi == 0 ? NaN : W.S[bi]
+end
+const OBJLAP2 = Float64[]                                 # TD261013-1: per object, its second leg's lap distance (or NaN)
 const LAPNB = _LW === nothing ? 0 : ceil(Int, _LW.L / LAPBIN)
+const NDUP2 = Ref(0)
 const TRACKLAPOFF = Vector{Int32}[]                       # per part: vertex offset where each bin starts (LAPNB + 1)
 const OBJLAP = Float64[]                                  # per object: its lap distance (filled on the first frame)
 if _LW !== nothing
     let t0 = time()
         for tp in TRACK
             v = tp.verts; nt = length(v) ÷ 33
-            b = Vector{Int32}(undef, nt)
+            b = Vector{Int32}(undef, nt); dup = Tuple{Int,Int32}[]
             for t in 0:nt-1
                 o = 33t
                 cx = (v[o+1] + v[o+12] + v[o+23]) / 3; cz = (v[o+3] + v[o+14] + v[o+25]) / 3
-                sl = lapnear(cx, -cz)
+                sl, dsq = lapnear_d(cx, -cz)
                 b[t+1] = isnan(sl) ? Int32(0) : clamp(floor(Int32, sl / LAPBIN), Int32(0), Int32(LAPNB - 1))
+                s2 = lapnear2(cx, -cz, sl, dsq)                  # TD261013-1: a copy in the other leg's bin
+                isnan(s2) || push!(dup, (t, clamp(floor(Int32, s2 / LAPBIN), Int32(0), Int32(LAPNB - 1))))
+            end
+            if !isempty(dup)
+                resize!(v, 33*(nt + length(dup)))
+                for (k, (t, bb)) in enumerate(dup); copyto!(v, 33*(nt + k - 1) + 1, v, 33t + 1, 33); push!(b, bb); end
+                nt += length(dup); NDUP2[] += length(dup)
             end
             ord = sortperm(b; alg = MergeSort)
             w = similar(v); for (k, t) in enumerate(ord); copyto!(w, 33(k-1) + 1, v, 33(t-1) + 1, 33); end
@@ -6445,10 +6496,32 @@ if _LW !== nothing
             push!(TRACKLAPOFF, cumsum(off))
         end
         println("  [lapwin] track drawn ", LAPWIN, " m ahead/behind along the lap (GPL); ", length(TRACK), " parts in ",
-                LAPNB, " bins of ", LAPBIN, " m (", round(time() - t0, digits = 1), " s; JM_LAPWIN=0 reverts)")
+                LAPNB, " bins of ", LAPBIN, " m (", round(time() - t0, digits = 1), " s; JM_LAPWIN=0 reverts); ",
+                NDUP2[], " triangles near two legs of the lap drawn with either (JM_LAPWIN_TWOLEG=0 off)")
         # BLINDTURN-1 S7: JM_LAPWIN_DIAG=1 -- for an eye on the centreline every 50 m, the NEAREST triangle the window hides.
         # GPL hides far-along-the-lap geometry by design; a hidden triangle within ~150 m of the eye is a candidate HOLE
         # (our nearest-centreline binning giving a fold of the track -- a hairpin's other leg -- to the wrong stretch).
+        # TD261013-1: JM_LAPWIN_WHO=<lap m>[:<radius>] -- for the eye on the centreline there, every texture the window
+        # hides within <radius> (default 250 m): triangles, nearest distance, and the lap bins they were given.
+        if get(ENV, "JM_LAPWIN_WHO", "") != ""
+            _f = split(ENV["JM_LAPWIN_WHO"], ":"); c = parse(Float64, _f[1]); R = length(_f) >= 2 ? parse(Float64, _f[2]) : 250.0
+            P = TRKSURF.pos; Sd = TRKSURF.lapdist; k = argmin(abs.(Sd .- c)); ex, ez = P[k][1], P[k][3]
+            who = Dict{String,Tuple{Int,Float64,Set{Int}}}()
+            for (pi, tp) in enumerate(TRACK)
+                v = tp.verts; off = TRACKLAPOFF[pi]
+                for b in 0:LAPNB-1
+                    lapwin_in(b*LAPBIN + LAPBIN/2, c) && continue
+                    for t in div(off[b+1], 3):div(off[b+2], 3)-1
+                        o = 33t; cx = (v[o+1] + v[o+12] + v[o+23])/3; cz = -(v[o+3] + v[o+14] + v[o+25])/3
+                        d = hypot(cx - ex, cz - ez); d <= R || continue
+                        w = get(who, tp.tex, (0, Inf, Set{Int}())); push!(w[3], round(Int, b*LAPBIN))
+                        who[tp.tex] = (w[1] + 1, min(w[2], d), w[3])
+                    end
+                end
+            end
+            println("  [lapwin who] eye at s ", round(Int, Sd[k]), ": hidden within ", R, " m, by texture (tris, nearest m, bins):")
+            for (t, w) in sort(collect(who), by = x -> x[2][2]); println("      ", rpad(t, 12), lpad(w[1], 6), lpad(round(Int, w[2]), 6), "  ", sort(collect(w[3]))); end
+        end
         if get(ENV, "JM_LAPWIN_DIAG", "0") == "1"
             P = TRKSURF.pos; Sd = TRKSURF.lapdist; worst = Tuple{Float64,Float64,String}[]
             for k in 1:max(1, round(Int, 50/max(Sd[min(end, 2)] - Sd[1], 1e-3))):length(P)
@@ -7834,6 +7907,27 @@ let objnames=Set{String}()
             end
             _nd = count(r -> r[4] != "kept", _rows)
             println("   ", _nd, " dropped, ", length(_rows) - _nd, " kept in this window")
+        end
+        # TD261013-1 (c1): objects far off the road have no lap position (the HAT is the road's), so the window above
+        # cannot list them -- the Ring's pit buildings. JM_OBJDIAG_NEAR="<anchor instance name>:<radius>" lists every
+        # instance within <radius> m (plan) of the first instance of that name, by distance, with its verdict.
+        if get(ENV,"JM_OBJDIAG_NEAR","") != ""
+            _f = split(ENV["JM_OBJDIAG_NEAR"], ":"); _a = findfirst(i -> lowercase(String(i.name)) == lowercase(_f[1]), insts)
+            _r = length(_f) >= 2 ? parse(Float64, _f[2]) : 200.0
+            if _a !== nothing
+                _ax = Float64(insts[_a].x); _ay = Float64(insts[_a].y)
+                println("== JM_OBJDIAG_NEAR ", _f[1], " (", round(_ax, digits=1), ", ", round(_ay, digits=1), ") r=", _r)
+                _rows2 = Tuple{Float64,String}[]
+                for i in insts
+                    _d = hypot(Float64(i.x) - _ax, Float64(i.y) - _ay); _d <= _r || continue
+                    _v = get(objmesh,i.name,nothing) === nothing ? "NO MESH" : drop(i.name) ? "drop() junk filter" :
+                         onroad_crowd(i) ? "onroad_crowd" : perp_crowd(i) ? "perp_crowd" : onroad_bldg(i) ? "onroad_bldg" :
+                         onroad_fp(i) ? "onroad_fp" : !(tallenough(i.name)) ? "under 1 m tall" : !onground(i) ? "not on ground" : "kept"
+                    push!(_rows2, (_d, string(rpad(lowercase(String(i.name)), 12), " d ", lpad(round(Int, _d), 4), " m  at (",
+                                               round(i.x, digits=1), ", ", round(i.y, digits=1), ")  ", _v)))
+                end
+                for r in sort(_rows2, by = first); println("      ", r[2]); end
+            end
         end
         flush(stdout)
     end
@@ -9327,6 +9421,12 @@ end
 # The `half*` veils keep their windows (GPL shows those only from ~25 m before). JM_GPLVIS_LEAD=0 reverts.
 const GPLVIS_LEAD = parse(Float64, get(ENV, "JM_GPLVIS_LEAD", "150"))
 const GPLVIS_LANDMASS = ("adena-r2", "breid-ra")
+# TD261013-1 (c2) (PO 2026-10-13: "the billboards immediately on the left after the south hairpin and before the north
+# hairpin" are missing): `bkbill`, the board row along the straight behind the pits (s 1150-1600), took GPL's window in
+# BILLBOARD-2 -- whose first camera segment we read at s 1052, so the row popped up beside the car. The cockpit gold shows
+# it from the Südkehre's exit (~s 700). Led 400 m; the window's END (gone after Nordkehre, BILLBOARD-2) is unchanged.
+const GPLVIS_LEADX = Dict("bkbill" => parse(Float64, get(ENV, "JM_GPLVIS_LEAD_BKBILL", "400")))
+_gv_leadfor(nm) = (n = lowercase(nm); n in GPLVIS_LANDMASS ? GPLVIS_LEAD : get(GPLVIS_LEADX, n, 0.0))
 function _gv_lead(v::BitVector, lead)
     lead > 0 || return v
     w = copy(v); L = lead * _GV_R
@@ -9339,7 +9439,7 @@ function _gv_lead(v::BitVector, lead)
 end
 const OBJVIS = Union{Nothing,BitVector}[(GPLVIS_ALL || (GPLVIS_VEIL && isveil(OBJECTS[k][5]))) ?
                                          (v = get(GPLVIS_VIS, OBJNODE[k], nothing); v === nothing ? nothing :
-                                          _gv_bridge(lowercase(OBJECTS[k][5]) in GPLVIS_LANDMASS ? _gv_lead(v, GPLVIS_LEAD) : v)) : nothing
+                                          _gv_bridge(_gv_lead(v, _gv_leadfor(OBJECTS[k][5])))) : nothing
                                         for k in eachindex(OBJNODE)]
 # RINGTD-1 S2: JM_GPLVIS_DIAG=<name,...> prints each named object's camera windows (our lap metres) as drawn
 if GPLVIS && get(ENV, "JM_GPLVIS_DIAG", "") != ""
@@ -15225,9 +15325,14 @@ function main()
             _cseg = gplvis_seg(eye_[1], eye_[3])
             _olap = _LW === nothing ? 0.0 : lapnear(Float64(eye_[1]), -Float64(eye_[3]))
             if _LW !== nothing && length(OBJLAP) != length(_OBJS)                 # BLINDTURN-1 S5: each object's lap position
-                resize!(OBJLAP, length(_OBJS))
+                resize!(OBJLAP, length(_OBJS)); resize!(OBJLAP2, length(_OBJS))
                 for (k, o) in enumerate(_OBJS)
-                    OBJLAP[k] = isbackdrop(lowercase(String(o[5]))) ? NaN : lapnear(Float64(o[4][1]), -Float64(o[4][3]))
+                    if isbackdrop(lowercase(String(o[5])))
+                        OBJLAP[k] = NaN; OBJLAP2[k] = NaN
+                    else
+                        sl, dsq = lapnear_d(Float64(o[4][1]), -Float64(o[4][3]))
+                        OBJLAP[k] = sl; OBJLAP2[k] = lapnear2(Float64(o[4][1]), -Float64(o[4][3]), sl, dsq)
+                    end
                 end
             end
             for (oi,(items,mat,grz,opos,onm)) in enumerate(_OBJS)   # trackside objects
@@ -15236,7 +15341,8 @@ function main()
                 (_ocl === nothing && _cseg > 0 && oi <= length(OBJVIS) && OBJVIS[oi] !== nothing && !OBJVIS[oi][_cseg]) && continue   # GREY-1: GPL's window
                 (OBJ_SCENEDUP[oi] && _ocl === nothing && !(oi <= length(OBJVIS) && OBJVIS[oi] !== nothing)) && continue   # RING-GOLD-1 S3 (E109-S15: not the veils -- their scenery copy is hidden; GPLVIS-1: nor a cell-clipped object)
                 bc, br = oi <= length(_BND) ? _BND[oi] : ((opos[1], opos[2], opos[3]), 80f0)   # CULLBOUND-1: the object's real bounding sphere
-                (_LW !== nothing && oi <= length(OBJLAP) && !isnan(OBJLAP[oi]) && !isnan(_olap) && !lapwin_in(OBJLAP[oi], _olap)) && continue   # BLINDTURN-1 S5
+                (_LW !== nothing && oi <= length(OBJLAP) && !isnan(OBJLAP[oi]) && !isnan(_olap) && !lapwin_in(OBJLAP[oi], _olap) &&
+                 !(oi <= length(OBJLAP2) && !isnan(OBJLAP2[oi]) && lapwin_in(OBJLAP2[oi], _olap))) && continue   # BLINDTURN-1 S5 (+ TD261013-1: either leg)
                 max(sqrt((eye_[1]-bc[1])^2+(eye_[2]-bc[2])^2+(eye_[3]-bc[3])^2) - br, 0f0)^2 > (flip ? MIR_OBJ_CULL2 : OBJ_CULL2) && continue   # distance cull (mirror gets its own radius, S14)
                 FRUSTUM_CULL && !infrustum(vp_, bc, br) && continue
                 # PERF-1: size cull -- an object whose bounding sphere covers < JM_MINPIX pixels is not drawn

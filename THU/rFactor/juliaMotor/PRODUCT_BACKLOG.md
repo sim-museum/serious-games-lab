@@ -26136,3 +26136,26 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   restored the tracked `last_sim_run.log`, which discarded that Ring log after its wreck lines had been read out above.)
 * Gates (s35): 58/59, `tyrepanel_smoke` red on its source check of the old "drawn in every replay view" condition -- the
   PO's (a4) changed that rule; the check now asserts "player car, chase view only" and passes (rerun alone).
+
+### TD261013-1 S2 (2026-10-14): (c1) the Ring's pit row and (c2) the board row behind the pits are back
+* **(c1) "all the buildings and crowds on the right at the start/finish line are suddenly missing".** Gold
+  (`260802_nurburgring_cockpit.mp4` t 1-12): on the right of the start line a long pit row with signs and a crowd on its
+  roof, the flags and the white timing tower. Ours: nothing. A/B: `JM_LAPWIN=0` brings it all back -- the 914 m lap
+  window (BLINDTURN-1 S5, on at the Ring since 10-10: "suddenly"). New `JM_LAPWIN_WHO=<s>[:<r>]` lists what the window
+  hides near an eye: at s 0, `pitside*`, `garp`, `flag1-10`, `CLOCK*`, `signs`... 13-40 m from the eye, binned at
+  1300-1600 m. The 1967 lap runs down the start straight, round the Südkehre and back up a parallel straight behind the
+  pits; the pit row is nearer the return straight, so nearest-node binning gave it to the leg 1.3 km round the lap.
+  **Fix:** geometry near TWO legs of the lap belongs to both -- its second lap position is the nearest centreline node
+  more than one window round the lap, if within max(1.6 × the first distance + 25 m, 75 m). Track triangles near two
+  legs get a copy in the second leg's bin (6,906 at the Ring); objects get a second lap position (`OBJLAP2`); either in
+  the window draws it. `JM_LAPWIN_TWOLEG=0` = before, `JM_LAPWIN_NEAR` the 75 m. Renders: the pit row, flags, tower and
+  roof crowd from s 0 and s 150 as in the gold; the Karussell view (BLINDTURN's own case, s 12500) unchanged.
+* **(c2) "the billboards immediately on the left after the south hairpin and before the north hairpin".** Gold t 48-57:
+  the long VEITH-PIRELLI / PENTOSIN board row ahead on the left from the Südkehre's exit. Ours showed it only from
+  s ~1150, beside the car. A/B: `JM_GPLVIS_VEIL=0` brings it back. It is `bkbill`, which BILLBOARD-2 (10-07) put under
+  GPL's per-segment window to stop it standing across the valley after the Nordkehre; its first camera segment reads as
+  s 1052 (the walker's windows begin late -- as for the Ex-Mühle hill, RINGTD-1 S2). Its window now leads by 400 m
+  (`JM_GPLVIS_LEAD_BKBILL`), windows 660-915, 958, 1052, 1382, 1611: the row shows from the hairpin exit; at s 2050 (after
+  the Nordkehre) the valley stays clear, so BILLBOARD-2's fix holds.
+* Gates (s36): 58/59, `trackrange_smoke` red on its source check of the object window's old line; the check now
+  asserts the either-leg rule (+1 check for the two-leg binning) and passes (rerun alone).
