@@ -26672,3 +26672,14 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
 * JRRender's workload regenerated for the new `flatcol` signatures (380 statements, 5 tracks, 5 AI; Spa launch 165 s).
   Pitfall found and documented in `jrrender_gen.py`: traces must be taken with the LOOSE files (`JM_RENDER_INCLUDE=1`)
   -- in package mode the cached methods compile nothing, and a regeneration kept 170 of 376.
+
+### E60 S9 (2026-10-15, analysis): the Hugenholtz scaffold tower is THERE -- darker than GPL's; E60 rotates
+* Gold (260801 nintendo t 40-43) located: the Hugenholtz hairpin -- red-cross tent, fire engine, VW ambulance, the
+  CALTEX board and the green lattice camera tower beside it; ours at s 860-940 shows the same objects in the same places
+  (`scratchpad zand/hug_ab2.jpg`). The tower is `camstnd` (textured, so E60-S8's flat-colour change leaves it
+  identical: A/B `tower_fc.png`).
+* Differences left: GPL's tower reads LIGHT green, ours dark green-black (the same direction as E83's residual
+  brightness gap on vegetation, now seen on a textured object); GPL has a cameraman on its top platform (a loose
+  person -- the people filter's, by design). Not a missing object.
+* E60 after S8-S9: the gantry item was the Gerlach boards' struts (fixed in S8); the tower is present. Next E60 pass:
+  the object brightness against the gold (with E83), or new gold comparisons further round the lap (t > 60 s).
