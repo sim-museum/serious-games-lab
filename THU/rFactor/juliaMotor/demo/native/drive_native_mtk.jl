@@ -11591,6 +11591,28 @@ function pick_report(vp, eye, label)
     end
     flush(stdout)
 end
+# E80-S9: the launch-time diagnostics and test hooks inside main() as CONSTANTS. Julia compiles main() whole before
+# its first line runs (42-62 s of every launch, E80-S8), INCLUDING branches guarded by a runtime ENV check that a race
+# never takes -- coverage of a Spa 5-AI race: 65 % of main()'s compiled statements never ran, ~13,000 of them in these
+# blocks. A const condition that is false is folded away before inference, so its block is never compiled. Same
+# behaviour: the environment is read once at load, as every other knob here.
+const _DX_GROUNDPROF  = get(ENV, "JM_GROUNDPROF", "") != ""
+const _DX_HOLECENSUS  = get(ENV, "JM_HOLECENSUS", "") != ""
+const _DX_START_S     = haskey(ENV, "JM_START_S")
+const _DX_OFFTRACK    = haskey(ENV, "JM_OFFTRACK_PROBE")
+const _DX_BRIDGEPROBE = get(ENV, "JM_BRIDGEPROBE", "") != ""
+const _DX_SWEEP       = haskey(ENV, "JM_SWEEP")
+const _DX_ROADSWEEP   = get(ENV, "JM_ROADSWEEP", "") != ""
+const _DX_ROADTRIS    = get(ENV, "JM_ROADTRIS", "") != ""
+const _DX_ROADEDGE    = get(ENV, "JM_ROADEDGE", "") != ""
+const _DX_OBJCENSUS   = get(ENV, "JM_OBJCENSUS", "") != ""
+const _DX_GPLLAT_WHY  = get(ENV, "JM_AI_GPLLAT_WHY", "0") != "0"
+const _DX_LINE_Y      = haskey(ENV, "JM_LINE_Y")
+const _DX_PACEDIAG    = haskey(ENV, "JM_PACEDIAG")
+const _DX_PIT_DIAG    = get(ENV, "JM_PIT_DIAG", "") != ""
+const _DX_AI_TEST     = haskey(ENV, "JM_AI_TEST")
+const _DX_JOYTRACE    = get(ENV, "JM_JOYTRACE", "") != ""
+const _DX_SHOTS       = !isempty(SHOTS_AT)
 function main()
     tstamp("  [E80] .. main() entered (its compile is the gap above)")
     # E106-S13b: the physics-facing ground closure. It converts the app's -999 "off the HAT"
@@ -11762,7 +11784,7 @@ function main()
     # TD261013-1 (b3) probe: JM_GROUNDPROF="<s0>:<s1>:<lat>" walks the centreline from s0 to s1 at lateral `lat` every 0.25 m
     # and prints the physics ground and its layers -- the ribbon frame (lapdist, lateral), the .trk spline, the mesh
     # correction, the spline confidence, the blended result -- then exits. Finds which layer makes a bump.
-    if get(ENV, "JM_GROUNDPROF", "") != "" && CLINE !== nothing
+    if _DX_GROUNDPROF && CLINE !== nothing
         let f = split(ENV["JM_GROUNDPROF"], ":"), s0 = parse(Float64, f[1]), s1 = parse(Float64, f[2]), la = parse(Float64, f[3])
             println("  [groundprof] s  x  z  | ribbon lapdist lateral | spline corr conf | ground  d2(ground) mm")
             prev = (NaN, NaN)
@@ -11810,7 +11832,7 @@ function main()
     # centreline and samples the physics ground across the corridor the car can actually reach; a
     # sample with no surface is a hole. E106-S13 made holes survivable -- this says how many there
     # are, which is the honest measure of a track's readiness. JM_HOLECENSUS=<half-width m>.
-    if CLINE !== nothing && get(ENV,"JM_HOLECENSUS","") != ""
+    if _DX_HOLECENSUS && CLINE !== nothing
         halfw   = parse(Float64, get(ENV,"JM_HOLECENSUS","12"))
         step_s  = parse(Float64, get(ENV,"JM_HOLECENSUS_DS","10"))
         latstep = 1.5
@@ -11899,7 +11921,7 @@ function main()
         cs.heave = 0.0; cs.pitch = 0.0; cs.roll = 0.0; cs.y = cs.zref
         p
     end
-    if CLINE !== nothing && CAR3D && haskey(ENV, "JM_START_S")
+    if _DX_START_S && CLINE !== nothing && CAR3D
         s0 = clamp(parse(Float64, ENV["JM_START_S"]), 0.0, CLINE.total)
         # LOADHANG-1 S4: JM_START_LANE=race parks the car ON the AI's racing line (racelane), where an autodriving car
         # (which tracks racelane + JM_AUTODRIVE_LAT) will meet it head-on; default: the centreline, as before.
@@ -11974,7 +11996,7 @@ function main()
     # [offtrack] line per frame (speed, position, height, on-track, wreck, fence force) for
     # JM_OFFTRACK_FRAMES frames (default 300) so the spike can be seen where it happens.
     OFFTRACK_PROBE = Ref(0)          # frames still to trace
-    if CLINE !== nothing && CAR3D && haskey(ENV, "JM_OFFTRACK_PROBE")
+    if _DX_OFFTRACK && CLINE !== nothing && CAR3D
         pf = [parse(Float64, x) for x in split(ENV["JM_OFFTRACK_PROBE"], ":")]
         ps, plat, pkmh, pdeg = pf[1], pf[2], pf[3], pf[4]
         pslip = length(pf) >= 5 ? pf[5] : 0.0                   # deg of slip: lateral body velocity
@@ -12001,7 +12023,7 @@ function main()
     # the centreline point, with its height and texture. That is what a targeted collision exclusion
     # needs -- `drop_overpass` cannot be used here, because the Ring has bridges you genuinely drive
     # OVER and it would drop those too. JM_BRIDGEPROBE="21540,22250,22300"
-    if CLINE !== nothing && get(ENV,"JM_BRIDGEPROBE","") != ""
+    if _DX_BRIDGEPROBE && CLINE !== nothing
         println("== JM_BRIDGEPROBE: surfaces over the racing line ==")
         for tok in split(get(ENV,"JM_BRIDGEPROBE",""), ",")
             sv = tryparse(Float64, strip(String(tok))); sv === nothing && continue
@@ -12037,7 +12059,7 @@ function main()
         end
         flush(stdout); exit(0)
     end
-    if CLINE !== nothing && haskey(ENV,"JM_SWEEP") && isdefined(Main,:OBJINSTS)
+    if _DX_SWEEP && CLINE !== nothing && isdefined(Main,:OBJINSTS)
         olat(ox,oz) = (hr = JuliaMotor.hat(TRKSURF, Float64(ox), Float64(oz)); hr.found ? round(hr.lateral,digits=1) : 999.0)
         step = (v = tryparse(Float64, get(ENV,"JM_SWEEP","")); v === nothing || v < 1 ? 15.0 : v)
         # project each kept object's centroid onto the .trk → its lateral offset.  An object whose
@@ -12161,7 +12183,7 @@ function main()
     # a car centred there would touch (gap < CARHALF). A hit names the object, so the fix is a
     # named object and not a guess. Negative control: the first solid's own centre must read as a
     # hit, else the instrument is blind. Prints the census and exits.
-    if get(ENV, "JM_ROADSWEEP", "") != "" && CLINE !== nothing
+    if _DX_ROADSWEEP && CLINE !== nothing
         step = (v = tryparse(Float64, get(ENV, "JM_ROADSWEEP", "")); v === nothing || v <= 0 ? 2.0 : v)
         println("\n==== JM_ROADSWEEP ", uppercasefirst(TRACKSEL), "  (step=", step, " m, lateral 0.5 m, ",
                 length(SOLIDS), " solids, ", count(!isnothing, SOLIDBOX), " boxed, car=",
@@ -12245,7 +12267,7 @@ function main()
     # smoothly curving as in GPL"). JM_ROADTRIS=1: road-textured triangles per 100 m of lapdist over
     # the lap, with the road's mean triangle length -- a hairpin drawn with few, long triangles is
     # coarse geometry (a LOD or a section choice), many short ones is a smooth road. Exits.
-    if get(ENV, "JM_ROADTRIS", "") != ""
+    if _DX_ROADTRIS
         rt = [t for t in TRACKMESH.tris if ROAD_TEX(lowercase(t.tex))]
         cnt = Dict{Int,Int}(); len = Dict{Int,Float64}(); texb = Dict{Int,Dict{String,Int}}()
         for t in rt
@@ -12285,7 +12307,7 @@ function main()
     # steps; the PO's "piecewise linear" is few long segments with big steps), the same statistics for
     # the centreline through the window (a smooth centreline under a coarse edge means the mesh, not
     # the .trk, is the source), and the textures of the triangles that supply the edge. Exits.
-    if get(ENV, "JM_ROADEDGE", "") != ""; let   # `let`: every helper here stays local (a file-scope `key`
+    if _DX_ROADEDGE; let   # `let`: every helper here stays local (a file-scope `key`
         # function shadowed the sweep's own `key` at line ~6104 and broke every non-hook run)
         a_, b_ = parse.(Float64, split(get(ENV, "JM_ROADEDGE", "550:700"), ":"))
         rt = [t for t in TRACKMESH.tris if ROAD_TEX(lowercase(t.tex))]
@@ -12349,7 +12371,7 @@ function main()
     # RENDERED placement (OBJINSTS mesh + billboard) with its lapdist, origin lateral, footprint-on-tarmac
     # (meshes) and base height above the terrain (lowest local vertex + placement height - HAT), sorted
     # by the two defects: on the road, and floating (> 1.5 m) or buried (< -1.5 m). Exits.
-    if get(ENV, "JM_OBJCENSUS", "") != ""; let
+    if _DX_OBJCENSUS; let
         rows = NTuple{7,Any}[]     # (name, kind, s, lat, dy, onroad, x)
         for (nm, ox, oz, oy, kind, issolid) in OBJINSTS
             kind === :dropped && continue
@@ -12610,7 +12632,7 @@ function main()
                         # line genuinely leaves the surface our mesh calls road -- which would be
                         # consistent with recentre_on_road's own note that the .trk line "hugs the road
                         # EDGE through corners (it is the racing groove, not the geometric centre)".
-                        if get(ENV, "JM_AI_GPLLAT_WHY", "0") != "0" && ROADHAT !== TERRAIN0
+                        if _DX_GPLLAT_WHY && ROADHAT !== TERRAIN0
                             _tex = Dict{String,Int}(); _none = Ref(0); _n = Ref(0)
                             for i in 1:nrec
                                 q = gpl_world(Float64(GPLLP.read_lp(lp).dlat[i]), i)
@@ -12801,7 +12823,7 @@ function main()
     # AI_PHYSICS is opt-in), while the player's car takes cs.y from the physics, which tracks the
     # terrain. If line.y sits above groundz, every AI car floats by that much and the player's does
     # not -- which is exactly what the PO reported and what the capture shows.
-    if AILINE !== nothing && haskey(ENV, "JM_LINE_Y")
+    if _DX_LINE_Y && AILINE !== nothing
         n = length(AILINE.x); diffs = Float64[]
         for k in 1:max(1, n ÷ 200):n
             g = groundz(AILINE.x[k], AILINE.z[k])
@@ -12882,7 +12904,7 @@ function main()
     # fastest circuit, which is exactly where the scale is worst.  Sweep vmax and see.
     # Prediction, stated before the first run: if vmax dominates, Monza improves >= 10 % and
     # Zandvoort <= 5 %.  Runs during load and exits -- no render loop.
-    if AILINE !== nothing && haskey(ENV, "JM_PACEDIAG")
+    if _DX_PACEDIAG && AILINE !== nothing
         println("\n==== JM_PACEDIAG  $(TRACKSEL)  (lap $(round(AILINE.total, digits=0)) m) ====")
         base = RaceAI.natural_laptime(AILINE)
         println("  default (amax=11.0, vmax=74.0):  ", round(base, digits=1), " s")
@@ -13085,7 +13107,7 @@ function main()
                         " samples kept on GPL's frame where the correction left the road (MONZAROAD-1)")
             end
             GPLAI_T = GPLAI.Track(lines, ref, glap, P, gh, dsh, 3.0)
-            if get(ENV, "JM_PIT_DIAG", "") != "" && haskey(lines, GPLAI.PIT)    # TD261013-1 (a3): where the pit line lands
+            if _DX_PIT_DIAG && haskey(lines, GPLAI.PIT)    # TD261013-1 (a3): where the pit line lands
                 for x in PIT_IN[]-60:30.0:glap-1
                     dp = GPLAI.dlat(lines[GPLAI.PIT], x); dr = GPLAI.dlat(lines[GPLAI.RACE], x)
                     wp = GPLAI.tworld(GPLAI_T, x, dp); wr = GPLAI.tworld(GPLAI_T, x, dr)
@@ -13204,7 +13226,7 @@ function main()
     # JM_AI_TEST for the KINEMATIC field (the default): step_field! for 90 s, report tracking.
     # Kinematic AI are rail-bound so they can't spin/leave the line — this verifies the field
     # ADVANCES (laps the track) and stays on-rail (low max_lat) on the big tracks (E38).
-    if !AI_PHYSICS && haskey(ENV, "JM_AI_TEST") && AILINE !== nothing && !isempty(AICARS)
+    if _DX_AI_TEST && !AI_PHYSICS && AILINE !== nothing && !isempty(AICARS)
         nsec = clamp(something(tryparse(Int, get(ENV,"JM_AI_TEST","90")), 90), 1, 1200)
         N=length(AICARS); maxlat=0.0; aidist=zeros(N)
         lastp=[RaceAI.pose_at(AILINE, c.s, c.lane) for c in AICARS]
@@ -14143,7 +14165,7 @@ function main()
         # PO 2026-08-27c: throttle still does nothing from stick OR W, while brake and steering work.
         # My clutch diagnosis was wrong (the raw axes show clutch = 0). Stop reasoning from the code
         # and print what the car is actually being asked to do, once a second. JM_JOYTRACE=1.
-        if get(ENV,"JM_JOYTRACE","") != "" && cs.t - JOYTRACE_T[] >= 1.0
+        if _DX_JOYTRACE && cs.t - JOYTRACE_T[] >= 1.0
             JOYTRACE_T[] = cs.t
             _js = GLFW.GetJoystickAxes(GLFW.JOYSTICK_1)
             println("  [trace] thr=", round(inp.throttle,digits=2), " brk=", round(inp.brake,digits=2),
@@ -16238,7 +16260,7 @@ function main()
         end
         # JM_SHOT_AT: time-triggered captures (see SHOTS_AT). Arm on the trigger, dump SHOT_SETTLE
         # frames later so a view switch has settled; in a replay the clock is the replay clock.
-        if !isempty(SHOTS_AT)
+        if _DX_SHOTS
             _tnow = REPLAY ? rep_rt[] : cs.t
             for (k, ts) in enumerate(SHOTS_AT)
                 SHOTS_AT_ARMED[k] == -2 && continue

@@ -26527,3 +26527,22 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   would freeze (JRPhysics's precedent: frozen to defaults + an include fallback). **Next (E80-S9):** a throwaway
   prototype to MEASURE the saving before touching any knob.
 * Gates (s53): **ALL 60 PASS** (`GATES_SKIP=road_clear_smoke`).
+
+### E80-S9 (2026-10-15): main() stops compiling 17 diagnostics a race never runs -- launch −12 s at Spa and WG
+* **Measured what main() compiles but never runs:** a coverage run of a Spa race launch (5 AI, 1,800 frames; the
+  sim's closing `_exit` skips Julia's coverage writer, so the throwaway copy flushed it first) mapped onto main()'s
+  46,011 IR statements: **65 % never executed**. ~13,000 of those sit in 17 launch-time diagnostics/test hooks behind a
+  RUNTIME `get(ENV, …)` check (JM_OBJCENSUS 2,399 statements, JM_PACEDIAG 2,089, JM_ROADSWEEP 1,232, JM_ROADEDGE
+  1,169, JM_AI_GPLLAT_WHY 1,006, JM_ROADTRIS, JM_SWEEP, JM_START_S, JM_AI_TEST, JM_BRIDGEPROBE, JM_HOLECENSUS,
+  JM_GROUNDPROF, JM_LINE_Y, JM_PIT_DIAG, JM_OFFTRACK_PROBE, JM_JOYTRACE, the shot hook). The rest of the never-run
+  code is real but situational (cockpit-only draws -- the smoke drives the chase view --, laps, restarts, replay).
+* **Fix:** those 17 conditions are module-level `const`s (`_DX_*`, read once at load like every other knob), so a false
+  one is folded away and its block is never compiled. Behaviour identical; the gates that set these knobs set them in
+  the environment, which still works.
+* **Result** (JM_TIMING=2, same smoke launches): Spa main() compile **62.0 → 49.3 s**, counted compile 42.2 → 29.6 s,
+  launch to the game loop **211.2 → 199.3 s**; Watkins Glen main() **62.7 → 50.8 s**, launch **164.5 → 153.2 s**.
+* **Measured, not shipped:** a throwaway JRRender package (render.jl + gpltrack/gplwall/roadcurve, workload = the 298
+  precompile signatures the Spa trace recorded for them; 275 compiled) took Spa 211.2 → 196.7 s (−14.5 s) -- at the cost
+  of freezing their 83 ENV knobs (20+ module-level consts) into the package image or rewriting them as runtime reads.
+  Logged as the next lever; the two savings add.
+* Gates (s54): **ALL 60 PASS** (`GATES_SKIP=road_clear_smoke`).
