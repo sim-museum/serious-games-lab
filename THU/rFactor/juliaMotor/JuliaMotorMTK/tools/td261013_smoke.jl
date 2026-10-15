@@ -53,5 +53,11 @@ chk("PHYSFID-1 S1: 11 N·m -> 0.39 of the wheel; 30 N·m -> 1.0", abs(ffb_ir(11.
 chk("PHYSFID-1 S2: front cornering stiffness 26", occursin("PHYSFID_S2 ? \"26.0\"", tyr))
 chk("PHYSFID-1 S4: the .ibt steering-wheel angle = road angle x ratio", occursin("\"SteeringWheelAngle\"=>δw*STEER_RATIO[]", src))
 chk("PHYSFID-1 S5: the driveline efficiency by power-flow direction", occursin("ηdir(T, ηc, ηd) = ηc + (ηd - ηc)*(0.5 + 0.5*tanh(T/5.0))", veh))
+pwt = read(joinpath(@__DIR__, "..", "src", "components", "powertrain.jl"), String)
+rt3 = read(joinpath(@__DIR__, "..", "src", "drive_rt3d.jl"), String)
+chk("PHYSFID-1 S9: measured lift (front −0.06, rear −0.04) wired to the body",
+    occursin("const AERO_CLAF = PHYSFID_S9 ? -0.06 : -0.12", pwt) && occursin("const AERO_CLAR = PHYSFID_S9 ? -0.04 : 0.0", pwt) &&
+    occursin(" ClAf=claf ClAr=clar ", veh))
+chk("PHYSFID-1 S9: the bars' identified total split 46 % front", occursin("get(ENV, \"JM_ARB_FRONT_SHARE\", \"0.46\")", rt3))
 println(fails[] == 0 ? "ALL PASS" : "FAILURES: $(fails[])")
 exit(fails[] == 0 ? 0 : 1)

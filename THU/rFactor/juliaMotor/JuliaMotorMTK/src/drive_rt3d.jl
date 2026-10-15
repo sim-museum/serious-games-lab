@@ -291,6 +291,15 @@ function chassis_from_setup(sp; source::AbstractString = "unknown")
         (push!(notes, "no shock deflection in the setup: 261004's travel"); travel_from_setup(TRAVEL_REF...))
     cd = [sp.camber_deg[k] for k in (:LF, :RF, :LR, :RR)]
     camber = all(isfinite, cd) ? Tuple(deg2rad.(cd)) : (push!(notes, "no camber in the setup: upright tyres"); nothing)
+    # PHYSFID-1 S9: JM_ARB_FRONT_SHARE=f redistributes the identified TOTAL roll stiffness so the front bar carries the
+    # fraction f (A/B of the split, which the gold's roll gradient cannot identify -- see ARB_ID); unset = the table's split.
+    # PHYSFID-1 S9: with the measured lift the table's split (by diameter⁴, ~8 % front) left the WW car too free at speed
+    # (WW Glen closed-loop 0.90 → 1.45); 46 % front, the same total, judged best of 8 / 30 / 46 % (with the shipped lift
+    # J 1.0346 vs 1.0373 before S9). A judged split until SETUPMODEL-1's twisted-car garage sweep measures it.
+    if haskey(ENV, "JM_ARB_FRONT_SHARE") || PHYSFID_S9
+        f = parse(Float64, get(ENV, "JM_ARB_FRONT_SHARE", "0.46")); tot = karb[1] + karb[2]; karb = (f*tot, (1 - f)*tot)
+        push!(notes, "ARB front share $(f)")
+    end
     Chassis(; diff, toe, karb, cscale, bias, bias_p, travel, camber, src = source * (isempty(notes) ? "" : "  (" * join(notes, "; ") * ")"))
 end
 

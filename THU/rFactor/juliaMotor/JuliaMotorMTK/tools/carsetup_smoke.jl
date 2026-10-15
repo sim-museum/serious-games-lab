@@ -33,8 +33,11 @@ cw = DriveRT3D.chassis_from_setup(sp(WW); source = "ww"); cd = DriveRT3D.chassis
 println("  WW103:   ", DriveRT3D.describe_chassis(cw)); println("  default: ", DriveRT3D.describe_chassis(cd))
 check(cw.diff == (41.0, 35.0, 85.0, 4.0) && cd.diff == (41.0, 75.0, 60.0, 4.0), "diff from the Differential block (WW 35/85, default 75/60)")
 check(cw.toe[1] < 0 && cd.toe[1] < 0 && cw.toe[1] < cd.toe[1] && cw.toe[2] > cd.toe[2] > 0, "toe: WW more front toe-out and more rear toe-in than the default")
-check(cw.karb == DriveRT3D.ARB_ID[("0.375\" 5", "0.6875\" firm")] && cd.karb == DriveRT3D.ARB_ID[("0.375\" 2", "0.6875\" 5")] &&
-      sum(cw.karb) > sum(cd.karb), "bars: identified values, WW stiffer")
+# PHYSFID-1 S9: the identified TOTALS are kept and split 46 % front (JM_PHYSFID_S9=0: the table's pairs as they are)
+_kw = DriveRT3D.ARB_ID[("0.375\" 5", "0.6875\" firm")]; _kd = DriveRT3D.ARB_ID[("0.375\" 2", "0.6875\" 5")]
+check(isapprox(sum(cw.karb), sum(_kw)) && isapprox(sum(cd.karb), sum(_kd)) &&
+      (DriveRT3D.PHYSFID_S9 ? (isapprox(cw.karb[1]/sum(cw.karb), 0.46) && isapprox(cd.karb[1]/sum(cd.karb), 0.46)) : (cw.karb == _kw && cd.karb == _kd)) &&
+      sum(cw.karb) > sum(cd.karb), "bars: identified totals, split 46 % front (PHYSFID-1 S9), WW stiffer")
 check(cw.cscale == (1.0, 1.15) && cd.cscale == (1.0, 1.0), "dampers: WW measured ratio, default unscaled")
 check(cw.bias > cd.bias && abs(cd.bias - 0.585) < 1e-9, "brake split: 53.5 % -> 0.585 (BRAKE-2), 54 % slightly more front")
 check(cw.camber !== nothing && cd.camber !== nothing && all(isapprox.(rad2deg.(cw.camber), (-0.4, 0.0, -0.4, 0.2); atol = 0.051)) &&

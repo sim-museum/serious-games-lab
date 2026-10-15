@@ -26625,3 +26625,24 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   setup) and S5 (WW drive short): **the WW setup's mapping to julia's chassis** (bars "firm"/arms, 18 N/mm front springs,
   ramps 35/85) is where the model is least physical -- exactly what SETUPMODEL-1's garage capture identifies. Not
   shipped; the physical values are kept here for when the WW mapping is fixed (`JM_IRG_PARAMS="claf=-0.06,clar=-0.08"`).
+
+### PHYSFID-1 S9 (2026-10-15): SHIPPED -- measured aero lift (front −0.06, rear −0.04) + the bars' split 46 % front
+* Why S8's physical lift lost on WW Glen: with the bars' front/rear split as the table had it (by diameter⁴: ~8 % front,
+  the total identified from the roll gradient, the split never identifiable through the car) the WW car turned too freely
+  at speed. WW-only judge, physical lift: bars 1,758/19,940 N/m (today) WW Glen 1.451, slalom 1.090; 6,000/15,698 0.994,
+  1.026; **10,000/11,698 0.916, 0.986** (current car: 0.899, 0.995).
+* New `JM_ARB_FRONT_SHARE` redistributes each setup's identified TOTAL. Full judge with ClAf −0.06/ClAr −0.08: share
+  0.46 → J **1.0364**, 0.30 → 1.0452 (current 1.0373). Better: T9 Glen 0.766 → 0.729, T2 slalom 0.637 → 0.593, WW slalom,
+  both flicks; worse: starts 1.463 → 1.547, bias58 0.073 → 0.091.
+* **Stability suite: the rear lift −0.08 SPUN the default car** in the 250 km/h trail-brake with 2.5° turn-in (β 23.6°
+  at 0.4 pedal, penalty 51; with the old 8 % split, penalty 965). The old lift + share 0.46: penalty 0, J 1.0369.
+  **ClAf −0.06, ClAr −0.04, share 0.46: J 1.0346 (best of all), stability penalty 0 on both setups.** Shipped.
+* In the code: `PHYSFID_S9` (powertrain.jl: `AERO_CLAF` −0.06, new `AERO_CLAR` −0.04, now wired to the body's ClAr);
+  drive_rt3d.jl `chassis_from_setup` applies the 0.46 front share. **`JM_PHYSFID_S9=0` restores −0.12 / 0 and the table's
+  split.** The front lift is measured; the rear is half the measured (the rest spins the default car under trail braking
+  -- a sign the rear's grip at speed is still short somewhere, logged); the split is judged until SETUPMODEL-1 B9/B10
+  measures it in the garage.
+* Gates (s59): 60 of 61 pass; `carsetup_smoke` failed on its exact-pair assertion for the bars (S9 redistributes the pair
+  by design) -- now asserts the identified totals, the 46 % split under S9 (the exact pairs with JM_PHYSFID_S9=0) and WW
+  stiffer: PASS. `td261013_smoke` gains two PHYSFID-1 S9 checks (the lift constants wired to the body, the 0.46 share):
+  ALL PASS.

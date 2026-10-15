@@ -49,7 +49,15 @@ const CRR_IBT = 0.0139
 # (39 of 39 sessions' straights pooled: dF/dq −0.29 m² incl. the drag/thrust couple; on flat Monza/Charlotte −0.10..−0.27),
 # 261012/tools/aerolift.py; −0.12 reproduces flat Monza's +7..+10 mm of front wheel droop at 216 km/h in the sim (no lift:
 # −2 mm). The rear is neutral within its scatter. ~260 N of lift at 216 km/h, ~480 N at 300.
-const AERO_CLAF = -0.12
+# PHYSFID-1 S9 (2026-10-15): both axles' lift MEASURED, per speed band and per setup, from the gold's axle heave against
+# julia's on the same inputs (tools/irgold_replay.jl g_hF/s_hF/g_hR/s_hR, straight running): ClAf −0.06, ClAr −0.08
+# reproduce iRacing's front droop AND rear squat at 160-280 km/h for both setups (−0.12 front / 0 rear lifted the nose
+# too far and squatted the tail 2-5 mm too much). Shipped rear −0.04, half the measured lift: −0.08 spun the default car
+# in the stability suite's 250 km/h trail-brake (β 20-24°, penalty 51); −0.04 passes both setups and judges best
+# (closed loop J 1.0346 vs 1.0373 before S9). JM_PHYSFID_S9=0 restores −0.12 / 0 (and the bars' split, drive_rt3d).
+const PHYSFID_S9 = get(ENV, "JM_PHYSFID_S9", "1") != "0"
+const AERO_CLAF = PHYSFID_S9 ? -0.06 : -0.12
+const AERO_CLAR = PHYSFID_S9 ? -0.04 : 0.0
 # WWSETUP-1 (2026-10-06): the rear LSD (DrivenVehicle3D `diff`). LSD_K = friction faces × μ × radius ratio per
 # clutch plate, the one constant the iRacing garage does not show; identified from the gold's rear wheel-speed split
 # with both setups' ramps on the same value (tools/lsdfit_261005.jl). LSD_WEPS = the stick-slip regularisation [rad/s].
