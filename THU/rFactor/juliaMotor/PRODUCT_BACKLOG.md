@@ -26585,3 +26585,22 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   2.8 s, WG 4.4 → 2.4 s, Zandvoort 4.8 → 3.1 s.
 * E80 so far today: Spa launch 211 → ~164 s, WG 164 → ~132 s.
 * Gates (s57): **ALL 61 PASS** (`GATES_SKIP=road_clear_smoke`).
+
+### E80-S12 (2026-10-15): LOWERING, the launch cost nobody's timer saw -- the object block split (−5.5 s); main() is 20 s of it
+* The "horizon ring" phase (11-12 s at Spa) is not the horizon: timed inside, `build_horizon_3do` is 1.4 s (14 textures
+  decoded 1.1 s, uploaded 0.2 s). The rest is **lowering**: lines 6888-10075 were ONE top-level statement
+  (`if SKIDPAD || … else <the whole object build> end`, 3,188 lines), and Julia lowers a top-level statement whole before
+  its first line runs. `Meta.lower` timed per statement: **10.9 s** for it; **20.1 s for `function main()`** (evaluated
+  after the "main() defined" stamp -- the 20 s that main()'s gap had and the compile counter did not); 1.35 s for the
+  1,293-line track-parse block. Julia's compile timer does not count lowering.
+* Fix: a top-level `if` is no scope, so the object build is the same code split into consecutive
+  `if !_OBJ_SKIP … end` statements (`const _OBJ_SKIP`) at statement boundaries: lowering 10.9 → 5.9 s (left: the build's
+  2,150-line `let` block, 5.4 s -- one scope, its locals shared, not splittable by text). Measured: Spa horizon→objects
+  12.2 → 5.6 s; obstacle fingerprints identical (Spa, WG). Launch now **Spa 163 s, WG 128 s** (this morning 211 / 164).
+* **main()'s lowering scales superlinearly:** its setup statements alone (~2,000 lines) lower in 5.7 s, setup + the game
+  loop 17.4 s, the whole 19.5 s; it holds **104 closures and 131 comprehensions/generators**, each analysed against the
+  enclosing scope's variables. Splitting the loop out of main() would cut it (the next E80 lever, a real refactor: the
+  loop shares hundreds of locals with the setup). Lowering cannot be cached by any package image -- only smaller scopes
+  help.
+* E80 rotates after S8-S12 this cycle (Spa −48 s, WG −36 s).
+* Gates (s58): **ALL 61 PASS** (`GATES_SKIP=road_clear_smoke`).

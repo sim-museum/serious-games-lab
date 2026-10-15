@@ -6885,7 +6885,12 @@ end
 # Metz/Esch/bridge buildings) that this skip discarded -- the PO's "gold standard has many more
 # trackside objects than current julia ring". gpl_scenery() still supplies the landmass and the
 # .dat sprite stubs. JM_RING_OBJECTS=0 restores the old empty Ring.
-if SKIDPAD || (NURB && get(ENV, "JM_RING_OBJECTS", "1") == "0")
+# E80-S12 (2026-10-15): this block was ONE 3,188-line top-level statement (if ... else <the whole object build> end),
+# and Julia LOWERS a top-level statement whole before running its first line: 10.9 s of every launch, uncounted by the
+# compile timer (lowering cost grows faster than size: 1,293 lines lower in 1.35 s). A top-level `if` is not a scope,
+# so the object build is the same code split into consecutive `if !_OBJ_SKIP` statements.
+const _OBJ_SKIP = SKIDPAD || (NURB && get(ENV, "JM_RING_OBJECTS", "1") == "0")
+if _OBJ_SKIP
     global OBJECTS = Any[]; global OBJNODE = Int[]
     global BILLBOARDS = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32}[]
     global STATICTREES = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32,Float32}[]
@@ -9309,6 +9314,8 @@ end
 # road (the widest asphalt strip of the section, not lateral 0: Monza's line runs off the road at s~441). An
 # obstacle is a near-vertical track-mesh face >= GPLW_HMIN tall whose bottom is within car height of the ground
 # (a bridge deck overhead is not one), or a drawn trackside object. Covered = some SOLID's boundary within 0.3 m.
+end
+if !_OBJ_SKIP   # E80-S12: the object build continues (one top-level statement per ~300 lines, see above)
 const GPLW_NODEGRID = let g = Dict{Tuple{Int,Int},Vector{Int}}()
     for (k, p) in enumerate(GPLREF); push!(get!(g, (floor(Int, p[1]/16), floor(Int, p[2]/16)), Int[]), k); end
     g
@@ -9611,6 +9618,8 @@ function _gv_lead(v::BitVector, lead)
     end
     w
 end
+end
+if !_OBJ_SKIP   # E80-S12: the object build continues (one top-level statement per ~300 lines, see above)
 const OBJVIS = Union{Nothing,BitVector}[(GPLVIS_ALL || (GPLVIS_VEIL && isveil(OBJECTS[k][5]))) ?
                                          (v = get(GPLVIS_VIS, OBJNODE[k], nothing); v === nothing ? nothing :
                                           _gv_bridge(_gv_lead(v, _gv_leadfor(OBJECTS[k][5])))) : nothing
@@ -9949,6 +9958,8 @@ end
 # E108-S10 probe: JM_RIBBON_VS_GPL=1 -- the road-rounding target (RIBBON0) against GPL's own road centre (registered .trk
 # asphalt strip), every ribbon node: lateral difference, and its wiggle (difference minus its +-25 m running mean).
 # Probe JM_SHIFT_DUMP=<file>: the re-centre shift per .trk node (m to the LEFT) with its station along ALIGNED0.
+end
+if !_OBJ_SKIP   # E80-S12: the object build continues (one top-level statement per ~300 lines, see above)
 if haskey(ENV, "JM_SHIFT_DUMP")
     open(ENV["JM_SHIFT_DUMP"], "w") do io
         acc = 0.0
