@@ -26728,3 +26728,13 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   at frame 129). Fixed: `precompile(carhit_damage!, …)` at load + one new statement merged into warm_statements.jl
   (its log line's print) -- warm_smoke: **PASS, 0.0 ms compiling inside the race**. Pitfall documented in warmgen.py:
   a regeneration from a current trace keeps only the NEW statements (2 of 37) -- merge, don't replace.
+
+### E80-S14 (2026-10-15): pre-lowering the object block too -- no net gain, reverted; E80 rotates
+* Remaining lowering after S12/S13 (every top-level statement timed): the object build's first statement 5.4 s, the
+  track-parse block 1.3 s, all others < 0.6 s (9.5 s total over 923 statements).
+* Tried: the object statement held as a quote and lowered by the same background task, before main(). Its own gap
+  went 5.9 → 0.5 s, but the phases before it ran ~9 s slower (horizon at 90.0 s vs 81.1 s) -- the longer background
+  job contends with the main thread's loading (as S13's first placement did). Spa 147.4 s both ways: reverted.
+* E80 after S8-S14: **Spa 211 → ~148 s, WG 164 → ~128 s**. What is left is main()'s own compile (~28 s; inference +
+  LLVM of one 4,873-line function) and real work (object placement, textures). Next lever, a real refactor: split the
+  game loop out of main() (smaller functions compile/lower faster, and cold paths could be compiled on first use).
