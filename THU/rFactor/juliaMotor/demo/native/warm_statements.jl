@@ -38,3 +38,4 @@ precompile(Tuple{typeof(Base.println), String, Int64, String, Int64, String, Int
 precompile(Tuple{typeof(Base.print), Base.IOStream, String, Int64, String, Int64, String, Int64, String, String, String, Vararg{Any}})
 precompile(Tuple{typeof(Main.car_contact_impulse), Vararg{Float64, 10}})
 precompile(Tuple{typeof(Main.bumpX!), JRPhysics.DriveRT3D.Car3D, Float64, Float64, Float64})
+precompile(Tuple{typeof(Base.print), Base.IOStream, String, Float64, String, Float64, String, Array{Float64, 1}, String, Float64, String})

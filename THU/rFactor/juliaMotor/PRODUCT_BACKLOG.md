@@ -26710,3 +26710,21 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
 * **Spa, `-t 2` as the launcher: 162.2 s (`JM_PRELOWER=0`) → 147.6 / 147.5 s (two runs)**; main()'s gap 48 → 28 s
   (its compile alone). E80 today: Spa 211 → 148 s, about −30 %.
 * Gates (s61): **ALL 61 PASS** (`GATES_SKIP=road_clear_smoke`; warm_smoke runs `-t 2`, so the pre-lowered path is exercised; the single-thread gates take the fallback).
+
+### CARINTERACT-1 S1 (2026-10-15): a car-to-car hit now damages your car -- no more free "bumper cars"
+* Retro: contact between cars was HANDLING-1 S3's rigid-body impulse (both cars pushed, an FF kick, the kinematic AI
+  holding its line with a bounded nudge), but `damage_impact!` ran only on scenery/wall contact (E94-P4) -- shoving an
+  AI car aside cost the player NOTHING, which is the PO's "every incentive to knock other cars out of the way".
+* Fix: `carhit_damage!` on every closing car-to-car impulse (AI and networked cars): closing speed from the impulse
+  (as netcollide's diag), the push turned world → body exactly as solid_contact's force, then the SAME damage law as a
+  wall -- the corners facing the blow, onset 3 m/s (11 km/h) per corner, 8 m/s for the engine, saturating; a rub costs
+  nothing. `[carhit]` log line per damaging hit. `JM_CARHIT_DAMAGE=0` reverts.
+* Seen (WG race start, 5 AI, autodriving player, `-t 2`): 8 hits at 3.1-12.4 m/s closing; the FRONT corners take them
+  (the player rear-ending -- the side facing the blow), damage FL/FR 0.08 → 0.59/0.64, engine 0.19 after the 12 m/s hit.
+  `JM_CARHIT_DAMAGE=0`: no damage lines.
+* Not yet: the AI cars take no damage (kinematic AI); iRacing's own law (incident points, repair time, how hard a touch
+  feels) comes from IRTEST-261015 Part 2 test 4. The draft is the next PO-free step (julia: 45 % drag cut within 26 m).
+* Gates (s62): 60 of 61 pass; `warm_smoke` failed -- the first car hit compiled `carhit_damage!` mid-race (108 ms stall
+  at frame 129). Fixed: `precompile(carhit_damage!, …)` at load + one new statement merged into warm_statements.jl
+  (its log line's print) -- warm_smoke: **PASS, 0.0 ms compiling inside the race**. Pitfall documented in warmgen.py:
+  a regeneration from a current trace keeps only the NEW statements (2 of 37) -- merge, don't replace.

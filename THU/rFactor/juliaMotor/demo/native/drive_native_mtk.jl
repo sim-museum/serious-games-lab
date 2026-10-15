@@ -412,6 +412,26 @@ const CAR_M = 617.0; const CAR_IZZ = 890.0; const CAR_E = 0.12; const CAR_MU = 0
 r; the other car's centre (qx,qz) and world velocity (avx,avz), assumed not rotating and of equal mass. Returns
 (dvx, dvz, dr, jn) -- the player's world velocity and yaw-rate changes and the normal impulse [N·s] -- or nothing when
 the bodies are separating."""
+# CARINTERACT-1 (PO 2026-10-15: julia allows "bumper cars" -- "every incentive to knock other cars out of the way
+# because there's no downside"): a car-to-car hit pushed both cars (HANDLING-1's rigid-body impulse) but DAMAGED
+# NEITHER -- damage_impact! ran only on scenery/wall contact (E94-P4). Now the player's car takes the same damage law
+# from the closing speed of a car hit as from a wall: the corners facing the blow, 3 m/s (11 km/h) onset per corner, 8 m/s
+# for the engine, so a rub costs nothing and a shove bends something. The push direction converts world -> body exactly
+# as solid_contact's force does. JM_CARHIT_DAMAGE=0 reverts. iRacing's own law: IRTEST-261015 test 4.
+const CARHIT_DAMAGE = get(ENV, "JM_CARHIT_DAMAGE", "1") != "0"
+const CARHIT_N = Ref(0); const CARHIT_MAX = Ref(0.0)
+function carhit_damage!(cs, pdvx, pdvz, j)
+    (CARHIT_DAMAGE && CAR3D && !WRECKED[]) || return nothing
+    closing = j/((1 + CAR_E)*CAR_M/2)                 # the pair's closing speed along the normal (as netcollide)
+    closing > 0.0 || return nothing
+    cθ = cos(cs.θ); sθ = sin(cs.θ)
+    fxb = pdvx*cθ + pdvz*sθ; fyb = -pdvx*sθ + pdvz*cθ  # the push on the player, body frame
+    DriveRT3D.damage_impact!(fxb, fyb, closing)
+    CARHIT_N[] += 1; CARHIT_MAX[] = max(CARHIT_MAX[], closing)
+    closing > DriveRT3D.DMG_ONSET_MS && println("  [carhit] t=", round(cs.t, digits = 2), " closing ", round(closing, digits = 2),
+                                               " m/s  damage ", round.(DriveRT3D.DAMAGE, digits = 3), " engine ", round(DriveRT3D.ENGINE_DAMAGE[], digits = 3))
+    nothing
+end
 function car_contact_impulse(px, pz, θ, pvx, pvz, r, qx, qz, avx, avz)
     dx = qx - px; dz = qz - pz; d = hypot(dx, dz); d < 1e-6 && return nothing
     nx = dx/d; nz = dz/d                                         # normal, player -> other
@@ -11571,6 +11591,7 @@ SKIDPAD || wheel_mu(0.0, 0.0, 1.0, 0.0, 1.314, 0.75)   # compile now, behind the
 # PERF-3 S4: the other first-use compiles left mid-race (trace, Watkins Glen): the first collision (80 ms) and the
 # first text draw (69 ms). precompile() compiles without running, so no physics or GL state is touched.
 precompile(JRPhysics.DriveRT3D.damage_impact!, (Float64, Float64, Float64))
+precompile(carhit_damage!, (JRPhysics.DriveRT3D.Car3D, Float64, Float64, Float64))   # CARINTERACT-1: the first car hit compiled mid-race (warm_smoke: 108 ms)
 precompile(Render.text_draw, (UInt32, UInt32, UInt32, Render.Font, Vector{Float32}, Int, Int))
 # GPLWALL-1: the first wall hit must not hitch -- a long first-contact frame was read as a teleport (2026-10-01)
 if GPLW_ON
@@ -15359,6 +15380,7 @@ function main()
                 imp === nothing && continue                   # separating → no new impulse (the contact kick already fired)
                 (pdvx, pdvz, pdr, j) = imp
                 bumpX!(cs, pdvx, pdvz, pdr)
+                carhit_damage!(cs, pdvx, pdvz, j)              # CARINTERACT-1: a car hit costs YOU, as a wall does
                 ffb_jolt = clamp(ffb_jolt - sign(lat)*(j/pm)*0.4 - 0.5, -1.0, 1.0)   # a CLOSING hit adds a bigger kick
                 if AI_PHYSICS                                  # the AI is a real physics car → impulse it too
                     alat = -dx*sin(aθ) + dz*cos(aθ)
@@ -15398,6 +15420,7 @@ function main()
                 imp === nothing && continue                   # HANDLING-1 S3: the same rigid-body impulse as the AI contact
                 (pdvx, pdvz, pdr, j) = imp
                 bumpX!(cs, pdvx, pdvz, pdr)
+                carhit_damage!(cs, pdvx, pdvz, j)              # CARINTERACT-1: the other human's car too
                 vrel = j/((1 + CAR_E)*CAR_M/2); scrub = 0.0   # (the diag line below: closing speed, no separate scrub any more)
                 ffb_jolt = clamp(ffb_jolt - sign(lat)*(j/pm)*0.4 - 0.5, -1.0, 1.0)
                 NET_HITS[] += 1

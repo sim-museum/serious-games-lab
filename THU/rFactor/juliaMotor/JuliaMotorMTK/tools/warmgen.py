@@ -8,6 +8,10 @@ writes them as a list the sim compiles during loading (drive_native_mtk.jl, PERF
 closure of our own code (Main/GPLAI/JRPhysics/... var"#...") are dropped: their names change with every edit, so they would only fail.
 
 usage: warmgen.py OUT.jl TRACE.jl [TRACE.jl ...]
+
+MERGE, DO NOT REPLACE: a trace of the CURRENT sim no longer shows what the warm list already compiles before the reveal,
+so OUT.jl regenerated from it alone keeps only the new statements (CARINTERACT-1, 2026-10-15: 2 of 37). Write to a
+scratch file and append the new lines to demo/native/warm_statements.jl, or trace with the warm-up disabled.
        a trace with no marker contributes nothing (say so loudly rather than guess a boundary)
 """
 import re, sys
