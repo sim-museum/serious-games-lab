@@ -19,3 +19,42 @@ Car: Lotus 49. Record telemetry (Alt+L) for every test. Wheel settings as usual 
    - Same straight: at about 250 km/h lift completely (clutch engaged, no brake) and coast down to 100 km/h in gear.
      Twice per setup.
    Why: separates the drivetrain's losses under power from its losses under engine braking.
+
+----------------------------------------------------------------------------------------------------------------------
+PART 2 (added 2026-10-15): how iRacing handles OTHER CARS -- contact and drafting (CARINTERACT-1)
+julia today: contact between cars has almost no downside ("bumper cars"); the draft is a fixed rule (up to 45 % less
+drag within 26 m behind a car, 2.8 m either side). iRacing is the reference for both.
+
+Setting up an AI race in iRacing (check each step on screen -- the menus change between iRacing builds):
+  * Main menu: "Play" (or "Race") -> "AI Racing" -> "Create a Race". The car list there shows only AI-enabled cars:
+    look for the Lotus 49. If it is NOT offered, use the closest open-wheeler that is (e.g. a Formula Vee or Skip
+    Barber) and say which -- contact and draft behaviour is still iRacing's, the numbers then belong to that car.
+  * Track: any AI-enabled config you own -- preferably Monza (a long straight for the draft test) or Watkins Glen.
+    The track list in Create a Race is also filtered to AI-enabled configs.
+  * SLOWING THE AI: the "Opponents" step has an AI strength / skill range slider -- set it to the LOWEST values so the
+    AI lap well below your pace. The AI roster editor (Create a Race -> roster -> edit drivers) also has per-driver
+    Skill and Aggression sliders; set 2-3 drivers to minimum skill and low aggression. Ask for 3-5 AI cars.
+  * Sessions: add a Practice session (AI run in it too) -- it is the calmest place to catch and touch cars.
+  * Damage: leave damage ON (realistic) so contact has its consequences. Record telemetry (Alt+L) throughout.
+
+4. Contact (about 10 min, practice session)
+   a. Light nudge: catch a slow AI car on a straight, match its speed, then touch its gearbox with your nose at a
+      closing speed of about 5 km/h. Back off. Repeat at about 15 km/h. Note on screen any damage/repair message.
+   b. Side-by-side: run alongside an AI car and lean into it gently for 1-2 s (wheel-to-wheel touch).
+   c. A harder hit (optional, last): about 30 km/h closing into the back of a slow AI car.
+   After each, drive one slow lap: does the car pull to one side, is anything bent, did the incident counter move
+   (iRacing shows 0x/1x/2x/4x)? Say what you saw in a sentence per test (voice note or text is fine).
+   Why: the .ibt records our car's accelerations at each touch, the incident count (PlayerCarMyIncidentCount) and any
+   repair time (PitRepairLeft); with your notes that gives iRacing's contact law (how hard a touch is felt, what it
+   costs), which julia then copies -- touching cars should hurt you as it does in iRacing.
+
+5. Drafting and slingshot (about 10 min, Monza's main straight or the back straight)
+   a. Alone: two full-throttle runs down the straight from the same corner exit, nobody within 100 m. (Baseline.)
+   b. Behind: follow an AI car (slowest skill) out of the same corner and stay directly behind it down the straight,
+      gap as small as you dare, two runs. Then pull out to the side about 50 m before the braking point (slingshot).
+   c. Gap steps: one run each sitting about 10, 20 and 40 m behind.
+   Why: the .ibt holds the gap to the car ahead (CarDistAhead) and our speed/acceleration; the speed gained against
+   the lone runs, by gap and by sideways offset, is iRacing's draft -- julia's 26 m / 45 % rule is then fitted to it.
+
+(Online alternative if the Lotus 49 has no AI: a hosted session with one friend in Lotus 49s does both tests the
+same way -- the friend drives slowly and holds a straight line.)
