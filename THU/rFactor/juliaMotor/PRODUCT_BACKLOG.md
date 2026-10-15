@@ -26409,3 +26409,20 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
 * Measured for S2 ("inert"), same inputs: julia's yaw rate lags the gold's by ~17 ms (median; p75 33 ms) and reaches
   0.90 of it (median gain over 163 dynamic windows) -- 10 % less turn for the same steering.
 * Gates (s48): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).
+
+### PHYSFID-1 S2 (2026-10-14): "inert" -- the front's cornering stiffness
+* Measure: the gold's own inputs into julia (irgold_replay, `JM_IRG_DUMP`, 228 windows), yaw gain = sim/gold yaw rate per
+  sample: 0.96-0.97 under 0.5 g, 0.91-0.93 to 1.25 g, 0.70 at the limit; by speed 0.96 / 0.92 / **0.77 above 150 km/h**
+  -- and 0.78 there even under 0.25 g: linear-range understeer at speed, not grip. Yaw lag only ~17 ms.
+* Variants (open loop, yaw error % of gold RMS, base 29 %): front μ +10 % (1.54) 25 % -- gain ~1 to 1.25 g but 0.81 at
+  speed; no front lift 27 %; both 27 % (β worse); **front Cα 23 → 27: 27 %, gain 0.96-1.03, 0.91 at speed**; + no lift
+  26 % (0.99 at speed); yaw inertia 850 kg·m²: no change.
+* The judge (fresh closed-loop evaluations, all sessions incl. 261012, S19's lesson): base 1.0514; μf 1.54 1.0661; Cαf
+  25 / **26** / 27 / 30: 1.0384 / **1.0373** / 1.0398 / 1.0729; Cαf 27 + no lift 1.1034; Cαf 27 + μf 1.54 1.1429. The
+  measured front lift stays.
+* **Shipped: front Cα 26** (`JM_PHYSFID_S2=0` = 23; `JM_TYRE3_CAF` / `JM_TYRE3_MUF` / `JM_TYRE3_MUR` override). Yaw gain
+  0.99-1.01 to 0.75 g, 0.96 to 1.25 g, 0.75 at the limit (0.70), **0.88 above 150 km/h (0.77)**; stability suite penalty 0
+  on both setups (trail braking at 0.4 pedal 10.6° / 13.2°, was 9.1° / 11.2°).
+* (Checked on the way: the stability suite without `JM_STAB_IBT` reports 1,259 for any car -- it then runs the old
+  skidpad template; the setups' suites pass.)
+* Gates (s49): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).
