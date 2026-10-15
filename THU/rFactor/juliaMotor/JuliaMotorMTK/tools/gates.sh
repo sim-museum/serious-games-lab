@@ -19,7 +19,7 @@ FILTER="${1:-}"
 # GATES_SKIP="a b": gates NOT run, listed as SKIPPED (never counted as passes). road_clear_smoke is run only on the
 # PO's request (it has run the machine out of memory), so autonomous sprints use GATES_SKIP=road_clear_smoke.
 SKIP=" ${GATES_SKIP:-} "; skipped=""
-SMOKES="parse_smoke gplwall_smoke wreck_smoke contact_smoke stacked_contact_smoke solid_box_smoke ai_parked_susp_smoke boundary3d_smoke extforce3d_smoke wheelmu_smoke drive3d_smoke stall_smoke transmission_smoke controls_smoke people_smoke damage_smoke mipcolor_smoke ai_field_smoke susp_pose_smoke netplay_smoke setup_tab_smoke offroad_smoke wreck_seal_smoke reground_smoke netplay_dr_smoke netplay_dr2_smoke hat_hole_smoke clutchgate_smoke contact_geom_smoke lapprog_smoke restart_smoke softband_smoke vtbrake_smoke netai_smoke netai_host_smoke racestart_smoke step_guard_smoke road_clear_smoke telemetry_rpm_smoke wheel_hubs_smoke seam_smoke gplroad_smoke gpldlat_smoke gplplan_smoke carsetup_smoke netcollide_smoke launcher_smoke texcold_smoke trackseg_smoke tyrepanel_smoke trackguide_smoke steercol_smoke brakesys_smoke travelstop_smoke throttlemap_smoke trackrange_smoke tracksigns_smoke relax_smoke ctrlcal_smoke td261013_smoke warm_smoke"
+SMOKES="parse_smoke gplwall_smoke wreck_smoke contact_smoke stacked_contact_smoke solid_box_smoke ai_parked_susp_smoke boundary3d_smoke extforce3d_smoke wheelmu_smoke drive3d_smoke stall_smoke transmission_smoke controls_smoke people_smoke damage_smoke mipcolor_smoke ai_field_smoke susp_pose_smoke netplay_smoke setup_tab_smoke offroad_smoke wreck_seal_smoke reground_smoke netplay_dr_smoke netplay_dr2_smoke hat_hole_smoke clutchgate_smoke contact_geom_smoke lapprog_smoke restart_smoke softband_smoke vtbrake_smoke netai_smoke netai_host_smoke racestart_smoke step_guard_smoke road_clear_smoke telemetry_rpm_smoke wheel_hubs_smoke seam_smoke gplroad_smoke gpldlat_smoke gplplan_smoke carsetup_smoke netcollide_smoke launcher_smoke texcold_smoke trackseg_smoke tyrepanel_smoke trackguide_smoke steercol_smoke brakesys_smoke travelstop_smoke throttlemap_smoke trackrange_smoke tracksigns_smoke relax_smoke ctrlcal_smoke td261013_smoke jrrender_smoke warm_smoke"
 
 # OFFROAD-1 (S12, 2026-09-17): offroad_track_smoke is in the gproj list above but deliberately NOT
 # in SMOKES -- it is parked red on purpose (OFFROAD-1 S2-S5: "parking a permanently-red gate in the
@@ -50,6 +50,9 @@ done
 
 pass=0; fail=0; failed=""
 echo "JuliaMotorMTK gates  (project: $PROJ)"
+# E80-S10 (2026-10-15): the smoke runs record .ibt files to $TMPDIR/jm_smoke_rec and nothing pruned them -- 416 MB
+# on the 7.6 GB /tmp tmpfs helped fill it, and a full /tmp fails gates with EMPTY logs (s55: 7 of 61). Keep the last hour.
+find "${TMPDIR:-/tmp}/jm_smoke_rec" -maxdepth 1 -name '*.ibt' -mmin +60 -delete 2>/dev/null
 [ -n "$unlisted" ] && echo "  NOTE: in tools/ but not in SMOKES, so NOT run by this suite:$unlisted"
 for g in $SMOKES; do
   [ -n "$FILTER" ] && case "$g" in *"$FILTER"*) ;; *) continue ;; esac
@@ -59,7 +62,7 @@ for g in $SMOKES; do
   printf "  %-22s " "$g"
   # Gates that go through demo/native/render.jl (extract_gpl_car) need the app's project, which
   # carries GLFW/ModernGL; the physics project does not. susp_pose_smoke failed on exactly that.
-  gproj="$PROJ"; case "$g" in susp_pose_smoke|netplay_smoke|setup_tab_smoke|reground_smoke|netplay_dr_smoke|netplay_dr2_smoke|wheel_hubs_smoke|offroad_track_smoke|seam_smoke|gplroad_smoke|gpldlat_smoke|gplplan_smoke|gplwall_smoke|texcold_smoke) gproj="$PROJ/../demo/native" ;; esac
+  gproj="$PROJ"; case "$g" in susp_pose_smoke|netplay_smoke|setup_tab_smoke|reground_smoke|netplay_dr_smoke|netplay_dr2_smoke|wheel_hubs_smoke|offroad_track_smoke|seam_smoke|gplroad_smoke|gpldlat_smoke|gplplan_smoke|gplwall_smoke|texcold_smoke|jrrender_smoke) gproj="$PROJ/../demo/native" ;; esac
   # road_clear_smoke sweeps Spa and the Ring end to end (four census runs): ~15 min alone on this box,
   # so it gets its own cap; everything else stays at 900 s.
   tmo=900; case "$g" in road_clear_smoke|gplwall_smoke|netcollide_smoke) tmo=1800 ;; esac   # netcollide: two sims

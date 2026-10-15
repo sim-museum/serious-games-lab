@@ -2,7 +2,7 @@
 
 julia_version = "1.12.6"
 manifest_format = "2.0"
-project_hash = "c9f47d323393705272737513f18778fbeb7aeffc"
+project_hash = "2ece63a8e300f6033c432855642ef78ef5326616"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "bbc22a9a08a0ef6460041086d8a7b27940ed4ffd"
@@ -854,6 +854,12 @@ version = "1.8.0"
 deps = ["ModelingToolkit", "OrdinaryDiffEq", "PrecompileTools", "SampledSignals"]
 path = "../../JRPhysics"
 uuid = "7c3b1a52-9e4d-4f61-b0a8-2d5e6f7a8b91"
+version = "0.1.0"
+
+[[deps.JRRender]]
+deps = ["GLFW", "JuliaMotor", "LinearAlgebra", "ModernGL", "PrecompileTools", "RFactorData", "StaticArrays"]
+path = "../../JRRender"
+uuid = "5f0e2b8c-1d3a-4e7f-9a6b-c4d2e8f1a0b3"
 version = "0.1.0"
 
 [[deps.Jieko]]

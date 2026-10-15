@@ -120,7 +120,7 @@ STAMP_DST="$W/.build-stamp"
 if [ -f "$STAMP_SRC" ] && ! cmp -s "$STAMP_SRC" "$STAMP_DST" 2>/dev/null; then
   echo "Updating game code from this AppImage ($(cat "$STAMP_SRC"))..." >&2
   ok=1
-  for d in demo JuliaMotor JuliaMotorMTK RFactorData RFactorTelemetry JRPhysics; do   # PHYSPRE-1: JRPhysics is new (and RFactorTelemetry was never refreshed)
+  for d in demo JuliaMotor JuliaMotorMTK RFactorData RFactorTelemetry JRPhysics JRRender; do   # PHYSPRE-1: JRPhysics is new (and RFactorTelemetry was never refreshed); E80-S10: JRRender
     [ -d "$HERE/usr/share/julia/juliaMotor/$d" ] || continue
     rm -rf "$W/THU/rFactor/juliaMotor/.new_$d"
     if cp -a "$HERE/usr/share/julia/juliaMotor/$d" "$W/THU/rFactor/juliaMotor/.new_$d"; then
@@ -177,6 +177,6 @@ if command -v bwrap >/dev/null && [ "${JR_NO_INSTALL_PRECOMPILE:-0}" = 0 ]; then
   mkdir -p "$INST"
   bwrap --dev-bind / / --bind "$APP/usr/share/julia/juliaMotor" "$INST" \
     env PATH="$APP/usr/share/julia/depot/$RTREL/bin:$PATH" JULIA_DEPOT_PATH="$APP/usr/share/julia/depot:" \
-    julia --project="$INST/demo/native" -e 'using Pkg; Pkg.precompile(); using JRPhysics, JuliaMotor, RFactorData; println("   install-path caches OK")'
+    julia --project="$INST/demo/native" -e 'using Pkg; Pkg.precompile(); using JRPhysics, JRRender, JuliaMotor, RFactorData; println("   install-path caches OK")'
 fi
 echo ">> AppDir ready: $APP  ($(du -sh "$APP" | cut -f1))"

@@ -30,9 +30,18 @@ include(joinpath(@__DIR__,"gpl_lp.jl")); using .GPLLP                    # E84/E
 include(joinpath(@__DIR__,"susp_pose.jl")); using .SuspPose
 include(joinpath(@__DIR__,"wreck_seal.jl")); using .WreckSeal   # E103: where a wreck is sealed, shared with its gate             # E82: rear-suspension corrective transform, shared with its gate  # full-3D physics (JM_3D=1)
 include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","ibt.jl"))); using .IBT           # iRacing .ibt telemetry writer
-include("render.jl"); using .Render
-include("gpltrack.jl"); using .GPLTrack
-include("gplwall.jl"); using .GPLWall
+# E80-S10: the render/track modules come from the JRRender PACKAGE (its image caches their compiled code: Spa launch
+# −14 s measured); JM_RENDER_INCLUDE=1 loads the loose files instead, with their module-level ENV knobs live.
+if get(ENV, "JM_RENDER_INCLUDE", "0") != "0"
+    include("render.jl"); using .Render
+    include("gpltrack.jl"); using .GPLTrack
+    include("gplwall.jl"); using .GPLWall
+    include(joinpath(@__DIR__, "roadcurve.jl")); using .RoadCurve   # ROADCURVE-1 (needs Render as a sibling)
+else
+    using JRRender
+    using JRRender: Render, GPLTrack, GPLWall, RoadCurve
+    using .Render, .GPLTrack, .GPLWall, .RoadCurve
+end
 """E107-S7: refit polyline A (GPL's aligned .trk centreline) onto B (our re-centred line, same indexing) by least
 squares: rotation + uniform scale + translation. The result is GPL's reference line where its .lp records and its
 .trk walls land on the drawn road (E107-S8 default)."""
@@ -640,7 +649,7 @@ end
 # table+YAML template (so the file is byte-identical in structure / any iRacing tool
 # reads it) and fill the channels juliaMotor produces.
 const IBTREC0 = !haskey(ENV, "JM_NOIBT")         # .ibt telemetry ON by default (set JM_NOIBT to disable)
-include(joinpath(@__DIR__, "roadcurve.jl")); using .RoadCurve   # ROADCURVE-1
+# ROADCURVE-1: RoadCurve is loaded with Render above (E80-S10)
 include(joinpath(@__DIR__, "step_guard.jl")); using .StepGuard   # TERRAIN-STEP, see groundz_phys
 include(joinpath(@__DIR__, "solid_geom.jl")); using .SolidGeom   # SOLID-BOX: disc/box gap + normal for every solid
 const REPLAY_FILE = get(ENV, "JM_REPLAY", "")    # E18: if set, PLAY BACK this .jmr recording instead of driving

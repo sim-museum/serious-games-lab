@@ -26546,3 +26546,26 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   of freezing their 83 ENV knobs (20+ module-level consts) into the package image or rewriting them as runtime reads.
   Logged as the next lever; the two savings add.
 * Gates (s54): **ALL 60 PASS** (`GATES_SKIP=road_clear_smoke`).
+
+### E80-S10 (2026-10-15): the render/track modules become the JRRender package -- launch −19..22 s more
+* New package `JRRender` (repo root, beside JRPhysics): includes demo/native's render.jl (+GPL3DO/GPLMip/GPLDat),
+  gpltrack.jl, gplwall.jl and roadcurve.jl from where they are, with a PrecompileTools workload of the **376**
+  signatures those modules compiled in launch traces of all five tracks with 5 AI (`JuliaMotorMTK/tools/jrrender_gen.py`
+  regenerates `JRRender/src/workload.jl`; a stale signature after an edit is skipped -- a smaller cache, never a wrong
+  one). Package image build 29 s once per edit of those files; load 0.4 s.
+* The sim takes the modules from the package; **`JM_RENDER_INCLUDE=1`** loads the loose files instead. The modules'
+  ~25 module-level ENV constants (JM_SHADOW_*, JM_FLATPOLY, JM_PLANAR_*, JM_VISOR, JM_CAR_UNMIRROR, JM_ANISO, JM_EXPOSURE,
+  JM_WBAL, JM_LOD_ALL, JM_GPLVIS_CHILD36, JM_ROADCURVE_OBLIQUE) are fixed to their defaults in the package image -- A/B
+  probes that neither the launcher nor any gate sets (grep), as JRPhysics did with its knobs. AppImage: JRRender added
+  to the update list and to the install-path cache check (`tools/appimage/build_julia.sh`).
+* **Measured** (smoke launches to the game loop): Spa **199.3 → 176.9 s**; Watkins Glen **153.2 → 134.3 s** (same
+  build, loose vs package). With E80-S9: **Spa 211 → 177 s (−16 %), WG 164 → 134 s (−18 %)**, compile counted 103 → 74 s.
+* Same picture: WG cockpit s 8300, package vs loose, mean |diff| 0.29 (0.57 % of pixels > 8) -- below the renderer's
+  run-to-run floor (0.6-2.2, chase_parity_gate).
+* Gate `jrrender_smoke` (8 checks: the switch, the same four files, the workload, the AppImage lines, the package loads
+  in demo/native's project with its modules in place). 61 gates.
+* Next (E80): main() is still ~49 s (its own LLVM codegen; 12,600 situational statements remain) and the object phases
+  ~36 s of real work at Spa.
+* Gates (s55): 7 of 61 failed on a FULL /tmp (EDQUOT: empty logs, 'close: Disk quota exceeded') -- scratch + 416 MB of smoke .ibt cleared; re-run as s56.
+* Gates (s56, clean /tmp): **ALL 61 PASS** (`GATES_SKIP=road_clear_smoke`). gates.sh now prunes smoke .ibt recordings
+  older than an hour at start (they had grown to 416 MB on the shared tmpfs).
