@@ -26344,3 +26344,7 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
 * **Shipped:** the low bush rows are drawn (`bushrow*` pass the height rule, as the km stones do; `JM_KEEP_LOWSOLID=0` =
   before). Spa's census: 38 → 0.
 * Gates (s45): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).
+* (S5 follow-up, analysis) The Ring's 976 remaining ground knocks > 0.1 m/s (lat +2.5, sigma 10) over one lap: 317 in
+  s 13500-14000 (the Karussell's banked bowl) and 127 in s 500-1000 (the Südkehre) -- the probe's straight 10 m chords
+  cut across those tight banked corners, off the road surface; the other 21 km have ~60, in line with WG / Zandvoort.
+  Nothing to fix.
