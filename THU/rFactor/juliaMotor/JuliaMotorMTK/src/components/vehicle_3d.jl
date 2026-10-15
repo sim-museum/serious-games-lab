@@ -25,6 +25,13 @@ using ModelingToolkit: t_nounits as t, D_nounits as D
 # bounded for the fixed-step real-time solver (ε sets the rounding scale, N).
 smoothpos(x, ε) = 0.5*(x + sqrt(x^2 + ε^2))
 
+# PHYSFID-1 S5: the driveline's efficiency by the direction power flows. With one η on both, a higher drive efficiency (the
+# gold's full-throttle acceleration is 3-9 % above julia's on its own inputs) also strengthened engine braking, which
+# EFRIC/coast were fitted against at 0.9. η keeps the overrun (coast) side; η_d the drive side, blended through zero
+# torque over ±5 N·m. JM_ETA_DRIVE sets η_d (0.9 = one efficiency, as before).
+const ETA_DRIVE = parse(Float64, get(ENV, "JM_ETA_DRIVE", "0.9"))
+ηdir(T, ηc, ηd) = ηc + (ηd - ηc)*(0.5 + 0.5*tanh(T/5.0))
+
 function DrivenVehicle3D(; name,
         m = 617.0, Izz = nothing, Ixx = 120.0, Iyy = 850.0,
         a = 1.314, b = 1.096, tf = 1.50, tr = 1.50, h = 0.30, front_frac = 0.455,
@@ -125,7 +132,7 @@ function DrivenVehicle3D(; name,
     RR = brush ? BrushTyre(; name=:RR, br...,  camber=cmb, nsh=nshr, ns=nsrv) : Tyre(; name=:RR, TYRE_SKIDPAD_REAR...)
 
     gv, kfv, krv = g, karb_f, karb_r                     # numeric values for the parts' own parameters (the next line rebinds the names)
-    ps = @parameters m=m Izz=Izz Ixx=Ixx Iyy=Iyy a=a b=b tf=tf tr=tr h=h mf=mf mr=mr L=L M_s=M_s g=g Rw_f=Rw_f Rw_r=Rw_r Iw=Iw η=η final=final bias=bias Tbrake_max=Tbrake_max CdA=CdA ρair=ρair throttle=throttle0 brake=brake0 δ=steer0 gear=gear0 clutch=0.0 hrc_f=0.0 hrc_r=0.0 ClAf=claf ClAr=0.0 antistall=0.0 as_r0=1957.0 as_k=495.0 as_w=490.0 Ie=(ENGINE_LUMPED ? 0.18 : IE_ENGINE) Igb=(ENGINE_LUMPED ? 0.0 : DRIVELINE_INPUT ? 0.18 - IE_ENGINE : IE_DRIVELINE) c_c=60.0 T_cap=500.0 k_idle=0.5 idle_rpm=2000.0 zrFL=0.0 zrFR=0.0 zrRL=0.0 zrRR=0.0 vrFL=0.0 vrFR=0.0 vrRL=0.0 vrRR=0.0 Fx_ext=0.0 Fy_ext=0.0 Mz_ext=0.0 CdA_scale=1.0 c_abl=(cmb && USE_TYRE3 ? TYRE3.cabl : C_ABL) toe_f=toe_f toe_r=toe_r karb_f=karb_f karb_r=karb_r
+    ps = @parameters m=m Izz=Izz Ixx=Ixx Iyy=Iyy a=a b=b tf=tf tr=tr h=h mf=mf mr=mr L=L M_s=M_s g=g Rw_f=Rw_f Rw_r=Rw_r Iw=Iw η=η final=final bias=bias Tbrake_max=Tbrake_max CdA=CdA ρair=ρair throttle=throttle0 brake=brake0 δ=steer0 gear=gear0 clutch=0.0 hrc_f=0.0 hrc_r=0.0 ClAf=claf ClAr=0.0 antistall=0.0 as_r0=1957.0 as_k=495.0 as_w=490.0 Ie=(ENGINE_LUMPED ? 0.18 : IE_ENGINE) Igb=(ENGINE_LUMPED ? 0.0 : DRIVELINE_INPUT ? 0.18 - IE_ENGINE : IE_DRIVELINE) c_c=60.0 T_cap=500.0 k_idle=0.5 idle_rpm=2000.0 zrFL=0.0 zrFR=0.0 zrRL=0.0 zrRR=0.0 vrFL=0.0 vrFR=0.0 vrRL=0.0 vrRR=0.0 Fx_ext=0.0 Fy_ext=0.0 Mz_ext=0.0 CdA_scale=1.0 c_abl=(cmb && USE_TYRE3 ? TYRE3.cabl : C_ABL) toe_f=toe_f toe_r=toe_r karb_f=karb_f karb_r=karb_r η_d=ETA_DRIVE
     brk = BrakeSystem(; name = :brk, bias_p = brake_bias_p)   # CARPHYS-1 S6 (chassis_parts.jl)
     tank = FuelTank(; name = :tank, x = tank_x)               # IRGOLD-1 / FUEL-1
     if cmb
@@ -312,7 +319,7 @@ function DrivenVehicle3D(; name,
     )
     front_hubs && push!(eqs, 2*Iw*D(ωfd) ~ -brk.TF/2*(tanh(ωf + ωfd) - tanh(ωf - ωfd)) - (Fx_f[1]-Fx_f[2])*Rw_f)
     if !lsd
-        push!(eqs, (2*Iw + Igb*(DRIVELINE_INPUT ? gr : final)^2*η)*D(ωr) ~ (Tcl - Tgd)*gr*η - brk.TR*tanh(ωr) - (Fx_r[1]+Fx_r[2])*Rw_r)
+        push!(eqs, (2*Iw + Igb*(DRIVELINE_INPUT ? gr : final)^2*η)*D(ωr) ~ (Tcl - Tgd)*gr*ηdir(Tcl - Tgd, η, η_d) - brk.TR*tanh(ωr) - (Fx_r[1]+Fx_r[2])*Rw_r)
     else
         # WWSETUP-1 LSD: a ramp-type (Salisbury) clutch-pack diff. The input torque Tin = Tcl·gr·η splits equally,
         # as in an open diff; the clutch packs then pass torque Tlsd from the faster half-shaft to the slower one,
@@ -324,7 +331,7 @@ function DrivenVehicle3D(; name,
         # k (LSD_K, powertrain.jl) is the one constant the garage does not give -- friction faces × μ × the
         # ramp/clutch radius ratio -- and is identified from the gold's rear wheel-speed split
         # (tools/lsdfit_261005.jl), with BOTH setups' ramps on the same k.
-        Tin  = (Tcl - Tgd)*gr*η
+        Tin  = (Tcl - Tgd)*gr*ηdir(Tcl - Tgd, η, η_d)                # PHYSFID-1 S5: drive vs overrun efficiency
         Igr  = Igb*(DRIVELINE_INPUT ? gr : final)^2*η/4                 # S14: the driveline's inertia at the carrier, ¼ in each half-shaft's row
         RLt  = Tin/2 + Tlsd/2 - brk.TR/2*tanh(ωRL) - Fx_r[1]*Rw_r
         RRt  = Tin/2 - Tlsd/2 - brk.TR/2*tanh(ωRR) - Fx_r[2]*Rw_r

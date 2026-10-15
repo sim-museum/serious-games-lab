@@ -18,7 +18,7 @@ const PARAM_MAP = Dict(
     "toef" => (:veh, :toe_f), "toer" => (:veh, :toe_r),
     "hrcf" => (:veh, :hrc_f), "hrcr" => (:veh, :hrc_r),
     "pcf" => ((:FL, :FR), :pc), "pcr" => ((:RL, :RR), :pc),
-    "claf" => (:veh, :ClAf), "clar" => (:veh, :ClAr))     # IRGOLD-1 S20: lift areas [m²], + = downforce   # JM_TYRE_PC builds only     # IRGOLD-1 S18: roll-centre heights [m]
+    "claf" => (:veh, :ClAf), "clar" => (:veh, :ClAr), "eta" => (:veh, :η), "etad" => (:veh, :η_d))   # PHYSFID-1 S5: driveline efficiency (overrun / drive)     # IRGOLD-1 S20: lift areas [m²], + = downforce   # JM_TYRE_PC builds only     # IRGOLD-1 S18: roll-centre heights [m]
 function setparams!(car, pv)
     sys = car.sys
     for (k, v) in pv

@@ -26450,3 +26450,26 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   ratio) or under endpoint calibration (the axis's calibrated travel mapped onto ±17° of road angle) -- the 10-13 run logs
   are gone; from now on each run's log line "steering: ..." says which.
 * Gates (s50): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).
+
+### PHYSFID-1 S5 (2026-10-15, analysis + a driveline object, behaviour unchanged): the setups' fidelity, side by side
+* **Per-setup fidelity** (closed loop, S2 car, fresh): default T2 slalom 0.64, T6 flicks 0.51, T8 drifts 0.96, T9 Glen
+  0.77, T10 starts 1.46; WW103 0.99 / 0.84 / 0.95 / 0.90 / **2.99** -- the loose setup's starts are the worst-reproduced
+  thing in the data. Tyre load sensitivity (kmu 0.06 / 0.04: 1.0438 / 1.0521, starts worse) is not it.
+* The WW "starts" are part-throttle getaways (0.57 pedal, ~4,000 rpm, no wheelspin difference L/R 0.03/0.03): julia ends
+  3.2 km/h slower. Full-throttle acceleration ratio sim/gold on the gold's inputs (all 261010-12 sessions): **WW103
+  0.92-0.95 at every speed and every rpm; the default 0.96-0.99** above 120 km/h. Same mass and fuel (605 kg, 43 L, the
+  sessions' FuelLevel), same rpm per km/h (±0.5 %: the gearing is read right), rear slip at WOT gold WW 4.7 % vs default
+  3.6 % -- iRacing's WW puts more drive down; julia's slip 5.2 % / 4.7 %. By gear (rpm/speed): 1.04 (both setups' 4th)
+  0.96 / 0.98, WW 2nd 0.91, WW 5th 0.93 -- no clean per-gear efficiency.
+* Drive efficiency 0.95 (one η both ways): WOT ratios 0.97-1.04, WW tests much better (starts 2.99 → 1.78, slalom
+  0.99 → 0.70) but the default's braking-bias and Glen windows collapse (0.09 → 1.53, 0.77 → 1.36): J 1.0448. The same
+  with a DRIVE-only efficiency (new `η_d`, overrun kept at 0.9): J 1.0629, the same split -- the default car then
+  accelerates too hard. **The WW-only drive deficit is setup-specific** and not mass, fuel, gearing, slip or engine.
+  Remaining WW-vs-default differences: final 3.78 vs 4.22 and the gear set, LSD drive ramp 35° vs 75° (the WW diff
+  locks hard under power), front springs 18 vs 30, rear camber −0.1/+0.2 vs −0.5, dampers, bars.
+* Kept for the next angle: the driveline's efficiency by power-flow direction (`ηdir`, `η_d` = `JM_ETA_DRIVE`, default 0.9
+  = identical), `eta`/`etad` in the fit tools.
+* **Next (S6):** the LSD under power -- in iRacing a locked diff (35° drive ramp) may change the rear's longitudinal
+  grip use (both tyres at the same slip) in a way julia's equal-split diff does not; test with the WW starts' wheel-speed
+  split and the `lsdk` parameter.
+* Gates (s51): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).
