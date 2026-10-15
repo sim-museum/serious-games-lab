@@ -9416,16 +9416,36 @@ function gplw_on_asphalt(x, z)
 end
 # 1 m cells covered by the road's triangles (bounding boxes, dilated one cell): a face whose points miss every cell is
 # certainly off the road, so the exact test runs only near the road (Spa: the build took 33 s without this filter).
-const ROADCELLS = Set{Tuple{Int,Int}}()
-if GPLW_ON
-    for t in TRACKMESH0.tris
-        ROAD_TEX(lowercase(t.tex)) || continue
-        xs = (t.p[1][1], t.p[2][1], t.p[3][1]); zs = (t.p[1][2], t.p[2][2], t.p[3][2])
-        for i in floor(Int, minimum(xs)) - 1:floor(Int, maximum(xs)) + 1, j in floor(Int, minimum(zs)) - 1:floor(Int, maximum(zs)) + 1
-            push!(ROADCELLS, (i, j))
+# E80-S11 (2026-10-15): the cells are each triangle's own, row by row -- the old loop pushed every road triangle's whole
+# BOUNDING BOX, and Spa's long diagonal road triangles made that 13.3 s of the launch. Same cover: a cell is in when the
+# triangle meets it or one of its 8 neighbours (rows j-1..j+1: the triangle clipped to that strip, its x-span ±1 cell).
+"x-extent of triangle (x, z) clipped to the strip a <= z <= b, or nothing"
+function tri_strip_xspan(p1, p2, p3, a, b)
+    lo = Inf; hi = -Inf
+    P = (p1, p2, p3)
+    for k in 1:3
+        (x1, z1) = P[k]; (x2, z2) = P[k % 3 + 1]
+        a <= z1 <= b && (lo = min(lo, x1); hi = max(hi, x1))
+        for zc in (a, b)                          # edge crossings of the strip's two lines
+            (z1 - zc) * (z2 - zc) < 0 || continue
+            x = x1 + (x2 - x1) * (zc - z1) / (z2 - z1); lo = min(lo, x); hi = max(hi, x)
         end
     end
+    lo <= hi ? (lo, hi) : nothing
 end
+function road_cells!(S, tris)
+    for t in tris
+        ROAD_TEX(lowercase(t.tex)) || continue
+        p1 = (Float64(t.p[1][1]), Float64(t.p[1][2])); p2 = (Float64(t.p[2][1]), Float64(t.p[2][2])); p3 = (Float64(t.p[3][1]), Float64(t.p[3][2]))
+        for j in floor(Int, min(p1[2], p2[2], p3[2])) - 1:floor(Int, max(p1[2], p2[2], p3[2])) + 1
+            r = tri_strip_xspan(p1, p2, p3, j - 1.0, j + 2.0); r === nothing && continue
+            for i in floor(Int, r[1]) - 1:floor(Int, r[2]) + 1; push!(S, (i, j)); end
+        end
+    end
+    S
+end
+const ROADCELLS = Set{Tuple{Int,Int}}()
+GPLW_ON && road_cells!(ROADCELLS, TRACKMESH0.tris)
 "on the DRAWN road (the road-only HAT, +-0.3 m)? Fast; falls back to GPL's asphalt strip where there is no road-only HAT."
 function obs_on_road(x, z)
     ROADHAT === TERRAIN0 && return gplw_on_asphalt(x, z)

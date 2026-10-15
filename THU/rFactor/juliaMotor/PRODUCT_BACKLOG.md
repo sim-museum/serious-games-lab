@@ -26570,3 +26570,18 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
 * Gates (s55): 7 of 61 failed on a FULL /tmp (EDQUOT: empty logs, 'close: Disk quota exceeded') -- scratch + 416 MB of smoke .ibt cleared; re-run as s56.
 * Gates (s56, clean /tmp): **ALL 61 PASS** (`GATES_SKIP=road_clear_smoke`). gates.sh now prunes smoke .ibt recordings
   older than an hour at start (they had grown to 416 MB on the shared tmpfs).
+
+### E80-S11 (2026-10-15): the road-cell filter rasterised per row -- launch −13 s at Spa, −19 s at the Ring
+* Finer stamps in the 18 s "billboard/tree loop done → objects DONE" interval at Spa (throwaway): **13.3 s in one
+  top-level loop**, with ~0 compile -- `ROADCELLS`, the 1 m cells near the road that pre-filter the obstacle build's exact
+  on-road test, built by pushing every road triangle's whole BOUNDING BOX (dilated one cell). Long diagonal road
+  triangles have huge boxes.
+* Fix: `road_cells!` takes each triangle's own cells row by row (the triangle clipped to rows j-1..j+2, its x-span ±1
+  cell) -- the same "the triangle meets this cell or a neighbour" cover, minus the empty box corners. In a function, not
+  a top-level loop.
+* **Identical result on all five tracks** -- the obstacle build's fingerprint, old vs new: Spa 61,889 faces + 2,423
+  billboards solid, skipped buried 4,070 / onroad 4,980 / ground 401 / low 27,329 / overhead 9,698 -- identical; WG,
+  Ring, Monza, Zandvoort identical likewise. Phase time old → new: Spa 17.8 → 4.5 s, Ring 28.4 → 9.6 s, Monza 7.9 →
+  2.8 s, WG 4.4 → 2.4 s, Zandvoort 4.8 → 3.1 s.
+* E80 so far today: Spa launch 211 → ~164 s, WG 164 → ~132 s.
+* Gates (s57): **ALL 61 PASS** (`GATES_SKIP=road_clear_smoke`).
