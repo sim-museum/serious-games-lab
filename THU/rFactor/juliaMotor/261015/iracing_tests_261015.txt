@@ -1,0 +1,21 @@
+IRTEST-261015 -- iRacing tests for julia racer PHYSFID-1 (about 30 minutes)
+Car: Lotus 49. Record telemetry (Alt+L) for every test. Wheel settings as usual (they are read from the .ibt).
+
+1. Skidpad limit, steady state, both setups (about 10 min)
+   - Skidpad, DEFAULT setup. Drive the circle clockwise at a steady speed, then raise the speed in small steps
+     (hold each step about 5 s) until the front starts to run wide. Keep the throttle steady at each step.
+   - Repeat anticlockwise.
+   - Repeat both with the WW103 (loose) setup.
+   Why: tells where iRacing's front tyres give up compared with the rears (julia's front/rear grip split).
+
+2. Straight full-throttle pulls, both setups, same gear (about 10 min)
+   - Monza GP without chicanes, main straight, DEFAULT setup: from about 120 km/h in 4th gear, full throttle until the
+     braking point. Three pulls.
+   - The same with WW103 (its 4th gear has the same 1.04 ratio).
+   Why: iRacing's WW103 puts about 6 % more drive down than its default at the same gear ratio and rpm; julia does
+   not. Same gear, same road, same weather isolates the setup's effect.
+
+3. Coast in gear, both setups (about 5 min)
+   - Same straight: at about 250 km/h lift completely (clutch engaged, no brake) and coast down to 100 km/h in gear.
+     Twice per setup.
+   Why: separates the drivetrain's losses under power from its losses under engine braking.

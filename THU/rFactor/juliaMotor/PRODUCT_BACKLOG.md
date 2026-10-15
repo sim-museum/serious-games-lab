@@ -22,7 +22,7 @@ this index was written; that is what it exists to stop.
 | item | what | state |
 |---|---|---|
 | **IRGOLD-1** | **EPIC (PO 2026-10-11, 25-sprint cap; renewed 2026-10-12 night: at most 25 from S14): julia default = iRacing Ring default, julia loose = iRacing WW103 -- "indistinguishable from the iRacing Lotus 49"**, MTK objects, from the PO's 261010/11 + IRTEST-261012 sessions | 🔴 in progress, **S21 done; rotated 2026-10-13 ~04:00 (S22-S38 budget kept)**. S1-S13: replay metric 2.065 → 1.22. S14-S15 (IRTEST-261012): crank inertia 0.052 (free revs), clutch bite re-measured, iRacing's ANTI-STALL clutch -- launches 1.49 → 0.55 m/s, metric 1.20 → 1.165. S16-S19: the rear at the limit (drifts, skidpad), roll-centre object, p-norm, joint closed-loop search. S20: measured FRONT LIFT (ClAf −0.12) + rear ns 0.75 -- closed-loop metric 1.218 → 1.162. S21: clutch-out braking (not shipped); the PO's Glen note measured (GLENFEEL-1). Status for the PO: STATUS_2026-10-13.md. |
-| **PHYSFID-1** | **EPIC (PO 2026-10-14, at most 25 sprints, then scrum on the PO-free backlog):** revisit the .ibt files to check the fidelity of the julia DEFAULT and LOOSE (WW103) setups to their iRacing equivalents -- there is a lot of .ibt data: can fidelity be improved? Would a more Modelica-like model (less empirical, grounded in the interactions of the car's components) match iRacing better? The julia default feels **FF-heavy and inert** next to iRacing: in iRacing the FF is strictly a signal to the driver, never so heavy the wheel is hard to turn, as it sometimes is in julia | 🔴 new -- S1 next |
+| **PHYSFID-1** | **EPIC (PO 2026-10-14, at most 25 sprints, then scrum on the PO-free backlog):** revisit the .ibt files to check the fidelity of the julia DEFAULT and LOOSE (WW103) setups to their iRacing equivalents -- there is a lot of .ibt data: can fidelity be improved? Would a more Modelica-like model (less empirical, grounded in the interactions of the car's components) match iRacing better? The julia default feels **FF-heavy and inert** next to iRacing: in iRacing the FF is strictly a signal to the driver, never so heavy the wheel is hard to turn, as it sometimes is in julia | 🟡 **S1-S7 (2026-10-14/15), for the PO's look:** S1 FF by iRacing's law (wheel force median 0.69 → 0.18); S2 front cornering stiffness 23 → 26 (not inert: yaw gain ~1.0, closed loop 1.0514 → 1.0373); S4 julia's .ibt steering-wheel angle; S5 driveline efficiency by direction (object). Open, data-led: WW103's ~6 % drive deficit, the limit balance -- **IRTEST-261015** (~30 min). Rotated, 18 sprints kept |
 | **MONZAROAD-1** | Found in the 10-14 integration race: at Monza s 400-800 (just after the start) every AI car runs with its centre off the drawn road (9.7 % of AI frames in the first 83 s; Spa 3.3 % round the start/finish); the chase view at s 450 puts the reference line on the grass beside the road course where it forks from the banking. Pre-existing (never measured at Monza/Spa before) | ✅ **S1 (2026-10-14):** the AI's per-metre road correction pulled the race line onto the re-centred centreline, which lies on the grass there; the correction is now kept only where it leaves the race line on the drawn road -- Monza AI off-road 9.7 % → 0 % (`JM_AI_ROADSHIFT_CHECK=0` = before). Spa's s 0-300 count is the counter's road classifier (photographed: the cars are on the tarmac) |
 | **WHEELOFF-1** | SHIFT+R must NOT clear a wreck when any wheel has come off -- only R (restart) is allowed then (PO 2026-10-14) | ✅ **S1 (2026-10-14), for the PO's look:** with a wheel off SHIFT+R does nothing (no recover, no respawn) and the notice reads "A wheel has come off -- R: restart the race"; without, SHIFT+R recovers as before (`JM_WHEELOFF_RULE=0` = before) |
 | **SPAFENCE-1** | At Spa, put a fence where the invisible trackside wall is (TD261013-1 b2: GPL's invisible wall after Stavelot, s 8179-8429) (PO 2026-10-14) | ✅ **S1 (2026-10-14), for the PO's look:** a 1.6 m wire fence (spa67's `wiref_m`) on GPL's wall face, 44 panels / 222 m after Stavelot -- it stands on the LEFT of the road (the inventory's "R" had the sign backwards; the fence uses the wall's own geometry). `JM_SPAFENCE` sets the stretches |
@@ -26473,3 +26473,26 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   grip use (both tyres at the same slip) in a way julia's equal-split diff does not; test with the WW starts' wheel-speed
   split and the `lsdk` parameter.
 * Gates (s51): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).
+
+### PHYSFID-1 S6 (2026-10-15, analysis): the WW drive deficit is not rotating inertia
+* The sim/gold full-throttle acceleration ratio binned by the OVERALL ratio actually engaged (rpm·r/v; inertia acts by its
+  square): at overall 3.5 and 4.0 the WW103 ratio is 0.94 while the default's is 0.99-1.01 -- at the same overall
+  ratio and speed the setups differ in the gold itself, so it is neither inertia nor gearing. (The crank torque implied by
+  the gold, F·r/overall incl. drag, also differs between setups at equal rpm in iRacing's own data.)
+* Open, for a future data-led sprint: what in WW103 lets iRacing put down ~6 % more drive -- the remaining differences
+  are the LSD ramps (35/85 vs 75/60), the toe (−6/+3 vs −1/+1 mm: toe scrub through the slip-work drag `c_abl`), the rear
+  camber (−0.1/+0.2 vs −0.5) and the springs/dampers. An IRTEST cue: one straight WOT pull per setup at Monza in the same
+  gear (the 1.04 4th) and the same weather.
+* Next: the drifts (71 windows), with the S2 front.
+
+### PHYSFID-1 S7 (2026-10-15): the rear checked at the new front; the epic ROTATES (7 of 25 sprints used)
+* With the S2 front: rear Cα 26.5 1.0628 (worse); rear μ 1.62 / 1.58 / 1.55: 1.0360 / 1.0397 / 1.0484 against 1.0373 --
+  a flat optimum at 1.62-1.65; the 0.1 % is not worth a change. Tyre surface temperatures (iRacing's live tread temps)
+  in the WW WOT samples are 36-42 °C -- no thermal story behind the setup split in these sessions.
+* **PHYSFID-1 after S1-S7:** the PO's two complaints are addressed -- (1) FF-heavy: iRacing's own FF law (S1, wheel force
+  median 0.69 → 0.18 as iRacing); (2) inert: the front's cornering stiffness (S2, yaw gain ~1.0 to 0.75 g, 0.88 above
+  150 km/h; closed loop 1.0514 → 1.0373). Also: julia's .ibt steering-wheel angle fixed (S4), the driveline efficiency
+  by power-flow direction as an object (S5). Measured and open: WW103's full-throttle drive ~6 % short at equal overall
+  ratio (S5/S6), the limit balance (yaw gain 0.75 at 1.25-1.5 g), the front grip the gold asks for splits by setup (S4).
+  Those need data the sessions do not hold: **IRTEST-261015** (`261015/iracing_tests_261015.txt`, ~30 min: skidpad
+  limit both setups, same-gear WOT pulls per setup, in-gear coasts). Rotates with 18 sprints kept.
