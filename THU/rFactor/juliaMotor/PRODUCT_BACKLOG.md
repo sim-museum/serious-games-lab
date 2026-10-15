@@ -26738,3 +26738,15 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
 * E80 after S8-S14: **Spa 211 → ~148 s, WG 164 → ~128 s**. What is left is main()'s own compile (~28 s; inference +
   LLVM of one 4,873-line function) and real work (object placement, textures). Next lever, a real refactor: split the
   game loop out of main() (smaller functions compile/lower faster, and cold paths could be compiled on first use).
+
+### HANDS-2 S4 (2026-10-15): the sleeves' red stripe shows, as GPL's
+* Retro: S1-S3 laid the sleeves shoulder→glove and held their roll; the suit add-on texture (JackSeller lotarms, white
+  with a RED stripe) already loads. Open: "sleeve shading/width" -- next to the gold the sleeves read plain crumpled grey.
+* Measured: the folds are PAINTED into the suit texture (decoded: `scratchpad zand/lotarms_tex.png`) -- correct as drawn;
+  what was missing is the stripe. It is the texture's u 0.44-0.56 band, which lotus.3do's lotarms tube maps onto ONE narrow
+  face; the roll held the strip's least-spread normal, so that face pointed away from the eye.
+* Fix: `sleeve_ends` takes the stripe faces' own outward normal (mean u in the band, from the mesh) and the held
+  straight-wheel reference aims it at the eye (`JM_ARM_STRIPE=0` reverts). Cockpit A/B at Zandvoort s 700: the stripe
+  runs along both sleeves as in the gold (`arm_ab.jpg`); full lock either way (JM_TEST_STEER ±1) unchanged
+  (`lock_ab.jpg`) -- no new sail.
+* Gates (s63): **ALL 61 PASS** (`GATES_SKIP=road_clear_smoke`).

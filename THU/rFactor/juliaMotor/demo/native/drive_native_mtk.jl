@@ -10681,6 +10681,7 @@ const ARMS2 = get(ENV, "JM_ARMS2", "1") != "0"
 const SHOULDER = (parse(Float32, get(ENV, "JM_SHOULDER_X", "0.18")), parse(Float32, get(ENV, "JM_SHOULDER_Y", "0.22")),
                   parse(Float32, get(ENV, "JM_SHOULDER_Z", "0.26")))
 const ARM_THICK = parse(Float32, get(ENV, "JM_ARM_THICK", "1.2"))
+const ARM_STRIPE = get(ENV, "JM_ARM_STRIPE", "1") != "0"   # HANDS-2 S4: the stripe face aimed at the eye (JM_ARM_STRIPE=0 reverts)
 """Per side (+1 = mesh z > 0): the sleeve's (wrist, far-end) points -- the ends of its principal axis, the wrist the lower."""
 function sleeve_ends(parts, side)
     P = NTuple{3,Float64}[]
@@ -10693,6 +10694,23 @@ function sleeve_ends(parts, side)
     for p in P, a in 1:3, b in 1:3; C[a, b] += (p[a] - c[a]) * (p[b] - c[b]); end
     F = eigen(Symmetric(C))
     ax = F.vectors[:, 3]; nf = F.vectors[:, 1]                              # long axis; the strip's face normal (least spread)
+    # HANDS-2 S4 (gold 260801 cockpit: the sleeves show their RED STRIPE on top): the suit texture's stripe is the
+    # u 0.44-0.56 band, mapped onto ONE narrow face of the sleeve tube; the least-spread normal is not that face, so the
+    # stripe ended up out of view. Now the face normal is the stripe faces' own (outward, from the mesh), and the held
+    # straight-wheel reference aims it at the eye (A/B 261015 zand/arm_ab.jpg; full lock unchanged, lock_ab.jpg).
+    if ARM_STRIPE
+        sn = zeros(3)
+        for p in parts, i in 1:33:length(p.verts)-32
+            v = p.verts; sign(v[i+2]) == side || continue
+            um = (v[i+9] + v[i+20] + v[i+31]) / 3; 0.44 <= um <= 0.56 || continue
+            e1 = (v[i+11]-v[i], v[i+12]-v[i+1], v[i+13]-v[i+2]); e2 = (v[i+22]-v[i], v[i+23]-v[i+1], v[i+24]-v[i+2])
+            n = [e1[2]*e2[3]-e1[3]*e2[2], e1[3]*e2[1]-e1[1]*e2[3], e1[1]*e2[2]-e1[2]*e2[1]]
+            fc = ((v[i]+v[i+11]+v[i+22])/3, (v[i+1]+v[i+12]+v[i+23])/3, (v[i+2]+v[i+13]+v[i+24])/3)
+            sum(n .* (collect(fc) .- collect(c))) < 0 && (n .*= -1)          # outward from the sleeve's centre
+            sn .+= n
+        end
+        sum(sn .^ 2) > 1e-12 && (nf = sn ./ sqrt(sum(sn .^ 2)))
+    end
     pr = [sum((p .- c) .* ax) for p in P]
     a = c .+ Tuple(ax .* minimum(pr)); b = c .+ Tuple(ax .* maximum(pr))
     a[2] <= b[2] ? (a, b, nf) : (b, a, nf)                                  # (wrist, far end, face normal)
@@ -10726,7 +10744,7 @@ function sleeve_mat(W, E, H, S, nf; target = nothing)
     # rotation re-rolls the strip as the glove moves round the rim, and in a sharp turn swung its face broad-on to the eye --
     # the flat white "sail". JM_ARM_ROLL=1 targets the eye instead (tried: face-on the strip is a broad sheet).
     d = target !== nothing ? collect(target) : collect(EYE_RAW) .- (collect(H) .+ collect(S)) ./ 2; d .-= b .* sum(d .* b)
-    if (ARM_ROLL || target !== nothing) && sqrt(sum(n1 .^ 2)) > 1e-6 && sqrt(sum(d .^ 2)) > 1e-6
+    if (ARM_ROLL || ARM_STRIPE || target !== nothing) && sqrt(sum(n1 .^ 2)) > 1e-6 && sqrt(sum(d .^ 2)) > 1e-6   # HANDS-2 S4: the held reference aims the stripe at the eye
         n1 ./= sqrt(sum(n1 .^ 2)); d ./= sqrt(sum(d .^ 2))
         φ = atan(sum(b .* [n1[2]*d[3]-n1[3]*d[2], n1[3]*d[1]-n1[1]*d[3], n1[1]*d[2]-n1[2]*d[1]]), sum(n1 .* d))
         Kb = [0 -b[3] b[2]; b[3] 0 -b[1]; -b[2] b[1] 0]
