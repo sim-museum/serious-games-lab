@@ -231,6 +231,7 @@ const AI_COOLDOWN = get(ENV, "JM_AI_COOLDOWN", "1") != "0"      # WGTD-1 (e): th
 const AI_COOL_DIAG = get(ENV, "JM_AI_COOLDIAG", "0") != "0"
 const AI_COOL_STOPPED = Set{Int}()
 const AI_COOL = Dict{Int,Tuple{Symbol,Float64,Float64}}()        # AI index -> (state, its race pace, where the stop began)
+const AI_ROADSHIFT_CHECK = get(ENV, "JM_AI_ROADSHIFT_CHECK", "1") != "0"   # MONZAROAD-1
 const AI_PITLINE = get(ENV, "JM_AI_PITLINE", "1") != "0"         # WGTD-1 S9: the cool-down lap ends in GPL's pit lane
 const PIT_IN = Ref(NaN); const PIT_BOX = Ref(NaN)
 const PRACTICE_SEC = 60.0 * (tryparse(Float64, get(ENV, "JM_PRACTICE_MIN", "15")) |> x -> x === nothing ? 15.0 : x)   # GPL-style practice session length before the race (T = accelerate time)
@@ -13038,7 +13039,7 @@ function main()
             # follows our drawn road), every 3 m, median + Gaussian smoothed. JM_AI_ROADSHIFT=0 disables.
             dsh = Float64[]
             if get(ENV, "JM_AI_ROADSHIFT", "1") != "0"
-                n3 = max(1, floor(Int, ref.lap/3.0)); raw_d = zeros(n3); hint = 1; na = length(ALIGNED)
+                n3 = max(1, floor(Int, ref.lap/3.0)); raw_d = zeros(n3); hint = 1; na = length(ALIGNED); nrej = Ref(0)
                 for i in 1:n3
                     sa = (i - 1)*3.0
                     w0 = GPLAI.world(ref, sa, 0.0); w1 = GPLAI.world(ref, sa, 1.0); ex = w1[1] - w0[1]; ez = w1[2] - w0[2]
@@ -13051,12 +13052,21 @@ function main()
                         d2 < bd && (bd = d2; bp = (px, pz); hint = k)
                     end
                     raw_d[i] = ((bp[1] - w0[1])*ex + (bp[2] - w0[2])*ez)/max(ex*ex + ez*ez, 1e-9)
+                    # MONZAROAD-1: the re-centred centreline is not always on the road (Monza s 400-800, where the road course
+                    # forks from the banking, it lies on the grass) -- there the correction dragged every AI car off the road.
+                    # Keep the correction only where it lands on the drawn road, or where the uncorrected frame is off it too.
+                    if AI_ROADSHIFT_CHECK
+                        onr(x, z) = JuliaMotor.hat3d(ROADHAT, x, z; ref = Inf)[3]
+                        dr = GPLAI.dlat(lines[GPLAI.RACE], sa)                    # where the AI drives: the race line
+                        (!onr(w0[1] + (dr + raw_d[i])*ex, w0[2] + (dr + raw_d[i])*ez) && onr(w0[1] + dr*ex, w0[2] + dr*ez)) && (raw_d[i] = 0.0; nrej[] += 1)
+                    end
                 end
                 med = [sort([raw_d[mod1(i + q, n3)] for q in -3:3])[4] for i in 1:n3]
                 g = [exp(-q^2/(2*2.0^2)) for q in -6:6]; g ./= sum(g)
                 dsh = [sum(g[q + 7]*med[mod1(i + q, n3)] for q in -6:6) for i in 1:n3]
                 println("  → AI frame: lateral correction to our road, |shift| mean ", round(sum(abs, dsh)/n3, digits = 2),
-                        " m, max ", round(maximum(abs, dsh), digits = 2), " m (JM_AI_ROADSHIFT=0 off)")
+                        " m, max ", round(maximum(abs, dsh), digits = 2), " m (JM_AI_ROADSHIFT=0 off); ", nrej[],
+                        " samples kept on GPL's frame where the correction left the road (MONZAROAD-1)")
             end
             GPLAI_T = GPLAI.Track(lines, ref, glap, P, gh, dsh, 3.0)
             if get(ENV, "JM_PIT_DIAG", "") != "" && haskey(lines, GPLAI.PIT)    # TD261013-1 (a3): where the pit line lands
