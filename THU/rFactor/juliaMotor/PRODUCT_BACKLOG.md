@@ -26683,3 +26683,14 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   person -- the people filter's, by design). Not a missing object.
 * E60 after S8-S9: the gantry item was the Gerlach boards' struts (fixed in S8); the tower is present. Next E60 pass:
   the object brightness against the gold (with E83), or new gold comparisons further round the lap (t > 60 s).
+
+### E83 S4 (2026-10-15, analysis): a textured OBJECT's shaded side is ~2x darker than GPL's -- measured, not changed
+* From E60-S9's tower (Zandvoort `camstnd`, texture `scfld3` from zandvort.dat, opaque mean (73,91,83)). The least
+  sky-blended lattice pixels (darkest 20 % of the lattice mask): **gold (54,63,59) ≈ 0.72× the texture; ours
+  (25,32,30) ≈ 0.35×** (s 940 and s 900 alike). Not E60-S8's flat-colour change (the tower is textured; A/B identical).
+* Our object shading: base × (hemispheric ambient ×0.46 + 1.15·sun·N·L·shadow) × bright, then grade/white balance/gamma
+  -- a face away from the sun gets the 0.46 ambient alone. GPL's shaded side reads about twice that.
+* The opposite sign to E83-S3's billboards (ours were 1.4× BRIGHTER than gold, unlit), so no single factor explains
+  both; and a global ambient lift is the grade-style change E69/E72 warns against. Logged as evidence for the lighting
+  model of placed meshes (GPL's object lighting is not decoded -- ~/tools/gplre could). **For the PO's eye:** do
+  objects' shadow sides look too dark next to GPL?
