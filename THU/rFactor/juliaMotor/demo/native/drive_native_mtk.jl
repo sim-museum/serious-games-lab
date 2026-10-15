@@ -10,7 +10,10 @@ using GLFW, ModernGL, LinearAlgebra, Dates, Serialization
 const _T0 = time()
 # LOADHANG-1 S2: flush -- under the launcher stdout is a pipe, and without it a long phase delivered its lines in one
 # burst minutes later, so the log "stopped" at the wrong stage (2026-10-07). The launcher sets JM_TIMING=1.
-tstamp(lbl) = get(ENV,"JM_TIMING","0") != "0" && (println("[t+", round(time()-_T0, digits=1), "s] ", lbl); flush(stdout); true)
+# E80-S8: JM_TIMING=2 adds the cumulative COMPILE seconds (Julia's own accounting) -- a phase's share of compilation is
+# measured, not inferred from its length.
+const _TCOMP = get(ENV,"JM_TIMING","0") == "2" && (Base.cumulative_compile_timing(true); true)
+tstamp(lbl) = get(ENV,"JM_TIMING","0") != "0" && (println("[t+", round(time()-_T0, digits=1), "s", _TCOMP ? " c" * string(round(Base.cumulative_compile_time_ns()[1]/1e9, digits=1)) : "", "] ", lbl); flush(stdout); true)
 using JuliaMotor, RFactorData
 # PHYSPRE-1: the physics modules come from the JRPhysics PACKAGE, whose precompile image caches the compiled
 # car (player build 37.6 s -> 5.0 s measured). Included as loose files, every launch made new modules and
@@ -11589,6 +11592,7 @@ function pick_report(vp, eye, label)
     flush(stdout)
 end
 function main()
+    tstamp("  [E80] .. main() entered (its compile is the gap above)")
     # E106-S13b: the physics-facing ground closure. It converts the app's -999 "off the HAT"
     # SENTINEL into NaN, because drive_rt3d guards only `isfinite` and -999 is finite -- a wheel
     # over a hole was told the ground lay 999 m below, sank toward it, and the correction on

@@ -26504,3 +26504,26 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   PHYSFID-1 (the FF law -- evaluated: 11 N·m → 0.39, 30 N·m → 1.0 -- front Cα 26, the .ibt wheel angle, ηdir). In
   gates.sh's SMOKES (60 gates).
 * Gates (s52): **ALL 60 PASS** (`GATES_SKIP=road_clear_smoke`).
+
+### E80-S8 (2026-10-15): launch time measured again -- 103 s of Spa's 211 s is COMPILATION, 42 s of it main() alone
+* Retro: E80-S1..S7 found the Spa load 69 % compilation, the sysimage OOMs on this box, the physics build cached in the
+  JRPhysics package (15.7 → 3.9 s, the one structural win) and named `main()`'s own compile as the next-largest phase
+  ("split main() or make it a package", never started). Options now: (1) package the track/render modules like
+  JRPhysics; (2) shrink what main() compiles; (3) lower its LLVM effort.
+* **Measured on HEAD** (smoke launches, warm caches): Spa **211 s** to the game loop, Watkins Glen **164 s**. New
+  `JM_TIMING=2` prints Julia's cumulative COMPILE seconds beside each stamp (`[t+93.4s c47.2]`), and a stamp at main()'s
+  first line ("main() entered") brackets its compile. Spa, compile per phase: before the track parse 12 s, track parse
+  11 of 25 s, geometry 21.5 of 34 s, textures/objects ~10 of 57 s (the object phases are real work), **main() 42 s
+  counted, 62 s wall** (WG: 62.7 s wall) -- the largest single item, the same at every track.
+* main()'s compile split (code_typed probes): inference 11 s, optimisation 4 s, LLVM codegen 33 s, for **46,011 IR
+  statements**. Inlined 4×4 matrix maths is ~12 % of them (`*` 3,146, `inv` 884, `gripmat`, `translate`); the rest is
+  spread over the whole 4,870 lines (mirror/cockpit draw lines 15700-15999 the densest) -- no single hot spot.
+* (3) `@optlevel 0` for the script: main() 62.8 → 44.0 s, launch −17 s, but the world draw 5.2 → 5.9 ms/frame -- ×3
+  passes in Spa's cockpit (33 fps there). **Not shipped.** (`@optlevel 1`: 48 → 37 s in the probe.)
+* (1) The trace (`--trace-compile-timing`, grouped by phase and module): track parse + geometry compile ~33 s, of
+  which `Render` (its GPL3DO parser, `extract_gpl_car`, `mesh_wheel_hubs`) ~9 s, GPLTrack/GPLWall/RoadCurve ~3 s, Base
+  specialisations they trigger ~13 s, script top-level functions ~4.5 s. A JRRender package with a parse workload
+  could cache ~15-20 s -- but those modules read **83 ENV knobs**, 20+ as module-level consts that a package image
+  would freeze (JRPhysics's precedent: frozen to defaults + an include fallback). **Next (E80-S9):** a throwaway
+  prototype to MEASURE the saving before touching any knob.
+* Gates (s53): **ALL 60 PASS** (`GATES_SKIP=road_clear_smoke`).
