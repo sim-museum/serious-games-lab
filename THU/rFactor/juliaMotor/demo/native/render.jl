@@ -1345,7 +1345,24 @@ function _clip_lat(t, maxlat::Float32)
                 t.tex, t.col, t.flat, t.ptype) for i in 2:length(verts)-1]   # a clipped piece keeps the original's shading kind
 end
 
-function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0.72f0,0.74f0,0.76f0), smooth=true, tint=nothing, track=false, mirror=false, exclude_groups=(), include_groups=(), cockpit_clean=false, maxedge=Inf32, uflip=nothing, vflip=nothing, maxlat=Inf32, trim=false, dedup=nothing, drop_green=false, min_component=0, min_component_tex=(), wheel_dress=nothing, cockpit_dress=nothing, skip_ptypes_kw=nothing, visor=false, skin=nothing, visorcol=(0.75f0, 0.64f0, 0.22f0))
+# E60-S8: a triangle's plane (unit normal, offset) and whether a triangle lies in any of a list of planes (either side).
+function _triplane(t)
+    a, b, c = t.p
+    n = ((b[2]-a[2])*(c[3]-a[3]) - (b[3]-a[3])*(c[2]-a[2]), (b[3]-a[3])*(c[1]-a[1]) - (b[1]-a[1])*(c[3]-a[3]),
+         (b[1]-a[1])*(c[2]-a[2]) - (b[2]-a[2])*(c[1]-a[1]))
+    l = sqrt(n[1]^2 + n[2]^2 + n[3]^2); l < 1f-9 && return (0f0, 0f0, 0f0, 0f0)
+    n = (n[1]/l, n[2]/l, n[3]/l)
+    (Float32(n[1]), Float32(n[2]), Float32(n[3]), Float32(n[1]*a[1] + n[2]*a[2] + n[3]*a[3]))
+end
+function _inplane(t, planes; cosmin = 0.995f0, dtol = 0.03f0)
+    q = _triplane(t); (q[1] == 0f0 && q[2] == 0f0 && q[3] == 0f0) && return false
+    for pl in planes
+        dot = q[1]*pl[1] + q[2]*pl[2] + q[3]*pl[3]
+        abs(dot) >= cosmin && abs(q[4] - sign(dot)*pl[4]) <= dtol && return true
+    end
+    false
+end
+function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0.72f0,0.74f0,0.76f0), smooth=true, tint=nothing, track=false, mirror=false, exclude_groups=(), include_groups=(), cockpit_clean=false, maxedge=Inf32, uflip=nothing, vflip=nothing, maxlat=Inf32, trim=false, dedup=nothing, drop_green=false, min_component=0, min_component_tex=(), wheel_dress=nothing, cockpit_dress=nothing, skip_ptypes_kw=nothing, visor=false, skin=nothing, visorcol=(0.75f0, 0.64f0, 0.22f0), flatcol=false)
     livery = lowercase(first(splitext(basename(String(path3do)))))   # S7: the wrapper's own texture name (lotd, ferd, ...) = the livery
     # text reads right when the texture mapping preserves handedness: the mirror=true
     # remap (gx,gz,-gy) is a rotation (no flip needed); mirror=false is a reflection
@@ -1626,6 +1643,7 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
         s = get(nsum, qk(p), (0f0,0f0,0f0)); l = sqrt(s[1]^2+s[2]^2+s[3]^2)
         l < 1f-6 ? fallback : (s[1]/l, s[2]/l, s[3]/l)
     end
+    texplanes = flatcol ? [_triplane(t) for t in kept if !t.flat && t.tex != ""] : NTuple{4,Float32}[]   # E60-S8
     for t in kept
         # flat-shaded poly (see the note below): three identical UVs = no mapping, colour only.
         # E106-S19: a poly GPL authored with no uv list is flat-shaded -- draw it in its own colour
@@ -1674,7 +1692,17 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
         skinned = skin !== nothing && t.tex == "" && !t.flat &&
                   (cx = (t.p[1][1] + t.p[2][1] + t.p[3][1])/3; cy = (t.p[1][2] + t.p[2][2] + t.p[3][2])/3; cz = (t.p[1][3] + t.p[2][3] + t.p[3][3])/3;
                    skin[2] < cx < skin[3] && cz > skin[4] && abs(cy) < skin[5])
-        v = get!(groups, skinned ? skin[1] : isvisor ? "__visor__" : (flatpoly ? "" : t.tex), Float32[])
+        # E60-S8 (Zandvoort gold t 27-29: the Coca-Cola / CALTEX boards stand on GREY struts; ours were red / white): a
+        # placed object's poly authored with NO uv list (t.flat) carries only its colour -- GPL draws it in that colour.
+        # Textured, it sampled the (0,0) texel of the object's last-bound texture: the sign's corner. `flatcol` (placed
+        # objects only; JM_OBJ_FLATCOL=0 reverts) routes them to the untextured stream. The car keeps CARGOLD-1 S7's draw.
+        # A flat poly lying IN THE PLANE of one of the object's textured faces is that board's back plate (cok: the grey
+        # back of the Coca-Cola face): objects draw two-sided, so in its own colour it fought the printed front for depth
+        # and greyed it out; those keep their old draw. Struts, poles and frames take their colour.
+        objflat = flatcol && t.flat && !isvisor && !skinned && !_inplane(t, texplanes)
+        # (objflat's group is "__flat__", not "": it draws untextured like "" in build_gpl, but the obstacle build skips
+        # "" parts as debug overlays -- a strut must stay as solid as it was.)
+        v = get!(groups, skinned ? skin[1] : isvisor ? "__visor__" : objflat ? "__flat__" : (flatpoly ? "" : t.tex), Float32[])
         mz = mirror ? -1f0 : 1f0   # negate render-Z → right-handed track frame (gx,gz,-gy)
         for i in 1:3
             p=t.p[i]; n = smooth ? sm(p, t.n[i]) : t.n[i]; uv=t.uv[i]
@@ -1946,7 +1974,7 @@ function build_gpl(parts0, idx::GPLTex; tag::String="")
             flush(stdout)
         end
         vao,n = upload(p.verts); tid=GLuint(0)
-        if p.tex != ""
+        if p.tex != "" && p.tex != "__flat__"   # E60-S8: placed objects' colour-only polys draw untextured
             key=lowercase(p.tex)
             _TEXSTAT.lookups[] += 1; push!(_TEXSTAT.names, key)
             tid = get!(cache,key) do

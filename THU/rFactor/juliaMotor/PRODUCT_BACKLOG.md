@@ -26646,3 +26646,26 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   by design) -- now asserts the identified totals, the 46 % split under S9 (the exact pairs with JM_PHYSFID_S9=0) and WW
   stiffer: PASS. `td261013_smoke` gains two PHYSFID-1 S9 checks (the lift constants wired to the body, the 0.46 share):
   ALL PASS.
+
+### E60 S8 (2026-10-15): placed objects' colour-only polys drawn in their colour -- grey sign struts, as GPL
+* Retro (S4-S7): one object family per sprint against gold frames, `JM_OBJDIAG_AT` for verdicts, `JM_KEEPTEST` A/B,
+  sweep to verify -- kept. Next was "the Gerlach VREDESTEIN gantry and the green scaffold tower at Hugenholtz".
+* Gold (260801 nintendo, t 25-29, Gerlach): the Coca-Cola (`cok`, s 699) and CALTEX (`pepsi2`/pepsi.3do, s 716) boards
+  stand on GREY struts with grey edges; ours were RED and WHITE. The "braced grey structure" left of the Coca-Cola board
+  at t 27 is that board's own support seen at an angle; the green lattice tower (t 44-47) is a separate item.
+* Cause: cok.3do = 12 tris, all bound to "cok"; 10 of them are GPL flat-shaded polys (no uv list, ptype 0x81B, authored
+  grey 0.35-0.51). The parser gives them uv (0,0) and the last-bound texture, so they sampled the sign's CORNER texel.
+  E106-S19 meant "draw no-uv polys in their own colour", but CARGOLD-1 S7 restricted that to the car's livery polys.
+* Fix (placed objects only; the car and the track mesh unchanged): `extract_gpl_car(...; flatcol=true)` routes a no-uv
+  poly to the untextured group `"__flat__"` in its authored colour -- EXCEPT a poly lying in the plane of one of the
+  object's textured faces (a board's back plate: objects draw two-sided, so grey there fought the printed front for
+  depth and washed it out -- seen, then excluded). `"__flat__"` draws untextured (build_gpl) but stays a SOLID in the
+  obstacle build, which skips "" parts as debug overlays (first try: 74 fewer solid faces at Zandvoort -- caught by
+  the fingerprint). `JM_OBJ_FLATCOL=0` reverts.
+* Result: Gerlach's boards now have grey struts and edges, fronts intact (`261015`-era shot `scratchpad zand/g660_left`).
+  Sweep 5 tracks × 6 stations: Spa/Monza/WG < 0.5 % of pixels change; the Zandvoort/Ring station differences are camera
+  pose and equal run-to-run noise (the same flags twice: 0.8-13.5 mean|d| -- multi-station smoke shots are not
+  pose-deterministic). Obstacles: Zandvoort 15,037 → 15,049 solid faces, Ring 83,079 → 83,095 (strut faces now judged
+  as their own part by the low/height filter); Spa, WG, Monza unchanged.
+* Next E60: the green lattice tower at Hugenholtz (gold t 44-47).
+* Gates (s60): **ALL 61 PASS** (`GATES_SKIP=road_clear_smoke`).

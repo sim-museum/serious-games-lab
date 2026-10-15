@@ -6889,6 +6889,7 @@ end
 # and Julia LOWERS a top-level statement whole before running its first line: 10.9 s of every launch, uncounted by the
 # compile timer (lowering cost grows faster than size: 1,293 lines lower in 1.35 s). A top-level `if` is not a scope,
 # so the object build is the same code split into consecutive `if !_OBJ_SKIP` statements.
+const OBJ_FLATCOL = get(ENV, "JM_OBJ_FLATCOL", "1") != "0"   # E60-S8: placed objects' no-uv polys in their own colour
 const _OBJ_SKIP = SKIDPAD || (NURB && get(ENV, "JM_RING_OBJECTS", "1") == "0")
 if _OBJ_SKIP
     global OBJECTS = Any[]; global OBJNODE = Int[]
@@ -7236,7 +7237,7 @@ let objnames=Set{String}()
         p = objpath(inst.name)
         if p == ""; objmesh[inst.name]=nothing; continue; end
         try
-            _te = time(); full = Render.extract_gpl_car(p; track=true, mirror=OBJ_MIRROR); _e92.ext[] += time() - _te; _e92.n[] += 1   # un-stripped: decides stub vs geometry
+            _te = time(); full = Render.extract_gpl_car(p; track=true, mirror=OBJ_MIRROR, flatcol=OBJ_FLATCOL); _e92.ext[] += time() - _te; _e92.n[] += 1   # un-stripped: decides stub vs geometry
             # E65 S3: the treeish() force flattened every tree strip to a synthesized quad even when
             # the .3do carries REAL geometry — the E22-era anti-wall move, pre-graze-fade.  Monza's
             # strips are FOLDED PANORAMAS (S2 finding) that only render correctly as their real
@@ -7260,7 +7261,7 @@ let objnames=Set{String}()
                 # track-aware face selection at scenery-build time (instance transform × centreline).
                 # SUPERSEDED (E60-S4, 2026-10-06): MARTINI is `bigbosch` (sheet kendl03), not chmp4-1 (an A-frame with no
                 # placement among the 247 decoded); its blank was a coplanar reverse-wound back -- fixed by twinboard_classify!.
-                parts = Render.extract_gpl_car(p; track=true, mirror=OBJ_MIRROR, dedup=(get(ENV,"JM_OBJ_DEDUP","old")=="orient" ? :orient : true), exclude=(CROWD_TEX..., obj_extra_excl(inst.name)...))  # strip painted-on crowds + per-object roadward parts (E58 startbox)
+                parts = Render.extract_gpl_car(p; track=true, mirror=OBJ_MIRROR, flatcol=OBJ_FLATCOL, dedup=(get(ENV,"JM_OBJ_DEDUP","old")=="orient" ? :orient : true), exclude=(CROWD_TEX..., obj_extra_excl(inst.name)...))  # strip painted-on crowds + per-object roadward parts (E58 startbox)
                 if isempty(parts); objmesh[inst.name]=nothing    # was an all-crowd object → drop (NOT a billboard)
                 else
                     lo=Inf32; hi=-Inf32; for pp in parts, k in 2:11:length(pp.verts); v=pp.verts[k]; lo=min(lo,v); hi=max(hi,v); end
