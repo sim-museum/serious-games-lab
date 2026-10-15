@@ -26426,3 +26426,27 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
 * (Checked on the way: the stability suite without `JM_STAB_IBT` reports 1,259 for any car -- it then runs the old
   skidpad template; the setups' suites pass.)
 * Gates (s49): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).
+
+### PHYSFID-1 S3 (2026-10-14, nothing shipped): the front tyres' load sensitivity
+* Component angle (the PO's "more Modelica-like" question): the front Cα is proportional to its load (ns 1) while the rear
+  got Fz^0.75 in IRGOLD-1 S20; a real tyre stiffens less than proportionally, and with the measured front lift a
+  proportional front loses stiffness one for one at speed -- the remaining high-speed understeer (gain 0.88).
+* Open loop (gold inputs): nsf 0.75 → gain above 150 km/h 0.91, nsf 0.5 → 0.94 (low speed 1.00-1.03). Closed loop (fresh,
+  base 1.0373 reproduced): nsf 0.75 1.0436, nsf 0.5 1.0557 -- worse. Not shipped: the gold prefers the proportional
+  front; the remaining speed gap is not the front's load law.
+
+### PHYSFID-1 S4 (2026-10-14): the front grip splits by setup; toe is not why; julia's .ibt wheel angle fixed
+* Front μ +5 % (1.47) on the S2 car: open loop better everywhere (yaw err 25 %, gain at the limit 0.75 → 0.88, above
+  150 km/h 0.91, 3 settle failures instead of 6) but closed loop 1.0373 → 1.0481. Per test: the DEFAULT setup's windows
+  improve or hold (T9 Glen −0.026, T6 flicks −0.005), the WW103's slalom (+0.068) and Glen (+0.105) lose -- the front grip
+  the gold asks for differs by setup, which a single tyre cannot give.
+* WW103 vs default at the front: springs 18 vs 30 N/mm, toe −6 vs −1 mm. Toe hypothesis (iRacing's value per axle, julia
+  per wheel): `JM_TOE_SCALE=0.5` closed loop 1.0397 (base 1.0373), with μf 1.47 1.0605 -- refuted. The knob stays (1.0).
+* **Found: julia's .ibt `SteeringWheelAngle` carried the ROAD-wheel angle** (inp.steer × MAXSTEER), iRacing's carries the
+  steering-WHEEL angle (~10x larger) -- julia and iRacing files could not be compared on steering (my first-pass "julia
+  yaw gain 0.0190 vs 0.0214" from the PO's julia files is void; the replay figures stand). Now road angle × the session's
+  steering ratio, and `SteeringWheelAngleMax` = the car's lock.
+* Open question for the PO's "inert": whether the PO drove with the TX recognised as a wheel (physical steering, iRacing's
+  ratio) or under endpoint calibration (the axis's calibrated travel mapped onto ±17° of road angle) -- the 10-13 run logs
+  are gone; from now on each run's log line "steering: ..." says which.
+* Gates (s50): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).

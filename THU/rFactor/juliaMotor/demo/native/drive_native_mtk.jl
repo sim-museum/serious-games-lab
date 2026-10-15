@@ -101,6 +101,7 @@ const STEER_GAIN = Ref(0.0)        # normalised steer per raw unit; 0 = endpoint
 # IRGOLD-1 S2: the normalised steer a WHEEL may reach -- iRacing's lock (420° at the rim / the ratio) over MAXSTEER, so a
 # 900° wheel turned 300° gives 30° of road angle as in iRacing instead of stopping at 17°. 1 = joysticks/keys (unchanged).
 const STEER_LIM = Ref(1.0)
+const STEER_RATIO = Ref(10.0)   # PHYSFID-1 S4: the session steering ratio (wheel : road)
 
 # PO 2026-08-27, standing: "I like the clutch attached to a slider - that way I can ride the
 # clutch. The clutch should be an axis." A joystick.conf written by juliaRacer.py or calibrate.jl
@@ -945,6 +946,7 @@ let
     let ratio = (isfile(IBTTMPL) ? (try Setup.setup_params(IBT.session_yaml(IBT.ibt_open(IBTTMPL))).steering_ratio catch; NaN end) : NaN),
         src = isfinite(ratio) ? basename(IBTTMPL) : "built-in 10:1 (Lotus 49 setup) -- NOT from an ibt"
         isfinite(ratio) && ratio > 1 || (ratio = 10.0)
+        STEER_RATIO[] = ratio                                                # PHYSFID-1 S4: for the .ibt's wheel angle
         if WHEEL_HALF_DEG > 0
             STEER_GAIN[] = WHEEL_HALF_DEG / ratio / rad2deg(DriveRT3D.MAXSTEER)
             STEER_LIM[] = max(1.0, min(WHEEL_HALF_DEG, DriveRT3D.WHEEL_LOCK_DEG) / ratio / rad2deg(DriveRT3D.MAXSTEER))
@@ -14780,7 +14782,9 @@ function main()
                 "IsOnTrack"=>cs.ontrack ? 1.0 : 0.0,
                 "Speed"=>cs.v, "RPM"=>cs.rpm, "Gear"=>Float64(cs.gear),
                 "Throttle"=>inp.throttle, "Brake"=>inp.brake, "Clutch"=>1.0-inp.clutch,
-                "SteeringWheelAngle"=>δw, "FrameRate"=>FRAME_FPS[],   # PERF-4: was never filled (always 0)
+                # PHYSFID-1 S4: iRacing's channel is the STEERING-WHEEL angle (rad at the rim); julia wrote the road-wheel angle,
+                # ~10x smaller -- julia and iRacing .ibt files could not be compared. Road angle x the session's steering ratio.
+                "SteeringWheelAngle"=>δw*STEER_RATIO[], "SteeringWheelAngleMax"=>deg2rad(DriveRT3D.WHEEL_LOCK_DEG), "FrameRate"=>FRAME_FPS[],   # PERF-4: was never filled (always 0)
                 "Lap"=>Float64(cs.laps+1), "LapCompleted"=>Float64(cs.laps),
                 "LapDist"=>cs.lapdist, "LapDistPct"=>(SKIDPAD ? 0.0 : (LAPLEN>0 ? cs.lapdist/LAPLEN : 0.0)),
                 "Yaw"=>cs.θ, "YawRate"=>tl.r,

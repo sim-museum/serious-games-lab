@@ -207,7 +207,9 @@ const CHASSIS = Ref(Chassis())
 set_chassis!(ch::Chassis) = (CHASSIS[] = ch; nothing)
 
 """Toe-in per wheel [rad] from the garage's toe [mm], read as the toe at the tyre's edge -- across its diameter."""
-toe_rad(mm::Real; rear::Bool = false) = atan(float(mm)/1000, 2*(rear ? RW_R : 0.30))
+# PHYSFID-1 S4: JM_TOE_SCALE scales the garage toe (A/B: per wheel vs per axle)
+const TOE_SCALE = parse(Float64, get(ENV, "JM_TOE_SCALE", "1.0"))
+toe_rad(mm::Real; rear::Bool = false) = atan(TOE_SCALE*float(mm)/1000, 2*(rear ? RW_R : 0.30))
 
 """Brake TORQUE split front from the garage's PRESSURE bias [%]. BRAKE-2 fitted 0.585 at the default's 53.5 %:
 the ratio of front to rear torque per unit pressure (bigger front calipers/discs) is then fixed, and any other
