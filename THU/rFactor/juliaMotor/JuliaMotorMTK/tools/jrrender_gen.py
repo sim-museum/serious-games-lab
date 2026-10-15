@@ -6,6 +6,9 @@ RoadCurve) and nothing of the sim script (Main.) or of the other loose modules, 
 Closures of these modules are kept: their names change with edits, and a stale one is skipped by the package.
 
 usage: jrrender_gen.py OUT.jl TRACE.jl [TRACE.jl ...]
+
+TRACE WITH THE LOOSE FILES (JM_RENDER_INCLUDE=1): a trace lists only what a run COMPILES, and with the package in use
+its cached methods compile nothing -- a regeneration from package-mode traces kept 170 of the 376 signatures (E60-S8).
 """
 import re, sys
 OURS = r'\b(Render|GPL3DO|GPLMip|GPLDat|GPLTrack|GPLWall|RoadCurve)\.'

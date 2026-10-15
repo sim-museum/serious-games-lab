@@ -26669,3 +26669,6 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   as their own part by the low/height filter); Spa, WG, Monza unchanged.
 * Next E60: the green lattice tower at Hugenholtz (gold t 44-47).
 * Gates (s60): **ALL 61 PASS** (`GATES_SKIP=road_clear_smoke`).
+* JRRender's workload regenerated for the new `flatcol` signatures (380 statements, 5 tracks, 5 AI; Spa launch 165 s).
+  Pitfall found and documented in `jrrender_gen.py`: traces must be taken with the LOOSE files (`JM_RENDER_INCLUDE=1`)
+  -- in package mode the cached methods compile nothing, and a regeneration kept 170 of 376.
