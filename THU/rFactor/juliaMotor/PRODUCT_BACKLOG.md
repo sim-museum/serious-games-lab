@@ -26332,3 +26332,15 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   geometry") -- at Spa they were not drawn, so a car leaving the road could strike a guardrail it could not see. Now drawn.
   Autodrive at lat −3.6 m (car edge ~4.5 m out, the rail side) from s 1800 / 2450 / 3750, 30 m/s: 0 contacts, 0 wrecks.
 * Gates (s44): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).
+
+### TD261013-1 S10 (2026-10-14): no more invisible-but-solid verge objects (the b2 family)
+* S9 found Spa's guardrails solid while undrawn. The rule behind it: the exempt solid classes (`solid_exempt`: armco,
+  fence, rail, barrier, wall, bushrow, haie) stay SOLID whatever the render decides -- right only where something else
+  draws them. New census `JM_INVIS_SOLIDS=1` (exempt solids whose object is not drawn), all five tracks: WG 0, Monza 0,
+  the Ring 0; Zandvoort 4 (`haie001` at s 2650, no mesh -- a sprite stub, drawn by the billboard path); **Spa 38** (after
+  S9's rails): `bushrow5` x36 dropped as "under 1 m tall" + 1 by the footprint rule -- a 6 x 1 m tuft of tall grass
+  (`higra2`, 0.5 m), solid as a soft hedge (r 1.5) at 7.5-12 m from the centreline: a car running wide ploughed into
+  grass it could not see.
+* **Shipped:** the low bush rows are drawn (`bushrow*` pass the height rule, as the km stones do; `JM_KEEP_LOWSOLID=0` =
+  before). Spa's census: 38 → 0.
+* Gates (s45): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).

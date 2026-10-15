@@ -453,6 +453,8 @@ const OBJ_PR = Tuple(parse.(Float64, split(get(ENV, "JM_OBJ_PR", "-1,0"), ",")))
 # TD261013-1 S9: GPL's guardrails (`armco*`) carry their slope along the rail as placement ROLL (Spa's descent: -2.4 deg per
 # 11.3 m segment, exactly the drop between placements) -- with roll off each rail lay level and the chain was a sawtooth of
 # steps. Applied (+1) to the rails only; every other object keeps OBJ_PR[2]. JM_RAIL_ROLL=0 = level rails.
+const INVIS_SOLIDS_DIAG = get(ENV, "JM_INVIS_SOLIDS", "0") != "0"
+const INVIS_SOLID_ROWS = Tuple{Float64,Float64,String,Float64}[]
 const RAIL_ROLL = parse(Float64, get(ENV, "JM_RAIL_ROLL", "1"))
 objrollsign(nm) = (OBJ_PR[2] == 0 && startswith(lowercase(nm), "armco")) ? RAIL_ROLL : OBJ_PR[2]
 const OBJ_CPU = Dict{String,Any}()   # GPLWALL-1: object name -> its CPU parts (object frame), for obstacle faces
@@ -7137,8 +7139,13 @@ let objnames=Set{String}()
     # on the outside of the downhill left and the 90° left before it. S9: with GPL's placement roll applied (RAIL_ROLL)
     # they chain into one smooth rail as in the gold. JM_KEEP_ARMCO=0 drops them.
     _keep_armco = SPA && get(ENV, "JM_KEEP_ARMCO", "1") != "0"
+    _keep_lowsolid = get(ENV, "JM_KEEP_LOWSOLID", "1") != "0"
     tallenough(nm) = (get(ymx,nm,0f0)-get(ymn,nm,0f0)) > 1.0f0 || startswith(lowercase(nm), "km_") ||
-                     (_keep_armco && startswith(lowercase(nm), "armco"))
+                     (_keep_armco && startswith(lowercase(nm), "armco")) ||
+                     (_keep_lowsolid && startswith(lowercase(nm), "bushrow"))
+    # TD261013-1 S10: the exempt solid classes (solid_exempt: armco, fence, rail, barrier, wall, bushrow, haie) stay SOLID
+    # whether drawn or not; Spa's low bush rows (`bushrow5`, < 1 m) were dropped here and stayed solid -- 36 soft, invisible
+    # obstacles at the verge (JM_INVIS_SOLIDS=1). Drawn now. JM_KEEP_LOWSOLID=0 = dropped (and still solid).
     lxmn=Dict{String,Float32}(); lxmx=Dict{String,Float32}(); lzmn=Dict{String,Float32}(); lzmx=Dict{String,Float32}()
     objverts=Dict{String,Any}()   # SOLID-BOX ground truth: the parts, so a hook can transform real vertices   # E71-S8 local horizontal AABB
     lverts=Dict{String,Vector{Tuple{Float32,Float32}}}()   # E71-S9 decimated local (x,z) footprint points
@@ -8240,6 +8247,12 @@ let objnames=Set{String}()
         push!(_solidseen, _key)
         push!(SOLIDS, _key)
         push!(SOLIDNAMES, nml)   # E56: tag wall vs hedge/hay for the contact law
+        # TD261013-1 S10: JM_INVIS_SOLIDS=1 lists the exempt classes' solids whose object is NOT drawn (objkeep false) --
+        # an exempt solid is only right where something else draws it (the track mesh). Spa's guardrails were such.
+        if INVIS_SOLIDS_DIAG && solid_exempt(nml) && !objkeep(i)
+            _h = JuliaMotor.hat(TRKSURF, Float64(i.x), Float64(i.y))
+            push!(INVIS_SOLID_ROWS, (_h.found ? _h.lapdist : NaN, _h.found ? _h.lateral : NaN, nml, r))
+        end
         # SOLID-BOX: buildings (the 5/6 m whitelist) get their mesh footprint as an oriented box.
         # Placement → physics: render = translate(x, h, -y) * roty(ψ), ψ = -yaw + objyawfix, and
         # physics z = -render z, so a local (lx, lz) lands at x + c·lx + s·lz, y + s·lx - c·lz
@@ -8653,6 +8666,10 @@ let objnames=Set{String}()
       # "spa is up. should I try driving it?") and my kill of it was the "window disappeared".
       # JM_SOLIDNEAR_CONTINUE=1 keeps the old fall-through for a probe-then-drive session.
       get(ENV, "JM_SOLIDNEAR_CONTINUE", "0") == "0" && (flush(stdout); exit(0))
+    end
+    if INVIS_SOLIDS_DIAG
+        println("  [invis solids] ", TRACKSEL, ": ", length(INVIS_SOLID_ROWS), " exempt-class solids whose object is not drawn")
+        for r in sort(INVIS_SOLID_ROWS, by = x -> abs(x[2])); println("      s ", isnan(r[1]) ? "off-ribbon" : round(Int, r[1]), " lat ", round(r[2], digits = 1), "  ", r[3], "  r ", r[4]); end
     end
     if get(ENV,"JM_SOLIDDIAG","")!=""
         # E95h: report what is ACTUALLY in SOLIDS. The previous version of this block recomputed
