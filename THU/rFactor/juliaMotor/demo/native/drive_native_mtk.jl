@@ -2018,6 +2018,16 @@ function track_file(base, ext)
     q = joinpath(TMPTRK, base*ext); write(q, v); q
 end
 const ZTRK = track_file(GPLNAME, ".3do")
+# E80-S13: lower main() on the second thread while the track loads (see `const _MAIN_Q` near the end). Base macros
+# only in main() (@warn, @isdefined, @inbounds, @goto/@label, @eval, @async), so nothing it expands is defined later.
+const _MAIN_LOWER = (get(ENV, "JM_PRELOWER", "1") != "0" && Threads.nthreads() >= 2) ? Threads.@spawn(begin
+        _p = @__FILE__; _ex = Meta.parseall(read(_p, String); filename = _p)
+        _i = findfirst(x -> x isa Expr && x.head == :const && x.args[1] isa Expr && x.args[1].args[1] === :_MAIN_Q, _ex.args)
+        _q = _ex.args[_i].args[1].args[2]                          # Expr(:quote, Expr(:block, ..., function main() ... end))
+        _f = _q.args[1].args[findfirst(x -> x isa Expr && x.head == :function, _q.args[1].args)]
+        Meta.lower(Main, _f)
+    end) : nothing
+# (Started HERE, after the packages: spawned at the top it slowed their loading by 14 s -- lock/GC contention.)
 if SKIDPAD
     print("building skidpad... "); flush(stdout)
     const TRACK = skidpad_parts()
@@ -11654,6 +11664,12 @@ const _DX_PIT_DIAG    = get(ENV, "JM_PIT_DIAG", "") != ""
 const _DX_AI_TEST     = haskey(ENV, "JM_AI_TEST")
 const _DX_JOYTRACE    = get(ENV, "JM_JOYTRACE", "") != ""
 const _DX_SHOTS       = !isempty(SHOTS_AT)
+# E80-S13 (2026-10-15): main() is held as a QUOTE here -- evaluating a quote builds the expression without lowering it.
+# Julia lowers a top-level statement whole before running it, and main() (4,873 lines, 104 closures, 131 comprehensions)
+# took ~20 s of every launch to lower (E80-S12, Meta.lower timed) -- on the main thread, after all the loading. The
+# background task at the top of this file parses this file and lowers the function on the second thread (the launcher
+# runs `julia -t 2`) while the track loads; the code at the end evaluates the result. The source stays here, unchanged.
+const _MAIN_Q = quote
 function main()
     tstamp("  [E80] .. main() entered (its compile is the gap above)")
     # E106-S13b: the physics-facing ground closure. It converts the app's -999 "off the HAT"
@@ -16526,5 +16542,16 @@ function main()
     # a noisy crash AFTER the race is already fully written (telemetry/replay/result all flushed above).
     # _exit terminates the process cleanly at the OS level, so the post-race exit is no longer a crash.
     ccall(:_exit, Cvoid, (Cint,), 0)
+end
+end   # _MAIN_Q (E80-S13)
+# E80-S13: main() was LOWERED in the background since the script's first lines (see _MAIN_LOWER at the top); evaluate
+# the lowered thunk -- or, without a second thread / with JM_PRELOWER=0, the quote as before (lowered here, ~20 s).
+if _MAIN_LOWER !== nothing
+    let thunk = fetch(_MAIN_LOWER)
+        tstamp("  [E80] .. main() pre-lowered in the background -- defining")
+        Core.eval(Main, thunk)
+    end
+else
+    Core.eval(Main, _MAIN_Q)
 end
 main()

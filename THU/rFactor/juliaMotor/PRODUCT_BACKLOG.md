@@ -26709,3 +26709,4 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   contention) and the net was only −7 s. Started just before the track parse instead: startup unchanged (23.8 s).
 * **Spa, `-t 2` as the launcher: 162.2 s (`JM_PRELOWER=0`) → 147.6 / 147.5 s (two runs)**; main()'s gap 48 → 28 s
   (its compile alone). E80 today: Spa 211 → 148 s, about −30 %.
+* Gates (s61): **ALL 61 PASS** (`GATES_SKIP=road_clear_smoke`; warm_smoke runs `-t 2`, so the pre-lowered path is exercised; the single-thread gates take the fallback).
