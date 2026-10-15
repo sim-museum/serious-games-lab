@@ -26604,3 +26604,24 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   help.
 * E80 rotates after S8-S12 this cycle (Spa −48 s, WG −36 s).
 * Gates (s58): **ALL 61 PASS** (`GATES_SKIP=road_clear_smoke`).
+
+### PHYSFID-1 S8 (2026-10-15): aero lift MEASURED from iRacing's ride heights -- physical values found, not shipped (WW Glen)
+* Open-loop yaw gain by speed on the current car, linear range (|ay| < 0.6 g): 1.01 at 50-100 km/h, 0.97 at 100-150,
+  **0.85 at 150-200, 0.78 at 200-250** -- and 0.84 on near-steady samples at 150-200: a steady loss with speed, not tyre lag.
+* `irgold_replay.jl` dumps now carry axle heave at the wheel (g_hF/s_hF/g_hR/s_hR, mm, + = compressed; gold from the
+  shock deflections through the motion ratios 0.78/0.648, sim from the body/unsprung states). Straight running (|ay| <
+  0.1 g), change from 80-120 km/h, gold/sim, current car (ClAf −0.12, ClAr 0): front −3.6/−7.7 (160-199), −15.0/−17.7,
+  −19.2/−26.1 mm; rear +0.6/+2.5, +2.4/+6.5, +1.8/+7.0 -- julia's nose lifts too much and its tail squats too much.
+* Pitch is NOT the cause: heave per g of longitudinal acceleration at 40-140 km/h, gold/sim: front −26.5/−26.1 mm/g,
+  rear +18.8/+17.2 -- julia's pitch compliance matches iRacing (no anti-squat geometry missing in effect).
+* **ClAf −0.06, ClAr −0.08 (lift at both ends)** reproduce iRacing's heave for BOTH setups at every speed band: WW front
+  −6.6/−6.5, −14.8/−15.4, −18.0/−17.9 mm; WW rear +0.3/−0.2, +2.3/+3.4, +1.0/+1.6; default front −3.4/−5.1, −6.3/−5.2;
+  and the open-loop yaw gain rises to 0.93 (150-200) and 0.87 (200-250).
+* **But the closed-loop judge: J 1.0373 → 1.1060** (ClAr −0.08 alone 1.0498; ClAf 0: 1.0818; ClAf −0.06: 1.0473). The
+  loss is almost all WW T9 Glen (0.899 → 1.451: yaw error 1.87 → 2.32 °/s, peak-yaw ratio 0.91 → 1.01 -- the loose car
+  at speed turns too freely) plus WW slalom; the DEFAULT setup's Glen, slalom and bias windows improve slightly.
+* Reading: the fitted ClAf −0.12 has been standing in for something else in the WW car at speed -- a front-heavy aero
+  balance compensating a WW chassis that is too free at high speed in julia. Same pattern as S4 (front grip splits by
+  setup) and S5 (WW drive short): **the WW setup's mapping to julia's chassis** (bars "firm"/arms, 18 N/mm front springs,
+  ramps 35/85) is where the model is least physical -- exactly what SETUPMODEL-1's garage capture identifies. Not
+  shipped; the physical values are kept here for when the WW mapping is fixed (`JM_IRG_PARAMS="claf=-0.06,clar=-0.08"`).

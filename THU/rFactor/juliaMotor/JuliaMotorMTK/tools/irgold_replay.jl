@@ -95,6 +95,9 @@ function goldfile(fn)
     # + = the left side more compressed, as simroll(). The gold's `Roll` channel is not body roll (0.1-1.1 °/g by session).
     c["rollF"] = rad2deg.((c["LFshockDefl"] .- c["RFshockDefl"]) ./ 0.78 ./ 1.50)
     c["rollR"] = rad2deg.((c["LRshockDefl"] .- c["RRshockDefl"]) ./ 0.648 ./ 1.50)
+    # PHYSFID-1 S8: axle heave at the wheel [mm] (shock deflection through the same motion ratios; + = compressed)
+    c["heaveF"] = 1000 .* (c["LFshockDefl"] .+ c["RFshockDefl"]) ./ 2 ./ 0.78
+    c["heaveR"] = 1000 .* (c["LRshockDefl"] .+ c["RRshockDefl"]) ./ 2 ./ 0.648
     v = c["Speed"]; n = length(v)
     s = cumsum(v) ./ 60                                          # distance [m]
     grade = zeros(n)
@@ -216,7 +219,8 @@ function simroll(car)
     end
     (z, th, ph, fl, fr, rl, rr), a, b = g[1](car.integ), g[2], g[3]
     cmp(zu, xi, yi) = zu - (z + xi*th + yi*ph)
-    (rad2deg((cmp(fl, a, 0.75) - cmp(fr, a, -0.75))/1.5), rad2deg((cmp(rl, -b, 0.75) - cmp(rr, -b, -0.75))/1.5))
+    (rad2deg((cmp(fl, a, 0.75) - cmp(fr, a, -0.75))/1.5), rad2deg((cmp(rl, -b, 0.75) - cmp(rr, -b, -0.75))/1.5),
+     1000*(cmp(fl, a, 0.75) + cmp(fr, a, -0.75))/2, 1000*(cmp(rl, -b, 0.75) + cmp(rr, -b, -0.75))/2)   # PHYSFID-1 S8: + axle heave [mm]
 end
 
 """Settle the sim onto the gold's speed V and yaw rate R [rad/s] in gear gr: 4 s of an integral steering loop on yaw
@@ -332,13 +336,13 @@ function replay(car, sp, u0, g, w; warm = nothing)
         sroll = simroll(car); scol = simcol(car)
         push!(sim, (r = rad2deg(r), ay = ay/G, β = rad2deg(atan(v, max(u, 1.0))), v = 3.6*hypot(u, v), roll = rad2deg(ph),
                     τ = τ, rpm = rpm, δ = rad2deg(δ), κr = (wl + wr)/2*DriveRT3D.RW_R/max(u, 1.0) - 1, thr = c["Throttle"][j],
-                    rollF = sroll[1], rollR = sroll[2], fyf = scol[1], xif = scol[2],
+                    rollF = sroll[1], rollR = sroll[2], fyf = scol[1], xif = scol[2], hF = sroll[3], hR = sroll[4],
                     κL = wl*DriveRT3D.RW_R/max(u, 1.0) - 1, κR = wr*DriveRT3D.RW_R/max(u, 1.0) - 1))
         push!(gold, (r = rad2deg(c["YawRate"][j]), ay = c["LatAccel"][j]/G, β = β_of(c, j), v = 3.6c["Speed"][j],
                      roll = haskey(c, "Roll") ? rad2deg(c["Roll"][j]) : NaN, τ = c["SteeringWheelTorque"][j], rpm = c["RPM"][j],
                      δ = rad2deg(c["SteeringWheelAngle"][j])/sr,
                      κr = (c["LRspeed"][j] + c["RRspeed"][j])/2/max(c["Speed"][j], 1.0) - 1, thr = c["Throttle"][j],
-                     rollF = c["rollF"][j], rollR = c["rollR"][j], fyf = NaN, xif = NaN,
+                     rollF = c["rollF"][j], rollR = c["rollR"][j], fyf = NaN, xif = NaN, hF = c["heaveF"][j], hR = c["heaveR"][j],
                      κL = c["LRspeed"][j]/max(c["Speed"][j], 1.0) - 1, κR = c["RRspeed"][j]/max(c["Speed"][j], 1.0) - 1))
         (isfinite(u) && u > 3) || break
         abs(rad2deg(atan(v, max(u, 1.0)))) > 60 && break
@@ -406,11 +410,11 @@ function main()
                     isfinite(x.δss) ? @sprintf("  δss err %+.2f°", x.δss) : "", (x.spun_g || x.spun_s) ? "  SPIN gold $(x.spun_g) sim $(x.spun_s)" : "")
             if !isempty(dump)
                 open(joinpath(dump, @sprintf("%s_%07.1f.csv", stem, x.t)), "w") do io
-                    println(io, "k,g_r,s_r,g_ay,s_ay,g_b,s_b,g_v,s_v,g_roll,s_roll,g_tau,s_tau,g_d,s_d,g_kr,s_kr,thr,g_rpm,s_rpm,g_rollF,s_rollF,g_rollR,s_rollR,s_fyf,s_xif,g_kL,s_kL,g_kR,s_kR")
+                    println(io, "k,g_r,s_r,g_ay,s_ay,g_b,s_b,g_v,s_v,g_roll,s_roll,g_tau,s_tau,g_d,s_d,g_kr,s_kr,thr,g_rpm,s_rpm,g_rollF,s_rollF,g_rollR,s_rollR,s_fyf,s_xif,g_kL,s_kL,g_kR,s_kR,g_hF,s_hF,g_hR,s_hR")
                     for k in 1:min(length(gold), length(sim))
                         a, b = gold[k], sim[k]
-                        @printf(io, "%d,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.3f,%.3f,%.4f,%.4f,%.3f,%.3f,%.4f,%.4f,%.4f,%.4f,%.3f,%.0f,%.0f,%.4f,%.4f,%.4f,%.4f,%.1f,%.4f,%.4f,%.4f,%.4f,%.4f\n", k, a.r, b.r, a.ay, b.ay, a.β, b.β,
-                                a.v, b.v, a.roll, b.roll, a.τ, b.τ, a.δ, b.δ, a.κr, b.κr, a.thr, a.rpm, b.rpm, a.rollF, b.rollF, a.rollR, b.rollR, b.fyf, b.xif, a.κL, b.κL, a.κR, b.κR)
+                        @printf(io, "%d,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.3f,%.3f,%.4f,%.4f,%.3f,%.3f,%.4f,%.4f,%.4f,%.4f,%.3f,%.0f,%.0f,%.4f,%.4f,%.4f,%.4f,%.1f,%.4f,%.4f,%.4f,%.4f,%.4f,%.2f,%.2f,%.2f,%.2f\n", k, a.r, b.r, a.ay, b.ay, a.β, b.β,
+                                a.v, b.v, a.roll, b.roll, a.τ, b.τ, a.δ, b.δ, a.κr, b.κr, a.thr, a.rpm, b.rpm, a.rollF, b.rollF, a.rollR, b.rollR, b.fyf, b.xif, a.κL, b.κL, a.κR, b.κR, a.hF, b.hF, a.hR, b.hR)
                     end
                 end
             end
