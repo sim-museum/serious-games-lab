@@ -26496,3 +26496,11 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   ratio (S5/S6), the limit balance (yaw gain 0.75 at 1.25-1.5 g), the front grip the gold asks for splits by setup (S4).
   Those need data the sessions do not hold: **IRTEST-261015** (`261015/iracing_tests_261015.txt`, ~30 min: skidpad
   limit both setups, same-gear WOT pulls per setup, in-gear coasts). Rotates with 18 sprints kept.
+
+### Gate added (2026-10-15): `td261013_smoke` -- the last two days' fixes as assertions
+* 23 checks over TD261013-1 (SHIFT+R recover, the AI pit lane, per-race AI seed, the two-leg lap window, sprites in the
+  window, the bkbill lead, house1a, the marshal hut, Spa's building exemption, rail roll, low bush rows), WHEELOFF-1 (the
+  refusal and its order after the test hooks, the notice), SPAFENCE-1, the smoothed physics ground, MONZAROAD-1 and
+  PHYSFID-1 (the FF law -- evaluated: 11 N·m → 0.39, 30 N·m → 1.0 -- front Cα 26, the .ibt wheel angle, ηdir). In
+  gates.sh's SMOKES (60 gates).
+* Gates (s52): **ALL 60 PASS** (`GATES_SKIP=road_clear_smoke`).
