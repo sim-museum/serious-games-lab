@@ -162,6 +162,15 @@ def set_current_system(system) -> None:
     _CURRENT_SYSTEM = system
 
 
+def _weak_minor_transfer(opening, b) -> bool:
+    """1NT-3C as the (weak) transfer to diamonds (Q-Plus F-FRA-M
+    `A-1NT-Jacoby-minor.clubs-for-diamonds`): alerted, not a jump shift."""
+    sy = _CURRENT_SYSTEM
+    return (opening is not None and opening.level == 1 and opening.suit == Suit.NOTRUMP
+            and b.level == 3 and b.suit == Suit.CLUBS and sy is not None
+            and hasattr(sy, "has") and sy.has("A-1NT-Jacoby-minor.clubs-for-diamonds"))
+
+
 def _plays_transfers(system, nt_level: int) -> bool:
     rr = getattr(system, "raw_rules", None) if system is not None else None
     if not rr:
@@ -353,6 +362,23 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
                     and b.suit != ctx.opening_bid.suit):
                 ctx.gf_established = True
 
+            # French (A-jump-shift-to-2.is-very-strong): responder's jump
+            # to two of a new suit is game forcing; biq passed 1D-2S-3D-3S
+            # (French run 261014 bd 137, Q-Plus made 6C).
+            sy = system if system is not None else _CURRENT_SYSTEM
+            if (ctx.opening_bid is not None
+                    and ctx.opening_bid.level == 1
+                    and ctx.opening_bid.suit not in (None, _NT)
+                    and s == partner_of_opener
+                    and len(opener_post_first_bids) == 0
+                    and b.level == 2 and b.suit not in (None, _NT)
+                    and _CUEBID_SUIT_RANK[b.suit] > _CUEBID_SUIT_RANK[ctx.opening_bid.suit]
+                    and not any(not (x.is_pass) for s2, x in state.bids[:idx]
+                                if s2 not in opener_side)
+                    and sy is not None and hasattr(sy, "has")
+                    and sy.has("A-jump-shift-to-2.is-very-strong")):
+                ctx.gf_established = True
+
             # Jump shift by responder: only alerted at level 3+ counts
             # as GF here. Level-2 new suits are already covered by the
             # 2/1-GF branch above. Unalerted level-3 jumps are weak
@@ -375,7 +401,8 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
                     and b.suit != _NT
                     and b.suit != ctx.opening_bid.suit
                     and b.level >= 3
-                    and b.alert):
+                    and b.alert
+                    and not _weak_minor_transfer(ctx.opening_bid, b)):
                 ctx.gf_established = True
 
             # Strong artificial 1C opening: any positive response
@@ -635,6 +662,11 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
         if not (ctx.opening_bid is not None
                 and ctx.opening_bid.suit == _NT
                 and ctx.opening_bid.level <= 3):
+            break
+        # Gambling 3NT (B-3NT.gambling): 4C is pass-or-correct, not Gerber.
+        sy = system if system is not None else _CURRENT_SYSTEM
+        if (ctx.opening_bid.level == 3 and sy is not None and hasattr(sy, "has")
+                and sy.has("B-3NT.gambling")):
             break
         # No opp intervention between opening and the 4C
         opp_acted = False

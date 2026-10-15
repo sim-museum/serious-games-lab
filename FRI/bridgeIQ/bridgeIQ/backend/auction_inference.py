@@ -353,6 +353,14 @@ def _annotate_opening(c: SeatConstraints, b: Bid, system,
             c.tighten_hcp(17, 23, f"Strong 2{suit_c} = 18-22 HCP, 6+ {suit_c} (forcing)")
             c.set_suit_len(b.suit, 6, 8, f"Strong 2{suit_c} promises 6+ {suit_c}")
             return
+        # Benjamin (F-FRA-M): 2C = 22-23 balanced or a strong suit, 2D = 24+
+        # or equivalent, game forcing.
+        if "B-strong-artificial.bid-2C.Benjamin" in raw_rules and b.suit in (Suit.CLUBS, Suit.DIAMONDS):
+            if b.suit == Suit.CLUBS:
+                c.tighten_hcp(19, 24, "Benjamin 2♣ = 22-23 balanced or a strong suit")
+            else:
+                c.tighten_hcp(21, 37, "Benjamin 2♦ = 24+ or equivalent (game force)")
+            return
         if b.suit == Suit.CLUBS:
             if strong_call == "2C":
                 c.tighten_hcp(22, 37,
@@ -1031,7 +1039,21 @@ def _annotate_response(c: SeatConstraints, opening: Bid,
         # 1NT - 3C / 3D (some styles = minor invite or 6+ minor).
         # Leave loose.
 
-    # ---- Strong 2C responses ----
+    # ---- Benjamin 2D responses (F-FRA-M) ----
+    if (opening.level == 2 and opening.suit == Suit.DIAMONDS
+            and getattr(system, "benjamin", False)):
+        if response.level == 2 and response.suit == Suit.HEARTS:
+            c.tighten_hcp(0, 7, "2♥ over Benjamin 2♦ = 0-7 HCP")
+        elif response.level == 2 and response.suit == Suit.SPADES:
+            c.tighten_hcp(8, 21, "2♠ over Benjamin 2♦ = 8+ HCP")
+        elif response.level == 2 and response.suit == Suit.NOTRUMP:
+            c.tighten_hcp(8, 10, "2NT over Benjamin 2♦ = 8-10 balanced")
+        elif response.level == 3 and response.suit == Suit.NOTRUMP:
+            c.tighten_hcp(11, 13, "3NT over Benjamin 2♦ = 11-13 balanced")
+        elif response.level == 3 and response.suit is not None:
+            c.tighten_hcp(3, 8, "3-level answer to Benjamin 2♦ = good six-card suit, 0-8")
+            c.set_suit_len(response.suit, 6, 6, "good six-card suit")
+        return
     # 2C - 2D = waiting (could be 0-7 OR 8+ without a 5-card suit).
     if (opening.level == 2 and opening.suit == Suit.CLUBS
             and getattr(system, "strong_open_call", "2C") == "2C"

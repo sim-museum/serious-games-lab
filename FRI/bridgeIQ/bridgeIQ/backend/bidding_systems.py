@@ -174,6 +174,9 @@ class BiddingSystem:
     # 18-22 HCP, forcing for one round.
     strong_two_diamonds: bool = False
     strong_two_majors: bool = False
+    # Benjamin twos: 2C strong but passable (22-23 balanced or a strong
+    # suit), 2D artificial game force (24+).
+    benjamin: bool = False
     weak_two_min_hcp: int = 6
     weak_two_max_hcp: int = 11
     # Precision 1♦ opening; only used when strong_open_call == "1C".
@@ -314,6 +317,11 @@ def _apply_two_diamonds(sys_: BiddingSystem, rules: Dict[str, RCERule]) -> None:
         # Acol strong two (6+ diamonds, 18-22), not a weak two.
         sys_.weak_two_diamonds = False
         sys_.strong_two_diamonds = True
+    elif "B-strong-artificial.bid-2C.Benjamin" in rules:
+        # Benjamin (Q-Plus F-FRA-M): 2D is the artificial game force (24+
+        # or equivalent), 2C the strong but passable opening.
+        sys_.weak_two_diamonds = False
+        sys_.benjamin = True
     elif any(k.startswith("B-2D.Precision") for k in rules):
         sys_.weak_two_diamonds = False
         for k in rules:

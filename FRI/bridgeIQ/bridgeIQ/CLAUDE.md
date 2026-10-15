@@ -1,5 +1,26 @@
 # biq — Claude Code project notes
 
+## STATUS — French (Benjamin) made playable; Acol + French 10 h run (2026-10-14/15, committed)
+* Run 261014_qplus_acol_french_biqS played 20:42-06:53: 245 boards, Acol 1-128 -2.69/bd (random -2.83,
+  last code -1.67 over 18), French 129-245 -1.97/bd (random -3.52, last code -2.36 over 42). 11 live
+  swaps (RESUME.txt there): Acol strong-two raise = 4+ HCP (4M = no ace), 2C with 22+ / 20+ and 8 playing
+  tricks, 2C answers per negative-2D (3NT 11-13, 2NT 8-10...), 2C-2D long-minor rebid, 1M-2m natural
+  without forcing 1NT, splinter reply 4M; French 1NT-(Landy)-2M = stopper, GF jump shift to 2, no
+  legalized simple raise, splinter slam eval. 229 checks. The French North window began logging at
+  ~06:20 (log-057.bdl) and slowed the table to a stop: check B-PREFER no_logging for every window.
+* The SAYC + Acol run below played 00:37-10:43 (260 boards; random SAYC -2.33, Acol -2.59 IMP/bd).
+* Run `tools/runs/bluechip/261014_qplus_acol_french_biqS` (seed 261014, RESUME.txt there): Acol
+  windows first, French (F-FRA-M) spares, handover after 128 boards; French planner families
+  benj2d_resp/open, benj2c_resp/open, gamb3nt, nt_minor, wk2m_resp/open.
+* biq read Q-Plus's French as SAYC: weak 2D (Q-Plus: Benjamin game force), 2C with 24+ (Q-Plus:
+  passable), partner's 2D "preemptively raised". Fixed (`_benjamin`, BIQ_BENJAMIN=0 to disable):
+  Benjamin 2C/2D openings, answers, rebids; later 2D rounds read as a GF 2C (`_benj_view`, like
+  `_switch_1c_view`); minor transfers 1NT-2S/3C, Stayman 2NT = both majors, 1NT-4D, gambling 3NT
+  (4C pass-or-correct; not Gerber in auction_context). All strong-2C systems: 2C-2D-2M-? no longer
+  "prefers" the artificial 2C (`_strong_2c_second`); 2D waiting floor 0. Acol: X after partner's
+  overcalled strong two; over a weak 1NT 6-4 majors bid the six-card major, Landy / 2M from 8 HCP.
+  test_qplus_match_fixes.py 211 checks (A-/S-/F- cases).
+
 ## STATUS — Standard Acol made playable vs Q-Plus; SAYC + Acol run prepared (2026-10-14, UNCOMMITTED)
 * Run `tools/runs/bluechip/261013_qplus_sayc_acol_biqS` (seed 261013, RESUME.txt there): SAYC
   windows first, Standard Acol (B-ACL-S) spares, handover after 128 boards; plan.json

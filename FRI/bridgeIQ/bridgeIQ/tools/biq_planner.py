@@ -146,6 +146,33 @@ FAMILIES = {
     "s2_resp": ("partner opens an Acol strong two, S answers", "N",
                 {"N": _strong_two(), "S": {"ok": _band(0, 12)}}, "NSEW",
                 lambda a: a and a[0] in ("2D", "2H", "2S")),
+    # Modern Standard French (Q-Plus F-FRA-M): Benjamin 2C (22-23 balanced or
+    # a strong suit, passable after 2C-2D), Benjamin 2D (24+ or game force),
+    # weak 2H/2S only, gambling 3NT, 1NT-2S / 1NT-3C minor transfers.
+    "benj2d_resp": ("partner opens a Benjamin 2D (24+ / game force), S answers", "N",
+                    {"N": {"ok": _band(24, 28)}, "S": {"ok": _band(0, 12)}}, "NSEW",
+                    lambda a: a and a[0] == "2D"),
+    "benj2d_open": ("S has 24+ (a Benjamin 2D opening)", "S",
+                    {"S": {"ok": _band(24, 28)}}, "SNEW", lambda a: bool(a)),
+    "benj2c_resp": ("partner opens a Benjamin 2C (22-23 balanced or a strong suit), S answers", "N",
+                    {"N": {"ok": _band(21, 23)}, "S": {"ok": _band(0, 10)}}, "NSEW",
+                    lambda a: a and a[0] == "2C"),
+    "benj2c_open": ("S has 21-23 (a Benjamin 2C opening)", "S",
+                    {"S": {"ok": _band(21, 23)}}, "SNEW", lambda a: bool(a)),
+    "gamb3nt": ("partner holds a solid seven-card minor and nothing outside (gambling 3NT)", "N",
+                {"N": {"shapes": _shapes(lambda x: max(x["D"], x["C"]) == 7 and max(x["S"], x["H"]) <= 3),
+                       "ok": lambda h: any(_lens(h)[s] == 7 and _suit_hcp(h, s) == 9
+                                           and hcp(h) <= 11 for s in "DC")},
+                 "S": {"ok": _band(6, 16)}}, "NSEW", lambda a: a and a[0] == "3NT"),
+    "nt_minor": ("partner opens a 15-17 1NT, S holds a six-card minor (minor transfers)", "N",
+                 {"N": _NT, "S": {"shapes": _shapes(lambda x: max(x["D"], x["C"]) >= 6 and max(x["S"], x["H"]) <= 3)}},
+                 "NSEW", lambda a: a and a[0] == "1NT"),
+    "wk2m_resp": ("S has slam values opposite partner's weak two in a major", "N",
+                  {"N": _weak_two("HS"), "S": {"ok": _band(15, 21)}}, "NSEW",
+                  lambda a: a and a[0] in ("2H", "2S")),
+    "wk2m_open": ("S opens a weak two in a major, partner has a strong hand", "S",
+                  {"S": _weak_two("HS"), "N": {"ok": _band(15, 21)}}, "SNEW",
+                  lambda a: a and a[0] in ("2H", "2S")),
 }
 VULS = ["None", "NS", "EW", "Both"]
 
