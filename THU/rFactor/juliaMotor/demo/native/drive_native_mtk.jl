@@ -74,6 +74,16 @@ const FFB_SPRING = parse(Float64, get(ENV, "JM_FFB_SPRING", "0.55"))# self-cente
 const FFB_PHYS    = !haskey(ENV, "JM_FFB_LEGACY")
 const FFB_TREF    = parse(Float64, get(ENV, "JM_FFB_TREF", "8.0"))
 const FFB_DESPIKE = parse(Float64, get(ENV, "JM_FFB_DESPIKE", FFB_PHYS ? "0.015" : "0.05"))
+# PHYSFID-1 S1 (PO 2026-10-14: "the current julia default model seems ff-heavy ... In iracing, ff is strictly to convey a
+# signal to the driver, not so heavy it's hard to turn the wheel sometimes as in julia"). julia sent tanh(1.3 x rim torque
+# / 8 N·m) + a centring spring: at 1 g (rim ~10 N·m) that is tanh(1.6) = 0.92 of the wheel's full force -- saturated in an
+# ordinary corner. The PO's own iRacing settings (every 261010-12 .ibt): SteeringWheelMaxForceNm 28.33, UseLinear 1,
+# Smoothing 0, Damper 0, Limiter 0 -- the wheel gets the column torque / 28.33, linear, nothing added (1 g ≈ 0.39). julia
+# now does the same with the column torque fitted to iRacing's (CARPHYS-1 S5). JM_FFB_MODE=legacy restores the old law;
+# JM_FFB_MAXNM sets the full-scale torque; JM_FFB_SPRING_IR adds a centring spring (default none, as iRacing).
+const FFB_IRMODE  = FFB_PHYS && get(ENV, "JM_FFB_MODE", "iracing") != "legacy"
+const FFB_MAXNM   = parse(Float64, get(ENV, "JM_FFB_MAXNM", "28.33"))
+const FFB_SPRING_IR = parse(Float64, get(ENV, "JM_FFB_SPRING_IR", "0.0"))
 const _JOYCONF = joinpath(@__DIR__, "joystick.conf")
 # joystick.conf (juliaRacer.py / calibrate.jl) > a profile AUTODETECTED from the device name > X3D default.
 # GLFW.Init is idempotent (the window code calls it again later); headless runs without a display fall
@@ -14749,7 +14759,11 @@ function main()
             # tuned (raw ±1 = ±450° on the TX): with physical steering (STEER_GAIN) inp.steer is road angle / lock,
             # 2.6x more per wheel degree, which silently stiffened the spring 2.6x (2026-10-03). Divide it back out.
             spr = FFB_SPRING * clamp(STEER_GAIN[] > 0 ? inp.steer / STEER_GAIN[] : inp.steer, -1, 1)
-            target = tanh(FFB_SIGN * (FFB_GAIN * mz * spd + spr))
+            target = if FFB_IRMODE && τrim !== nothing           # PHYSFID-1 S1: iRacing's linear law (see FFB_IRMODE)
+                clamp(FFB_SIGN * (mz * FFB_TREF / FFB_MAXNM) + FFB_SIGN * FFB_SPRING_IR * clamp(STEER_GAIN[] > 0 ? inp.steer / STEER_GAIN[] : inp.steer, -1, 1), -1.0, 1.0)
+            else
+                tanh(FFB_SIGN * (FFB_GAIN * mz * spd + spr))
+            end
             ffb_f += (target - ffb_f) * clamp(dt/FFB_LP, 0.0, 1.0)   # 1st-order low-pass: smooth, continuous
             # the impact JOLT takes PRIORITY over the steering force: scale the road/spring force down by
             # the jolt size so a hit is always FELT, even mid-corner when ffb_f is already near full lock

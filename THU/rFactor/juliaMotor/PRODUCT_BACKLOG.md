@@ -26386,3 +26386,26 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   Clark through s 98-193 shows him on the tarmac by the board wall (`scratchpad/integ/ra.png`) -- the road-only classifier
   misses that stretch's surface.
 * Gates (s47): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).
+
+### PHYSFID-1 retrospective (2026-10-14, start of the 25-sprint budget)
+* Done before: CARPHYS-1/IRGOLD-1 S1-S25 fitted the car to the 261010/11/12 iRacing sessions window by window (replay
+  metric 2.065 → 1.16): longitudinal chain, tyre (TYRE3 brush, load-sensitive rear), dampers, front lift, anti-stall
+  clutch, steering column (CARPHYS-1 S5: SteeringColumn object fitted to SteeringWheelTorque, R² 0.982). Many single-
+  parameter sweeps since S21 traded one venue against another. Several pieces already ARE component objects (clutch,
+  column, dampers, roll bars, fuel tank); others are empirical maps (part-throttle, μ(load), camber law).
+* What the PO feels: (1) FF-heavy -- hard to turn sometimes; (2) inert. New angle: measure both directly against the
+  gold before touching the model.
+
+### PHYSFID-1 S1 (2026-10-14): the FF -- iRacing's own law
+* The PO's iRacing wheel settings, read from every 261010-12 .ibt: SteeringWheelMaxForceNm 28.33, UseLinear 1, Smoothing
+  0, Damper 0, Limiter 0 (PctIntensity 0.5): the wheel gets column torque / 28.33, linear, nothing added -- iRacing's
+  column torque is 10-13 N·m per g (p95 15-23 N·m), so a 1 g corner is ~0.39 of the wheel.
+* julia sent tanh(1.3 × rim torque / 8 N·m) + a centring spring. With the gold's own inputs replayed into julia
+  (irgold_replay, all 228 windows, `JM_IRG_DUMP`): julia's column torque is right (0.92 of the gold's, median), but the
+  wheel force fraction was median **0.69** (p95 0.99; above 0.8 for 43 % of the time) against iRacing's **0.18**
+  (p95 0.57; never above 0.8) -- 3.8x heavier and saturated: "hard to turn the wheel sometimes".
+* **Shipped:** julia's FF is iRacing's law -- column torque / 28.33, linear, no centring spring (`JM_FFB_MAXNM`,
+  `JM_FFB_SPRING_IR`; `JM_FFB_MODE=legacy` = before). Same replay: median 0.18, p95 0.55 -- as iRacing.
+* Measured for S2 ("inert"), same inputs: julia's yaw rate lags the gold's by ~17 ms (median; p75 33 ms) and reaches
+  0.90 of it (median gain over 163 dynamic windows) -- 10 % less turn for the same steering.
+* Gates (s48): **ALL 59 PASS** (`GATES_SKIP=road_clear_smoke`).
