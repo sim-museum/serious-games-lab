@@ -990,6 +990,8 @@ const NET_DIAG = parse(Int, get(ENV, "JM_NET_DIAG", "0"))
 # E85-S6: drive the player car from the racing line, for headless measurement runs.
 # E106-S15: driveability watch (see the per-frame block in the autodrive branch).
 const FIXED_DT    = parse(Float64, get(ENV, "JM_FIXED_DT", "0"))   # >0 = fixed sim step (headless sweeps)
+const WHEELOFF_RULE = get(ENV, "JM_WHEELOFF_RULE", "1") != "0"   # WHEELOFF-1
+const WHEELOFF_MSG = Ref(0.0)
 const RECOVER_AT  = Float64[parse(Float64, x) for x in split(get(ENV, "JM_RECOVER_AT", ""), ",") if !isempty(strip(x))]   # TD261013-1 (c3) test hook
 const RECOVER_I   = Ref(1)
 const WRECK_AT    = parse(Float64, get(ENV, "JM_WRECK_AT", "0"))   # TD261013-1 (c3) test hook: force a wreck at this sim time
@@ -3561,6 +3563,52 @@ if GPLW_ON && get(ENV, "JM_GPLWALL_SHOW", "0") != "0"
         end
         push!(TRACK, Render.TrackPart(v, "", col)); push!(TRACK_RAILCULL, false)
         println("  GPLWALL-1: JM_GPLWALL_SHOW overlay, ", length(v) ÷ 33, " triangles")
+    end
+end
+# SPAFENCE-1 (PO 2026-10-14: "At spa put a fence where the invisible trackside wall is"): GPL's own wall after Stavelot
+# (s 8179-8429 on GPL's lap, right side, 3.5 m out, 4 m high) has nothing drawn at it -- the wall the PO chose to keep
+# (2026-10-01) and the likeliest cause of TD261013-1 (b2). A wire fence (spa67's `wiref_m`, 1.6 m) now stands on the wall's
+# road-facing face, so what stops the car can be seen. JM_SPAFENCE="<s0>:<s1>:<L|R>;..." (GPL lap metres; "" = none).
+const SPAFENCE = SPA && GPLW_ON ? [let f = split(x, ":"); (parse(Float64, f[1]), parse(Float64, f[2]), f[3] == "L" ? -1.0 : 1.0) end
+                                   for x in split(get(ENV, "JM_SPAFENCE", "8170:8440:R"), ";"; keepempty = false)] : Tuple{Float64,Float64,Float64}[]
+if !isempty(SPAFENCE)
+    let v = Float32[], sacc = cumsum([0.0; GPLWALLS.seclen]), H = 1.6, ul = 0.0, nq = 0
+        gh(x, z) = (h = JuliaMotor.hat3d(TERRAIN, x, z; ref = Inf); h[3] ? Float64(h[1]) : NaN)
+        function edge(si, f, side)                                    # the road's free interval, as gplw_road_interval
+            w = GPLWALLS.secs[si]; bw = -1.0; mid = 0.0
+            for k in 1:length(w)-1
+                (w[k].typ & 0x7ff) == 1 || continue
+                a = GPLWall.edge(GPLWALLS, si, k, f); b = GPLWall.edge(GPLWALLS, si, k + 1, f)
+                b - a > bw && (bw = b - a; mid = (a + b)/2)
+            end
+            (lo, hi, _, _) = GPLWall.free_interval(GPLWALLS, si, f, mid, mid; hmin = GPLW_HMIN)
+            side > 0 ? hi : lo
+        end
+        pv(x, y, z, nx, nz, u, t) = append!(v, Float32[x, y, -z, nx, 0f0, -nz, 1f0, 1f0, 1f0, u, t])
+        for (s0, s1, side) in SPAFENCE, si in eachindex(GPLWALLS.secs)
+            (sacc[si+1] < s0 || sacc[si] > s1) && continue
+            for j in 1:GPLWall.NF
+                f0 = (j - 1)/GPLWall.NF; f1 = j/GPLWall.NF
+                (sacc[si] + f0*GPLWALLS.seclen[si] < s0 || sacc[si] + f1*GPLWALLS.seclen[si] > s1) && continue
+                e0 = edge(si, f0, side); e1 = edge(si, f1, side); (isfinite(e0) && isfinite(e1)) || continue
+                (p0x, p0z, n0x, n0z) = gplw_frame(si, f0); (p1x, p1z, n1x, n1z) = gplw_frame(si, f1)
+                ax = p0x + n0x*e0; az = p0z + n0z*e0; bx = p1x + n1x*e1; bz = p1z + n1z*e1
+                ha = gh(ax, az); hb = gh(bx, bz); (isnan(ha) || isnan(hb)) && continue
+                L = hypot(bx - ax, bz - az); u0 = ul/3.0; u1 = (ul + L)/3.0; ul += L
+                nx = -side*n0x; nz = -side*n0z                          # facing the road
+                for (q1, q2, q3) in (((ax, ha, az, u0, 1.0), (bx, hb, bz, u1, 1.0), (bx, hb + H, bz, u1, 0.0)),
+                                     ((ax, ha, az, u0, 1.0), (bx, hb + H, bz, u1, 0.0), (ax, ha + H, az, u0, 0.0)),
+                                     ((ax, ha, az, u0, 1.0), (bx, hb + H, bz, u1, 0.0), (bx, hb, bz, u1, 1.0)),
+                                     ((ax, ha, az, u0, 1.0), (ax, ha + H, az, u0, 0.0), (bx, hb + H, bz, u1, 0.0)))
+                    pv(q1[1], q1[2], q1[3], nx, nz, q1[4], q1[5]); pv(q2[1], q2[2], q2[3], nx, nz, q2[4], q2[5]); pv(q3[1], q3[2], q3[3], nx, nz, q3[4], q3[5])
+                end
+                nq += 1
+            end
+        end
+        if nq > 0
+            push!(TRACK, Render.TrackPart(v, "wiref_m", (1f0, 1f0, 1f0))); push!(TRACK_RAILCULL, false)
+        end
+        println("  SPAFENCE-1: a wire fence on GPL's invisible wall -- ", nq, " panels, ", round(Int, ul), " m (JM_SPAFENCE=\"\" removes it)")
     end
 end
 # ---- GPLWALL-1 S2: the walls as a hard boundary for the PLAYER car ----
@@ -13673,6 +13721,13 @@ function main()
         end
         if SMOKE && WRECK_AT > 0 && cs.t >= WRECK_AT && !WRECK_AT_DONE[]
             WRECK_AT_DONE[] = true; wreck!(max(cs.v, 20.0); closing = 20.0, x = cs.x, z = cs.z)
+            haskey(ENV, "JM_WRECK_LOOSE") && push!(LOOSE_WHEELS, (cs.x, cs.y, cs.z, 0.0, 0.0, 0.0, 0.0, 0.0, "lotwlf"))   # WHEELOFF-1 test hook
+        end
+        # WHEELOFF-1 (PO 2026-10-14: "SHIFT R should not clear a wreck if any wheels have come off - only R to restart should
+        # be allowed"): with a wheel gone, SHIFT+R does nothing (neither recover nor respawn); R restarts. JM_WHEELOFF_RULE=0 = S1.
+        if recover && WRECKED[] && !isempty(LOOSE_WHEELS) && WHEELOFF_RULE
+            recover = false; rst = false; WHEELOFF_MSG[] = 3.0
+            println("  [recover] SHIFT+R refused: a wheel has come off -- R restarts the race"); flush(stdout)
         end
         (rst || restart) && GPLW_ON && gplw_teleported!()
         CRASH_ON && (inp = JuliaMotor.DriveInput(throttle = 0.0, brake = 0.0, steer = 0.0, clutch = inp.clutch,
@@ -15923,7 +15978,8 @@ function main()
         # TD261013-1 (c3): a wreck refuses every shift and the throttle, by design (E95) -- and said so only on stdout, so
         # the PO met a car that "doesn't respond". Say it where the driver is looking, with the way out.
         if WRECKED[] && !REPLAY && FONT !== nothing && get(ENV, "JM_WRECK_NOTICE", "1") != "0"
-            m1 = "CAR WRECKED -- engine and gearbox out"; m2 = "SHIFT+R: back onto the track     R: restart the race"
+            m1 = "CAR WRECKED -- engine and gearbox out"
+            m2 = (WHEELOFF_RULE && !isempty(LOOSE_WHEELS)) ? "A wheel has come off -- R: restart the race" : "SHIFT+R: back onto the track     R: restart the race"
             bw = max(Render.text_width(FONT, m1), Render.text_width(FONT, m2)) + 40; by = H*0.30 - 14
             bx = empty!(HUD_TY); Render.hquad!(bx, W/2 - bw/2, by, bw, 2.4*FONT.lineh + 28, (0.06, 0.06, 0.08))
             Render.hud_draw(hudprog, hudvao, hudvbo, bx, W, H)

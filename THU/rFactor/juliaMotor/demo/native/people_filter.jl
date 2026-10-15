@@ -23,7 +23,11 @@ const NAMED = ("chrisa", "sergioa", "thomasa", "hatzia", "stefana", "starter")
 # degradation a by-name filter suffers -- it kept passing every test written about it while not
 # covering four installed tracks. Found by scanning the tracks, not by re-reading the list.
 const PREFIXES = ("ppl", "peop", "person", "pelf",   # loose standing spectators
-                  "p_s", "pform",              # Spa scattered standing sprites + foreground photographer
+                  "p_s",                       # Spa scattered standing sprites
+                  # TD261013-1 S11 (PO 2026-10-14: "the spa house on the other side of the road on the 90 degree left turn
+                  # must be in the GPL data, as it displays when running wine GPL"): `pform` was listed here as a
+                  # "photographer" -- it is the MARSHAL'S HUT (pform1.3do: 1.4 x 1.6 m, 2.7 m tall, pfrnt1/pside1/pside2),
+                  # the dark hut behind the rail at the exit of Spa's 90 deg left (gold 260802 Spa cockpit t 78). Kept now.
                   "grndp", "crowd", "spect",   # ground-level crowd rows
                   "flagger", "rescu",          # marshals
                   "photo", "fotograf")         # photographers

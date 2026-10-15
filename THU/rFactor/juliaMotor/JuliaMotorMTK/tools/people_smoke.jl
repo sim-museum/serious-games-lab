@@ -23,7 +23,7 @@ end
 println("PO loose-people gate")
 
 # 1. Known people must drop.
-for nm in ("ppl01", "people3", "pelf2", "p_s7", "pform1", "grndp2", "crowd1", "spect4",
+for nm in ("ppl01", "people3", "pelf2", "p_s7", "grndp2", "crowd1", "spect4",
            "flagger1", "rescu1", "photo2", "fotograf1", "chrisa", "starter")
     check("drops '$nm'", PeopleFilter.is_loose_person(nm), "")
 end
@@ -31,7 +31,7 @@ end
 # 2. Things that merely LOOK like people must NOT drop -- this is the half that protects the
 #    scene. prinz*/spider* are CARS and p_armco is a barrier; dropping them would be a
 #    regression that a people-only test would never notice.
-for nm in ("prinz1", "spider2", "p_armco", "pitwall", "grandstand", "armco3", "pole1")
+for nm in ("prinz1", "spider2", "p_armco", "pitwall", "grandstand", "armco3", "pole1", "pform1")   # pform1 = Spa marshal hut (TD261013-1 S11)
     check("keeps '$nm'", !PeopleFilter.is_loose_person(nm), "")
 end
 
