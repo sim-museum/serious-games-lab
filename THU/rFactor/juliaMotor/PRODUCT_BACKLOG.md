@@ -26933,3 +26933,17 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   `[recover] placed at s ...: road -a .. +b m about the line, offset c m` on every SHIFT+R.
 * So only the autodrive (a test driver on the raw line) meets the wedge. Nothing for the PO.
 * Gates s71 (CLINEFREE-1 diagnostics commit): **ALL 61 PASS** (`GATES_SKIP=road_clear_smoke`).
+
+### PHYSFID-1 S10 (2026-10-16, analysis): the limit-yaw gap in one clean event -- quicker transient, more steady understeer
+* Retro (S1-S9): FF law, front Calpha, wheel-angle channel, eta_dir, aero lift, ARB split shipped; the limit yaw gain
+  (~0.7-0.75 of iRacing at 1.25-1.5 g) and the WW103 drive deficit stayed data-limited (S6-S7 ruled out single
+  parameters). CARPHYS-1 S12 isolated the gap in one valid replay, skidpad 2026-10-04 15-36 t 72.2 (default setup).
+* Lift-off weight transfer is NOT it: in that event the sim decelerates MORE on the lift (-0.26..-0.30 g vs the gold's
+  -0.16..-0.19), i.e. loads its front more, yet rotates less.
+* The difference is the shape of the response: on the circle before it the gold needs 0.047 rad of road wheel for 0.88 g,
+  the sim 0.030 (the gold has MORE steady-state understeer); but on +0.028 rad the gold's yaw rate jumps 13 -> 20.7 deg/s
+  within 0.1 s while the sim's has not moved (13.3), and the gold goes on to 36 deg/s / 1.35 g (sim 23 / 1.19).
+* Reading: a structural difference -- steering compliance (the gold's road-wheel angle is not wheel/ratio at load), or a
+  tyre transient at high load -- not a parameter S6-S7 could fit. IRTEST-261015 #1 (skidpad limit) and IRTEST-261009 #6
+  (steering flicks at constant speed) are exactly the data that would separate the two. PHYSFID-1 waits on them
+  (10 of 25 sprints used).
