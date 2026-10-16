@@ -26911,3 +26911,6 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
 * After (Spa, 5 AI, 9,000 frames): world pass 101 -> 10 KB/frame, total ~190 -> ~90; GC stalls 7 -> 4; frame interval
   p50 unchanged at 17.2 ms (vsync). The sim's ~70 KB/frame (ground_smoothed/groundz_phys, wheelmat, GPL AI tick) is next.
 * Gates s70 (PERF-6 commit): **ALL 61 PASS** (`GATES_SKIP=road_clear_smoke`). The sim's remaining ~70 KB/frame is spread over many 2-6 KB sites inside concretely typed code (ground queries, wheel matrices, GPL AI); PERF-6 rotates.
+* PERF-6 follow-up: the other once-assigned non-const globals the frame uses (FONT, the HUD/text/sky/depth programs and
+  their buffers, 16 cockpit item lists) made `const` as a test: per-frame allocations unchanged (HUD 9, world 10 KB) --
+  they already pass through function barriers. Reverted; no measured benefit.
