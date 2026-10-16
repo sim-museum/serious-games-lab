@@ -10713,6 +10713,44 @@ function split_fists(parts, tex)
 end
 handLR = isempty(handItems) ? Render.Item[] : split_fists(HANDP, handItems[1].tex)
 const HAND_GRIP = deg2rad(parse(Float32, get(ENV,"JM_HAND_GRIP","0")))    # HANDS-2: 0 = the gold's 9-and-3 (HANDS-1 S2)
+# COCKPIT-2 S7 (2026-10-15): GPL's right hand goes to the lever on every shift. Gold 260801 Zandvoort cockpit, read at 15 fps
+# against its HUD gear: the 2->3 upshift (t 28.0-28.5) and the 3->N->2 downshift (t 36.0-36.5) -- the glove leaves the rim in
+# 1-2 frames, covers the red knob for ~0.45-0.8 s, and is back on the rim in 1-2 frames. On a gear change the glove on the
+# lever's side (and its sleeve's wrist end) slides to the knob top: 0.1 s out, SHIFT_HAND_HOLD s there, 0.1 s back; a shift
+# during the move holds it there. JM_SHIFT_HAND=0 = hands always on the rim, as before.
+const SHIFT_HAND = get(ENV, "JM_SHIFT_HAND", "1") != "0"
+const SHIFT_HAND_HOLD = parse(Float64, get(ENV, "JM_SHIFT_HAND_HOLD", "0.45"))
+const SHIFT_HAND_UP = Float32[0, parse(Float32, get(ENV, "JM_SHIFT_HAND_UP", "0.03")), 0]   # the fist's centre above the knob top
+const SHIFT_KNOB = let ps = Vector{Float32}[]
+    for p in SHIFTP, i in 0:11:length(p.verts)-11; push!(ps, Float32[p.verts[i+1], p.verts[i+2], p.verts[i+3]]); end
+    isempty(ps) ? nothing : ps[argmax([q[2] for q in ps])]
+end
+# the fists' centres (car-local, before the grip/wheel transforms) -- index into handLR/armLR (1 = z > 0)
+const FIST_C = let c = [zeros(Float32, 3), zeros(Float32, 3)], n = [0, 0]
+    for p in HANDP, t in 1:33:length(p.verts)-32
+        v = p.verts; k = (v[t+2]+v[t+13]+v[t+24])/3 > 0 ? 1 : 2
+        for j in (t, t+11, t+22); c[k] .+= Float32[v[j], v[j+1], v[j+2]]; n[k] += 1; end
+    end
+    [n[k] > 0 ? c[k] ./ n[k] : c[k] for k in 1:2]
+end
+const SHIFT_HAND_K = SHIFT_PIVOT === nothing ? 2 : (SHIFT_PIVOT[3] > 0 ? 1 : 2)   # the fist on the lever's side
+const SHIFT_LASTM = Ref(Render.ident())            # the lever's body-local matrix this frame (drawn before the hands)
+const SHIFT_HAND_ST = Ref((-99, -1e9))             # (last gear seen, wall time the hand set off)
+"Weight 0..1 of the lever-side glove's way to the knob, from the gear sequence (wall clock, as the lever's own motion)."
+const SHIFT_HAND_FORCE = haskey(ENV, "JM_SHIFT_HAND_FORCE") ? parse(Float64, ENV["JM_SHIFT_HAND_FORCE"]) : nothing   # test: hold u
+function shift_hand_u(g)
+    SHIFT_HAND_FORCE === nothing || return SHIFT_HAND_FORCE
+    lg, t0 = SHIFT_HAND_ST[]; tn = time()
+    el(t) = tn - t
+    u(t) = (e = el(t); x = e < 0.1 ? e/0.1 : e < 0.1 + SHIFT_HAND_HOLD ? 1.0 : 1.0 - (e - 0.1 - SHIFT_HAND_HOLD)/0.1; x = clamp(x, 0.0, 1.0); x*x*(3 - 2x))
+    if lg == -99
+        SHIFT_HAND_ST[] = (g, -1e9)
+    elseif g != lg
+        u0 = u(t0)                                  # already on its way or there: carry on from where it is
+        SHIFT_HAND_ST[] = (g, u0 > 0 ? tn - 0.1*min(u0, 1.0) : tn)
+    end
+    u(SHIFT_HAND_ST[][2])
+end
 const ARMS_ON_WHEEL = get(ENV, "JM_ARMS_ON_WHEEL", "0") != "0"
 const HAND_CULL = get(ENV, "JM_HAND_CULL", "1") != "0"   # HANDS-1 S2: 0 draws the gloves/sleeves two-sided (A/B)
 gripmat(sgn) = Render.translate(SWCENTER) * Render.rotaxis(SWAXIS, Float32(sgn*HAND_GRIP)) * Render.translate(-SWCENTER)
@@ -16064,7 +16102,7 @@ function main()
         _tm || for it in swItems; Render.draw(prog, it, vp, swModel; bright=1.2, ambfill=0.34); end
         if CTL.view == 0 && !_tm && !isempty(shiftItems) && SHIFT_PIVOT !== nothing     # COCKPIT-2 S3: the lever follows the gear
             _tn = time(); _dt = SHIFT_TW[] == 0.0 ? 1f0 : Float32(clamp(_tn - SHIFT_TW[], 0.0, 0.1)); SHIFT_TW[] = _tn
-            shm = bodyModel * shift_model(cs.gear, _dt)
+            SHIFT_LASTM[] = shift_model(cs.gear, _dt); shm = bodyModel * SHIFT_LASTM[]
             # TD261013-1 (a2) (PO 2026-10-13: "the wooden gear handle is partially see-through"): the knob's top stands inside
             # the dash panel (x 0.73 m, the panel ~0.73-0.75), so the oil gauge's rim and needle won the depth test over it.
             # GPL draws the knob in front of the dash's lower edge (gold WG cockpit). Drawn last of the cockpit furniture, over
@@ -16080,6 +16118,17 @@ function main()
         # ARMFIX mirrors it back through the wheel plane toward the driver + squashes it under the eye.
         if HANDS && CTL.view == 0 && !_tm
             _hcull = glIsEnabled(GL_CULL_FACE) == GL_TRUE
+            # COCKPIT-2 S7: the lever-side glove's offset to the knob (body-local), zero with the hands on the rim
+            _hoff = (0f0, 0f0, 0f0)
+            if SHIFT_HAND && SHIFT_KNOB !== nothing && !isempty(shiftItems) && length(handLR) == 2
+                _u = Float32(shift_hand_u(cs.gear))
+                if _u > 0f0
+                    _swr = Render.translate(SWCENTER) * Render.rotaxis(SWAXIS, Float32(HSIGN*inp.steer*2.5 + SW_ROT)) * Render.translate(-SWCENTER[1], -SWCENTER[2], -SWCENTER[3])
+                    _g = _swr * gripmat(SHIFT_HAND_K == 1 ? 1 : -1) * Float32[FIST_C[SHIFT_HAND_K]..., 1f0]
+                    _k = SHIFT_LASTM[] * Float32[SHIFT_KNOB..., 1f0]
+                    _hoff = (_u*(_k[1] + SHIFT_HAND_UP[1] - _g[1]), _u*(_k[2] + SHIFT_HAND_UP[2] - _g[2]), _u*(_k[3] + SHIFT_HAND_UP[3] - _g[3]))
+                end
+            end
             HAND_CULL || glDisable(GL_CULL_FACE)          # HANDS-1 S2: A/B the gloves two-sided (inside-out fists?)
             if ARMS
                 # HANDS-1 S4: in lotus.3do the arms and gloves share the steering-wheel assembly's positioner (node 15060), so
@@ -16089,6 +16138,7 @@ function main()
                     for (k, sgn) in ((1, 1), (2, -1))          # armLR[1] = z > 0 with gripmat(+1), as handLR
                         W, E, nf = SLEEVE_ENDS[k]
                         h = swRel * gripmat(sgn) * Float32[W[1], W[2], W[3], 1f0]
+                        k == SHIFT_HAND_K && (h = Float32[h[1] + _hoff[1], h[2] + _hoff[2], h[3] + _hoff[3], 1f0])   # COCKPIT-2 S7
                         S = (SHOULDER[1], SHOULDER[2], sgn*SHOULDER[3])
                         # TD261013-1 (a2) (PO 2026-10-13: "a large white triangle on the left when the player turns all the way
                         # right"): at full lock (~143 deg) the glove crosses to the top of the rim and a strip from a shoulder
@@ -16127,8 +16177,9 @@ function main()
                 end
             end
             if length(handLR) == 2                      # left fist +grip, right fist −grip → gold's 10-and-2
-                Render.draw(prog, handLR[1], vp, swModel*gripmat(+1); bright=1.15, spec=0.05, ambfill=0.60)
-                Render.draw(prog, handLR[2], vp, swModel*gripmat(-1); bright=1.15, spec=0.05, ambfill=0.60)
+                _hm(k) = (k == SHIFT_HAND_K && _hoff != (0f0, 0f0, 0f0)) ? bodyModel * Render.translate(_hoff) * inv(bodyModel) : Render.ident()   # COCKPIT-2 S7
+                Render.draw(prog, handLR[1], vp, _hm(1)*swModel*gripmat(+1); bright=1.15, spec=0.05, ambfill=0.60)
+                Render.draw(prog, handLR[2], vp, _hm(2)*swModel*gripmat(-1); bright=1.15, spec=0.05, ambfill=0.60)
             else
                 for it in handItems; Render.draw(prog, it, vp, swModel; bright=1.15, spec=0.05, ambfill=0.60); end
             end
