@@ -27150,3 +27150,6 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
 * E80 note from the same pass: main() = 2,120 lines of setup + a 2,750-line game loop closing over hundreds of setup
   locals; the split that could cut its 29 s compile is a large refactor of the code the PO drives daily -- not done
   autonomously; a PO go-ahead item.
+* Also tried narrower shoulders (`JM_SHOULDER_Z` 0.26 default -> 0.18 / 0.12): the sleeves turn steeper but stay thin, and
+  at 0.12 start covering the lower wheel. Neither width nor shoulder spacing makes GPL's large arms -- the gold's eye
+  appears lower and closer, its arms rising from below the frame. A camera/look decision for the PO; defaults kept.
