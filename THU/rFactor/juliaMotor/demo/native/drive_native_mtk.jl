@@ -1037,6 +1037,13 @@ const NET_DIAG = parse(Int, get(ENV, "JM_NET_DIAG", "0"))
 const FIXED_DT    = parse(Float64, get(ENV, "JM_FIXED_DT", "0"))   # >0 = fixed sim step (headless sweeps)
 const WHEELOFF_RULE = get(ENV, "JM_WHEELOFF_RULE", "1") != "0"   # WHEELOFF-1
 const WHEELOFF_MSG = Ref(0.0)
+# SPECTATORS-1 (2026-10-16, OPT-IN for the PO's decision): GPL lines Zandvoort's dunes, Spa's villages and La Source with
+# standing spectators; the PO's 2026-08-27 order ("remove line-of-people objects if there's any chance they could be in the
+# road or partially hanging in air") drops them all by name. JM_SAFE_SPECTATORS=1 keeps those clear of any chance: placed
+# on the ground and, with the row's across-road reach, more than ROAD_HALFW + JM_SPECT_MARGIN m from the road's centreline.
+# Default OFF -- the order stands until the PO says otherwise.
+const SAFE_SPECT = get(ENV, "JM_SAFE_SPECTATORS", "0") != "0"
+const SPECT_MARGIN = parse(Float64, get(ENV, "JM_SPECT_MARGIN", "4.0"))
 const RECOVER_AT  = Float64[parse(Float64, x) for x in split(get(ENV, "JM_RECOVER_AT", ""), ",") if !isempty(strip(x))]   # TD261013-1 (c3) test hook
 const RECOVER_I   = Ref(1)
 const WRECK_AT    = parse(Float64, get(ENV, "JM_WRECK_AT", "0"))   # TD261013-1 (c3) test hook: force a wreck at this sim time
@@ -7576,6 +7583,15 @@ let objnames=Set{String}()
     # the PO's race ended facing a wall of them). Every standing crowd row goes at Zandvoort; the seated
     # grandstand/pit-building crowds (part of those meshes) stay. JM_KEEP_ZANDCROWD=1 restores them.
     _zandcrowd_off = ZANDV && get(ENV, "JM_KEEP_ZANDCROWD", "0") == "0"
+    # SPECTATORS-1: with JM_SAFE_SPECTATORS=1 a loose person is judged per placement instead of by name
+    isperson(nm) = startswith(nm, "single") || PeopleFilter.is_loose_person(nm)
+    function person_unsafe(i)
+        (SAFE_SPECT && isperson(lowercase(String(i.name)))) || return false
+        hr = JuliaMotor.hat(TRKSURF, Float64(i.x), Float64(i.y)); hr.found || return false     # nowhere near the road
+        b = get(bbinfo, i.name, nothing); w = b === nothing ? 0.0 : Float64(b[5])
+        reach = (w/2) * abs(sin(Float64(i.yaw) - atan(-hr.perp[2], hr.perp[1])))           # a row's across-road reach (E79)
+        abs(hr.lateral) - reach < ROAD_HALFW + SPECT_MARGIN
+    end
     drop(nm) = (!isempty(_keeptest) && any(p->startswith(nm,p), _keeptest)) ? false :
                (_dropcrowdrows && standcrowd(nm)) || (_zandcrowd_off && standcrowd(nm)) ||
                (!isempty(_droptest) && any(p->startswith(nm,p), _droptest)) ||
@@ -7593,7 +7609,7 @@ let objnames=Set{String}()
                # BLINDTURN-1 S10 (2026-10-15): Zandvoort's `single1-13` (281 placements, billboard stubs) are single standing
                # SPECTATORS (JM_KEEPTEST=single renders them on the inside of Tarzan and at Gerlach) -- loose people, so the
                # PO's 2026-08-27 order applies (see people_filter.jl). Not trees; the drop is right.
-               startswith(nm,"single") ||
+               (!SAFE_SPECT && startswith(nm,"single")) ||               # (SPECTATORS-1: per placement when opted in)
                (startswith(nm,"intree") && !WATGLEN) ||                      # INFIELD tree lines (100s of m wide) → distant central "smear".  WG3 (E64 S5): on WATKINS these + treefill/treesrb ARE the gold's close roadside autumn forest — the smear objection predates graze-fade (MZ3), which fixed it; kept there now
                ((startswith(nm,"treesrb") || startswith(nm,"treefill")) && !WATGLEN) ||  # forest-BACKDROP / gap-fill quads → streaky "painted tree" smear (non-Watkins; see WG3 note above)
                startswith(nm,"trbk") || startswith(nm,"brbk") ||             # Monza underpass tree/bush BANKS (trbk1-8/brbk1-3 at lapdist ~3100-3440, lat ~5 m) — MESH foliage that bypasses the sprite on-road filter and renders as dark vertical smears ACROSS the road (PO round 4: "7 stands of trees across the track near the underpass")
@@ -7601,7 +7617,7 @@ let objnames=Set{String}()
                # E101: the loose-people list now lives in PeopleFilter, shared with the gate
                # that checks it (tools/people_smoke.jl). It was a closure nothing could test,
                # and a name list stops covering tracks added later without saying so.
-               PeopleFilter.is_loose_person(nm)))
+               (!SAFE_SPECT && PeopleFilter.is_loose_person(nm))))
     istree(nm) = startswith(nm,"tree") || startswith(nm,"newt") || startswith(nm,"intree")  # foliage → graze-fade (no end-on smear)
     # E40: a kept STAND crowd row must not sit on the paved racing surface — at Spa the peprow* rows
     # by Eau Rouge (and on the start straight) projected to |lat| < ROAD_HALFW = a "line of people
@@ -8021,7 +8037,7 @@ let objnames=Set{String}()
         end
     end
     objkeep(i) = get(objmesh,i.name,nothing) !== nothing &&
-                 !drop(i.name) && !onroad_crowd(i) && !perp_crowd(i) && !onroad_bldg(i) && !onroad_fp(i) && tallenough(i.name) && onground(i)
+                 !drop(i.name) && !onroad_crowd(i) && !perp_crowd(i) && !onroad_bldg(i) && !onroad_fp(i) && tallenough(i.name) && onground(i) && !person_unsafe(i)
     global OBJECTS = [(objitems(i), Render.translate(Float32[i.x, plozfp(i), -i.y]) * Render.roty(Float32(OBJ_YAW_SIGN * objyawsign(i.name) * -i.yaw + objyawfix(i.name))) *
                        Render.rotz(Float32(OBJ_PR[1]*i.pitch)) * Render.rotx(Float32(objrollsign(i.name)*i.roll)), istree(i.name) && (graze_mesh || !(MONZA || WATGLEN)), (Float32(i.x), plozfp(i), Float32(-i.y)), lowercase(i.name))
                       for i in insts if objkeep(i)]
@@ -8980,6 +8996,7 @@ let objnames=Set{String}()
     global STATICTREES = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32,Float32}[]
     for i in insts
         bb = get(bbinfo, i.name, nothing); (bb === nothing || drop(i.name)) && continue
+        person_unsafe(i) && continue                    # SPECTATORS-1 (opt-in): a loose person too near the road
         # E79: a crowd ROW is metres wide, so testing its ORIGIN answers the wrong question — the
         # same origin-vs-footprint mistake the mesh path was fixed for (E69-S5) and this one never
         # was. A sprite of width w centred on the origin reaches w/2 either side, so admit it only

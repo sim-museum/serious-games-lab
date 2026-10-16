@@ -163,6 +163,12 @@ def segnames_env(qenv, on):
     if not on:
         qenv.insert("JM_SEGNAME_SECS", "0")
 
+def spectators_env(qenv, on):
+    """SPECTATORS-1: GPL's standing spectators, only where they stand well off the road (the sim's JM_SAFE_SPECTATORS=1).
+    Off by default: the PO's 2026-08-27 order removes loose people, and stands until the PO turns this on."""
+    if on:
+        qenv.insert("JM_SAFE_SPECTATORS", "1")
+
 class Ctrl:
     def __init__(self, axis=0, a=0.0, b=1.0):
         self.axis, self.a, self.b = int(axis), float(a), float(b)
@@ -1195,6 +1201,13 @@ class DriveTab(QWidget):
         self.gfx_segnames.setChecked(str(self._settings.value("hud/segnames", "true")) == "true")
         self.gfx_segnames.setToolTip("Shows each section's name above the 3-D view for a few seconds as you enter it.")
         lay.addWidget(self.gfx_segnames, 2, 0, 1, 3)
+        # SPECTATORS-1 (2026-10-16): GPL lines the dunes, villages and hairpins with standing spectators; they are removed by
+        # the PO's 2026-08-27 order. This puts back only those placed well clear of the road. OFF by default.
+        self.gfx_spect = QCheckBox("Spectators, where they stand well off the road (as in GPL)")
+        self.gfx_spect.setChecked(str(self._settings.value("scene/spectators", "false")) == "true")
+        self.gfx_spect.setToolTip("GPL's standing spectators, kept only where they are more than 4 m beyond the racing\n"
+                                  "surface and on the ground. Off: none at all (the rule since 27 August).")
+        lay.addWidget(self.gfx_spect, 3, 0, 1, 3)
         return g
 
     def _gfx_env(self, qenv):
@@ -1208,6 +1221,9 @@ class DriveTab(QWidget):
         segnames = self.gfx_segnames.isChecked()
         self._settings.setValue("hud/segnames", "true" if segnames else "false")
         segnames_env(qenv, segnames)
+        spect = self.gfx_spect.isChecked()
+        self._settings.setValue("scene/spectators", "true" if spect else "false")
+        spectators_env(qenv, spect)
 
     def _build_net_group(self):
         if not hasattr(self, "_settings"):
@@ -1829,6 +1845,7 @@ class ReplayTab(QWidget):
         qenv.insert("JM_VIEW", "0")
         timing_env(qenv)   # LOADHANG-1
         segnames_env(qenv, str(QSettings("juliaRacer", "launcher").value("hud/segnames", "true")) == "true")   # TRACKSEG-3
+        spectators_env(qenv, str(QSettings("juliaRacer", "launcher").value("scene/spectators", "false")) == "true")   # SPECTATORS-1
         self.proc = QProcess(self)
         self.proc.setProcessEnvironment(qenv)
         self.proc.setWorkingDirectory(HERE)
