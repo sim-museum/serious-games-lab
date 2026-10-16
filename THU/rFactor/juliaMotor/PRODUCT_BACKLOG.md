@@ -27139,3 +27139,4 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   Non-road: Monza's `Armco_s` + `twinarm` 17 m2 (rails), WG `fenc2_s` + grass 0.1 m2. Recorded, not changed -- the census
   is the tool for the next flicker report.
 * Gates s78 (zfight diagnostic commit): **ALL 62 PASS** (`GATES_SKIP=road_clear_smoke`).
+* Monza's Armco_s + twinarm pair (s ~3566, lat 10): chase + cockpit renders at s 3520/3545 show clean rails, no striping -- nothing to fix.
