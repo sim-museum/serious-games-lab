@@ -27132,3 +27132,10 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   wall part of which < 2 % is paired. A depth bias on the art parts did nothing for it (tried both signs; removed) -- it is
   geometry in front of the board, possibly GPL's own; not pursued without a gold frame of that angle.
 * Gates s77 (BOARDCULL-1 commit): **ALL 62 PASS** (`GATES_SKIP=road_clear_smoke`).
+* BOARDCULL-1 follow-up, `JM_ZFIGHT_DIAG=1` (new, env-gated): track part pairs sharing SAME-facing coplanar triangles
+  (z-fight candidates). Almost all of it is the road: asphalt + the `groove` strip lying on it (Zandvoort 1 m2, WG 47,
+  Monza 72, Spa 194 on AsphR, the Ring 247) and the Ring's ASPADD patches -- both drawn while the tessellated road
+  (`JM_ROADTESS`) is off by default; E68 S10 already addressed the groove duplicates and no road flicker is reported.
+  Non-road: Monza's `Armco_s` + `twinarm` 17 m2 (rails), WG `fenc2_s` + grass 0.1 m2. Recorded, not changed -- the census
+  is the tool for the next flicker report.
+* Gates s78 (zfight diagnostic commit): **ALL 62 PASS** (`GATES_SKIP=road_clear_smoke`).

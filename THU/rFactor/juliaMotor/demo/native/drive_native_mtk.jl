@@ -3388,6 +3388,19 @@ else
                 (tot > 0 && pa/tot >= BOARDCULL_MIN) && (rc[pi] = true; nb += 1)
             end
             println("  [boardcull] ", nb, " track parts back-to-back with another part -> single-sided (JM_BOARDCULL=0 = both faces)")
+            # JM_ZFIGHT_DIAG=1: coplanar SAME-facing triangles of two different parts (z-fight candidates), by part pair
+            if haskey(ENV, "JM_ZFIGHT_DIAG")
+                zp = Dict{Tuple{String,String},Float64}()
+                for (pi, p) in enumerate(TRACK), k in 1:33:length(p.verts)-32
+                    n = nrm(p.verts, k); n[4] > 0 || continue; c = key(cen(p.verts, k))
+                    for (qi, m) in get(grid, c, ())
+                        (qi > pi && n[1]*m[1] + n[2]*m[2] + n[3]*m[3] > 0.98) || continue
+                        a, b = sort([p.tex, TRACK[qi].tex]); zp[(a, b)] = get(zp, (a, b), 0.0) + n[4]
+                    end
+                end
+                println("  [zfight] ", length(zp), " part pairs share same-facing coplanar triangles; largest:")
+                for (k, v) in sort(collect(zp), by = x -> -x[2])[1:min(end, 15)]; println("     ", rpad(k[1], 14), " + ", rpad(k[2], 14), round(v, digits = 1), " m2"); end
+            end
         end
         rc
     end
