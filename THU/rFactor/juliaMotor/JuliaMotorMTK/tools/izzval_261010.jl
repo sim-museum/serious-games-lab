@@ -41,7 +41,7 @@ function run(car, sp, u0, gt, rg, n, izz)
 end
 
 function main()
-    E = gold_events()
+    E = replay_events()
     cars = Dict{Symbol,Any}()
     for k in (:default, :ww)
         sp = install!(FILES[k]); car = DriveRT3D.build_car3d(; v0 = 30.0); cars[k] = (car, sp, copy(car.integ.u))

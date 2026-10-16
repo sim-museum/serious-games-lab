@@ -26853,3 +26853,21 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   (no mesh, drawn by the sprite path since E76-S8), 14 loose people + 2 flaggers (PO order 2026-08-27), and `km_00_7`
   (traffic-signs km stone, lat -3.6 m: on the road edge, dropped by the footprint rule -- correctly). BLINDTURN-1 S10's
   turn census agrees for the Südkehre. No code change.
+
+### CARPHYS-1 S12 (2026-10-16): the "two power-on events" -- one was a bad replay start, the other is the known limit gap
+* Retro (S1-S11): one Modelica-style object per sprint, each with its own acceptance tool (column, brakes, stops, throttle
+  map, clutch, relaxation); since then IRGOLD-1/PHYSFID-1 refit the tyre/aero/drivetrain. Queued since 10-10: the two
+  power-on events dominating izzval (15-36:72.2, 00-05:59.9).
+* izzval on today's model (19 events): yaw-rate RMS 4.01 deg/s at Izz 890 (10-10: 3.63); still dominated by 72.2 (26.9)
+  and 59.9 (12.2). Traces (gold vs sim, 10 Hz, `scratchpad cp12/dump.jl`):
+  * **00-05:59.9 (WW) is not a valid replay:** the gold is in gear 0 (mid-shift) at the start, so the replay settled the
+    sim in 1st at 35 m/s; its yaw rate x speed is 0.53 g against 0.90 g measured. 00-05:38.0 likewise starts mid-unwind
+    (yaw 5 -> 1 deg/s, 0.76 -> 0.30 g; rV/ay 0.64).
+  * **15-36:72.2 (default) is real -- and it is the GOLD that spins:** off-throttle, +0.063 rad of steer at 37.7 m/s takes
+    the gold from 0.88 to 1.35 g and 36 deg/s within 0.4 s, the sim to 1.19 g / 23 deg/s; then on full throttle the
+    gold's rear slip runs to 0.65 and it spins (beta -53 deg), the sim slides to -17 deg. On the circle before it the sim
+    needs 0.030 rad for 0.88 g, the gold 0.047. This is PHYSFID-1's "limit yaw gain" gap (julia turns ~0.75 of iRacing at
+    1.25-1.5 g), whose single-parameter fixes S6-S7 ruled out; it waits for the PO's skidpad test (IRTEST-261015 #1).
+* Tools: `replayable(e)` in replay_261005.jl -- a gear in and yaw rate x speed within 15 % of |ay| at the start (the
+  settled sim state is then the gold's); replay_261005 and izzval use it (13 of 19 events; wwtrans/slidefit/steerfit keep
+  the full set). izzval now: 3.86 deg/s, of which 72.2 is 26.9 -- the other 12 events average ~1.9 deg/s. Izz stays 890.

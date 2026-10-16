@@ -31,6 +31,22 @@ end
 
 """Put the session car on the event's circle at its speed and lateral g in the gold's gear; returns the settled road
 steer angle (sign: the event's direction). Rate-limited I steer on g, PI throttle on speed, 10 s."""
+# CARPHYS-1 S12 (2026-10-16): the replays settle the sim on a STEADY circle, so an event must start on one. gold_events judges
+# "steady" from one frame: 00-05:59.9 starts in neutral (mid-shift; the sim was settled in 1st at 35 m/s) and 00-05:38.0
+# mid-unwind (yaw 5 -> 1 deg/s, 0.76 -> 0.30 g) -- 12 and 6 deg/s of izzval's "error" were those starts. Replayable: a gear
+# in, and yaw rate x speed within 15 % of |ay| at the start (circle kinematics: the settled sim state is then the gold's).
+# A window on |ay| over the 0.5 s before also dropped 15-36:72.2, which starts on a circle (rV/ay 1.04) -- not used.
+evpath(e) = (d = e.side === :default ? joinpath(D4, e.file) : joinpath(D5, e.file);
+             isfile(d) ? d : isfile(joinpath(D5, e.file)) ? joinpath(D5, e.file) : joinpath(D4, e.file))
+function replayable(e)
+    f = ibt_open(evpath(e)); k = round(Int, e.t*60); k > 31 || return false
+    ay = ch(f, "LatAccel"); r = ch(f, "YawRate"); v = ch(f, "Speed"); g = ch(f, "Gear")
+    g[k] > 0 || return false
+    abs(abs(r[k])*v[k] - abs(ay[k])) < 0.15*abs(ay[k])
+end
+replay_events() = (E = gold_events(); R = filter(replayable, E);
+                   println("  replayable gold events: ", length(R), " of ", length(E), " (steady circle at the start; CARPHYS-1 S12)"); R)
+
 function settle!(car, sp, u0, gt)
     sys = car.sys
     get = ModelingToolkit.getsym(sys, [sys.u, sys.v, sys.r, sys.ay])
@@ -67,7 +83,7 @@ function simreplay(car, sp, u0, gt, n)
 end
 
 function main()
-    E = gold_events()
+    E = replay_events()
     only = get(ENV, "JM_REPLAY_ONLY", "")
     cars = Dict{Symbol,Any}()
     for k in (:default, :ww)
