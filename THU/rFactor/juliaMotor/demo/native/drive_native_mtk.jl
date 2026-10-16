@@ -2715,7 +2715,7 @@ else
         rb_texel = get(ENV, "JM_ROADBLOCK_TEXEL", "1") != "0"; rb_tex = Ref{Any}(nothing); rb_rgba = Dict{String,Any}()
         if isdefined(Main, :SECPARTS) && SECPARTS !== nothing
             for prt in SECPARTS
-                v = prt.verts; n = length(v) ÷ 11
+                local v = prt.verts; n = length(v) ÷ 11
                 for q in 0:(n ÷ 3 - 1)                    # one triangle at a time
                     lats = Float64[]; hs = Float64[]; sds = Float64[]; ok = true
                     for c in 0:2
@@ -2879,7 +2879,7 @@ else
         end
         curtain = Tuple{Float64,Float64,String}[]; partial = Tuple{Float64,Float64,String}[]
         for (k, v) in spans
-            u, w = rb_union(v)
+            local u, w = rb_union(v)
             covers0 = any(a <= 0.0 <= b for (a, b) in u)
             tex = join(sort(unique(t for (_, _, t) in v)), "+")
             (covers0 ? curtain : partial) === curtain ?
@@ -2944,7 +2944,7 @@ else
         if isdefined(Main, :SECPARTS) && SECPARTS !== nothing
             rb_tex[] === nothing && (rb_tex[] = Render.gpl_texture_index(ZD))
             for prt in SECPARTS
-                v = prt.verts; n = length(v) ÷ 11
+                local v = prt.verts; n = length(v) ÷ 11
                 tx = get!(() -> Render.tex_rgba(rb_tex[], prt.tex), rb_rgba, prt.tex)
                 for q in 0:(n ÷ 3 - 1)
                     k0 = 11*(3q); k1 = k0 + 11; k2 = k1 + 11
@@ -3584,7 +3584,7 @@ end
 # SPATD-1 diagnostic: JM_GPLW_DUMP="95,97" prints those sections' strips, raw vs registered edge table (f = 0, .5, 1)
 if GPLW_ON && get(ENV, "JM_GPLW_DUMP", "") != ""
     for si in parse.(Int, split(ENV["JM_GPLW_DUMP"], ","))
-        v = GPLWALLS.secs[si]; E = GPLWALLS.E[si]
+        local v = GPLWALLS.secs[si]; E = GPLWALLS.E[si]
         println("  [gplw dump] section ", si, " (", round(GPLWALLS.seclen[si], digits = 1), " m)")
         for k in eachindex(v)
             println("     ", lpad(k, 2), " raw ", lpad(round(v[k].l0, digits = 2), 8), " -> ", lpad(round(v[k].l1, digits = 2), 8),
@@ -3677,6 +3677,7 @@ const GPLW_PEN  = parse(Float64, get(ENV, "JM_GPLWALL_PEN", "0.3"))   # m: deepe
 const GPLW_PREV = Ref(NaN)                       # last frame's GPL lateral (NaN = unknown: use the current one)
 const GPLW_LAST = Ref((NaN, NaN))                # last position seen, to detect a teleport (respawn/recover)
 const GPLW_STAT = Ref((hits = 0, clamps = 0, maxpen = 0.0))
+const WRECK_NOCLAMP = get(ENV, "JM_WRECK_NOCLAMP", "1") != "0"   # PERF-5: no wall/obstacle contact or clamp for a frozen wreck; 0 = before
 const GPLW_T = Ref((0.0, 0))
 const GPLW_NEAR = Ref(true)    # the pre-step contact pass found a wall or hard obstacle within 2 m (else the clamps are skipped)                     # (seconds in wall+obstacle contact/clamp, frames) -- cost report
 "a TELEPORT (respawn, recover, restart, wreck seal, shot placement): the next contact has no 'side it came from'"
@@ -5254,7 +5255,7 @@ if get(ENV,"JM_HATPROBE","") != ""
             _out = String[]
             for _lat in (-5.0, -3.0, 0.0, 3.0, 5.0)
                 _wx = _x + _lat*_pp[1]; _wz = _z + _lat*_pp[3]
-                _h = JuliaMotor.hat3d(TERRAIN, _wx, _wz; ref=Inf); _r = ground_road(_wx, _wz)
+                local _h = JuliaMotor.hat3d(TERRAIN, _wx, _wz; ref=Inf); _r = ground_road(_wx, _wz)
                 push!(_out, (_h[3] && _r[2]) ? string(round(_r[1] - Float64(_h[1]), digits=3)) : "NaN")
             end
             _h0 = JuliaMotor.hat3d(TERRAIN, _x, _z; ref=Inf)
@@ -5387,7 +5388,7 @@ if get(ENV,"JM_HATPROBE","") != ""
             for k in 0:_ns-1
                 t = k/_ns * _sv[end]
                 i = clamp(searchsortedlast(_sv, t), 1, _nn-1); f = (t - _sv[i])/max(_sv[i+1]-_sv[i], 1e-9)
-                px = _al[i][1] + (_al[i+1][1]-_al[i][1])*f; pz = _al[i][2] + (_al[i+1][2]-_al[i][2])*f
+                local px = _al[i][1] + (_al[i+1][1]-_al[i][1])*f; local pz = _al[i][2] + (_al[i+1][2]-_al[i][2])*f
                 tx = _al[i+1][1]-_al[i][1]; tz = _al[i+1][2]-_al[i][2]; tl = max(hypot(tx,tz), 1e-9)
                 push!(_pts, (px - tz/tl*_edge, pz + tx/tl*_edge))     # one side is enough for a chord test
             end
@@ -5396,7 +5397,7 @@ if get(ENV,"JM_HATPROBE","") != ""
             for prt in TRACKMAIN
                 lt = lowercase(String(prt.tex))
                 (startswith(lt, "edge") || startswith(lt, "sline") || startswith(lt, "pline")) || continue
-                v = prt.verts; nvert = length(v) ÷ 11
+                local v = prt.verts; nvert = length(v) ÷ 11
                 for q in 0:nvert-1
                     vx = Float64(v[11q+1]); vz = -Float64(v[11q+3])    # render z is the mirror of physics z
                     _nv[] += 1
@@ -5485,7 +5486,7 @@ if get(ENV,"JM_HATPROBE","") != ""
         _arms = split(get(ENV, "JM_HATPROBE_ARMS", "keep"), ",")     # RINGBUMP-1: guard subsets, e.g. "SL,S,L,-"
         for _arm in _arms, _lat in _latl
         _arm == "keep" || (STENCIL_GUARD[] = 'S' in _arm; LEDGE_GUARD[] = 'L' in _arm)
-        _dt = 1/60; _np = length(TRKSURF.pos); _ld = TRKSURF.lapdist
+        _dt = 1/60; _np = length(TRKSURF.pos); local _ld = TRKSURF.lapdist
         _cr(p0,p1,p2,p3,t) = 0.5*(2p1 + (-p0+p2)*t + (2p0-5p1+4p2-p3)*t^2 + (-p0+3p1-3p2+p3)*t^3)
         _crd(p0,p1,p2,p3,t) = 0.5*((-p0+p2) + 2t*(2p0-5p1+4p2-p3) + 3t*t*(-p0+3p1-3p2+p3))
         _hh = Float64[]; _sl = Float64[]; _miss = Ref(0)
@@ -5544,7 +5545,7 @@ if get(ENV,"JM_HATPROBE","") != ""
             _i = clamp(searchsortedlast(_ld, _s), 1, _n - 1); _fr = (_s - _ld[_i]) / max(_ld[_i+1] - _ld[_i], 1e-6)
             _p = TRKSURF.pos[_i]; _q = TRKSURF.pos[_i+1]
             _x = _p[1] + (_q[1]-_p[1])*_fr; _z = _p[3] + (_q[3]-_p[3])*_fr
-            _h = JuliaMotor.hat3d(TERRAIN, _x, _z; ref=Inf)
+            local _h = JuliaMotor.hat3d(TERRAIN, _x, _z; ref=Inf)
             _hh = _h[3] ? Float64(_h[1]) : NaN
             if _h[3] && haskey(ENV, "JM_HATPROBE_TRK") && TRK_CAL.on   # TRACKSMOOTH-3: the .trk spline instead
                 _hh = ground_road(_x, _z)[1]   # SINK-1b: the surface the car drives (spline + correction, mesh where unreliable)
@@ -9717,7 +9718,7 @@ end
 end
 if !_OBJ_SKIP   # E80-S12: the object build continues (one top-level statement per ~300 lines, see above)
 const OBJVIS = Union{Nothing,BitVector}[(GPLVIS_ALL || (GPLVIS_VEIL && isveil(OBJECTS[k][5]))) ?
-                                         (v = get(GPLVIS_VIS, OBJNODE[k], nothing); v === nothing ? nothing :
+                                         (local v = get(GPLVIS_VIS, OBJNODE[k], nothing); v === nothing ? nothing :
                                           _gv_bridge(_gv_lead(v, _gv_leadfor(OBJECTS[k][5])))) : nothing
                                         for k in eachindex(OBJNODE)]
 # RINGTD-1 S2: JM_GPLVIS_DIAG=<name,...> prints each named object's camera windows (our lap metres) as drawn
@@ -9725,7 +9726,7 @@ if GPLVIS && get(ENV, "JM_GPLVIS_DIAG", "") != ""
     let want = Set(lowercase.(split(ENV["JM_GPLVIS_DIAG"], ",")))
         for k in eachindex(OBJNODE)
             lowercase(OBJECTS[k][5]) in want || continue
-            v = OBJVIS[k]; v === nothing && (println("  [gplvis] ", OBJECTS[k][5], " node ", OBJNODE[k], ": no window (drawn always)"); continue)
+            local v = OBJVIS[k]; v === nothing && (println("  [gplvis] ", OBJECTS[k][5], " node ", OBJNODE[k], ": no window (drawn always)"); continue)
             ss = sort([GPLVIS_SEGS[j] / _GV_R_PRE for j in _GV_ORD if v[j]])
             runs = Tuple{Float64,Float64}[]
             for x in ss
@@ -10331,7 +10332,7 @@ end
 # drawn too (JM_MIRROR_DRAW) the bbox is the whole cup.
 if get(ENV, "JM_MIRROR_DIAG", "0") != "0"
     for p in MIRRORP
-        v = p.verts; xs = v[1:11:end]; ys = v[2:11:end]; zs = v[3:11:end]
+        local v = p.verts; xs = v[1:11:end]; ys = v[2:11:end]; zs = v[3:11:end]
         println("  [mirpart] ", rpad(p.tex, 9), " n ", length(xs), " x ", round.(extrema(xs), digits=3), " y ", round.(extrema(ys), digits=3), " z ", round.(extrema(zs), digits=3))
     end
 end
@@ -14423,7 +14424,10 @@ function main()
                 if !SKIDPAD && !rst
                     update_world_velocity!(cs, cs.x, cs.z, dt > 1e-4 ? dt : 1/60)   # E96-S2/S6: once per frame, before every contact test
                     (cfx, cfy, cmz, cpk, chard, cclose) = solid_contact(cs.x, cs.z, cs.θ, cs.v, dt > 1e-4 ? dt : 1/60)
-                    if GPLW_PHYS && CAR3D     # GPLWALL-1: GPL's .trk walls + every drawn obstacle, summed with the solids, re-capped
+                    # PERF-5 (2026-10-16): not for a frozen wreck -- it is re-placed at its rest pose every frame (E95g), so the
+                    # contact forces move nothing, and the clamp below pushed it out of the obstacle it rests in only to have it
+                    # put back: 3 iterations x 2 rounds over every nearby face, 3 ms a frame for the rest of the race (Zandvoort).
+                    if GPLW_PHYS && CAR3D && !(WRECK_FROZEN[] && WRECK_NOCLAMP)     # GPLWALL-1: GPL's .trk walls + every drawn obstacle, summed with the solids, re-capped
                         _tgw = time()
                         (gfx, gfy, gmz, gpk, ghd, gcl) = gplwall_contact(cs.x, cs.z, cs.θ, dt > 1e-4 ? dt : 1/60)
                         if OBS_ON
@@ -14651,7 +14655,7 @@ function main()
                         groundz=groundz_phys)
             DS_SIM[1] += time() - _tps
             _tgc = time()
-            if GPLW_PHYS && CAR3D && !rst && GPLW_NEAR[]   # GPLWALL-1: never through a GPL wall nor any drawn obstacle. Two alternating rounds:
+            if GPLW_PHYS && CAR3D && !rst && GPLW_NEAR[] && !(WRECK_FROZEN[] && WRECK_NOCLAMP)   # GPLWALL-1: never through a GPL wall nor any drawn obstacle (PERF-5: not a frozen wreck). Two alternating rounds:
                 for _ in 1:2                # each clamp can nudge the car a few cm back into what the other just cleared
                     gplwall_clamp!(cs)
                     OBS_ON && obs_clamp!(cs)
