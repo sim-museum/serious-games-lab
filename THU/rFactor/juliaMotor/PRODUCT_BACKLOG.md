@@ -27104,3 +27104,14 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   stalls; GC stalls 3-7 per race (Ring 7 over 14,000 frames); GPLWALL-1 cost 84-265 us/frame over the frames before any
   freeze; AI off the drawn road unchanged (Zandvoort 0.13 % edge, WG 0, Monza 0.96 % edge, Spa's s 0-300 classifier
   artefact 5.2 %, Ring 0.41 % edge). Zandvoort: 16 jolts, no wreck this time (the autodrive's start-line melee varies).
+
+### MONZAROAD-1 S2 (2026-10-16, analysis): why Spa's start reads 5 % "AI off road" -- and why the obvious fix is wrong
+* Pixel picks under the car at Spa s 100 / 200: `groove` + `Asfa3` / `AsfaL_S`. ROAD_TEX matches `asfa` EXACTLY (E71-S13);
+  Spa's start area is asfa0-5 / asfaa / asfab / asfal_s (~540 tris), so only the narrow groove counts as road there and a
+  car straddling it reads "edge off" -- the counter's 5-8 % at s 0-300 (cars photographed on tarmac, MONZAROAD-1 S1).
+* Tried: `startswith(lt, "asfa")`. The counter goes to 0 % centre / 0.29 % edge -- but the road-only HAT also drives the
+  centreline re-centring, and those variants include the PIT LANE beside the start straight: the re-centred line moved
+  toward the pits (start node 5.3 -> 4.5 m shift), and at s 30 the car stood right of the yellow pit line by the pit wall.
+  A better counter bought with a worse line (SHIFT+R, autodrive, lap distance) -- reverted.
+* Verdict: the start-area counter reading is a known measurement artefact; a real fix would split the asfa variants by
+  side (track vs pit lane) or give the counter its own wider road set. Not worth it for a diagnostic.
