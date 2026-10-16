@@ -27164,3 +27164,4 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   s = (t - 3) x 34 every 10 s: autumn forest, fences, Esses, Carousel, back straight, the grandstand and the DUNLOP pits at
   the lap's end all present. Spectators (gold t 85-90) are the PO's open question; the ONYX board (gold t 55) falls between
   the tiles here (not confirmed either way). With S10-S15 all five tracks have now had a full-lap pass after DATFIX-1.
+* WG follow-up: gold t 55 vs our s 1750 match closely (the red KENDALL board, small signs, tree line); the sheet's 'ONYX' tile was a few seconds later -- nothing missing.
