@@ -2097,7 +2097,9 @@ function billboard_stub(path)
     sprh = 0f0
     if zext <= 0.5f0 && prim > 0
         for q in prim:4:prim+primsz-24
-            if u32(q) == 3 && u32(q+8) == 0xFFFFFFFF
+            # DATFIX-1 S2 (2026-10-16): Spa's tr10/tr31-33 (8 m), tre2b49/tre4b49 (20 m), bu9 (6.5 m) carry the node as
+            # [3, 0, 0xAAAAAAAA, 0, h, 65536] -- not 0xFFFFFFFF in the third word -- and fell to the 2.5 m default. Either form.
+            if u32(q) == 3 && (u32(q+8) == 0xFFFFFFFF || (u32(q+4) == 0 && u32(q+12) == 0 && u32(q+20) == 65536))
                 hh = f32(q+16); (isfinite(hh) && 0.5f0 < hh < 200f0) && (sprh = hh; break)
             end
         end

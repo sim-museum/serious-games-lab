@@ -27048,3 +27048,13 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   misread entries; with `JM_DAT_LEGACY=1` it gives the old hash exactly, so the archive fix is the only change. New hash
   recorded (7c8b490272e953de). New gate `datfix_smoke`: the fixed read gives tr33.srb whole and decoding, house1a.3do
   present, and the legacy read still truncates tr33 (the known positive). Gates s75: **ALL 62 PASS**.
+
+### DATFIX-1 S2 (2026-10-16): the recovered trees stood 2.5 m tall -- a second form of GPL's sprite height node
+* tr33's billboard size read 2.5 x 0 (memory jr-gpl-sprite-node-height: "2.5 x 0.0 = unread size"). Its .3do carries six
+  sprite nodes `[3, 0, 0xAAAAAAAA, 0, 8.0, 65536]`; `billboard_stub` matched only `[3, 0, 0xFFFFFFFF, ...]` (E111). The
+  third word varies; the zeros and the 65536 terminator do not.
+* Census over all five tracks' stubs (offline): matching EITHER form changes only 2.5 m defaults, all upward -- Spa tr10 /
+  tr31-33 8 m, tre2b49 / tre4b49 20 m, bu9 6.5 m; Zandvoort's photographers and rescue marshals 4 m (dropped anyway as
+  loose people). The relaxed form ALONE would have broken tree1 / treesrb / busch (20 m -> 2.5) -- hence the union.
+* Render Spa s 1200/2600/7880: the tree by the Les Combes fence now stands at its 8 m.
+* Gates s76 (DATFIX-1 S2 commit): **ALL 62 PASS** (`GATES_SKIP=road_clear_smoke`).
