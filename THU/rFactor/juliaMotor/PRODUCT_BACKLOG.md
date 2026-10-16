@@ -27071,3 +27071,13 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   Brabham's 14 entries change (arms/hand/rollbar textures, `hul2a.3do`, `rrrtire0-2.3do` tyre detail meshes) -- the AI
   Brabham photographed old vs fixed (JM_AICAM_SEQ slot 5: gplchase, tv, nose) shows no visible difference at those
   distances.
+
+### E108 S14 (2026-10-16, analysis): the Ring's lap against the gold -- no missing landmark at coarse alignment; finer needs anchors
+* Gold 260802 Ring cockpit t 130-820 every 30 s vs our cockpit at s = 9200 + (t - 439) x 29.66 (the RINGTD-1/BLINDTURN-1
+  anchors 9200 <-> 439, 13900 <-> 596): the same hill-and-forest country, fences, road shapes and section progression
+  (Hatzenbach ... Adenauer Forst ... Pflanzgarten ... Döttinger Höhe). Away from the anchors the match drifts by hundreds
+  of metres (our first frame is still at the start/finish where the gold is in forest -- BLINDTURN-1 S6 saw the same).
+* Possible difference, NOT established: the gold's roadside foliage looks denser in places (t 340, 400, 730, 820). Judging
+  it needs landmark anchors every ~1 km (memory jr-gold-align-landmarks) -- the next Ring pass, or the PO's own replay
+  timestamps of spots that look bare.
+* E108 rotates (S10-S14 this cycle: Spa, Monza (the underpass banks), two drop-rule censuses, the Ring).
