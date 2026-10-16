@@ -27165,3 +27165,10 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   the lap's end all present. Spectators (gold t 85-90) are the PO's open question; the ONYX board (gold t 55) falls between
   the tiles here (not confirmed either way). With S10-S15 all five tracks have now had a full-lap pass after DATFIX-1.
 * WG follow-up: gold t 55 vs our s 1750 match closely (the red KENDALL board, small signs, tree line); the sheet's 'ONYX' tile was a few seconds later -- nothing missing.
+
+### COCKPIT-2 S8 (2026-10-16, check): the AI teams' replay cockpits from the 10-16 Zandvoort replay
+* `JM_REPLAY_FOCUS=1..5 JM_REPLAY_CAM=1`, shot at replay t 60: Clark and Hill ride in our Lotus cockpit (white sleeves,
+  gloves, mirrors, dials); Bonnier (Cooper covd), Amon (Ferrari ferd), Brabham (brad) in GPL's own team cockpits -- wheel,
+  dash, lever, perspex, and the teams' own DARK leather gloves (`cohand`/`brhand`/`fehand`, at the rim at 9 and 3; they
+  read as part of the rim in thumbnails). The teams' arm parts (`braarms`, `copsho`, `ferarms`...) are not drawn (the
+  team-part filter) -- GPL shows sleeves there; a possible next step if the PO uses the AI cockpit view.
