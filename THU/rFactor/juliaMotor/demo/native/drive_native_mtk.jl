@@ -9342,11 +9342,13 @@ let objnames=Set{String}()
         # entirely different fixes. JM_OBJFIND=pit|tower|grand
         let pat = _ofre = Regex(replace(get(ENV,"JM_OBJFIND",""), "," => "|"), "i")
             hits = [i for i in OBJINSTS if occursin(pat, String(i[1]))]
+            # 2026-10-16: JM_OBJFIND_FATE=<fate> keeps one fate (dropped / bb / mesh); JM_OBJFIND_N lists more than 20
+            haskey(ENV, "JM_OBJFIND_FATE") && filter!(i -> String(i[5]) == ENV["JM_OBJFIND_FATE"], hits)
             println("== JM_OBJFIND /", get(ENV,"JM_OBJFIND",""), "/i -- ", length(hits), " placed instances ==")
             if isempty(hits)
                 println("(none matched -- either not placed, OR the PATTERN did not match: it is a REGEX, so use pit|tower|grand. E72-S10: commas are now accepted as alternation, but a pattern that cannot match is indistinguishable from an absent object -- check a name you KNOW is placed before trusting a null.)")
             else
-                for h in hits[1:min(end,20)]
+                for h in hits[1:min(end, parse(Int, get(ENV, "JM_OBJFIND_N", "20")))]
                     hr = JuliaMotor.hat(TRKSURF, Float64(h[2]), Float64(h[3]))
                     # E72-S6: report the VERTICAL too. Watkins' pit structures are placed, kept, and
                     # invisible at their own lapdists (E72-S5), and lateral offset does not explain

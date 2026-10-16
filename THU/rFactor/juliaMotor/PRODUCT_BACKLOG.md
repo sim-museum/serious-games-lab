@@ -29,6 +29,7 @@ this index was written; that is what it exists to stop.
 | **PERF-5** | (found 2026-10-16 by the five-track integration races) after the player's wreck the frame spent ~3 ms in wall/obstacle clamping for the rest of the race | ✅ **S1 (2026-10-16):** a frozen wreck is re-placed at its rest pose every frame (E95g); the obstacle clamp pushed it out of what it rests in, 3 iterations x 2 rounds over every nearby face, only for it to be put back. No contact or clamp for a frozen wreck now (`JM_WRECK_NOCLAMP=0` = before): Zandvoort wreck run 3.05 ms -> 0 per frozen frame |
 | **PERF-6** | (found 2026-10-16) GC hitches (25-35 ms, 2 frames) every ~20 s in every race | ✅ **S1 (2026-10-16):** the shader program `prog` was an untyped global, so every draw call in the frame was a dynamic call boxing its keywords (~1,700 a frame at Spa); `const` now. World pass 101 -> 10 KB/frame, all garbage ~190 -> ~90 KB/frame; Spa race GC stalls 7 -> 4 per 9,000 frames. Next: the sim's ~70 KB/frame (ground queries, wheel matrices, GPL AI) |
 | **SPECTATORS-1** | (2026-10-16, prepared for the PO's decision) GPL lines Zandvoort's dunes, Spa's villages and La Source with standing spectators; the 2026-08-27 order removes all loose people by name -- the one visible difference left in the Zandvoort and Spa full-lap gold comparisons | 🟡 **S1 built, OFF by default, for the PO's decision:** launcher Graphics "Spectators, where they stand well off the road (as in GPL)" (`JM_SAFE_SPECTATORS=1`): a loose person is kept only if, with its row's across-road reach, it stands more than ROAD_HALFW + 4 m (13 m) from the road's centreline (`JM_SPECT_MARGIN`). Zandvoort +159 spectators (e.g. on the bank behind the Tarzan fence), Spa +1 (its crowds stand closer or have no sprite). Off = exactly as before |
+| **DATFIX-1** | (found 2026-10-16 chasing Spa's undrawn trees) the GPL track-archive (.dat) reader misread every directory entry whose file offset has a 0x00 low byte, corrupting that entry and truncating the file its wrong offset landed in | ✅ **S1 (2026-10-16):** fixed 27-byte records (13-byte name). Spa: 49 archive files change -- `house1a` (the white gabled house SPATD-1 drew a stand-in for), `malcafe`, the DUNLOP SP banner at the start (drawn garbled), house textures, 124 trees/bushes (tr33/bu16 sprites never decoded); the Ring 4 (`trowgl.mip` exists after all); Zandvoort/WG none. `JM_DAT_LEGACY=1` = before; the texture cache key carries the layout |
 | **MONZAROAD-1** | Found in the 10-14 integration race: at Monza s 400-800 (just after the start) every AI car runs with its centre off the drawn road (9.7 % of AI frames in the first 83 s; Spa 3.3 % round the start/finish); the chase view at s 450 puts the reference line on the grass beside the road course where it forks from the banking. Pre-existing (never measured at Monza/Spa before) | ✅ **S1 (2026-10-14):** the AI's per-metre road correction pulled the race line onto the re-centred centreline, which lies on the grass there; the correction is now kept only where it leaves the race line on the drawn road -- Monza AI off-road 9.7 % → 0 % (`JM_AI_ROADSHIFT_CHECK=0` = before). Spa's s 0-300 count is the counter's road classifier (photographed: the cars are on the tarmac) |
 | **WHEELOFF-1** | SHIFT+R must NOT clear a wreck when any wheel has come off -- only R (restart) is allowed then (PO 2026-10-14) | ✅ **S1 (2026-10-14), for the PO's look:** with a wheel off SHIFT+R does nothing (no recover, no respawn) and the notice reads "A wheel has come off -- R: restart the race"; without, SHIFT+R recovers as before (`JM_WHEELOFF_RULE=0` = before) |
 | **SPAFENCE-1** | At Spa, put a fence where the invisible trackside wall is (TD261013-1 b2: GPL's invisible wall after Stavelot, s 8179-8429) (PO 2026-10-14) | ✅ **S1 (2026-10-14), for the PO's look:** a 1.6 m wire fence (spa67's `wiref_m`) on GPL's wall face, 44 panels / 222 m after Stavelot -- it stands on the LEFT of the road (the inventory's "R" had the sign backwards; the fence uses the wall's own geometry). `JM_SPAFENCE` sets the stretches |
@@ -27024,3 +27025,26 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
 * `bridge3a/b` (s 14148): with the rule off, the "Continental Reifen" footbridge over the road, standing correctly. It is
   390 m after the Karussell -- the PO's RINGTD-1 (e) "overhead banner on solid columns ... remove the banner". So its
   absence is the PO's request; noted in RINGTD-1's row, not changed.
+
+### DATFIX-1 S1 (2026-10-16): the GPL .dat reader misread ~1 entry in 85 at Spa -- trees, a house and the DUNLOP banner come back
+* Chase: Spa's tree/bush sprites `tr33` (47 placements) and `bu16` (35) were never drawn -- their billboard texture failed
+  to decode: tr33.srb came out 39,771 bytes of its 699,512 (a BoundsError one byte past the end). Not GPL's data: the
+  archive reader read each directory entry as "name to its null, then skip null padding", which also swallowed the first
+  byte of any OFFSET whose low byte is 0x00 -- that entry misread (stree57.3do's wrong offset landed inside tr33.srb, so
+  tr33 was cut short at it). The records are fixed 27 bytes (13-byte 8.3 name field + u32 offset + u16 + u32 + u32), as
+  the header hex shows; sizes stay "gap to the next offset" (the u32 pair is not this entry's size).
+* Measured on the five archives: the old reader disagreed with the fixed layout on 30 Spa entries and 2 at the Ring
+  (Zandvoort, WG none; Monza has no .dat). 49 Spa and 4 Ring files change content: `house1a.3do` (SPATD-1 S5 believed it
+  absent and drew house1 for it), `malcafe.3do`, `mcenter.3do` (1.4 MB of junk -> 17 KB), `kiosc`, `clhouse`, `house38`,
+  the house textures h33-h48, `chbann1` (banner), the DUNLOP SP board's art, the Ring's `trowgl.mip` (E64 S11's
+  prefix workaround) and `tanne2.3do` (was a 2.8 GB "size", skipped).
+* A/B (`JM_DAT_LEGACY=1` = the old read; renders `261016/datfix1_spa_old_vs_fixed*.jpg`): the DUNLOP SP banner by the start
+  was drawn with a garbled green block over it -- now clean; Les Combes shows the real house1a (a white gabled house, as
+  the gold) instead of the house1 stand-in; trees/bushes at Les Combes and Masta. Elsewhere identical. Spa 1741 -> 1743
+  objects, 2429 -> 2553 billboards; the Ring +7 billboards; Zandvoort unchanged.
+* The decoded-texture cache key now includes the layout, so nothing decoded from a misread survives (each track's first
+  launch re-decodes; LOADHANG-1 made that cheap).
+* Gates s74: 60/61 -- texcold_smoke's pixel hash changed: it hashes the first 120 Spa textures, some of them from
+  misread entries; with `JM_DAT_LEGACY=1` it gives the old hash exactly, so the archive fix is the only change. New hash
+  recorded (7c8b490272e953de). New gate `datfix_smoke`: the fixed read gives tr33.srb whole and decoding, house1a.3do
+  present, and the legacy read still truncates tr33 (the known positive). Gates s75: **ALL 62 PASS**.

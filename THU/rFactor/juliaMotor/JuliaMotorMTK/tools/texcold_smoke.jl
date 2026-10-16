@@ -16,8 +16,11 @@ ENV["JM_TEXCACHE_DIR"] = mktempdir(); idx = Render.gpl_texture_index(SPA) # a fr
 redirect_stdout(devnull) do; global t = @elapsed (global rs = [Render.tex_rgba(idx, k) for k in names]); end
 h = foldl((h, (k, r)) -> r === nothing ? h : hash((k, r[1], r[2], r[3]), h), zip(names, rs); init = UInt64(0))
 ms = 1000t / length(names)
-ok_t = ms < 10; ok_h = string(h, base = 16) == "51ed1bb0441d0a89"
+# DATFIX-1 (2026-10-16): the archive reader now reads the .dat directory's fixed 27-byte records; some of these 120 textures
+# came out of misread entries before (JM_DAT_LEGACY=1 still gives the old 51ed1bb0441d0a89). The fixed read's pixels:
+const WANT = "7c8b490272e953de"
+ok_t = ms < 10; ok_h = string(h, base = 16) == WANT
 println("  cold tex_rgba: ", round(ms, digits = 1), " ms per texture (limit 10)  ", ok_t ? "ok" : "TOO SLOW")
-println("  pixel hash   : ", string(h, base = 16), ok_h ? "  (unchanged)" : "  CHANGED (want 51ed1bb0441d0a89)")
+println("  pixel hash   : ", string(h, base = 16), ok_h ? "  (unchanged)" : "  CHANGED (want " * WANT * ")")
 println(ok_t && ok_h ? "TEXCOLD: PASS" : "TEXCOLD: FAIL")
 exit(ok_t && ok_h ? 0 : 1)

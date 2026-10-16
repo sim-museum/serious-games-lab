@@ -1152,7 +1152,7 @@ function gpl_texture_index(dir)
     # player's caches (2026-10-07: the AppImage's first Spa launch decoded 1,921 textures for 13 min).
     cd = get(ENV,"JM_TEXCACHE","1") == "0" ? "" :
          joinpath(get(ENV, "JM_TEXCACHE_DIR", joinpath(homedir(), ".cache", "juliamotor", "tex")),
-                  string(hash((abspath(dir), get(ENV,"JM_NO_ALPHABLEED","0"), GPLMip.CMAP_ORDER)), base=16))   # E83: decoder version in the key
+                  string(hash((abspath(dir), get(ENV,"JM_NO_ALPHABLEED","0"), GPLMip.CMAP_ORDER, GPLDat.dat_layout())), base=16))   # E83 + DATFIX-1: decoder/archive versions in the key
     cd != "" && (try; mkpath(cd); catch; cd = ""; end)
     GPLTex(paths, dat, cd)
 end
