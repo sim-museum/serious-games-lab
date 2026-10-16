@@ -27140,3 +27140,13 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   is the tool for the next flicker report.
 * Gates s78 (zfight diagnostic commit): **ALL 62 PASS** (`GATES_SKIP=road_clear_smoke`).
 * Monza's Armco_s + twinarm pair (s ~3566, lat 10): chase + cockpit renders at s 3520/3545 show clean rails, no striping -- nothing to fix.
+
+### HANDS-2 S5 (2026-10-16, analysis): the sleeve gap is occlusion, not width
+* Gold 260801 Zandvoort cockpit t 31 vs ours on the straight (s 4000), sleeve width `JM_ARM_SY` 0.62 (default) / 0.8 /
+  0.95 (`261016/hands2_sleeves_gold_vs_width.jpg`): width changes little. The difference: GPL's arms run unbroken from the
+  gloves to the bottom corners, broad and white, in front of everything; ours vanish behind the grey cockpit side panels
+  halfway down, so only a narrow upper strip shows. Moving the shoulders down/out or drawing the arms over the side panels
+  would close it -- a look decision (HANDS-2 S1-S4 fitted the shoulders to the gold), left for the PO's eye. No change.
+* E80 note from the same pass: main() = 2,120 lines of setup + a 2,750-line game loop closing over hundreds of setup
+  locals; the split that could cut its 29 s compile is a large refactor of the code the PO drives daily -- not done
+  autonomously; a PO go-ahead item.
