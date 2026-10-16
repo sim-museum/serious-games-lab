@@ -27153,3 +27153,8 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
 * Also tried narrower shoulders (`JM_SHOULDER_Z` 0.26 default -> 0.18 / 0.12): the sleeves turn steeper but stay thin, and
   at 0.12 start covering the lower wheel. Neither width nor shoulder spacing makes GPL's large arms -- the gold's eye
   appears lower and closer, its arms rising from below the frame. A camera/look decision for the PO; defaults kept.
+* **CORRECTION (same day):** the "occlusion" reading above is WRONG -- an artefact of comparing a 4:3 gold window and our
+  16:9 frame at equal WIDTH with different vertical crops (memory jr-judge-geometry-full-res). At equal HEIGHT
+  (`261016/hands2_sleeves_gold_vs_ours_equal_height.jpg`) the cockpit scale matches (wheel ~250 px in both) and our sleeves
+  DO run from the gloves to the bottom of the frame, as GPL's. What differs: ours are a little narrower at the wrist and
+  greyer/flatter (GPL's bright white with soft folds) -- the shading side of E83's open question. No change.
