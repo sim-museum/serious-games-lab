@@ -27064,3 +27064,6 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   Zandvoort `bushes04` 63 + `shrub1` 4 -- the PO's loose add-on files of those names are textured people01-03 (spectators
   named as bushes), dropped by the crowd filter, i.e. the PO's order; Spa `sosor` 28 -- a sprite whose only texture,
   `ssourcelist`, exists nowhere in spa67 (archive or folder), so GPL cannot draw it either. WG, Monza, the Ring: none.
+* Decoder censuses after DATFIX-1 (offline, every file in the five tracks' archives + folders): textures 345 / 176 / 540
+  / 1,990 / 876 (Zandvoort/WG/Monza/Spa/Ring) -- 0 decode failures; objects 119 / 68 / 149 / 501 / 689 -- 0 parse
+  failures (35 / 4 / 16 / 164 / 52 are sprite stubs, drawn by the billboard path).
