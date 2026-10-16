@@ -7559,6 +7559,9 @@ let objnames=Set{String}()
                # E60-S7 (2026-10-06): `tent*` ("white fuel-tank tents", dropped since the first Zandvoort drive with no recorded
                # reason) are the gold's red-cross and paddock tents (s 92-101, 2769, 4001, 4142; gold t=105, t=141); only
                # Zandvoort has them. Drawn now; JM_DROPTEST=tent drops them again.
+               # BLINDTURN-1 S10 (2026-10-15): Zandvoort's `single1-13` (281 placements, billboard stubs) are single standing
+               # SPECTATORS (JM_KEEPTEST=single renders them on the inside of Tarzan and at Gerlach) -- loose people, so the
+               # PO's 2026-08-27 order applies (see people_filter.jl). Not trees; the drop is right.
                startswith(nm,"single") ||
                (startswith(nm,"intree") && !WATGLEN) ||                      # INFIELD tree lines (100s of m wide) → distant central "smear".  WG3 (E64 S5): on WATKINS these + treefill/treesrb ARE the gold's close roadside autumn forest — the smear objection predates graze-fade (MZ3), which fixed it; kept there now
                ((startswith(nm,"treesrb") || startswith(nm,"treefill")) && !WATGLEN) ||  # forest-BACKDROP / gap-fill quads → streaky "painted tree" smear (non-Watkins; see WG3 note above)
@@ -8117,6 +8120,62 @@ let objnames=Set{String}()
         end
         flush(stdout)
     end
+    # BLINDTURN-1 S10 (2026-10-15): JM_BLINDDIAG=1 -- what stands straight on at each sharp turn. GPL puts an object on
+    # the far side of a blind turn (what you would hit going straight on); the gold-video route could not place the
+    # Ring's turns, so this asks the geometry instead: for each turn (>= JM_BLINDDIAG_DEG heading change within 60 m)
+    # the entry heading is cast from the turn-in point and every placement within +-15 m of that ray, 0-200 m out
+    # and off the road, is listed with its verdict. A turn whose cone holds no KEPT object is a candidate.
+    get(ENV,"JM_BLINDDIAG","") != "" && let
+        _P = TRKSURF.pos; _S = TRKSURF.lapdist; _n = length(_P); _L = TRKSURF.lap_length
+        _deg = parse(Float64, get(ENV,"JM_BLINDDIAG_DEG","40"))
+        _hd(k) = (q = _P[mod1(k+1,_n)]; p = _P[k]; atan(q[3]-p[3], q[1]-p[1]))
+        _ahead(k, d) = (j = k; acc = 0.0; while acc < d; jn = mod1(j+1,_n); acc += hypot(_P[jn][1]-_P[j][1], _P[jn][3]-_P[j][3]); j = jn; j == k && break; end; j)
+        # GPL's billboard stubs (Ring shrubs/trees: no mesh) are drawn by the sprite path (RINGSPRITES) -- count them drawn
+        _spr = Set{Tuple{String,Int,Int}}()
+        (@isdefined RINGSPRITES) && RINGSPRITES !== nothing &&
+            foreach(sp -> push!(_spr, (lowercase(String(sp.name)), round(Int, sp.x), round(Int, sp.y))), RINGSPRITES)
+        _vd(i) = get(objmesh,i.name,nothing) === nothing ?
+                     ((lowercase(String(i.name)), round(Int, i.x), round(Int, i.y)) in _spr ? "kept (sprite)" :
+                      get(bbinfo, i.name, nothing) === nothing ? "NO MESH" :
+                      drop(i.name) ? "billboard, drop() junk filter" : "kept (billboard)") :
+                 drop(i.name) ? "drop() junk filter" :
+                 onroad_crowd(i) ? "onroad_crowd" : perp_crowd(i) ? "perp_crowd" : onroad_bldg(i) ? "onroad_bldg" :
+                 onroad_fp(i) ? "onroad_fp" : !(tallenough(i.name)) ? "under min height" : !onground(i) ? "not on ground" : "kept"
+        _turns = Tuple{Int,Float64}[]; k = 1; _last = -1e9
+        while k <= _n
+            j = _ahead(k, 60.0); dh = rad2deg(abs(rem(_hd(j) - _hd(k), 2pi, RoundNearest)))
+            if dh >= _deg && rem(_S[k] - _last + _L, _L) > 120.0
+                # the whole turn: keep walking while the heading keeps changing, total angle over 150 m
+                jt = _ahead(k, 150.0); tot = rem(_hd(jt) - _hd(k), 2pi, RoundNearest)
+                push!(_turns, (k, rad2deg(tot))); _last = _S[k]
+            end
+            k += 1
+        end
+        println("== JM_BLINDDIAG: ", length(_turns), " turn(s) >= ", _deg, " deg in 60 m (lap ", round(Int,_L), " m)")
+        _nk0 = 0
+        for (k, tot) in _turns
+            p = _P[k]; h = _hd(k); ux, uz = cos(h), sin(h)
+            rows = Tuple{Float64,Float64,String,String}[]
+            for i in insts
+                dx = Float64(i.x) - p[1]; dz = Float64(i.y) - p[3]
+                t = dx*ux + dz*uz; o = -dx*uz + dz*ux
+                (0.0 <= t <= 200.0 && abs(o) <= 15.0) || continue
+                hr = JuliaMotor.hat(TRKSURF, Float64(i.x), Float64(i.y))
+                hr.found && hr.on_track && continue   # on the tarmac (this turn's or another leg's): not a marker
+                push!(rows, (t, o, lowercase(String(i.name)), _vd(i)))
+            end
+            sort!(rows, by = first); nk = count(r -> startswith(r[4], "kept"), rows); nk == 0 && (_nk0 += 1)
+            println("   turn s=", lpad(round(Int,_S[k]),6), "  ", lpad(round(Int,tot),4), " deg  straight-on: ",
+                    nk, " kept / ", length(rows) - nk, " dropped", nk == 0 ? "   <-- NOTHING KEPT AHEAD" : "")
+            for r in rows
+                (!startswith(r[4], "kept") || get(ENV,"JM_BLINDDIAG_ALL","") != "") || continue
+                println("        ", lpad(round(Int,r[1]),4), " m ahead ", lpad(round(r[2],digits=1),6), " m off  ",
+                        rpad(r[3], 12), r[4])
+            end
+        end
+        println("   ", _nk0, " of ", length(_turns), " turns have nothing kept straight on")
+    end
+    flush(stdout)
     # E15: SOLID trackside objects the car can hit — (physics x, z, collision radius m).  Buildings,
     # barriers/hedges (haybales = Zandvoort `haie`), towers, parked vehicles.  NOT trees/signs/people.
     solidR(nm) = startswith(nm,"hut")||startswith(nm,"pitbldg")||startswith(nm,"hotel")||startswith(nm,"bigbosch")||nm=="mega2"||startswith(nm,"longtent")||
