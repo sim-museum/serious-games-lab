@@ -857,7 +857,7 @@ uuid = "7c3b1a52-9e4d-4f61-b0a8-2d5e6f7a8b91"
 version = "0.1.0"
 
 [[deps.JRRender]]
-deps = ["GLFW", "JuliaMotor", "LinearAlgebra", "ModernGL", "PrecompileTools", "RFactorData", "StaticArrays"]
+deps = ["GLFW", "JRPhysics", "JuliaMotor", "LinearAlgebra", "ModernGL", "PrecompileTools", "RFactorData", "StaticArrays"]
 path = "../../JRRender"
 uuid = "5f0e2b8c-1d3a-4e7f-9a6b-c4d2e8f1a0b3"
 version = "0.1.0"

@@ -8,6 +8,12 @@
 # defaults: A/B probes that neither the launcher nor any gate sets. JM_RENDER_INCLUDE=1 in the sim loads the loose files
 # instead, with those knobs live.
 module JRRender
+# E80-S15 (2026-10-15): compile this package's cached code WITH the physics package loaded. JRPhysics brings ModelingToolkit,
+# Symbolics and Unitful, which add methods to generic functions (!=, >, isequal, IteratorSize, sort! kwcall ...) that the
+# render code calls on Any-typed values; loaded after a JRRender image built without them, they invalidated ~40 of its
+# methods and the sim recompiled them at every launch (12 s at Spa; a two-call probe: 0.19 s alone -> 3.7 s with JRPhysics).
+# The sim always loads both, so the image is now built in the same method world.
+import JRPhysics
 const NAT = normpath(joinpath(@__DIR__, "..", "..", "demo", "native"))
 include(joinpath(NAT, "render.jl"));    using .Render       # (+ GPL3DO, GPLMip, GPLDat)
 include(joinpath(NAT, "gpltrack.jl"));  using .GPLTrack
