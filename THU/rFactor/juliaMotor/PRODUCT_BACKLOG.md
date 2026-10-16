@@ -26871,3 +26871,14 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
 * Tools: `replayable(e)` in replay_261005.jl -- a gear in and yaw rate x speed within 15 % of |ay| at the start (the
   settled sim state is then the gold's); replay_261005 and izzval use it (13 of 19 events; wwtrans/slidefit/steerfit keep
   the full set). izzval now: 3.86 deg/s, of which 72.2 is 26.9 -- the other 12 events average ~1.9 deg/s. Izz stays 890.
+
+### E60 S11 (2026-10-16, analysis): Zandvoort's second half against the gold -- no missing object; only the dune crowds differ
+* Gold 260801 nintendo t 44-140 (every 4 s) against our chase view at s 1140-3590 (anchors t 42<->s 900, t 105<->s 2700,
+  t 141<->s 4100): the same bends, dunes and fences; the white red-roofed buildings on the right at Hondenvlak (gold
+  t 104 / ours s 2670); the trees and pavilion (t 112 / s 2970); the apartment blocks on the horizon from Tunnel Oost on
+  (t 120-132 / s 2970-3590, the `hotels` restored in E60-S6); the main-straight grandstand.
+* The one systematic difference: GPL lines nearly every dune bank with standing spectators (t 44, 56-60, 84, 108-124);
+  ours has none -- the `ppl_*`/`single*` rows go under the PO's 2026-08-27 loose-people order (BLINDTURN-1 S10 found the
+  same at Tarzan/Gerlach). A PO decision, already open (BLINDTURN-1 S3: "more of the crowd back?"); if wanted, the rows
+  standing well off the road (they sit 10-30 m out on the banks here) could be kept by distance.
+* E60 rotates: the lap has now been compared end to end (S4-S11).
