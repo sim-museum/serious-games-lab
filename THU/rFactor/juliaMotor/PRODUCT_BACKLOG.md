@@ -27158,3 +27158,9 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   (`261016/hands2_sleeves_gold_vs_ours_equal_height.jpg`) the cockpit scale matches (wheel ~250 px in both) and our sleeves
   DO run from the gloves to the bottom of the frame, as GPL's. What differs: ours are a little narrower at the wrist and
   greyer/flatter (GPL's bright white with soft folds) -- the shading side of E83's open question. No change.
+
+### E108 S15 (2026-10-16, analysis): Watkins Glen's lap against the gold -- nothing missing but spectators
+* Gold 260802 WG nintendo (one ~110 s lap: S/F tower t 0, KENDALL/DUNLOP gantry t 5, BOAC board t 110) vs our chase at
+  s = (t - 3) x 34 every 10 s: autumn forest, fences, Esses, Carousel, back straight, the grandstand and the DUNLOP pits at
+  the lap's end all present. Spectators (gold t 85-90) are the PO's open question; the ONYX board (gold t 55) falls between
+  the tiles here (not confirmed either way). With S10-S15 all five tracks have now had a full-lap pass after DATFIX-1.
