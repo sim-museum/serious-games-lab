@@ -6378,7 +6378,9 @@ GLFW.MakeContextCurrent(win); GLFW.SwapInterval(1)
 glEnable(GL_DEPTH_TEST); glEnable(GL_MULTISAMPLE)
 glEnable(GL_SAMPLE_ALPHA_TO_COVERAGE)                                   # MSAA-smooth the alpha cutout edges (signs/trees/crowd)
 glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)   # GPL cutout/glass alpha
-prog = Render.program(); glUseProgram(prog)
+# PERF-6 (2026-10-16): const -- an untyped global made every Render.draw(prog, ...) in the frame a dynamic call that boxed its
+# keywords: ~1,700 allocations a frame at Spa (allocsites: the object, billboard and track draw lines, 135 KB/frame).
+const prog = Render.program(); glUseProgram(prog)
 glUniform3f(Render.uloc(prog,"uLightDir"), 0.4f0, 1.0f0, 0.25f0)
 skyprog = Render.skyprogram(); skyvao = Render.empty_vao()
 hudprog = Render.hud_program(); (hudvao, hudvbo) = Render.hud_buffers()
