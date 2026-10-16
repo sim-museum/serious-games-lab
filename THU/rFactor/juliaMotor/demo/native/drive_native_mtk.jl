@@ -1042,6 +1042,7 @@ const WHEELOFF_MSG = Ref(0.0)
 # road or partially hanging in air") drops them all by name. JM_SAFE_SPECTATORS=1 keeps those clear of any chance: placed
 # on the ground and, with the row's across-road reach, more than ROAD_HALFW + JM_SPECT_MARGIN m from the road's centreline.
 # Default OFF -- the order stands until the PO says otherwise.
+const MONZA_TREEBANK_DROP = get(ENV, "JM_MONZA_TREEBANK_DROP", "0") != "0"   # E108 S11
 const SAFE_SPECT = get(ENV, "JM_SAFE_SPECTATORS", "0") != "0"
 const SPECT_MARGIN = parse(Float64, get(ENV, "JM_SPECT_MARGIN", "4.0"))
 const RECOVER_AT  = Float64[parse(Float64, x) for x in split(get(ENV, "JM_RECOVER_AT", ""), ",") if !isempty(strip(x))]   # TD261013-1 (c3) test hook
@@ -7612,8 +7613,11 @@ let objnames=Set{String}()
                (!SAFE_SPECT && startswith(nm,"single")) ||               # (SPECTATORS-1: per placement when opted in)
                (startswith(nm,"intree") && !WATGLEN) ||                      # INFIELD tree lines (100s of m wide) → distant central "smear".  WG3 (E64 S5): on WATKINS these + treefill/treesrb ARE the gold's close roadside autumn forest — the smear objection predates graze-fade (MZ3), which fixed it; kept there now
                ((startswith(nm,"treesrb") || startswith(nm,"treefill")) && !WATGLEN) ||  # forest-BACKDROP / gap-fill quads → streaky "painted tree" smear (non-Watkins; see WG3 note above)
-               startswith(nm,"trbk") || startswith(nm,"brbk") ||             # Monza underpass tree/bush BANKS (trbk1-8/brbk1-3 at lapdist ~3100-3440, lat ~5 m) — MESH foliage that bypasses the sprite on-road filter and renders as dark vertical smears ACROSS the road (PO round 4: "7 stands of trees across the track near the underpass")
-               startswith(nm,"tuntbk") ||                                    # tunnel-edge tree bank (same dark-smear foliage by the underpass)
+               # E108 S11 (2026-10-16): the Monza underpass tree/bush banks are DRAWN again. Dropped since PO round 4 ("7 stands
+               # of trees across the track near the underpass" -- dark vertical smears across the road, an old rendering bug);
+               # force-kept now (JM_KEEPTEST) they stand beside the road as in the gold (260802 Monza nintendo t 100), no smear
+               # in 12 cockpit frames s 2950-3500, and a slow lap meets nothing new there. JM_MONZA_TREEBANK_DROP=1 = before.
+               (MONZA_TREEBANK_DROP && (startswith(nm,"trbk") || startswith(nm,"brbk") || startswith(nm,"tuntbk"))) ||
                # E101: the loose-people list now lives in PeopleFilter, shared with the gate
                # that checks it (tools/people_smoke.jl). It was a closure nothing could test,
                # and a name list stops covering tracks added later without saying so.

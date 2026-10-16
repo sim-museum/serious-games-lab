@@ -26991,3 +26991,18 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   (spectators on the bank behind the Tarzan fence), Spa +1 (its crowds stand within 13 m or have no drawable sprite).
 * Test `tests/spectators_test.py` (under launcher_smoke): default off, on -> env, remembered, replay path.
 * Gates s72 (SPECTATORS-1 commit): **ALL 61 PASS** (`GATES_SKIP=road_clear_smoke`; launcher_smoke runs the new spectators_test).
+
+### E108 S11 (2026-10-16): Monza's full lap against the gold -- the underpass tree banks were a stale drop rule; drawn again
+* Gold 260802 Monza nintendo t 0-138 every 6 s vs our chase at s = 400 + (t - 24) x 37.2 (anchors: the Shell board at the
+  fork t 24 <-> s ~400, the Coca-Cola underpass t 102 <-> s ~3300): pit straight + grandstands, the VELOCITA scoreboard,
+  the fork, Curva Grande, the Lesmo boards (Coca-Cola, Lancia), the underpass with its Coca-Cola banner, Ascari and the
+  back straight all present. Our sky is paler than the gold's blue (the grading question, E83), not missing.
+* The underpass approach: the gold is lined with tall trees and a hedge right to the bridge; ours was open grass. The
+  tree/bush banks there (`trbk1-8`, `brbk1-3`, `tuntbk1-2`) were dropped by name since PO round 4 ("7 stands of trees
+  across the track near the underpass" -- dark vertical smears across the road, an old rendering bug). Force-kept
+  (`JM_KEEPTEST`), 13 objects: they stand beside the road with trunks, as in the gold (`261016/e108_monza_underpass_*`);
+  12 cockpit frames s 2950-3500 show nothing across the road; slow autodrive laps with and without: 0 wrecks, the same 3
+  jolts (all at the fork), none in s 2900-3600.
+* Shipped: drawn by default (`JM_MONZA_TREEBANK_DROP=1` = before). Monza 124 -> 137 trackside objects. The third stale
+  name rule this week (after Zandvoort's `hotels`, the "under 1 m" cut) -- the memory jr-stale-drop-rules applies.
+* Gates s73 (E108 S11 commit): **ALL 61 PASS** (`GATES_SKIP=road_clear_smoke`).
