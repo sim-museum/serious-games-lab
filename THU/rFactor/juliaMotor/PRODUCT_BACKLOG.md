@@ -27058,3 +27058,9 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   loose people). The relaxed form ALONE would have broken tree1 / treesrb / busch (20 m -> 2.5) -- hence the union.
 * Render Spa s 1200/2600/7880: the tree by the Les Combes fence now stands at its 8 m.
 * Gates s76 (DATFIX-1 S2 commit): **ALL 62 PASS** (`GATES_SKIP=road_clear_smoke`).
+
+### DATFIX-1 S3 (2026-10-16, census): every remaining asset-load failure on the five tracks is GPL's data, not ours
+* Census (temporary print in the fate pass): placements with neither a mesh nor a billboard, people excluded. After S1-S2:
+  Zandvoort `bushes04` 63 + `shrub1` 4 -- the PO's loose add-on files of those names are textured people01-03 (spectators
+  named as bushes), dropped by the crowd filter, i.e. the PO's order; Spa `sosor` 28 -- a sprite whose only texture,
+  `ssourcelist`, exists nowhere in spa67 (archive or folder), so GPL cannot draw it either. WG, Monza, the Ring: none.
