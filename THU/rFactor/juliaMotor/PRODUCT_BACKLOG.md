@@ -26750,3 +26750,22 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   runs along both sleeves as in the gold (`arm_ab.jpg`); full lock either way (JM_TEST_STEER ±1) unchanged
   (`lock_ab.jpg`) -- no new sail.
 * Gates (s63): **ALL 61 PASS** (`GATES_SKIP=road_clear_smoke`).
+
+### E60 S10 (2026-10-15): the "under 1 m tall" rule dropped real objects on every track -- the cut is now 0.25 m
+* Following the gold round Zandvoort (t 55-135, `scratchpad zand/lap/lap_*.jpg`: scenery and the town skyline match;
+  crowds absent by the PO's order), the full-lap verdict list showed `lotusbb`/`bosch`/`pepsi` -- low sponsor boards --
+  DROPPED "under 1 m tall", where the gold shows low boards (SUPER Gulf, NO-NOX at Hugenholtz).
+* Census (new: the verdict prints the height): Spa 90 `hayb` + 7 coloured hay bales (0.42 m), the `100`/`200`/`300` m
+  and `1km`-`14km` boards (0.93), `shellsf` (0.75), `burbush` (0.68), `p_armco0`; WG `hay01-03` (0.84); the Ring's
+  14 corner-name signs `s_*` (s_karu, s_metz, s_hatz ...) and `billb2` and `s_treen1` -- exactly 1.0 m, which the strict
+  "> 1.0" failed; Zandvoort the boards (0.98) and 190 low bushes (0.5); Monza `ter01-05` (0.3-0.9), `bigtree` (1.0). Only
+  Zandvoort's `lftbridg/midbridg/rgtbridg` are flat (0.0 m): the decals the rule exists for.
+* A/B renders (`zand/tall/tall_ab*.jpg`, default vs 0.1): WG's hay bales at the corner edges and Zandvoort's NO-NOX + Gulf
+  boards appear; elsewhere the objects were out of frame; no artefact anywhere. Obstacles (they are drawn objects now):
+  Spa 61,889 → 62,471 faces, Zandvoort 15,049 → 15,974 (the bushes, 11-35 m off the road), WG +78, Ring +32, Monza +8.
+* **Shipped:** the cut is 0.25 m (keeps all of the above, still drops the flat bridge decks and a 0.2 m tree stub);
+  `JM_TALL_MIN=1.0` restores it.
+* Safety check (the new solids): slow autodrive laps (22 m/s, 42,000 frames) at Spa and Zandvoort, cut 1.0 vs 0.25 --
+  identical: one wreck per arm at the same spot (Spa lapdist ~13,600 both; Zandvoort 451 m into lap 2 both, lap 1
+  3:19.78 both), i.e. the autodrive's own line, not a new solid. Gates s64 60/61 (tracksigns_smoke's literal check of
+  "> 1.0" updated to `> _tall_min`, then PASS alone).

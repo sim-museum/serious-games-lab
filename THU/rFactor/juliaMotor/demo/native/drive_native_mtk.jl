@@ -7249,7 +7249,13 @@ let objnames=Set{String}()
     # they chain into one smooth rail as in the gold. JM_KEEP_ARMCO=0 drops them.
     _keep_armco = SPA && get(ENV, "JM_KEEP_ARMCO", "1") != "0"
     _keep_lowsolid = get(ENV, "JM_KEEP_LOWSOLID", "1") != "0"
-    tallenough(nm) = (get(ymx,nm,0f0)-get(ymn,nm,0f0)) > 1.0f0 || startswith(lowercase(nm), "km_") ||
+    # E60-S10 (2026-10-15): the cut was 1 m, and it dropped REAL objects on every track (census, JM_OBJDIAG heights): Spa's
+    # 97 hay bales (0.42 m), its 100/200/300 m and 1-14 km boards (0.93), the Shell S/F board (0.75); WG's hay bales
+    # (0.84); the Ring's corner-name signs s_* and billboards (exactly 1.0 -- ">" failed them); Zandvoort's NO-NOX/Gulf
+    # low boards (0.98, the gold's Hugenholtz) and its low bushes (0.5). Only flat pieces (Zandvoort's bridge decks,
+    # 0.0 m) are the decals the rule was for. 0.25 m keeps the real ones; JM_TALL_MIN=1.0 restores the old cut.
+    _tall_min = parse(Float32, get(ENV, "JM_TALL_MIN", "0.25"))
+    tallenough(nm) = (get(ymx,nm,0f0)-get(ymn,nm,0f0)) > _tall_min || startswith(lowercase(nm), "km_") ||
                      (_keep_armco && startswith(lowercase(nm), "armco")) ||
                      (_keep_lowsolid && startswith(lowercase(nm), "bushrow"))
     # TD261013-1 S10: the exempt solid classes (solid_exempt: armco, fence, rail, barrier, wall, bushrow, haie) stay SOLID
@@ -8072,7 +8078,7 @@ let objnames=Set{String}()
                      perp_crowd(i)             ? "perp_crowd" :
                      onroad_bldg(i)            ? "onroad_bldg" :
                      onroad_fp(i)              ? "onroad_fp (footprint on road)" :
-                     !(tallenough(i.name)) ? "under 1 m tall" :
+                     !(tallenough(i.name)) ? string("under 1 m tall (", round(get(ymx,i.name,0f0)-get(ymn,i.name,0f0), digits=2), " m)") :
                      !onground(i)              ? "not on ground" : "kept"
                 push!(_rows, (_hr.lapdist, lowercase(String(i.name)), _hr.lateral, _r))
             end
