@@ -26967,3 +26967,13 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   + .jrt). The analyser's functions on it (analyser.py, headless): race_summary, lap_chart, lap_by_lap (passes with lap
   metres) and speed_report all build. The sim plays the .jmr back (6 cars, 201.4 s, no errors). Smoke runs record no
   replay unless asked (`JM_REPLAY_REC`), so tests never write into data/juliaracer. No change.
+
+### E108 S10 (2026-10-16, analysis): Spa's whole lap against the gold -- no missing object; only spectators differ
+* Gold 260802 Spa nintendo t 46-322 every 12 s vs our chase at s = 2050 + (t - 79) x 45.7 (SPATD-1 S5's anchors t 79 <-> s
+  2050, t 333 <-> s 13650): haystack fields, Les Combes houses, Burnenville barns, Malmedy, Masta, Stavelot (the red truck,
+  caravans, hay bales), the La Carriere forest and Blanchimont all line up within the anchor's few hundred metres.
+* Checked the two candidates: the CALTEX BORON gantry (gold t 94) is `brdg1` at s 3340 across the road -- drawn, with the
+  scaffold towers and the brick house (close-ups s 3250/3300/3330); my first frame was simply short of it. The flags with
+  spectators (gold t 118) belong to the `pelfspa` spectator groups (42 in that stretch, the loose-people rule; the PO's
+  2026-08-27 order). Unused flag art (`uflag1-6.srb`) has no placement in spa67.
+* Same verdict as Zandvoort (E60 S11): the visible difference left is the spectators -- the open PO question.
