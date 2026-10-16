@@ -26836,3 +26836,14 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   counter at the game loop 79.6 -> 66.8 s, time to the game loop 147.3 -> 137.1 s. Left: `Symbolics.__init__` 2.7 s
   (invalidated inside MTK's own stack, whatever our order) and package __init__s.
 * Gates s68 (E80-S15 commit): **ALL 61 PASS** (`GATES_SKIP=road_clear_smoke`).
+
+### E80-S16 (2026-10-16, analysis): where the remaining launch compile goes -- no cheap lever left; E80 rotates
+* Spa launch compile after S15 (trace-compile-timing, 73.3 s): main() 28.9 s; other script functions/closures in Main
+  19.8 s over 367 methods (largest jm_anchor_from_ibt 1.0 s, smooth_recentre 0.8, sleeve_ends 0.7 -- 25 over 200 ms make
+  10.3 s); Base/JuliaSyntax/included non-package modules (JoyCfg, Setup, EngineAudio...) 21.6 s; JRRender 1.6 s, JRPhysics
+  1.4 s (both now cached).
+* `Base.Experimental.@max_methods 1` for Main (A/B, Spa, 1,800 autodrive frames): main() 30.0 -> 28.1 s, frame
+  intervals identical (p50 17.2 ms) -- inference is not spending its time on method-match fan-out. Not kept.
+* Levers left, all refactors: (1) split main()'s game loop into functions (inference on 4,900 lines in one unit);
+  (2) move the script's load-time helpers and the included modules (JoyCfg, Setup, EngineAudio, RaceAI, GPLAI) into a
+  cached package, as JRRender was (~20-30 s at most, spread thin). E80 rotates; (1) is the next E80 pass.
