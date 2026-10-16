@@ -27006,3 +27006,12 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
 * Shipped: drawn by default (`JM_MONZA_TREEBANK_DROP=1` = before). Monza 124 -> 137 trackside objects. The third stale
   name rule this week (after Zandvoort's `hotels`, the "under 1 m" cut) -- the memory jr-stale-drop-rules applies.
 * Gates s73 (E108 S11 commit): **ALL 61 PASS** (`GATES_SKIP=road_clear_smoke`).
+
+### E108 S12 (2026-10-16, census): every remaining name-rule drop on the five tracks is justified
+* After three stale name rules in a week (Zandvoort `hotels`, the "under 1 m" cut, Monza's underpass banks): a whole-lap
+  OBJDIAG census per track of what `drop()`'s NAME rules remove, loose people excluded: Zandvoort `herbe` 5 / `grass` 4 /
+  `infield` 1; WG none; Monza none (since S11); Spa `plrow` 10; the Ring `trow` 84 (+ `grass` 2).
+* `plrow` is a people row (the PO's order). The Ring's `trow` rows duplicate the scenery groups' own tree rows (E109/
+  FLOAT-2: the second copy stood across the road as a "curtain"). The grass-cover planes (E17, `JM_KEEP_GRASS`): kept as
+  an A/B at Zandvoort s 300-780 (+8 objects) they change nothing visible -- green cover lying on green terrain -- and stay
+  dropped (no gain, z-fight risk). No change.
