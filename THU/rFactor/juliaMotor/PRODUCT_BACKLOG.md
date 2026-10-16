@@ -27098,3 +27098,9 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
 * When the PO's test-4/5 files arrive: run both on the folder; the draft table fits julia's DRAFT_DRAG_CUT/DRAFT_LEN shape,
   the contact table sets the damage onset/scale for car hits (and what an AI car should feel).
 * Runbook `261015/ANALYSIS_RUNBOOK.md`: which tool answers each IRTEST-261015 test; irgold_steady takes `JM_ST_DIR=<folder>` for a new session.
+
+### Integration races, rerun (2026-10-16 evening): no regression after today's changes
+* Same five one-lap 5-AI races after DATFIX-1, SPECTATORS-1 (off), the Monza tree banks, PERF-5/6: 0 errors, 0 compile
+  stalls; GC stalls 3-7 per race (Ring 7 over 14,000 frames); GPLWALL-1 cost 84-265 us/frame over the frames before any
+  freeze; AI off the drawn road unchanged (Zandvoort 0.13 % edge, WG 0, Monza 0.96 % edge, Spa's s 0-300 classifier
+  artefact 5.2 %, Ring 0.41 % edge). Zandvoort: 16 jolts, no wreck this time (the autodrive's start-line melee varies).
