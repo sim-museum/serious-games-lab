@@ -26947,3 +26947,17 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   tyre transient at high load -- not a parameter S6-S7 could fit. IRTEST-261015 #1 (skidpad limit) and IRTEST-261009 #6
   (steering flicks at constant speed) are exactly the data that would separate the two. PHYSFID-1 waits on them
   (10 of 25 sprints used).
+
+### PHYSFID-1 S11 (2026-10-16): steering compliance as an object -- built, tested, not supported by the data; reverted
+* Hypothesis from S10: a compliant column/upright (road wheel = command - Cc x kingpin moment, the moment = front Fy x the
+  column's trail, which collapses near sliding) would explain both the gold's extra steady steer and its quicker
+  transient. Built as a state in DrivenVehicle3D (`δw`, tau 0.02 s; `JM_STEER_COMPL` = Cc rad/N·m).
+* Event 15-36:72.2: Cc 1.2e-4 makes the settled steer match the gold exactly (0.0468 vs 0.0469 rad for 0.88 g), but the
+  transient does not follow (yaw at 0.1-0.5 s 12.9->22.8 deg/s vs Cc 0's 13.3->22.9; gold 19.4->35.8) -- the front still
+  saturates at ~1.15-1.19 g where the gold reaches 1.35. The 12 other clean events: yaw RMS unchanged to 3 digits,
+  sideslip RMS 0.494 -> 0.485 deg.
+* Across all 13 clean events the steady-circle steer ratio sim/gold is 0.65-2.4, median ~1.1 -- the sim usually needs
+  as much steer as the gold or more; 72.2's 0.65 is the outlier, not the rule. Compliance would push the typical case the
+  wrong way, so it is not shipped (model file restored; no code change).
+* What stays: the limit gap is front grip at the limit in a lift-off transient (1.19 vs 1.35 g), not steering geometry.
+  PHYSFID-1: 11 of 25 sprints; the next step needs the PO's skidpad-limit and flick data (IRTEST-261015 #1, -261009 #6).
