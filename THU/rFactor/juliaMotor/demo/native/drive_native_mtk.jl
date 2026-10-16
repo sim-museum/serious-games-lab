@@ -3581,6 +3581,34 @@ if GPLW_ON && ROADHAT !== TERRAIN0 && get(ENV, "JM_GPLW_ONROAD", "0") != "0"
         end
     end
 end
+# CLINEFREE-1 (2026-10-16): JM_CLINE_FREE=1 walks our centreline (ALIGNED: what SHIFT+R and the autodrive follow) every
+# ~2 m and lists the stretches where GPL's walls leave it less than 4 m of free width, or where it lies outside them --
+# Monza's fork (s ~430-450: the line runs into the walled grass wedge between the banking and the road course) is the
+# known positive.
+if GPLW_ON && get(ENV, "JM_CLINE_FREE", "0") != "0"
+    let A = ALIGNED, n = length(A), s = 0.0, bad = Tuple{Float64,Float64,Float64,Float64}[], last = -1e9, nchk = 0
+        GPLW_HINT[] = 0
+        for k in 1:n
+            k > 1 && (s += hypot(A[k][1] - A[k-1][1], A[k][2] - A[k-1][2]))
+            s - last < 2.0 && continue
+            last = s; nchk += 1
+            (sec, f, lat, _, _, _, _) = gplw_locate(A[k][1], A[k][2]; update = true)
+            (lo, hi, _, _) = GPLWall.free_interval(GPLWALLS, sec, f, lat, lat; hmin = GPLW_HMIN)
+            (hi - lo < 4.0 || lat < lo || lat > hi) && push!(bad, (s, lat, lo, hi))
+        end
+        GPLW_HINT[] = 0
+        println("  [clinefree] ", TRACKSEL, ": ", length(bad), " of ", nchk, " centreline samples with < 4 m free or outside GPL's walls")
+        i = 1
+        while i <= length(bad)
+            j = i; while j < length(bad) && bad[j+1][1] - bad[j][1] < 6.0; j += 1; end
+            w = minimum(b[4] - b[3] for b in bad[i:j])
+            println("     s ", round(Int, bad[i][1]), "-", round(Int, bad[j][1]), "  (", j - i + 1, " samples)  narrowest free ",
+                    round(w, digits = 2), " m  e.g. lat ", round(bad[i][2], digits = 2), " in [", round(bad[i][3], digits = 2), ", ",
+                    round(bad[i][4], digits = 2), "]")
+            i = j + 1
+        end
+    end
+end
 # SPATD-1 diagnostic: JM_GPLW_DUMP="95,97" prints those sections' strips, raw vs registered edge table (f = 0, .5, 1)
 if GPLW_ON && get(ENV, "JM_GPLW_DUMP", "") != ""
     for si in parse.(Int, split(ENV["JM_GPLW_DUMP"], ","))
@@ -14393,6 +14421,8 @@ function main()
             loR = 0.0; while loR < 10.0 && onroadR(cx0 - nLx*(loR+0.5), cz0 - nLz*(loR+0.5)); loR += 0.5; end
             offR = clamp((hiR - loR)/2, -5.0, 5.0)
             cxR = cx0 + nLx*offR; czR = cz0 + nLz*offR
+            println("  [recover] placed at s ", round(sR, digits = 1), ": road ", -loR, " .. +", hiR, " m about the line, offset ",
+                    round(offR, digits = 2), " m"); flush(stdout)
             DriveRT3D.place3d!(cs, cxR, czR, θ0; v=0.0)
             pR = (cxR, pR[2], czR, θ0)
             cs.s_vreset(cs.integ, zeros(14))

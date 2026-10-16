@@ -26921,3 +26921,15 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   brushes the rail. Real contact with a visible barrier by the test driver, not an invisible wall; the AI (GPL's line)
   never touch it. Open thought, not acted on: SHIFT+R's road-midpoint placement could land near the splitter if it
   scans across both branches here.
+
+### CLINEFREE-1 (2026-10-16, analysis + two diagnostics): is our centreline ever between GPL's walls? Only at Monza's fork, harmlessly
+* From the Monza jolts: with GPL's walls drawn (`JM_GPLWALL_SHOW=1`, s 400/425/440) our centreline at s ~440 runs into the
+  walled grass wedge between the banking branch and the road course; the autodrive followed it and was squeezed (200 kN
+  flipping sign each frame between walls ~1.2 m apart).
+* New `JM_CLINE_FREE=1` (load-time census): every ~2 m of the centreline, GPL's free width there. Monza: 3 of 939
+  samples, s 424-434, narrowest 2.38 m; Zandvoort, WG, Spa, the Ring: 0 of 1,327 / 667 / 3,334 / 7,527.
+* SHIFT+R there is NOT trapped: the recover's own road-midpoint scan sees road -2 .. +10 m and moves the car 4 m onto the
+  road course (A/B with a wall-width guard: identical placement, the guard never fired -- removed again). New log line
+  `[recover] placed at s ...: road -a .. +b m about the line, offset c m` on every SHIFT+R.
+* So only the autodrive (a test driver on the raw line) meets the wedge. Nothing for the PO.
+* Gates s71 (CLINEFREE-1 diagnostics commit): **ALL 61 PASS** (`GATES_SKIP=road_clear_smoke`).
