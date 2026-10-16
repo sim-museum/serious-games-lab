@@ -16588,6 +16588,11 @@ function main()
     # SEGFAULTS in the ALSA/PipeWire stream teardown ("free(): corrupted unsorted chunks") on this box —
     # a noisy crash AFTER the race is already fully written (telemetry/replay/result all flushed above).
     # _exit terminates the process cleanly at the OS level, so the post-race exit is no longer a crash.
+    # TMPLEAK-1 (2026-10-15): skipping atexit also skipped mktempdir's cleanup -- every race left its extracted track
+    # files in /tmp (11 MB at Spa; 1,127 dirs / 3.7 GB had piled up here). Remove them by hand first.
+    for d in (TMPTRK, TMPOBJ)
+        try rm(d; recursive = true, force = true) catch end
+    end
     ccall(:_exit, Cvoid, (Cint,), 0)
 end
 end   # _MAIN_Q (E80-S13)
