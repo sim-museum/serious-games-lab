@@ -26914,3 +26914,10 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
 * PERF-6 follow-up: the other once-assigned non-const globals the frame uses (FONT, the HUD/text/sky/depth programs and
   their buffers, 16 cockpit item lists) made `const` as a test: per-frame allocations unchanged (HUD 9, world 10 KB) --
   they already pass through function barriers. Reverted; no measured benefit.
+* Integration-race follow-up, Monza's 9 player jolts (s 409-441, 43 -> 27 m/s, no car hit): GPL wall contacts where its
+  free interval narrows to ~1.2 m at the end of section 8 -- the nose of the armco that splits the banking branch from
+  the road course. Renders at s 380/415/437 (`scratchpad mzfork/fork.jpg`): the rail is drawn, ~3 m left of our
+  re-centred centreline (MONZAROAD-1: that line runs toward the splitter here); the autodrive follows it at lat -2 m and
+  brushes the rail. Real contact with a visible barrier by the test driver, not an invisible wall; the AI (GPL's line)
+  never touch it. Open thought, not acted on: SHIFT+R's road-midpoint placement could land near the splitter if it
+  scans across both branches here.
