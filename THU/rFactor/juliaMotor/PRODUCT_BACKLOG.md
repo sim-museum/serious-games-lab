@@ -27067,3 +27067,7 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
 * Decoder censuses after DATFIX-1 (offline, every file in the five tracks' archives + folders): textures 345 / 176 / 540
   / 1,990 / 876 (Zandvoort/WG/Monza/Spa/Ring) -- 0 decode failures; objects 119 / 68 / 149 / 501 / 689 -- 0 parse
   failures (35 / 4 / 16 / 164 / 52 are sprite stubs, drawn by the billboard path).
+* Car archives (cars67 *.dat) under the fixed read: Lotus, BRM, Coventry, Eagle, Ferrari, Murasama unchanged; the
+  Brabham's 14 entries change (arms/hand/rollbar textures, `hul2a.3do`, `rrrtire0-2.3do` tyre detail meshes) -- the AI
+  Brabham photographed old vs fixed (JM_AICAM_SEQ slot 5: gplchase, tv, nose) shows no visible difference at those
+  distances.
