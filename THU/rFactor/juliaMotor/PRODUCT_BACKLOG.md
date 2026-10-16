@@ -26961,3 +26961,9 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   wrong way, so it is not shipped (model file restored; no code change).
 * What stays: the limit gap is front grip at the limit in a lift-off transient (1.19 vs 1.35 g), not steering geometry.
   PHYSFID-1: 11 of 25 sprints; the next step needs the PO's skidpad-limit and flick data (IRTEST-261015 #1, -261009 #6).
+
+### End-to-end check (2026-10-16): race -> replay -> analyser -> playback, Zandvoort with 5 AI
+* One-lap race (`JM_REPLAY_REC=1`, slow autodrive): finished P6 of 6 in 3:27.6; replay written (.jmr 3,022 frames / 909 KB
+  + .jrt). The analyser's functions on it (analyser.py, headless): race_summary, lap_chart, lap_by_lap (passes with lap
+  metres) and speed_report all build. The sim plays the .jmr back (6 cars, 201.4 s, no errors). Smoke runs record no
+  replay unless asked (`JM_REPLAY_REC`), so tests never write into data/juliaracer. No change.
