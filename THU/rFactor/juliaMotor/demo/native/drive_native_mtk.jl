@@ -3347,6 +3347,50 @@ else
     # throughout".  (Exact-duplicate dedup was a near-no-op: extraction already collapses those.)
     # Per-part single-sided rendering for the rail family only — sign parts keep both faces (D6).
     const TRACK_RAILCULL = Bool[railfam(p.tex) for p in TRACK]
+    const BOARDCULL_MIN = parse(Float64, get(ENV, "JM_BOARDCULL_MIN", "0.2"))
+    const TRACK_BOARDCULL = let rc0 = TRACK_RAILCULL, rc = falses(length(TRACK))
+        # BOARDCULL-1 (2026-10-16; threshold JM_BOARDCULL_MIN 0.2): advertising boards in the track mesh are a FRONT part and a BACK part in one plane
+        # (Spa's Eau Rouge FERODO: puFR1/2 + pubk1/2, both drawn two-sided) -- from some angles the brown back won the
+        # depth test over the front (a wood-grain wedge across the board). A part with >= 20 % of its area back-to-back
+        # with ANOTHER part (coplanar, opposite normals, centroids within 3 cm) draws single-sided, as the rails do; a lone
+        # decal has no partner and keeps both faces (E60 D6). The cull keeps the faces whose WINDING normal faces the viewer
+        # (GL_BACK): a board's art part has its normal toward the road, its back part away -- the rails' convention (keep
+        # clockwise) culled the FERODO art and showed the wood. JM_BOARDCULL=0 = before.
+        if get(ENV, "JM_BOARDCULL", "1") != "0"
+            cen(v, k) = ((v[k] + v[k+11] + v[k+22])/3, (v[k+1] + v[k+12] + v[k+23])/3, (v[k+2] + v[k+13] + v[k+24])/3)
+            function nrm(v, k)
+                ax, ay, az = v[k+11] - v[k], v[k+12] - v[k+1], v[k+13] - v[k+2]; bx, by, bz = v[k+22] - v[k], v[k+23] - v[k+1], v[k+24] - v[k+2]
+                nx, ny, nz = ay*bz - az*by, az*bx - ax*bz, ax*by - ay*bx; l = sqrt(nx^2 + ny^2 + nz^2)
+                l < 1e-9 ? (0.0, 0.0, 0.0, 0.0) : (nx/l, ny/l, nz/l, l/2)
+            end
+            key(c) = (round(Int, c[1]/0.03), round(Int, c[2]/0.03), round(Int, c[3]/0.03))
+            grid = Dict{NTuple{3,Int},Vector{Tuple{Int,NTuple{3,Float64}}}}()
+            for (pi, p) in enumerate(TRACK), k in 1:33:length(p.verts)-32
+                n = nrm(p.verts, k); n[4] > 0 || continue
+                push!(get!(grid, key(cen(p.verts, k)), Tuple{Int,NTuple{3,Float64}}[]), (pi, (n[1], n[2], n[3])))
+            end
+            nb = 0
+            for (pi, p) in enumerate(TRACK)
+                (rc0[pi] || pi >= SEC_FROM) && continue
+                tot = 0.0; pa = 0.0
+                for k in 1:33:length(p.verts)-32
+                    n = nrm(p.verts, k); n[4] > 0 || continue
+                    tot += n[4]; c = key(cen(p.verts, k)); hit = false
+                    for dx in -1:1, dy in -1:1, dz in -1:1
+                        for (qi, m) in get(grid, (c[1]+dx, c[2]+dy, c[3]+dz), ())
+                            (qi != pi && n[1]*m[1] + n[2]*m[2] + n[3]*m[3] < -0.98) && (hit = true; break)
+                        end
+                        hit && break
+                    end
+                    hit && (pa += n[4])
+                end
+                (haskey(ENV, "JM_BOARDCULL_DIAG") && tot > 0 && pa/tot > 0.02) && println("  [boardcull] ", rpad(p.tex, 14), " back-to-back ", round(pa/tot, digits = 2), "  area ", round(tot, digits = 1), " m2")
+                (tot > 0 && pa/tot >= BOARDCULL_MIN) && (rc[pi] = true; nb += 1)
+            end
+            println("  [boardcull] ", nb, " track parts back-to-back with another part -> single-sided (JM_BOARDCULL=0 = both faces)")
+        end
+        rc
+    end
 end
 # E108 helper: JM_SHARP=<n> prints the n sharpest corners of the road line (3-point radius over +-8 m), lapdist + radius
 if !SKIDPAD && haskey(ENV, "JM_SHARP")
@@ -15796,6 +15840,7 @@ function main()
                 elseif ti == secfrom; glEnable(GL_CULL_FACE); glCullFace(xor(OBJ_FF_CW, flip) ? GL_FRONT : GL_BACK)
                 elseif ti < secfrom && (@isdefined TRACK_RAILCULL) && ti <= length(TRACK_RAILCULL)
                     if TRACK_RAILCULL[ti]; glEnable(GL_CULL_FACE); glCullFace(xor(OBJ_FF_CW, flip) ? GL_FRONT : GL_BACK)
+                    elseif TRACK_BOARDCULL[ti]; glEnable(GL_CULL_FACE); glCullFace(flip ? GL_FRONT : GL_BACK)   # BOARDCULL-1: keep the faces whose normal faces the eye
                     else; glDisable(GL_CULL_FACE); end
                 end
                 TRACKCULL && !infrustum(vp_, TRACKBOUND[ti][1], TRACKBOUND[ti][2]) && continue   # PERF-3 (after the cull-state toggles)
