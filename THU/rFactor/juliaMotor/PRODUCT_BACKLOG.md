@@ -27081,3 +27081,19 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   it needs landmark anchors every ~1 km (memory jr-gold-align-landmarks) -- the next Ring pass, or the PO's own replay
   timestamps of spots that look bare.
 * E108 rotates (S10-S14 this cycle: Spa, Monza (the underpass banks), two drop-rule censuses, the Ring).
+
+### CARINTERACT-1 S2 (2026-10-16, prep): the analysis for the PO's contact and draft tests is ready before the data
+* Retro (S1): julia's car-to-car hits now damage the player (the wall law); the AI side and the draft wait for
+  IRTEST-261015 Part 2. Gap: nothing turned that data into numbers yet. The .ibt carries what is needed (checked on the
+  261012 files): CarDistAhead/Behind, PlayerCarMyIncidentCount, PitRepairLeft/PitOptRepairLeft, LapDist (no per-car
+  arrays or left/right channel -- the draft is measured directly behind).
+* `tools/irtest_draft_261015.jl <dir|ibt...>`: full-throttle straight samples, the lone acceleration fitted per gear
+  (samples with no car within 150 m), the extra acceleration per gap bin (0-5 ... 50-150 m) turned into the drag cut
+  (da x m / (0.5 rho v^2 CdA)) beside julia's rule (45 % behind, 0 at 26 m). On the 261012 solo sessions: lone fits per gear
+  with 0.26-0.64 m/s^2 residual, every tow bin empty (no cars) -- as it must be.
+* `tools/irtest_contact_261015.jl <dir|ibt...>`: contact = a row-to-row acceleration step > 0.6 g with a car within 8 m,
+  or an incident-counter step; per event the closing speed (gap shrink rate over 0.5 s), dv over 0.25 s, incident points
+  within 2 s, repair seconds added. Known positive on the 261012 solo laps: the offs and spins (incidents +1 / +2, dv
+  0.25-5.6 m/s, no repair), closing speed empty (no cars).
+* When the PO's test-4/5 files arrive: run both on the folder; the draft table fits julia's DRAFT_DRAG_CUT/DRAFT_LEN shape,
+  the contact table sets the damage onset/scale for car hits (and what an AI car should feel).
