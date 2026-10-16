@@ -1,5 +1,19 @@
 # biq — Claude Code project notes
 
+## STATUS — 2/1 + Precision 10 h run (2026-10-15/16, committed)
+* Run `tools/runs/bluechip/261015_qplus_21_prec_biqS` (seed 261015, RESUME.txt there) played 20:33-09:47:
+  310 boards -918 IMP. 2/1 1-128 -394 (random -2.64/bd); Precision 129-310 -524 (random -0.71 before the
+  board-227 swap, -2.41 after). Stopped: Precision West window froze on board 311 (TM SeatTimeout 900 s).
+* Precision strong 1C the Q-Plus way: opener over 1C-1H (balanced, switch) bids 1S with five spades, 1NT
+  16-21, 2NT 22 (BIQ_REBID_1C1H); 1C-1M with 3+ trumps raises 2M, then RKC with 19+ / 17+ and 6 controls
+  (BIQ_RAISE_1C1M); responder's second call `_prec_1c_resp2` (BIQ_RESP2_1C): raise opener's major, 4-card
+  major at the 2 level, raise a minor, rebid six, new suit, else 2NT (agreement on 200 recorded Q-Plus
+  responder calls 71 -> 117; p1c_resp -4.00 -> -1.57/bd). Splinter has_ace KeyError fixed.
+* Agreement benchmark (10,924 Q-Plus Precision calls) 73.4% -> 73.6%; it found 5-level jumps from the
+  agreed-cue rule in `_safe_forced_bid` (1D-2D-2H-5D); fixed after the run (BIQ_CUE_AGREED_STRICT), not
+  yet played. Weak spots still: preempt_save -6.78/bd (5-level saves vs their making slam), p1c_pos
+  -3.54/bd (missed slams after 1C-1M). 240 checks.
+
 ## STATUS — French (Benjamin) made playable; Acol + French 10 h run (2026-10-14/15, committed)
 * Run 261014_qplus_acol_french_biqS played 20:42-06:53: 245 boards, Acol 1-128 -2.69/bd (random -2.83,
   last code -1.67 over 18), French 129-245 -1.97/bd (random -3.52, last code -2.36 over 42). 11 live

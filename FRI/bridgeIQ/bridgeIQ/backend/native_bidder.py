@@ -3459,6 +3459,10 @@ LIGHT_OPEN = os.environ.get("BIQ_LIGHT_OPEN", "1") == "1"
 # Off: on 4000 WBridge5 deals the 5-3-3-2 1C-1D-1M rebid lost (biq's later
 # rounds read 1M as unbalanced: 1C-1D-1H-1NT-2H-2S-3D-4D).
 MAJOR_1C1D = os.environ.get("BIQ_MAJOR_1C1D", "0") == "1"
+# 1C-1M opener with three+ trumps raises to 2M the Q-Plus way instead of a
+# direct 4NT / 3M; BIQ_RAISE_1C1M=0 restores them.
+RAISE_1C1M = os.environ.get("BIQ_RAISE_1C1M", "1") == "1"
+CUE_AGREED_STRICT = os.environ.get("BIQ_CUE_AGREED_STRICT", "1") == "1"
 NT_1C1D2N = os.environ.get("BIQ_NT_1C1D2N", "1") == "1"
 INVITE_1M1N2M = os.environ.get("BIQ_INVITE_1M1N2M", "1") == "1"
 # Mined from the 194-board Precision run vs Q-Plus (2026-10-05).
@@ -3650,10 +3654,24 @@ def _safe_forced_bid(state: AuctionState, eval_: HandEval,
     # cue-bid, not a suit to raise: go back to the agreed suit (live board
     # 557: 2C-2D-2H-3H-3S, "raised" to 4S and Q-Plus took spades as trumps;
     # 6H/7H were cold).
+    # Only a MAJOR agreed naturally at the three level or higher, and a new
+    # suit at the three level or higher: 1D-2D-2H (natural) went 5D, and the
+    # artificial 1C-1D / Stayman 2C read as "agreed" (agreement benchmark
+    # 2026-10-16: 50 such calls, the worst -20/-17/-15). BIQ_CUE_AGREED_STRICT=0
+    # restores the old reading.
     my_suits = {b.suit for b in state.my_bids
-                if not b.is_pass and b.suit not in (None, Suit.NOTRUMP)}
+                if not b.is_pass and b.suit not in (None, Suit.NOTRUMP)
+                and not (CUE_AGREED_STRICT and b.alert)}
     agreed = [b.suit for b in state.partner_bids[:-1]
-              if not b.is_pass and b.suit in my_suits]
+              if not b.is_pass and b.suit in my_suits
+              and not (CUE_AGREED_STRICT and b.alert)]
+    if CUE_AGREED_STRICT and agreed:
+        T0 = agreed[-1]
+        top = max((b.level for b in list(state.my_bids) + list(state.partner_bids[:-1])
+                   if not b.is_pass and b.suit == T0), default=0)
+        if (T0 not in (Suit.HEARTS, Suit.SPADES) or top < 3
+                or pl.level is None or pl.level < 3):
+            agreed = []
     if (agreed and pl.suit is not None and pl.suit != Suit.NOTRUMP
             and pl.suit not in my_suits and pl.suit != agreed[-1]
             and not state.opp_overcalled):
@@ -4423,6 +4441,10 @@ def _sanity_wrap(raw: Bid, state: AuctionState, eval_: HandEval,
 # same in both views: opener's rebids over 1C-1H/1NT are all two-level or
 # higher. Only our own side's uncontested 1C (P) answer is swapped.
 SWITCH_1C = os.environ.get("BIQ_SWITCH_1C", "1") == "1"
+# Opener's rebid over the balanced 1H the Q-Plus way (1S = five spades,
+# 1NT up to 21, 2NT 22+); BIQ_REBID_1C1H=0 restores the jumps.
+REBID_1C1H = os.environ.get("BIQ_REBID_1C1H", "1") == "1"
+_FIVE_SPADES_1C1H = "1C-1H-1S: five+ spades"
 
 
 def _has_switch_1c(system) -> bool:
@@ -4486,21 +4508,38 @@ def _switch_1c_view(state: AuctionState, system):
     # biq's rules know only 1C-1NT-2NT (16-18), so the two trade places.
     if _is_call(calls[k], 1, Suit.HEARTS) and len(calls) > k + 1 \
             and calls[k + 1].is_pass:
+        # Its 1S is five+ spades (9 records; biq's rules: 1C-1NT-2S). biq's
+        # 21 HCP AK642.K62.AK.AT2 jumped to a quantitative 4NT that Q-Plus
+        # answered 7NT (261009 board 1037, -17; Q-Plus: 1S, then 6S).
         if len(calls) == k + 2:
             mode = "rebid"
         elif _is_call(calls[k + 2], 1, Suit.NOTRUMP):
             calls[k + 2] = replace(calls[k + 2], level=2)
+        elif _is_call(calls[k + 2], 1, Suit.SPADES) and REBID_1C1H:
+            calls[k + 2] = replace(calls[k + 2], level=2,
+                                   explanation=_FIVE_SPADES_1C1H)
     calls[k] = new
     return parse_auction(state.seat, state.dealer, calls,
                          vulnerability=state.vulnerability), mode
 
 
-def _switch_1c_out(b: Bid, mode) -> Bid:
+def _switch_1c_out(b: Bid, mode, hcp: int = 0) -> Bid:
     if mode == "answer":
         return _swap_1c_answer(b)
     if mode == "rebid" and _is_call(b, 2, Suit.NOTRUMP):
         return replace(b, level=1,
                        explanation=(b.explanation or "") + " [1C-1H-1NT: 16-21]")
+    if mode == "rebid" and REBID_1C1H:
+        if _is_call(b, 2, Suit.SPADES):
+            return replace(b, level=1,
+                           explanation=(b.explanation or "") + " [1C-1H-1S: 5+ spades]")
+        # Q-Plus rebids 1NT with up to 20-21 (responder places the
+        # contract, 3NT or Stayman) and 2NT with more; a jump to 3NT / 4NT
+        # it answers unpredictably (pass, 5NT, 7NT).
+        if _is_call(b, 3, Suit.NOTRUMP) or _is_call(b, 4, Suit.NOTRUMP):
+            return replace(b, level=1 if hcp <= 21 else 2, alert=False,
+                           explanation=(b.explanation or "")
+                           + (" [1C-1H-1NT: 16-21]" if hcp <= 21 else " [1C-1H-2NT: 22+]"))
     return b
 
 
@@ -4512,7 +4551,7 @@ def _rules_call(state: AuctionState, e: HandEval, system) -> Bid:
     view = _nt_after_2c_view(view, system)
     b = _sanity_wrap(_nt_after_2c_fix(_decide_bid_impl(view, e, system), view, pre_nt, e),
                      view, e, system)
-    return _benj_out(_switch_1c_out(b, mode), bmode, state)
+    return _benj_out(_switch_1c_out(b, mode, e.hcp), bmode, state)
 
 
 _ALERT_CACHE: Dict[tuple, bool] = {}
@@ -4637,7 +4676,7 @@ def decide_bid(state: AuctionState, eval_: HandEval, system,
     net = _learned_game_net(state, eval_, system, out)
     if net is not None:
         out = net
-    out = _switch_1c_out(out, switch_mode)
+    out = _switch_1c_out(out, switch_mode, eval_.hcp)
     out = _benj_out(out, benj_mode, real_state)
     state = real_state
     if hand is not None:
@@ -7467,6 +7506,12 @@ def _precision_1c_rebid(state, e: HandEval, p_last: Bid, system=None) -> Bid:
     if p_last.level == 1 and p_last.suit in (Suit.HEARTS, Suit.SPADES):
         major = p_last.suit
         if e.suit_lengths[major] >= 3:
+            # Q-Plus raises to 2M (five records, 17 HCP) and its responder
+            # answers a direct 4NT unpredictably: pass, 5D, 7NT (biq's
+            # AK75.KQ74.Q53.KT, 1C-1S-4NT-7NT, 3 down: 261009 board 883).
+            if RAISE_1C1M:
+                return bid(2, major, why=f"Precision 1C-1{major.to_char()}: "
+                                         f"raise, trumps agreed (GF)")
             if e.hcp >= 20 or e.controls >= 5:
                 # Note: trump not raised yet (just opener's 1C +
                 # responder's 1M positive). Cuebid pipeline guards
@@ -7492,6 +7537,11 @@ def _precision_1c_rebid(state, e: HandEval, p_last: Bid, system=None) -> Bid:
         # 20-22 opposite 8-13: 28-35, so invite (partner accepts with 11+);
         # 23+ is 31+ and drives. 3NT with 20-21 left slams the 8-13 hand
         # could not judge (WBridge5 valid 1016, 1917).
+        if REBID_1C1H and hcp <= 22:
+            if e.suit_lengths[Suit.SPADES] >= 5:
+                return bid(2, Suit.SPADES, why="Precision 1C-1NT: 5+ spades")
+            if e.suit_lengths[Suit.HEARTS] >= 5:
+                return bid(2, Suit.HEARTS, why="Precision 1C-1NT: 5+ hearts")
         if SLAM_PREC_1C and e.is_balanced and hcp >= 23:
             return bid(6, Suit.NOTRUMP,
                        why=f"Precision 1C-1NT: {hcp} opposite 8-13, slam")
@@ -7928,6 +7978,38 @@ def _opener_rebid(state, e: HandEval, system: str) -> Bid:
             cand = bid(3, Suit.NOTRUMP,
                        why=f"Answer the Stayman cue-bid: no major"
                            f"{', ' + x.to_char() + ' stopped' if _has_stopper(e, x) else ''}")
+            if _is_legal_bid(cand, state):
+                return cand
+
+    # Precision 1C-1M-2M (trumps agreed, game forcing) - partner's next call:
+    # keycards with slam values, else game. 1C-1S-2S-2NT with
+    # AK75.KQ74.Q53.KT bid a "sanity" 3NT over the 4-5 spade fit.
+    if (RAISE_1C1M and getattr(system, "strong_open_call", "2C") == "1C"
+            and op is not None and op.level == 1 and op.suit == Suit.CLUBS
+            and len(state.my_bids) == 2 and len(state.partner_bids) == 2
+            and state.partner_bids[0].level == 1
+            and state.partner_bids[0].suit in (Suit.HEARTS, Suit.SPADES)
+            and state.my_bids[1].level == 2
+            and state.my_bids[1].suit == state.partner_bids[0].suit
+            and not any(not b.is_pass for b in
+                        list(state.lho_bids) + list(state.rho_bids))):
+        m = state.partner_bids[0].suit
+        pl = state.partner_bids[1]
+        slam = e.hcp >= 19 or (e.hcp >= 17 and e.controls >= 6)
+        if not (pl.is_double or pl.is_redouble or pl.is_pass) and not (
+                pl.level == 4 and pl.suit == Suit.NOTRUMP) and pl.level <= 4:
+            if pl.level == 4 and pl.suit == m:
+                if e.hcp >= 21 and not _slam_already_explored(state):
+                    return bid(4, Suit.NOTRUMP, alert=True,
+                               why=f"RKC for {m.to_char()}: {e.hcp} HCP opposite "
+                                   f"partner's game bid")
+                return passb(why=f"Precision 1C-1{m.to_char()}-2{m.to_char()}-"
+                                 f"4{m.to_char()}: partner's minimum")
+            if slam and not _slam_already_explored(state):
+                return bid(4, Suit.NOTRUMP, alert=True,
+                           why=f"RKC for {m.to_char()}: trumps agreed, {e.hcp} HCP, "
+                               f"{e.controls} controls")
+            cand = bid(4, m, why=f"Precision 1C-1{m.to_char()}-2{m.to_char()}: game")
             if _is_legal_bid(cand, state):
                 return cand
 
@@ -9342,7 +9424,7 @@ def _opener_suit_rebid(state, e, op, p_last, system) -> Bid:
         useful_hcp = sum(e.suit_hcp[s] for s in
                          (Suit.SPADES, Suit.HEARTS,
                           Suit.DIAMONDS, Suit.CLUBS)
-                         if s != splinter_suit) + (4 if e.has_ace[splinter_suit] else 0)
+                         if s != splinter_suit) + (4 if e.has_ace.get(splinter_suit) else 0)
         slam_qualified = (
             # Strong: 6+ playing tricks + 14+ useful HCP
             (e.playing_tricks >= 6.0 and useful_hcp >= 14)
@@ -9555,6 +9637,80 @@ def _opener_suit_rebid(state, e, op, p_last, system) -> Bid:
 # Responder's rebid
 # ---------------------------------------------------------------------------
 
+# Responder's second call after a positive answer to Precision 1C, the
+# Q-Plus way (its records: 200 such calls, biq agreed with 71). The auction
+# is game forcing, so describe instead of jumping to 3NT: raise opener's
+# major, show a four-card major at the two level, raise a minor, rebid a
+# six-card suit, new suit, else 2NT. Live 261015 boards 179 (1C-1NT-2D-3NT
+# with five diamonds, Q-Plus 3D -> 6D, -14) and 220 (1C-1NT-2C-3H "11-12
+# invitational", -12). BIQ_RESP2_1C=0 disables.
+RESP2_1C = os.environ.get("BIQ_RESP2_1C", "1") == "1"
+
+
+def _prec_1c_resp2(state, e: HandEval) -> Optional[Bid]:
+    op = state.opening_bid
+    if (op is None or op.level != 1 or op.suit != Suit.CLUBS
+            or state.opener_seat != state.seat.partner()
+            or len(state.my_bids) != 1 or len(state.partner_bids) != 2
+            or any(not b.is_pass for b in
+                   list(state.rho_bids) + list(state.lho_bids))):
+        return None
+    a, r = state.my_bids[0], state.partner_bids[1]
+    if a.is_pass or a.is_double or a.is_redouble or a.suit is None:
+        return None
+    if (a.level, a.suit) not in ((1, Suit.HEARTS), (1, Suit.SPADES), (1, Suit.NOTRUMP),
+                                 (2, Suit.CLUBS), (2, Suit.DIAMONDS)):
+        return None
+    if r.is_pass or r.is_double or r.is_redouble or r.suit is None:
+        return None
+    if r.level != 2 or r.suit == Suit.NOTRUMP:
+        return None
+    L = e.suit_lengths
+    bal = a.suit == Suit.NOTRUMP
+    tag = f"Precision 1C-{a.level}{a.suit.to_char() if a.suit != Suit.NOTRUMP else 'NT'}" \
+          f"-2{r.suit.to_char()}"
+
+    def ok(b):
+        return b if _is_legal_bid(b, state) else None
+
+    # Opener raised my suit: 3 with six, else 2NT (Q-Plus: 2NT with five).
+    if not bal and r.suit == a.suit:
+        if L.get(a.suit, 0) >= 6:
+            return ok(bid(3, a.suit, why=f"{tag}: six-card suit"))
+        return ok(bid(2, Suit.NOTRUMP, why=f"{tag}: five-card suit, waiting"))
+    is_major = r.suit in (Suit.HEARTS, Suit.SPADES)
+    need = 3 if (bal or a.level == 1 or not is_major) else 4
+    # Over the balanced 1H Q-Plus's 2S is four spades (unbalanced); its
+    # 1S, which the rules see as 2S, is five.
+    if bal and r.suit == Suit.SPADES and (r.explanation or "") != _FIVE_SPADES_1C1H:
+        need = 4
+    if is_major and L.get(r.suit, 0) >= need:
+        # The balanced 1H answer, then opener's spades: game with a minimum
+        # (Q-Plus 4S with 10, 3S with 12-13).
+        lvl = 4 if (bal and r.suit == Suit.SPADES and e.hcp <= 11) else 3
+        return ok(bid(lvl, r.suit, why=f"{tag}: support, trumps agreed"))
+    for m in (Suit.HEARTS, Suit.SPADES):
+        if m not in (a.suit, r.suit) and L.get(m, 0) >= 4:
+            b = ok(bid(2, m, why=f"{tag}: four {m.to_char()}"))
+            if b is not None:
+                return b
+    if not is_major and L.get(r.suit, 0) >= 3:
+        return ok(bid(3, r.suit, why=f"{tag}: support, trumps agreed"))
+    if not bal and L.get(a.suit, 0) >= 6:
+        for lvl in (2, 3):
+            b = ok(bid(lvl, a.suit, why=f"{tag}: six-card suit"))
+            if b is not None:
+                return b
+    if not bal:
+        for s in (Suit.CLUBS, Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES):
+            if s not in (a.suit, r.suit) and L.get(s, 0) >= 4:
+                for lvl in (2, 3):
+                    b = ok(bid(lvl, s, why=f"{tag}: second suit"))
+                    if b is not None:
+                        return b
+    return ok(bid(2, Suit.NOTRUMP, why=f"{tag}: no fit, waiting"))
+
+
 def _responder_rebid(state, e: HandEval, system) -> Bid:
     if not state.partner_bids or len(state.partner_bids) < 2:
         # Opener has only made one bid — we should still be in our first
@@ -9624,6 +9780,11 @@ def _responder_rebid(state, e: HandEval, system) -> Bid:
         return bid(3, Suit.NOTRUMP,
                    why=f"Precision 1C-1NT-3{p_last.suit.to_char()}: "
                        f"no fit, 3NT")
+
+    if RESP2_1C and _strong_club(system):
+        r = _prec_1c_resp2(state, e)
+        if r is not None:
+            return r
 
     # Kokish 2♠ relay: after Precision 1♣-1♦-2♥ with Kokish in force,
     # responder MUST bid 2♠ regardless of own hand. Opener's next bid

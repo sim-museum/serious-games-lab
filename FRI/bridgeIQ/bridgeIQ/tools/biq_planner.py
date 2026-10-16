@@ -173,6 +173,17 @@ FAMILIES = {
     "wk2m_open": ("S opens a weak two in a major, partner has a strong hand", "S",
                   {"S": _weak_two("HS"), "N": {"ok": _band(15, 21)}}, "SNEW",
                   lambda a: a and a[0] in ("2H", "2S")),
+    # Precision (Q-Plus P-P90M-A: strong 1C 16+, positive answers 8+ with
+    # 1H = balanced and 1NT = five+ hearts).
+    "p1c_pos": ("S opens a strong 1C, partner has a positive answer (8+)", "S",
+                {"S": {"ok": _band(16, 23)}, "N": {"ok": _band(8, 13)}}, "SNEW",
+                lambda a: a and a[0] == "1C"),
+    "p1c_resp": ("partner opens a strong 1C, S has a positive answer (8+)", "N",
+                 {"N": {"ok": _band(16, 23)}, "S": {"ok": _band(8, 13)}}, "NSEW",
+                 lambda a: a and a[0] == "1C"),
+    "p1c_ovc": ("S holds a two-suiter or long suit over East's strong 1C", "E",
+                {"E": {"ok": _band(16, 21)}, "S": _ml_hand(6, 12)}, "ESNW",
+                lambda a: a and a[0] == "1C"),
 }
 VULS = ["None", "NS", "EW", "Both"]
 
