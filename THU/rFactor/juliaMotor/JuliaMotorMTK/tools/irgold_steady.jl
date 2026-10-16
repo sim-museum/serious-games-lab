@@ -134,6 +134,8 @@ function main()
     # every 261010 file (the skidpad's oval pressures, Monza's and the Ring's road pressures) + the 261004/5 skidpads
     files = vcat(filter(f -> endswith(f, ".ibt"), readdir(DG; join = true)),
                  [f for d in ("261004", "261005") for f in readdir(expanduser("~/gold standard/julia racer/$d"); join = true) if occursin("skidpad", f) && endswith(f, ".ibt")])
+    # 2026-10-16 (IRTEST-261015 #1): JM_ST_DIR=<folder> scores THAT folder's skidpad files instead (a new test session)
+    haskey(ENV, "JM_ST_DIR") && (files = filter(f -> occursin("skidpad", f) && endswith(f, ".ibt"), readdir(expanduser(ENV["JM_ST_DIR"]); join = true)))
     only = split(get(ENV, "JM_ST_FILES", ""), ","; keepempty = false)
     isempty(only) || (files = filter(f -> any(o -> occursin(o, f), only), files))
     files = sort(irg_files(files); by = filesize, rev = true)  # minus the wrong-setup files (IRG_EXCLUDE)

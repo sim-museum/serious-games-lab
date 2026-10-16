@@ -27097,3 +27097,4 @@ videos) -> COCKPIT-2 (AI cockpits in replay, right glove to the lever on shifts)
   0.25-5.6 m/s, no repair), closing speed empty (no cars).
 * When the PO's test-4/5 files arrive: run both on the folder; the draft table fits julia's DRAFT_DRAG_CUT/DRAFT_LEN shape,
   the contact table sets the damage onset/scale for car hits (and what an AI car should feel).
+* Runbook `261015/ANALYSIS_RUNBOOK.md`: which tool answers each IRTEST-261015 test; irgold_steady takes `JM_ST_DIR=<folder>` for a new session.
