@@ -4559,7 +4559,10 @@ end
 const MIRRORP = Render.extract_gpl_car(LOT3DO; only=MIRROR_DRAW, maxlat=0.95f0)  # rear-view mirrors — clean disc, re-placed on the cowl (see MIRRORMAT)
 # HANDS-1 S2: the glove + sleeve meshes take V FLIPPED (A/B `261006/hands/vflip_ab.jpg`: the gloves then show the light
 # knuckle side, as gold's white gloves, instead of the dark palm with holes). JM_HAND_VFLIP=0 restores the car's own UVs.
-const HAND_VFLIP = get(ENV, "JM_HAND_VFLIP", "1") != "0"
+# TD261016-1 (c1) (2026-10-17): OFF now. GPL's raw lohand UVs outline each painted fist exactly (uv dump over the decoded art,
+# 261016/td16/c1_glove_uv_raw_vs_vflip.png); the flip threw the cards half off the art onto its transparent background --
+# the see-through gloves. The "dark palm" HANDS-1 S2 saw unflipped was the fists facing the eye palm-first: FIST_TURN.
+const HAND_VFLIP = get(ENV, "JM_HAND_VFLIP", "0") != "0"
 const HANDP  = Render.extract_gpl_car(LOT3DO; only=("lohand",),  maxlat=0.95f0, vflip = HAND_VFLIP)  # E64 S2: gloved hands on the rim — ride the wheel rotation
 # E64 S7 (D12 residual): the runtime-hidden HIGH-DETAIL rear-suspension assemblies (groups
 # 27288/39792 — the S4 exclusions).  S4 mis-read their raw GPL coords as displaced (raw y is
@@ -10910,6 +10913,16 @@ const FIST_C = let c = [zeros(Float32, 3), zeros(Float32, 3)], n = [0, 0]
     end
     [n[k] > 0 ? c[k] ./ n[k] : c[k] for k in 1:2]
 end
+# TD261016-1 (c1): each fist turned about its own centre. With GPL's own UVs (HAND_VFLIP off) the fists faced the eye
+# palm-first; a half turn about the vertical (car-local y) shows the knuckle art, as the gold's white fists (sweep x/y/z
+# 180 and y +-90, 261016/td16/c1_fist_turns.jpg). JM_FIST_ROT="x|y|z_deg[_mirror]" (read per frame; "mirror" negates
+# the angle for the second fist); JM_FIST_ROT=0 = no turn.
+function fistrot(k)
+    sp = get(ENV, "JM_FIST_ROT", "y_180"); (isempty(sp) || sp == "0") && return Render.ident()   # default: knuckles to the eye
+    f = split(sp, "_"); ax = f[1] == "x" ? Float32[1, 0, 0] : f[1] == "y" ? Float32[0, 1, 0] : Float32[0, 0, 1]
+    θ = deg2rad(parse(Float32, f[2])) * (length(f) > 2 && f[3] == "mirror" && k == 2 ? -1f0 : 1f0)
+    Render.translate(FIST_C[k]) * Render.rotaxis(ax, Float32(θ)) * Render.translate(-FIST_C[k])
+end
 const SHIFT_HAND_K = SHIFT_PIVOT === nothing ? 2 : (SHIFT_PIVOT[3] > 0 ? 1 : 2)   # the fist on the lever's side
 const SHIFT_LASTM = Ref(Render.ident())            # the lever's body-local matrix this frame (drawn before the hands)
 const SHIFT_HAND_ST = Ref((-99, -1e9))             # (last gear seen, wall time the hand set off)
@@ -16476,8 +16489,8 @@ function main()
             end
             if length(handLR) == 2                      # left fist +grip, right fist −grip → gold's 10-and-2
                 _hm(k) = (k == SHIFT_HAND_K && _hoff != (0f0, 0f0, 0f0)) ? bodyModel * Render.translate(_hoff) * inv(bodyModel) : Render.ident()   # COCKPIT-2 S7
-                Render.draw(prog, handLR[1], vp, _hm(1)*swModel*gripmat(+1); bright=1.15, spec=0.05, ambfill=0.60)
-                Render.draw(prog, handLR[2], vp, _hm(2)*swModel*gripmat(-1); bright=1.15, spec=0.05, ambfill=0.60)
+                Render.draw(prog, handLR[1], vp, _hm(1)*swModel*gripmat(+1)*fistrot(1); bright=1.15, spec=0.05, ambfill=0.60)
+                Render.draw(prog, handLR[2], vp, _hm(2)*swModel*gripmat(-1)*fistrot(2); bright=1.15, spec=0.05, ambfill=0.60)
             else
                 for it in handItems; Render.draw(prog, it, vp, swModel; bright=1.15, spec=0.05, ambfill=0.60); end
             end

@@ -27316,3 +27316,15 @@ surface and levitating" -- video ~/Videos/261016_spa_ring.mp4.
   Flugplatz climb (13 % at speed), not a bounce. At s 16,499 (after Brunnchen) the autodriver crashed and stuck 2.5 m up on
   what it hit; from a start at s 16,380 the same stretch is clean (-0.15..+0.05 m). Gates s84: 62/62.
 * Open: the autodriver still crashes before a full Ring lap; the lap is covered to 72 %.
+
+### AUTODRIVE-RING-1 S2 (2026-10-17): the rest of the Ring
+* From s 16,600 (`JM_START_S`, pace 0.65): through the line and into lap 2 -- max 0.23 m over the drawn ground (s 18,400),
+  0 frames over 0.75 m. With S1's run (s 0-16,500) the whole Nordschleife lap is now checked: no float, no sink.
+
+### TD261016-1 cycle 2 S1 (2026-10-17): (c1) the gloves face the eye knuckles-first
+* With GPL's own UVs (`JM_HAND_VFLIP=0`) a sweep of half turns about each fist's centre (x, y, z 180; y +-90 mirrored; one
+  launch, per-frame knob `JM_FIST_ROT`, arms hidden; `261016/td16/c1_fist_turns.jpg`): untouched, the fists face the eye
+  palm-first; turned 180 deg about the vertical they show the knuckle art -- white fists, as the gold's.
+* New defaults: `HAND_VFLIP` off (GPL's UVs) and `JM_FIST_ROT=y_180` (`JM_FIST_ROT=0` = no turn; `JM_HAND_VFLIP=1` = the
+  old flip). With the sleeves (S4's 12 cm run-in): solid white fists on the rim, no see-through wrist; full lock unchanged.
+  Against the gold (`c1_gloves_gold_vs_new.jpg`): ours sit nearer 9-and-3 and a little larger than GPL's ~10:30 grip.
