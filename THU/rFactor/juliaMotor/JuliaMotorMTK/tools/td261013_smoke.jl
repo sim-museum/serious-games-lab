@@ -57,7 +57,9 @@ pwt = read(joinpath(@__DIR__, "..", "src", "components", "powertrain.jl"), Strin
 rt3 = read(joinpath(@__DIR__, "..", "src", "drive_rt3d.jl"), String)
 chk("PHYSFID-1 S9: measured lift (front −0.06, rear −0.04) wired to the body",
     occursin("const AERO_CLAF = PHYSFID_S9 ? -0.06 : -0.12", pwt) && occursin("const AERO_CLAR = PHYSFID_S9 ? -0.04 : 0.0", pwt) &&
-    occursin(" ClAf=claf ClAr=clar ", veh))
+    occursin(" ClAf=claf ClAf_rh=AERO_CLAF_RH ClAr=clar ", veh))
+# PHYSFID-1 S13: the nose-rake lift is a knob that ships OFF (the heave data did not support it)
+chk("PHYSFID-1 S13: the rake lift ships at 0", occursin("const AERO_CLAF_RH = 0.0 ", pwt))
 chk("PHYSFID-1 S9: the bars' identified total split 46 % front", occursin("get(ENV, \"JM_ARB_FRONT_SHARE\", \"0.46\")", rt3))
 println(fails[] == 0 ? "ALL PASS" : "FAILURES: $(fails[])")
 exit(fails[] == 0 ? 0 : 1)

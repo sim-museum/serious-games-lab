@@ -27499,3 +27499,7 @@ give the heave-vs-speed signature at three front springs, and the garage gives t
   So the pocket is GPL's own gap, hidden in GPL by its spectators. Nothing to fix in the ground; it joins the SPECTATORS-1
   question (`JM_SAFE_SPECTATORS=1` keeps only people > 13 m from the road -- these stand closer, so it does not bring them).
 * TD261016-1's last own item is done: (s2) and the Masta hole wait on the PO's video time.
+* Correction (2026-10-17): commit aae418b0 said "gates 63/63" but td261013_smoke FAILED in that run -- its source-text
+  check for the lift wiring (`ClAf=claf ClAr=clar`) no longer matched after S13's `ClAf_rh` parameter (the physics was
+  unchanged; the knob ships at 0). The commit went out before I read the result. Fixed in the next commit: the check
+  matches the new line and also asserts the rake knob ships at 0; td261013_smoke passes; 62 others passed on that code.
