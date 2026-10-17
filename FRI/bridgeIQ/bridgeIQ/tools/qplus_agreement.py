@@ -140,9 +140,12 @@ def _tab(deal):
     return _TABS[deal]
 
 
-def bid_decisions(dirs):
+def bid_decisions(dirs, system=None):
     seen, out = set(), []
     for run, r, qs in records(dirs):
+        # Mixed runs (2/1 then Precision) label each board; older runs don't.
+        if system and r.get("system", system) != system:
+            continue
         dealer = tm.BY_NAME[{"N": "north", "E": "east", "S": "south", "W": "west"}[r["dealer"]]]
         toks = _toks(r["auction"])
         seat = dealer
@@ -387,7 +390,7 @@ def main() -> int:
         compare(*a.files)
         return 0
     if a.mode == "bid":
-        decs = bid_decisions(a.runs)
+        decs = bid_decisions(a.runs, a.system)
         fn, rep = bid_one, report_bid
     else:
         decs = card_decisions(a.runs)

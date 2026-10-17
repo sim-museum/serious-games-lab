@@ -3018,6 +3018,50 @@ def _nt_after_2c_view(state, system):
 
 
 NT_AFTER_2C = os.environ.get("BIQ_NT_AFTER_2C", "1") == "1"
+NT_AFTER_1C = os.environ.get("BIQ_NT_AFTER_1C", "1") == "1"
+
+
+def _nt_after_1c_view(state, system):
+    """Our strong 1C-(P)-1D-(P)-1NT-(P) (16-19 balanced) reads as a 1NT
+    opening from responder's second call on: Q-Plus plays its 1NT system
+    there (records: 1C-1D-1NT-2H-2S with five spades and 1-7 HCP, 2D-2H,
+    2C Stayman, 3NT with 7); biq passed the five-card major and, as opener,
+    raised the transfer to 3H. BIQ_NT_AFTER_1C=0 disables."""
+    if not NT_AFTER_1C or not _strong_club(system):
+        return state
+    k = next((i for i, (_, b) in enumerate(state.bids) if not b.is_pass), None)
+    if k is None or state.bids[k][0] not in (state.seat, state.seat.partner()):
+        return state
+    calls = [b for _, b in state.bids]
+    if len(calls) < k + 6 or not _is_call(calls[k], 1, Suit.CLUBS):
+        return state
+    if not (calls[k + 1].is_pass and _is_call(calls[k + 2], 1, Suit.DIAMONDS)
+            and calls[k + 3].is_pass and _is_call(calls[k + 4], 1, Suit.NOTRUMP)
+            and calls[k + 5].is_pass):
+        return state
+    calls = calls[:k] + [bid(1, Suit.NOTRUMP)] + calls[k + 5:]
+    view = parse_auction(state.seat, state.dealer, calls, vulnerability=state.vulnerability)
+    view._nt_after_1c = True
+    return view
+
+
+def _nt_after_1c_eval(view, e: HandEval) -> HandEval:
+    """Opener holds 16-19, not the view's 14-16: responder counts two HCP
+    more, so 7+ moves towards game (Q-Plus bid 3NT with 7, passed with 6 or
+    less; biq's 1NT responder passes up to 8)."""
+    if not getattr(view, "_nt_after_1c", False) or view.opener_seat == view.seat:
+        return e
+    return replace(e, hcp=e.hcp + 2)
+
+
+def _nt_after_1c_fix(b: Bid, view, e: HandEval) -> Bid:
+    """Responder's first call over 1C-1D-1NT: a pass with 7+ real HCP bids
+    3NT (opposite 16-19; Q-Plus 3NT with 952.86.Q875.KQ63)."""
+    if not getattr(view, "_nt_after_1c", False) or view.opener_seat == view.seat:
+        return b
+    if view.my_bids or not b.is_pass or e.hcp < 7:
+        return b
+    return bid(3, Suit.NOTRUMP, why=f"3NT: {e.hcp} HCP opposite 1C-1D-1NT (16-19)")
 
 
 def _nt_after_2c_fix(b: Bid, view, real_state, e: HandEval) -> Bid:
@@ -4671,7 +4715,12 @@ def decide_bid(state: AuctionState, eval_: HandEval, system,
     state, benj_mode = _benj_view(state, system)
     pre_nt = state
     state = _nt_after_2c_view(state, system)
-    raw = _nt_after_2c_fix(_decide_bid_impl(state, eval_, system), state, pre_nt, eval_)
+    if state is pre_nt:
+        state = _nt_after_1c_view(state, system)
+        raw = _nt_after_1c_fix(_decide_bid_impl(state, _nt_after_1c_eval(state, eval_), system),
+                               state, eval_)
+    else:
+        raw = _nt_after_2c_fix(_decide_bid_impl(state, eval_, system), state, pre_nt, eval_)
     out = _sanity_wrap(raw, state, eval_, system)
     net = _learned_game_net(state, eval_, system, out)
     if net is not None:
@@ -8329,13 +8378,15 @@ def _opener_rebid(state, e: HandEval, system: str) -> Bid:
 
     # Jacoby transfer accept
     if op.level == 1 and op.suit == Suit.NOTRUMP and p_last.level == 2:
+        # Not after 1C-1D-1NT: responder holds 0-7 (Q-Plus completes it).
+        sup_ok = not getattr(state, "_nt_after_1c", False)
         if p_last.suit == Suit.DIAMONDS:
             # Super-accept with maximum + 4-card hearts
-            if e.hcp == 17 and e.suit_lengths[Suit.HEARTS] >= 4:
+            if sup_ok and e.hcp == 17 and e.suit_lengths[Suit.HEARTS] >= 4:
                 return bid(3, Suit.HEARTS, alert=True, why="Super-accept (max + 4 hearts)")
             return bid(2, Suit.HEARTS, why="Accept transfer to hearts")
         if p_last.suit == Suit.HEARTS:
-            if e.hcp == 17 and e.suit_lengths[Suit.SPADES] >= 4:
+            if sup_ok and e.hcp == 17 and e.suit_lengths[Suit.SPADES] >= 4:
                 return bid(3, Suit.SPADES, alert=True, why="Super-accept (max + 4 spades)")
             return bid(2, Suit.SPADES, why="Accept transfer to spades")
 

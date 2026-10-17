@@ -2,7 +2,7 @@
 
 ## STATUS — 2/1 + Precision 10 h run (2026-10-15/16, committed)
 * Run `tools/runs/bluechip/261015_qplus_21_prec_biqS` (seed 261015, RESUME.txt there) played 20:33-09:47:
-  310 boards -918 IMP. 2/1 1-128 -394 (random -2.64/bd); Precision 129-310 -524 (random -0.71 before the
+  310 boards -918 IMP. 2/1 1-128 -408 (random -2.64/bd); Precision 129-310 -510 (random -0.71 before the
   board-227 swap, -2.41 after). Stopped: Precision West window froze on board 311 (TM SeatTimeout 900 s).
 * Precision strong 1C the Q-Plus way: opener over 1C-1H (balanced, switch) bids 1S with five spades, 1NT
   16-21, 2NT 22 (BIQ_REBID_1C1H); 1C-1M with 3+ trumps raises 2M, then RKC with 19+ / 17+ and 6 controls
