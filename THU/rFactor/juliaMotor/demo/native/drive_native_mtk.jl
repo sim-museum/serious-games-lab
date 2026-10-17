@@ -3379,8 +3379,27 @@ else
     const _SECPARTS_BD  = _bdtrack ? filter(p -> !_bdtex(p.tex), SECPARTS)  : SECPARTS
     _bdtrack && println("  [backdrop] dropped ", length(TRACKMAIN) - length(_TRACKMAIN_BD) + length(SECPARTS) - length(_SECPARTS_BD),
                         " backdrop part(s) from the track scenery (object copies keep the viewing-radius rule)")
-    const TRACK = [_TRACKMAIN_BD; ROADPARTS; _SECPARTS_BD]
-    const SEC_FROM = length(_TRACKMAIN_BD) + length(ROADPARTS) + 1        # E68 S9b: trackItems[SEC_FROM:end] = landmass sections
+    # TD261016-1 (s4): ground for the cells next to the tarmac that GPL's mesh leaves uncovered (see holefill.jl).
+    # Inserted before the landmass sections, which keep their index range. JM_HOLEFILL=0 = off.
+    include(joinpath(@__DIR__, "holefill.jl")); using .HoleFill
+    const HOLEFILL = get(ENV, "JM_HOLEFILL", "1") == "0" ? (Render.TrackPart[], 0) :
+        HoleFill.holefill_parts([_TRACKMAIN_BD; ROADPARTS; _SECPARTS_BD], ROAD_TEX,
+                                lt -> occursin(r"gr|grass|dirt|drt|edge|bank|earth|sand|gravel|field|meadow", lt) && !ROAD_TEX(lt))
+    println("  [holefill] ", HOLEFILL[2], " ground quad(s) of 2 m in ", length(HOLEFILL[1]), " part(s) where the mesh leaves the ground ",
+            "beside the tarmac uncovered (JM_HOLEFILL=0 = off)")
+    if haskey(ENV, "JM_HOLEFILL_DIAG")      # "x,z,r": the filler quads' corners within r of (x, z), render coords
+        let a = parse.(Float64, split(ENV["JM_HOLEFILL_DIAG"], ",")), n = 0
+            for p in HOLEFILL[1], k in 1:11:length(p.verts)-10
+                hypot(p.verts[k] - a[1], p.verts[k+2] - a[2]) < a[3] || continue
+                (n += 1) <= 12 && println("  [holefill@] ", p.tex, " (", round(p.verts[k], digits = 1), ", ", round(p.verts[k+1], digits = 2), ", ",
+                                          round(p.verts[k+2], digits = 1), ") col ", round.(p.verts[k+6:k+8], digits = 2), " uv ", round.(p.verts[k+9:k+10], digits = 2))
+            end
+            println("  [holefill@] ", n, " corners within ", a[3], " m")
+            for p in _TRACKMAIN_BD[1:min(3, end)]; println("  [track part] ", p.tex, " first vertex ", round.(p.verts[1:11], digits = 2)); end
+        end
+    end
+    const TRACK = [_TRACKMAIN_BD; ROADPARTS; HOLEFILL[1]; _SECPARTS_BD]
+    const SEC_FROM = length(_TRACKMAIN_BD) + length(ROADPARTS) + length(HOLEFILL[1]) + 1        # E68 S9b: trackItems[SEC_FROM:end] = landmass sections
     # E68 S10b: rails/fences are modeled as OFFSET front+back faces; GPL culls the back single-
     # sided, we drew both → grazing-angle poke-through = the PO's "z-fighting on guardrails
     # throughout".  (Exact-duplicate dedup was a near-no-op: extraction already collapses those.)

@@ -27240,3 +27240,20 @@ surface and levitating" -- video ~/Videos/261016_spa_ring.mp4.
   leaves 35 % (`demo/native/ai.jl`). WG from rest: 0 -> 86 km/h on the line. (An env A/B first "cleared" the slip change:
   `JM_SLIP_BODYFRAME` was a package const frozen in the JRPhysics image -- now read when the model is built.)
   Gates s81: 62/62.
+
+### TD261016-1 S3 (2026-10-16): (s4) the ground after Stavelot -- GPL's mesh has none there; filled
+* **Cause, measured on the raw mesh** (spa67.3do out of spa67.dat, column probes): at s 8480-8560 a strip 3-7 m wide
+  between the tarmac edge and the guardrail line (x -1517..-1524, z -3270..-3310) is covered by NO triangle; the ground
+  either side is continuous (grass1 / LACgrL6B, no step). Through it our horizon ring's lower art (hedges, straw) showed.
+  A census of the raw mesh: 2,090 uncovered 2 m points within 8 m of Spa's tarmac, 66 places of >= 40 m2. The gold shows
+  grass there.
+* **Fix** (`demo/native/holefill.jl`, `JM_HOLEFILL=0` = off): every 2 m cell within 10 m of a road vertex that no
+  non-vertical drawn triangle covers gets a ground quad -- corner heights the median of the covered ground round it (a rail
+  top or a roof cannot lift it), corners ON drawn ground follow it, all 5 cm under (the real ground wins where they overlap);
+  the hole's one-cell rim too (the edge runs between cell centres); rim cells on the tarmac follow the road's own corner
+  heights under it. Texture, part colour and UV density from the most common neighbouring ground part. Inserted before the
+  landmass sections (SEC_FROM shifted). Spa: 3,159 quads in 27 parts. Missteps on the way, each seen in a render: the quads
+  were wound clockwise (back faces: black); edge cells sloped from the road up to the verge OVER the road; a flat cell on a
+  6 % grade poked through the road.
+* Render (`261016/td16/s4_stavelot_before_after_holefill.png`): the band is grass; a small pocket remains at its far end.
+  Start line and the s 2480 house unchanged. Gates s82: 62/62.
