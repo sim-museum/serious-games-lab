@@ -10,9 +10,11 @@ the calls that changed between two scans: old call and new call are both
 rolled out with the NEW code and compared with Q-Plus's call (robust judge),
 so the difference is attributable to the change.
 
-  scan    SYSTEM OUT.jsonl [--jobs 2] [--runs DIR ...]
+  scan    SYSTEM OUT.jsonl [--jobs 2] [--runs DIR ...] [--sim] [--only ROWS.jsonl]
           one row per Q-Plus call: biq's rule call, its reason, agreement;
-          "origin" = the function that returned a reasonless pass.
+          "origin" = the function that returned a reasonless pass. --sim keeps
+          the bidding simulation on (full bidder, ~2 s a call); --only limits
+          the scan to the positions (deal, auction, seat) in ROWS.jsonl.
   changed SYSTEM OLD.jsonl NEW.jsonl OUT.jsonl [--jobs 2]
           IMP of new - old on the changed calls (+ = the change helps).
 
@@ -29,7 +31,7 @@ import os
 import random
 import sys
 
-os.environ["BIQ_BID_SIM"] = "0"
+os.environ["BIQ_BID_SIM"] = "1" if "--sim" in sys.argv else "0"
 sys.path.insert(0, os.getcwd())
 sys.path.insert(0, os.path.join(os.getcwd(), "tools"))
 
@@ -67,7 +69,7 @@ def scan_one(d):
         _ORIGIN[0] = None
         st = q.nb.parse_auction(seat, dealer, list(prefix), vulnerability=vul)
         try:
-            b = q.nb.decide_bid(st, q.nb.evaluate_hand(hands[seat]), q._SYS)
+            b = q.nb.decide_bid(st, q.nb.evaluate_hand(hands[seat]), q._SYS, hand=hands[seat])
         except Exception as e:                                       # noqa: BLE001
             b = q.nb.passb(f"CRASH {type(e).__name__}")
         if not q.tm.legal_call(prefix, dealer, seat, b):
@@ -119,10 +121,15 @@ def main() -> int:
     ap.add_argument("files", nargs="+")
     ap.add_argument("--jobs", type=int, default=2)
     ap.add_argument("--runs", nargs="*", default=q.PRECISION_RUNS)
+    ap.add_argument("--sim", action="store_true")
+    ap.add_argument("--only")
     a = ap.parse_args()
     q._init(a.system)
     if a.mode == "scan":
         decs = q.bid_decisions(a.runs, a.system)
+        if a.only:
+            keep = {_key(r) for r in map(json.loads, open(a.only)) if "deal" in r}
+            decs = [d for d in decs if (d["deal"], " ".join(d["prefix"]), d["seat"]) in keep]
         print(len(decs), "decisions", flush=True)
         with Pool(a.jobs, initializer=q._init, initargs=(a.system,)) as p, \
                 open(a.files[0], "w") as f:

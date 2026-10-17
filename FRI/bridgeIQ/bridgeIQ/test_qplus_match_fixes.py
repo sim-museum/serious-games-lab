@@ -764,6 +764,18 @@ BIDDING_SYSTEMS = [
     ("T-2card", "1S-2H-2S-3H: partner's six hearts, two-card support raises 4H (Q-Plus)",
      "TwoOverOne", "S", "None", "1s p 2h p 2s p 3h p", "S", "AJT974.A2.QT72.6",
      "3S", {"4H"}),
+    ("T-dbl-a", "1D-P-1H-(2S)-X-P: takeout double, rebid four hearts 3H (Q-Plus)",
+     "TwoOverOne", "N", "None", "1d p 1h 2s x p", "S", "983.QJ54.75.A972",
+     "P", {"3H"}),
+    ("T-dbl-b", "1D-P-1H-(2S)-X-P: four diamonds first -> 3D (Q-Plus)",
+     "TwoOverOne", "N", "None", "1d p 1h 2s x p", "S", "T6.KJ92.Q843.T95",
+     "P", {"3D"}),
+    ("T-dbl-c", "1C-P-1S-(2H)-X-P: four clubs -> 3C (Q-Plus)",
+     "TwoOverOne", "N", "None", "1c p 1s 2h x p", "S", "T853.A75.96.KJ72",
+     "P", {"3C"}),
+    ("T-dbl-d", "1S-(2C)-2S-(3D)-X-P: after our fit the double is not takeout, pass (Q-Plus)",
+     "TwoOverOne", "N", "None", "1s 2c 2s 3d x p", "S", "7542.KQ62.62.T73",
+     "P", {"P"}),
 ]
 
 

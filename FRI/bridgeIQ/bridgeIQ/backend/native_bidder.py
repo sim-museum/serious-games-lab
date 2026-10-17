@@ -844,6 +844,9 @@ def _has_preempt(e: HandEval) -> bool:
     return False
 
 
+WEAK_TWO_QPLUS = os.environ.get("BIQ_WEAK_TWO_QPLUS", "1") == "1"
+
+
 def _preempt_bid(e: HandEval, state=None, system=None) -> Optional[Bid]:
     """Pick a weak two / 3-level preempt if the hand fits.
 
@@ -910,6 +913,17 @@ def _preempt_bid(e: HandEval, state=None, system=None) -> Optional[Bid]:
         # Textbook SAYC range is 5-10; mainstream 2/1 is 6-10. The
         # 10-HCP cases are exactly the ones that produce strong
         # constructive auctions; 11+ would be too much for a weak 2.
+        # Q-Plus's recorded 2/1 openings (agreement data 2026-10-17): any
+        # six-card major with 5-9 HCP non-vul (QT9654, JT7653, Q96542 all
+        # 2H/2S; biq passed), vul with 7-9 HCP from a Q/J-headed suit; but
+        # never a 5-6 HCP weak 2D (0 of 10). BIQ_WEAK_TWO_QPLUS=0 disables.
+        if WEAK_TWO_QPLUS:
+            if longest == Suit.DIAMONDS:
+                min_total = 7
+            elif not am_vul and 5 <= e.hcp <= 9:
+                min_suit = 0
+            elif am_vul and 7 <= e.hcp <= 9:
+                min_suit = min(min_suit, 2)
         if min_total <= e.hcp <= 10 and suit_hcp >= min_suit:
             return bid(2, longest,
                        why=f"Weak two: 6 {longest.to_char()}, "
@@ -924,6 +938,14 @@ def _preempt_bid(e: HandEval, state=None, system=None) -> Optional[Bid]:
     is_second_seat = (state is not None
                       and getattr(state, "consecutive_passes", 0) == 1
                       and getattr(state, "opener_seat", None) is None)
+    # A seven-card major too weak for the three level (suit-HCP 3 or
+    # less) opens a weak two: Q-Plus 2S with QT87432, K986543, JT86432
+    # (5-6 HCP; biq passed).
+    if (WEAK_TWO_QPLUS and n == 7 and longest in (Suit.HEARTS, Suit.SPADES)
+            and suit_hcp <= 3 and 5 <= e.hcp <= 6 and not is_second_seat
+            and (system is None or getattr(system, 'weak_two_majors', True))):
+        return bid(2, longest, why=f"Weak two: 7 {longest.to_char()} "
+                                   f"(suit-HCP {suit_hcp}, too weak for three)")
     # 3-level preempt — 7-card suit, decent quality.
     if n == 7:
         if is_second_seat:
@@ -3815,6 +3837,59 @@ def _minors_4nt_advance(state: AuctionState, e: HandEval) -> Optional[Bid]:
     return cand if _is_legal_bid(cand, state) else None
 
 
+ANSWER_OPENER_DBL = os.environ.get("BIQ_ANSWER_OPENER_DBL", "1") == "1"
+
+
+def _answer_opener_double(state: AuctionState, e: HandEval) -> Optional[Bid]:
+    """Partner opened a suit at the 1 level, I bid a new suit, they bid a
+    suit and partner doubled: competitive (takeout), not penalties. With 3
+    or fewer of their suit bid partner's suit with 4+, else rebid my suit,
+    else partner's suit with 3, at the 3 level at most (Q-Plus's recorded
+    2/1 calls: 1D-P-1H-(2S)-X-P-3H/3D, 1C-P-1S-(2H)-X-P-3C, 15 bids of 20;
+    biq passed all 20). Not after we found a fit or my 2/1 game force.
+    BIQ_ANSWER_OPENER_DBL=0 disables."""
+    if not ANSWER_OPENER_DBL:
+        return None
+    me, partner = state.seat, state.seat.partner()
+    calls = [(s_, b) for s_, b in state.bids if not b.is_pass]
+    if len(calls) < 4 or calls[0][0] != partner or calls[-1][0] != partner \
+            or not calls[-1][1].is_double:
+        return None
+    op = calls[0][1]
+    if op.suit is None or op.suit == Suit.NOTRUMP or op.level != 1:
+        return None
+    mine = [(i, b) for i, (s_, b) in enumerate(calls) if s_ == me]
+    if len(mine) != 1 or sum(s_ == partner for s_, _ in calls) != 2:
+        return None
+    i_m, mb = mine[0]
+    if (mb.is_double or mb.is_redouble or mb.suit is None
+            or mb.suit in (Suit.NOTRUMP, op.suit)):
+        return None
+    if mb.level == 2 and i_m == 1:
+        return None                     # uncontested 2/1: game forcing
+    tb = calls[-2][1]
+    if (calls[-2][0] in (me, partner) or tb.is_double or tb.is_redouble
+            or tb.suit is None or tb.suit == Suit.NOTRUMP or tb.level > 3
+            or tb.suit in (op.suit, mb.suit)):
+        return None
+    L = e.suit_lengths
+    if L[tb.suit] > 3:
+        return None
+    order = []
+    if L[op.suit] >= 4:
+        order.append((op.suit, f"{L[op.suit]}-card support for partner"))
+    order.append((mb.suit, "rebid my suit"))
+    if L[op.suit] == 3:
+        order.append((op.suit, "3-card preference"))
+    for suit, why in order:
+        for lvl in (1, 2, 3):
+            cand = bid(lvl, suit, why=f"Partner's double of their "
+                                      f"{tb.level}{tb.suit.to_char()} is takeout: {why}")
+            if _is_legal_bid(cand, state):
+                return cand
+    return None
+
+
 def _safe_forced_bid(state: AuctionState, eval_: HandEval,
                      system) -> Optional[Bid]:
     """Pick a conservative continuation when we shouldn't pass.
@@ -4223,7 +4298,8 @@ def _sanity_wrap(raw: Bid, state: AuctionState, eval_: HandEval,
         # slam force: never pass them (2/1 rules fall-through, agreement
         # benchmark 2026-10-16; `_cue_continuation`).
         if raw.is_pass and partner_spoke_last:
-            sub = _cue_continuation(state, eval_) or _minors_4nt_advance(state, eval_)
+            sub = (_cue_continuation(state, eval_) or _minors_4nt_advance(state, eval_)
+                   or _answer_opener_double(state, eval_))
             if sub is not None:
                 return sub
 

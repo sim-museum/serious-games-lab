@@ -25,8 +25,20 @@
   tools/runs/agreement/261016_21_bid.{jsonl,txt}: 74.6% agreement, -183 IMP (-0.011/call); competitive
   -522 / 6,491. Reasonless pass -795 / 847: responder rebid -386/129, weak-two opener -218/56,
   advance overcall -168/69, opener suit rebid -133/41, openings Q-Plus makes -73/81.
-* Next: illegal-call -> pass group (stale earlier-round rules), weak preempts Q-Plus opens and biq
-  doesn't (7-card 2S / 3D), then the 2/1 benchmark's IMP groups.
+* Simulation on (10-17), changed positions only, old = benchmark code, new = af3873bb: 2/1 80 calls
+  changed, +462 IMP (SE 76; agreement there 9 -> 60); Precision 49 changed, +181 (SE 47). The
+  rules-only gain holds. `qplus_rules_ab.py scan --sim --only ROWS.jsonl` does this in minutes
+  (export the commit with `git archive` to a scratch dir; run the old code from tools/runs/code/).
+* Committed 10-17: `_answer_opener_double` (BIQ_ANSWER_OPENER_DBL): 1x-P-1y-(2z)-X is takeout,
+  with <=3 of their suit bid partner's suit with 4+, else my suit, else partner's with 3, at most
+  the 3 level (Q-Plus bid 15 of 20, biq passed all). Weak twos the Q-Plus way (BIQ_WEAK_TWO_QPLUS):
+  any 6-card major 5-9 HCP non-vul, vul 7-9 with suit-HCP 2+, no weak 2D under 7 HCP (Q-Plus 0/10),
+  7-card major with suit-HCP <=3 and 5-6 HCP opens 2M. Rules only: 2/1 +43 IMP / 42 changed (SE 40,
+  agreement +22), Precision +45 / 17 (SE 26). T-dbl-a..d, 263 checks.
+* Remaining responder-rebid and overcaller-rebid passes are scattered single hands (slam and
+  high-level competitive judgment); uncontested responder-rebid passes are net positive by the
+  benchmark. Next: illegal-call -> pass group (stale earlier-round rules), then other benchmark
+  groups (unassuming cue-bid limit raise -106/22).
 
 ## STATUS — 2/1 + Precision 10 h run (2026-10-15/16, committed)
 * Run `tools/runs/bluechip/261015_qplus_21_prec_biqS` (seed 261015, RESUME.txt there) played 20:33-09:47:
