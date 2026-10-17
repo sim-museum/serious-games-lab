@@ -3,6 +3,7 @@
 # read at ax = 0. Sim: the same session car held at constant speed on a flat straight, 30-75 m/s.
 using Printf, Statistics
 include(joinpath(@__DIR__, "replay_261005.jl"))
+include(joinpath(@__DIR__, "irgold_params.jl"))
 const DIR17 = expanduser("~/gold standard/julia racer/261017/telemetry")
 function goldfit(fn)
     f = ibt_open(fn); v = ch(f, "Speed"); ax = ch(f, "LongAccel"); ay = ch(f, "LatAccel"); on = ch(f, "IsOnTrack")
@@ -13,6 +14,9 @@ function goldfit(fn)
 end
 function simfit(fn)
     sp = install!(fn); car = DriveRT3D.build_car3d(; v0 = 30.0)
+    if !isempty(get(ENV, "JM_IRG_PARAMS", ""))         # A/B: irgold_params.jl names, e.g. "claf=0,clafrh=-4.4"
+        Base.invokelatest(setparams!, car, Dict(String(strip(split(x, "=")[1])) => parse(Float64, split(x, "=")[2]) for x in split(ENV["JM_IRG_PARAMS"], ",")))
+    end
     sys = car.sys; getu = ModelingToolkit.getsym(sys, sys.u)
     V2 = Float64[]; F = Float64[]; R = Float64[]
     for V in 30.0:5.0:75.0

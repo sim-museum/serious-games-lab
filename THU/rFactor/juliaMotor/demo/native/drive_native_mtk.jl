@@ -11989,6 +11989,8 @@ function pick_report(vp, eye, label)
         end
         sort!(hits, by = h -> h[1])
         println("  [pick] ", label, " pixel (", round(Int, px), ",", round(Int, py), "): ", isempty(hits) ? "nothing (sky)" : "")
+        # a ray that hits nothing below the horizon is a hole in the ground: say where it passes (x, y, z every 10 m)
+        isempty(hits) && d[2] < 0 && println("         ray: ", join([string(round.(o .+ t .* d, digits = 1)) for t in 10:10:80], " "))
         seen = Set{String}()
         for (t, src, nm) in hits
             key = src * nm; key in seen && continue; push!(seen, key)

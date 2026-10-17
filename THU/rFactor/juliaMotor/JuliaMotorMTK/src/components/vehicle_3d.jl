@@ -134,7 +134,7 @@ function DrivenVehicle3D(; name,
     RR = brush ? BrushTyre(; name=:RR, br...,  camber=cmb, nsh=nshr, ns=nsrv) : Tyre(; name=:RR, TYRE_SKIDPAD_REAR...)
 
     gv, kfv, krv = g, karb_f, karb_r                     # numeric values for the parts' own parameters (the next line rebinds the names)
-    ps = @parameters m=m Izz=Izz Ixx=Ixx Iyy=Iyy a=a b=b tf=tf tr=tr h=h mf=mf mr=mr L=L M_s=M_s g=g Rw_f=Rw_f Rw_r=Rw_r Iw=Iw η=η final=final bias=bias Tbrake_max=Tbrake_max CdA=CdA ρair=ρair throttle=throttle0 brake=brake0 δ=steer0 gear=gear0 clutch=0.0 hrc_f=0.0 hrc_r=0.0 ClAf=claf ClAr=clar antistall=0.0 as_r0=1957.0 as_k=495.0 as_w=490.0 Ie=(ENGINE_LUMPED ? 0.18 : IE_ENGINE) Igb=(ENGINE_LUMPED ? 0.0 : DRIVELINE_INPUT ? 0.18 - IE_ENGINE : IE_DRIVELINE) c_c=60.0 T_cap=500.0 k_idle=0.5 idle_rpm=2000.0 zrFL=0.0 zrFR=0.0 zrRL=0.0 zrRR=0.0 vrFL=0.0 vrFR=0.0 vrRL=0.0 vrRR=0.0 Fx_ext=0.0 Fy_ext=0.0 Mz_ext=0.0 CdA_scale=1.0 c_abl=(cmb && USE_TYRE3 ? TYRE3.cabl : C_ABL) toe_f=toe_f toe_r=toe_r karb_f=karb_f karb_r=karb_r η_d=ETA_DRIVE
+    ps = @parameters m=m Izz=Izz Ixx=Ixx Iyy=Iyy a=a b=b tf=tf tr=tr h=h mf=mf mr=mr L=L M_s=M_s g=g Rw_f=Rw_f Rw_r=Rw_r Iw=Iw η=η final=final bias=bias Tbrake_max=Tbrake_max CdA=CdA ρair=ρair throttle=throttle0 brake=brake0 δ=steer0 gear=gear0 clutch=0.0 hrc_f=0.0 hrc_r=0.0 ClAf=claf ClAf_rh=AERO_CLAF_RH ClAr=clar antistall=0.0 as_r0=1957.0 as_k=495.0 as_w=490.0 Ie=(ENGINE_LUMPED ? 0.18 : IE_ENGINE) Igb=(ENGINE_LUMPED ? 0.0 : DRIVELINE_INPUT ? 0.18 - IE_ENGINE : IE_DRIVELINE) c_c=60.0 T_cap=500.0 k_idle=0.5 idle_rpm=2000.0 zrFL=0.0 zrFR=0.0 zrRL=0.0 zrRR=0.0 vrFL=0.0 vrFR=0.0 vrRL=0.0 vrRR=0.0 Fx_ext=0.0 Fy_ext=0.0 Mz_ext=0.0 CdA_scale=1.0 c_abl=(cmb && USE_TYRE3 ? TYRE3.cabl : C_ABL) toe_f=toe_f toe_r=toe_r karb_f=karb_f karb_r=karb_r η_d=ETA_DRIVE
     brk = BrakeSystem(; name = :brk, bias_p = brake_bias_p)   # CARPHYS-1 S6 (chassis_parts.jl)
     tank = FuelTank(; name = :tank, x = tank_x)               # IRGOLD-1 / FUEL-1
     if cmb
@@ -164,7 +164,9 @@ function DrivenVehicle3D(; name,
     # IRGOLD-1 S20: aerodynamic LIFT per axle (+ = downforce), ½ρ·ClA·u² acting on the sprung body over each axle. The gold's
     # front suspension EXTENDS with speed on every straight beyond the drag/thrust couple (261012/tools/aerolift.py):
     # iRacing's wingless Lotus 49 lifts at the nose. ClAf = ClAr = 0 is the car before S20.
-    Laf = 0.5*ρair*ClAf*u^2; Lar = 0.5*ρair*ClAr*u^2
+    # PHYSFID-1 S13: the nose's lift grows as the nose rises (rake): ClAf_rh [m² per m] x the front body point's rise
+    # (z + a·th) -- the PO's 261017 18/30/35 N/mm straights (tools/aeroheave_cmp_261017.jl). 0 = the lift of before.
+    Laf = 0.5*ρair*(ClAf + ClAf_rh*(z + a*th))*u^2; Lar = 0.5*ρair*ClAr*u^2
     # the car's mass now: the fuel burnt since the build has left it. The tank's PARAMETER, not its observed `dm`: a mass
     # coefficient that depends on a variable makes MTK keep a mass matrix, and the integrator then re-initialised every
     # outside state edit away (a teleport snapped back to the spawn on the next step -- netcollide_smoke, IRGOLD-1 S2)

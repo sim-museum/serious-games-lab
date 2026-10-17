@@ -58,6 +58,7 @@ const CRR_IBT = 0.0139
 const PHYSFID_S9 = get(ENV, "JM_PHYSFID_S9", "1") != "0"
 const AERO_CLAF = PHYSFID_S9 ? -0.06 : -0.12
 const AERO_CLAR = PHYSFID_S9 ? -0.04 : 0.0
+const AERO_CLAF_RH = 0.0     # PHYSFID-1 S13: front lift per metre of nose rise [m²/m] (vehicle_3d.jl); 0 = none
 # WWSETUP-1 (2026-10-06): the rear LSD (DrivenVehicle3D `diff`). LSD_K = friction faces × μ × radius ratio per
 # clutch plate, the one constant the iRacing garage does not show; identified from the gold's rear wheel-speed split
 # with both setups' ramps on the same value (tools/lsdfit_261005.jl). LSD_WEPS = the stick-slip regularisation [rad/s].

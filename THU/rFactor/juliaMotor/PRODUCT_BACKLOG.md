@@ -23,6 +23,7 @@ this index was written; that is what it exists to stop.
 |---|---|---|
 | **IRGOLD-1** | **EPIC (PO 2026-10-11, 25-sprint cap; renewed 2026-10-12 night: at most 25 from S14): julia default = iRacing Ring default, julia loose = iRacing WW103 -- "indistinguishable from the iRacing Lotus 49"**, MTK objects, from the PO's 261010/11 + IRTEST-261012 sessions | 🔴 in progress, **S21 done; rotated 2026-10-13 ~04:00 (S22-S38 budget kept)**. S1-S13: replay metric 2.065 → 1.22. S14-S15 (IRTEST-261012): crank inertia 0.052 (free revs), clutch bite re-measured, iRacing's ANTI-STALL clutch -- launches 1.49 → 0.55 m/s, metric 1.20 → 1.165. S16-S19: the rear at the limit (drifts, skidpad), roll-centre object, p-norm, joint closed-loop search. S20: measured FRONT LIFT (ClAf −0.12) + rear ns 0.75 -- closed-loop metric 1.218 → 1.162. S21: clutch-out braking (not shipped); the PO's Glen note measured (GLENFEEL-1). Status for the PO: STATUS_2026-10-13.md. |
 | **TD261016-1** | **Fix the issues from the PO's 2026-10-16 test drive** (video `~/Videos/261016_spa_ring.mp4`; session logs data/juliaracer/logs/spa 2026-10-16 16-22-40, nurburgring 16-33-56; replays 16-25-39 Spa, 16-37-38 Ring). Cockpit: (c1) wrists still transparent in places, as is the wooden shifter knob. Spa: (s1) car levitates ~1 m above the road leaving the start; wheels almost submerged after the hairpin before the start/finish line; (s2) the house at the left 90° turn before Burnenville is still not right -- a small shack, not the gold's house; (s3) a small rectangular hole in the surface on the right near Masta; (s4) the two large rectangular holes in the ground on the left after Stavelot are still there. Ring: (r1) with no inputs the car at the start slowly pivots right -- creep; holding the brake does not stop it; (r2) levitates from between the South and North hairpins; (r3) sinks below the road approaching Flugplatz -- in cockpit ~2 m BELOW the road at the crest, then breaks through and levitates (PO 2026-10-16 ~17:00) | open |
+| **HORIZON-SKIRT-1** | (found 2026-10-17 chasing the Stavelot pocket) where GPL's mesh ends below the horizon (Spa s ~8500 left, past the bank) our horizon ring's lower art (hedges) shows through as a dark pocket | ✅ **CLOSED (S1-S2, 2026-10-17), nothing to fix in the ground:** against the gold (260802 Spa chase t 215.5-216.5 vs our s 8465-8495, `261017/stavelot/gold_vs_ours_8480.jpg`) GPL stands a long row of SPECTATORS with flags and a rail along that verge -- they hide the same gap in GPL. Removed by the PO's 2026-08-27 loose-people order, the gap shows. Goes with the SPECTATORS-1 decision |
 | **AUTODRIVE-RING-1** | The autodriver wrecks at the Ring s 619 (a rail box at 141 km/h) in a 5-AI one-lap race, so whole-lap checks there (JM_DRIVECHECK) measure only 620 m. Not from 2026-10-16's changes (same with JM_GROUND_RIBBON_REMAP=0 and JM_SLIP_BODYFRAME=1). Found 2026-10-16 | ✅ **CLOSED (S1-S2, 2026-10-17):** `JM_AUTODRIVE_PROFILE` caps the autodriver by the AI's speed profile; the whole Ring lap is height-checked in two runs (s 0-16,500, s 16,600-lap 2): no float, no sink (the hairpin float it found is fixed). A single unbroken lap still crashes after Brünnchen at 0.65 pace -- a test-driver limit, not a car or track defect |
 | **PHYSFID-1** | **EPIC (PO 2026-10-14, at most 25 sprints, then scrum on the PO-free backlog):** revisit the .ibt files to check the fidelity of the julia DEFAULT and LOOSE (WW103) setups to their iRacing equivalents -- there is a lot of .ibt data: can fidelity be improved? Would a more Modelica-like model (less empirical, grounded in the interactions of the car's components) match iRacing better? The julia default feels **FF-heavy and inert** next to iRacing: in iRacing the FF is strictly a signal to the driver, never so heavy the wheel is hard to turn, as it sometimes is in julia | 🟡 **S1-S7 (2026-10-14/15), for the PO's look:** S1 FF by iRacing's law (wheel force median 0.69 → 0.18); S2 front cornering stiffness 23 → 26 (not inert: yaw gain ~1.0, closed loop 1.0514 → 1.0373); S4 julia's .ibt steering-wheel angle; S5 driveline efficiency by direction (object). Open, data-led: WW103's ~6 % drive deficit, the limit balance -- **IRTEST-261015** (~30 min). Rotated, 18 sprints kept |
 | **SETUPMODEL-1** | The car as connected Modelica-like objects built from iRacing's setup pages: one knob turned in the garage moves others (corner weights, ride heights, deflections, cross weight, gear speeds), showing how the objects connect; the PO captures knob sweeps on video; julia's Setup tab then adjusts the car via iRacing's own list of settings (PO 2026-10-15) | 🟡 **S1-S2 done (2026-10-17), for the PO's look:** the PO's 261017 capture (53 garage screenshots, 32 saved setups, 8 .ibt; copied to `~/gold standard/julia racer/261017/`) transcribed (`261017/garage/`) and a static garage model identified (`JuliaMotorMTK/src/garage.jl` + `garage_lotus49.toml`); the launcher has a **Garage tab** (iRacing's TIRES/CHASSIS/DRIVETRAIN pages, iRacing's names/steps/limits, derived numbers live) and the sim builds the car from it (`JM_GARAGE`). Gate `garage_smoke` (63). Open: provisional limits (pressure, bias, toe, camber, gearing, diff) need Part C or the 32 setups exported as sheets; the exported .ibt still carries the session's CarSetup; extremes (loose spring) 11 N / 4 mm off |
@@ -27457,3 +27458,44 @@ give the heave-vs-speed signature at three front springs, and the garage gives t
   too much, and its tail squats 1.5 mm where iRacing's stays level.
 * Next (S13, after the gates): a front lift that grows with the nose's ride height (ClAf at the static height ~-0.02,
   +0.0044 m² per mm of rise) and the rear's squat, judged by irgold_fit (closed-loop J, both setups) + the stability suite.
+
+### PHYSFID-1 S13 (2026-10-17): a ride-height-dependent nose lift -- built as a knob, not supported by the heave data
+* `ClAf_rh` (vehicle_3d.jl, m² of front lift per m of nose rise, `AERO_CLAF_RH` = 0: the car is unchanged; irgold_params
+  `clafrh`, and `aeroheave_cmp_261017.jl` takes `JM_IRG_PARAMS`). Front rise at 70 m/s, 18 / 30 / 35 N/mm (iRacing 14.2 /
+  6.7 / 4.7 mm): shipped (claf -0.06) 15.6 / 9.7 / 8.4; claf 0 + clafrh -4.4: 21.4 / 8.1 / 6.5; claf -0.03 + clafrh -2.5:
+  18.8 / 9.6 / 8.0. A rake term amplifies the soft spring's rise (positive feedback) long before it brings the stiff
+  springs down: iRacing's rise falls off with spring rate faster than any lift + rake + julia's drag/thrust transfer can.
+  Per front corner julia's transfer alone (~73 N at 70 m/s: CdA x the drag's height over the wheelbase) already gives 3.8
+  of the 4.7 mm iRacing shows at 35 N/mm -- so the transfer, not the lift, is the next suspect (drag height / CdA split).
+  Not run through the judge: the heave data does not support the change. The rear: clar -0.06 levels julia's tail (-1.5
+  -> 0 mm, iRacing -0.8..+0.5) -- kept for when the front is understood (S9: -0.08 spun the default car).
+* PHYSFID-1 rests (13 of 25): the skidpad / pull / coast tests (IRTEST-261015) are still the PO's.
+
+### TD261016-1 cycle 2 S2 (2026-10-17): the Stavelot pocket is the edge of GPL's world, not a hole by the road
+* Photographed (chase, `JM_SHOTS` s 8470-8560, Spa): the dark "pocket" is at s ~8500-8530, LEFT, 40-60 m ahead past the
+  verge. `JM_PICK` rays through it hit NO triangle at all; the pick now prints where such a ray passes (new: `ray:` line
+  for an empty pick below the horizon): nearly level (y 312 -> 309 over 80 m) at x -1515..-1548, z 3260..3324 -- it clears
+  the crest of the bank and runs off past the end of GPL's mesh in that direction. What shows is our horizon ring's lower
+  art (hedges) through the gap.
+* Tried and reverted: seeding the hole filler along the road's EDGES instead of its vertices (Spa 3,159 -> 5,165 quads) and a
+  26 m reach (18,224 quads) -- the pocket is unchanged, so neither is the cause, and both would add unverified ground.
+* What would fix it: a ground SKIRT under the world's edge (a coarse grid just below the lowest drawn ground near each
+  cell, so it never pokes through) or a horizon ring whose lower band is ground, as GPL's gold shows grass there. A render
+  design change across all five tracks -- logged as **HORIZON-SKIRT-1** (open, not PO-blocked).
+
+### HORIZON-SKIRT-1 S1 (2026-10-17): a ground skirt past the mesh -- no effect on the pocket; reverted
+* Built (`skirt_parts`: every 20 m cell no drawn triangle covers, out to 240 m past the mesh, at the lowest neighbouring
+  ground carried outward, 0.5 m under it): Spa 19,768 quads. Photographed s 8500/8530 (the pocket), 2400, 5200 with and
+  without: the pocket is UNCHANGED and nothing else moves. So the view through it (-2.3° below level) passes over every
+  piece of ground, real or skirt, within 240 m and lands on the horizon ring's lower art (hedges). Reverted.
+* So the difference from GPL (grass there) is the horizon ring itself -- its lower band's art or its vertical placement
+  relative to the eye. Next sprint: GPL's horizon (horiz*.mip) rows vs the band we draw below eye level.
+
+### HORIZON-SKIRT-1 S2 (2026-10-17): the gold has spectators standing in front of the pocket -- closed
+* Gold 260802 Spa chase, t 215.5 / 216 / 216.5 (the CALTEX BORON gantry, flags and the Shell van at t 214-215 anchor it)
+  against our chase s 8465 / 8480 / 8495 (`261017/stavelot/gold_vs_ours_8480.jpg`): along the left verge GPL draws a
+  long row of standing spectators with national flags and a low rail -- exactly where our view runs past the bank to the
+  horizon. Ours has the hay bales, vans, caravans, fence and house, and none of those people (the PO's 2026-08-27 order).
+  So the pocket is GPL's own gap, hidden in GPL by its spectators. Nothing to fix in the ground; it joins the SPECTATORS-1
+  question (`JM_SAFE_SPECTATORS=1` keeps only people > 13 m from the road -- these stand closer, so it does not bring them).
+* TD261016-1's last own item is done: (s2) and the Masta hole wait on the PO's video time.
