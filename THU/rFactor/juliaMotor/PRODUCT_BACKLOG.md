@@ -25,7 +25,7 @@ this index was written; that is what it exists to stop.
 | **TD261016-1** | **Fix the issues from the PO's 2026-10-16 test drive** (video `~/Videos/261016_spa_ring.mp4`; session logs data/juliaracer/logs/spa 2026-10-16 16-22-40, nurburgring 16-33-56; replays 16-25-39 Spa, 16-37-38 Ring). Cockpit: (c1) wrists still transparent in places, as is the wooden shifter knob. Spa: (s1) car levitates ~1 m above the road leaving the start; wheels almost submerged after the hairpin before the start/finish line; (s2) the house at the left 90° turn before Burnenville is still not right -- a small shack, not the gold's house; (s3) a small rectangular hole in the surface on the right near Masta; (s4) the two large rectangular holes in the ground on the left after Stavelot are still there. Ring: (r1) with no inputs the car at the start slowly pivots right -- creep; holding the brake does not stop it; (r2) levitates from between the South and North hairpins; (r3) sinks below the road approaching Flugplatz -- in cockpit ~2 m BELOW the road at the crest, then breaks through and levitates (PO 2026-10-16 ~17:00) | open |
 | **AUTODRIVE-RING-1** | The autodriver wrecks at the Ring s 619 (a rail box at 141 km/h) in a 5-AI one-lap race, so whole-lap checks there (JM_DRIVECHECK) measure only 620 m. Not from 2026-10-16's changes (same with JM_GROUND_RIBBON_REMAP=0 and JM_SLIP_BODYFRAME=1). Found 2026-10-16 | open |
 | **PHYSFID-1** | **EPIC (PO 2026-10-14, at most 25 sprints, then scrum on the PO-free backlog):** revisit the .ibt files to check the fidelity of the julia DEFAULT and LOOSE (WW103) setups to their iRacing equivalents -- there is a lot of .ibt data: can fidelity be improved? Would a more Modelica-like model (less empirical, grounded in the interactions of the car's components) match iRacing better? The julia default feels **FF-heavy and inert** next to iRacing: in iRacing the FF is strictly a signal to the driver, never so heavy the wheel is hard to turn, as it sometimes is in julia | 🟡 **S1-S7 (2026-10-14/15), for the PO's look:** S1 FF by iRacing's law (wheel force median 0.69 → 0.18); S2 front cornering stiffness 23 → 26 (not inert: yaw gain ~1.0, closed loop 1.0514 → 1.0373); S4 julia's .ibt steering-wheel angle; S5 driveline efficiency by direction (object). Open, data-led: WW103's ~6 % drive deficit, the limit balance -- **IRTEST-261015** (~30 min). Rotated, 18 sprints kept |
-| **SETUPMODEL-1** | The car as connected Modelica-like objects built from iRacing's setup pages: one knob turned in the garage moves others (corner weights, ride heights, deflections, cross weight, gear speeds), showing how the objects connect; the PO captures knob sweeps on video; julia's Setup tab then adjusts the car via iRacing's own list of settings (PO 2026-10-15) | 🔵 **test plan ready, awaiting the PO's capture:** `261015/iracing_setup_capture_plan.md` -- Parts A-C ~60 min garage sweeps (anchors + limits; fuel, perch, spring, packer, ARB on a level AND a twisted car, camber/toe, pressure, gearing, diff/dampers/bias), Part D ~15 min optional on track (dampers, springs at speed, diff ramps). Acceptance: every captured garage frame reproduced to display resolution; closed-loop J ≤ 1.0373 |
+| **SETUPMODEL-1** | The car as connected Modelica-like objects built from iRacing's setup pages: one knob turned in the garage moves others (corner weights, ride heights, deflections, cross weight, gear speeds), showing how the objects connect; the PO captures knob sweeps on video; julia's Setup tab then adjusts the car via iRacing's own list of settings (PO 2026-10-15) | 🟡 **S1-S2 done (2026-10-17), for the PO's look:** the PO's 261017 capture (53 garage screenshots, 32 saved setups, 8 .ibt; copied to `~/gold standard/julia racer/261017/`) transcribed (`261017/garage/`) and a static garage model identified (`JuliaMotorMTK/src/garage.jl` + `garage_lotus49.toml`); the launcher has a **Garage tab** (iRacing's TIRES/CHASSIS/DRIVETRAIN pages, iRacing's names/steps/limits, derived numbers live) and the sim builds the car from it (`JM_GARAGE`). Gate `garage_smoke` (63). Open: provisional limits (pressure, bias, toe, camber, gearing, diff) need Part C or the 32 setups exported as sheets; the exported .ibt still carries the session's CarSetup; extremes (loose spring) 11 N / 4 mm off |
 | **CARINTERACT-1** | Interaction with other cars, AI or networked, as iRacing does it: (1) contact -- julia allows "bumper cars": no downside to knocking other cars out of the way; (2) drafting and slingshotting (PO 2026-10-15) | 🔵 **iRacing tests written, awaiting the PO:** `261015/iracing_tests_261015.txt` Part 2 -- AI race setup (Lotus 49 if AI-enabled, lowest AI skill), test 4 contact (nudges 5/15/30 km/h, side-by-side, damage on), test 5 draft (alone vs behind at 10/20/40 m, slingshot). PO-free part next: measure julia's own contact consequences and draft today |
 | **TMPLEAK-1** | (found 2026-10-15 chasing a full /tmp) every race left its extracted track files in /tmp (`jl_*` dirs, 11 MB per Spa run) -- 1,127 dirs / 3.7 GB had piled up on this box; on the PO's PC the same, without bound | ✅ **S1 (2026-10-15):** the post-race `ccall(:_exit)` (which dodges PortAudio's teardown segfault) also skipped mktempdir's atexit cleanup; TMPTRK/TMPOBJ are now removed just before it. Spa smoke: no dir left behind. **PO:** the old `/tmp/jl_*` dirs can be deleted (`find /tmp -maxdepth 1 -name 'jl_*' -mmin +60 -exec rm -rf {} +`); a reboot clears them too |
 | **PERF-5** | (found 2026-10-16 by the five-track integration races) after the player's wreck the frame spent ~3 ms in wall/obstacle clamping for the rest of the race | ✅ **S1 (2026-10-16):** a frozen wreck is re-placed at its rest pose every frame (E95g); the obstacle clamp pushed it out of what it rests in, 3 iterations x 2 rounds over every nearby face, only for it to be put back. No contact or clamp for a frozen wreck now (`JM_WRECK_NOCLAMP=0` = before): Zandvoort wreck run 3.05 ms -> 0 per frozen frame |
@@ -27331,3 +27331,95 @@ surface and levitating" -- video ~/Videos/261016_spa_ring.mp4.
 * Grip angle sweep (`JM_HAND_GRIP` 0 / 15 / 30 deg vs the gold, `261016/td16/c1_grip_0_15_30_vs_gold.jpg`): 15-30 moves the
   fists toward the gold's 10-and-2, but the sleeves then spread broad and white across the lower view. The remaining
   difference is the camera and the sleeves' width (HANDS-2 S5's open question to the PO), so the grip stays at 0.
+
+
+### SETUPMODEL-1 S1 (2026-10-17): the PO's garage capture, transcribed and identified
+
+Retro (item start): the plan (`261015/iracing_setup_capture_plan.md`) asked for video sweeps; the PO delivered instead
+53 garage screenshots (12:38-13:02), the sweep endpoints saved as 32 iRacing setups (`261010_rung_official_<knob>_<end>.sto`)
+and 8 .ibt (Part D: dampers 0/12 clicks, front springs 18 (perch 110.3) / 35, drive ramp 35). Copied from the USB stick to
+`~/gold standard/julia racer/261017/` (with the plan, `plan_261016/`). The .sto files are encrypted (iRacing format 3),
+so the exact anchors are the screenshots + the .ibt CarSetup blocks (same display resolution).
+
+What the data says (`261017/garage_frames_notes.md`, `261017/garage/frames_{screens,ibt}.csv`, 29 + 18 frames):
+- **Perch and packer step = 1/64 inch** (0.396875 mm): every value ever seen is a whole number of 64ths. Front perch
+  94.1-305.6 mm, rear 41.7-305.2 mm; packer 0-19.05 mm; dampers 0-12 clicks; front springs 18-35, rear 30-70 N/mm; fuel
+  4.5-179.5 L; front bar Disconnected/0.375"/0.4375", rear Disconnected/0.625"/0.6875"; arms soft,2,3,4,5,6,firm.
+- **Spring compression = shock deflection - perch + L** (front L = 149.2 mm, consistent across 18/30/35 N/mm at a fixed
+  corner load): a bigger perch offset = less preload, the corner sinks and sheds weight. At 305.6 mm the LF spring goes
+  **loose** and the corner sits on its bump rubber (iRacing allows it; RF then checks to 2 N).
+- **Front = coil-over** at motion ratio 0.814, rear 0.69; unsprung 226 N; tyres 362 (F) / 169 (R) N/mm; the front
+  ride-height point sits 1.6 % of the wheelbase toward the rear; fuel 0.751 kg/L, 66 % on the front axle.
+- **Camber follows ride height** (~0.026 deg/mm of wheel travel) and **front toe follows it too** (~0.016 mm/mm, droop =
+  toe-out) -- the garage's camber/toe rows show the solved value, not the knob.
+- **Asterisk frames**: labels with "*" ("Spring rate:*") were mostly solved, but some frames show a LAGGING solve -- snip 19
+  (LF 18 N/mm) shows the base car, snip 21 (LR 30 N/mm, no asterisk) is consistent only with LR ~40 N/mm (RR and the bar
+  agree to 2 N). Entered as 40; asterisk frames weighted 0.3 in the fit.
+- **Pressure is a static knob**: the 261010 Monza session's right-side 179 kPa (the 261004-11 skidpad ones: 207 kPa) moves
+  the corner weights by +-15..60 N.
+- **Open: the lateral balance.** In iRacing's numbers the axle whose perch was turned carries ~10 % more left/right
+  difference than the other (front perch: front/rear diff 1.12; rear perch: 0.86), and setups with asymmetric camber shift
+  load sideways (WW103: left +46 N; June skidpad: right +57 N; the side with more positive camber is lighter). A rigid car
+  with its CG on the centreline cannot do either; contact-patch migration with camber (20.7 mm/deg) is the fitted stand-in.
+
+Model (`JuliaMotorMTK/src/garage.jl`, constants in `garage_lotus49.toml`): rigid sprung body + four corners (coil spring on
+a perch through a motion ratio, bump rubber behind the packer, tyre rate with pressure), an anti-roll bar per axle (rate
+∝ diameter⁴ × arm law), a fuel tank; Newton on heave/pitch/roll + four wheel travels. Fit: `tools/garage_fit_261017.jl`
+(staged: symmetric frames to display resolution first, then the coupling). Trusted frames: base, fuel 4.5-179.5 L, front
+springs 18/30/35, +-2 mm twists within 0.5 mm / 5 N; perch extremes 3-6 mm / 10-25 N; asymmetric-camber setups 1.5-3.5 mm
+/ 15-40 N. Rear arm direction is unconstrained by trusted data (only lagging frames) -- tied to the front's law.
+
+### SETUPMODEL-1 S2 (2026-10-17): julia's garage -- the launcher's Garage tab and the sim
+
+- **The session stays the source and the default** (E100/E105): what the tab shows and the sim installs is the session's
+  own iRacing numbers **plus the model's change** from the session's knobs (`Garage.apply_garage`). An untouched garage is
+  the session to the digit; in the knobs' normal range the model's residual error cancels: the gate's iRacing anchors (LF
+  or LR perch +5/64", fuel 4.5 and 179.5 L, front springs 35 and 18 + perch 110.3, packer 19.05) match **within 1 N and
+  0.2 mm**; the loose-spring extreme (LF perch 305.6) is 11 N / 4 mm off (documented in the gate).
+- **Launcher Garage tab** (`demo/native/garage_tab.py`, solver mirror `garage.py`): TIRES / CHASSIS / DRIVETRAIN pages
+  as iRacing lays them out; knobs step on iRacing's lattice (1/64" perch clicks) and show iRacing's digits; camber and
+  toe rows show the solved value and a click moves the knob one step; derived numbers (corner weight, ride height, shock
+  deflection "x of y", cross weight, gear km/h) update live. Reset / Save as / Load; the garage is remembered per base
+  setup and follows the Race tab's setup choice. A dagger marks knobs whose limits are provisional.
+- **The sim**: a modified garage is handed over as `JM_GARAGE` (a TOML of knobs); `session_params()` in
+  drive_native_mtk.jl re-solves it with the Julia model before the car is built -- springs, perch, corner weights (mass,
+  CG), ride heights, camber, toe, bars, dampers, fuel, bias, gearing and diff all flow through the existing setters, and the
+  provenance lines say "+ garage". Smoke: Zandvoort with LF perch +5/64", springs 35, fuel 100 L, arms 4, final 4.11 ->
+  647.7 kg, 21290 N/m front, 83.3/83.7/101.1/101.6 mm, final 4.11.
+- **Gate `garage_smoke`** (63 gates): session identity, the 8 iRacing anchors, WW103 gear speeds, and the launcher's
+  Python solver against the Julia one (2e-12 over 12 random garages); `tests/garage_test.py` (run by launcher_smoke) drives
+  the tab headless: 5 clicks = 5/64", iRacing's 261017 snip-34 weights, JM_GARAGE only when modified and enabled, Reset,
+  per-base memory, the WW103 base.
+
+Next (S3+): the exported .ibt's CarSetup block (still the session's -- rewrite it from the garage within the YAML's
+length); damper clicks and spring/bar knobs into the dynamic chassis (chassis_from_setup already reads bars/dampers by
+their raw strings -- check the garage's values reach the same terms); the provisional limits. **For the PO** (cheap, no
+driving): in iRacing's garage, load each of the 32 saved setups and export it as a setup sheet (the garage's **Export**
+button, or the save dialog's write-a-text/HTML-copy option if iRacing offers one -- the plan's step A3) -- that settles
+every provisional limit and the camber/toe/pressure/bias/gear/diff ranges at once.
+
+### SETUPMODEL-1 S3 (2026-10-17, analysis; code staged behind the gate run): dampers per click, the diff's ramps
+
+- **Damper clicks** (`tools/damperclicks_261017.jl`, the 261004 road-independent identity per file on 360 Hz shocks):
+  iRacing's damping is LINEAR in clicks. Per shock, at the shock: front bump 3002 + 184 n, front rebound 1499 + 67 n, rear
+  bump 1326 + 85 n, rear rebound 303 + 18.5 n N·s/m (0-click run 11-58-11 and 12-click run 12-04-47; the four base-click
+  runs, +4/+8 F and +4/+7 R, fall on the lines within their bootstrap spread). Until now the sim knew two click sets (the
+  default's, WW103's) and ran every other on the hand-set dampers; the law goes in as the fallback (staged:
+  `damper_scale_from_clicks`, the axle's mean damping relative to the base clicks).
+- **Diff ramps (Part D3)** (`tools/difframp_261017.jl`): locking = 1 - (outer - inner rear wheel speed) / (yaw rate x
+  rear track), on power in corners. **Drive ramp 35°: 0.91-0.96** (the rears held together, nearly a spool); **75°: 1.2-2.3**
+  (> 1: the unloaded INNER rear spins up -- an open diff on power). Coast ramp 60°: ~0.3-0.5. This is the direct evidence
+  for PHYSFID-1's open question (WW103 runs 35°: its drive goes down through both rears) -- next: the same metric on
+  julia's car (replay the D3 corner exits) to check julia's LSD locks the same way at 35° and lets go at 75°.
+- **julia's LSD on the same metric** (`tools/difframp_replay_261017.jl`: the gold's corner exits replayed through each
+  session's own sim car, gold throttle + steering): **35°: iRacing 0.92 (IQR 0.87-0.96), julia 1.01 (1.01-1.03)** --
+  julia's 35° diff is a solid spool where iRacing's clutches still let the outer rear run ~8 % ahead; **75°: iRacing
+  1.20-1.63, julia 1.05-1.50** (both let the inner wheel spin up; julia a little less). Few events (5-10 per run), so a
+  direction, not a fit: julia's lock at 35° is too hard. Next (a sprint of its own): the ramp law's lock torque vs
+  iRacing's (clutch-plate friction x ramp), refitted on these exits; WW103 races at 35°.
+- **Aero lift (Part D2)** (`tools/aerolift_d2_261017.jl`: mean axle shock deflection = a + b·v² + c·ax on straight samples,
+  force = 2·MR·k·b·v²): the FRONT rises with speed -- 12.2 / 5.5-6.1 / 4.5 mm at 70 m/s on 18 / 30 / 35 N/mm springs --
+  **ClA_front ≈ -0.09 m²** (-0.08..-0.12; more on the soft spring: the lift grows as the nose rises), **ClA_rear ≈ 0**
+  (-0.013..+0.03). julia (PHYSFID-1 S9): front -0.06, rear -0.04 -- the same total lift, but iRacing carries ALL of it on
+  the front, which makes the car understeer more at speed (S9's note: the WW car was "too free at speed"). For PHYSFID-1:
+  try front -0.09 / rear 0 against the closed-loop J (1.0346 now).

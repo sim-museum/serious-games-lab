@@ -33,6 +33,8 @@ from PyQt6.QtWidgets import (
 )
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+from garage_tab import GarageTab          # SETUPMODEL-1: iRacing's garage (garage.py = the static solve's mirror)
 UI_DIR = os.path.join(HERE, "assets", "ui")
 GUIDE = os.path.join(HERE, "docs", "HOW_TO_RACE.md")    # DOC-RACE-1: ships with the launcher (AppImage rule)    # the theme's glyphs ship with the module (fixed even if HERE is redirected)
 CONF = os.path.join(HERE, "joystick.conf")
@@ -1451,6 +1453,9 @@ class DriveTab(QWidget):
         qenv.insert("JM_AI_PCT", str(self.ai_pct.value()))
         qenv.insert("ZAND_SHIFT", "auto" if self.gearbox.currentIndex() == 0 else "manual")
         qenv.insert("JM_CARSETUP", ["default", "ww103"][self.carsetup.currentIndex()])
+        gf = self.garage_file() if getattr(self, "garage_file", None) else None   # SETUPMODEL-1
+        if gf:
+            qenv.insert("JM_GARAGE", gf)
         qenv.insert("JM_FUEL", ["event", "full"][self.fuel.currentIndex()])
         timing_env(qenv)   # LOADHANG-1
         if self.mute.isChecked():
@@ -1925,6 +1930,11 @@ class Main(QMainWindow):
         # GUI-1: tabs named for the task, in the order a session runs: set up and start, read the result,
         # watch it back; then the things changed once (Settings, Controller).
         tabs.addTab(self.drive, "Race")
+        # SETUPMODEL-1: iRacing's garage on the base setup the Race tab has chosen
+        self.garage = GarageTab(lambda: self.drive.carsetup.currentIndex())
+        self.drive.carsetup.currentIndexChanged.connect(lambda _i: self.garage.load_session(keep_saved=True))
+        self.drive.garage_file = self.garage.garage_file_for_launch
+        tabs.addTab(self.garage, "Garage")
         tabs.addTab(self.result, "Results")
         tabs.addTab(self.replay, "Replays")
         tabs.addTab(self.drive.settings_page(), "Settings")

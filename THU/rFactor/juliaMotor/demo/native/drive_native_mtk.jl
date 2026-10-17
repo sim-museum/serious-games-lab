@@ -832,6 +832,24 @@ const IBTNAME = get(Dict("nurburgring" => "nurburgring nordschleife",
 # reference set that is addressed by an exact timestamp breaks the moment it is re-captured, which
 # is the opposite of what a reference is for.
 include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","setup.jl"))); using .Setup
+include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","garage.jl"))); using .Garage
+# SETUPMODEL-1: JM_GARAGE = a garage file written by the launcher's Garage tab -- iRacing's setup knobs (perch offsets,
+# springs, packers, bars, camber, toe, pressures, fuel, bias, gearing, diff, dampers). The chosen SESSION stays the
+# source and the default: its knobs are the garage's starting point, and the derived numbers the car is built from
+# (corner weights, ride heights, shock deflections, static camber/toe) are the session's own plus the change the
+# garage model (JuliaMotorMTK/src/garage.jl) computes for the knobs turned. No JM_GARAGE = the session, untouched.
+const GARAGE_NOTE = Ref("")
+function session_params(fn::AbstractString)
+    pp = Setup.setup_params(IBT.session_yaml(IBT.ibt_open(fn)))
+    g = get(ENV, "JM_GARAGE", "")
+    (isempty(g) || !isfile(g)) && return pp
+    Ks = Garage.calibrate_session(pp)
+    _, K = Garage.read_garage_file(g, Ks)
+    changed = Garage.knob_diff(K, Ks)
+    GARAGE_NOTE[] = isempty(changed) ? "garage: unchanged from the session" :
+                    "garage: " * join(changed, ", ") * " changed from the session  <- " * basename(g)
+    Garage.apply_garage(pp, K; Ks)
+end
 # IRGOLD-1 S8 (2026-10-12): the DEFAULT car is iRacing's CURRENT official Nürburgring setup, found by CONTENT (as
 # WW103's below): the newest unmodified Ring session whose setup is `*rung_official*` (the PO's 261010 session; car
 # 2026.09.25 -- front arms 2, rear bar 0.6875"/5, diff 75°/60° 4 plates, final 4.22, the setup of every gold session
@@ -936,12 +954,14 @@ println("  car setup: ", CARSETUP == "ww103" && IBTTMPL != IBTTMPL_DEFAULT ? "WW
 let
     if isfile(IBTTMPL)
         try
-            pp = Setup.setup_params(IBT.session_yaml(IBT.ibt_open(IBTTMPL)))
-            DriveRT3D.set_transmission!(pp.gear_ratios, pp.final_drive; source = basename(IBTTMPL))
-            isfinite(pp.shift_rpm) && DriveRT3D.set_shift_rpm!(pp.shift_rpm; source = basename(IBTTMPL))   # AUTO up-shift = shift light
+            pp = session_params(IBTTMPL)                          # SETUPMODEL-1: + the launcher's garage, if any
+            PPSRC = basename(IBTTMPL) * (startswith(GARAGE_NOTE[], "garage: unchanged") || isempty(GARAGE_NOTE[]) ? "" : " + garage")
+            isempty(GARAGE_NOTE[]) || println("  ", GARAGE_NOTE[], "\n  garage:  ", Garage.describe_derived_pp(pp))
+            DriveRT3D.set_transmission!(pp.gear_ratios, pp.final_drive; source = PPSRC)
+            isfinite(pp.shift_rpm) && DriveRT3D.set_shift_rpm!(pp.shift_rpm; source = PPSRC)   # AUTO up-shift = shift light
             # E100 S2: mass and its front share come from the same session's CornerWeights.
             # IRGOLD-1 MASS-1: and each corner's sprung mass and the CG position (set_corner_weights! also sets the mass).
-            DriveRT3D.set_corner_weights!(pp.corner_weight_N; source = basename(IBTTMPL))
+            DriveRT3D.set_corner_weights!(pp.corner_weight_N; source = PPSRC)
             FUEL_SETUP_L[] = isfinite(pp.fuel_L) ? pp.fuel_L : 43.2      # FUEL-1: the fuel in those corner weights
             # E100 S4: and the SPRING RATES, which are per-corner and asymmetric in real setups.
             # The model used to share one spec per axle, so the rates could not follow the session
@@ -951,18 +971,18 @@ let
             let rh = pp.ride_height_mm
                 if all(k -> haskey(rh, k) && isfinite(rh[k]) && rh[k] > 0, (:LF,:RF,:LR,:RR))
                     DriveRT3D.set_ride_height!(rh[:LF]/1000, rh[:RF]/1000, rh[:LR]/1000, rh[:RR]/1000;
-                                               source = basename(IBTTMPL))
+                                               source = PPSRC)
                 end
             end
             let sp = pp.spring_rate_Npmm
                 if all(k -> haskey(sp, k) && isfinite(sp[k]) && sp[k] > 0, (:LF,:RF,:LR,:RR))
                     DriveRT3D.set_suspension!(DriveRT3D.wheel_rate(sp[:LF]), DriveRT3D.wheel_rate(sp[:RF]),
                                               DriveRT3D.wheel_rate(sp[:LR]; rear = true), DriveRT3D.wheel_rate(sp[:RR]; rear = true);
-                                              source = basename(IBTTMPL))
+                                              source = PPSRC)
                 end
             end
             # WWSETUP-1: the diff, toe, bars, dampers and brake bias of the same session (see DriveRT3D.chassis_from_setup)
-            DriveRT3D.set_chassis!(DriveRT3D.chassis_from_setup(pp; source = basename(IBTTMPL)))
+            DriveRT3D.set_chassis!(DriveRT3D.chassis_from_setup(pp; source = PPSRC))
         catch e
             @warn "E100: could not read the gearbox from $(basename(IBTTMPL)); the built-in \
                    fallback is the SKIDPAD setup and is wrong for a circuit" e
@@ -975,7 +995,7 @@ let
             "   <- ", DriveRT3D.transmission_source())
     println("  AUTO up-shift: ", round(Int, DriveRT3D.SHIFT_RPM[]), " rpm (shift light)   <- ", DriveRT3D.SHIFT_SRC[])
     # physical wheel steering: road angle = wheel angle / the session's steering ratio (see joycfg.jl)
-    let ratio = (isfile(IBTTMPL) ? (try Setup.setup_params(IBT.session_yaml(IBT.ibt_open(IBTTMPL))).steering_ratio catch; NaN end) : NaN),
+    let ratio = (isfile(IBTTMPL) ? (try session_params(IBTTMPL).steering_ratio catch; NaN end) : NaN),
         src = isfinite(ratio) ? basename(IBTTMPL) : "built-in 10:1 (Lotus 49 setup) -- NOT from an ibt"
         isfinite(ratio) && ratio > 1 || (ratio = 10.0)
         STEER_RATIO[] = ratio                                                # PHYSFID-1 S4: for the .ibt's wheel angle
