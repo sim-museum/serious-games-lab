@@ -1377,7 +1377,11 @@ function controller(line::AILine, cs, clane, dev, tv, cx, cz, cθ, cv, r; power 
     steer = clamp(hgain*herr - 0.24*(clane - here) - yawd*r, -1.0, 1.0)   # tight line-follow (don't flatten corners)
     # `power` = the AI's engine-power tune (set ONCE pre-race, not per frame): caps throttle so a
     # detuned car has lower accel/top speed → a fixed pace it can't exceed (and can wash out hot).
-    thr = (cv < tv ? clamp((tv-cv)*0.25, 0, 1) * clamp(1.4 - 2.2*abs(steer), 0.0, 1.0) : 0.0) * power * (1.0 - 0.75*slide)
+    # TD261016-1 (r1): the steering cut must let a car at REST roll. It used to need none: a steered tyre at standstill
+    # had a full slip angle and swung the parked car round onto the line until the throttle came in. With that creep fixed
+    # (wheel-frame slip) a car spawned at full lock never moved (netcollide's client sat at 98 m). Below 3 m/s the cut
+    # leaves 35 %, as a driver feeds in throttle to turn away from a standstill.
+    thr = (cv < tv ? clamp((tv-cv)*0.25, 0, 1) * clamp(1.4 - 2.2*abs(steer), cv < 3.0 ? 0.35 : 0.0, 1.0) : 0.0) * power * (1.0 - 0.75*slide)
     brk = cv > tv + 1.0 ? clamp((cv-tv)*0.25, 0, 1) : 0.0
     # TRAIL BRAKING: don't dump the brake at turn-in — carry a little into the corner (loads the
     # front tyres, rotates the car to the apex), fading as the wheel unwinds.  Small so it never spins.

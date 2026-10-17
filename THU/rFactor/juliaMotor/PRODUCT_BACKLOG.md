@@ -27206,3 +27206,37 @@ surface and levitating" -- video ~/Videos/261016_spa_ring.mp4.
   next drive. Gates s79: 62/62.
 * Tools kept: `JM_REPLAY_ZDIAG` (+ `JM_REPLAY_ZDIAG_AT=<s>` per-wheel detail), `JM_VDIAG`, `JM_TEST_BRAKE` /
   `JM_TEST_CLUTCH` (smoke input holds, as `JM_TEST_STEER`).
+
+### TD261016-1 S2 (2026-10-16): (r1) creep at standstill, (c1) the knob; (s2)(s4) analysed
+* **(r1) creep -- fixed.** The PO's .ibt: brake 1.0, clutch in, the X3D stick resting at 11 deg of wheel (0.2 rad), speed
+  9 mm/s and yaw turning 0.44 deg/s for 40 s. Reproduced (`JM_TEST_STEER=0.2 JM_TEST_BRAKE=1`): 28 mm/s, 2.7 deg/s, brake or
+  not. Cause: the 3-D tyre's slip angle `st - atan(vy, sqrt(vx^2+1))` IS the steer angle at standstill -- a steered tyre
+  pushed sideways with the car stopped. Now the angle of the contact patch's velocity in the WHEEL's frame (0 at rest,
+  identical at speed to small-angle order; `JuliaMotorMTK/src/components/vehicle_3d.jl`, `JM_SLIP_BODYFRAME=1` = before).
+  Same test after: 0.0 mm/s, yaw constant to 0.01 deg over 20 s, with and without brake.
+* **(c1) the wooden knob -- fixed.** Not the trim (lotd.3DO's lever is 46 triangles at any `maxlat`) but the body's
+  double-sided-pair dedup: it dropped 8 of the lever's 54 triangles, real faces of the knob's top -- a V-shaped hole the oil
+  gauge showed through. The lever (drawn on its own) keeps every face (`JM_SHIFT_DEDUP=1` = before). Render:
+  `261016/td16/c1_knob_before_after.png`.
+* **(c1) the wrists -- open.** The gloves/sleeves lose no faces to the dedup (lohand 38, lotarms 24 tris either way) and
+  drawing them two-sided changes nothing (`JM_HAND_CULL=0`). Against the gold cockpit (Spa 260802 t 40) the gold's gloves
+  are closed white fists; ours are an open silver band round the rim, so the rim and dash show through it -- a geometry
+  question (HANDS/COCKPIT-2 family), next cycle.
+* **(s2) the house -- not reproduced; needs the PO's video time.** At the downhill left after the haystack fields (s 2480,
+  TD261013-1 b1) the PO's own drive shows the gold's house (white, brick gable, windows, guardrail): video t 100-101.5 vs
+  gold 260802 t 80.5-81.2 (`261016/td16/s2_house_gold_vs_po*.jpg`). At the 88 deg left at s 1843-2070 (E111) both show the
+  same small marshal's booth (`s2_booth_*`). So the PO's "small shack" is at a third place, or the booth itself -- the
+  video time of the shack would settle it.
+* **(s4) the gaps after Stavelot -- located, cause open.** s 8480-8560, 10-40 m left of the road (chase shots s 8480/8540):
+  a band through which the horizon backdrop (hedges, straw) shows between the near verge and the field above. The gold (t
+  214-217) has unbroken grass there. Ruled out: the lap window (`JM_LAPWIN=0`), road rounding (`JM_ROADCURVE=0`),
+  BOARDCULL-1 (`JM_BOARDCULL=0`), a plan-view hole in the mesh (5 m coverage map from `JM_MESHDUMP=8540,90`: complete), a
+  dropped texture (raw and drawn sets identical) and a dropped placed object. Next: the vertical face between the two levels
+  (raw 3-D tris, not the 2-D dump) and the scenery sections.
+* **(s3) the small hole near Masta** -- not found in the video at 1 fps (t 186-207, right side); needs the PO's video time.
+* **The controller leaned on the creep.** Gates s80: `netcollide_smoke` red -- the scripted client (autodrive from rest)
+  never moved (dmin 98 m). The autodriver's throttle shrinks with steering (`1.4 - 2.2|steer|`) and it starts at full
+  lock: the old standstill creep swung the parked car onto the line until the throttle came in. Below 3 m/s the cut now
+  leaves 35 % (`demo/native/ai.jl`). WG from rest: 0 -> 86 km/h on the line. (An env A/B first "cleared" the slip change:
+  `JM_SLIP_BODYFRAME` was a package const frozen in the JRPhysics image -- now read when the model is built.)
+  Gates s81: 62/62.

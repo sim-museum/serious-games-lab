@@ -30,6 +30,7 @@ smoothpos(x, ε) = 0.5*(x + sqrt(x^2 + ε^2))
 # EFRIC/coast were fitted against at 0.9. η keeps the overrun (coast) side; η_d the drive side, blended through zero
 # torque over ±5 N·m. JM_ETA_DRIVE sets η_d (0.9 = one efficiency, as before).
 const ETA_DRIVE = parse(Float64, get(ENV, "JM_ETA_DRIVE", "0.9"))
+slip_bodyframe() = get(ENV, "JM_SLIP_BODYFRAME", "0") != "0"   # TD261016-1 (r1): 1 = the old body-frame slip angle (read when the model is built, not at precompile)
 ηdir(T, ηc, ηd) = ηc + (ηd - ηc)*(0.5 + 0.5*tanh(T/5.0))
 
 function DrivenVehicle3D(; name,
@@ -229,7 +230,19 @@ function DrivenVehicle3D(; name,
         # ---- in-plane tyre kinematics (as in vehicle_rt) ----
         vx = u - r*yi;  vy = v + r*xi
         Vref = sqrt(vx^2 + 1.0)
-        α = st - atan(vy, Vref);  κ = (ωax*Rw - vx)/Vref
+        # TD261016-1 (r1) (PO 2026-10-16, Ring: "with no inputs from me, car at start slowly pivots to right ... holding the
+        # brake on all the way does nothing to stop it"): `st - atan(vy, Vref)` is the steer angle itself at standstill, so a
+        # stick resting 1 deg off centre gave the front tyres a full slip angle with the car stopped -- they pushed sideways
+        # and the car pivoted at 0.4 deg/s (PO's .ibt) whatever the brakes did. The slip is the angle of the contact patch's
+        # velocity in the WHEEL's frame: 0 when the car does not move, the same as before at speed (small angles).
+        # JM_SLIP_BODYFRAME=1 = before.
+        if slip_bodyframe()
+            α = st - atan(vy, Vref)
+        else
+            vxw = vx*cos(st) + vy*sin(st);  vyw = vy*cos(st) - vx*sin(st)
+            α = -atan(vyw, sqrt(vxw^2 + 1.0))
+        end
+        κ = (ωax*Rw - vx)/Vref
         if rlx === nothing
             append!(eqs, [ty.Fz ~ Fz, ty.α ~ α, ty.κ ~ κ])
         else                                                  # CARPHYS-1 S11: the tyre sees the relaxed slip

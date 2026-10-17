@@ -4647,8 +4647,13 @@ const CARPIN = get(ENV,"JM_COCKPIT_DRESS","1") != "0" ?
 # COCKPIT-2 S3: the lever alone, from the same extraction as the cockpit body (so it sits where it sat). Its pivot is the
 # foot of the shaft: the centre of the vertices within 1 cm of its lowest point.
 const SHIFTP = (SHIFTER_ON && get(ENV,"JM_COCKPIT_DRESS","1") != "0") ?
+    # TD261016-1 (c1) (PO 2026-10-16: "the wooden shifter knob" still transparent): the body's double-sided-pair dedup
+    # removed 8 of the lever's 54 triangles (46 kept; measured on lotd.3DO with only=lotshift) -- real faces of the knob's
+    # top, which left a V-shaped hole the oil gauge showed through. The lever is small and drawn on its own, so it keeps
+    # every face: JM_SHIFT_DEDUP=1 = the body's dedup, as before.
     Render.extract_gpl_car(joinpath(LOTDIR,"lotd.3DO"); only=SHIFT_TEX, cockpit_clean=true,
-                           maxlat=parse(Float32,get(ENV,"JM_COCKPIT_MAXLAT","0.30")), dedup=_CAR_DEDUP) : Render.TrackPart[]
+                           maxlat=parse(Float32,get(ENV,"JM_COCKPIT_MAXLAT","0.30")),
+                           dedup=get(ENV, "JM_SHIFT_DEDUP", "0") != "0" ? _CAR_DEDUP : false) : Render.TrackPart[]
 const SHIFT_PIVOT = let ys = Float32[], ps = Vector{Float32}[]
     for p in SHIFTP, i in 0:11:length(p.verts)-11
         push!(ps, Float32[p.verts[i+1], p.verts[i+2], p.verts[i+3]])
