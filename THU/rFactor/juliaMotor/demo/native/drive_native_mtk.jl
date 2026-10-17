@@ -1096,6 +1096,9 @@ const AUTODRIVE_V = parse(Float64, get(ENV, "JM_AUTODRIVE_V", "45"))   # target 
 # to follow the racing line, which is the one path that never reproduces an off-road defect -- so a
 # deliberate excursion needs its own knob. Positive = one side, negative = the other.
 const AUTODRIVE_LAT = parse(Float64, get(ENV, "JM_AUTODRIVE_LAT", "0"))
+const AUTODRIVE_PROF_PACE = parse(Float64, get(ENV, "JM_AUTODRIVE_PROFILE", "0"))   # AUTODRIVE-RING-1: 0 = off
+const AUTODRIVE_PROF = Ref{Any}(nothing)
+const GROUND_LAT_SMOOTH = get(ENV, "JM_GROUND_LAT_SMOOTH", "0") != "0"   # TD261016-1: 1 = lateral from the smoothed ribbon
 const AUTODRIVE_DIAG = parse(Int, get(ENV, "JM_AUTODRIVE_DIAG", "0"))
 # PERF-4: autodrive always used the AUTO gearbox, so no headless run ever exercised the PO's way of driving -- MANUAL
 # gearbox, clutch pedal, paddles. JM_AUTODRIVE_MANUAL=1 shifts by rpm through the manual path: clutch in for the shift
@@ -12048,11 +12051,17 @@ function main()
         # traces), blended into the mesh over the last TRK_BLEND metre of the road so the edge is a ramp.
         if TRK_CAL.on && !SKIDPAD
             hr = JuliaMotor.hat(TRKSURF_G, x, y)                          # TD261013-1 (b3): the smoothed ribbon
-            if hr.found
-                al = abs(hr.lateral); _ld = ground_ribbon_ld(hr.lapdist)   # TD261016-1: node-wise, not a global rescale
+            # AUTODRIVE-RING-1 / TD261016-1 (2026-10-17): the smoothed ribbon gives the LAPDIST (smooth through junction
+            # zigzags -- b3's purpose), but not the LATERAL: through a hairpin it cuts 1-2 m inside the road, so the
+            # spline's camber was read at the wrong place across the road -- the Ring's South hairpin (s 712-866) put
+            # the car 0.3-0.65 m over the drawn road (`JM_GROUND_RIBBON_SIGMA=0`: -0.17..0). Lateral from the original
+            # ribbon, whose node zigzag moves it by centimetres. JM_GROUND_LAT_SMOOTH=1 = the smoothed lateral, as before.
+            hl = GROUND_LAT_SMOOTH ? hr : JuliaMotor.hat(TRKSURF, x, y)
+            if hr.found && hl.found
+                al = abs(hl.lateral); _ld = ground_ribbon_ld(hr.lapdist)   # TD261016-1: node-wise, not a global rescale
                 if al < TRK_ROAD_LAT + TRK_BLEND
-                    ht = trk_road(_ld, hr.lateral)
-                    w = smoothblend((TRK_ROAD_LAT + TRK_BLEND - al) / TRK_BLEND) * trk_conf(_ld, hr.lateral)   # SINK-1b: mesh where the spline is unreliable
+                    ht = trk_road(_ld, hl.lateral)
+                    w = smoothblend((TRK_ROAD_LAT + TRK_BLEND - al) / TRK_BLEND) * trk_conf(_ld, hl.lateral)   # SINK-1b: mesh where the spline is unreliable
                     # SEAM-1: the mesh half of the blend must be the ROAD, not a banner/bridge deck over
                     # it. `g` above is the topmost surface (and stays the step guard's input); for the
                     # blend, take the surface at or below the spline + 3 m where they differ.
@@ -14332,7 +14341,18 @@ function main()
                 # DriveRT3D.yawrate3d (aliased AIyaw), which is what the AI field itself uses.
                 # `cs.r` would have thrown FieldError at runtime; parse_smoke cannot see that.
                 yawrate = try; y = AIyaw(cs); isfinite(y) ? y : 0.0; catch; 0.0; end
-                thr, brk, st = RaceAI.controller(CLINE, s0, lat0, AUTODRIVE_LAT, AUTODRIVE_V,
+                # AUTODRIVE-RING-1 (2026-10-16): one fixed speed wrecks the autodriver in the Ring's first bends (s 619 at
+                # 45 m/s; at 28 m/s it stalls by s 816), so whole-lap checks (JM_DRIVECHECK) could not cover the Ring.
+                # JM_AUTODRIVE_PROFILE=<pace> caps the target at that fraction of the AI's free-running speed profile on
+                # this line (RaceAI.free_speed_profile, computed once), read a car-length ahead. Off by default.
+                _vt = AUTODRIVE_V
+                if AUTODRIVE_PROF_PACE > 0
+                    AUTODRIVE_PROF[] === nothing && (AUTODRIVE_PROF[] = RaceAI.free_speed_profile(CLINE; amax = AI_AMAX))
+                    (ps, pv) = AUTODRIVE_PROF[]
+                    _k = clamp(floor(Int, mod(s0 + 2.0*cs.v, CLINE.total) / (ps[2] - ps[1])) + 1, 1, length(pv))
+                    _vt = min(_vt, AUTODRIVE_PROF_PACE * pv[_k])
+                end
+                thr, brk, st = RaceAI.controller(CLINE, s0, lat0, AUTODRIVE_LAT, _vt,
                                                  cs.x, cs.z, cs.θ, cs.v, yawrate; power = 1.0)
                 # E106-S15 (PO: "ensure nurburgring and spa can be driven without obstacles
                 # (levitation, bouncing) etc on the part of the human driver"). While autodrive is

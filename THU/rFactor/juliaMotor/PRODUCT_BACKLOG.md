@@ -27297,3 +27297,22 @@ surface and levitating" -- video ~/Videos/261016_spa_ring.mp4.
   after leaving its line at s 772. -> AUTODRIVE-RING-1.
 * TD261016-1 cycle 1 closes at 6 sprints. Fixed: floating/sinking, creep, knob, Stavelot ground, wrist gaps. Open: glove
   orientation (next cycle), the house and the Masta hole (PO's video times).
+
+### AUTODRIVE-RING-1 S1 (2026-10-17): a profile-capped autodriver; it found the hairpin float
+* **Retro:** new item (found 2026-10-16). The autodriver holds ONE speed (`JM_AUTODRIVE_V`, 45 m/s): it wrecks in the
+  Ring's first bends (s 619); at 28 m/s it stalls by s 816. Option chosen: cap the target with the AI's own free-running
+  speed profile on the same line, not a new driver.
+* `JM_AUTODRIVE_PROFILE=<pace>` (off by default, so no gate's autodrive changes): target = min(JM_AUTODRIVE_V, pace x
+  RaceAI.free_speed_profile(CLINE) read 2 s ahead), the profile computed once. At 0.8 the Ring run passed s 619 and s 816.
+* **It found a second float -- the hairpin.** Through the South hairpin (s 712-866, ~55 km/h) the car sat 0.3-0.65 m over
+  the drawn road (`JM_VDIAG`), and the physics ground with it; the PO's replay had +0.2..0.5 m in the same bins. With the
+  smoothed ground ribbon off (`JM_GROUND_RIBBON_SIGMA=0`): -0.17..0. Cause: TD261013-1 (b3) took both lapdist AND lateral
+  from the smoothed ribbon, which through a hairpin cuts 1-2 m inside the road -- the spline's camber was read at the wrong
+  place across the road. S1's lapdist remap could not help. Now the lapdist comes from the smoothed ribbon (b3's purpose:
+  the junction zigzag) and the lateral from the original (its zigzag moves it by cm; `JM_GROUND_LAT_SMOOTH=1` = before).
+  Hairpin after: -0.18..0.0 m; s 2120-2406: -0.1..+0.02 m (S1's fix intact).
+* Ring whole lap, `JM_AUTODRIVE_PROFILE=0.65 JM_DRIVECHECK=1` (no AI): reached s 16,500 of 22,773 with NO excursion over
+  0.75 m before it (at 0.8 pace it ran wide into the wall at s 1201). The 8.35 m/s "upward velocity" at s 3939 is the
+  Flugplatz climb (13 % at speed), not a bounce. At s 16,499 (after Brunnchen) the autodriver crashed and stuck 2.5 m up on
+  what it hit; from a start at s 16,380 the same stretch is clean (-0.15..+0.05 m). Gates s84: 62/62.
+* Open: the autodriver still crashes before a full Ring lap; the lap is covered to 72 %.
