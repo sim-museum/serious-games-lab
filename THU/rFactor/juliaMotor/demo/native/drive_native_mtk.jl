@@ -11005,6 +11005,7 @@ const ARM_LOCK_DEG = Tuple(parse.(Float64, split(get(ENV, "JM_ARM_LOCK_DEG", "50
 const ARM_LOCK_S = let v = get(ENV, "JM_ARM_LOCK_S", "0.40,0.02,0.15")   # TD261013-1 (a2): the far end at full lock
     isempty(v) ? nothing : Tuple(parse.(Float64, split(v, ",")))
 end
+const ARM_INTO_STRAIGHT = 0.12               # TD261016-1 (c1): near straight ahead (fades to ARM_INTO at lock)
 const ARM_INTO = 0.06                        # COCKPIT-2 S4: sleeve runs 6 cm into the glove (sweep 0/3/6/9 cm, WG 2026-10-09); JM_ARM_INTO
 const SLEEVE_NREF = Any[nothing, nothing]          # per side: the face normal with the wheel straight (set on first draw)
 function sleeve_mat(W, E, H, S, nf; target = nothing)
@@ -16430,7 +16431,12 @@ function main()
                         # COCKPIT-2 S4 (PO 2026-10-07: "the wrists are see-through"): the sleeve's end stopped AT the glove's
                         # cuff point, and the glove is an open band round the rim -- between them the dash showed through.
                         # Run the sleeve on along its own line ARM_INTO metres into the glove so the two overlap.
-                        _into = haskey(ENV, "JM_ARM_INTO") ? parse(Float64, ENV["JM_ARM_INTO"]) : ARM_INTO
+                        # TD261016-1 (c1) (PO 2026-10-16: "wrists are still transparent in places"): at 6 cm the rim and dash still
+                        # showed between sleeve and glove near straight ahead; 12 cm closes it (sweep 0/6/12/18 cm, Ring cockpit),
+                        # but at full lock 12 cm pushes the sleeve out past the rim -- so 12 cm fades to 6 cm over the arms'
+                        # lock schedule (ARM_LOCK_DEG). JM_ARM_INTO fixes one value for every angle, as before.
+                        _ul = clamp((abs(HSIGN*inp.steer*2.5) - deg2rad(ARM_LOCK_DEG[1])) / deg2rad(ARM_LOCK_DEG[2] - ARM_LOCK_DEG[1]), 0.0, 1.0)
+                        _into = haskey(ENV, "JM_ARM_INTO") ? parse(Float64, ENV["JM_ARM_INTO"]) : ARM_INTO_STRAIGHT + _ul*(ARM_INTO - ARM_INTO_STRAIGHT)
                         _d = (h[1] - S[1], h[2] - S[2], h[3] - S[3]); _l = sqrt(_d[1]^2 + _d[2]^2 + _d[3]^2)
                         h = _l > 1e-6 ? (h[1] + _into*_d[1]/_l, h[2] + _into*_d[2]/_l, h[3] + _into*_d[3]/_l) : h
                         # TD261013-1 (a2) (PO 2026-10-13: "the driver's left arm has a large white triangle on the left when the

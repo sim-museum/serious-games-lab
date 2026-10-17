@@ -27257,3 +27257,18 @@ surface and levitating" -- video ~/Videos/261016_spa_ring.mp4.
   6 % grade poked through the road.
 * Render (`261016/td16/s4_stavelot_before_after_holefill.png`): the band is grass; a small pocket remains at its far end.
   Start line and the s 2480 house unchanged. Gates s82: 62/62.
+
+### TD261016-1 S4 (2026-10-16): (c1) the wrists
+* Against the gold cockpit (Spa 260802 t 40, full res): GPL's sleeve runs into a closed white glove with a dark cuff; ours
+  left a gap between the sleeve's end and the glove where the rim and the dash showed -- the "transparent wrist" -- and our
+  glove reads as an open folded band.
+* Sweep of the sleeve's run into the glove (`JM_ARM_INTO` 0 / 6 / 12 / 18 cm, Ring cockpit, one launch): 12 cm closes both
+  wrists straight ahead; 18 cm starts covering the glove. At full lock 12 cm pushes the left sleeve out past the rim's top,
+  so 12 cm (`ARM_INTO_STRAIGHT`) fades to the old 6 cm over the arms' lock schedule (50-130 deg of wheel). Full lock is
+  unchanged. Renders: `261016/td16/c1_wrists_into_06_vs_12.jpg`.
+* Open: the glove itself is an open band (lohand, 19 triangles a hand -- no faces lost to dedup or culling); GPL's reads as
+  a closed fist. Next cycle: the glove's vertex placement against the gold, not more overlap.
+* Gates s83: 62/62. A Ring one-lap race with `JM_DRIVECHECK=1` (autodrive + 5 AI) ran 0 frames over 0.75 m above the
+  ground (max 0.06 m) -- but the autodriver wrecked at s 619 (a rail box, 141 km/h), so it measured only the first 620 m.
+  The same wreck with `JM_GROUND_RIBBON_REMAP=0` (s 607) and `JM_SLIP_BODYFRAME=1` (s 624): not today's changes; logged
+  as an autodriver item.
