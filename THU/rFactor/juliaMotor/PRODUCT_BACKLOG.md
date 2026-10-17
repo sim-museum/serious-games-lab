@@ -27328,3 +27328,6 @@ surface and levitating" -- video ~/Videos/261016_spa_ring.mp4.
 * New defaults: `HAND_VFLIP` off (GPL's UVs) and `JM_FIST_ROT=y_180` (`JM_FIST_ROT=0` = no turn; `JM_HAND_VFLIP=1` = the
   old flip). With the sleeves (S4's 12 cm run-in): solid white fists on the rim, no see-through wrist; full lock unchanged.
   Against the gold (`c1_gloves_gold_vs_new.jpg`): ours sit nearer 9-and-3 and a little larger than GPL's ~10:30 grip.
+* Grip angle sweep (`JM_HAND_GRIP` 0 / 15 / 30 deg vs the gold, `261016/td16/c1_grip_0_15_30_vs_gold.jpg`): 15-30 moves the
+  fists toward the gold's 10-and-2, but the sleeves then spread broad and white across the lower view. The remaining
+  difference is the camera and the sleeves' width (HANDS-2 S5's open question to the PO), so the grip stays at 0.
