@@ -1069,6 +1069,7 @@ const JOLT_N = Ref(0)
 haskey(ENV, "JM_SOFT_DVMAX") && (JRPhysics.DriveRT3D.SOFT_DVMAX_OVERRIDE[] = parse(Float64, ENV["JM_SOFT_DVMAX"]))   # SPATD-1 A/B (8 = the old law)
 const AI_NOWHEELS = get(ENV, "JM_NO_AI_WHEELS", "0") != "0"   # E106-S25 probe
 const DRIVECHECK  = get(ENV, "JM_DRIVECHECK", "0") != "0"
+const VDIAG = get(ENV, "JM_VDIAG", "0") != "0"; const VDIAG_T = Ref(-1.0)
 const DC_AIR_MAX  = parse(Float64, get(ENV, "JM_DC_AIR",   "0.75"))  # m above ground = "levitating"
 const DC_VZ_MAX   = parse(Float64, get(ENV, "JM_DC_VZ",    "6.0"))   # m/s upward   = "bounced"
 const DC_STUCK_V  = parse(Float64, get(ENV, "JM_DC_STUCKV","2.0"))   # m/s
@@ -2409,6 +2410,44 @@ else
         end
     end
     const TRKSURF_G_K = TRKSURF.lap_length / TRKSURF_G.lap_length
+    # TD261016-1 (PO 2026-10-16, Ring: "car levitates starting between the south and the north hairpin ... sinks 2 m or so
+    # BELOW the road at the flugplatz crest"; Spa: "levitates as much as 1 m leaving start"). The rescale above is GLOBAL,
+    # but the smoothed ribbon is shorter than the original LOCALLY -- through every run of bends -- so its lapdist drifted
+    # up to ~10 m from the lapdist the .trk spline is keyed on, and the physics read the road height 10 m back or ahead:
+    # on the Ring's 11-13 % grades that is +1.2 m (descents) and -1.5 m (climbs), measured from the PO's replay (a 0.4 s
+    # "lag" at 25 m/s) and reproduced from a standing start at s 2120 (car 1.05 m over the drawn road at 3 km/h).
+    # The two ribbons share their nodes, so map the smoothed lapdist back node by node: the drift is
+    # d(i) = ld(i) - K ld_G(i), periodic (0 at the start and after a lap), smoothed with the same Gaussian so the
+    # junction zigzag that b3 removed does not come back. JM_GROUND_RIBBON_REMAP=0 = the global rescale only.
+    const TRKSURF_G_D = let n = length(TRKSURF_G.lapdist), L = TRKSURF.lap_length
+        if TRKSURF_G === TRKSURF || get(ENV, "JM_GROUND_RIBBON_REMAP", "1") == "0"
+            Float64[]
+        else
+            # each smoothed node projected onto the ORIGINAL ribbon (the two need not share node counts: the original
+            # is de-folded after alignment), the drift wrapped into (-L/2, L/2] so the lap seam is not a 7 km jump
+            d = map(1:n) do i
+                p = TRKSURF_G.pos[i]; h = JuliaMotor.hat(TRKSURF, p[1], p[3])
+                h.found ? mod(h.lapdist - TRKSURF_G_K*TRKSURF_G.lapdist[i] + L/2, L) - L/2 : NaN
+            end
+            ok = findall(isfinite, d)
+            for i in 1:n
+                isfinite(d[i]) && continue
+                j = ok[argmin([min(abs(k - i), n - abs(k - i)) for k in ok])]; d[i] = d[j]
+            end
+            σ = parse(Float64, get(ENV, "JM_GROUND_RIBBON_SIGMA", "10.0")); si = max(σ / (L / n), 0.5)
+            W = ceil(Int, 3si); w = [exp(-(q/si)^2/2) for q in -W:W]; w ./= sum(w)
+            ds = [sum(w[q+W+1]*d[mod1(i+q, n)] for q in -W:W) for i in 1:n]
+            println("  [ground ribbon] smoothed-ribbon lapdist drift: max |d| ", round(maximum(abs, ds), digits = 2), " m, ",
+                    n - length(ok), " node(s) off the ribbon (now mapped back; JM_GROUND_RIBBON_REMAP=0 = before)")
+            ds
+        end
+    end
+    function ground_ribbon_ld(ldg)
+        isempty(TRKSURF_G_D) && return ldg * TRKSURF_G_K
+        L = TRKSURF_G.lapdist; n = length(L); i = clamp(searchsortedlast(L, ldg), 1, n)
+        e = i == n ? TRKSURF_G.lap_length : L[i+1]; f = clamp((ldg - L[i]) / max(e - L[i], 1e-9), 0.0, 1.0)
+        ldg * TRKSURF_G_K + TRKSURF_G_D[i]*(1 - f) + TRKSURF_G_D[mod1(i+1, n)]*f
+    end
     # SEAM-1 (PO 2026-09-26): the CLOSED lap length, not maximum(lapdist). `lapdist[end]` is the
     # distance from node 1 to the LAST node, which leaves the closing segment (last node -> node 1) out
     # of the lap -- one node, ~4 m at Watkins Glen. hat() correctly reports lapdist out to
@@ -11215,6 +11254,8 @@ function read_input()
     key(GLFW.KEY_W) && (thr=1.0); key(GLFW.KEY_S) && (brk=1.0)
     key(GLFW.KEY_A) && (str=1.0); key(GLFW.KEY_D) && (str=-1.0)
     SMOKE && haskey(ENV, "JM_TEST_STEER") && (str = parse(Float64, ENV["JM_TEST_STEER"]))   # TD261013-1 (a2) test hook: hold the steering
+    SMOKE && haskey(ENV, "JM_TEST_BRAKE") && (brk = parse(Float64, ENV["JM_TEST_BRAKE"]))   # TD261016-1 (r1): hold the brake
+    SMOKE && haskey(ENV, "JM_TEST_CLUTCH") && (clu = parse(Float64, ENV["JM_TEST_CLUTCH"]))
     key(GLFW.KEY_C) && (clu=1.0)
     ku=key(GLFW.KEY_E); kd=key(GLFW.KEY_Q)
     upE = (ku && !CTL.prevUp) || (up && !CTL.prevUp); dnE = (kd && !CTL.prevDn) || (dn && !CTL.prevDn)
@@ -11983,7 +12024,7 @@ function main()
         if TRK_CAL.on && !SKIDPAD
             hr = JuliaMotor.hat(TRKSURF_G, x, y)                          # TD261013-1 (b3): the smoothed ribbon
             if hr.found
-                al = abs(hr.lateral); _ld = hr.lapdist * TRKSURF_G_K
+                al = abs(hr.lateral); _ld = ground_ribbon_ld(hr.lapdist)   # TD261016-1: node-wise, not a global rescale
                 if al < TRK_ROAD_LAT + TRK_BLEND
                     ht = trk_road(_ld, hr.lateral)
                     w = smoothblend((TRK_ROAD_LAT + TRK_BLEND - al) / TRK_BLEND) * trk_conf(_ld, hr.lateral)   # SINK-1b: mesh where the spline is unreliable
@@ -13839,6 +13880,88 @@ function main()
     rep_pn = Ref(false); rep_pv = Ref(false)                          # E25: C (switch car) / V (switch angle) edge-detect
     rep_dur = REPLAY ? max(repd.nframes - 1, 0)/repd.fps : 0.0
     rep_st  = REPLAY ? 1 + 4*repd.ncar : 0
+    # TD261016-1 (2026-10-16): JM_REPLAY_ZDIAG=1 -- the recorded car height (cs.y) against the DRAWN road (road-only HAT) and
+    # the drawn ground (TERRAIN), per 50 m of lap, over every frame of the replay; prints and exits. Finds "levitates" /
+    # "sinks below the road" straight from the PO's own replay.
+    if REPLAY && haskey(ENV, "JM_REPLAY_ZDIAG")
+        let d = repd.data, nf = repd.nframes, bins = Dict{Int,Vector{Tuple{Float64,Float64}}}(), allr = Float64[]
+            for f in 0:nf-1
+                b = f*rep_st; x = Float64(d[b+2]); y = Float64(d[b+3]); z = Float64(d[b+4])
+                hr = JuliaMotor.hat(TRKSURF, x, z); hr.found || continue
+                r = JuliaMotor.hat3d(ROADHAT, x, z; ref = y + 3.0); t = JuliaMotor.hat3d(TERRAIN, x, z; ref = y + 3.0)
+                dr = r[3] ? y - r[1] : NaN; dt_ = t[3] ? y - t[1] : NaN
+                isnan(dr) || push!(allr, dr)
+                push!(get!(bins, floor(Int, hr.lapdist/50), Tuple{Float64,Float64}[]), (dr, dt_))
+            end
+            # time-lag test: y(t) against the road under the car k frames EARLIER. If the height is a lagged copy of the
+            # road, one k makes the offset vanish.
+            let lagerr = zeros(16), lagn = zeros(Int, 16)
+                for f in 16:nf-1
+                    b = f*rep_st; y = Float64(d[b+3]); hr = JuliaMotor.hat(TRKSURF, Float64(d[b+2]), Float64(d[b+4])); hr.found || continue
+                    (2000 <= hr.lapdist <= 2400 || 3400 <= hr.lapdist <= 3500 || 3850 <= hr.lapdist <= 3950) || continue
+                    for k in 0:15
+                        bk = (f-k)*rep_st; r = JuliaMotor.hat3d(ROADHAT, Float64(d[bk+2]), Float64(d[bk+4]); ref = y + 3.0)
+                        r[3] && (lagerr[k+1] += abs(y - r[1]); lagn[k+1] += 1)
+                    end
+                end
+                println("  [zdiag] mean |y - road under the car k frames earlier| over the bad sections, k = 0..15 (", round(repd.fps, digits = 1), " fps): ",
+                    join([string(k, ":", round(lagerr[k+1]/max(lagn[k+1], 1), digits = 2)) for k in 0:15], "  "))
+            end
+            sort!(allr); med = isempty(allr) ? NaN : allr[cld(length(allr), 2)]
+            println("  [zdiag] ", nf, " frames; car height - drawn road: median ", round(med, digits = 3), " m (the car's reference height on a flat road)")
+            println("  [zdiag] lap distance covered: ", isempty(bins) ? "none" : string(50minimum(keys(bins)), " .. ", 50maximum(keys(bins)) + 50, " m (", length(bins), " bins)"))
+            println("  [zdiag] 50 m bins where the car sits > 0.35 m off its usual height above the road (s, n, road min/mean/max, ground mean):")
+            for k in sort(collect(keys(bins)))
+                v = bins[k]; rs = filter(!isnan, [a for (a, _) in v]); gs = filter(!isnan, [c for (_, c) in v]); isempty(rs) && continue
+                mn, mx, me = minimum(rs) - med, maximum(rs) - med, sum(rs)/length(rs) - med
+                (mx > 0.35 || mn < -0.35) && println("     s ", lpad(50k, 6), "  n ", lpad(length(v), 4), "  road ", round(mn, digits = 2), " / ",
+                    round(me, digits = 2), " / ", round(mx, digits = 2), "  ground ", isempty(gs) ? "-" : round(sum(gs)/length(gs) - med, digits = 2))
+            end
+        end
+        # Per WHEEL: the drawn contact point (carModel with the drawn terrain pitch/roll, wheel bottom = body-frame y 0)
+        # against the road (else the ground) under THAT wheel. "levitates"/"submerged" is about the wheels, not the
+        # car's centre -- a wrong drawn pitch lifts two wheels while the centre stays on the road.
+        let d = repd.data, nf = repd.nframes, wb = Dict{Int,Vector{Float64}}(), tb = Dict{Int,Vector{Float64}}()
+            for f in 0:nf-1
+                b = f*rep_st; cs = (x = Float64(d[b+2]), y = Float64(d[b+3]), z = Float64(d[b+4]), θ = Float64(d[b+5]))
+                hr = JuliaMotor.hat(TRKSURF, cs.x, cs.z); hr.found || continue
+                pt = terrain_pitch(cs); rt = terrain_roll(cs)
+                M = Render.translate(cs.x, cs.y, -cs.z) * Render.roty(Float32(cs.θ)) * Render.rotz(Float32(pt)) * Render.rotx(Float32(rt)) * CARHAND
+                gaps = Float64[]
+                for (wx, wz, _, _, _) in WHEELS
+                    q = M * Float32[wx, 0f0, wz, 1f0]; X = Float64(q[1]); Y = Float64(q[2]); Z = -Float64(q[3])
+                    h = JuliaMotor.hat3d(ROADHAT, X, Z; ref = Y + 1.5); h[3] || (h = JuliaMotor.hat3d(TERRAIN, X, Z; ref = Y + 1.5))
+                    h[3] && push!(gaps, Y - h[1])
+                end
+                isempty(gaps) && continue
+                if haskey(ENV, "JM_REPLAY_ZDIAG_AT") && 0 <= hr.lapdist - parse(Float64, ENV["JM_REPLAY_ZDIAG_AT"]) < 3
+                    c0 = JuliaMotor.hat3d(ROADHAT, cs.x, cs.z; ref = cs.y + 3.0); ci = JuliaMotor.hat3d(ROADHAT, cs.x, cs.z; ref = Inf)
+                    t0 = JuliaMotor.hat3d(TERRAIN, cs.x, cs.z; ref = cs.y + 3.0); ti = JuliaMotor.hat3d(TERRAIN, cs.x, cs.z; ref = Inf)
+                    println("  [zdiag@] s ", round(hr.lapdist, digits = 1), " lat ", round(hr.lateral, digits = 2), " y ", round(cs.y, digits = 2),
+                        "  road(ref y+3) ", round(c0[1], digits = 2), " road(Inf) ", round(ci[1], digits = 2),
+                        "  terr(ref y+3) ", round(t0[1], digits = 2), " terr(Inf) ", round(ti[1], digits = 2),
+                        "  pitch ", round(rad2deg(pt), digits = 1), " roll ", round(rad2deg(rt), digits = 1), "  wheel gaps ", round.(gaps, digits = 2))
+                    for (wx, wz, _, _, nm) in WHEELS
+                        q = M * Float32[wx, 0f0, wz, 1f0]; X = Float64(q[1]); Y = Float64(q[2]); Z = -Float64(q[3])
+                        a = JuliaMotor.hat3d(ROADHAT, X, Z; ref = Y + 1.5); bb = JuliaMotor.hat3d(TERRAIN, X, Z; ref = Y + 1.5)
+                        h2 = JuliaMotor.hat(TRKSURF, X, Z)
+                        println("        ", nm, " body (", round(wx, digits = 2), ",", round(wz, digits = 2), ") at lat ", round(h2.lateral, digits = 2),
+                            " Y ", round(Y, digits = 2), "  road ", a[3] ? round(a[1], digits = 2) : "-", "  terr ", bb[3] ? round(bb[1], digits = 2) : "-")
+                    end
+                end
+                k = floor(Int, hr.lapdist/50)
+                push!(get!(wb, k, Float64[]), maximum(gaps)); push!(get!(wb, -k-1, Float64[]), minimum(gaps))
+                push!(get!(tb, k, Float64[]), rad2deg(pt))
+            end
+            println("  [zdiag] 50 m bins where a DRAWN WHEEL's contact is > 0.25 m above or below the road under it (s: highest wheel max, lowest wheel min, drawn pitch range deg):")
+            for k in sort(filter(>=(0), collect(keys(wb))))
+                hi = maximum(wb[k]); lo = minimum(wb[-k-1]); pr = tb[k]
+                (hi > 0.25 || lo < -0.25) && println("     s ", lpad(50k, 6), "  up ", round(hi, digits = 2), "  down ", round(lo, digits = 2),
+                    "  pitch ", round(minimum(pr), digits = 1), " .. ", round(maximum(pr), digits = 1))
+            end
+        end
+        exit(0)
+    end
     # interpolated poses at replay time rt → (player (x,y,z,θ), Vector of AI (x,y,z,θ))
     function replay_poses(rt)
         d = repd.data; nf = repd.nframes; f = clamp(rt*repd.fps, 0.0, nf-1.0)
@@ -14766,6 +14889,14 @@ function main()
                         clutch=inp.clutch, up=inp.shift_up, dn=inp.shift_down, manual=!inp.autoshift,
                         groundz=groundz_phys)
             DS_SIM[1] += time() - _tps
+            if VDIAG && CAR3D && cs.t - VDIAG_T[] >= 0.5     # TD261016-1: the car's height vs the road it is on
+                VDIAG_T[] = cs.t
+                println("  [vdiag] t ", round(cs.t, digits = 1), " s ", round(cs.lapdist, digits = 0), " v ", round(cs.v*3.6, digits = 0),
+                    "  y-road ", round(cs.y - groundz_phys(cs.x, cs.z), digits = 2), "  zref-road ", round(cs.zref - groundz_phys(cs.x, cs.z), digits = 2),
+                    "  heave ", round(cs.heave, digits = 3), "  vref ", round(get(DriveRT3D._VREF, cs, NaN), digits = 2),
+                    "  yaw ", round(rad2deg(cs.θ), digits = 2), " vmm ", round(1000cs.v, digits = 1), " brk ", round(inp.brake, digits = 2), " st ", round(inp.steer, digits = 3),
+                    "  y-mesh ", (let r = JuliaMotor.hat3d(ROADHAT, cs.x, cs.z; ref = cs.y + 3.0); r[3] ? round(cs.y - r[1], digits = 2) : NaN end)); flush(stdout)
+            end
             _tgc = time()
             if GPLW_PHYS && CAR3D && !rst && GPLW_NEAR[] && !(WRECK_FROZEN[] && WRECK_NOCLAMP)   # GPLWALL-1: never through a GPL wall nor any drawn obstacle (PERF-5: not a frozen wreck). Two alternating rounds:
                 for _ in 1:2                # each clamp can nudge the car a few cm back into what the other just cleared

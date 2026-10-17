@@ -27184,3 +27184,25 @@ at start slowly pivots to right. I've seen this kind of creep before; holding th
 it. 2. car levitates starting between the south and the north hairpin 3. car sinks below the road approaching flugplatz -
 and in cockpit view actually sinking 2 m or so BELOW the road surface at the flugplatz crest, then breaking through the road
 surface and levitating" -- video ~/Videos/261016_spa_ring.mp4.
+
+### TD261016-1 S1 (2026-10-16): (r2)(r3)(s1) the car floats / sinks -- the physics read the road 10 m away
+* **Measured from the PO's replays** (`JM_REPLAY_ZDIAG=1`: the recorded car height against the drawn road per 50 m, then
+  per drawn wheel): Ring s 2000-2400 +1.0..+1.3 m (all four wheels), s 3400-3500 +1.4 m, s 3850-3950 -1.4..-1.5 m (the
+  Flugplatz climb: the PO's "2 m below the road"), s 4650-4800 +1.0 m; Spa s 300-400 +0.4..+0.5 m (leaving the start),
+  s 13600-13650 -0.2..-0.5 m (before the line). Against the road under the car k frames EARLIER the error is smallest at
+  k = 6 (0.4 s) -- the height of the road ~10 m back.
+* **Not the suspension, not the vertical frame** (`JM_VDIAG=1`: y, zref, heave, frame velocity vs the physics ground each
+  0.5 s): the car sits on the physics ground to 1-2 cm at 157 km/h. The physics ground itself is 1.05 m above the drawn
+  road at Ring s 2120 -- **from a standing start at 3 km/h**, so it is a place, not a lag.
+* **Cause: TD261013-1 (b3), mine (2026-10-13).** To stop the junction jolts, the physics projects onto a Gaussian-smoothed
+  copy of the ribbon and rescales its lapdist by ONE factor to the lap. But smoothing shortens the ribbon locally through
+  every run of bends, so its lapdist drifted up to **11.1 m** (Ring; Spa 4.1 m) from the lapdist the .trk spline is
+  keyed on: the car drove on the road height 10 m behind / ahead. On the Ring's 11-13 % grades that is 1.2-1.5 m.
+* **Fix:** each smoothed node is projected onto the original ribbon; the drift (periodic, wrapped at the seam) is smoothed
+  with the same Gaussian -- so b3's junction zigzag does not come back -- and added back per node
+  (`ground_ribbon_ld`; `JM_GROUND_RIBBON_REMAP=0` = before). Ring s 2120-2420 at up to 157 km/h: y - drawn road
+  **1.05-1.22 m -> -0.06..+0.03 m**; Flugplatz climb s 3800-4015: within +-0.07 m; Spa s 250-430 and 13550-13650: within
+  cm except single samples at the Eau Rouge compression (+0.31) and the La Source kerb (-0.48), to re-measure on the PO's
+  next drive. Gates s79: 62/62.
+* Tools kept: `JM_REPLAY_ZDIAG` (+ `JM_REPLAY_ZDIAG_AT=<s>` per-wheel detail), `JM_VDIAG`, `JM_TEST_BRAKE` /
+  `JM_TEST_CLUTCH` (smoke input holds, as `JM_TEST_STEER`).
