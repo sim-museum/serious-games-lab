@@ -27282,3 +27282,18 @@ surface and levitating" -- video ~/Videos/261016_spa_ring.mp4.
   silver sheets with none of the fist detail, V flipped or not (`JM_HAND_VFLIP` 0/1 renders): the cards sample the wrong
   part of the art. Next cycle: the cards' UVs against the art (a UV dump per triangle onto the decoded texture), not the
   flip.
+
+### TD261016-1 S6 (2026-10-16): the glove UVs; whole-lap height checks
+* **Glove UVs** (`261016/td16/c1_glove_uv_raw_vs_vflip.png`): GPL's raw lohand UVs outline each painted fist exactly, and
+  the default extraction (vflip off) reproduces them. `JM_HAND_VFLIP=1` -- our default since HANDS-1 S2 -- throws the cards
+  half off the art onto the transparent background and cuff edges. It was adopted because unflipped gloves "showed the dark
+  palm with holes": i.e. the eye faces the PALM cards. So the defect is the fists' ORIENTATION on the rim (which side faces
+  the eye; possibly the left/right fists swapped or turned 180 deg in `gripmat`), not the texture. Close-ups
+  (`c1_glove_vflip0_vs_1.png`): neither reads as a fist. Next cycle: vflip off + turn/swap the fists until the knuckle cards
+  face the eye, judged against the gold cockpit at full res.
+* **Whole-lap height checks** (`JM_DRIVECHECK=1`): Spa, 5-AI race, autodrive reached s 12,540 of 14,112 -- max 0.24 m over
+  the drawn ground (s 1990), 0 frames over 0.75 m (the PO's replay had +0.4..0.5 m at s 300-400). The Ring cannot be
+  checked yet: the autodriver holds one speed (`JM_AUTODRIVE_V`, 45 m/s) and wrecks at s 619; at 28 m/s it stalls at s 816
+  after leaving its line at s 772. -> AUTODRIVE-RING-1.
+* TD261016-1 cycle 1 closes at 6 sprints. Fixed: floating/sinking, creep, knob, Stavelot ground, wrist gaps. Open: glove
+  orientation (next cycle), the house and the Masta hole (PO's video times).
