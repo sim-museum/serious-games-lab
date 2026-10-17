@@ -15,7 +15,8 @@ import os
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QGridLayout, QGroupBox, QHBoxLayout,
-                             QInputDialog, QLabel, QMessageBox, QPushButton, QTabWidget, QVBoxLayout, QWidget)
+                             QInputDialog, QLabel, QMessageBox, QPushButton, QScrollArea, QTabWidget, QVBoxLayout,
+                             QWidget)
 
 import garage as gm
 
@@ -191,9 +192,12 @@ class GarageTab(QWidget):
         pages = QTabWidget()
         self.pages = pages
         top.addWidget(pages, 1)
-        pages.addTab(self._tires_page(), "TIRES")
-        pages.addTab(self._chassis_page(), "CHASSIS")
-        pages.addTab(self._drivetrain_page(), "DRIVETRAIN")
+        for page, name in ((self._tires_page(), "TIRES"), (self._chassis_page(), "CHASSIS"),
+                           (self._drivetrain_page(), "DRIVETRAIN")):
+            sc = QScrollArea()                       # the chassis page is ~1,200 px tall; the launcher opens at 980x700
+            sc.setWidgetResizable(True)
+            sc.setWidget(page)
+            pages.addTab(sc, name)
         note = QLabel("Derived numbers (grey) are iRacing's for the base session plus the garage model's change for the "
                       "knobs you turn. † = range provisional.")
         note.setStyleSheet("color: gray")

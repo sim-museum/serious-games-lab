@@ -839,6 +839,7 @@ include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","garage.jl"))
 # (corner weights, ride heights, shock deflections, static camber/toe) are the session's own plus the change the
 # garage model (JuliaMotorMTK/src/garage.jl) computes for the knobs turned. No JM_GARAGE = the session, untouched.
 const GARAGE_NOTE = Ref("")
+const GARAGE_PP = Ref{Any}(nothing)        # the garaged setup, for the exported .ibt's CarSetup block (S3)
 function session_params(fn::AbstractString)
     pp = Setup.setup_params(IBT.session_yaml(IBT.ibt_open(fn)))
     g = get(ENV, "JM_GARAGE", "")
@@ -848,7 +849,9 @@ function session_params(fn::AbstractString)
     changed = Garage.knob_diff(K, Ks)
     GARAGE_NOTE[] = isempty(changed) ? "garage: unchanged from the session" :
                     "garage: " * join(changed, ", ") * " changed from the session  <- " * basename(g)
-    Garage.apply_garage(pp, K; Ks)
+    pg = Garage.apply_garage(pp, K; Ks)
+    isempty(changed) || (GARAGE_PP[] = pg)
+    pg
 end
 # IRGOLD-1 S8 (2026-10-12): the DEFAULT car is iRacing's CURRENT official Nürburgring setup, found by CONTENT (as
 # WW103's below): the newest unmodified Ring session whose setup is `*rung_official*` (the PO's 261010 session; car
@@ -13903,7 +13906,9 @@ function main()
             mkpath(odir)
             out = joinpath(odir, "lotus49_$(IBTNAME) $(ts).ibt"); n = 2   # iRacing filename convention
             while isfile(out); out = joinpath(odir, "lotus49_$(IBTNAME) $(ts) ($n).ibt"); n += 1; end
-            write_ibt(out, tmpl, samples)
+            # SETUPMODEL-1 S3: the lap's CarSetup block is the car the garage built, not the template session's
+            write_ibt(out, tmpl, samples; yaml = GARAGE_PP[] === nothing ? nothing :
+                                                 Garage.carsetup_yaml(session_yaml(tmpl), GARAGE_PP[]; maxlen = session_space(tmpl)))
             println("  wrote iRacing telemetry: ", out, "  (", length(samples), " ticks, ", filesize(out)÷1024, " KB)")
         catch e
             println("  .ibt export failed: ", e)

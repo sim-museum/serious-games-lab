@@ -36,7 +36,8 @@ fuel_front = 0.659651
 cam_gain = [0.0258845, 0.0238293] # deg of camber per mm of wheel travel (compression -> negative)
 cam_roll = [-1.30643, -1.12973]
 toe_gain = 0.016                  # front toe-in [mm] per mm of summed front wheel travel (droop -> toe-out)
-rpm_r = 3145.2                    # rev limit x rolling radius [rpm*m]: gear km/h = rpm_r*2pi/60/(ratio*final)*3.6
+rpm_r = 3144.95                   # rev limit x rolling radius [rpm*m]: gear km/h = rpm_r*2pi/60/(ratio*final)*3.6 (every
+                                  # gear speed iRacing showed at finals 3.78/4.11/4.22, all 15 to the digit)
 
 # ---- the knobs, as iRacing's garage shows them ---------------------------------------------------------------------
 # known = true: range and step seen in the PO's capture. known = false: PROVISIONAL (the capture has the value(s) in

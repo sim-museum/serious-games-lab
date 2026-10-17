@@ -254,6 +254,17 @@ const DAMPER_ID = Dict{NTuple{4,Float64},NTuple{2,Float64}}(
     (6.0, 9.0, 9.0, 12.0) => (1.00, 1.15),
 )
 
+# SETUPMODEL-1 S3 (2026-10-17): iRacing's damper CLICKS, identified from the PO's 261017 Part D1 (every damper at 0
+# clicks, then at 12) and that day's base-click runs (tools/damperclicks_261017.jl): per shock, linear in clicks --
+#   front bump 3002 + 184 n, rebound 1499 + 67 n;  rear bump 1326 + 85 n, rebound 303 + 18.5 n  N·s/m
+# (the base runs' +4/+8 F, +4/+7 R fall on these lines within their spread). A click set with no gold run of its own
+# scales the hand-set dampers by its axle's mean damping relative to the base clicks'.
+const DAMPER_CLICK_LAW = ((3002.0, 184.0), (1499.0, 67.0), (1326.0, 85.0), (303.0, 18.5))   # (at 0, per click): Fb Fr Rb Rr
+function damper_scale_from_clicks(clk::NTuple{4,Float64})
+    c(k, n) = DAMPER_CLICK_LAW[k][1] + DAMPER_CLICK_LAW[k][2]*n
+    ((c(1, clk[1]) + c(2, clk[2]))/(c(1, 4.0) + c(2, 8.0)), (c(3, clk[3]) + c(4, clk[4]))/(c(3, 4.0) + c(4, 7.0)))
+end
+
 """    chassis_from_setup(sp; source) -> Chassis
 
 The session's diff, toe, bars, dampers and brake bias as model inputs (sp = Setup.setup_params of the ibt)."""
@@ -280,7 +291,10 @@ function chassis_from_setup(sp; source::AbstractString = "unknown")
     end
     clk = (sp.bump_clicks[:LF], sp.rebound_clicks[:LF], sp.bump_clicks[:LR], sp.rebound_clicks[:LR])
     cscale = get(DAMPER_ID, clk) do
-        push!(notes, "dampers $(clk) not identified: hand-set"); (1.0, 1.0)
+        all(isfinite, clk) || (push!(notes, "dampers $(clk) unreadable: hand-set"); return (1.0, 1.0))
+        sc = damper_scale_from_clicks(clk)
+        push!(notes, "dampers $(Int.(clk)) by iRacing's click law (SETUPMODEL-1 S3): x$(round(sc[1], digits = 2))/$(round(sc[2], digits = 2))")
+        sc
     end
     bias = isfinite(sp.brake_bias_pct) ? bias_torque(sp.brake_bias_pct) : 0.585
     bias_p = isfinite(sp.brake_bias_pct) ? sp.brake_bias_pct/100 : 0.535
@@ -307,7 +321,7 @@ end
 describe_chassis(ch::Chassis = CHASSIS[]) =
     "diff " * (ch.diff === nothing ? "spool" : "LSD preload $(round(Int, ch.diff[1])) N·m ramps $(round(Int, ch.diff[2]))/$(round(Int, ch.diff[3]))° plates $(round(Int, ch.diff[4]))") *
     "   toe-in F $(round(rad2deg(ch.toe[1]), digits = 2))° R $(round(rad2deg(ch.toe[2]), digits = 2))°" *
-    "   +roll k F $(round(Int, ch.karb[1])) R $(round(Int, ch.karb[2])) N/m   dampers x$(ch.cscale[1])/$(ch.cscale[2])" *
+    "   +roll k F $(round(Int, ch.karb[1])) R $(round(Int, ch.karb[2])) N/m   dampers x$(round(ch.cscale[1], digits = 2))/$(round(ch.cscale[2], digits = 2))" *
     "   brake bias $(round(100ch.bias_p, digits = 1)) % (torque split $(round(ch.bias, digits = 3)))" *
     "   travel " * (ch.travel === nothing ? "unlimited" : join((string(round(Int, 1000t[1]), "/", round(Int, 1000t[2])) for t in ch.travel), " ") * " mm") *
     "   camber " * (ch.camber === nothing ? "none (upright)" : join((string(round(rad2deg(c), digits = 2)) for c in ch.camber), "/") * "°") *

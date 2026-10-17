@@ -14,7 +14,7 @@
 
 module IBT
 
-export IBTFile, channel, channels, ibt_open, session_yaml, write_ibt
+export IBTFile, channel, channels, ibt_open, session_yaml, session_space, write_ibt
 
 # irSDK var types → (julia type, byte size)
 const VARTYPE = Dict(
@@ -82,6 +82,8 @@ end
 
 channels(f::IBTFile) = sort!(collect(keys(f.vars)))
 session_yaml(f::IBTFile) = f.yaml
+"""Bytes the file reserves for its session YAML (a replacement written by write_ibt must fit them)."""
+session_space(f::IBTFile) = Int(reinterpret(Int32, f.raw[17:20])[1])
 
 """    channel(f, name; idx=1) -> Vector
 
@@ -120,8 +122,19 @@ identically), and filling the data buffer from `samples` — a vector of
 from a sample are written as zero.  This lets juliaMotor emit telemetry in the
 exact format iRacing produces, for side-by-side lap comparison / model tuning.
 """
-function write_ibt(out::AbstractString, tmpl::IBTFile, samples::AbstractVector)
+function write_ibt(out::AbstractString, tmpl::IBTFile, samples::AbstractVector; yaml::Union{Nothing,AbstractString} = nothing)
     hdr = copy(tmpl.raw[1:tmpl.dataOffset])             # header + var table + YAML, unchanged
+    if yaml !== nothing
+        # SETUPMODEL-1 S3: a replacement session YAML (the garage's CarSetup) in the template's own space -- NUL-padded,
+        # so no offset moves. Too long for the space: keep the template's (and say so).
+        len = Int(reinterpret(Int32, tmpl.raw[17:20])[1]); off = Int(reinterpret(Int32, tmpl.raw[21:24])[1])
+        b = Vector{UInt8}(codeunits(yaml))
+        if length(b) <= len && off + len <= length(hdr)
+            hdr[off+1:off+len] .= 0x00; hdr[off+1:off+length(b)] .= b
+        else
+            @warn "write_ibt: the replacement YAML ($(length(b)) bytes) does not fit the template's $(len); kept the template's"
+        end
+    end
     n = length(samples)
     hdr[48+1:48+4] = reinterpret(UInt8, Int32[n])       # varBuf[0].tickCount = sample count
     open(out, "w") do io

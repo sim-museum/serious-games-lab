@@ -21,10 +21,10 @@
 #   * perch/packer step 1/64 inch (0.396875 mm): every value seen is a whole number of 64ths
 module Garage
 
-using TOML
+using TOML, Printf
 
 export GarageParams, Knobs, Derived, PARAMS, solve_static, knobs_from_setup, base_knobs, KNOB_SPECS,
-       arb_rate, gear_speeds_kmh, describe_derived, apply_garage, read_garage_file, write_garage_file, GARAGE_TOML
+       arb_rate, gear_speeds_kmh, describe_derived, apply_garage, carsetup_yaml, read_garage_file, write_garage_file, GARAGE_TOML
 
 const G = 9.80665
 const CORNERS = (:LF, :RF, :LR, :RR)
@@ -352,6 +352,90 @@ function describe_derived(D::Derived)
     "cw " * join((string(round(Int, w)) for w in D.cw), "/") * " N  rh " * join(f1.(D.rh), "/") *
     " mm  shock " * join(f1.(D.shock), "/") * " mm  camber " * join(f1.(D.camber), "/") *
     "  cross " * f1(D.cross) * "%  toeF " * string(round(Int, D.toe_front))
+end
+
+# ── the exported .ibt: its CarSetup block says the car the garage built (SETUPMODEL-1 S3) ─────────────────────────────
+"""A ratio as iRacing prints it: two decimals at 1 and above ("1.40"), three below ("0.846")."""
+ratio_str(r) = r >= 1 ? @sprintf("%.2f", r) : @sprintf("%.3f", r)
+
+"""    carsetup_yaml(yaml, sp; maxlen) -> String
+
+The session YAML with its CarSetup block rewritten from a setup NamedTuple (apply_garage's), in iRacing's own value
+formats, so an exported lap says which car drove it. Lines the garage does not own are left as they are -- except that a
+result longer than `maxlen` (the .ibt's reserved space) drops the template's tyre-wear lines (LastHotPressure,
+LastTemps*, TreadRemaining: the template session's tyres, not julia's) until it fits."""
+function carsetup_yaml(yaml::AbstractString, sp; maxlen::Int = typemax(Int))
+    corner = Dict("LeftFront" => :LF, "RightFront" => :RF, "LeftRear" => :LR, "RightRear" => :RR)
+    f1(x) = string(round(x, digits = 1)); f0(x) = string(round(Int, x)); sg(x) = (x >= 0 ? "+" : "") * f0(x)
+    f1s(x) = (r = round(x, digits = 1); (r == 0 && signbit(r) ? "-" : r >= 0 ? "+" : "") * string(abs(r) == 0 ? 0.0 : r))
+    function val(sec, sub, key)
+        c = get(corner, sub, nothing)
+        if sec == "Chassis" && c !== nothing
+            key == "CornerWeight"      && return f0(sp.corner_weight_N[c]) * " N"
+            key == "RideHeight"        && return f1(sp.ride_height_mm[c]) * " mm"
+            key == "ShockDeflection"   && return f1(sp.shock_defl_mm[c][1]) * " mm " * f1(sp.shock_defl_mm[c][2]) * " mm"
+            key == "SpringPerchOffset" && return f1(sp.perch_mm[c]) * " mm"
+            key == "SpringRate"        && return f0(sp.spring_rate_Npmm[c]) * " N/mm"
+            key == "Packer"            && return f1(sp.packer_mm[c]) * " mm"
+            key == "BumpStiffness"     && return sg(sp.bump_clicks[c]) * " clicks"
+            key == "ReboundStiffness"  && return sg(sp.rebound_clicks[c]) * " clicks"
+            key == "Camber"            && return f1s(sp.camber_deg[c]) * " deg"
+        elseif sec == "Tires" && c !== nothing && key == "ColdPressure"
+            return f0(sp.cold_pressure_kPa[c]) * " kPa"
+        elseif sec == "Chassis" && sub == "Front"
+            key == "ArbArms"     && return String(last(split(sp.arb_front)))
+            key == "ArbDiameter" && return String(first(split(sp.arb_front)))
+            key == "BrakeBias"   && return @sprintf("%.2f%%", sp.brake_bias_pct)
+            key == "ToeIn"       && return sg(sp.toe_front_mm) * " mm"
+            key == "CrossWeight" && return f1(sp.cross_weight_pct) * "%"
+        elseif sec == "Chassis" && sub == "Rear"
+            key == "FuelLevel"   && return f1(sp.fuel_L) * " L"
+            key == "ArbArms"     && return String(last(split(sp.arb_rear)))
+            key == "ArbDiameter" && return String(first(split(sp.arb_rear)))
+            key == "ToeIn"       && return sg(sp.toe_rear_mm) * " mm"
+        elseif sec == "Drivetrain" && sub == "Transmission"
+            key == "FinalDrive" && return ratio_str(sp.final_drive)
+            gi = findfirst(==(key), ("FirstGear", "SecondGear", "ThirdGear", "FourthGear", "FifthGear"))
+            if gi !== nothing && gi <= length(sp.gear_ratios)
+                K = Knobs(; final_drive = sp.final_drive, gears = collect(Float64, sp.gear_ratios))
+                return ratio_str(sp.gear_ratios[gi]) * ", " * f1(gear_speeds_kmh(K)[gi]) * " Km/h"
+            end
+        elseif sec == "Drivetrain" && sub == "Differential"
+            key == "ClutchPlates"   && return f0(sp.diff_plates)
+            key == "Preload"        && return f0(sp.diff_preload_Nm) * " Nm"
+            key == "DriveRampAngle" && return f0(sp.diff_drive_ramp) * " deg"
+            key == "CoastRampAngle" && return f0(sp.diff_coast_ramp) * " deg"
+        end
+        nothing
+    end
+    lines = split(yaml, '\n'; keepempty = true)
+    out = String[]; inblk = false; path = String[]
+    for l in lines
+        if startswith(l, "CarSetup:")
+            inblk = true; push!(out, l); continue
+        end
+        ind = length(l) - length(lstrip(l, ' '))
+        if inblk && !isempty(strip(l)) && ind == 0
+            inblk = false
+        end
+        if inblk && !isempty(strip(l))
+            k, v = split(strip(l), ':'; limit = 2)
+            depth = ind                       # CarSetup is indented one space per level
+            resize!(path, max(depth - 1, 0)); push!(path, String(k))
+            if !isempty(strip(v)) && length(path) == 3
+                nv = val(path[1], path[2], path[3])
+                nv === nothing || (push!(out, l[1:ind] * k * ": " * nv); continue)
+            end
+        end
+        push!(out, String(l))
+    end
+    y = join(out, '\n')
+    if length(y) > maxlen
+        wear = r"^\s+(LastHotPressure|LastTemps\w*|TreadRemaining):"
+        out = [l for l in out if !occursin(wear, l)]
+        y = join(out, '\n')
+    end
+    y
 end
 
 end # module

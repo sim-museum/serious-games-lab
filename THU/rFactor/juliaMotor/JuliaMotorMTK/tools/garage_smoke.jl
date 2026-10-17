@@ -121,5 +121,24 @@ else
     chk(maxd < 1e-6, @sprintf("garage.py (the launcher) and garage.jl (the sim) solve the same numbers: max diff %.1e over %d garages", maxd, length(cases)))
 end
 
+# 4 ── the exported .ibt's CarSetup block (S3): an untouched session reproduces its own YAML byte for byte; a garaged one
+# reads back as the garage's car. Needs a session .ibt (the gold store or the repo's data/iracing); skipped without one.
+gold = filter(isfile, [expanduser("~/gold standard/julia racer/261002/lotus49_nurburgring nordschleifetourist 2026-10-02 22-26-21.ibt"),
+                       expanduser("~/gold standard/julia racer/261005/lotus49_nurburgring nordschleife 2026-10-06 00-46-10.ibt")])
+if isempty(gold)
+    println("SKIP the CarSetup block (no session .ibt on this machine)")
+else
+    for fn in gold
+        yf = IBT.session_yaml(IBT.ibt_open(fn))
+        chk(Garage.carsetup_yaml(yf, Setup.setup_params(yf)) == yf, "CarSetup rewrite of an untouched session is the session's YAML ($(basename(fn)[9:end-4]))")
+    end
+    y = IBT.session_yaml(IBT.ibt_open(gold[1])); spg = Setup.setup_params(y); Kg = Garage.calibrate_session(spg); K2 = deepcopy(Kg)
+    K2.perch = (K2.perch[1] + 5IN64, K2.perch[2:4]...); K2.fuel = 100.0; K2.final_drive = 4.11; K2.bump = (12, 12, 0, 0)
+    pg = Garage.apply_garage(spg, K2; Ks = Kg); y2 = Garage.carsetup_yaml(y, pg); sp2 = Setup.setup_params(y2)
+    chk(sp2.perch_mm[:LF] == 167.1 && sp2.fuel_L == 100.0 && sp2.final_drive == 4.11 && sp2.bump_clicks[:LF] == 12 &&
+        sp2.corner_weight_N[:LF] == round(pg.corner_weight_N[:LF]) && length(y2) <= length(y) + 8,
+        "a garaged CarSetup reads back as the garage's car (perch $(sp2.perch_mm[:LF]), fuel $(sp2.fuel_L), cw LF $(sp2.corner_weight_N[:LF]))")
+end
+
 println("GARAGE GATE: ", ok ? "PASS" : "FAIL")
 exit(ok ? 0 : 1)
