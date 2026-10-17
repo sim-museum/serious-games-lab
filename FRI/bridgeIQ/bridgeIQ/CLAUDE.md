@@ -1,5 +1,33 @@
 # biq — Claude Code project notes
 
+## STATUS — 2/1 catch-all rules from Q-Plus's recorded calls (2026-10-16 night, committed 10-17)
+* New plan (user, 10-16): map bidding weaknesses in groups instead of fixing the worst boards of each
+  run. New tool `tools/qplus_rules_ab.py`: `scan` = biq's RULES on every recorded Q-Plus call (17,420
+  2/1 calls in ~8 min on 2 cores; "origin" = function that returned a reasonless pass), `changed` =
+  old vs new call on the changed calls only, both rolled out with the new code (no drift, unlike
+  qplus_agreement's IMP totals). Data: tools/runs/agreement/261016_{21,prec}_rules_*.jsonl.
+* Costliest 2/1 catch-alls (rules rollouts vs Q-Plus's call): reasonless pass at the end of
+  `_generic_responder_rebid` -463 / 162, `_opener_rebid` (weak-two opener after 2NT) -255, "Overcaller
+  rebid - no clear extras, pass" -218, `_opener_suit_rebid` end -202, `_advance_partner_overcall` -167,
+  "Sanity: illegal -> pass" -143, "Sanity: raise partner's suit" -138.
+* Fixes in native_bidder (each behind a switch): `_cue_continuation` (BIQ_CUE_CONT): partner's new
+  suit at 4+ after a fit / my weak two = cue (cue an ace below game, else back to trumps), 5NT = GSF,
+  contested version after my overcall when partner cue-bids their suit; `_minors_4nt_advance`
+  (BIQ_MINORS_4NT): (4M)-4NT = minors; opener rebid (BIQ_OPENER_FALLBACK): reverse with 16+ (Q-Plus
+  5/5), 4-4-4-1 shows the 1-level suit, best-lie 1NT to 15, no reverse into a 1-level suit or with a
+  balanced hand; forced fallback (BIQ_FORCED_NT_FIRST): responder's new suit at the 3 level is forcing,
+  NT before raising partner's new suit with 3 (or a minor past 3NT with 4), two-card raise of
+  partner's rebid suit, passed partner's 1-level new suit passable.
+* Result (rules only): 2/1 87 calls changed, agreement 12,931 -> 12,989, +489 IMP (SE 79; 55 better,
+  12 worse); Precision 52 changed, 8,024 -> 8,046, +205 (SE 46). T-* cases, 259 checks. Not yet
+  run with the simulation or live.
+* First full 2/1 qplus_agreement benchmark (code before these fixes, 08adaf9c):
+  tools/runs/agreement/261016_21_bid.{jsonl,txt}: 74.6% agreement, -183 IMP (-0.011/call); competitive
+  -522 / 6,491. Reasonless pass -795 / 847: responder rebid -386/129, weak-two opener -218/56,
+  advance overcall -168/69, opener suit rebid -133/41, openings Q-Plus makes -73/81.
+* Next: illegal-call -> pass group (stale earlier-round rules), weak preempts Q-Plus opens and biq
+  doesn't (7-card 2S / 3D), then the 2/1 benchmark's IMP groups.
+
 ## STATUS — 2/1 + Precision 10 h run (2026-10-15/16, committed)
 * Run `tools/runs/bluechip/261015_qplus_21_prec_biqS` (seed 261015, RESUME.txt there) played 20:33-09:47:
   310 boards -918 IMP. 2/1 1-128 -408 (random -2.64/bd); Precision 129-310 -510 (random -0.71 before the
