@@ -27740,3 +27740,9 @@ give the heave-vs-speed signature at three front springs, and the garage gives t
   crossed, ent_name, phase, race_done, race_go)` (scanner hits a/v were lambda parameters, lo/hi a tuple assignment).
 * Verified end to end headless (Zandvoort, 1 lap, 2 AI, 22,000 frames, JM_AI_COOLDIAG=1): both cars finish, run the
   cool-down lap (0.9 pace, TD261017-1 a4), turn into the pit lane and stop in boxes 15 m apart on GPL's pit line (-12.6 m).
+
+### LOOPSPLIT-1 cycle 2 S3 (2026-10-18): the shot harness and stall log out of main()
+* E59's multi-shot step `shots_step!(frames, vp, eye, W, H, place_at_s!, shot_idx, shot_t0, shots_done)` and PERF-4's stall
+  log `stall_log!(cs, frames, inp, win_shown)` moved unchanged to `main_diag.jl`. Verified: a 3-shot Zandvoort run
+  (chase 400 / cockpit 1200 / chase 2600) dumps all three at their places and views; stall lines print; check_diag clean.
+  main() is 4,319 -> ~4,285 lines (from ~4,900 before LOOPSPLIT-1).

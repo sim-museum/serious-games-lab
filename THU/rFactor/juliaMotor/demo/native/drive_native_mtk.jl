@@ -16192,40 +16192,10 @@ function main()
             end
         end
         # E59 multi-shot: dump the settled frame for the current shot, then teleport to the next.
-        if SMOKE && !isempty(SHOTS) && !shots_done[] && frames - shot_t0[] == SHOT_SETTLE
-            sh = SHOTS[shot_idx[]]
-            buf=Vector{UInt8}(undef,W*H*3); glReadPixels(0,0,W,H,GL_RGB,GL_UNSIGNED_BYTE,buf)
-            open(joinpath(SHOTS_DIR, sh.name * ".ppm"),"w") do io; write(io,"P6\n$W $H\n255\n")
-                for y in H:-1:1, x in 1:W; o=((y-1)*W+(x-1))*3; write(io,buf[o+1],buf[o+2],buf[o+3]); end; end
-            println("  JM_SHOTS: dumped ", sh.name, " (", shot_idx[], "/", length(SHOTS), ")"); flush(stdout)
-            isempty(PICKS) || pick_report(vp, eye, sh.name)
-            if shot_idx[] < length(SHOTS)
-                shot_idx[] += 1; shot_t0[] = frames + 1
-                nxt = SHOTS[shot_idx[]]; CTL.view = nxt.view
-                for (k, v) in nxt.env; ENV[k] = v; end
-                place_at_s!(nxt.s)
-            else
-                shots_done[] = true
-            end
-        end
+        shots_step!(frames, vp, eye, W, H, place_at_s!, shot_idx, shot_t0, shots_done)   # LOOPSPLIT-1 cycle 2 S3: moved to main_diag.jl
 
         frames += 1
-        if STALLLOG                                   # PERF-4: name every stall (compile / GC / other)
-            _now = time_ns(); _ct = UInt64(Base.cumulative_compile_time_ns()[1]); _gt = UInt64(Base.gc_time_ns())
-            if STALL_PREV[1] > 0
-                _wall = (_now - STALL_PREV[1]) / 1e6
-                FRAME_FPS[] = FRAME_FPS[] == 0.0 ? 1000 / _wall : FRAME_FPS[] + (1000 / _wall - FRAME_FPS[]) * 0.1
-                if _wall > STALL_MS && win_shown[]
-                    _cm = (_ct - STALL_PREV[2]) / 1e6; _gm = (_gt - STALL_PREV[3]) / 1e6
-                    STALL_N[] += 1; STALL_COMP_MS[] += _cm
-                    println("  [stall] frame ", frames, " t=", round(cs.t, digits = 2), "s  ", round(_wall, digits = 1),
-                            " ms (compile ", round(_cm, digits = 1), ", gc ", round(_gm, digits = 1), ")  gear ", cs.gear,
-                            " thr ", round(inp.throttle, digits = 2), " clu ", round(inp.clutch, digits = 2),
-                            " brk ", round(inp.brake, digits = 2), " v ", round(cs.v, digits = 1)); flush(stdout)
-                end
-            end
-            STALL_PREV[1] = _now; STALL_PREV[2] = _ct; STALL_PREV[3] = _gt
-        end
+        stall_log!(cs, frames, inp, win_shown)   # LOOPSPLIT-1 cycle 2 S3: moved to main_diag.jl
         if !win_shown[] && frames >= show_after
             println("  window revealed after ", frames, " hidden warm-up frames (", round(Int, 1000*(time() - show_t0)), " ms)"); flush(stdout)
             tstamp("  [E80] .. window revealed (launch done)")   # LOOPSPLIT-1: the whole launch, incl. first-frame compiles
