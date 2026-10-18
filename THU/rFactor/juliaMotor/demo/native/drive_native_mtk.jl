@@ -14229,52 +14229,7 @@ function main()
         # COUNTDOWN start (PO 2026-08-31). While it runs, nobody moves and the HUD shows the
         # seconds; at zero the race goes green for the whole field at once, with no throttle gate --
         # that is the difference between a countdown and the old "green when you decide to go".
-        if COUNTDOWN > 0 && HOLD_START && !race_go[] && phase[] == :race
-            # Arm on the first race frame, whatever put us here. The first cut armed cd_t0 ONLY in
-            # the practice->race transition, so with JM_POLE (no qualifying, grid formed up front)
-            # it stayed -1, the countdown never ran -- and because a countdown also disables the
-            # old throttle gate, the race could never go green at all. Caught on the grid, before
-            # the PO was left sitting on it.
-            # STARTSEQ-1: wait for SPACE before the clock starts. cd_armed stays false until then,
-            # the HUD shows the prompt, and nobody moves. Automated runs (START_ARM false) skip it.
-            # JM_ARM_AFTER=<s>: arm the countdown automatically after <s> seconds. This session runs
-            # on WAYLAND, where XTEST keys from xdotool are never delivered to a GLFW surface and
-            # /dev/uinput is root-only -- so there is no way to press a key from a gate. Same reason
-            # bob grew BOB_SDL_CLICK_MS. It exercises the arm -> countdown -> green sequence; it does
-            # NOT exercise GLFW.GetKey itself (that idiom is shared with the driving keys).
-            if ARM_AFTER > 0 && !cd_armed[] && cs.t >= ARM_AFTER
-                cd_armed[] = true; cd_t0[] = cs.t
-                println("  → COUNTDOWN ARMED (JM_ARM_AFTER)"); flush(stdout)
-            end
-            if START_ARM && !cd_armed[]
-                if !cd_said[]
-                    cd_said[] = true
-                    println("  ★ PRESS ANY KEY TO START COUNTDOWN"); flush(stdout)
-                end
-                if anykey()
-                    cd_armed[] = true
-                    cd_t0[] = cs.t
-                    println("  → COUNTDOWN ARMED"); flush(stdout)
-                end
-            elseif cd_t0[] < 0
-                cd_t0[] = cs.t
-            end
-            if !(START_ARM && !cd_armed[])
-                cd_left[] = COUNTDOWN - (cs.t - cd_t0[])
-            end
-            if cd_left[] <= 0 && !(START_ARM && !cd_armed[])
-                cd_left[] = 0.0
-                race_go[] = true; lap_t0 = cs.t
-                ai_release[] = cs.t + AI_HEADSTART
-                println("  → GREEN"); flush(stdout)
-                for c in AICARS
-                    rand() < 0.45 && (c.mishap = 0.4 + 1.4*rand())
-                end
-            end
-        elseif race_go[] && cd_left[] >= 0
-            # keep GO on screen for a moment after the start, then clear it
-            cd_left[] = (cs.t - cd_t0[] - COUNTDOWN) < 1.5 ? 0.0 : -1.0
-        end
+        lap_t0 = countdown_step!(cs, AICARS, HOLD_START, ai_release, cd_armed, cd_left, cd_said, cd_t0, phase, race_go, lap_t0)   # LOOPSPLIT-1 S6: moved to main_loop.jl (returns lap_t0: it sets it at the green)
         # green light: the field launches the moment you ask for throttle (standing start)
         if COUNTDOWN <= 0 && HOLD_START && !race_go[] && phase[] == :race && inp.throttle > 0.15
             race_go[] = true; lap_t0 = cs.t          # start the clock at the launch

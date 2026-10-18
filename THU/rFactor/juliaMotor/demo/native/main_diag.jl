@@ -474,7 +474,7 @@ end
 # behind would show up here as an undefined global). JM_CHECK_DIAG=1 runs it just before main(); exits 1 on a miss.
 function check_diag_globals(fs = (dx_roadtris, dx_roadedge, dx_objcensus, dx_holecensus, dx_bridgeprobe, dx_roadsweep, dx_pacediag,
                                   frameprof_report!, fpsdiag_report!, allocprof_report!, mirror_render!, texthud_draw!,
-                                  gc_step!, pace_step!, wreck_notice_draw!, replay_tyres_draw!))
+                                  gc_step!, pace_step!, wreck_notice_draw!, replay_tyres_draw!, countdown_step!))
     bad = String[]
     for f in fs, ci in code_lowered(f)
         walk(x) = x isa GlobalRef ? (isdefined(x.mod, x.name) || push!(bad, "$(nameof(f)): $(x.name)")) :
