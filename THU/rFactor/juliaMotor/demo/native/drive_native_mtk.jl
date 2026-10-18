@@ -3414,11 +3414,9 @@ else
     const HOLEFILL = get(ENV, "JM_HOLEFILL", "1") == "0" ? (Render.TrackPart[], 0) :
         HoleFill.holefill_parts([_TRACKMAIN_BD; ROADPARTS; _SECPARTS_BD], ROAD_TEX,
                                 lt -> occursin(r"gr|grass|dirt|drt|edge|bank|earth|sand|gravel|field|meadow", lt) && !ROAD_TEX(lt);
-                                # TD261017-1 (g1) (PO 2026-10-17: "the two holes in the ground at left coming out of stavelot are
-                                # still there - cover that with grass or something"): the gap runs 15-30 m from the tarmac past
-                                # the bank, beyond the 10 m reach; at Spa the filler reaches 30 m (3,159 -> 18,263 quads;
-                                # replayed at the PO's moment, the gap is grass). JM_HOLEFILL_NEAR=10 = before.
-                                near = parse(Float64, get(ENV, "JM_HOLEFILL_NEAR", SPA ? "30" : "10")))
+                                # JM_HOLEFILL_NEAR: the reach from the tarmac (TD261017-1 (g1): 30 m at Spa did NOT change the
+                                # Stavelot pocket -- the view there passes over all ground; see HORIZON-SKIRT-1)
+                                near = parse(Float64, get(ENV, "JM_HOLEFILL_NEAR", "10")))
     println("  [holefill] ", HOLEFILL[2], " ground quad(s) of 2 m in ", length(HOLEFILL[1]), " part(s) where the mesh leaves the ground ",
             "beside the tarmac uncovered (JM_HOLEFILL=0 = off)")
     if haskey(ENV, "JM_HOLEFILL_DIAG")      # "x,z,r": the filler quads' corners within r of (x, z), render coords
