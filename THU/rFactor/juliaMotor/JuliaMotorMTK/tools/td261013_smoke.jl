@@ -2,7 +2,7 @@
 # physics-fidelity changes, as assertions -- each was verified on screen or against the gold when it shipped; this gate
 # keeps a later edit from silently undoing it. Text checks on the sim and the car model, plus the FF law evaluated.
 const D = joinpath(@__DIR__, "..", "..", "demo", "native")
-src = read(joinpath(D, "drive_native_mtk.jl"), String)
+src = read(joinpath(D, "drive_native_mtk.jl"), String) * read(joinpath(D, "main_loop.jl"), String)   # LOOPSPLIT-1: moved loop pieces
 ppl = read(joinpath(D, "people_filter.jl"), String)
 gai = read(joinpath(D, "gplai.jl"), String)
 veh = read(joinpath(@__DIR__, "..", "src", "components", "vehicle_3d.jl"), String)

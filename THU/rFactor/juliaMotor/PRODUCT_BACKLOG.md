@@ -27693,3 +27693,10 @@ give the heave-vs-speed signature at three front springs, and the garage gives t
   `fpsdiag_report!(cs)`, `allocprof_report!()`; the scanner `JuliaMotorMTK/tools/main_blockscan.jl` found only `cs`).
   `check_diag_globals()` now also covers the S2-S4 moves (mirror_render!, texthud_draw!, the three reports): clean.
   Smoke (Zandvoort race, JM_FPSDIAG/FRAMEPROF/ALLOCPROF=20, JM_CHECK_DIAG=1): every report prints as before.
+
+### LOOPSPLIT-1 S5 (2026-10-18): four more frame-loop pieces out of main()
+* Moved unchanged to `main_loop.jl`: REPLAY-6's tyre panel `replay_tyres_draw!(W, H, REPLAY, rep_cam, rep_focus,
+  rep_tyres, rep_tyshow)`, the wreck notice `wreck_notice_draw!(W, H, REPLAY)`, PACE-1 `pace_step!(frames, now)`, PERF-3's GC
+  `gc_step!(frames)` (inputs from main_blockscan; `t` and `o` hits were lambda parameters). check_diag_globals covers them:
+  clean. Smoke (the PO's Spa replay, chase, JM_PACE_TEST, JM_GC_EVERY=10): the tyre panel draws as before.
+* Gate lesson: tyrepanel_smoke and td261013_smoke check the SOURCE TEXT of drive_native_mtk.jl -- they now read main_loop.jl too (15 smokes read the source; any later move must keep their strings findable).

@@ -118,3 +118,72 @@ function texthud_draw!(cs, W, H, AICARS, best_lap, fmt_lap, lap_t0, last_lap, pl
         end
     nothing
 end
+
+"""REPLAY-6: the per-wheel tyre panel on the replay screen (chase view, player car). (LOOPSPLIT-1 S5: moved unchanged from main())"""
+function replay_tyres_draw!(W, H, REPLAY, rep_cam, rep_focus, rep_tyres, rep_tyshow)
+        if REPLAY && rep_tyshow[] && rep_focus[] == 0 && REPLAY_CAMS[rep_cam[]] === :chase && rep_tyres[] !== nothing && any(t -> t[3] + t[4] > 0, rep_tyres[])
+            baseR = 18.0; pitch = 2*1.9*baseR + 12; pcx = W/2; pcy = H - pitch - 18.0
+            tyv = empty!(HUD_TY); Render.htyres!(tyv, pcx, pcy, baseR, rep_tyres[])
+            Render.hud_draw(hudprog, hudvao, hudvbo, tyv, W, H)
+            if FONT !== nothing
+                tt = empty!(HUD_TYT); lc = (0.75, 0.78, 0.82)
+                for (k, nm) in enumerate(("FL", "FR", "RL", "RR"))
+                    lx = pcx + (isodd(k) ? -1 : 1)*pitch/2 + (isodd(k) ? -1.9baseR - 4 - Render.text_width(FONT, nm) : 1.9baseR + 4)
+                    ly = pcy + (k <= 2 ? -1 : 1)*pitch/2 - FONT.lineh/2
+                    Render.text!(tt, FONT, lx, ly, nm, lc)
+                end
+                cap = "tyres: ring = grip, dot = force"
+                Render.text!(tt, FONT, pcx - Render.text_width(FONT, cap)/2, pcy - pitch - 4 - FONT.lineh, cap, lc)
+                Render.text_draw(textprog, textvao, textvbo, FONT, tt, W, H)
+            end
+        end
+    nothing
+end
+
+"""TD261013-1 (c3): say on screen that a wreck refuses shifts and throttle, with the way out. (LOOPSPLIT-1 S5: moved unchanged from main())"""
+function wreck_notice_draw!(W, H, REPLAY)
+        if WRECKED[] && !REPLAY && FONT !== nothing && get(ENV, "JM_WRECK_NOTICE", "1") != "0"
+            m1 = "CAR WRECKED -- engine and gearbox out"
+            m2 = (WHEELOFF_RULE && !isempty(LOOSE_WHEELS)) ? "A wheel has come off -- R: restart the race" : "SHIFT+R: back onto the track     R: restart the race"
+            bw = max(Render.text_width(FONT, m1), Render.text_width(FONT, m2)) + 40; by = H*0.30 - 14
+            bx = empty!(HUD_TY); Render.hquad!(bx, W/2 - bw/2, by, bw, 2.4*FONT.lineh + 28, (0.06, 0.06, 0.08))
+            Render.hud_draw(hudprog, hudvao, hudvbo, bx, W, H)
+            tt = empty!(HUD_TYT)
+            Render.text!(tt, FONT, W/2 - Render.text_width(FONT, m1)/2, H*0.30, m1, (1.0, 0.82, 0.25))
+            Render.text!(tt, FONT, W/2 - Render.text_width(FONT, m2)/2, H*0.30 + 1.4*FONT.lineh, m2, (0.92, 0.92, 0.92))
+            Render.text_draw(textprog, textvao, textvbo, FONT, tt, W, H)
+        end
+    nothing
+end
+
+"""PACE-1: present every 2nd refresh while the work time stays over JM_PACE_HI ms. (LOOPSPLIT-1 S5: moved unchanged from main())"""
+function pace_step!(frames, now)
+        if PACE_ON && (!SMOKE || haskey(ENV, "JM_PACE_TEST"))
+            # PERF-3: the first frame (4.9 s of JIT) seeded the EMA and every session opened at 30 Hz; a single
+            # crash/GC hitch (288 ms) flipped it again. Skip the warm-up and clamp each sample, so only a
+            # SUSTAINED over-budget load (~30+ frames) drops the rate.
+            _wk = min(time() - now, 1.5 * PACE_HI)
+            if frames > PACE_WARM
+                PACE_EMA[] = PACE_EMA[] == 0.0 ? _wk : 0.95*PACE_EMA[] + 0.05*_wk
+            end
+            if PACE_INT[] == 1 && PACE_EMA[] > PACE_HI
+                PACE_INT[] = 2; GLFW.SwapInterval(2); println("  [pace] work ", round(1000*PACE_EMA[], digits=1), " ms -> steady 30 Hz"); flush(stdout)
+            elseif PACE_INT[] == 2 && PACE_EMA[] < PACE_LO
+                PACE_INT[] = 1; GLFW.SwapInterval(1); println("  [pace] work ", round(1000*PACE_EMA[], digits=1), " ms -> 60 Hz"); flush(stdout)
+            end
+        end
+    nothing
+end
+
+"""PERF-3: a young-generation GC every GC_EVERY frames, while the GPU finishes the frame. (LOOPSPLIT-1 S5: moved unchanged from main())"""
+function gc_step!(frames)
+        if GC_EVERY > 0 && frames % GC_EVERY == 0 && frames > 0
+            _tg = time(); GC.gc(false); _tg = time() - _tg
+            GC_MS[1] += _tg; GC_MS[2] = max(GC_MS[2], _tg); GC_MS[3] += 1
+            if FPSDIAG > 0 && GC_MS[3] >= 20
+                println("  [gc] young collections: mean ", round(1000GC_MS[1]/GC_MS[3], digits=2), " ms  max ", round(1000GC_MS[2], digits=2), " ms  (every ", GC_EVERY, " frames)"); flush(stdout)
+                fill!(GC_MS, 0.0)
+            end
+        end
+    nothing
+end

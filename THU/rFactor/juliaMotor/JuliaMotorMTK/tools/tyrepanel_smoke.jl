@@ -23,7 +23,8 @@ for _ in 1:16; DriveRT3D.step_car3d!(c2, 0.0, 0.6, 0.0, 1/60); end
 b = DriveRT3D.tyregrip3d(c2)
 chk("braking: both axles' force points back (-Fx)", b[1][1] < -0.5 && b[3][1] < -0.3, "front $(round(b[1][1], digits = 2)), rear $(round(b[3][1], digits = 2))")
 chk("braking: the ellipse is μx·Fz tall by μy·Fz wide (μx > μy)", b[1][3] > b[1][4] > 0, "$(round(b[1][3], digits = 2)) x $(round(b[1][4], digits = 2))")
-src = read(joinpath(@__DIR__, "..", "..", "demo", "native", "drive_native_mtk.jl"), String)
+src = read(joinpath(@__DIR__, "..", "..", "demo", "native", "drive_native_mtk.jl"), String) *
+      read(joinpath(@__DIR__, "..", "..", "demo", "native", "main_loop.jl"), String)   # LOOPSPLIT-1: frame-loop pieces moved out of main()
 chk("the replay records the 20 tyre channels after the old 12", occursin("[string(q, \"_\", w) for w in (\"FL\", \"FR\", \"RL\", \"RR\") for q in (\"fx\", \"fy\", \"gx\", \"gy\", \"xi\")]...]", src) &&
     occursin("for w in tyre_lp[], q in w; push!(tele_buf, Float32(q)); end", src))
 # TD261013-1 (a4) (PO 2026-10-13: "show it only in player nintendo view, not player cockpit view")

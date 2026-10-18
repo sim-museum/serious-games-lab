@@ -16176,35 +16176,10 @@ function main()
         # patch: μ·Fz, grows with load, a point when the wheel is in the air) and its force dot (the traction budget used;
         # red = the patch is sliding). The player's car only (the AI cars run no tyre model); W hides it.
         # TD261013-1 (a4) (PO 2026-10-13: "show it only in player nintendo view, not player cockpit view")
-        if REPLAY && rep_tyshow[] && rep_focus[] == 0 && REPLAY_CAMS[rep_cam[]] === :chase && rep_tyres[] !== nothing && any(t -> t[3] + t[4] > 0, rep_tyres[])
-            baseR = 18.0; pitch = 2*1.9*baseR + 12; pcx = W/2; pcy = H - pitch - 18.0
-            tyv = empty!(HUD_TY); Render.htyres!(tyv, pcx, pcy, baseR, rep_tyres[])
-            Render.hud_draw(hudprog, hudvao, hudvbo, tyv, W, H)
-            if FONT !== nothing
-                tt = empty!(HUD_TYT); lc = (0.75, 0.78, 0.82)
-                for (k, nm) in enumerate(("FL", "FR", "RL", "RR"))
-                    lx = pcx + (isodd(k) ? -1 : 1)*pitch/2 + (isodd(k) ? -1.9baseR - 4 - Render.text_width(FONT, nm) : 1.9baseR + 4)
-                    ly = pcy + (k <= 2 ? -1 : 1)*pitch/2 - FONT.lineh/2
-                    Render.text!(tt, FONT, lx, ly, nm, lc)
-                end
-                cap = "tyres: ring = grip, dot = force"
-                Render.text!(tt, FONT, pcx - Render.text_width(FONT, cap)/2, pcy - pitch - 4 - FONT.lineh, cap, lc)
-                Render.text_draw(textprog, textvao, textvbo, FONT, tt, W, H)
-            end
-        end
+        replay_tyres_draw!(W, H, REPLAY, rep_cam, rep_focus, rep_tyres, rep_tyshow)   # LOOPSPLIT-1 S5: moved to main_loop.jl
         # TD261013-1 (c3): a wreck refuses every shift and the throttle, by design (E95) -- and said so only on stdout, so
         # the PO met a car that "doesn't respond". Say it where the driver is looking, with the way out.
-        if WRECKED[] && !REPLAY && FONT !== nothing && get(ENV, "JM_WRECK_NOTICE", "1") != "0"
-            m1 = "CAR WRECKED -- engine and gearbox out"
-            m2 = (WHEELOFF_RULE && !isempty(LOOSE_WHEELS)) ? "A wheel has come off -- R: restart the race" : "SHIFT+R: back onto the track     R: restart the race"
-            bw = max(Render.text_width(FONT, m1), Render.text_width(FONT, m2)) + 40; by = H*0.30 - 14
-            bx = empty!(HUD_TY); Render.hquad!(bx, W/2 - bw/2, by, bw, 2.4*FONT.lineh + 28, (0.06, 0.06, 0.08))
-            Render.hud_draw(hudprog, hudvao, hudvbo, bx, W, H)
-            tt = empty!(HUD_TYT)
-            Render.text!(tt, FONT, W/2 - Render.text_width(FONT, m1)/2, H*0.30, m1, (1.0, 0.82, 0.25))
-            Render.text!(tt, FONT, W/2 - Render.text_width(FONT, m2)/2, H*0.30 + 1.4*FONT.lineh, m2, (0.92, 0.92, 0.92))
-            Render.text_draw(textprog, textvao, textvbo, FONT, tt, W, H)
-        end
+        wreck_notice_draw!(W, H, REPLAY)   # LOOPSPLIT-1 S5: moved to main_loop.jl
         # TEXTHUD-1 (GOLDMATCH-JR-1 S1, 2026-09-17): the gold's timing overlay, in its layout -- lap
         # rows top-left (I = this lap, B = best, L = last), Track Position top-right with names and
         # metres to each car, the player's row amber. Only what the sim can honestly report is
@@ -16225,32 +16200,12 @@ function main()
         # steady 30 Hz, every frame held exactly two refreshes -- and return to 60 Hz below JM_PACE_LO (15.0).
         # The physics dt is the real frame time, so motion stays true either way. JM_PACE=0 disables.
         allocprof_report!()   # LOOPSPLIT-1 S4: moved to main_diag.jl
-        if PACE_ON && (!SMOKE || haskey(ENV, "JM_PACE_TEST"))
-            # PERF-3: the first frame (4.9 s of JIT) seeded the EMA and every session opened at 30 Hz; a single
-            # crash/GC hitch (288 ms) flipped it again. Skip the warm-up and clamp each sample, so only a
-            # SUSTAINED over-budget load (~30+ frames) drops the rate.
-            _wk = min(time() - now, 1.5 * PACE_HI)
-            if frames > PACE_WARM
-                PACE_EMA[] = PACE_EMA[] == 0.0 ? _wk : 0.95*PACE_EMA[] + 0.05*_wk
-            end
-            if PACE_INT[] == 1 && PACE_EMA[] > PACE_HI
-                PACE_INT[] = 2; GLFW.SwapInterval(2); println("  [pace] work ", round(1000*PACE_EMA[], digits=1), " ms -> steady 30 Hz"); flush(stdout)
-            elseif PACE_INT[] == 2 && PACE_EMA[] < PACE_LO
-                PACE_INT[] = 1; GLFW.SwapInterval(1); println("  [pace] work ", round(1000*PACE_EMA[], digits=1), " ms -> 60 Hz"); flush(stdout)
-            end
-        end
+        pace_step!(frames, now)   # LOOPSPLIT-1 S5: moved to main_loop.jl
         # PERF-3: the automatic collector let ~190 MB pile up and then paused 30-60 ms (2-4 dropped frames every
         # ~4 s at the Ring: the PO's "jerky"). A young-generation collection every GC_EVERY frames, issued here
         # while the GPU is still finishing the frame (the CPU would otherwise just wait in SwapBuffers), keeps each
         # pause small enough to fit the slack. JM_GC_EVERY=0 leaves it to the automatic collector.
-        if GC_EVERY > 0 && frames % GC_EVERY == 0 && frames > 0
-            _tg = time(); GC.gc(false); _tg = time() - _tg
-            GC_MS[1] += _tg; GC_MS[2] = max(GC_MS[2], _tg); GC_MS[3] += 1
-            if FPSDIAG > 0 && GC_MS[3] >= 20
-                println("  [gc] young collections: mean ", round(1000GC_MS[1]/GC_MS[3], digits=2), " ms  max ", round(1000GC_MS[2], digits=2), " ms  (every ", GC_EVERY, " frames)"); flush(stdout)
-                fill!(GC_MS, 0.0)
-            end
-        end
+        gc_step!(frames)   # LOOPSPLIT-1 S5: moved to main_loop.jl
         DSTAT && (GPUSYNC && glFinish(); DS_T[5] = time())
         GLFW.SwapBuffers(win)
         if GPUQ > 0                                   # PERF-4 S3: at most one frame queued in the driver
