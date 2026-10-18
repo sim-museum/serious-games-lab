@@ -27734,3 +27734,9 @@ give the heave-vs-speed signature at three front springs, and the garage gives t
   `main_loop.jl` `replay_record!` (17 inputs: buffers and Refs are shared and mutated in place; nothing leaks).
   Headless recordings need `JM_REPLAY_REC=1` (SMOKE runs do not record otherwise): Zandvoort race, 2 AI, 900 frames ->
   225 frames at 15 Hz over 15.5 s, telemetry = frames x 40 channels exactly.
+
+### LOOPSPLIT-1 cycle 2 S2 (2026-10-18): the AI cool-down out of main()
+* WGTD-1 (e)'s cool-down lap and pit stop moved unchanged to `main_loop.jl` `ai_cooldown_step!(f, AICARS, GPLAI_T,
+  crossed, ent_name, phase, race_done, race_go)` (scanner hits a/v were lambda parameters, lo/hi a tuple assignment).
+* Verified end to end headless (Zandvoort, 1 lap, 2 AI, 22,000 frames, JM_AI_COOLDIAG=1): both cars finish, run the
+  cool-down lap (0.9 pace, TD261017-1 a4), turn into the pit lane and stop in boxes 15 m apart on GPL's pit line (-12.6 m).

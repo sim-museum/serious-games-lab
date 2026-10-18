@@ -15313,46 +15313,7 @@ function main()
             # racing). It then drives one cool-down lap at AI_COOL_PACE of its pace; at the line after that it moves to the outer edge of the
             # corridor (GPL's own line transition, held there) and slows to a stop over 300 m. (GPL brings them into the pit
             # lane; our AI have no pit line yet, so they stop at the edge of the straight.) JM_AI_COOLDOWN=0: racing on.
-            if AI_COOLDOWN && IS_RACE && phase[] == :race && race_go[]
-                flag = race_done || any(a -> a.lap >= RACE_LAPS, AICARS)
-                for (i, gc) in enumerate(f.cars)
-                    i > length(AICARS) && break
-                    st = get(AI_COOL, i, nothing)
-                    if st === nothing
-                        if flag && crossed[i]
-                            AI_COOL[i] = (:cool, gc.pace, 0.0); gc.pace = AI_COOL_PACE*gc.pace
-                            AI_COOL_DIAG && println("  [cooldown] ", ent_name(i), " finished (lap ", AICARS[i].lap, "): cool-down lap")
-                        end
-                    elseif st[1] === :cool && isfinite(PIT_IN[]) && haskey(GPLAI_T.lines, GPLAI.PIT) &&
-                           PIT_IN[] - 60.0 <= gc.s < PIT_BOX[]                      # WGTD-1 S9: into GPL's pit lane
-                        q = 15.0*count(v -> v[1] === :pit, values(AI_COOL))          # boxes 15 m apart, the first car furthest on
-                        GPLAI.join_pit!(GPLAI_T, gc); gc.hold = typemax(Int) ÷ 4
-                        AI_COOL[i] = (:pit, st[2], PIT_BOX[] + 30.0 - q)
-                        AI_COOL_DIAG && println("  [cooldown] ", ent_name(i), " into the pits, box at ", round(Int, PIT_BOX[] + 30.0 - q), " m")
-                    elseif st[1] === :pit
-                        rem = st[3] - gc.s                                           # metres to its box
-                        gc.pace = st[2] * clamp(rem / 40.0, 0.0, 1.0); gc.hold = typemax(Int) ÷ 4
-                        if AI_COOL_DIAG && gc.v < 0.3 && !(i in AI_COOL_STOPPED)
-                            push!(AI_COOL_STOPPED, i)                                  # once: where it stopped
-                            println("  [cooldown] ", ent_name(i), " stopped at s ", round(Int, gc.s), ", ", round(gc.d, digits = 1),
-                                    " m off GPL's centre (pit line ", round(GPLAI.dlat(GPLAI_T.lines[GPLAI.PIT], gc.s), digits = 1),
-                                    ", corridor ", round.(GPLAI.corridor(GPLAI_T, gc.s), digits = 1), ")")
-                        end
-                    elseif st[1] === :cool && crossed[i]
-                        # each car stops 25 m beyond the one before it, so they line up along the edge
-                        q = 25.0*count(v -> v[1] === :stop, values(AI_COOL))
-                        AI_COOL[i] = (:stop, st[2], AICARS[i].s + q)
-                        # join! keeps the move as an offset from the race line, which wanders across the straight: aim at the
-                        # corridor's outer edge WHERE THE CAR WILL STOP, so that is where it ends up
-                        sst = mod(gc.s + 300.0 + q, GPLAI_T.lap); lo, hi = GPLAI.corridor(GPLAI_T, sst)
-                        GPLAI.join!(GPLAI_T, gc, hi - 1.2; at = sst, why = :cooldown); gc.hold = typemax(Int) ÷ 4
-                        AI_COOL_DIAG && println("  [cooldown] ", ent_name(i), " pulls aside to stop")
-                    elseif st[1] === :stop
-                        frac = clamp((AICARS[i].s - st[3]) / 300.0, 0.0, 1.0)   # (st[3] carries the car's 25 m queue offset)
-                        gc.pace = st[2] * 0.6 * (1.0 - frac); gc.hold = typemax(Int) ÷ 4
-                    end
-                end
-            end
+            ai_cooldown_step!(f, AICARS, GPLAI_T, crossed, ent_name, phase, race_done, race_go)   # LOOPSPLIT-1 cycle 2 S2: moved to main_loop.jl
             poses
         else
             pp = RaceAI.project(AILINE, cs.x, cs.z)                # the human as a racecraft object (s, lateral, speed)
