@@ -14269,31 +14269,11 @@ function main()
         end
         # E10: burn fuel by distance (only once the race is GREEN — never while you sit on the grid
         # waiting to launch, or you could starve the tank before you've even pressed the throttle).
-        if FUEL_ON && race_go[] && !rst
-            if FUEL1      # FUEL-1: the gold's burn law (pedal x rpm), and the burnt mass leaves the car twice a second
-                fuel[] = max(0.0, fuel[] - DriveRT3D.fuel_rate_kgh(inp.throttle, cs.rpm)/3600*(dt > 1e-4 ? dt : 1/60)/DriveRT3D.FUEL_KG_PER_L)
-                if CAR3D && cs.t - fuel_mass_t[] >= 0.5
-                    fuel_mass_t[] = cs.t; DriveRT3D.set_fuel_burnt!(cs, (FUEL_START_L[] - fuel[])*DriveRT3D.FUEL_KG_PER_L)
-                end
-            else
-                fuel[] = max(0.0, fuel[] - FUEL_LPK * cs.v * (dt > 1e-4 ? dt : 1/60) / 1000)
-            end
-            fuel[] <= 0 && (inp = DriveInput(throttle=0.0, brake=inp.brake, steer=inp.steer,
-                            clutch=inp.clutch, shift_up=inp.shift_up, shift_down=inp.shift_down, autoshift=inp.autoshift))
-        end
+        inp = fuel_step!(cs, inp, dt, FUEL1, FUEL_ON, fuel, fuel_mass_t, race_go, rst)   # LOOPSPLIT-1 cycle 2 S4: moved to main_loop.jl (returns inp: an empty tank cuts the throttle)
         # PO 2026-08-27c: throttle still does nothing from stick OR W, while brake and steering work.
         # My clutch diagnosis was wrong (the raw axes show clutch = 0). Stop reasoning from the code
         # and print what the car is actually being asked to do, once a second. JM_JOYTRACE=1.
-        if _DX_JOYTRACE && cs.t - JOYTRACE_T[] >= 1.0
-            JOYTRACE_T[] = cs.t
-            _js = GLFW.GetJoystickAxes(GLFW.JOYSTICK_1)
-            println("  [trace] thr=", round(inp.throttle,digits=2), " brk=", round(inp.brake,digits=2),
-                    " clu=", round(inp.clutch,digits=2), " steer=", round(inp.steer,digits=2),
-                    " | gear=", cs.gear, " rpm=", round(Int,cs.rpm), " v=", round(cs.v*3.6,digits=1), "km/h",
-                    " | raw=", _js === nothing ? "nil" : join(round.(_js,digits=2), ","),
-                    " | auto=", CTL.auto, " race_go=", race_go[])
-            flush(stdout)
-        end
+        joytrace_report!(cs, inp, race_go)   # LOOPSPLIT-1 cycle 2 S4: moved to main_diag.jl
         rst && FUEL_ON && refuel!()        # respawn refuels
         if recover && CLINE !== nothing && CAR3D
             # SHIFT-R: drop back onto the centreline at the CURRENT lap position, upright + stopped.

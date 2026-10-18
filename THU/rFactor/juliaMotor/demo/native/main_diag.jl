@@ -474,7 +474,7 @@ end
 # behind would show up here as an undefined global). JM_CHECK_DIAG=1 runs it just before main(); exits 1 on a miss.
 function check_diag_globals(fs = (dx_roadtris, dx_roadedge, dx_objcensus, dx_holecensus, dx_bridgeprobe, dx_roadsweep, dx_pacediag,
                                   frameprof_report!, fpsdiag_report!, allocprof_report!, mirror_render!, texthud_draw!,
-                                  gc_step!, pace_step!, wreck_notice_draw!, replay_tyres_draw!, countdown_step!, replay_record!, ai_cooldown_step!, shots_step!, stall_log!))
+                                  gc_step!, pace_step!, wreck_notice_draw!, replay_tyres_draw!, countdown_step!, replay_record!, ai_cooldown_step!, shots_step!, stall_log!, fuel_step!, joytrace_report!))
     bad = String[]
     for f in fs, ci in code_lowered(f)
         walk(x) = x isa GlobalRef ? (isdefined(x.mod, x.name) || push!(bad, "$(nameof(f)): $(x.name)")) :
@@ -596,6 +596,21 @@ function stall_log!(cs, frames, inp, win_shown)
                 end
             end
             STALL_PREV[1] = _now; STALL_PREV[2] = _ct; STALL_PREV[3] = _gt
+        end
+    nothing
+end
+
+"""JM_JOYTRACE: what the car is asked to do, once a second (PO 2026-08-27c). (LOOPSPLIT-1 cycle 2 S4: moved unchanged.)"""
+function joytrace_report!(cs, inp, race_go)
+        if _DX_JOYTRACE && cs.t - JOYTRACE_T[] >= 1.0
+            JOYTRACE_T[] = cs.t
+            _js = GLFW.GetJoystickAxes(GLFW.JOYSTICK_1)
+            println("  [trace] thr=", round(inp.throttle,digits=2), " brk=", round(inp.brake,digits=2),
+                    " clu=", round(inp.clutch,digits=2), " steer=", round(inp.steer,digits=2),
+                    " | gear=", cs.gear, " rpm=", round(Int,cs.rpm), " v=", round(cs.v*3.6,digits=1), "km/h",
+                    " | raw=", _js === nothing ? "nil" : join(round.(_js,digits=2), ","),
+                    " | auto=", CTL.auto, " race_go=", race_go[])
+            flush(stdout)
         end
     nothing
 end
