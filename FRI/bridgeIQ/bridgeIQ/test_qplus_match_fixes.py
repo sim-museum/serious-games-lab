@@ -776,6 +776,9 @@ BIDDING_SYSTEMS = [
     ("T-dbl-d", "1S-(2C)-2S-(3D)-X-P: after our fit the double is not takeout, pass (Q-Plus)",
      "TwoOverOne", "N", "None", "1s 2c 2s 3d x p", "S", "7542.KQ62.62.T73",
      "P", {"P"}),
+    ("T-2c-ask", "2C-2D-3D-3S-4D-4S: strong 2C opener asks 4NT (Q-Plus), not pass",
+     "TwoOverOne", "N", "None", "2c p 2d p 3d p 3s p 4d p 4s p", "N", "A.AKQT.AKQJT32.4",
+     "P", {"4N"}),
 ]
 
 

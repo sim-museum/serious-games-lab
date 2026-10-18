@@ -37,8 +37,17 @@
   agreement +22), Precision +45 / 17 (SE 26). T-dbl-a..d, 263 checks.
 * Remaining responder-rebid and overcaller-rebid passes are scattered single hands (slam and
   high-level competitive judgment); uncontested responder-rebid passes are net positive by the
-  benchmark. Next: illegal-call -> pass group (stale earlier-round rules), then other benchmark
-  groups (unassuming cue-bid limit raise -106/22).
+  benchmark.
+* Illegal-call -> pass group (2/1, 270 calls): Q-Plus also passes 168 of them; the losses are high
+  competitive raises over their jumps (left alone) and my strong 2C's later rounds, where
+  `_opener_rebid`'s 2C branch (no round check) re-fires its first-rebid 2H/2S/3NT. Fix:
+  `_strong_2c_slam_ask` (BIQ_STRONG_2C_ASK): that illegal call -> pass becomes 4NT over partner's
+  4-level suit call (Q-Plus 4NT; not over 3NT or 3-level calls). 2/1 rules +109 IMP / 13 changed
+  (SE 33), sim on +105 (SE 32). T-2c-ask, 264 checks. Partner's 4NT reply after 2C is weak: in 3
+  rollouts partner passed 4NT (2C-2S-2NT-3C-3H-3S-4H-4S-4NT; after 3NT-4C). Committed 10-17; played from board 1 of
+  run 261017_qplus_21_prec_biqS (planner family s2c_slam).
+* Next: partner's answer to the strong 2C opener's 4NT; unassuming cue-bid limit raise (-106/22);
+  pulls of partner's high doubles (Q-Plus sits 33/43, no clean rule).
 
 ## STATUS — 2/1 + Precision 10 h run (2026-10-15/16, committed)
 * Run `tools/runs/bluechip/261015_qplus_21_prec_biqS` (seed 261015, RESUME.txt there) played 20:33-09:47:

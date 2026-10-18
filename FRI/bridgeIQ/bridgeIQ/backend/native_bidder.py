@@ -3837,6 +3837,39 @@ def _minors_4nt_advance(state: AuctionState, e: HandEval) -> Optional[Bid]:
     return cand if _is_legal_bid(cand, state) else None
 
 
+STRONG_2C_ASK = os.environ.get("BIQ_STRONG_2C_ASK", "1") == "1"
+
+
+def _strong_2c_slam_ask(state: AuctionState, e: HandEval, system) -> Optional[Bid]:
+    """My strong 2C, a later round, uncontested, below 4NT: the first-round
+    rebid rules re-fire there and their 2-/3-level call is illegal, so biq
+    passed partner's 4-level call (2C-2D-3D-3S-4D-4S, 2C-3NT-4D-4H). Ask
+    with 4NT as Q-Plus did on the recorded 2/1 deals (9.AKJ53.AKJ952.K,
+    AK83.A.KJ52.AKQJ, A.AKQT.AKQJT32.4, Q82.KQJ7.AKQJ.AK).
+    BIQ_STRONG_2C_ASK=0 disables."""
+    if not STRONG_2C_ASK or getattr(system, "strong_open_call", "2C") == "1C":
+        return None
+    op = state.opening_bid
+    if (op is None or state.opener_seat != state.seat or op.level != 2
+            or op.suit != Suit.CLUBS or len(state.my_bids) < 2
+            or state.opp_overcalled):
+        return None
+    if any(not b.is_pass for s_, b in state.bids
+           if s_ not in (state.seat, state.seat.partner())):
+        return None
+    if any(b.level == 4 and b.suit == Suit.NOTRUMP
+           for b in list(state.my_bids) + list(state.partner_bids)):
+        return None
+    pl = state.partner_bids[-1] if state.partner_bids else None
+    # Only over partner's 4-level suit call: over 3NT Q-Plus passed 5 of 6,
+    # over a 3-level call it cue-bid or raised, never 4NT.
+    if pl is None or pl.suit in (None, Suit.NOTRUMP) or pl.level != 4:
+        return None
+    cand = bid(4, Suit.NOTRUMP, alert=True,
+               why=f"4NT: strong 2C opener in the slam zone ({e.hcp} HCP)")
+    return cand if _is_legal_bid(cand, state) else None
+
+
 ANSWER_OPENER_DBL = os.environ.get("BIQ_ANSWER_OPENER_DBL", "1") == "1"
 
 
@@ -4297,6 +4330,11 @@ def _sanity_wrap(raw: Bid, state: AuctionState, eval_: HandEval,
         # 1b. Partner's new suit after our fit is a cue-bid, 5NT the grand
         # slam force: never pass them (2/1 rules fall-through, agreement
         # benchmark 2026-10-16; `_cue_continuation`).
+        if (raw.is_pass and partner_spoke_last
+                and (raw.explanation or "").startswith("Sanity: illegal")):
+            sub = _strong_2c_slam_ask(state, eval_, system)
+            if sub is not None:
+                return sub
         if raw.is_pass and partner_spoke_last:
             sub = (_cue_continuation(state, eval_) or _minors_4nt_advance(state, eval_)
                    or _answer_opener_double(state, eval_))
