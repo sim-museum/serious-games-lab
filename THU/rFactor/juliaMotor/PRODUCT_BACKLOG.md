@@ -27687,3 +27687,9 @@ give the heave-vs-speed signature at three front springs, and the garage gives t
   read after it): inputs cs, W, H, AICARS, best_lap, fmt_lap, lap_t0, last_lap, player_finpos, race_done, race_go,
   standings, texthud_name; nothing leaks out (later `by`/`r`/`c` are fresh assignments). Smoke (Zandvoort race, 3 AI):
   the overlay draws as before.
+
+### LOOPSPLIT-1 S4 (2026-10-18): the per-frame profiling reports out of main()
+* FRAMEPROF, FPSDIAG and ALLOCPROF's reporting blocks moved unchanged to `main_diag.jl` (`frameprof_report!()`,
+  `fpsdiag_report!(cs)`, `allocprof_report!()`; the scanner `JuliaMotorMTK/tools/main_blockscan.jl` found only `cs`).
+  `check_diag_globals()` now also covers the S2-S4 moves (mirror_render!, texthud_draw!, the three reports): clean.
+  Smoke (Zandvoort race, JM_FPSDIAG/FRAMEPROF/ALLOCPROF=20, JM_CHECK_DIAG=1): every report prints as before.

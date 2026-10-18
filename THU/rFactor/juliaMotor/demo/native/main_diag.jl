@@ -472,7 +472,8 @@ end
 
 # The safety net for the move: every global a moved function names must exist when main() runs (a main() local left
 # behind would show up here as an undefined global). JM_CHECK_DIAG=1 runs it just before main(); exits 1 on a miss.
-function check_diag_globals(fs = (dx_roadtris, dx_roadedge, dx_objcensus, dx_holecensus, dx_bridgeprobe, dx_roadsweep, dx_pacediag))
+function check_diag_globals(fs = (dx_roadtris, dx_roadedge, dx_objcensus, dx_holecensus, dx_bridgeprobe, dx_roadsweep, dx_pacediag,
+                                  frameprof_report!, fpsdiag_report!, allocprof_report!, mirror_render!, texthud_draw!))
     bad = String[]
     for f in fs, ci in code_lowered(f)
         walk(x) = x isa GlobalRef ? (isdefined(x.mod, x.name) || push!(bad, "$(nameof(f)): $(x.name)")) :
@@ -481,4 +482,77 @@ function check_diag_globals(fs = (dx_roadtris, dx_roadedge, dx_objcensus, dx_hol
     end
     println("  [check_diag] ", isempty(bad) ? "every global the moved diagnostics name exists" : "UNDEFINED: " * join(unique(bad), ", "))
     isempty(bad)
+end
+
+"""FRAMEPROF: the per-pass frame-time breakdown, every FRAMEPROF frames. (LOOPSPLIT-1 S4: moved unchanged from main())"""
+function frameprof_report!()
+        if FRAMEPROF > 0
+            PROF_N[] += 1
+            if PROF_N[] >= FRAMEPROF
+                nn = PROF_N[]
+                # PROF_TOT is filled by the FPSDIAG accumulator below when it is also on; when it is
+                # not, report the phases alone rather than a percentage of an unknown whole. A split
+                # that silently divides by a total nobody measured is the kind of confident-wrong
+                # number this project keeps booking.
+                tot = PROF_TOT[] > 0 ? PROF_TOT[]/nn*1000 : NaN
+                println("  [frameprof] ", nn, " frames:  world ", round(1000*PROF_WORLD[]/nn, digits=2),
+                        " ms   hud ", round(1000*PROF_HUD[]/nn, digits=2), " ms",
+                        "   [depth ", round(1000*PROF_DEPTH[]/nn, digits=2), " track ", round(1000*PROF_TRACK[]/nn, digits=2),
+                        " objects ", round(1000*PROF_OBJ[]/nn, digits=2), " billboards ", round(1000*PROF_BB[]/nn, digits=2),
+                        " cars ", round(1000*PROF_CARS[]/nn, digits=2), "]",
+                        isnan(tot) ? "   (total not measured -- set JM_FPSDIAG too)" :
+                                     "   of " * string(round(tot, digits=2)) * " ms total")
+                flush(stdout)
+                PROF_WORLD[] = 0.0; PROF_HUD[] = 0.0; PROF_N[] = 0; PROF_TOT[] = 0.0
+                PROF_DEPTH[] = 0.0; PROF_TRACK[] = 0.0; PROF_OBJ[] = 0.0; PROF_BB[] = 0.0; PROF_CARS[] = 0.0
+            end
+        end
+    nothing
+end
+
+"""FPSDIAG: frame time per view, every FPSDIAG frames (E80). (LOOPSPLIT-1 S4: moved unchanged from main())"""
+function fpsdiag_report!(cs)
+        if FPSDIAG > 0
+            _now = time()
+            if FPS_T0[] > 0
+                FPS_ACC[] += _now - FPS_T0[]; FPS_N[] += 1; FRAMEPROF > 0 && (PROF_TOT[] += _now - FPS_T0[])
+                push!(FPS_DTS, _now - FPS_T0[])   # PACE-1: frame-interval spread, not just the mean
+                if FPS_N[] >= FPSDIAG
+                    _ms = 1000*FPS_ACC[]/FPS_N[]
+                    # SPA-FPS-1 (PO 2026-09-06: "spa has low frame rate at places, but the ring does not"): each
+                    # report carries WHERE (lapdist) and HOW MUCH is in draw range (objects within OBJ_CULL2,
+                    # billboards within BB range) -- the frame time's suspects, not just its value.
+                    _hr = JuliaMotor.hat(TRKSURF, cs.x, cs.z)
+                    _nobj = count(o -> (o[4][1] - cs.x)^2 + (-o[4][3] - cs.z)^2 < OBJ_CULL2, OBJECTS)
+                    println("  [fps] view=", CTL.view == 0 ? "cockpit" : "chase  ",
+                            "  ", round(1000/_ms, digits=1), " fps  (", round(_ms, digits=1), " ms/frame)",
+                            "  s=", _hr.found ? round(Int, _hr.lapdist) : -1, "  objs_in_range=", _nobj, "/", length(OBJECTS),
+                            "  billboards=", length(BILLBOARDS), "  trees=", length(STATICTREES))
+                    if !isempty(FPS_DTS)
+                        _d = sort(FPS_DTS) .* 1000
+                        println("  [pace] frame interval ms: p10 ", round(_d[max(1, length(_d)÷10)], digits=1), "  p50 ", round(_d[max(1, length(_d)÷2)], digits=1),
+                                "  p90 ", round(_d[max(1, 9*length(_d)÷10)], digits=1), "  max ", round(_d[end], digits=1), "  >25ms ", count(>(25.0), _d), "/", length(_d), "  (interval ", PACE_INT[], ")")
+                        empty!(FPS_DTS)
+                    end
+                    flush(stdout); FPS_ACC[] = 0.0; FPS_N[] = 0
+                end
+            end
+            FPS_T0[] = _now
+        end
+    nothing
+end
+
+"""ALLOCPROF: the per-pass allocation tally, printed every ALLOCPROF frames. (LOOPSPLIT-1 S4: moved unchanged from main())"""
+function allocprof_report!()
+        if ALLOCPROF > 0
+            ALLOC_MARK[5] = Base.gc_bytes()                     # HUD etc.
+            for k in 1:4; ALLOC_ACC[k] += ALLOC_MARK[k+1] - ALLOC_MARK[k]; end
+            ALLOC_N[] += 1
+            if ALLOC_N[] >= ALLOCPROF
+                println("  [alloc] KB/frame: sim ", round(Int, ALLOC_ACC[1]/ALLOC_N[]/1024), "  shadow+mirror ", round(Int, ALLOC_ACC[2]/ALLOC_N[]/1024),
+                        "  world ", round(Int, ALLOC_ACC[3]/ALLOC_N[]/1024), "  hud ", round(Int, ALLOC_ACC[4]/ALLOC_N[]/1024)); flush(stdout)
+                fill!(ALLOC_ACC, 0); ALLOC_N[] = 0
+            end
+        end
+    nothing
 end

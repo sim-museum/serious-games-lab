@@ -16217,69 +16217,14 @@ function main()
         # the same scene from two cameras, so anything that costs the same in both is not the cause.
         # JM_FPSDIAG=<n> prints every n frames (default 120).
         FRAMEPROF > 0 && (PROF_HUD[] += time() - _t_hud)
-        if FRAMEPROF > 0
-            PROF_N[] += 1
-            if PROF_N[] >= FRAMEPROF
-                nn = PROF_N[]
-                # PROF_TOT is filled by the FPSDIAG accumulator below when it is also on; when it is
-                # not, report the phases alone rather than a percentage of an unknown whole. A split
-                # that silently divides by a total nobody measured is the kind of confident-wrong
-                # number this project keeps booking.
-                tot = PROF_TOT[] > 0 ? PROF_TOT[]/nn*1000 : NaN
-                println("  [frameprof] ", nn, " frames:  world ", round(1000*PROF_WORLD[]/nn, digits=2),
-                        " ms   hud ", round(1000*PROF_HUD[]/nn, digits=2), " ms",
-                        "   [depth ", round(1000*PROF_DEPTH[]/nn, digits=2), " track ", round(1000*PROF_TRACK[]/nn, digits=2),
-                        " objects ", round(1000*PROF_OBJ[]/nn, digits=2), " billboards ", round(1000*PROF_BB[]/nn, digits=2),
-                        " cars ", round(1000*PROF_CARS[]/nn, digits=2), "]",
-                        isnan(tot) ? "   (total not measured -- set JM_FPSDIAG too)" :
-                                     "   of " * string(round(tot, digits=2)) * " ms total")
-                flush(stdout)
-                PROF_WORLD[] = 0.0; PROF_HUD[] = 0.0; PROF_N[] = 0; PROF_TOT[] = 0.0
-                PROF_DEPTH[] = 0.0; PROF_TRACK[] = 0.0; PROF_OBJ[] = 0.0; PROF_BB[] = 0.0; PROF_CARS[] = 0.0
-            end
-        end
-        if FPSDIAG > 0
-            _now = time()
-            if FPS_T0[] > 0
-                FPS_ACC[] += _now - FPS_T0[]; FPS_N[] += 1; FRAMEPROF > 0 && (PROF_TOT[] += _now - FPS_T0[])
-                push!(FPS_DTS, _now - FPS_T0[])   # PACE-1: frame-interval spread, not just the mean
-                if FPS_N[] >= FPSDIAG
-                    _ms = 1000*FPS_ACC[]/FPS_N[]
-                    # SPA-FPS-1 (PO 2026-09-06: "spa has low frame rate at places, but the ring does not"): each
-                    # report carries WHERE (lapdist) and HOW MUCH is in draw range (objects within OBJ_CULL2,
-                    # billboards within BB range) -- the frame time's suspects, not just its value.
-                    _hr = JuliaMotor.hat(TRKSURF, cs.x, cs.z)
-                    _nobj = count(o -> (o[4][1] - cs.x)^2 + (-o[4][3] - cs.z)^2 < OBJ_CULL2, OBJECTS)
-                    println("  [fps] view=", CTL.view == 0 ? "cockpit" : "chase  ",
-                            "  ", round(1000/_ms, digits=1), " fps  (", round(_ms, digits=1), " ms/frame)",
-                            "  s=", _hr.found ? round(Int, _hr.lapdist) : -1, "  objs_in_range=", _nobj, "/", length(OBJECTS),
-                            "  billboards=", length(BILLBOARDS), "  trees=", length(STATICTREES))
-                    if !isempty(FPS_DTS)
-                        _d = sort(FPS_DTS) .* 1000
-                        println("  [pace] frame interval ms: p10 ", round(_d[max(1, length(_d)÷10)], digits=1), "  p50 ", round(_d[max(1, length(_d)÷2)], digits=1),
-                                "  p90 ", round(_d[max(1, 9*length(_d)÷10)], digits=1), "  max ", round(_d[end], digits=1), "  >25ms ", count(>(25.0), _d), "/", length(_d), "  (interval ", PACE_INT[], ")")
-                        empty!(FPS_DTS)
-                    end
-                    flush(stdout); FPS_ACC[] = 0.0; FPS_N[] = 0
-                end
-            end
-            FPS_T0[] = _now
-        end
+        frameprof_report!()   # LOOPSPLIT-1 S4: moved to main_diag.jl
+        fpsdiag_report!(cs)   # LOOPSPLIT-1 S4: moved to main_diag.jl
         # PACE-1: a frame that cannot make 60 Hz under vsync is shown for an uneven 1-2-3 refreshes (the PO's
         # "jerky, especially at Spa": Spa 28-31 fps, Ring 37-41 fps measured). When the WORK time (frame start
         # to here, excluding the vsync wait) stays over JM_PACE_HI ms (19.0), present every 2nd refresh -- a
         # steady 30 Hz, every frame held exactly two refreshes -- and return to 60 Hz below JM_PACE_LO (15.0).
         # The physics dt is the real frame time, so motion stays true either way. JM_PACE=0 disables.
-        if ALLOCPROF > 0
-            ALLOC_MARK[5] = Base.gc_bytes()                     # HUD etc.
-            for k in 1:4; ALLOC_ACC[k] += ALLOC_MARK[k+1] - ALLOC_MARK[k]; end
-            ALLOC_N[] += 1
-            if ALLOC_N[] >= ALLOCPROF
-                println("  [alloc] KB/frame: sim ", round(Int, ALLOC_ACC[1]/ALLOC_N[]/1024), "  shadow+mirror ", round(Int, ALLOC_ACC[2]/ALLOC_N[]/1024),
-                        "  world ", round(Int, ALLOC_ACC[3]/ALLOC_N[]/1024), "  hud ", round(Int, ALLOC_ACC[4]/ALLOC_N[]/1024)); flush(stdout)
-                fill!(ALLOC_ACC, 0); ALLOC_N[] = 0
-            end
-        end
+        allocprof_report!()   # LOOPSPLIT-1 S4: moved to main_diag.jl
         if PACE_ON && (!SMOKE || haskey(ENV, "JM_PACE_TEST"))
             # PERF-3: the first frame (4.9 s of JIT) seeded the EMA and every session opened at 30 Hz; a single
             # crash/GC hitch (288 ms) flipped it again. Skip the warm-up and clamp each sample, so only a
