@@ -153,7 +153,15 @@ const IRG_S20 = get(ENV, "JM_IRG_S20", "1") != "0"
 # 23 -> 26 (sweep 25/26/27/30: closed loop 1.0384/1.0373/1.0398/1.0729 against 1.0514; fresh single evaluations):
 # yaw gain 0.99-1.01 to 0.75 g, 0.88 above 150 km/h; stability suite penalty 0 both setups. JM_PHYSFID_S2=0 = 23.
 const PHYSFID_S2 = get(ENV, "JM_PHYSFID_S2", "1") != "0"
-const TYRE3 = (μf = parse(Float64, get(ENV, "JM_TYRE3_MUF", "1.40")), μr = parse(Float64, get(ENV, "JM_TYRE3_MUR", "1.65")), Cαf = parse(Float64, get(ENV, "JM_TYRE3_CAF", PHYSFID_S2 ? "26.0" : IRG_S20 ? "23.0" : "24.0")), Cαr = parse(Float64, get(ENV, "JM_TYRE3_CAR", "27.77")),
+# UNDERSTEER-1 S1 (PO 2026-10-17: "Car seems to have a lot of understeer?"): measured on the PO's laps, julia needs 1.75x
+# iRacing's steer at ~1 g; on the 75 steady gold cells (irgold_steady) the sim's front slips as the gold's but its REAR
+# slips 1.5-2 deg less -- the rear holds too well, so the front saturates first. Rear μ 1.50 scored best (steady 14.41 ->
+# 7.80, high-g steer error +0.32 -> -0.04 deg; closed-loop replay yaw error 20 -> 19 % of gold RMS, β 1.05 -> 0.92 deg,
+# settle failures 6 -> 4) but put WW103's stability suite at penalty 0.6; 1.52 passes both setups' suites (front μ up
+# instead made the car unholdable). Trail braking from 250 km/h at 0.4 pedal loosens (default 18.9 -> ~29 deg sideslip,
+# WW103 28 -> 30.5). JM_US1=0 = before (1.65).
+const US1 = get(ENV, "JM_US1", "1") != "0"
+const TYRE3 = (μf = parse(Float64, get(ENV, "JM_TYRE3_MUF", "1.40")), μr = parse(Float64, get(ENV, "JM_TYRE3_MUR", US1 ? "1.52" : "1.65")), Cαf = parse(Float64, get(ENV, "JM_TYRE3_CAF", PHYSFID_S2 ? "26.0" : IRG_S20 ? "23.0" : "24.0")), Cαr = parse(Float64, get(ENV, "JM_TYRE3_CAR", "27.77")),
                nshf = 5.0, nshr = 5.0, kμ = 0.082, cabl = IRG_S20 ? 0.35 : 0.40, nsr = IRG_S20 ? 0.75 : 1.0)   # IRGOLD-1 S16: JM_TYRE3_CAR A/B
 const USE_TYRE3 = !haskey(ENV, "JM_TYRE2")
 # IRGOLD-1 S5: with relaxation the steering column reads the front force at the KINEMATIC slip (vehicle_3d.jl);
