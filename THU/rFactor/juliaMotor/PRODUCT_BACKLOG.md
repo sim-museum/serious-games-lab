@@ -27717,3 +27717,12 @@ give the heave-vs-speed signature at three front springs, and the garage gives t
   of each 8.45 / 8. The measured lift stays. With tyre μ (S1-S2) and lift (S3) both ruled out, the 8 failing cells (the
   highest-g circles) may be the settle controller at the very limit rather than the car -- check that next (a settle
   diagnostic on one failing cell) before any more physics. Rotated for the PO's feel.
+
+### UNDERSTEER-1 S4 (2026-10-18): why the fastest circles fail -- the gold holds them in a power drift
+* The failing cells' own numbers: at its limit the sim steers MORE than the gold (e.g. T7 fuel145 -8.7 vs -6.0 deg) yet
+  yaws less (19.9 vs 21.6 deg/s at 111 km/h) with LESS sideslip (3.4 vs 5.1 deg). The gold holds ~1.18 g with the rear
+  stepped out under throttle; the sim's rear will not take that attitude, so its front saturates first.
+* Rear combined-slip grid (steady score / fails): ckr 23.2 (shipped) 8.19 / 8; ckr 16 7.81 / 8; ckr 12 8.45 / 7;
+  muxr 1.35 8.35 / 10; ckr 16 + mur 1.58 10.31 / 7. Effects are small and the longitudinal fits (launch, traction) rest on
+  ckr/muxr -- not shipped. The remaining gap is rear traction ON POWER, the same as PHYSFID-1's 35-deg diff finding; it
+  needs the PO's on-power iRacing data (IRPLAN-2 Part E2). Rotated.
