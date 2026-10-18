@@ -27710,3 +27710,10 @@ give the heave-vs-speed signature at three front springs, and the garage gives t
 * main() since S1: diagnostics (S1), mirror pass (S2), timing overlay + race-end banner (S3), profiling reports (S4), tyre
   panel / wreck notice / pacing / GC (S5), countdown (S6). Six sprints: rotated. Next cycle: the restart/replay block, then
   LOOPSPLIT-2 (cache the moved pieces in a precompiled package -- the launch-time lever).
+
+### UNDERSTEER-1 S3 (2026-10-18): the unholdable fast circles are not the aero lift either
+* Lift grid at the shipped tyre (steady score / fails): measured lift (ClAf -0.06, ClAr -0.04) 8.19 / 8; no rear lift
+  9.71 / 7 (high-g steer error +0.15, β +0.43 -- rear too strong again); no front lift 9.07 / 11; neither 8.48 / 8; half
+  of each 8.45 / 8. The measured lift stays. With tyre μ (S1-S2) and lift (S3) both ruled out, the 8 failing cells (the
+  highest-g circles) may be the settle controller at the very limit rather than the car -- check that next (a settle
+  diagnostic on one failing cell) before any more physics. Rotated for the PO's feel.
