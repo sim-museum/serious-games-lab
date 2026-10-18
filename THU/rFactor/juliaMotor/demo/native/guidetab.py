@@ -2,7 +2,7 @@
 
 One row per corner the guide describes (Lights Out Racing: entrance speed, slowest speed, time through the corner, from
 the guide author's own replay lap), beside the same numbers from the chosen lap; the selected row's advice (braking
-point, gears, line) below, and the short fs guide's notes for the whole track. See trackguide.py for where the
+point, gears, line) below. See trackguide.py for where the
 numbers come from and how the corners are placed on the lap.
 """
 import html
@@ -65,9 +65,9 @@ class TrackGuide(QWidget):
         self.rows = rows or []
         if rows is None:
             self.head.setText(f"No track guide: {src}."); self.table.setRowCount(0); self.text.setPlainText(""); return
-        self.head.setText(f"<b>{html.escape(src)}</b> -- against {html.escape(lap.driver)}, lap {lap.num} "
+        self.head.setText(f"<b>Track guide</b> -- against {html.escape(lap.driver)}, lap {lap.num} "
                           f"({A.fmt_time(lap.time) if lap.time is not None else A._untimed(lap)}). The guide's numbers are "
-                          "a 1967 car at the author's pace; the corners are placed on your lap by the track's sections. "
+                          "a fast lap's; the corners are placed on your lap by the track's sections. "
                           "Pick a row for the guide's advice.")
         self.table.setRowCount(len(self.rows))
         for r, e in enumerate(self.rows):
@@ -81,10 +81,9 @@ class TrackGuide(QWidget):
                     it.setForeground(QColor("#e57373"))          # well over the guide's time through this corner
                 self.table.setItem(r, c, it)
         self.table.resizeColumnsToContents()
-        fs = G.fs_text(self.rep.h.get("track", ""))
-        self.fs = fs
-        self.text.setHtml("<p>Pick a corner above for the guide's advice.</p>"
-                          + (f"<h4>fs guide (whole track)</h4><p>{html.escape(fs)}</p>" if fs else ""))
+        # DOCGUIDES-2 (PO 2026-10-17): the one-paragraph whole-track text that used to sit here is gone -- the Guides
+        # tab carries the track's guide.
+        self.text.setHtml("<p>Pick a corner above for the guide's advice.</p>")
 
     def _show(self):
         r = self.table.currentRow()

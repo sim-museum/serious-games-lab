@@ -252,6 +252,9 @@ const MODE      = lowercase(get(ENV, "JM_MODE", "practice"))   # practice | trai
 const RACE_LAPS = max(1, tryparse(Int, get(ENV, "JM_LAPS", "3")) |> x -> x === nothing ? 3 : x)
 const AI_COOLDOWN = get(ENV, "JM_AI_COOLDOWN", "1") != "0"      # WGTD-1 (e): the AI's cool-down lap and stop after the flag
 const AI_COOL_DIAG = get(ENV, "JM_AI_COOLDIAG", "0") != "0"
+# TD261017-1 (a4) (PO 2026-10-17: the AI "didn't make it around the 2nd lap, though there seemed to be plenty of time"): at 0.6
+# of race pace a Spa cool-down lap took over 10 minutes (45-100 km/h); 0.9 brings them round in about a race lap.
+const AI_COOL_PACE = parse(Float64, get(ENV, "JM_AI_COOLPACE", "0.9"))
 const AI_COOL_STOPPED = Set{Int}()
 const AI_COOL = Dict{Int,Tuple{Symbol,Float64,Float64}}()        # AI index -> (state, its race pace, where the stop began)
 const AI_ROADSHIFT_CHECK = get(ENV, "JM_AI_ROADSHIFT_CHECK", "1") != "0"   # MONZAROAD-1
@@ -3410,7 +3413,12 @@ else
     include(joinpath(@__DIR__, "holefill.jl")); using .HoleFill
     const HOLEFILL = get(ENV, "JM_HOLEFILL", "1") == "0" ? (Render.TrackPart[], 0) :
         HoleFill.holefill_parts([_TRACKMAIN_BD; ROADPARTS; _SECPARTS_BD], ROAD_TEX,
-                                lt -> occursin(r"gr|grass|dirt|drt|edge|bank|earth|sand|gravel|field|meadow", lt) && !ROAD_TEX(lt))
+                                lt -> occursin(r"gr|grass|dirt|drt|edge|bank|earth|sand|gravel|field|meadow", lt) && !ROAD_TEX(lt);
+                                # TD261017-1 (g1) (PO 2026-10-17: "the two holes in the ground at left coming out of stavelot are
+                                # still there - cover that with grass or something"): the gap runs 15-30 m from the tarmac past
+                                # the bank, beyond the 10 m reach; at Spa the filler reaches 30 m (3,159 -> 18,263 quads;
+                                # replayed at the PO's moment, the gap is grass). JM_HOLEFILL_NEAR=10 = before.
+                                near = parse(Float64, get(ENV, "JM_HOLEFILL_NEAR", SPA ? "30" : "10")))
     println("  [holefill] ", HOLEFILL[2], " ground quad(s) of 2 m in ", length(HOLEFILL[1]), " part(s) where the mesh leaves the ground ",
             "beside the tarmac uncovered (JM_HOLEFILL=0 = off)")
     if haskey(ENV, "JM_HOLEFILL_DIAG")      # "x,z,r": the filler quads' corners within r of (x, z), render coords
@@ -6758,7 +6766,10 @@ lapwin_in(s, c) = (L = _LW.L; abs(mod(s - c + L/2, L) - L/2) <= LAPWIN + LAPBIN)
 # return straight and 13-40 m from the start straight). JM_LAPWIN_TWOLEG=0 =
 # nearest node only, as before.
 const LAPWIN_TWOLEG = get(ENV, "JM_LAPWIN_TWOLEG", "1") != "0"
-const LAPWIN_NEAR = parse(Float64, get(ENV, "JM_LAPWIN_NEAR", (SPA || ZANDV) ? "150" : "75"))   # Spa: La Source hillside (BLINDTURN-1 S9: 106-134 m)   # ... or within this many metres of it
+# TD261017-1 (r1) (PO 2026-10-17, the Ring: "big polygons jump out at right as I drive by the tower at right between south and
+# north hairpins"): at 75 m the pit row's back wall, its crowd and boards came and went on the return straight (s 1450-1700;
+# JM_LAPWIN=0 shows them steady); 150 m holds them (10,941 triangles get a second leg; 300 m: 45,704, no visible gain).
+const LAPWIN_NEAR = parse(Float64, get(ENV, "JM_LAPWIN_NEAR", (SPA || ZANDV || NURB) ? "150" : "75"))   # Spa: La Source hillside (BLINDTURN-1 S9: 106-134 m)   # ... or within this many metres of it
 "(lap distance, plan distance²) of the centreline node nearest (GPL x, y) -- `lapnear` with its distance"
 function lapnear_d(x, z)
     W = _LW; cx = floor(Int, (x - W.x0)/W.c); cz = floor(Int, (z - W.z0)/W.c); bd = Inf; bi = 0
@@ -11019,8 +11030,12 @@ end
 # glove, and the arm rises over the rim when the wheel turns, as the gold's does. JM_ARMS2=0 restores ARMFIX.
 const ARMS2 = get(ENV, "JM_ARMS2", "1") != "0"
 # fitted to the gold cockpit (Zandvoort t=16/22): a lower shoulder ran the sleeve under the dash top, out of sight
+# TD261017-1 (c1) (PO 2026-10-17: "the driver's wrists seem to be bent outward about 90 degrees, wrists should be straight"):
+# the gloves' cuffs open OUTWARD (GPL lays the forearms in from the cockpit sides), and a shoulder 0.26 m out brought each
+# sleeve up from below -- a right angle at the wrist. 0.52 m runs the sleeve in from the side, in line with the cuff
+# (cockpit sweep 0.26 / 0.40 / 0.52, Spa s 1000). JM_SHOULDER_Z=0.26 = before.
 const SHOULDER = (parse(Float32, get(ENV, "JM_SHOULDER_X", "0.18")), parse(Float32, get(ENV, "JM_SHOULDER_Y", "0.22")),
-                  parse(Float32, get(ENV, "JM_SHOULDER_Z", "0.26")))
+                  parse(Float32, get(ENV, "JM_SHOULDER_Z", "0.52")))
 const ARM_THICK = parse(Float32, get(ENV, "JM_ARM_THICK", "1.2"))
 const ARM_STRIPE = get(ENV, "JM_ARM_STRIPE", "1") != "0"   # HANDS-2 S4: the stripe face aimed at the eye (JM_ARM_STRIPE=0 reverts)
 """Per side (+1 = mesh z > 0): the sleeve's (wrist, far-end) points -- the ends of its principal axis, the wrist the lower."""
@@ -13104,13 +13119,39 @@ function main()
                     end
                 end
                 med = [sort([raw_d[mod1(i + q, n3)] for q in -3:3])[4] for i in 1:n3]
-                g = [exp(-q^2/(2*2.0^2)) for q in -6:6]; g ./= sum(g)
-                dsh = [sum(g[q + 7]*med[mod1(i + q, n3)] for q in -6:6) for i in 1:n3]
+                # TD261017-1 (a3) (PO 2026-10-17: "AI cars zig zag for no reason, especially near curves"): with sigma 6 m the
+                # correction kept the steps of the re-centred line (up to 0.53 m per 3 m at Spa s 200, 480, 5170, 6610 --
+                # ~7 m/s sideways at race speed, every car at the same places). A road's centre does not jog: sigma 18 m, then
+                # the slope is limited to DSH_SLOPE m per m (forward and backward passes, averaged). JM_AI_DSH_SIGMA=2 and
+                # JM_AI_DSH_SLOPE=0 = before.
+                sg_ = parse(Float64, get(ENV, "JM_AI_DSH_SIGMA", "6")); hw_ = ceil(Int, 3*sg_)
+                g = [exp(-q^2/(2*sg_^2)) for q in -hw_:hw_]; g ./= sum(g)
+                dsh = [sum(g[q + hw_ + 1]*med[mod1(i + q, n3)] for q in -hw_:hw_) for i in 1:n3]
+                slope_ = parse(Float64, get(ENV, "JM_AI_DSH_SLOPE", "0.05"))*3.0
+                if slope_ > 0
+                    fw = copy(dsh); bw = copy(dsh)
+                    for _ in 1:2, i in 1:n3; j = mod1(i - 1, n3); fw[i] = clamp(fw[i], fw[j] - slope_, fw[j] + slope_); end
+                    for _ in 1:2, i in n3:-1:1; j = mod1(i + 1, n3); bw[i] = clamp(bw[i], bw[j] - slope_, bw[j] + slope_); end
+                    dsh = (fw .+ bw) ./ 2
+                end
+                if haskey(ENV, "JM_AI_DSHDUMP")             # TD261017-1: the correction along the lap (s, raw, used, race line, corridor)
+                    open(ENV["JM_AI_DSHDUMP"], "w") do io
+                        for i in 1:n3
+                            sa = (i - 1)*3.0; sg = sa/(ref.lap/glap)
+                            println(io, sa, " ", raw_d[i], " ", dsh[i], " ", GPLAI.dlat(lines[GPLAI.RACE], sg), " ",
+                                    GPLAI.dlat(lines[GPLAI.MINR], sg), " ", GPLAI.dlat(lines[GPLAI.MAXR], sg))
+                        end
+                    end
+                end
                 println("  → AI frame: lateral correction to our road, |shift| mean ", round(sum(abs, dsh)/n3, digits = 2),
                         " m, max ", round(maximum(abs, dsh), digits = 2), " m (JM_AI_ROADSHIFT=0 off); ", nrej[],
                         " samples kept on GPL's frame where the correction left the road (MONZAROAD-1)")
             end
             GPLAI_T = GPLAI.Track(lines, ref, glap, P, gh, dsh, 3.0)
+            # TD261017-1 (a1): Spa's pit straight -- the field keeps to the road, not beside the boxes (GPLAI.KEEP).
+            # JM_AI_PITKEEP=0 = before; JM_AI_PITKEEP=<lo> moves the bound (m of dlat, negative = the pit side).
+            pk = get(ENV, "JM_AI_PITKEEP", "-3.0")
+            GPLAI.KEEP[] = (SPA && pk != "0") ? [(13750.0, 200.0, parse(Float64, pk), 99.0)] : NTuple{4,Float64}[]
             if _DX_PIT_DIAG && haskey(lines, GPLAI.PIT)    # TD261013-1 (a3): where the pit line lands
                 for x in PIT_IN[]-60:30.0:glap-1
                     dp = GPLAI.dlat(lines[GPLAI.PIT], x); dr = GPLAI.dlat(lines[GPLAI.RACE], x)
@@ -13649,7 +13690,8 @@ function main()
     _team_cache = Dict{String,Any}()
     _TEAM_D = Dict("Cooper" => ("coventry", "covd.3do"), "Ferrari" => ("ferrari", "ferd.3do"), "Brabham" => ("brabham", "brad.3do"),
                    "BRM" => ("brm", "brmd.3do"), "Eagle" => ("eagle", "eagd.3do"))
-    REP_TEAMLIVE = get(ENV, "JM_REPLAY_TEAMLIVE", "1") != "0"                                   # TD261013-1 (a4)
+    REP_TEAMLIVE = get(ENV, "JM_REPLAY_TEAMLIVE", "1") != "0"
+    TEAM_ARMS = get(ENV, "JM_TEAM_ARMS", "1") != "0"                                       # TD261017-1 (c2)                                   # TD261013-1 (a4)
     TEAM_LEVER_AT_LOTUS = get(ENV, "JM_TEAM_LEVER_LOTUS", "1") != "0"                          # TD261013-1 S8
     _TEAM_WHEEL    = Set(["cteerh2", "csterlo", "fsteer2", "fsterlog", "rteerh2", "rsterlo", "sterbrm", "esterh1", "esterlo"])
     _TEAM_WHEEL_LO = Set(["cteerl2", "fsteer1", "rteerl2", "steerl3", "esterl1"])
@@ -13677,8 +13719,33 @@ function main()
             end
             ft = fc(path); fl = fc(joinpath(LOTDIR, "lotd.3DO"))
             d = (ft === nothing || fl === nothing) ? (0f0, 0f0, 0f0) : (fl[1] - ft[1], fl[2] - ft[2], 0f0)
+            # TD261017-1 (c2) (PO 2026-10-17: "several AI cars have missing arms in cockpit view"): the team's sleeves were
+            # skipped (raw, GPL's positioner chain stands them up as "rabbit ears"); lay them from each glove to the driver's
+            # shoulder as ARMS2 does for the Lotus. JM_TEAM_ARMS=0 = before (gloves only).
+            tarms = TEAM_ARMS ? filter(p -> (t = lowercase(p.tex); endswith(t, "arms") && t != "arms"), ps) : typeof(ps)()
             ps = filter(p -> !_team_skip(p.tex), ps)
             for p in ps, i in 0:11:length(p.verts)-11; p.verts[i+1] += d[1]; p.verts[i+2] += d[2]; end
+            for p in tarms, i in 0:11:length(p.verts)-11; p.verts[i+1] += d[1]; p.verts[i+2] += d[2]; end
+            if !isempty(tarms)
+                hands = filter(p -> endswith(lowercase(p.tex), "hand"), ps)
+                for side in (-1, 1)
+                    ends = Render.sleeve_axis_ends(tarms, side); ends === nothing && continue
+                    W, E = ends
+                    hp = [Float64[p.verts[i+1], p.verts[i+2], p.verts[i+3]] for p in hands for i in 0:11:length(p.verts)-11 if sign(p.verts[i+3]) == side]
+                    isempty(hp) && continue
+                    H = Tuple(sum(hp) ./ length(hp))
+                    S = (Float64(SHOULDER[1]), Float64(SHOULDER[2]), side*Float64(SHOULDER[3]))
+                    for p in tarms
+                        keep = Float32[]
+                        for t in 0:(length(p.verts) ÷ 33)-1
+                            b = t*33
+                            sign(p.verts[b+3] + p.verts[b+14] + p.verts[b+25]) == side || continue
+                            append!(keep, @view p.verts[b+1:b+33])
+                        end
+                        isempty(keep) || push!(ps, Render.TrackPart(Render.lay_along!(keep, W, E, H, S, ARM_THICK), p.tex, p.col))
+                    end
+                end
+            end
             # TD261013-1 (a4) (PO 2026-10-13: "the AI car cockpits should show the steering wheel turning, and the shifter
             # shifting. Several cockpit views show the steering wheel at low resolution, several show the windscreen as a
             # completely opaque low-polygon surface"): each team's cockpit carries its wheel TWICE -- a hi-res and a lo-res
@@ -15290,7 +15357,7 @@ function main()
             end
             # WGTD-1 (e) (PO 2026-10-08: "after the race the AI do one slow lap and stop in the pits, as GPL"): once any car
             # has run the race distance the flag is out, and each AI car's next crossing ends ITS race (lapped cars too, as in
-            # racing). It then drives one cool-down lap at 60 % pace; at the line after that it moves to the outer edge of the
+            # racing). It then drives one cool-down lap at AI_COOL_PACE of its pace; at the line after that it moves to the outer edge of the
             # corridor (GPL's own line transition, held there) and slows to a stop over 300 m. (GPL brings them into the pit
             # lane; our AI have no pit line yet, so they stop at the edge of the straight.) JM_AI_COOLDOWN=0: racing on.
             if AI_COOLDOWN && IS_RACE && phase[] == :race && race_go[]
@@ -15300,7 +15367,7 @@ function main()
                     st = get(AI_COOL, i, nothing)
                     if st === nothing
                         if flag && crossed[i]
-                            AI_COOL[i] = (:cool, gc.pace, 0.0); gc.pace = 0.6*gc.pace
+                            AI_COOL[i] = (:cool, gc.pace, 0.0); gc.pace = AI_COOL_PACE*gc.pace
                             AI_COOL_DIAG && println("  [cooldown] ", ent_name(i), " finished (lap ", AICARS[i].lap, "): cool-down lap")
                         end
                     elseif st[1] === :cool && isfinite(PIT_IN[]) && haskey(GPLAI_T.lines, GPLAI.PIT) &&

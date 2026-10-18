@@ -139,7 +139,7 @@ def guide_block(rep, you, n_advice=3, advice_chars=700):
         return []
     if not rows:
         return []
-    out = [f"Track guide ({src}; a 1967 car at the guide author's pace -- compare shape, not absolute speed). Per corner: "
+    out = ["Track guide (a fast lap -- compare shape, not absolute speed). Per corner: "
            "guide entry/slowest km/h and time through it vs yours:"]
     f = lambda x, p=0: "n/a" if x is None else f"{x:.{p}f}"
     for e in rows:
@@ -158,7 +158,7 @@ PROMPT = ("You are a racing driving coach for Julia Racer: a 1967 Lotus 49 (abou
           "time, each tied to named corners and to the numbers (braking point, minimum speed, throttle application, "
           "line), and say what to try on the next lap. Then one sentence on consistency. Be concrete and brief "
           "(under 300 words), use Markdown, and do not invent data that is not in the summary. Where the summary quotes the "
-          "GPL track guide (Lights Out Racing), use its advice for those corners and say so.\n\n")
+          "track guide, use its advice for those corners (call it \"the track guide\").\n\n")
 
 
 class CoachDialog(QDialog):

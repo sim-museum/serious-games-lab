@@ -35,7 +35,7 @@ from PyQt6.QtWidgets import (
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from garage_tab import GarageTab          # SETUPMODEL-1: iRacing's garage (garage.py = the static solve's mirror)
-from guides_tab import GuidesTab          # DOCGUIDES-1: the GPL / iRacing guides, page by page
+from guides_tab import GuidesTab          # DOCGUIDES-2: the current track's guide + the glossary
 UI_DIR = os.path.join(HERE, "assets", "ui")
 GUIDE = os.path.join(HERE, "docs", "HOW_TO_RACE.md")    # DOC-RACE-1: ships with the launcher (AppImage rule)    # the theme's glyphs ship with the module (fixed even if HERE is redirected)
 CONF = os.path.join(HERE, "joystick.conf")
@@ -1938,7 +1938,8 @@ class Main(QMainWindow):
         tabs.addTab(self.garage, "Garage")
         tabs.addTab(self.result, "Results")
         tabs.addTab(self.replay, "Replays")
-        self.guides = GuidesTab()                                  # DOCGUIDES-1
+        self.guides = GuidesTab(lambda: TRACK_KEYS[max(0, self.drive.track.currentIndex())])   # DOCGUIDES-2: this track only
+        self.drive.track.currentIndexChanged.connect(lambda _i: self.guides.fill())
         tabs.addTab(self.guides, "Guides")
         tabs.addTab(self.drive.settings_page(), "Settings")
         tabs.addTab(self.cal, "Controller")
@@ -2023,28 +2024,32 @@ QPushButton#primary { background: #2e7d4f; border: 1px solid #3fa86a; color: #ff
 QPushButton#primary:hover { background: #379160; }
 QPushButton#primary:pressed { background: #276b43; }
 QPushButton#primary:disabled { background: #1f3a2b; color: #6f8f7d; border-color: #2a4a38; }
-QComboBox, QSpinBox, QLineEdit { background: #0f1922; color: #e8eef3; border: 1px solid #34495e; border-radius: 3px;
+QComboBox, QSpinBox, QDoubleSpinBox, QLineEdit { background: #0f1922; color: #e8eef3; border: 1px solid #34495e; border-radius: 3px;
                                  padding: 4px 6px; selection-background-color: #2e7d4f; }
-QComboBox:hover, QSpinBox:hover, QLineEdit:hover { border-color: #3fa86a; }
-QComboBox:disabled, QSpinBox:disabled, QLineEdit:disabled { color: #5f6f7e; border-color: #26333f; }
+QComboBox:hover, QSpinBox:hover, QDoubleSpinBox:hover, QLineEdit:hover { border-color: #3fa86a; }
+QComboBox:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled, QLineEdit:disabled { color: #5f6f7e; border-color: #26333f; }
 QComboBox QAbstractItemView { background: #0f1922; color: #e8eef3; border: 1px solid #34495e;
                               selection-background-color: #2e7d4f; selection-color: #ffffff; }
-QSpinBox { padding-right: 22px; }
-QSpinBox::up-button, QSpinBox::down-button { subcontrol-origin: border; width: 20px; background: #1f2c38;
+QSpinBox, QDoubleSpinBox { padding-right: 22px; }
+QSpinBox::up-button, QSpinBox::down-button, QDoubleSpinBox::up-button, QDoubleSpinBox::down-button { subcontrol-origin: border; width: 20px; background: #1f2c38;
                                              border-left: 1px solid #34495e; }
-QSpinBox::up-button { subcontrol-position: top right; border-top-right-radius: 3px; }
-QSpinBox::down-button { subcontrol-position: bottom right; border-bottom-right-radius: 3px; }
-QSpinBox::up-button:hover, QSpinBox::down-button:hover { background: #2e7d4f; }
-QSpinBox::up-arrow { image: url(@UI@/arrow_up.png); width: 10px; height: 6px; }
-QSpinBox::down-arrow { image: url(@UI@/arrow_down.png); width: 10px; height: 6px; }
+QSpinBox::up-button, QDoubleSpinBox::up-button { subcontrol-position: top right; border-top-right-radius: 3px; }
+QSpinBox::down-button, QDoubleSpinBox::down-button { subcontrol-position: bottom right; border-bottom-right-radius: 3px; }
+QSpinBox::up-button:hover, QSpinBox::down-button:hover, QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover { background: #2e7d4f; }
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow { image: url(@UI@/arrow_up.png); width: 10px; height: 6px; }
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow { image: url(@UI@/arrow_down.png); width: 10px; height: 6px; }
 QCheckBox { spacing: 8px; }
 QCheckBox::indicator { width: 16px; height: 16px; border: 1px solid #4a6276; border-radius: 3px; background: #0f1922; }
 QCheckBox::indicator:checked { background: #2e7d4f; border-color: #3fa86a; image: url(@UI@/check.png); }
 QCheckBox::indicator:hover { border-color: #3fa86a; }
 QProgressBar { background: #0f1922; border: 1px solid #34495e; border-radius: 4px; color: #e8eef3; text-align: center; }
 QProgressBar::chunk { background: #2e7d4f; border-radius: 3px; }
+QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; }
+QListWidget, QListView { background: #0f1922; color: #e8eef3; border: 1px solid #2c3e50; border-radius: 4px; }
+QListWidget::item { padding: 6px 8px; }
+QListWidget::item:selected { background: #2e7d4f; color: #ffffff; }
 QTextBrowser#guide { background: #101a23; color: #e8eef3; border: 1px solid #2c3e50; border-radius: 4px;
-                     font-family: Arial; font-size: 11pt; padding: 10px; }
+                     font-family: Arial; font-size: 12pt; padding: 10px; }
 QTableWidget, QTableView { background: #0f1922; alternate-background-color: #131f2a; color: #e8eef3;
                            gridline-color: #26333f; border: 1px solid #2c3e50; border-radius: 4px; }
 QHeaderView::section { background: #1b2733; color: #b9c7d3; border: none; border-right: 1px solid #26333f;

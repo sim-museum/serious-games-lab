@@ -233,6 +233,8 @@ end
 # ---------------------------------------------------------------------------------------------- track
 const RACE, MINR, MAXR, PASS1, PASS2 = 0, 1, 2, 3, 4
 const PIT_FREE = Base.Ref(get(ENV, "JM_AI_PITCLAMP", "0") == "0")   # TD261013-1 (a3): JM_AI_PITCLAMP=1 = before
+const ROLLFIX = Base.Ref(get(ENV, "JM_AI_ROLLFIX", "1") != "0")   # TD261017-1 (a2): see _pose
+const ROLL_MAX = 0.07                           # rad (4 deg): a road's steepest camber
 const PIT = 5                                   # WGTD-1 S9: GPL's pit.lp -- the cool-down lap's way into the pit lane
 const CAR_LEN = 4.0; const CAR_W = 1.75
 const EDGE = 0.30                         # the goal keeps this far inside the corridor (ours, not GPL's: see goal)
@@ -265,7 +267,22 @@ theading(T::Track, s) = heading(T.ref, s*_k(T))
 tcurv(T::Track, s) = curv(T.ref, s*_k(T)) * _k(T)
 "locate world (x, z) in GPL's frame: (dlong, dlat, hint)"
 tlocate(T::Track, x, z, hint::Int = 0) = ((s, d, h) = locate(T.ref, x, z, hint); (s/_k(T), d - dshift(T, s), h))
-corridor(T::Track, s) = (dlat(L(T, MINR), s), dlat(L(T, MAXR), s))
+# TD261017-1 (a1) (PO 2026-10-17: "AI cars zip over to pit lane after the start - they should stay on the track"): GPL's
+# corridor on a pit straight spans the pit area too (Spa: 9 m to the pit side, race line 5 m that way), so the field drove
+# beside the boxes. KEEP holds (s0, s1, lo, hi) in dlong (s0 > s1 wraps the line): the corridor is narrowed to [lo, hi]
+# there, blended in over 40 m at each end. Empty = GPL's corridor as is.
+const KEEP = Base.Ref(NTuple{4,Float64}[])
+function corridor(T::Track, s)
+    lo = dlat(L(T, MINR), s); hi = dlat(L(T, MAXR), s)
+    for (a, b, l, h) in KEEP[]
+        len = mod(b - a, T.lap); x = mod(s - a, T.lap)
+        x <= len || continue
+        w = clamp(min(x, len - x)/40.0, 0.0, 1.0)
+        lo2 = lo + w*(max(lo, l) - lo); hi2 = hi + w*(min(hi, h) - hi)
+        hi2 - lo2 >= 2.0 && (lo = lo2; hi = hi2)
+    end
+    (lo, hi)
+end
 
 # ------------------------------------------------------------------------------------------------ cars
 mutable struct Car
@@ -699,6 +716,17 @@ function _pose(T::Track, c::Car)
     hr = T.height(c.s, c.d - 0.8, tworld(T, c.s, c.d - 0.8)[1], tworld(T, c.s, c.d - 0.8)[2])
     pr = isfinite(h1) && isfinite(h0) ? atan(h1 - h0, 4.0) : 0.0
     rr = isfinite(hl) && isfinite(hr) ? atan(hl - hr, 1.6) : 0.0
+    # TD261017-1 (a2) (PO 2026-10-17: "coming up the hill at eau rouge, if on the left cars roll to the right?! lifting their
+    # left side"): near an edge one of the two samples lands off the road -- on the bank -- and the two-point camber read
+    # the bank (8 deg at Raidillon, headless race). The road's own camber is what the car sits on: take the GENTLER of the
+    # two one-sided slopes (none where they disagree in sign: a crown), clamped to a road's camber. JM_AI_ROLLFIX=0 = before.
+    if ROLLFIX[]
+        hc = c.yroad
+        sl = isfinite(hl) && isfinite(hc) ? atan(hl - hc, 0.8) : 0.0
+        sr = isfinite(hr) && isfinite(hc) ? atan(hc - hr, 0.8) : 0.0
+        rr = sign(sl) != sign(sr) ? 0.0 : (abs(sl) < abs(sr) ? sl : sr)
+        rr = clamp(rr, -ROLL_MAX, ROLL_MAX)
+    end
     pitch = pr - P.pitch_k*c.along
     roll  = T.ref.sgn*rr + P.roll_k*c.atire
     (x, isfinite(y) ? y : c.yroad, z, c.yaw, pitch, roll)

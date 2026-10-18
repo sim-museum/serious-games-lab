@@ -188,7 +188,10 @@ class GarageTab(QWidget):
                               "(GPL wheel rate -> iRacing spring rate), dampers and bars by range position, camber, toe, bias,\n"
                               "fuel, diff and the nearest iRacing gearing. What iRacing's ranges cannot take is reported.")
         self.gpl_b.clicked.connect(self.import_gpl)
-        for b in (self.reset_b, self.save_b, self.load_b, self.gpl_b):
+        self.guide_b = QPushButton("Setup guide…")              # DOCGUIDES-2: the setup guide lives with the knobs
+        self.guide_b.setToolTip("What each knob does, how to work through a setup, and a table of fixes by symptom.")
+        self.guide_b.clicked.connect(self.show_guide)
+        for b in (self.reset_b, self.save_b, self.load_b, self.gpl_b, self.guide_b):
             btns.addWidget(b)
         btns.addStretch(1)
         self.status = QLabel()
@@ -204,15 +207,35 @@ class GarageTab(QWidget):
             sc.setWidgetResizable(True)
             sc.setWidget(page)
             pages.addTab(sc, name)
-        note = QLabel("Derived numbers (grey) are iRacing's for the base session plus the garage model's change for the "
+        note = QLabel("Derived numbers (in monospace) are iRacing's for the base session plus the garage model's change for the "
                       "knobs you turn. † = range provisional.")
-        note.setStyleSheet("color: gray")
+        note.setStyleSheet("color: #b9c7d3")
         note.setWordWrap(True)
         top.addWidget(note)
 
+    def show_guide(self):
+        """DOCGUIDES-2: the one setup guide (docs/guides_text/setup.md) in its own window."""
+        import guides
+        from PyQt6.QtWidgets import QDialog, QTextBrowser
+        p = guides.setup_doc()
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Setup guide")
+        dlg.resize(900, 760)
+        lay = QVBoxLayout(dlg)
+        t = QTextBrowser()
+        t.setObjectName("guide")
+        if p:
+            guides.show_markdown(t, p)
+        else:
+            t.setPlainText("The setup guide is missing (docs/guides_text/setup.md).")
+        lay.addWidget(t)
+        self._guide_dlg = dlg               # kept for tests
+        dlg.show()
+        return dlg
+
     def _derived(self, key):
         l = QLabel("—")
-        l.setStyleSheet("color: #666; font-family: monospace")
+        l.setStyleSheet("color: #ffffff; font-family: monospace")   # TD261017-1 (u1): readable on the dark page
         self.derived_labels[key] = l
         return l
 
@@ -491,4 +514,4 @@ class GarageTab(QWidget):
         mod = self.is_modified()
         self.status.setText(("MODIFIED from the session" if mod else "= the session") +
                             ("" if D["ok"] else "  (solve did not converge)"))
-        self.status.setStyleSheet("color: #b36b00" if mod else "color: gray")
+        self.status.setStyleSheet("color: #ffb347" if mod else "color: #b9c7d3")
