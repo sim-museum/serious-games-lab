@@ -1,5 +1,25 @@
 # biq — Claude Code project notes
 
+## STATUS — progress curve (2026-10-18)
+* Live IMPs vs Q-Plus can't gauge progress: ~100 random boards per system = SE ~0.7 IMP/bd, and card
+  play swings up to ±1.9 IMP/bd between runs (261017 Precision -3.37 as played, -1.46 DD-scored; bidding
+  unchanged from 261015's -1.52). New tool `tools/biq_progress.py`: per version a teams match vs a
+  fixed reference (A: version N/S, B: reference N/S), same 3000 random deals (seed 1018), both tables
+  DD-scored, rules only; each version runs from its own `git archive` snapshot
+  (tools/runs/code/progress_<sha>), so all modules count; working tree via `git stash create`. SE of
+  a step ~0.01-0.04. Results: tools/runs/progress/{TwoOverOne,Precision90M}_1018_3000/summary.md.
+* Curve vs 893a540b (10-02): 2/1 +0.43, Precision +0.52 IMP/bd at 3fb1715a. Big steps were 9ff8bf65
+  (10-04, Precision +0.27) and 1856c003 (10-10, 2/1 partner tables +0.28). Old loop's last week
+  (bf28628b->cec66658): 2/1 +0.015 (SE 0.032), Precision +0.034 (0.021). New plan (cec66658->3fb1715a,
+  2 days): 2/1 +0.026 (0.025), Precision +0.136 (0.035).
+* Limits: biq vs biq, so Q-Plus-convention fixes (queen-ask answer, partner's 4NT read) move 0 boards;
+  rules only, no simulation. Use it next to qplus_rules_ab (Q-Plus judge), not instead.
+* Found by it: 8d404b3d's strong-2C ask cost -0.025 (SE 0.010, 9 boards): 4NT over a weak partner's
+  2C-2D-2H-(3C-3H)-4H sign-off with 20-23 HCP -> failing 6M. Fix (uncommitted,
+  BIQ_STRONG_2C_ASK_WEAK_RAISE): after 2D (and 3C) then 4 of my major, ask only with 25+. +0.022 (SE
+  0.009); recorded Q-Plus calls unchanged (a first version that also covered 4m lost 2C-2D-3C-4C,
+  where Q-Plus cue-bids). Test prog-1904 (268 checks).
+
 ## STATUS — 2/1 catch-all rules from Q-Plus's recorded calls (2026-10-16 night, committed 10-17)
 * New plan (user, 10-16): map bidding weaknesses in groups instead of fixing the worst boards of each
   run. New tool `tools/qplus_rules_ab.py`: `scan` = biq's RULES on every recorded Q-Plus call (17,420

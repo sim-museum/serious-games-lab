@@ -788,6 +788,9 @@ BIDDING_SYSTEMS = [
     ("T-qask-5nt", "2S-4NT-5D-5H: queen ask with spades, queen + keycard -> 5NT (Q-Plus)",
      "TwoOverOne", "N", "None", "2s p 4n p 5d p 5h p", "N",
      "KQ8643.T92.K63.9", "P", {"5N"}),
+    ("prog-1904", "2C-2D-2H-4H: weak partner's game raise, 20 HCP passes (no 4NT)",
+     "TwoOverOne", "W", "EW", "p 2c p 2d p 2h p 4h p", "N",
+     "A2.A9543.KQ42.AK", "4N", {"P"}),
 ]
 
 

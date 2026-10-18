@@ -3883,6 +3883,9 @@ def _minors_4nt_advance(state: AuctionState, e: HandEval) -> Optional[Bid]:
 STRONG_2C_ASK = os.environ.get("BIQ_STRONG_2C_ASK", "1") == "1"
 
 
+STRONG_2C_ASK_WEAK_RAISE = os.environ.get("BIQ_STRONG_2C_ASK_WEAK_RAISE", "1") == "1"
+
+
 def _strong_2c_slam_ask(state: AuctionState, e: HandEval, system) -> Optional[Bid]:
     """My strong 2C, a later round, uncontested, below 4NT: the first-round
     rebid rules re-fire there and their 2-/3-level call is illegal, so biq
@@ -3907,6 +3910,17 @@ def _strong_2c_slam_ask(state: AuctionState, e: HandEval, system) -> Optional[Bi
     # Only over partner's 4-level suit call: over 3NT Q-Plus passed 5 of 6,
     # over a 3-level call it cue-bid or raised, never 4NT.
     if pl is None or pl.suit in (None, Suit.NOTRUMP) or pl.level != 4:
+        return None
+    # A weak partner's sign-off: 2D waiting (perhaps the 3C second negative),
+    # then game in my major. Ask only with 25+ (Q-Plus asked 2C-2D-2H-3C-3D-4H
+    # with Q82.KQJ7.AKQJ.AK); with 20-23 the 4NT went on to a failing slam on 7
+    # of 7 progress-curve deals (2C-2D-2H-4H-4NT-5D-6H, 6H -1). Not 4 of a
+    # minor: below game, constructive (2C-2D-3C-4C, Q-Plus cue-bid 4H).
+    pcalls = [b for b in state.partner_bids if not b.is_pass]
+    if (STRONG_2C_ASK_WEAK_RAISE and e.hcp < 25 and pl.suit in (Suit.HEARTS, Suit.SPADES)
+            and pl.suit in state.suit_bid_by_me
+            and pcalls and pcalls[0].level == 2 and pcalls[0].suit == Suit.DIAMONDS
+            and all(b.level == 3 and b.suit == Suit.CLUBS for b in pcalls[1:-1])):
         return None
     cand = bid(4, Suit.NOTRUMP, alert=True,
                why=f"4NT: strong 2C opener in the slam zone ({e.hcp} HCP)")
