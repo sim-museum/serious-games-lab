@@ -27726,3 +27726,11 @@ give the heave-vs-speed signature at three front springs, and the garage gives t
   muxr 1.35 8.35 / 10; ckr 16 + mur 1.58 10.31 / 7. Effects are small and the longitudinal fits (launch, traction) rest on
   ckr/muxr -- not shipped. The remaining gap is rear traction ON POWER, the same as PHYSFID-1's 35-deg diff finding; it
   needs the PO's on-power iRacing data (IRPLAN-2 Part E2). Rotated.
+
+### LOOPSPLIT-1 cycle 2 S1 (2026-10-18): the replay recorder out of main()
+* Retro of cycle 1: the block scanner, check_diag_globals and LIVE checks for SMOKE-only paths worked; watch the
+  source-text smokes, plain locals a block assigns, and paths the gates never run.
+* E18/REPLAY-2/REPLAY-6's recorder (poses + analysis channels at ~15 Hz, crash-safe autosave) moved unchanged to
+  `main_loop.jl` `replay_record!` (17 inputs: buffers and Refs are shared and mutated in place; nothing leaks).
+  Headless recordings need `JM_REPLAY_REC=1` (SMOKE runs do not record otherwise): Zandvoort race, 2 AI, 900 frames ->
+  225 frames at 15 Hz over 15.5 s, telemetry = frames x 40 channels exactly.

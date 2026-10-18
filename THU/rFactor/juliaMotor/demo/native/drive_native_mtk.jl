@@ -15493,20 +15493,7 @@ function main()
         end
         # E18: record all car poses (player + AI) at ~15 Hz once the race is GREEN, for replay
         cs.t < replay_t[] && (replay_t[] = cs.t - 1.0)   # REPLAY-2: a session restart (R) rewinds the clock -- keep recording
-        if replay_buf !== nothing && race_go[] && !rst && length(ai_poses) == length(AICARS) && (cs.t - replay_t[]) >= 1/15
-            replay_t[] = cs.t
-            push!(replay_buf, Float32(cs.t), Float32(cs.x), Float32(cs.y), Float32(cs.z), Float32(cs.θ))
-            for p in ai_poses; push!(replay_buf, Float32(p[1]), Float32(p[2]), Float32(p[3]), Float32(p[4])); end
-            # REPLAY-2: analysis channels, REPLAY_TELE_P for the player then REPLAY_TELE_AI per AI car
-            push!(tele_buf, Float32(cs.laps), Float32(cs.lapdist), Float32(cs.v), Float32(inp.throttle), Float32(inp.brake),
-                  Float32(inp.steer), Float32(inp.clutch), Float32(cs.gear), Float32(cs.rpm), Float32(cs.lateral),
-                  Float32(cs.ontrack ? 1 : 0), Float32(phase[] == :race ? 1 : 0))
-            for w in tyre_lp[], q in w; push!(tele_buf, Float32(q)); end             # REPLAY-6
-            for a in AICARS; push!(tele_buf, Float32(a.s), Float32(a.v), Float32(a.lap), Float32(a.lane)); end
-            if time() - replay_saved[] > REPLAY_AUTOSAVE           # crash-safe: the session so far is on disk
-                replay_saved[] = time(); write_replay(replay_out[], replay_buf, tele_buf, REPLAY_NCAR, replay_names, CLINE; final = false)
-            end
-        end
+        replay_record!(cs, inp, AICARS, ai_poses, CLINE, REPLAY_AUTOSAVE, REPLAY_NCAR, phase, race_go, rst, replay_buf, replay_names, replay_out, replay_saved, replay_t, tele_buf, tyre_lp)   # LOOPSPLIT-1 cycle 2 S1: moved to main_loop.jl
         # PERF-1: one fused matrix per call (was 4 matrices + 3 products), and the body matrix is computed once
         # per car per pass below (it was recomputed for every body PART) -- the top allocation site.
         aiCar(p)  = Render.pose_matrix(p[1], p[2], -p[3], p[4], p[5], p[6])   # body follows the hill (pitch + cross-slope/collision roll)
