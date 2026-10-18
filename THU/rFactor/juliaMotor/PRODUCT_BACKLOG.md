@@ -23,6 +23,9 @@ this index was written; that is what it exists to stop.
 |---|---|---|
 | **IRGOLD-1** | **EPIC (PO 2026-10-11, 25-sprint cap; renewed 2026-10-12 night: at most 25 from S14): julia default = iRacing Ring default, julia loose = iRacing WW103 -- "indistinguishable from the iRacing Lotus 49"**, MTK objects, from the PO's 261010/11 + IRTEST-261012 sessions | 🔴 in progress, **S21 done; rotated 2026-10-13 ~04:00 (S22-S38 budget kept)**. S1-S13: replay metric 2.065 → 1.22. S14-S15 (IRTEST-261012): crank inertia 0.052 (free revs), clutch bite re-measured, iRacing's ANTI-STALL clutch -- launches 1.49 → 0.55 m/s, metric 1.20 → 1.165. S16-S19: the rear at the limit (drifts, skidpad), roll-centre object, p-norm, joint closed-loop search. S20: measured FRONT LIFT (ClAf −0.12) + rear ns 0.75 -- closed-loop metric 1.218 → 1.162. S21: clutch-out braking (not shipped); the PO's Glen note measured (GLENFEEL-1). Status for the PO: STATUS_2026-10-13.md. |
 | **TD261016-1** | **Fix the issues from the PO's 2026-10-16 test drive** (video `~/Videos/261016_spa_ring.mp4`; session logs data/juliaracer/logs/spa 2026-10-16 16-22-40, nurburgring 16-33-56; replays 16-25-39 Spa, 16-37-38 Ring). Cockpit: (c1) wrists still transparent in places, as is the wooden shifter knob. Spa: (s1) car levitates ~1 m above the road leaving the start; wheels almost submerged after the hairpin before the start/finish line; (s2) the house at the left 90° turn before Burnenville is still not right -- a small shack, not the gold's house; (s3) a small rectangular hole in the surface on the right near Masta; (s4) the two large rectangular holes in the ground on the left after Stavelot are still there. Ring: (r1) with no inputs the car at the start slowly pivots right -- creep; holding the brake does not stop it; (r2) levitates from between the South and North hairpins; (r3) sinks below the road approaching Flugplatz -- in cockpit ~2 m BELOW the road at the crest, then breaks through and levitates (PO 2026-10-16 ~17:00) | open |
+| **TD261017-1** | **Fix the issues from the PO's 2026-10-17 test drive** (video `~/Videos/261017_spa+ring.mp4`, 58 min; replays data/juliaracer `replay_spa 5ai 2026-10-17 20-38-14` (the race), `replay_nurburgring 5ai 2026-10-17 21-17-55`; 8 screenshots ~/Pictures/Screenshots 2026-10-17 20-35..21-11). Launcher: (u1) the Garage and Guides label columns are grey on white -- "almost unreadable": black on white or similar. Car: (h1) "seems to have a lot of understeer?". Spa AI: (a1) after the start they "zip over to pit lane" -- stay on the track; (a2) up the hill at Eau Rouge, cars on the left roll to the right, lifting their left side; (a3) they zig-zag for no reason, especially near curves -- passing becomes treacherous; (a4) after the flag they should do one more lap and stop in the pit lane right of the start/finish line -- they did not make it round. Spa: (g1) the two holes in the ground on the left coming out of Stavelot are still there -- "cover that with grass or something". Cockpit: (c1) the driver's wrists bend outward ~90° -- should be straight; (c2) several AI cars have no arms in cockpit view (replay). Ring: (r1) "some big polygons jump out at right as I drive by the tower at right between south and north hairpins" | open, top |
+| **UNDERSTEER-1** | PO 2026-10-17 drive: "Car seems to have a lot of understeer?" -- MEASURED (2026-10-17): road-wheel steer / kinematic steer (L x yaw rate / v), speed > 25 m/s, by |ay|: iRacing Ring default (261002 22-27-35) 1.54 / 1.50 / 1.52 / 1.62 for 3-6 / 6-9 / 9-12 / 12-16 m/s2 (flat: near-neutral to the limit); julia (PO 10-17 Ring) 1.51 / 1.64 / 2.66 and never reaches 12-16; julia (PO 10-17 Spa race) 1.61 / 1.85 / 2.31. julia's front saturates early | open, top (physics; PHYSFID-1 tools: irgold_steady, skidpad) |
+| **DOCGUIDES-2** | PO 2026-10-17 (after DOCGUIDES-1): track guides -- only the CURRENT track; condense every guide, nothing not absolutely needed (where it came from, references to GPL or iRacing); Racecraft A-Z -> a GLOSSARY: drop the half least relevant to julia racing, halve the words, no quotes, simplify; the setup guides (Skippy, iRacing, LSD) -> ONE plain document, reached from the Garage (setup) tab, not the Guides tab; remove the redundant one-paragraph track text that is not under the Guides tab | open, top |
 | **HORIZON-SKIRT-1** | (found 2026-10-17 chasing the Stavelot pocket) where GPL's mesh ends below the horizon (Spa s ~8500 left, past the bank) our horizon ring's lower art (hedges) shows through as a dark pocket | ✅ **CLOSED (S1-S2, 2026-10-17), nothing to fix in the ground:** against the gold (260802 Spa chase t 215.5-216.5 vs our s 8465-8495, `261017/stavelot/gold_vs_ours_8480.jpg`) GPL stands a long row of SPECTATORS with flags and a rail along that verge -- they hide the same gap in GPL. Removed by the PO's 2026-08-27 loose-people order, the gap shows. Goes with the SPECTATORS-1 decision |
 | **SPAFLAGS-1** | PO 2026-10-17, answering the spectator question: "add the Stavelot row of spectators with flags, but no other spectator blocks" -- GPL's row of standing spectators with national flags (and its rail) along the left verge at Spa s ~8,450-8,530; every other loose-people block stays off (2026-08-27 order) | open, top |
 | **SHADE-1** | PO 2026-10-17: placed objects' shaded sides -- "match GPL"; and Spa's houses on the LEFT going downhill toward Burnenville "seem almost albino - too white, almost as if they lack a texture layer. Match these houses to GPL" | ✅ **S1 (2026-10-17), for the PO's look:** placed objects lit as GPL lights them -- near-flat, neutral (`texture x (0.88 + 0.22 x sun)`): Spa's houses toward Burnenville no longer albino (roofs 1.2x -> 1.0x their texture, as gold), shaded walls no longer dark; foliage keeps its grade. `JM_OBJ_FLAT=0` = before. `261017/shade/` |
@@ -27580,3 +27583,43 @@ give the heave-vs-speed signature at three front springs, and the garage gives t
   and walls at the gold's level. Five tracks before/after (`four_tracks_before_after.jpg` + the Ring): only placed objects
   change -- slightly warmer, less blue; the Ring's yellow grass apron (an object part) turns olive.
   `JM_OBJ_FLAT=0` = the old lit grade; `JM_OBJ_FLAT=base,sun` to tune. Not touched: the cockpit sleeves (driver items).
+
+### LOOPSPLIT-1 S2 (2026-10-17): where main()'s compile time is -- and why splitting alone does not cut it
+* Baseline (Spa, JM_TIMING=2): main() compile 31.5 s; new `[E80] .. window revealed (launch done)` stamp, so the whole
+  launch including first-frame compiles is measured: defining main() -> window 42.2 s (compile 36.1 s).
+* Bisection (const-false guards on one section at a time, scratch copies): setup before the loop 9.9 s; the frame loop
+  21.6 s -- render passes (shadow, world, mirror, main pass, HUD; 655 lines) 9.8 s, restart/autodrive/replay/countdown
+  (400 lines) 3.7 s, FFB/telemetry/laps/AI/net (725 lines) 1.6 s, the 600-line recovery/physics block 0.4 s. The cost is
+  concentrated, not per line: the render passes cost ~25x the physics block per line (hundreds of keyword-argument draw
+  calls).
+* The decisive test: the mirror pass's render body moved out to a top-level function (`main_loop.jl`
+  `mirror_render!`, its loop locals as arguments; mirrors checked in a cockpit shot): main() 31.5 -> 30.4 s, but the
+  function then compiles at the first frame: defining -> window 42.2 -> 42.0 s. **Splitting moves compile time, it does
+  not remove it.** My 10-16 status estimate ("could save 10-20 s") was wrong -- corrected in STATUS_2026-10-17.md. The
+  launch-time lever is caching: loop pieces in a precompiled package (as JRRender/JRPhysics) with a workload that calls
+  them -- which needs the pieces to take concrete types, not main()'s closures.
+* The refactor continues for its own sake (the PO: "should be refactored anyway per code quality standards"), one
+  measured, gated block per step; the caching question becomes LOOPSPLIT-2 once the pieces exist.
+
+### TD261017-1 S1 (2026-10-17 night): what the PO's 10-17 drive shows (video `261017_spa+ring.mp4`, replay `spa 5ai 20-38-14`)
+* Video clock vs the replay: Spa race start = video ~375 s (sim t 130); the PO paused mid-lap, so later events re-anchor
+  (Burnenville sim 227 = video 590, Stavelot sim 350 = video 713).
+* (a1) pit lane at the start: REPRODUCED headless (TRACK=spa JM_MODE=race JM_AI=5 JM_AIPOSE_TRACE=all): at s 140 the leader
+  runs 4.9 m and one car 8.2 m RIGHT of our centreline (the pit side). In GPL's own frame (gplai_probe-style run, no
+  julia mesh) the same start merges onto the race line (|d| < 0.6 m): the drift is in the mapping onto our road. The sim
+  prints "lateral correction to our road, |shift| mean 1.8 m, max 4.95 m".
+* (a3) zig-zag: TRACK-FIXED. In the PO's replay every AI car jumps sideways (>4 m/s lateral, e.g. car 2 2.9 -> -0.6 -> 2.1 m
+  in 0.8 s at s 470-490, path heading swinging 8 deg while the drawn yaw stays smooth) at the SAME places: s 200-300,
+  450-500 (93 jumps), 6600, 7350, 1350, 13650, 10850 ... -- the same mapping is the suspect (a step in the per-3 m
+  correction `dsh`).
+* (a2) Eau Rouge roll: the AI pose's camber is atan(h(d+0.8) - h(d-0.8), 1.6); near an edge one sample lands on the bank
+  (T.height falls back to the mesh off the road): up to 8.1 deg at s 320-340 in the headless race (cornering roll term
+  is ~1 deg at most). That is the PO's "cars roll to the right, lifting their left side".
+* (a4) cool-down: the race ended at sim ~500 s; the AI cool-down runs at 0.6 x race pace (45-100 km/h at Spa): 4 min after
+  the flag they had covered 4.8 of 14.1 km when the PO closed the session.
+* (g1) Stavelot: the dark pocket on the LEFT verge just past the flag spectators (video 714.5 s) is still there WITH the
+  spectators standing above it (HORIZON-SKIRT-1's "the spectators hid it in GPL" did not hold): needs ground over it.
+* (r1) Ring: on the straight behind the pits (between Südkehre and Nordkehre), the long grey back wall of the garages
+  and a large white board pop in at close range by the tower (video 3170-3180 s).
+* (c2) other teams' replay cockpits: `_team_skip` drops every `*arms` texture (raw they stood up as "rabbit ears"),
+  leaving the gloves floating -- the arms need laying from the glove to the shoulder as ARMS2 does for the Lotus.
