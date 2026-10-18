@@ -35,6 +35,7 @@ from PyQt6.QtWidgets import (
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from garage_tab import GarageTab          # SETUPMODEL-1: iRacing's garage (garage.py = the static solve's mirror)
+from guides_tab import GuidesTab          # DOCGUIDES-1: the GPL / iRacing guides, page by page
 UI_DIR = os.path.join(HERE, "assets", "ui")
 GUIDE = os.path.join(HERE, "docs", "HOW_TO_RACE.md")    # DOC-RACE-1: ships with the launcher (AppImage rule)    # the theme's glyphs ship with the module (fixed even if HERE is redirected)
 CONF = os.path.join(HERE, "joystick.conf")
@@ -1937,6 +1938,8 @@ class Main(QMainWindow):
         tabs.addTab(self.garage, "Garage")
         tabs.addTab(self.result, "Results")
         tabs.addTab(self.replay, "Replays")
+        self.guides = GuidesTab()                                  # DOCGUIDES-1
+        tabs.addTab(self.guides, "Guides")
         tabs.addTab(self.drive.settings_page(), "Settings")
         tabs.addTab(self.cal, "Controller")
         tabs.currentChanged.connect(self._tab)

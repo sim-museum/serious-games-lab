@@ -32,7 +32,12 @@ const PREFIXES = ("ppl", "peop", "person", "pelf",   # loose standing spectators
                   "flagger", "rescu",          # marshals
                   "photo", "fotograf")         # photographers
 
+# SPAFLAGS-1 (2026-10-17): `pelfspa` matches "pelf" but is no person -- it is Spa's white ROADSIDE MARKER POST (pelfspa.3do:
+# 4 triangles, 0.21 x 0.75 m; pelfspa.mip a white post with a red reflector triangle), every 20 m on both verges. The
+# gold shows them; the people rule had dropped all of them.
+const NOT_PEOPLE = ("pelfspa",)
+
 """True if `nm` (lowercase object name) is a LOOSE person that must not be placed."""
-is_loose_person(nm::AbstractString) = (nm in NAMED) || any(p -> startswith(nm, p), PREFIXES)
+is_loose_person(nm::AbstractString) = !(nm in NOT_PEOPLE) && ((nm in NAMED) || any(p -> startswith(nm, p), PREFIXES))
 
 end

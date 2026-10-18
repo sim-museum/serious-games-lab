@@ -293,3 +293,10 @@ max = 85
 step = 5
 known = false
 seen = [60, 80, 85]
+
+# ---- GPLSETUP-1: what a typical GPL Lotus 49 setup is (medians over the 6,025 .kj1 on the PO's PC, 2026-10-17) -------
+# The importer (demo/native/gpl_setup.py) carries a GPL anti-roll bar over by its range position: GPL rate / this median
+# -> the iRacing bar whose garage rate stands the same way against the default car's.
+[gpl]
+arb_median = [160.0, 150.0]       # lb/in, front / rear (min 60/40, max 280/292)
+wheel_rate_median = [75.0, 95.0]  # lb/in (front 50..125, rear 70..160) -- for reference

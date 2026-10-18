@@ -65,6 +65,7 @@ done
 echo ">> GPL track guides (text)..."
 JM_GPL_DOC="${JR_GPLDOC:-$(dirname "$(dirname "$(dirname "$(dirname "$TRACKS")")")")/../DOC}" \
   python3 "$PROJ/demo/native/trackguide.py" --export "$APP/usr/share/julia/trackguides" || true
+  python3 "$PROJ/demo/native/guides.py" --export "$APP/usr/share/julia/guides" || true      # DOCGUIDES-1: the guides' pages
 echo ">> PyQt6 + Qt6..."
 if [ -n "${JR_LIBS_FROM:-}" ]; then
   cp -a "$JR_LIBS_FROM/usr/lib/." "$APP/usr/lib/"
@@ -147,6 +148,7 @@ if [ -f "$STAMP_SRC" ] && ! cmp -s "$STAMP_SRC" "$STAMP_DST" 2>/dev/null; then
 fi
 export PYTHONPATH="$HERE/usr/lib/python:${PYTHONPATH:-}"
 export JM_TRACKGUIDE_DIR="$HERE/usr/share/julia/trackguides"   # TRACKGUIDE-1: the guides' text, extracted at build time
+export JM_GUIDES_DIR="$HERE/usr/share/julia/guides"           # DOCGUIDES-1: the guides' pages, rendered at build time
 export LD_LIBRARY_PATH="$HERE/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}"
 export QT_PLUGIN_PATH="$HERE/usr/lib/qt6/plugins"
 

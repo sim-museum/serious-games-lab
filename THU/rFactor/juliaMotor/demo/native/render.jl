@@ -326,6 +326,7 @@ uniform vec3 uLightDir; uniform sampler2D uTex; uniform int uHasTex; uniform flo
 uniform vec3 uCamPos; uniform vec3 uFogCol; uniform float uFogNear; uniform float uFogFar;
 uniform sampler2D uShadow; uniform float uShadowTexel; uniform float uSpec; uniform int uBackFlip;
 uniform float uAmbFill;   // flat fill light (GPL pre-lit cockpit interior — lifts self-shadowed faces)
+uniform int uFlatOn; uniform vec2 uFlat;   // SHADE-1: GPL-like near-flat object light: base*(uFlat.x + uFlat.y*sun)
 uniform float uAlpha;     // per-draw opacity multiplier (1 = opaque; <1 = glass, e.g. the windscreen)
 uniform int uCutout;      // 1 for chain-link/foliage cutouts → sharpen alpha edge (kill shimmer)
 uniform int uGraze;       // 1 for GPL tree-LINE meshes → fade faces viewed edge-on (kills the end-on "smear")
@@ -424,6 +425,10 @@ void main(){
   if(uHasTex==1 && uMacro==1 && max(abs(vUV.x),abs(vUV.y)) > 3.0)   // tiling surface: gently break up the repeat
     base *= mix(vec3(1.0), texture(uTex, vUV*0.07).rgb * 1.7, 0.45);   // softer → no harsh light/dark patches (E68 S3: uMacro gates the A/B — suspect for the near-field bright pool)
   vec3 lit = pow(base*(amb+0.5*uAmbFill+diff*1.15*uSunCol)*uBright, vec3(0.94));   // stronger sun (0.95→1.15), tinted by uSunCol; gamma→neutral (0.85→0.94) ⇒ GPL contrast
+  // SHADE-1 (PO 2026-10-17, "match GPL"): GPL draws placed objects almost at their texture colour -- a roof ~1.0x, walls
+  // 0.9-1.1x whichever way they face (gold 260802 Spa t 92 vs the textures). The sky-tinted fill + strong sun above gave
+  // up-facing roofs 1.2x in blue ("albino") and walls away from the sun 0.5x ("shaded sides too dark"). Neutral, flat-ish.
+  if(uFlatOn==1) lit = base*(uFlat.x + uFlat.y*diff)*uBright;
   lit += uAmbFill*vec3(0.13,0.135,0.125);   // ADDITIVE fill: lifts pure-black cockpit parts
                                             // (tub/dash) to a visible dark grey, as GPL pre-lights them
   if(uSpec > 0.0){                               // Blinn-Phong sheen (painted/chrome bodywork)
@@ -2649,7 +2654,7 @@ const WBAL = let v = get(ENV,"JM_WBAL","")
     end
 end
 
-function draw(prog, item::Item, vp, model; bright::Real=1.0, spec::Real=0.0, ambfill::Real=0.0, graze::Bool=false, alpha::Real=1.0, tint=(1f0,1f0,1f0), mirrorglass::Bool=false, unlit::Bool=false, depthbias::Bool=false, first::Integer=0, count::Integer=-1)
+function draw(prog, item::Item, vp, model; bright::Real=1.0, spec::Real=0.0, ambfill::Real=0.0, graze::Bool=false, alpha::Real=1.0, tint=(1f0,1f0,1f0), mirrorglass::Bool=false, unlit::Bool=false, depthbias::Bool=false, first::Integer=0, count::Integer=-1, flat::NTuple{2,Float32}=(0f0, 0f0))
     # E106-S8 (PO: "flicker, especially around visor and mirrors"): z-fighting between the lotd
     # cockpit shell -- whose slot-bound windscreen-frame/mirror-pod faces escape the old
     # texture-name excludes -- and the separately drawn windscreen/mirror glass at the same depth.
@@ -2667,6 +2672,8 @@ function draw(prog, item::Item, vp, model; bright::Real=1.0, spec::Real=0.0, amb
     glUniform1f(uloc(prog,"uSpec"), Float32(spec))
     glUniform1f(uloc(prog,"uAlpha"), Float32(alpha))
     glUniform1f(uloc(prog,"uAmbFill"), Float32(ambfill))
+    glUniform1i(uloc(prog,"uFlatOn"), flat[1] > 0f0 ? 1 : 0)          # SHADE-1: flat-lit objects (GPL)
+    glUniform2f(uloc(prog,"uFlat"), flat[1], flat[2])
     glUniform3f(uloc(prog,"uWBal"), WBAL[1], WBAL[2], WBAL[3])
     glUniform1f(uloc(prog,"uExposure"), EXPOSURE[])
     glUniform1i(uloc(prog,"uGraze"), graze ? 1 : 0)

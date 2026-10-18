@@ -63,5 +63,26 @@ g.widgets[("fuel", None)].setValue(100.0)
 g.use.setChecked(False)
 d.launch()
 check(not started[-1][0].processEnvironment().contains("JM_GARAGE"), "'Use this garage' off: no JM_GARAGE")
+# GPLSETUP-1: import a GPL Lotus setup (a synthetic .kj1 with WW103's values -- no GPL install needed)
+import struct
+b = bytearray(0x104)
+b[0:4] = b"PGTS"
+struct.pack_into("<9f", b, 0x0C, -3.0, 0.0, 2.2857, 1.7059, 1.4737, 1.2857, 1.16, 1.0, 3.1)
+struct.pack_into("<2f", b, 0x54, 30.0, 85.0); struct.pack_into("<4f", b, 0x5C, 19.0, 20.0, 20.0, 20.0)
+struct.pack_into("<4f", b, 0x6C, 50.0, 50.0, 120.0, 120.0); struct.pack_into("<4i", b, 0x7C, 3, 3, 4, 4)
+struct.pack_into("<4i", b, 0x8C, 4, 4, 5, 5); struct.pack_into("<4f", b, 0x9C, -0.75, 0.0, -0.5, 0.25)
+struct.pack_into("<2f", b, 0xDC, -0.5, 0.125); struct.pack_into("<2f", b, 0xE4, 200.0, 200.0)
+struct.pack_into("<2f", b, 0xEC, 2.5, 2.5); struct.pack_into("<i", b, 0xF4, 4); struct.pack_into("<f", b, 0xF8, 4.0)
+struct.pack_into("<f", b, 0xFC, 16.0); struct.pack_into("<i", b, 0x100, 54)
+kj1 = os.path.join(tempfile.mkdtemp(prefix="jr_kj1_"), "ww103.kj1"); open(kj1, "wb").write(bytes(b))
+d.carsetup.setCurrentIndex(0); g.use.setChecked(True)
+notes = g.import_gpl_file(kj1)
+check(g.K["spring"][:2] == [18.0, 18.0] and g.K["bump"] == [6, 6, 9, 9] and g.K["rebound"] == [9, 9, 12, 12] and
+      (g.K["diff_drive"], g.K["diff_coast"]) == (35.0, 85.0) and g.K["final_drive"] == 3.78 and
+      g.K["gears"] == [2.23, 1.40, 1.21, 1.04, 0.958] and abs(g.K["toe_rear"] - 3.0) < 0.01,
+      f"GPL WW103 imports as its iRacing translation (springs {g.K['spring']}, dampers {g.K['bump']}/{g.K['rebound']}, final {g.K['final_drive']})")
+check(all(abs(g.D["rh"][i] - [83.1, 83.1, 105.1, 105.1][i]) < 1.0 for i in range(4)),
+      f"the import keeps the base car's ride heights by its perches ({[round(x, 1) for x in g.D['rh']]})")
+check(any("outside iRacing's range" in n for n in notes) and any("bar" in n for n in notes), "the import reports what iRacing's ranges cut")
 print("GARAGE TAB:", "PASS" if ok else "FAIL")
 sys.exit(0 if ok else 1)

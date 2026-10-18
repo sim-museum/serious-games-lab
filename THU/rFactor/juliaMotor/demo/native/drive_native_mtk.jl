@@ -7018,6 +7018,15 @@ function is_foliage_tex(t)
     end
 end
 const OBJ_VEG_GRADE = get(ENV, "JM_OBJ_VEG", "1") != "0"
+# SHADE-1 (PO 2026-10-17: "match GPL"; Spa's houses toward Burnenville "almost albino"): the placed objects' grade
+# (bright, ambient fill) -- was 1.05/0.55. JM_OBJ_BRIGHT / JM_OBJ_AMB.
+const OBJ_BRIGHT = parse(Float32, get(ENV, "JM_OBJ_BRIGHT", "1.05"))
+const OBJ_AMB    = parse(Float32, get(ENV, "JM_OBJ_AMB", "0.55"))
+# GPL's object light: neutral, texture x (base + sun x lambert) -- measured on Spa's houses (gold t 92): a roof 1.0x its
+# texture, a garage wall 0.92x, a sunlit wall ~1.1x. JM_OBJ_FLAT="0" = the old lit grade above; "base,sun" to tune.
+const OBJ_FLAT = let f = get(ENV, "JM_OBJ_FLAT", "0.88,0.22")
+    f == "0" ? (0f0, 0f0) : (parse(Float32, split(f, ",")[1]), parse(Float32, split(f, ",")[2]))
+end
 # PER PART, not per object: Spa's `gstands` is a grandstand whose parts include `grass1`, a grass
 # apron running from the track edge out to lat +40 m -- classify the OBJECT and that apron keeps the
 # grandstand grade, which is exactly the PO's yellow hillside. build_gpl emits one Item per part in
@@ -7074,7 +7083,7 @@ const CROWD_TINT = (parse(Float32, get(ENV,"JM_CROWD_TR","1.16")),
 is_crowd_obj(nm) = occursin("stand", nm) || occursin("tribun", nm) || occursin("crowd", nm) ||
                    occursin("spect", nm) || startswith(nm,"grnd") || startswith(nm,"pplrow") ||
                    startswith(nm,"peprow") || startswith(nm,"plrow") || startswith(nm,"pitpe") ||
-                   startswith(nm,"ppl") || startswith(nm,"people") || startswith(nm,"pelf") ||
+                   startswith(nm,"ppl") || startswith(nm,"people") || (startswith(nm,"pelf") && nm != "pelfspa") ||
                    startswith(nm,"p_s")   # E63: the newly-restored fence crowd ROWS get the same warm de-blue tint
 # GPL sky dome: the 12-panel horizon ring (horiz0..11), camera-centred backdrop.
 tstamp("  [E80] horizon ring begins")
@@ -7703,7 +7712,7 @@ let objnames=Set{String}()
     # loose figures (marshals/photographers: flagger/rescu/photo/fotograf/pform/named) stay dropped in drop().
     standcrowd(nm) = startswith(nm,"grndpe") || startswith(nm,"pitpeo") || startswith(nm,"pitppl") ||
                      startswith(nm,"pplrow") || startswith(nm,"peprow") || startswith(nm,"plrow") ||
-                     startswith(nm,"ppl") || startswith(nm,"people") || startswith(nm,"pelf") ||
+                     startswith(nm,"ppl") || startswith(nm,"people") || (startswith(nm,"pelf") && nm != "pelfspa") ||   # pelfspa = marker post (SPAFLAGS-1)
                      startswith(nm,"p_s") || startswith(nm,"spect") || startswith(nm,"crowd") ||
                      startswith(nm,"grndp")
     # drop: ground-cover planes (grass/herbe/infield), white "fuel-tank" tents, infield/backdrop
@@ -7742,6 +7751,19 @@ let objnames=Set{String}()
         reach = (w/2) * abs(sin(Float64(i.yaw) - atan(-hr.perp[2], hr.perp[1])))           # a row's across-road reach (E79)
         abs(hr.lateral) - reach < ROAD_HALFW + SPECT_MARGIN
     end
+    # SPAFLAGS-1 (PO 2026-10-17: "add the Stavelot row of spectators with flags, but no other spectator blocks"): at Spa,
+    # on the LEFT verge of the run out of Stavelot (s 8430-8660), GPL's standing crowd (peopleN sprites, peprow rows),
+    # its national flags on poles (fla1-7, spaflg*) and the flag marshal stand where the gold shows them -- and hide a
+    # gap in GPL's ground there (TD261016-1 cycle 2). Every other loose person stays dropped (2026-08-27). The per-row
+    # on-road reach test below still applies. JM_SPAFLAGS=0 = dropped like the rest.
+    _spaflags = SPA && get(ENV, "JM_SPAFLAGS", "1") != "0"
+    function spaflags_keep(i)
+        _spaflags || return false
+        occursin(r"^(people\d|peprow|pelfspa|fla\d|flagger|spaflg|speaker)", lowercase(String(i.name))) || return false
+        hr = JuliaMotor.hat(TRKSURF, Float64(i.x), Float64(i.y))
+        hr.found && 8430.0 <= hr.lapdist <= 8660.0 && hr.lateral > 0
+    end
+    dropi(i) = drop(i.name) && !spaflags_keep(i)     # the per-placement drop: the name rule, less the Stavelot row
     drop(nm) = (!isempty(_keeptest) && any(p->startswith(nm,p), _keeptest)) ? false :
                (_dropcrowdrows && standcrowd(nm)) || (_zandcrowd_off && standcrowd(nm)) ||
                (!isempty(_droptest) && any(p->startswith(nm,p), _droptest)) ||
@@ -8190,7 +8212,7 @@ let objnames=Set{String}()
         end
     end
     objkeep(i) = get(objmesh,i.name,nothing) !== nothing &&
-                 !drop(i.name) && !onroad_crowd(i) && !perp_crowd(i) && !onroad_bldg(i) && !onroad_fp(i) && tallenough(i.name) && onground(i) && !person_unsafe(i)
+                 !dropi(i) && !onroad_crowd(i) && !perp_crowd(i) && !onroad_bldg(i) && !onroad_fp(i) && tallenough(i.name) && onground(i) && !person_unsafe(i)
     global OBJECTS = [(objitems(i), Render.translate(Float32[i.x, plozfp(i), -i.y]) * Render.roty(Float32(OBJ_YAW_SIGN * objyawsign(i.name) * -i.yaw + objyawfix(i.name))) *
                        Render.rotz(Float32(OBJ_PR[1]*i.pitch)) * Render.rotx(Float32(objrollsign(i.name)*i.roll)), istree(i.name) && (graze_mesh || !(MONZA || WATGLEN)), (Float32(i.x), plozfp(i), Float32(-i.y)), lowercase(i.name))
                       for i in insts if objkeep(i)]
@@ -8550,7 +8572,7 @@ let objnames=Set{String}()
         # A solid without a drawn object is an invisible wall: no instance the renderer drops may be
         # solid, whatever its kind. JM_SOLID_UNDRAWN=1 restores the old behaviour.
         if get(ENV, "JM_SOLID_UNDRAWN", "0") == "0" && get(objmesh, i.name, nothing) !== nothing &&
-           (drop(i.name) || onroad_crowd(i) || perp_crowd(i) || onroad_bldg(i) || onroad_fp(i))
+           (dropi(i) || onroad_crowd(i) || perp_crowd(i) || onroad_bldg(i) || onroad_fp(i))
             _undrawn_solid[] += 1; continue
         end
         # E71-S18 (PO 2026-08-27, Spa: "just driving along and suddenly I'm levitating and bouncing
@@ -9148,7 +9170,7 @@ let objnames=Set{String}()
     global BILLBOARDS = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32}[]
     global STATICTREES = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32,Float32}[]
     for i in insts
-        bb = get(bbinfo, i.name, nothing); (bb === nothing || drop(i.name)) && continue
+        bb = get(bbinfo, i.name, nothing); (bb === nothing || dropi(i)) && continue
         person_unsafe(i) && continue                    # SPECTATORS-1 (opt-in): a loose person too near the road
         # E79: a crowd ROW is metres wide, so testing its ORIGIN answers the wrong question — the
         # same origin-vs-footprint mistake the mesh path was fixed for (E69-S5) and this one never
@@ -9183,7 +9205,10 @@ let objnames=Set{String}()
             end
         end
         onground(i) || continue
-        on_road(i.x, i.y, ROAD_HALFW) && continue   # E31: drop sprites planted ON the road (the Monza tree "curtain" across the track)
+        # E31: drop sprites planted ON the road (the Monza tree "curtain" across the track). SPAFLAGS-1: the Stavelot flags
+        # stand 8.7 m from the centreline, ~4 m past Spa's road edge there (its armco is at 5.6 m) -- for that row the
+        # test is the tarmac itself (6 m), not the 9 m corridor.
+        on_road(i.x, i.y, spaflags_keep(i) ? 6.0 : ROAD_HALFW) && continue
         gz = ploz(i)
         item, tw, th, h, wid, aax = bb
         w = wid > 0f0 ? wid : h*tw/max(th,1f0)
@@ -12029,6 +12054,7 @@ const _DX_SHOTS       = !isempty(SHOTS_AT)
 # took ~20 s of every launch to lower (E80-S12, Meta.lower timed) -- on the main thread, after all the loading. The
 # background task at the top of this file parses this file and lowers the function on the second thread (the launcher
 # runs `julia -t 2`) while the track loads; the code at the end evaluates the result. The source stays here, unchanged.
+include(joinpath(@__DIR__, "main_diag.jl"))      # LOOPSPLIT-1: main()'s launch diagnostics, as functions
 const _MAIN_Q = quote
 function main()
     tstamp("  [E80] .. main() entered (its compile is the gap above)")
@@ -12255,44 +12281,7 @@ function main()
     # centreline and samples the physics ground across the corridor the car can actually reach; a
     # sample with no surface is a hole. E106-S13 made holes survivable -- this says how many there
     # are, which is the honest measure of a track's readiness. JM_HOLECENSUS=<half-width m>.
-    if _DX_HOLECENSUS && CLINE !== nothing
-        halfw   = parse(Float64, get(ENV,"JM_HOLECENSUS","12"))
-        step_s  = parse(Float64, get(ENV,"JM_HOLECENSUS_DS","10"))
-        latstep = 1.5
-        nlat = Int(floor(2*halfw/latstep)) + 1
-        println("== JM_HOLECENSUS ", TRACKSEL, ": ground coverage ±", halfw, " m of the centreline, every ", step_s, " m ==")
-        total = 0; holes = 0; worst_s = -1.0; worst_n = -1; badstations = 0
-        holelist = Tuple{Float64,Int}[]
-        sacc = 0.0
-        while sacc < CLINE.total
-            nhole = 0
-            for k in 0:nlat-1
-                lat = -halfw + k*latstep
-                # pose_at returns (x, y, z, θ) and applies the lane offset itself -- use it rather
-                # than recomputing the normal (and do not mistake y for z, which indexing (x,y,z,θ)
-                # as (x,z) silently does).
-                pp = RaceAI.pose_at(CLINE, sacc, lat)
-                h = JuliaMotor.hat3d(TERRAIN, Float64(pp[1]), Float64(pp[3]); ref=Inf)
-                total += 1
-                h[3] || (holes += 1; nhole += 1)
-            end
-            nhole > 0 && (badstations += 1)
-            nhole > worst_n && (worst_n = nhole; worst_s = sacc)
-            nhole > 0 && push!(holelist, (sacc, nhole))
-            sacc += step_s
-        end
-        println("   samples=", total, "  holes=", holes, " (", round(100*holes/max(total,1), digits=2), "%)",
-                "   stations with any hole: ", badstations)
-        println("   worst station: s=", round(worst_s, digits=1), " m with ", worst_n, " of ", nlat, " lateral samples missing")
-        # the WORST TEN, so a driveability failure at a given s can be cross-referenced against the
-        # terrain rather than guessed at (a single "worst" figure cannot be cross-referenced).
-        sort!(holelist, by = x -> -x[2])
-        println("   worst ten stations (s → missing/", nlat, "):")
-        for (ss, nn) in holelist[1:min(10, end)]
-            println("      s=", lpad(round(ss, digits=1), 9), "  ", lpad(nn, 3), " missing")
-        end
-        flush(stdout)
-    end
+    _DX_HOLECENSUS && CLINE !== nothing && dx_holecensus(CLINE)     # LOOPSPLIT-1: main_diag.jl
     if CLINE !== nothing && haskey(ENV,"JM_LATDIAG")   # diagnose grass-threshold false-fire at the start
         pl = RaceAI.project(CLINE, cs.x, cs.z); ph = JuliaMotor.hat(TRKSURF, cs.x, cs.z)
         println("  LATDIAG spawn: CLINE lat=", round(pl[2],digits=2), "  TRKSURF found=", ph.found,
@@ -12446,42 +12435,7 @@ function main()
     # the centreline point, with its height and texture. That is what a targeted collision exclusion
     # needs -- `drop_overpass` cannot be used here, because the Ring has bridges you genuinely drive
     # OVER and it would drop those too. JM_BRIDGEPROBE="21540,22250,22300"
-    if _DX_BRIDGEPROBE && CLINE !== nothing
-        println("== JM_BRIDGEPROBE: surfaces over the racing line ==")
-        for tok in split(get(ENV,"JM_BRIDGEPROBE",""), ",")
-            sv = tryparse(Float64, strip(String(tok))); sv === nothing && continue
-            pz = RaceAI.pose_at(CLINE, sv, 0.0); qx = Float64(pz[1]); qz = Float64(pz[3])
-            hits = Tuple{Float64,String}[]
-            # ⚠️ TRACKMESH, not TRACKMESH0. On the Ring the scenery is MERGED into the collision
-            # mesh (TRACKMESH = TRACKMESH0.tris ++ SECTRI) and TERRAIN is built from that. Probing
-            # the raw track mesh reported "only asphalt and groove, no stacked surface" at every
-            # underpass — a clean null that simply looked at the wrong mesh, and the same mistake
-            # that made an earlier analysis conclude the deck was not in collision at all.
-            for t in TRACKMESH.tris
-                ax,az = Float64(t.p[1][1]), Float64(t.p[1][2])
-                bx,bz = Float64(t.p[2][1]), Float64(t.p[2][2])
-                cx,cz = Float64(t.p[3][1]), Float64(t.p[3][2])
-                d = (bz-cz)*(ax-cx) + (cx-bx)*(az-cz); abs(d) < 1e-9 && continue
-                wa = ((bz-cz)*(qx-cx) + (cx-bx)*(qz-cz))/d
-                wb = ((cz-az)*(qx-cx) + (ax-cx)*(qz-cz))/d
-                wc = 1 - wa - wb
-                (wa >= -0.02 && wb >= -0.02 && wc >= -0.02) || continue
-                h = wa*Float64(t.p[1][3]) + wb*Float64(t.p[2][3]) + wc*Float64(t.p[3][3])
-                push!(hits, (h, lowercase(t.tex)))
-            end
-            sort!(hits, by=first)
-            print("   s=", round(Int,sv), " at (", round(qx,digits=1), ",", round(qz,digits=1), "): ")
-            if isempty(hits)
-                println("NO surface (hole)")
-            else
-                println(length(hits), " surfaces, low..high:")
-                for (h,tx) in hits
-                    println("      h=", rpad(round(h,digits=2),9), " tex=", tx)
-                end
-            end
-        end
-        flush(stdout); exit(0)
-    end
+    _DX_BRIDGEPROBE && CLINE !== nothing && dx_bridgeprobe(CLINE)     # LOOPSPLIT-1: main_diag.jl
     if _DX_SWEEP && CLINE !== nothing && isdefined(Main,:OBJINSTS)
         olat(ox,oz) = (hr = JuliaMotor.hat(TRKSURF, Float64(ox), Float64(oz)); hr.found ? round(hr.lateral,digits=1) : 999.0)
         step = (v = tryparse(Float64, get(ENV,"JM_SWEEP","")); v === nothing || v < 1 ? 15.0 : v)
@@ -12606,123 +12560,12 @@ function main()
     # a car centred there would touch (gap < CARHALF). A hit names the object, so the fix is a
     # named object and not a guess. Negative control: the first solid's own centre must read as a
     # hit, else the instrument is blind. Prints the census and exits.
-    if _DX_ROADSWEEP && CLINE !== nothing
-        step = (v = tryparse(Float64, get(ENV, "JM_ROADSWEEP", "")); v === nothing || v <= 0 ? 2.0 : v)
-        println("\n==== JM_ROADSWEEP ", uppercasefirst(TRACKSEL), "  (step=", step, " m, lateral 0.5 m, ",
-                length(SOLIDS), " solids, ", count(!isnothing, SOLIDBOX), " boxed, car=",
-                CAR_CIRCLE ? "circle $(CARHALF)" : "capsule $(CARW)x±$(CARLF)", ") ====")
-        ctrl = if isempty(SOLIDS); false
-               else (g, _, _) = car_gap(SOLIDS[1][1], SOLIDS[1][2], 0.0, 1); g < 0.0 end
-        println("  control: a probe at solid #1's centre reads as a hit -> ", ctrl ? "yes" : "NO (instrument blind)")
-        # "On the road" = the TARMAC, not the sim's 9 m TrackSurface corridor: the first Spa census
-        # (corridor) listed 331 objects, nearly all at |lat| 8-11.5 m -- grandstands, shrubs and
-        # ad boards on the verge, which the PO's rule does not cover. The road-only HAT (road-textured
-        # triangles only; Spa and the Ring build it) answers "is this point over tarmac".
-        tarmac_hat = ROADHAT !== TERRAIN0
-        println("  tarmac predicate: ", tarmac_hat ? "road-only HAT (road-textured triangles)" :
-                "NONE for this track -- falling back to the 9 m corridor (verge included)")
-        nprobe = 0; nroad = 0; ntar = 0
-        hits  = Dict{String,Tuple{Int,Float64,Float64,Float64}}()   # tarmac: name → (count, worst gap, s, lat)
-        verge = Dict{String,Int}()                                    # corridor-only hits, for context
-        edge  = Dict{String,Int}()                                    # thin barriers at the road edge (v6)
-        inside = Dict{String,Tuple{Int,Float64}}()                    # car centre inside the solid (v11)
-        s = 0.0
-        while s <= CLINE.total
-            for lat in -14.0:0.5:14.0
-                q = RaceAI.pose_at(CLINE, s, lat); qx, qz = q[1], q[3]
-                hr = JuliaMotor.hat(TRKSURF, qx, qz)
-                nprobe += 1
-                (hr.found && hr.on_track) || continue
-                nroad += 1
-                ontar = tarmac_hat ? JuliaMotor.hat3d(ROADHAT, qx, qz; ref = Inf)[3] : true
-                ontar && (ntar += 1)
-                # A car CENTRED here needs its own width on tarmac too: an armco standing on the
-                # concrete edge strip (borcem, road-textured at old Spa) is a hit for a probe AT the
-                # strip, but no car can be centred there. Test the car's two flanks (±0.9 m) as well;
-                # only then is an object at this point "reachable while on the road".
-                fits = ontar && (!tarmac_hat || begin
-                    ql = RaceAI.pose_at(CLINE, s, lat - 0.9); qr = RaceAI.pose_at(CLINE, s, lat + 0.9)
-                    JuliaMotor.hat3d(ROADHAT, ql[1], ql[3]; ref = Inf)[3] && JuliaMotor.hat3d(ROADHAT, qr[1], qr[3]; ref = Inf)[3]
-                end)
-                @inbounds for k in eachindex(SOLIDS)
-                    (ox, oz, r, _) = SOLIDS[k]
-                    hypot(ox - qx, oz - qz) > r + 40.0 && continue
-                    (gapc, _, _) = solid_gap(qx, qz, k)            # centre point: "standing on the road" if < 0
-                    (gap, _, _)  = car_gap(qx, qz, q[4], k)        # S4: the car's capsule along the road heading
-                    gap >= 0.0 && continue
-                    ontar = fits                     # an edge-strip point with no room for the car counts as verge
-                    nm = k <= length(SOLIDNAMES) ? SOLIDNAMES[k] : "solid#$k"
-                    key = string(nm, "@", round(Int, ox), ",", round(Int, oz))
-                    bk = k <= length(SOLIDBOX) ? SOLIDBOX[k] : nothing
-                    thin = bk !== nothing && min(bk[1], bk[2]) < 0.5      # a barrier at the road edge: scraping it is not a wall
-                    if ontar && thin
-                        edge[key] = get(edge, key, 0) + 1
-                    elseif ontar
-                        old = get(hits, key, (0, Inf, 0.0, 0.0))
-                        hits[key] = (old[1] + 1, min(old[2], gap), gap < old[2] ? s : old[3], gap < old[2] ? lat : old[4])
-                        # v11: "standing ON the road" = the car's CENTRE inside the solid (an object on the
-                        # tarmac), tracked apart from the capsule brush -- v9 folded the two together.
-                        gapc < 0.0 && (oc = get(inside, key, (0, Inf)); inside[key] = (oc[1] + 1, min(oc[2], gapc)))
-                    else
-                        verge[key] = get(verge, key, 0) + 1
-                    end
-                end
-            end
-            s += step
-        end
-        println("  ", nprobe, " probes, ", nroad, " in the 9 m corridor, ", ntar, " on tarmac; ",
-                length(hits), " solid(s) reachable with the whole car on tarmac (", length(verge), " more from the verge/edge only):")
-        for (key, (n, g, hs, hl)) in sort(collect(hits); by = kv -> kv[2][2])
-            println("    ", rpad(key, 28), " hits=", lpad(n, 4), "  worst gap=", lpad(round(g, digits = 2), 6),
-                    " m  at s=", round(Int, hs), " lat=", hl)
-        end
-        println("  edge barriers (thin, scrape-able, not counted): ", length(edge))
-        ninside = length(inside)
-        println("  objects standing ON the road (car centre inside, ", ninside, "):")
-        for (key, (n, g)) in sort(collect(inside); by = kv -> kv[2][2])
-            println("    ", rpad(key, 28), " hits=", lpad(n, 4), "  centre gap=", round(g, digits = 2), " m")
-        end
-        println("ROADSWEEP_RESULT track=", TRACKSEL, " solids_on_road=", length(hits), " inside=", ninside, " edge_barriers=", length(edge), " verge_only=", length(verge),
-                " tarmac_pred=", tarmac_hat ? "roadhat" : "corridor", " control=", ctrl ? "ok" : "blind")
-        flush(stdout); exit(0)
-    end
+    _DX_ROADSWEEP && CLINE !== nothing && dx_roadsweep(CLINE)     # LOOPSPLIT-1: main_diag.jl
     # RING-HAIRPIN-1 (PO 2026-09-06: the hairpin between the grandstands "is piecewise linear instead of
     # smoothly curving as in GPL"). JM_ROADTRIS=1: road-textured triangles per 100 m of lapdist over
     # the lap, with the road's mean triangle length -- a hairpin drawn with few, long triangles is
     # coarse geometry (a LOD or a section choice), many short ones is a smooth road. Exits.
-    if _DX_ROADTRIS
-        rt = [t for t in TRACKMESH.tris if ROAD_TEX(lowercase(t.tex))]
-        cnt = Dict{Int,Int}(); len = Dict{Int,Float64}(); texb = Dict{Int,Dict{String,Int}}()
-        for t in rt
-            cx = (Float64(t.p[1][1]) + Float64(t.p[2][1]) + Float64(t.p[3][1]))/3
-            cy = (Float64(t.p[1][2]) + Float64(t.p[2][2]) + Float64(t.p[3][2]))/3
-            hr = JuliaMotor.hat(TRKSURF, cx, cy); (hr.found && abs(hr.lateral) < 12) || continue
-            b = floor(Int, hr.lapdist/100)
-            cnt[b] = get(cnt, b, 0) + 1
-            tb = get!(texb, b, Dict{String,Int}()); tb[lowercase(t.tex)] = get(tb, lowercase(t.tex), 0) + 1
-            emax = maximum(hypot(Float64(t.p[i][1]) - Float64(t.p[j][1]), Float64(t.p[i][2]) - Float64(t.p[j][2])) for (i, j) in ((1,2),(2,3),(3,1)))
-            len[b] = get(len, b, 0.0) + emax
-        end
-        println("\n==== JM_ROADTRIS ", uppercasefirst(TRACKSEL), "  (", length(rt), " road tris, lap ", round(Int, TRKSURF.lap_length), " m) ====")
-        println("  lapdist   tris/100m   mean longest edge (m)")
-        for b in sort(collect(keys(cnt)))
-            println("  ", lpad(b*100, 6), "   ", lpad(cnt[b], 6), "      ", round(len[b]/cnt[b], digits = 1))
-        end
-        coarse = sort(collect(keys(cnt)); by = b -> len[b]/cnt[b], rev = true)[1:min(end, 8)]
-        println("  coarsest (longest mean edge): ", join(["$(b*100)m:$(round(len[b]/cnt[b],digits=1))m/$(cnt[b])" for b in coarse], "  "))
-        # which textures carry the coarse road? (a LOD or a section choice shows up as its own name)
-        for b in coarse
-            tb = sort(collect(texb[b]); by = kv -> -kv[2])
-            println("    ", lpad(b*100, 6), "m textures: ", join(["$(k)=$(v)" for (k, v) in tb[1:min(end, 6)]], " "))
-        end
-        fine = sort(collect(keys(cnt)); by = b -> len[b]/cnt[b])[1:min(end, 3)]
-        for b in fine
-            tb = sort(collect(texb[b]); by = kv -> -kv[2])
-            println("    fine ", lpad(b*100, 6), "m textures: ", join(["$(k)=$(v)" for (k, v) in tb[1:min(end, 6)]], " "))
-        end
-        println("ROADTRIS_RESULT track=", TRACKSEL, " buckets=", length(cnt))
-        flush(stdout); exit(0)
-    end
+    _DX_ROADTRIS && dx_roadtris()     # LOOPSPLIT-1: main_diag.jl
     # RING-HAIRPIN-1 S2: JM_ROADEDGE="550:700" -- the road-EDGE polyline over a lapdist window. Boundary
     # edges are the road-textured triangles' edges used by exactly one road triangle; their vertices,
     # split by lateral sign and ordered by lapdist, are the visible asphalt/grass edge. Prints each
@@ -12730,166 +12573,14 @@ function main()
     # steps; the PO's "piecewise linear" is few long segments with big steps), the same statistics for
     # the centreline through the window (a smooth centreline under a coarse edge means the mesh, not
     # the .trk, is the source), and the textures of the triangles that supply the edge. Exits.
-    if _DX_ROADEDGE; let   # `let`: every helper here stays local (a file-scope `key`
-        # function shadowed the sweep's own `key` at line ~6104 and broke every non-hook run)
-        a_, b_ = parse.(Float64, split(get(ENV, "JM_ROADEDGE", "550:700"), ":"))
-        rt = [t for t in TRACKMESH.tris if ROAD_TEX(lowercase(t.tex))]
-        key(p) = (round(Float64(p[1]), digits = 2), round(Float64(p[2]), digits = 2), round(Float64(p[3]), digits = 2))
-        ecount = Dict{Tuple{Any,Any},Int}(); etex = Dict{Tuple{Any,Any},String}(); inwin = 0
-        for t in rt
-            cx = (Float64(t.p[1][1]) + Float64(t.p[2][1]) + Float64(t.p[3][1]))/3
-            cy = (Float64(t.p[1][2]) + Float64(t.p[2][2]) + Float64(t.p[3][2]))/3
-            hr = JuliaMotor.hat(TRKSURF, cx, cy); (hr.found && abs(hr.lateral) < 12 && a_ <= hr.lapdist <= b_) || continue
-            inwin += 1
-            for (i, j) in ((1,2),(2,3),(3,1))
-                k1 = key(t.p[i]); k2 = key(t.p[j]); e = k1 < k2 ? (k1, k2) : (k2, k1)
-                ecount[e] = get(ecount, e, 0) + 1; etex[e] = lowercase(t.tex)
-            end
-        end
-        bnd = [e for (e, c) in ecount if c == 1]
-        println("\n==== JM_ROADEDGE ", uppercasefirst(TRACKSEL), " lapdist ", a_, "-", b_, ": ", inwin, " road tris, ", length(ecount), " edges, ", length(bnd), " boundary edges ====")
-        tex = Dict{String,Int}(); for e in bnd; tex[etex[e]] = get(tex, etex[e], 0) + 1; end
-        println("  boundary-edge textures: ", join(["$(k)=$(v)" for (k, v) in sort(collect(tex); by = kv -> -kv[2])], " "))
-        verts = Dict{Any,Tuple{Float64,Float64}}()   # vertex -> (lapdist, lateral)
-        for e in bnd, k in e
-            haskey(verts, k) && continue
-            hr = JuliaMotor.hat(TRKSURF, k[1], k[2]); hr.found || continue
-            verts[k] = (hr.lapdist, hr.lateral)
-        end
-        stats(pts) = begin
-            n = length(pts); n < 3 && return (n, 0.0, 0.0, 0.0, Int[])
-            seg = [hypot(pts[i+1][1] - pts[i][1], pts[i+1][2] - pts[i][2]) for i in 1:n-1]
-            hd = [atan(pts[i+1][2] - pts[i][2], pts[i+1][1] - pts[i][1]) for i in 1:n-1]
-            st = [abs(rad2deg(rem(hd[i+1] - hd[i], 2pi, RoundNearest))) for i in 1:n-2]
-            (n, sum(seg)/length(seg), maximum(seg), maximum(st), st)
-        end
-        # S2b: the road is drawn as STRIPS (groove centre, asphalt edges) whose vertices do not coincide,
-        # so texture-boundary T-junctions at |lat| 0-3 also count as "boundary"; the visible road edge is
-        # the OUTER polyline -- keep |lat| >= JM_ROADEDGE_MINLAT (3.3 m) and one vertex per 0.2 m of lapdist.
-        minlat = parse(Float64, get(ENV, "JM_ROADEDGE_MINLAT", "3.3"))
-        for (side, sel) in (("left (lateral>0)", v -> v[2] > 0), ("right (lateral<0)", v -> v[2] < 0))
-            seen = Set{Int}()
-            ks = sort([k for (k, v) in verts if sel(v) && abs(v[2]) >= minlat && a_ <= v[1] <= b_]; by = k -> verts[k][1])
-            ks = [k for k in ks if (b = round(Int, verts[k][1]*5); b in seen ? false : (push!(seen, b); true))]
-            pts = [(Float64(k[1]), Float64(k[2])) for k in ks]
-            n, mseg, xseg, xst, st = stats(pts)
-            big = count(s -> s > 8, st)
-            println("  ", rpad(side, 18), " verts=", n, "  mean seg=", round(mseg, digits = 1), " m  longest=", round(xseg, digits = 1), " m  max heading step=", round(xst, digits = 1), " deg  steps>8deg=", big)
-            for (k, kk) in enumerate(ks)
-                k > 40 && (println("     ..."); break)
-                v = verts[kk]; s = k <= length(st) + 1 && k >= 2 ? round(st[k-1], digits = 1) : 0.0
-                println("     lap=", lpad(round(v[1], digits = 1), 7), "  lat=", lpad(round(v[2], digits = 2), 6), "  step=", s)
-            end
-        end
-        # the centreline through the same window, sampled every 5 m
-        ci = [i for i in eachindex(TRKSURF.lapdist) if a_ <= TRKSURF.lapdist[i] <= b_]
-        n, mseg, xseg, xst, st = stats([(TRKSURF.pos[i][1], TRKSURF.pos[i][3]) for i in ci])
-        println("  centreline waypoints (", n, ", mean spacing ", round(mseg, digits = 1), " m): max heading step=", round(xst, digits = 1), " deg  (", round(sum(st)/max(1,length(st)), digits = 2), " mean)")
-        println("ROADEDGE_RESULT track=", TRACKSEL, " tris=", inwin, " boundary=", length(bnd))
-        flush(stdout); exit(0)
-    end; end
+    _DX_ROADEDGE && dx_roadedge()     # LOOPSPLIT-1: main_diag.jl
     # TRACKGOLD-1 S4 (PO 2026-09-06 20:50, the Ring): "curtain of trees ... intrude into, or even cross
     # perpendicularly, the road", "'curtain of trees' objects floating in the air", "grandstand/building/
     # line of billboard objects ... floating maybe 5 m above where they should be". JM_OBJCENSUS=1: every
     # RENDERED placement (OBJINSTS mesh + billboard) with its lapdist, origin lateral, footprint-on-tarmac
     # (meshes) and base height above the terrain (lowest local vertex + placement height - HAT), sorted
     # by the two defects: on the road, and floating (> 1.5 m) or buried (< -1.5 m). Exits.
-    if _DX_OBJCENSUS; let
-        rows = NTuple{7,Any}[]     # (name, kind, s, lat, dy, onroad, x)
-        for (nm, ox, oz, oy, kind, issolid) in OBJINSTS
-            kind === :dropped && continue
-            hr = JuliaMotor.hat(TRKSURF, Float64(ox), Float64(oz)); hr.found || continue
-            # height reference = the TERRAIN-ONLY HAT (TERRAIN0): the full HAT includes the objects themselves,
-            # so a placement lifted onto a neighbour's roof reads dy = 0 against it. `oy` is the placement
-            # height the renderer used (groundz at the origin, which can be that roof); base = its lowest vertex.
-            g = JuliaMotor.hat3d(TERRAIN0, Float64(ox), Float64(oz); ref = Inf)
-            base = Float64(oy) + Float64(get(OBJ_YMN, nm, 0f0))
-            dy = g[3] ? Float64(oy) - Float64(g[1]) : NaN     # placement height above the bare terrain (the "floating" measure)
-            onroad = ROADHAT !== TERRAIN0 && (JuliaMotor.hat3d(ROADHAT, Float64(ox), Float64(oz); ref = Inf)[3] && hr.on_track)
-            push!(rows, (nm, kind, hr.lapdist, hr.lateral, dy, onroad, Float64(ox)))
-        end
-        nbb = count(r -> r[2] === :bb, rows); nm_ = count(r -> r[2] === :mesh, rows)
-        println("\n==== JM_OBJCENSUS ", uppercasefirst(TRACKSEL), ": ", nm_, " meshes + ", nbb, " billboards rendered ====")
-        onr = filter(r -> r[6] || abs(r[4]) < 4.5, rows)
-        flo = filter(r -> !isnan(r[5]) && r[5] > 1.5, rows)
-        bur = filter(r -> !isnan(r[5]) && r[5] < -1.5, rows)
-        println("  on/at the road (tarmac under origin or |lat| < 4.5): ", length(onr), "   floating (placement > 1.5 m above the bare terrain): ", length(flo), "   sunk (< -1.5 m): ", length(bur))
-        ndis = count(((nm, ox, oz, oy, kind, _),) -> (rz = get(OBJ_RECZ, (round(Float64(ox), digits=2), round(Float64(oz), digits=2)), NaN); !isnan(rz) && abs(Float64(oy) - rz) > 0.5), OBJINSTS)
-        println("  placement height vs the record: ", ndis, " of ", length(OBJINSTS), " differ by > 0.5 m (JM_OBJ_RECZ=", OBJ_USE_RECZ ? "1, record used" : "0, HAT used", ")")
-        hist(v) = join(["$(k)=$(c)" for (k, c) in sort(collect(Dict(k => count(==(k), v) for k in unique(v))); by = kv -> -kv[2])[1:min(end, 12)]], " ")
-        println("  on-road names: ", hist([r[1] for r in onr]))
-        println("  floating names: ", hist([r[1] for r in flo]))
-        println("  --- on-road, by lapdist (first 40) ---")
-        for r in sort(onr; by = r -> r[3])[1:min(end, 40)]
-            println("   s=", lpad(round(Int, r[3]), 6), "  lat=", lpad(round(r[4], digits = 1), 6), "  dy=", lpad(round(r[5], digits = 1), 5), "  ", r[2], "  ", r[1])
-        end
-        println("  --- floating, by height (first 30) ---")
-        for r in sort(flo; by = r -> -r[5])[1:min(end, 30)]
-            println("   s=", lpad(round(Int, r[3]), 6), "  lat=", lpad(round(r[4], digits = 1), 6), "  dy=", lpad(round(r[5], digits = 1), 5), "  ", r[2], "  ", r[1])
-        end
-        # JM_OBJCENSUS="s1,s2,..." (any number): every rendered placement within +-JM_OBJCENSUS_WIN (150 m) of
-        # each lapdist, with its yaw and local extent -- to NAME the object behind a photographed defect.
-        sites = [tryparse(Float64, t) for t in split(get(ENV, "JM_OBJCENSUS", ""), ",")]
-        for s0 in sites
-            s0 === nothing && continue
-            win = parse(Float64, get(ENV, "JM_OBJCENSUS_WIN", "150"))
-            println("  --- placements within ", win, " m of s=", s0, " (name kind lat dy yaw extent_x extent_z height) ---")
-            near = sort(filter(r -> abs(r[3] - s0) < win, rows); by = r -> r[3])
-            for r in near
-                k = (round(r[7], digits = 2), round(Float64(first(filter(t -> t[1] == r[1] && Float64(t[2]) == r[7], OBJINSTS))[3]), digits = 2))
-                yaw = get(OBJ_YAW, k, NaN)
-                vs = get(OBJ_LVERTS, r[1], nothing)
-                ex = vs === nothing || isempty(vs) ? "-" : string(round(maximum(getindex.(vs, 1)) - minimum(getindex.(vs, 1)), digits = 1), "x", round(maximum(getindex.(vs, 2)) - minimum(getindex.(vs, 2)), digits = 1))   # `last` is a local in main()
-                # drawn footprint in the ROAD frame: each local point through the same yaw the renderer applies,
-                # projected onto the centreline -> its lateral; a veil "beside" the road drawn across it shows here
-                latr = "-"
-                if vs !== nothing && !isempty(vs) && !isnan(yaw)
-                    c_, s_ = cos(yaw), sin(yaw); lo = Inf; hi = -Inf
-                    for (lx, lz) in vs
-                        h_ = JuliaMotor.hat(TRKSURF, r[7] + lx*c_ + lz*s_, k[2] - (-lx*s_ + lz*c_))
-                        h_.found || continue; lo = min(lo, h_.lateral); hi = max(hi, h_.lateral)
-                    end
-                    latr = isfinite(lo) ? string(round(lo, digits = 1), "..", round(hi, digits = 1)) : "-"
-                end
-                oy_ = Float64(first(filter(t -> t[1] == r[1] && Float64(t[2]) == r[7], OBJINSTS))[4])
-                recz = get(OBJ_RECZ, k, NaN)
-                println("   s=", lpad(round(Int, r[3]), 6), "  ", rpad(r[1], 10), " ", r[2], "  lat=", lpad(round(r[4], digits = 1), 6), "  dy=", lpad(round(r[5], digits = 1), 5),
-                        "  yaw=", isnan(yaw) ? "  ?" : lpad(round(Int, rad2deg(yaw)), 4), "°  ext=", ex, "  h=", round(Float64(get(OBJ_YMX, r[1], 0f0) - get(OBJ_YMN, r[1], 0f0)), digits = 1), "  drawn lat=", latr,
-                        "  ours_y=", round(oy_, digits = 1), " rec_y=", isnan(recz) ? "?" : round(recz, digits = 1), " (ours-rec=", isnan(recz) ? "?" : round(oy_ - recz, digits = 1), ")")
-            end
-        end
-        # JM_OBJVERTS="name": every vertex of the first two instances of that object in WORLD space through
-        # the renderer's own model matrix, with the bare-terrain height under it -- whether an in-place
-        # patch sits on our ground or hangs above it, vertex by vertex.
-        vn = lowercase(get(ENV, "JM_OBJVERTS", ""))
-        if vn != ""
-            ninst = 0
-            for (nm_, ox_, oz_, oy_, kind_, _) in OBJINSTS
-                lowercase(nm_) == vn || continue; ninst += 1; ninst > 2 && break
-                pv = get(OBJ_VERTS, nm_, nothing); pv === nothing && (println("  no parts for ", nm_); continue)
-                yaw_ = get(OBJ_YAW, (round(Float64(ox_), digits=2), round(Float64(oz_), digits=2)), 0.0)
-                M = Render.translate(Float32[ox_, oy_, -oz_]) * Render.roty(Float32(yaw_))
-                hr0 = JuliaMotor.hat(TRKSURF, Float64(ox_), Float64(oz_))
-                println("  --- ", nm_, " #", ninst, " origin (", round(Float64(ox_), digits=1), ", ", round(Float64(oz_), digits=1), ") placed y=", round(Float64(oy_), digits=1),
-                        " yaw=", round(rad2deg(yaw_), digits=1), "°  s=", hr0.found ? round(hr0.lapdist, digits=0) : -1, " lat=", hr0.found ? round(hr0.lateral, digits=1) : "?")
-                println("     world_x   world_z   vert_y  terrain_y   delta    s     lat")
-                n = 0
-                for pp in pv, k in 1:11:length(pp.verts)
-                    q = M * Float32[pp.verts[k], pp.verts[k+1], pp.verts[k+2], 1f0]
-                    px = Float64(q[1]); py = Float64(q[2]); pz = -Float64(q[3])
-                    g = JuliaMotor.hat3d(TERRAIN0, px, pz; ref = Inf); hr = JuliaMotor.hat(TRKSURF, px, pz)
-                    gl = JuliaMotor.hat3d(TERRAIN, px, pz; ref = Inf)     # full ground incl. the landmass sections
-                    println("     ", lpad(round(px, digits=1), 8), "  ", lpad(round(pz, digits=1), 8), "  ", lpad(round(py, digits=1), 6), "  ",
-                            lpad(g[3] ? round(Float64(g[1]), digits=1) : "-", 8), "  ", lpad(g[3] ? round(py - Float64(g[1]), digits=1) : "-", 6), "  land=",
-                            lpad(gl[3] ? round(Float64(gl[1]), digits=1) : "-", 7), " d=", lpad(gl[3] ? round(py - Float64(gl[1]), digits=1) : "-", 5), "  ",
-                            lpad(hr.found ? round(Int, hr.lapdist) : -1, 5), "  ", lpad(hr.found ? round(hr.lateral, digits=1) : "?", 6))
-                    n += 1; n >= 40 && break
-                end
-            end
-        end
-        println("OBJCENSUS_RESULT track=", TRACKSEL, " onroad=", length(onr), " floating=", length(flo), " buried=", length(bur))
-        flush(stdout); exit(0)
-    end; end
+    _DX_OBJCENSUS && dx_objcensus()     # LOOPSPLIT-1: main_diag.jl
     AILINE = (CLINE !== nothing && N_AI > 0) ? CLINE : nothing
     # E84/E89 (2026-08-30): JM_AI_GPLLINE=1 -- the AI take their target speed from GPL's OWN race.lp
     # (3.0 m records, index-aligned with our line on tracks that are not re-centred). Measured
@@ -13327,118 +13018,7 @@ function main()
     # fastest circuit, which is exactly where the scale is worst.  Sweep vmax and see.
     # Prediction, stated before the first run: if vmax dominates, Monza improves >= 10 % and
     # Zandvoort <= 5 %.  Runs during load and exits -- no render loop.
-    if _DX_PACEDIAG && AILINE !== nothing
-        println("\n==== JM_PACEDIAG  $(TRACKSEL)  (lap $(round(AILINE.total, digits=0)) m) ====")
-        base = RaceAI.natural_laptime(AILINE)
-        println("  default (amax=11.0, vmax=74.0):  ", round(base, digits=1), " s")
-        for vm in (74.0, 80.0, 85.0, 90.0, 100.0)
-            t = RaceAI.natural_laptime(AILINE; vmax = vm)
-            println("    vmax=", lpad(round(Int,vm),3), " m/s (", lpad(round(Int,vm*3.6),3), " km/h): ",
-                    lpad(round(t, digits=1), 6), " s   (", lpad(round(100*(base-t)/base, digits=1), 5), " % faster)")
-        end
-        for am in (11.0, 14.0, 18.0)
-            t = RaceAI.natural_laptime(AILINE; amax = am)
-            println("    amax=", lpad(round(Int,am),3), " m/s2            : ",
-                    lpad(round(t, digits=1), 6), " s   (", lpad(round(100*(base-t)/base, digits=1), 5), " % faster)")
-        end
-        t_both = RaceAI.natural_laptime(AILINE; vmax = 90.0, amax = 14.0)
-        println("    vmax=90 + amax=14            : ", round(t_both, digits=1), " s   (",
-                round(100*(base-t_both)/base, digits=1), " % faster)")
-        println("  target (REF_LAP) = ", round(AI_REFLAP, digits=1), " s;  gold .rpy fastest is quicker still")
-        # E84-S3: SEPARATE the two candidate causes. _vtarget takes the MAXIMUM curvature over a
-        # look-ahead horizon (v*2.2 m, ~150 m at speed) with NO distance weighting -- a corner 150 m
-        # away limits you exactly as much as one you are in.  So a low vtarget can mean either
-        #   (a) the CENTRELINE is noisy      -> local kappa is high everywhere, or
-        #   (b) the HORIZON RULE is too blunt -> local kappa is fine, the horizon max is not.
-        # Reporting both tells them apart.  Predicted before running: median vtarget 40-50 m/s,
-        # < 10 % of the lap at vmax.
-        let n = 600, amax = 11.0, vmax = 74.0
-            ks = Float64[]; vloc = Float64[]; vhor = Float64[]
-            for i in 0:n-1
-                sdist = AILINE.total * i / n
-                kloc = max(AILINE.κ[RaceAI._locate(AILINE, sdist)[1]], 1e-4)
-                push!(ks, kloc); push!(vloc, clamp(sqrt(amax/kloc), 12.0, vmax))
-                kh = kloc; off = 5.0
-                while off <= 150.0                      # the horizon a car at ~68 m/s would use
-                    kh = max(kh, AILINE.κ[RaceAI._locate(AILINE, sdist+off)[1]]); off += 6.0
-                end
-                push!(vhor, clamp(sqrt(amax/kh), 12.0, vmax))
-            end
-            q(v,p) = sort(v)[clamp(round(Int, p*length(v)), 1, length(v))]
-            # E89 (PO: AI cars "dart around like june bugs, lunge ahead, then fall back").
-            # PERCENTILES CANNOT SEE THIS. A vtarget that alternates fast/slow every sample has the
-            # same distribution as a perfectly smooth one -- the difference is entirely in the
-            # ORDER. E84 found the pace shortfall comes from centreline kinks created by
-            # re-centring; a kinked line gives an oscillating vtarget, which is what darting IS.
-            # So report the step-to-step change, not the spread.
-            # PREDICTION, stated before the first run: a smooth racing line should give a median
-            # |dv| well under 1 m/s between adjacent samples (~9.7 m apart at Monza). If the kinks
-            # drive the darting, expect median |dv| > 2 m/s and a long tail of >10 m/s jumps.
-            # E84-S5 follow-on: is the culprit NODE SPACING rather than lateral kinks?
-            # sim.jl computes kappa = dtheta/ds over +/-ksmooth nodes. A tiny ds -- two nearly
-            # coincident centreline nodes -- blows kappa up however smooth the line is laterally,
-            # collapsing vtarget for ONE sample. The lateral second-difference clamp moved Monza
-            # only 12 -> 10 steps >10 m/s (target was 0-2) and Watkins 10 -> 11, which is what you
-            # would expect if the spikes are not lateral at all.
-            # PREDICTION, stated before the first run: if spacing is the cause, the smallest node
-            # gaps are << the median (p01 under ~0.5 m against a median of several metres), and the
-            # nodes carrying the largest kappa are drawn from those smallest gaps.
-            # AILine's node coordinates are x/z (y is elevation) -- NOT `pos`, which is FrenetTrack's
-            # field name. The first cut used AILINE.pos and threw FieldError at runtime.
-            let X = AILINE.x, Z = AILINE.z, nn = length(AILINE.x)
-                dss = [hypot(X[mod1(i+1,nn)]-X[i], Z[mod1(i+1,nn)]-Z[i]) for i in 1:nn]
-                qq(v,p) = sort(v)[clamp(round(Int, p*length(v)), 1, length(v))]
-                ordk = sortperm(AILINE.κ, by=abs, rev=true)[1:min(20,nn)]
-                println("\n  ---- E84-S5: centreline NODE SPACING (", nn, " nodes) ----")
-                println("    ds m: p01 ", round(qq(dss,0.01),digits=3), "  p10 ", round(qq(dss,0.10),digits=3),
-                        "  p50 ", round(qq(dss,0.50),digits=3), "  min ", round(minimum(dss),digits=4))
-                println("    ds at the 20 highest-|kappa| nodes: median ",
-                        round(sort([dss[i] for i in ordk])[10], digits=3), " m   min ",
-                        round(minimum(dss[i] for i in ordk), digits=4), " m")
-            end
-            dvl = [abs(vloc[i+1]-vloc[i]) for i in 1:length(vloc)-1]
-            dvh = [abs(vhor[i+1]-vhor[i]) for i in 1:length(vhor)-1]
-            spacing = AILINE.total / n
-            println("\n  ---- E89: vtarget STEP-TO-STEP change (sample spacing ", round(spacing,digits=1), " m) ----")
-            println("    |dv| local  m/s: p50 ", round(q(dvl,0.50),digits=3), "  p90 ", round(q(dvl,0.90),digits=3),
-                    "  max ", round(maximum(dvl),digits=2), "   >10 m/s: ", count(>(10.0), dvl), "/", length(dvl))
-            println("    |dv| horizon m/s: p50 ", round(q(dvh,0.50),digits=3), "  p90 ", round(q(dvh,0.90),digits=3),
-                    "  max ", round(maximum(dvh),digits=2), "   >10 m/s: ", count(>(10.0), dvh), "/", length(dvh))
-            println("\n  ---- kappa / vtarget profile (", n, " samples round the lap) ----")
-            println("    kappa  1/m : p10 ", round(q(ks,0.10),digits=5), "  p50 ", round(q(ks,0.50),digits=5),
-                    "  p90 ", round(q(ks,0.90),digits=5), "  max ", round(maximum(ks),digits=5))
-            println("    radius   m : p10 ", round(Int,1/q(ks,0.90)), "  p50 ", round(Int,1/q(ks,0.50)),
-                    "  p90 ", round(Int,1/q(ks,0.10)), "   (p10 radius = the TIGHTEST decile)")
-            println("    vtarget LOCAL  kappa only : p10 ", round(q(vloc,0.10),digits=1),
-                    "  p50 ", round(q(vloc,0.50),digits=1), "  p90 ", round(q(vloc,0.90),digits=1),
-                    "   at vmax: ", round(100*count(>=(vmax-0.1), vloc)/n, digits=1), " %")
-            println("    vtarget HORIZON max (150m): p10 ", round(q(vhor,0.10),digits=1),
-                    "  p50 ", round(q(vhor,0.50),digits=1), "  p90 ", round(q(vhor,0.90),digits=1),
-                    "   at vmax: ", round(100*count(>=(vmax-0.1), vhor)/n, digits=1), " %")
-            println("    => median speed cost of the horizon rule: ",
-                    round(q(vloc,0.50)-q(vhor,0.50), digits=1), " m/s")
-            println("    (a clean 1967 Monza line should be near-straight over most of the lap:",
-                    " median radius >> 500 m, median vtarget at vmax)")
-            # E84-S3b: the MEDIAN is healthy, so the damage is in the TAIL. Count physically
-            # impossible corners: no 1967 GP circuit has a radius under ~40 m (Monaco's Loews is
-            # ~12 m and is the tightest corner in F1 anywhere). Anything below that is a defect in
-            # the line, and because _vtarget takes a 150 m forward MAX, one spike poisons the
-            # 150 m before it as well.
-            for rlim in (80.0, 40.0, 20.0, 10.0)
-                klim = 1/rlim; c = count(>=(klim), ks)
-                println("    radius < ", lpad(round(Int,rlim),3), " m: ", lpad(c,4), " / ", n,
-                        " samples (", lpad(round(100*c/n, digits=1),5), " %)  -> vtarget ",
-                        round(clamp(sqrt(11.0/klim),12.0,74.0), digits=1), " m/s")
-            end
-            worst = sortperm(ks, rev=true)[1:min(8,length(ks))]
-            println("    worst spikes (lap distance m -> radius m):")
-            for w in worst
-                println("      s=", lpad(round(Int, AILINE.total*(w-1)/n),5), "  r=",
-                        round(1/ks[w], digits=1), " m")
-            end
-        end
-        exit(0)
-    end
+    _DX_PACEDIAG && AILINE !== nothing && dx_pacediag(AILINE)     # LOOPSPLIT-1: main_diag.jl
     AI_TGT   = AI_REFLAP * 100.0 / AI_PCT
     AI_SCALE = AILINE === nothing ? 1.0 : clamp(AI_T0 / max(AI_TGT, 1.0), 0.4, 2.2)
     if AILINE !== nothing
@@ -16137,7 +15717,7 @@ function main()
                 FRUSTUM_CULL && !infrustum(vp_, bc, br) && continue
                 # PERF-1: size cull -- an object whose bounding sphere covers < JM_MINPIX pixels is not drawn
                 br < (flip ? MINPIX_K_MIR : MINPIX_K) * sqrt((eye_[1]-bc[1])^2+(eye_[2]-bc[2])^2+(eye_[3]-bc[3])^2) && continue
-                ob, oa = 1.05f0, 0.55f0                                # default object grade (grandstands/buildings). PERF-4 S2: Float32 like the
+                ob, oa = OBJ_BRIGHT, OBJ_AMB                           # default object grade (grandstands/buildings); SHADE-1. PERF-4 S2: Float32 like the
                                                                        # vegetation branch -- a Float64/Float32 mix made every draw's keywords allocate
                 # SPAYELLOW-1 (PO 2026-09-26, Spa: "the initial view shows mostly a yellow blob, like a
                 # hillside colored bright yellow, on the left side of the screen"). Bisected with
@@ -16176,8 +15756,9 @@ function main()
                     _fol = _ovg !== nothing && _ii <= length(_ovg) && _ovg[_ii]
                     _bd = _obd !== nothing && _ii <= length(_obd) && _obd[_ii]       # RING-GOLD-1 S2: backdrop panorama part
                     (_bd && _bdfar) && continue
-                    Render.draw(prog, it, vp_, mat; bright = _fol ? TRACK_BRIGHT*VEG_GAIN : ob,
-                                ambfill = _fol ? TRACK_AMB*VEG_GAIN : oa, graze=grz || _bd, tint=otint)
+                    Render.draw(prog, it, vp_, mat; bright = _fol ? TRACK_BRIGHT*VEG_GAIN : (OBJ_FLAT[1] > 0f0 ? 1f0 : ob),
+                                ambfill = _fol || OBJ_FLAT[1] > 0f0 ? (_fol ? TRACK_AMB*VEG_GAIN : 0f0) : oa, graze=grz || _bd, tint=otint,
+                                flat = _fol ? (0f0, 0f0) : OBJ_FLAT)   # SHADE-1: buildings flat-lit as GPL; foliage keeps its grade
                 end
                 end
                 _ocl === nothing || Render.clip_planes!(prog, nothing)   # grandstands/buildings: ambfill kills the "post-Hiroshima carbonized" shadow faces → vibrant GPL look
@@ -17054,4 +16635,5 @@ if _MAIN_LOWER !== nothing
 else
     Core.eval(Main, _MAIN_Q)
 end
+get(ENV, "JM_CHECK_DIAG", "0") == "1" && (check_diag_globals() || exit(1))   # LOOPSPLIT-1
 main()

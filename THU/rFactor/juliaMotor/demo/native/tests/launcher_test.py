@@ -27,7 +27,7 @@ def check(c, msg):
 
 w = jr.Main(); d = w.drive
 names = [w.tabs.tabText(i) for i in range(w.tabs.count())]
-check(names == ["Race", "Garage", "Results", "Replays", "Settings", "Controller"], f"tabs {names}")
+check(names == ["Race", "Garage", "Results", "Replays", "Guides", "Settings", "Controller"], f"tabs {names}")
 check(d.track.currentText() == "Zandvoort" and d.mode.currentText() == "Practice", "first run: Zandvoort practice")
 check(d.launch_b.text() == "Start practice" and not d.laps.isVisibleTo(d), "practice: no race-only rows, 'Start practice'")
 d.mode.setCurrentIndex(1)

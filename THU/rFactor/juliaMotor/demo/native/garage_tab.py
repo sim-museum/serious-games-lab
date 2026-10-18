@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, 
                              QWidget)
 
 import garage as gm
+import gpl_setup
 
 CORNERS = ("LEFT FRONT", "RIGHT FRONT", "LEFT REAR", "RIGHT REAR")
 SESSION_KEYS = ("default", "ww103")          # the Race tab's car setup combo, in its order
@@ -182,7 +183,12 @@ class GarageTab(QWidget):
         self.save_b.clicked.connect(self.save_as)
         self.load_b = QPushButton("Load…")
         self.load_b.clicked.connect(self.load_from)
-        for b in (self.reset_b, self.save_b, self.load_b):
+        self.gpl_b = QPushButton("Import GPL setup…")
+        self.gpl_b.setToolTip("GPLSETUP-1: read a GPL Lotus 49 setup (.kj1) and carry it to iRacing's knobs -- pressures, springs\n"
+                              "(GPL wheel rate -> iRacing spring rate), dampers and bars by range position, camber, toe, bias,\n"
+                              "fuel, diff and the nearest iRacing gearing. What iRacing's ranges cannot take is reported.")
+        self.gpl_b.clicked.connect(self.import_gpl)
+        for b in (self.reset_b, self.save_b, self.load_b, self.gpl_b):
             btns.addWidget(b)
         btns.addStretch(1)
         self.status = QLabel()
@@ -416,6 +422,31 @@ class GarageTab(QWidget):
         self.K = K
         self.save_current()
         self.refresh()
+
+    def import_gpl_file(self, fn):
+        """Translate a .kj1 onto the current base session's knobs; returns the notes (also used by the test)."""
+        with open(fn, "rb") as fh:
+            g = gpl_setup.decode_kj1(fh.read())
+        med = gm.load_toml().get("gpl", {}).get("arb_median")
+        K, notes = gpl_setup.translate(g, self.session["knobs"], arb_median=tuple(med) if med else None)
+        self.K = K
+        self.save_current()
+        self.refresh()
+        self.status.setText(f"imported {os.path.basename(fn)}")
+        return notes
+
+    def import_gpl(self):
+        start = os.path.expanduser("~")
+        fn, _ = QFileDialog.getOpenFileName(self, "Import a GPL Lotus 49 setup", start, "GPL setups (*.kj1);;All files (*)")
+        if not fn:
+            return
+        try:
+            notes = self.import_gpl_file(fn)
+        except Exception as e:
+            QMessageBox.warning(self, "Import GPL setup", f"Could not read {fn}: {e}")
+            return
+        QMessageBox.information(self, "Imported " + os.path.basename(fn),
+                                "The GPL setup is now the garage (on the " + self.session_key + " base).\n\n" + "\n".join(notes))
 
     # ---- display -------------------------------------------------------------------------------------------------
     def refresh(self):

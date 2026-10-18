@@ -24,6 +24,12 @@ this index was written; that is what it exists to stop.
 | **IRGOLD-1** | **EPIC (PO 2026-10-11, 25-sprint cap; renewed 2026-10-12 night: at most 25 from S14): julia default = iRacing Ring default, julia loose = iRacing WW103 -- "indistinguishable from the iRacing Lotus 49"**, MTK objects, from the PO's 261010/11 + IRTEST-261012 sessions | 🔴 in progress, **S21 done; rotated 2026-10-13 ~04:00 (S22-S38 budget kept)**. S1-S13: replay metric 2.065 → 1.22. S14-S15 (IRTEST-261012): crank inertia 0.052 (free revs), clutch bite re-measured, iRacing's ANTI-STALL clutch -- launches 1.49 → 0.55 m/s, metric 1.20 → 1.165. S16-S19: the rear at the limit (drifts, skidpad), roll-centre object, p-norm, joint closed-loop search. S20: measured FRONT LIFT (ClAf −0.12) + rear ns 0.75 -- closed-loop metric 1.218 → 1.162. S21: clutch-out braking (not shipped); the PO's Glen note measured (GLENFEEL-1). Status for the PO: STATUS_2026-10-13.md. |
 | **TD261016-1** | **Fix the issues from the PO's 2026-10-16 test drive** (video `~/Videos/261016_spa_ring.mp4`; session logs data/juliaracer/logs/spa 2026-10-16 16-22-40, nurburgring 16-33-56; replays 16-25-39 Spa, 16-37-38 Ring). Cockpit: (c1) wrists still transparent in places, as is the wooden shifter knob. Spa: (s1) car levitates ~1 m above the road leaving the start; wheels almost submerged after the hairpin before the start/finish line; (s2) the house at the left 90° turn before Burnenville is still not right -- a small shack, not the gold's house; (s3) a small rectangular hole in the surface on the right near Masta; (s4) the two large rectangular holes in the ground on the left after Stavelot are still there. Ring: (r1) with no inputs the car at the start slowly pivots right -- creep; holding the brake does not stop it; (r2) levitates from between the South and North hairpins; (r3) sinks below the road approaching Flugplatz -- in cockpit ~2 m BELOW the road at the crest, then breaks through and levitates (PO 2026-10-16 ~17:00) | open |
 | **HORIZON-SKIRT-1** | (found 2026-10-17 chasing the Stavelot pocket) where GPL's mesh ends below the horizon (Spa s ~8500 left, past the bank) our horizon ring's lower art (hedges) shows through as a dark pocket | ✅ **CLOSED (S1-S2, 2026-10-17), nothing to fix in the ground:** against the gold (260802 Spa chase t 215.5-216.5 vs our s 8465-8495, `261017/stavelot/gold_vs_ours_8480.jpg`) GPL stands a long row of SPECTATORS with flags and a rail along that verge -- they hide the same gap in GPL. Removed by the PO's 2026-08-27 loose-people order, the gap shows. Goes with the SPECTATORS-1 decision |
+| **SPAFLAGS-1** | PO 2026-10-17, answering the spectator question: "add the Stavelot row of spectators with flags, but no other spectator blocks" -- GPL's row of standing spectators with national flags (and its rail) along the left verge at Spa s ~8,450-8,530; every other loose-people block stays off (2026-08-27 order) | open, top |
+| **SHADE-1** | PO 2026-10-17: placed objects' shaded sides -- "match GPL"; and Spa's houses on the LEFT going downhill toward Burnenville "seem almost albino - too white, almost as if they lack a texture layer. Match these houses to GPL" | ✅ **S1 (2026-10-17), for the PO's look:** placed objects lit as GPL lights them -- near-flat, neutral (`texture x (0.88 + 0.22 x sun)`): Spa's houses toward Burnenville no longer albino (roofs 1.2x -> 1.0x their texture, as gold), shaded walls no longer dark; foliage keeps its grade. `JM_OBJ_FLAT=0` = before. `261017/shade/` |
+| **LOOPSPLIT-1** | PO 2026-10-17: "do it. A 5000 line function should be refactored anyway per code quality standards" -- split the ~4,900-line game-loop function in drive_native_mtk.jl (also cuts ~10-20 s of launch compile) | open |
+| **GPLSETUP-1** | PO 2026-10-17: import a GPL Lotus 49 setup and translate it into a julia setup (the garage) | ✅ **S1 (2026-10-17), for the PO's look:** Garage tab → "Import GPL setup…" reads a .kj1 and carries it to iRacing's knobs (WWSETUP-1's rules, automated); WW103 comes out as its iRacing translation; what iRacing's ranges cut is listed |
+| **IRPLAN-2** | PO 2026-10-17: a new complete iRacing test plan, saved as PDF in 261017/documents | ✅ **DONE (2026-10-17):** `261017/documents/iracing_test_plan_261017.pdf` (+ .md source), 6 parts / ~2 h: A setup sheets, B garage ranges, C garage couplings (big twists for the bars), D the 10-15 physics tests, E new (steady-speed aero, 35°/75° exits, roll per bar), F contact + draft; with the 10-17 lessons (wait 3 s per click) and the tool for each file set |
+| **DOCGUIDES-1** | PO 2026-10-17: add to julia's documentation, readable (graphics, not a block of tiny text): the five fs_*TrackGuide.pdf (DOC/trackGuides_fs), the five GPL_trackguide_*_by_LOR.pdf, Skippy_Tuning_Guide_2011_S3_080311.pdf, iRacing_Setup_Guide.pdf (DOC/setupGuides), DOC/LSDiffs.pdf, ~/Downloads/Racecraft_A-Z_for_Sim_Racers.pdf | ✅ **S1 (2026-10-17), for the PO's look:** launcher **Guides** tab -- all 14 guides (194 pages) by group, each shown as its own pages (maps, diagrams, layout kept) fitted to the window's width, zoom (+/−, Ctrl+wheel), page keys. Pages rendered from the PDFs (`guides.py --export`; the AppImage build bakes them in, `JM_GUIDES_DIR`) |
 | **AUTODRIVE-RING-1** | The autodriver wrecks at the Ring s 619 (a rail box at 141 km/h) in a 5-AI one-lap race, so whole-lap checks there (JM_DRIVECHECK) measure only 620 m. Not from 2026-10-16's changes (same with JM_GROUND_RIBBON_REMAP=0 and JM_SLIP_BODYFRAME=1). Found 2026-10-16 | ✅ **CLOSED (S1-S2, 2026-10-17):** `JM_AUTODRIVE_PROFILE` caps the autodriver by the AI's speed profile; the whole Ring lap is height-checked in two runs (s 0-16,500, s 16,600-lap 2): no float, no sink (the hairpin float it found is fixed). A single unbroken lap still crashes after Brünnchen at 0.65 pace -- a test-driver limit, not a car or track defect |
 | **PHYSFID-1** | **EPIC (PO 2026-10-14, at most 25 sprints, then scrum on the PO-free backlog):** revisit the .ibt files to check the fidelity of the julia DEFAULT and LOOSE (WW103) setups to their iRacing equivalents -- there is a lot of .ibt data: can fidelity be improved? Would a more Modelica-like model (less empirical, grounded in the interactions of the car's components) match iRacing better? The julia default feels **FF-heavy and inert** next to iRacing: in iRacing the FF is strictly a signal to the driver, never so heavy the wheel is hard to turn, as it sometimes is in julia | 🟡 **S1-S7 (2026-10-14/15), for the PO's look:** S1 FF by iRacing's law (wheel force median 0.69 → 0.18); S2 front cornering stiffness 23 → 26 (not inert: yaw gain ~1.0, closed loop 1.0514 → 1.0373); S4 julia's .ibt steering-wheel angle; S5 driveline efficiency by direction (object). Open, data-led: WW103's ~6 % drive deficit, the limit balance -- **IRTEST-261015** (~30 min). Rotated, 18 sprints kept |
 | **SETUPMODEL-1** | The car as connected Modelica-like objects built from iRacing's setup pages: one knob turned in the garage moves others (corner weights, ride heights, deflections, cross weight, gear speeds), showing how the objects connect; the PO captures knob sweeps on video; julia's Setup tab then adjusts the car via iRacing's own list of settings (PO 2026-10-15) | 🟡 **S1-S2 done (2026-10-17), for the PO's look:** the PO's 261017 capture (53 garage screenshots, 32 saved setups, 8 .ibt; copied to `~/gold standard/julia racer/261017/`) transcribed (`261017/garage/`) and a static garage model identified (`JuliaMotorMTK/src/garage.jl` + `garage_lotus49.toml`); the launcher has a **Garage tab** (iRacing's TIRES/CHASSIS/DRIVETRAIN pages, iRacing's names/steps/limits, derived numbers live) and the sim builds the car from it (`JM_GARAGE`). Gate `garage_smoke` (63). Open: provisional limits (pressure, bias, toe, camber, gearing, diff) need Part C or the 32 setups exported as sheets; the exported .ibt still carries the session's CarSetup; extremes (loose spring) 11 N / 4 mm off |
@@ -27503,3 +27509,74 @@ give the heave-vs-speed signature at three front springs, and the garage gives t
   check for the lift wiring (`ClAf=claf ClAr=clar`) no longer matched after S13's `ClAf_rh` parameter (the physics was
   unchanged; the knob ships at 0). The commit went out before I read the result. Fixed in the next commit: the check
   matches the new line and also asserts the rake knob ships at 0; td261013_smoke passes; 62 others passed on that code.
+
+### SPAFLAGS-1 S1 (2026-10-17): the Stavelot row with its flags; Spa's marker posts back
+* The PO's answer to the spectator question: only Stavelot's row with flags. Located with `JM_OBJDIAG_AT=8480`: on the
+  LEFT verge (lateral +, the hay-bale side) `people1-20` sprites and `peprow*` rows at 17-33 m from the centreline
+  (s 8505-8771), `fla1-5` flags on poles at 8.7 m (s 8449-8490), the flag marshal. The diag called the sprites "NO MESH"
+  (it only looks at meshes; they are billboards).
+* `spaflags_keep(i)`: Spa, left verge, s 8430-8660, names people<n>/peprow/fla<n>/flagger/spaflg/speaker -- the name
+  rule's drop is lifted per placement (`dropi`) in the mesh, billboard and solid paths. The flags still did not draw: the
+  sprite loop drops any sprite within ROAD_HALFW (9 m, E31's Monza tree curtain) of the centreline, and they stand at
+  8.7 m, ~4 m past Spa's road edge (armco 5.6 m) -- for this row the test is the tarmac (6 m). `JM_SPAFLAGS=0` = off.
+* Found on the way: `pelfspa` is not people -- it is Spa's white roadside MARKER POST (0.21 x 0.75 m, a white post with a
+  red reflector triangle), ~600 placements every 20 m on both verges; the `pelf*` people prefix had dropped every one since
+  August. The gold shows them. Exempt from the people rules (people_filter `NOT_PEOPLE`, standcrowd, the crowd tint);
+  not solid (no solid radius for the name).
+* Against the gold (260802 Spa chase t 215.5-216.5 / our s 8465-8495, `261017/spaflags/gold_vs_ours_stavelot_row.jpg`):
+  the crowd lines the left verge, flags on poles behind the hay bales, white posts on the right verge. GPL's low rail in
+  front of the crowd is still not seen in ours (next: which placement it is).
+
+### GPLSETUP-1 S1 (2026-10-17): import a GPL Lotus setup into the garage
+* `demo/native/gpl_setup.py` (decode = gpl.exe's 'PGTS' v3 layout, as tools/gplsetup_decode.jl) + the Garage tab's "Import
+  GPL setup…" (a .kj1 anywhere; the result is the garage on the chosen base, raced through JM_GARAGE like any garage).
+* Translation = WWSETUP-1's rules, automated: physical where both games share the quantity (psi -> kPa, camber, toe in -> mm,
+  bias, fuel gal -> L, ramps, plates; GPL WHEEL rate -> iRacing SPRING rate through the garage's spring ratios 0.81 / 0.669;
+  gearing = iRacing's final + gear options closest to GPL's overall ratios); range position where units differ (dampers
+  1..5 -> 0..12; bars: GPL rate / the median of the 6,025 Lotus .kj1 on this PC (160 / 150 lb/in, in garage_lotus49.toml
+  [gpl]) -> the iRacing bar at the same multiple of the default's). Every clamp to iRacing's range is reported. GPL's ride
+  heights are not comparable: the PERCHES are re-solved (1/64" lattice) so the car keeps the base session's ride heights.
+* Check: GPL's Wat10361WW.kj1 imports as springs 18/18/47/47, dampers 6/6/9/9 + 9/9/12/12, ramps 35/85 (GPL's 30 clamped),
+  final 3.78 with 2.23/1.40/1.21/1.04/0.958 -- the PO's own iRacing translation of WW103 (rear 48 there), bars 0.375"/3 and
+  0.6875"/6 (1.32x the default's), perches 139.3/140.5/103.2/104.4 holding 83/83/105/105 mm. Notes list: front springs and
+  toe-out beyond iRacing's range, 30° ramp, 16:1 steering (iRacing: 10:1 only). Gated in tests/garage_test.py with a
+  synthetic .kj1 (no GPL install needed).
+
+### DOCGUIDES-1 S1 (2026-10-17): the guides as pages, not text
+* The ask was readability ("not smushed into a block of tiny-font text"), and the guides are mostly layout: maps, corner
+  diagrams, coloured speed figures (LOR), tables (Skippy). Extracting their text would lose exactly that. So each guide is
+  shown as its own pages, rendered once (pdftoppm, 120 dpi JPEG; 194 pages, 40 MB, `demo/native/docs/guides/`, gitignored),
+  scaled to the reader's width with zoom -- in the launcher's new **Guides** tab (`guides_tab.py`; list by group: LOR track
+  guides, fs track guides, Setup (Skippy, iRacing, LSD), Racecraft).
+* AppImage rule: `tools/appimage/build_julia.sh` renders the pages into the image and points `JM_GUIDES_DIR` at them; a
+  checkout renders a guide on first use from ~/sgl/THU/DOC.
+* Gate: `tests/guides_test.py` (run by launcher_smoke) -- listing, page turns, fit-to-width, zoom, on a fake rendered guide.
+
+### LOOPSPLIT-1 S1 (2026-10-17): main()'s launch diagnostics moved out (5,025 -> 4,579 lines)
+* Map of main() (drive_native_mtk.jl): ~2,200 lines of setup before the frame loop (much of it opt-in `_DX_*`
+  diagnostics), ~2,700 lines of frame loop (`while !GLFW.WindowShouldClose`), ~80 of teardown.
+* Note for the compile-time half: the `_DX_*` diagnostics are already compiled away when off (E80: their switches are
+  file-scope consts, folded). Moving them out is a code-structure win, not a launch-time one -- the launch time is in the
+  frame loop (next sprints).
+* Moved, unchanged, to `demo/native/main_diag.jl` as top-level functions taking the main() locals they read as
+  arguments: JM_ROADTRIS, JM_ROADEDGE, JM_OBJCENSUS (no locals), JM_HOLECENSUS, JM_BRIDGEPROBE, JM_ROADSWEEP (CLINE),
+  JM_PACEDIAG (AILINE) -- 446 lines. A dependency scan of main()'s blocks picked them; every name the scan flagged was
+  checked by hand (loop variables, keyword arguments, Base `rem`, the top-level `car_gap`).
+* Safety net: `check_diag_globals()` (JM_CHECK_DIAG=1, just before main()) walks each moved function's lowered code and
+  fails on any global that does not exist -- a main() local left behind. Validated on a planted miss (`LASTZ + 1` flagged)
+  before trusting its clean report on the real move (clean). The include sits ABOVE `_MAIN_Q` (inside the quote only the
+  `function main` expression is evaluated -- found by the first smoke).
+
+### SHADE-1 S1 (2026-10-17): placed objects lit as GPL lights them
+* The PO's houses: Spa s ~2950-3010 LEFT going downhill toward Burnenville (house6/7/8: picked with `JM_PICK`), against gold
+  260802 Spa chase t 92 (`261017/shade/spa_houses_gold_vs_before.jpg`). Measured, ours vs gold vs the texture: roofs
+  (h7roof, mean 173,172,180) 206,213,222 vs 171,169,178 -- gold draws a roof at ~1.0x its texture, ours 1.2x and
+  blue-shifted (the up-facing sky fill, uAmbSky) -> "albino"; walls facing away from the sun 108,121,116 vs 207,205,211 --
+  ours ~0.5x -> the "too dark shaded sides" of question 2. GPL lights its objects almost flat.
+* Tried first and not enough: the object grade (bright/ambfill 1.05/0.55 -> 0.80/0.55, 0.70/0.80, 0.60/1.00): it scales
+  everything; the roof stays bluish and the shade/sun ratio stays.
+* Fix: a flat light term for placed objects (render.jl `uFlat`, `draw(...; flat)`): `texture x (0.88 + 0.22 x lambert)`,
+  neutral, no sky tint; foliage parts keep their vegetation grade. Spa houses after (`spa_houses_gold_vs_flat.jpg`): roofs
+  and walls at the gold's level. Five tracks before/after (`four_tracks_before_after.jpg` + the Ring): only placed objects
+  change -- slightly warmer, less blue; the Ring's yellow grass apron (an object part) turns olive.
+  `JM_OBJ_FLAT=0` = the old lit grade; `JM_OBJ_FLAT=base,sun` to tune. Not touched: the cockpit sleeves (driver items).

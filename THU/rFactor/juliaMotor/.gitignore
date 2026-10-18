@@ -25,3 +25,6 @@ demo/native/human_best.txt
 # They are RUN ARTEFACTS, not source: 21 of them were swept into the repo by `git add -A`, three
 # of those in a commit whose message was about something else entirely (3a3557f).
 demo/native/*_racer_*.txt
+
+# DOCGUIDES-1: guide pages rendered from ~/sgl/THU/DOC (python3 guides.py --export docs/guides)
+demo/native/docs/guides/
