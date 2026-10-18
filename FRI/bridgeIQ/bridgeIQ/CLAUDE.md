@@ -46,7 +46,24 @@
   (SE 33), sim on +105 (SE 32). T-2c-ask, 264 checks. Partner's 4NT reply after 2C is weak: in 3
   rollouts partner passed 4NT (2C-2S-2NT-3C-3H-3S-4H-4S-4NT; after 3NT-4C). Committed 10-17; played from board 1 of
   run 261017_qplus_21_prec_biqS (planner family s2c_slam).
-* Next: partner's answer to the strong 2C opener's 4NT; unassuming cue-bid limit raise (-106/22);
+* Partner's 4NT reply after strong 2C (10-18, uncommitted): those passes came from auction_context's
+  Gate 2 (opener rebid NT -> 4NT quantitative; only strong 1C was exempt), then "Partner's NT rebid:
+  no game or slam move". `_suit_at_4_after_strong_2c_nt` (BIQ_STRONG_2C_4NT_RKC): an alerted 2C, the
+  NT rebid, then a 4-level suit by our side -> 4NT asks keycards (Q-Plus answers 5C in
+  2C-2D-2H-2S-2NT-3D-3H-4C-4D-4H-4NT). Recorded calls changed: 0 of 17,420 2/1 and 0 of 10,924 Precision
+  (only partner's model moves). The 13 strong-2C ask positions re-scored: rules +104 (SE 27), sim on +100
+  (SE 26), vs +109 / +105; the 3 former passes now reach slam (+15, +8, -28: 2C-...-4H-4S-4NT picks
+  spades; Q-Plus's Kokish 2H/2S/2NT prefix, which biq doesn't play). T-2c-4nt, 265 checks.
+  Live run 261017 s2c_slam (Q-Plus answers biq's 4NT there): -62 IMP / 17 boards; see its report.
+* Queen ask (10-18, uncommitted): biq never answered partner's next step after its 5C/5D RKC answer
+  and passed it (live 261017 bd 68: 2C-2NT-4H-4NT-5C-5D played in 5D, -15). `_answer_queen_ask`
+  (BIQ_QUEEN_ASK_ANSWER), Q-Plus's way from 17 recorded calls: no queen 5 trump; queen with hearts
+  5S, with spades 5NT (5S with 0 keycards); majors only, real queen only. Rules: 2/1 +17 / 1,
+  Precision +42 / 5 (SE 26), all 6 now = Q-Plus, sim on keeps them. Tests 261017-68, T-qask-5nt (267).
+  Still open from s2c_slam: my 2C's later rounds hit the stale-rebid illegal -> pass in other shapes
+  (bd 62 2C-(4C)-4H pass, 13 tricks; bd 65 after the 4NT-5NT answer) and "2C catch-all 3NT" with a
+  4-card fit for partner's 3S (bd 48).
+* Next: unassuming cue-bid limit raise (-106/22);
   pulls of partner's high doubles (Q-Plus sits 33/43, no clean rule).
 
 ## STATUS — 2/1 + Precision 10 h run (2026-10-15/16, committed)

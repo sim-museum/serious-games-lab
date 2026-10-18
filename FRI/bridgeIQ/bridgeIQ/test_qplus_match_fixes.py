@@ -779,6 +779,15 @@ BIDDING_SYSTEMS = [
     ("T-2c-ask", "2C-2D-3D-3S-4D-4S: strong 2C opener asks 4NT (Q-Plus), not pass",
      "TwoOverOne", "N", "None", "2c p 2d p 3d p 3s p 4d p 4s p", "N", "A.AKQT.AKQJT32.4",
      "P", {"4N"}),
+    ("T-2c-4nt", "2C-2H-2S-3C-3NT-4C-4NT: keycard ask after the NT rebid, not quantitative",
+     "TwoOverOne", "E", "None", "p p 2c p 2h p 2s p 3c p 3n p 4c p 4n p", "E",
+     "9.JT8754.-.AQ9654", "P", {"5D"}),
+    ("261017-68", "2C-2NT-4H-4NT-5C-5D: answer the queen ask (5S = queen), not pass 5D",
+     "TwoOverOne", "S", "None", "2c p 2n p 4h p 4n p 5c p 5d p", "S",
+     "AK9.KQJ98.A.KQJ9", "P", {"5S"}),
+    ("T-qask-5nt", "2S-4NT-5D-5H: queen ask with spades, queen + keycard -> 5NT (Q-Plus)",
+     "TwoOverOne", "N", "None", "2s p 4n p 5d p 5h p", "N",
+     "KQ8643.T92.K63.9", "P", {"5N"}),
 ]
 
 

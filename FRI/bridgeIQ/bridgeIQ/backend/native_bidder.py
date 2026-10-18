@@ -1764,6 +1764,42 @@ def _try_grand_slam_force_pipeline(state: 'AuctionState', e: HandEval,
                    f"honours → 6{trump.to_char()}")
 
 
+QUEEN_ASK_ANSWER = os.environ.get("BIQ_QUEEN_ASK_ANSWER", "1") == "1"
+
+
+def _answer_queen_ask(state: 'AuctionState', e: HandEval, system) -> Optional[Bid]:
+    """Partner's 4NT, my 5C/5D answer, partner's next step (5D/5H, not the
+    trump suit): answer the trump-queen ask the way Q-Plus does (2/1 and
+    Precision records). No queen: 5 of trump. Queen: the cheapest call above
+    5 of trump (5S with hearts, 5NT with spades), except 5S with spades and
+    no keycard. Majors only, the real queen only (Q-Plus denied it with
+    AT875). biq used to pass the ask: 2C-2NT-4H-4NT-5C-5D played in 5D,
+    13 tricks (live 261017 board 68)."""
+    calls = [(s, b) for s, b in state.bids]
+    if len(calls) < 6 or not all(b.is_pass for _, b in calls[-5::2]):
+        return None
+    ask, ans, rkc = calls[-2][1], calls[-4][1], calls[-6][1]
+    if not (calls[-6][0] == state.seat.partner() and rkc.level == 4
+            and rkc.suit == Suit.NOTRUMP and _is_rkc_context(state, rkc)):
+        return None
+    step = {Suit.CLUBS: Suit.DIAMONDS, Suit.DIAMONDS: Suit.HEARTS}
+    if not (ans.level == 5 and ans.suit in step and ask.level == 5
+            and ask.suit == step[ans.suit]):
+        return None
+    T = _agreed_trump(state)
+    if T not in (Suit.HEARTS, Suit.SPADES) or T == ask.suit:
+        return None
+    if not e.has_queen.get(T, False):
+        cand = bid(5, T, why=f"5{T.to_char()}: no trump queen (answer to the queen ask)")
+    elif T == Suit.HEARTS:
+        cand = bid(5, Suit.SPADES, alert=True, why="5S: trump queen (answer to the queen ask)")
+    elif _keycard_count(e, T, system) == 0:
+        cand = bid(5, T, why=f"5{T.to_char()}: trump queen but no keycard")
+    else:
+        cand = bid(5, Suit.NOTRUMP, alert=True, why="5NT: trump queen (answer to the queen ask)")
+    return cand if _is_legal_bid(cand, state) else None
+
+
 def _try_rkc_pipeline(state: 'AuctionState', e: HandEval, system) -> Optional[Bid]:
     """Hook for decide_bid: handle every step of the RKC follow-up.
 
@@ -1794,6 +1830,13 @@ def _try_rkc_pipeline(state: 'AuctionState', e: HandEval, system) -> Optional[Bi
         if not last_mine or last_mine.level < 4 \
                 or (last_mine.level == 4 and last_mine.suit != Suit.NOTRUMP):
             return _respond_to_rkc(state, e, system)
+
+    # Case 1b: I answered partner's 4NT with 5C/5D and partner bid the next
+    # step: the trump-queen ask.
+    if QUEEN_ASK_ANSWER:
+        sub = _answer_queen_ask(state, e, system)
+        if sub is not None:
+            return sub
 
     # Case 2: I bid 4NT, partner gave the keycard answer → my move.
     if last_mine is not None and _is_rkc_context(state, last_mine):

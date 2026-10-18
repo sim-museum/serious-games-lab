@@ -24,6 +24,7 @@ migrate at their own pace; the context is computed once per decide_bid
 and threaded through.
 """
 
+import os
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional, Set, Tuple, TYPE_CHECKING
@@ -150,6 +151,11 @@ class AuctionContext:
 
 _NT = Suit.NOTRUMP
 _MAJORS = (Suit.HEARTS, Suit.SPADES)
+
+# Strong 2C, opener rebid NT, then our side bid a suit at the 4 level: the
+# 4NT that follows asks keycards, as Q-Plus answers it (2C-2D-2H-2S-2NT-3D-
+# 3H-4C-4D-4H-4NT: 5C), not a quantitative invite to pass.
+STRONG_2C_4NT_RKC = os.environ.get("BIQ_STRONG_2C_4NT_RKC", "1") == "1"
 
 # The system of the decision being made (set by native_bidder.decide_bid), so
 # callers that pass no system still read 1NT-2D/2H right: natural weak
@@ -774,7 +780,9 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
         # wasn't strong artificial → quantitative (Deal 39 pattern).
         elif (ctx.trump is None
                 and ctx.opener_rebid_nt
-                and not ctx.opening_was_strong_artificial):
+                and not ctx.opening_was_strong_artificial
+                and not (STRONG_2C_4NT_RKC
+                         and _suit_at_4_after_strong_2c_nt(state, ctx, first_4nt_idx))):
             ctx.last_4nt_is_quantitative = True
         # Gate 3: no trump agreed and the call right before the 4NT was a
         # NT bid — the auction is in notrump (no fit), so 4NT is a
@@ -787,6 +795,23 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
             ctx.last_4nt_is_rkc = True
 
     return ctx
+
+
+def _suit_at_4_after_strong_2c_nt(state: 'AuctionState', ctx: AuctionContext,
+                                  idx_4nt: int) -> bool:
+    """Strong (alerted) 2C opening, opener's NT rebid, then a suit bid at
+    the 4 level by the opening side before the 4NT at `idx_4nt`."""
+    op = ctx.opening_bid
+    if not (op is not None and op.level == 2 and op.suit == Suit.CLUBS and op.alert):
+        return False
+    side = {ctx.opener_seat, ctx.opener_seat.partner()}
+    nt = [i for i, (s, b) in enumerate(state.bids[:idx_4nt])
+          if s == ctx.opener_seat and b.suit == _NT and not b.is_pass
+          and not b.is_double and not b.is_redouble]
+    return bool(nt) and any(
+        s in side and b.level == 4 and b.suit not in (None, _NT)
+        and not b.is_pass and not b.is_double and not b.is_redouble
+        for s, b in state.bids[nt[-1] + 1:idx_4nt])
 
 
 def trump_set_via(state: 'AuctionState') -> Optional[TrumpAgreement]:
