@@ -27680,3 +27680,10 @@ give the heave-vs-speed signature at three front springs, and the garage gives t
   (nothing can poke through the tarmac). The pick at the patch pixel now hits grass1 at 311.7 m, the replayed frames at the
   PO's moment show continuous grass. Knobs (=0 = before): JM_HOLEFILL_NANFIX, JM_HOLEFILL_EDGE, JM_HOLEFILL_ROADEDGE,
   JM_HOLEFILL_SEAMFIX. Spa 3,159 -> 4,493 quads.
+
+### LOOPSPLIT-1 S3 (2026-10-18): the timing overlay out of main()
+* TEXTHUD-1's overlay (lap rows + Track Position, 69 lines) moved, unchanged, to `main_loop.jl` `texthud_draw!` with the
+  13 loop locals it reads as arguments. Picked by a new block scanner (free main() locals read by the block, block-locals
+  read after it): inputs cs, W, H, AICARS, best_lap, fmt_lap, lap_t0, last_lap, player_finpos, race_done, race_go,
+  standings, texthud_name; nothing leaks out (later `by`/`r`/`c` are fresh assignments). Smoke (Zandvoort race, 3 AI):
+  the overlay draws as before.

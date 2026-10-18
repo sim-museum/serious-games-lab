@@ -42,3 +42,79 @@ function mirror_render!(drawworld, cs, cam_pitch, cam_roll, frames, _mir_alt, li
         glBindFramebuffer(GL_FRAMEBUFFER, 0)
     nothing
 end
+
+
+"""TEXTHUD-1 (GOLDMATCH-JR-1 S1): the gold's timing overlay -- lap rows top-left, Track Position top-right (LOOPSPLIT-1 S3;
+the code is unchanged, the loop locals it reads are arguments)."""
+function texthud_draw!(cs, W, H, AICARS, best_lap, fmt_lap, lap_t0, last_lap, player_finpos, race_done, race_go, standings, texthud_name)
+        if FONT !== nothing
+            # The gold's rows sit on an opaque black band across the top of the frame (its overlay is
+            # not blended over the scene). Same here: one flat quad through the HUD program, then text.
+            # S2: the band must also cover the Track Position table (three lap rows alone left the
+            # table's lower rows blended over the grandstand).
+            nrows = (IS_RACE && !isempty(AICARS)) ? max(3, min(7, 1 + length(AICARS)) + 1) : 3
+            bv = empty!(HUD_BV); Render.hquad!(bv, 0.0, 0.0, Float64(W), nrows*FONT.lineh + 12.0, (0.0, 0.0, 0.0))
+            Render.hud_draw(hudprog, hudvao, hudvbo, bv, W, H)
+            tv = empty!(HUD_TV); fy = 6.0; fx = 8.0
+            cur = (race_go[] && !race_done) ? cs.t - lap_t0 : (SMOKE ? 23.27 : 0.0)
+            Render.text!(tv, FONT, fx, fy,            "I  " * lapfmt(cur),                              (1.0, 0.45, 1.0))
+            Render.text!(tv, FONT, fx, fy + FONT.lineh, "B  " * lapfmt(SMOKE ? 92.1 : best_lap),           (0.75, 0.75, 0.75))
+            Render.text!(tv, FONT, fx, fy + 2FONT.lineh, "L  " * lapfmt(SMOKE ? 94.3 : last_lap),          (0.45, 0.95, 0.45))
+            if IS_RACE && !isempty(AICARS)
+                st = standings(); ppy = 0.0
+                for e in st; e[1] == 0 && (ppy = e[2]); end
+                lapsN = length(st) > 0 ? cs.laps + 1 : 1
+                tx = W - 8.0 - 300.0
+                Render.text!(tv, FONT, tx, fy, "Track Position ($(lapsN)L)", (0.95, 0.95, 0.95))
+                for (i, e) in enumerate(st)
+                    i > 7 && break
+                    gapm = round(Int, (e[2] - ppy) * LAPLEN)
+                    col = e[1] == 0 ? (1.0, 0.82, 0.35) : (0.95, 0.95, 0.95)
+                    Render.text!(tv, FONT, tx, fy + i*FONT.lineh, string(i, " ", texthud_name(e[1])), col)
+                    Render.text!(tv, FONT, tx + 190.0, fy + i*FONT.lineh, (gapm >= 0 ? "+" : "") * string(gapm) * "m", col)
+                end
+            end
+            Render.text_draw(textprog, textvao, textvbo, FONT, tv, W, H)
+            # TRACKSEG-1: the section name, centred in the black timing band above the 3-D view. PO 2026-10-04 (2):
+            # "less obtrusive ... higher vertically ... no colored text window behind the words, about the same contrast
+            # (but larger font) as the other text above the 3D window" -- the band's own light grey, a larger regular face.
+            if !isempty(SECTIONS) && SEGNAME_SECS > 0
+                SEG[] = section_update(SECTIONS, cs.lapdist, LAPLEN, cs.t, SEG[]...)
+                if cs.t - SEG[][3] < SEGNAME_SECS || !isempty(SEGNAME_FORCE)
+                    msg = isempty(SEGNAME_FORCE) ? SEG[][2] : SEGNAME_FORCE; tw = Render.text_width(SEGFONT, msg)
+                    bandh = nrows*FONT.lineh + 12.0
+                    st = empty!(HUD_ST); Render.text!(st, SEGFONT, (W - tw)/2, max(2.0, (bandh - SEGFONT.lineh)/2), msg, (0.95, 0.95, 0.95))
+                    Render.text_draw(textprog, textvao, textvbo, SEGFONT, st, W, H)
+                end
+            end
+            # RACEEND-1 (PO 2026-09-19, WG race: "there should be a graphical signal when the race is
+            # over"). Until now the finish was a small line in the standings box and the window title.
+            # Now: a chequered strip across the frame under the HUD band and a large centred banner,
+            # for RACEEND_SECS seconds after the flag (then just the strip stays, so a late look still
+            # says the race is over). JM_RACEEND_SECS overrides; 0 disables the banner.
+            if IS_RACE && race_done && RACEEND_SECS > 0
+                RACEEND_T0[] < 0 && (RACEEND_T0[] = cs.t)
+                sq = 28.0; y0 = nrows*FONT.lineh + 12.0
+                cv = Float32[]
+                for (r, yy) in enumerate((y0, y0 + sq))
+                    for (c, xx) in enumerate(0.0:sq:Float64(W))
+                        Render.hquad!(cv, xx, yy, sq, sq, iseven(r + c) ? (0.05, 0.05, 0.05) : (0.97, 0.97, 0.97))
+                    end
+                end
+                Render.hud_draw(hudprog, hudvao, hudvbo, cv, W, H)
+                if cs.t - RACEEND_T0[] < RACEEND_SECS
+                    msg = "RACE FINISHED" * (isempty(AICARS) ? "" : " - P$(player_finpos[]) of $(length(AICARS)+1)")
+                    sub = "best lap $(fmt_lap(best_lap))   -   Esc to leave"
+                    sc = 3.0; tw = Render.text_width(FONT, msg; scale=sc); sw = Render.text_width(FONT, sub; scale=1.4)
+                    bx = (W - tw)/2 - 24; by = H*0.30
+                    bg = Float32[]; Render.hquad!(bg, bx, by - 10, tw + 48, sc*FONT.lineh + 1.4*FONT.lineh + 28, (0.0, 0.0, 0.0))
+                    Render.hud_draw(hudprog, hudvao, hudvbo, bg, W, H)
+                    fv = Float32[]
+                    Render.text!(fv, FONT, (W - tw)/2, by, msg, (1.0, 0.85, 0.2); scale=sc)
+                    Render.text!(fv, FONT, (W - sw)/2, by + sc*FONT.lineh + 8, sub, (0.95, 0.95, 0.95); scale=1.4)
+                    Render.text_draw(textprog, textvao, textvbo, FONT, fv, W, H)
+                end
+            end
+        end
+    nothing
+end
