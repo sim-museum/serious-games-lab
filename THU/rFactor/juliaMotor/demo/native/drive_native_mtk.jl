@@ -6100,7 +6100,7 @@ const SHOTS_DIR   = get(ENV, "JM_SHOTS_DIR", "/tmp")
 const CRASH_SPEC   = get(ENV, "JM_CRASH", "")
 const CRASH_FRAMES = parse(Int, get(ENV, "JM_CRASH_FRAMES", "150"))
 const CRASH_ON     = haskey(ENV, "JM_SMOKE") && !isempty(CRASH_SPEC)
-const CRASHES      = NTuple{4,Float64}[]          # (s, side -1 left / +1 right, deg, m/s); filled at loop start
+const CRASHES      = NTuple{4,Float64}[]          # (s, side +1 left / -1 right (GPL lateral), deg, m/s); filled at loop start
 # RACEEND-1 / AISLEEVE-1 verification hook: JM_SHOT_AT="when:view:name;..." photographs at a TIME
 # instead of a place, so a race in progress or a REPLAY can be captured without teleporting the car.
 # when = seconds of sim time (replay time in a replay) or "finish+<s>" = seconds after the race ends;
@@ -13883,7 +13883,9 @@ function main()
             for s0 in stp/2:stp:CLINE.total, sd in (-1.0, 1.0); push!(CRASHES, (s0, sd, ang, vv)); end
         else
             for sp in split(CRASH_SPEC, ";", keepempty = false)
-                f = split(sp, ":"); push!(CRASHES, (parse(Float64, f[1]), uppercase(f[2]) == "L" ? -1.0 : 1.0, parse(Float64, f[3]), parse(Float64, f[4])))
+                # side = the DRIVER's: GPL's lateral (gx, gz) points LEFT, so L = +1 (HEDGEJOLT-1 S2: it was -1, and every
+                # "L" crash went right -- the Monza s 731 "L-side invisible wall" was the right verge)
+                f = split(sp, ":"); push!(CRASHES, (parse(Float64, f[1]), uppercase(f[2]) == "L" ? 1.0 : -1.0, parse(Float64, f[3]), parse(Float64, f[4])))
             end
         end
         println("  JM_CRASH: ", length(CRASHES), " scenarios, ", CRASH_FRAMES, " frames each"); flush(stdout)
@@ -14661,7 +14663,7 @@ function main()
                         crash_invis[] > 0 && (crash_ninv[] += 1)
                         (wp, sp, bp) = crash_rec[]
                         crash_sum[] = (crash_sum[][1] + 1, crash_sum[][2] + (ok ? 0 : 1), max(crash_sum[][3], wp), max(crash_sum[][4], sp))
-                        println("  [crash] ", crash_i[], "/", length(CRASHES), " s=", round(Int, s0), " ", sd < 0 ? "L" : "R", " ",
+                        println("  [crash] ", crash_i[], "/", length(CRASHES), " s=", round(Int, s0), " ", sd > 0 ? "L" : "R", " ",
                                 round(Int, ang), "deg ", round(Int, vv), " m/s: wall pen max ", round(wp, digits = 2),
                                 " m, drawn-face pen max ", round(sp, digits = 2), " m, old-box pen max ", round(bp, digits = 2), " m, end lat ", r === nothing ? "?" : round(r[3], digits = 2),
                                 " in [", round(lo, digits = 1), ", ", round(hi, digits = 1), "] -> ", ok ? "CONTAINED" : "THROUGH",

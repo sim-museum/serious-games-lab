@@ -41,7 +41,7 @@ function sweep(extra::Dict)
     txt = read(log, String)
     m = match(r"SUMMARY watglen: (\d+) scenarios, THROUGH (\d+), deepest GPL-wall penetration ([0-9.]+) m, deepest drawn-face penetration ([0-9.]+) m", txt)
     m === nothing && (println(last(txt, 1500)); return nothing)
-    (n = parse(Int, m[1]), thru = parse(Int, m[2]), wall = parse(Float64, m[3]), drawn = parse(Float64, m[4]))
+    (n = parse(Int, m[1]), thru = parse(Int, m[2]), wall = parse(Float64, m[3]), drawn = parse(Float64, m[4]), txt = txt)
 end
 r = sweep(Dict{String,String}())
 check("treatment: the sweep ran", r !== nothing && r.n >= 20, r === nothing ? "no SUMMARY line" : "$(r.n) scenarios")
@@ -49,6 +49,12 @@ if r !== nothing
     check("treatment: no car ends THROUGH a wall", r.thru == 0, "$(r.thru) of $(r.n)")
     check("treatment: GPL-wall penetration <= 0.35 m", r.wall <= 0.35, "$(r.wall) m")
     check("treatment: drawn hard-face penetration <= 0.35 m", r.drawn <= 0.35, "$(r.drawn) m")
+    # HEDGEJOLT-1 S2: the side label is the DRIVER's -- an "L" crash ends in the left (+lat) half of GPL's free interval
+    sides = [(m[1], parse(Float64, m[2]), parse(Float64, m[3]), parse(Float64, m[4])) for m in
+             eachmatch(r"\[crash\] \d+/\d+ s=\d+ ([LR]) .*? end lat (-?[0-9.]+) in \[(-?[0-9.]+), (-?[0-9.]+)\]", r.txt)]
+    good = count(t -> (t[2] > (t[3] + t[4])/2) == (t[1] == "L"), sides)
+    check("treatment: L/R crashes end on the driver's left/right", length(sides) >= 20 && good >= 0.8*length(sides),
+          "$(good) of $(length(sides)) on the labelled side")
 end
 c = sweep(Dict("JM_GPLWALL" => "0"))
 check("control (physics off): the detector SEES cars go through", c !== nothing && c.thru >= 1,
