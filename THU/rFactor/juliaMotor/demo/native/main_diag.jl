@@ -571,7 +571,7 @@ function shots_step!(frames, vp, eye, W, H, place_at_s!, shot_idx, shot_t0, shot
                 shot_idx[] += 1; shot_t0[] = frames + 1
                 nxt = SHOTS[shot_idx[]]; CTL.view = nxt.view
                 for (k, v) in nxt.env; ENV[k] = v; end
-                place_at_s!(nxt.s)
+                place_at_s!(nxt.s, parse(Float64, get(ENV, "JM_SHOT_LAT", "0")))   # MONZAGROUND-1: off the centreline
             else
                 shots_done[] = true
             end

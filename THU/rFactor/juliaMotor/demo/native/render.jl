@@ -1367,7 +1367,7 @@ function _inplane(t, planes; cosmin = 0.995f0, dtol = 0.03f0)
     end
     false
 end
-function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0.72f0,0.74f0,0.76f0), smooth=true, tint=nothing, track=false, mirror=false, exclude_groups=(), include_groups=(), cockpit_clean=false, maxedge=Inf32, uflip=nothing, vflip=nothing, maxlat=Inf32, trim=false, dedup=nothing, drop_green=false, min_component=0, min_component_tex=(), wheel_dress=nothing, cockpit_dress=nothing, skip_ptypes_kw=nothing, visor=false, skin=nothing, visorcol=(0.75f0, 0.64f0, 0.22f0), flatcol=false)
+function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0.72f0,0.74f0,0.76f0), smooth=true, tint=nothing, track=false, mirror=false, exclude_groups=(), include_groups=(), cockpit_clean=false, maxedge=Inf32, uflip=nothing, vflip=nothing, maxlat=Inf32, trim=false, dedup=nothing, drop_green=false, min_component=0, min_component_tex=(), wheel_dress=nothing, cockpit_dress=nothing, skip_ptypes_kw=nothing, visor=false, skin=nothing, visorcol=(0.75f0, 0.64f0, 0.22f0), flatcol=false, lappos::Float64=NaN, laplen::Float64=NaN)
     livery = lowercase(first(splitext(basename(String(path3do)))))   # S7: the wrapper's own texture name (lotd, ferd, ...) = the livery
     # text reads right when the texture mapping preserves handedness: the mirror=true
     # remap (gx,gz,-gy) is a rotation (no flip needed); mirror=false is a reflection
@@ -1383,7 +1383,7 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
     haskey(ENV,"JM_VFLIP") && (vflip = ENV["JM_VFLIP"] != "0")
     haskey(ENV,"JM_UFLIP") && (uflip = ENV["JM_UFLIP"] != "0")
     maxlat = Float32(maxlat)
-    m = GPL3DO.parse_3do(path3do)
+    m = GPL3DO.parse_3do(path3do; lappos, laplen)       # MONZAGROUND-1 S3: the object's lap position for GPL's lap switches
     groups = Dict{String,Vector{Float32}}()
     edge(a,b) = sqrt((a[1]-b[1])^2+(a[2]-b[2])^2+(a[3]-b[3])^2)
     function triarea(p)

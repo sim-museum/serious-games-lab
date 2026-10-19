@@ -66,7 +66,7 @@ end
 tag(b, o) = String(b[o+1:o+4])
 
 """Parse a GPL .3do file into a `Mesh3DO` (triangulated, textured)."""
-function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}=nothing, Mroot=nothing, extdepth::Int=0)
+function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}=nothing, Mroot=nothing, extdepth::Int=0, lappos::Float64=NaN, laplen::Float64=NaN)
     b = read(path)
     String(b[1:4]) == "4OD3" || error("not a 3DO4 file: $path (magic=$(String(b[1:4])))")
 
@@ -339,7 +339,8 @@ function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}
             # (e.g. six 0.0s) ⇒ a plain list-group: keep walking every child.  JM_LOD_ALL=1 A/Bs.
             cnt = Int(u32(b, p+16))
             if get(ENV,"JM_PRIMDIAG","") != "" && occursin(lowercase(ENV["JM_PRIMDIAG"]), lowercase(basename(path)))
-                println("     [LOD node] count = ", cnt, "  (walked only when 0 < count <= 4096)")
+                println("     [LOD node] count = ", cnt, "  source ", u32(b, p+4), " param ", u32(b, p+8), " op ", u32(b, p+12),
+                        "  (walked only when 0 < count <= 4096)")
                 for kk in 1:min(cnt,6)
                     println("        child ", kk, ": dist ", f32(b, p + 20 + (kk-1)*8),
                             " off ", i32(b, p + 20 + (kk-1)*8 + 4))
@@ -362,7 +363,44 @@ function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}
                 # reverse, we have been drawing the CRUDEST rear end at all times - which would explain
                 # gold's slender wishbones against our broad chrome bodies. JM_LOD_PICK=max tests it.
                 _lodmax = get(ENV,"JM_LOD_PICK","min") == "max"
-                if !LOD_ALL && length(unique(ds)) > 1 && !isempty(live)
+                # MONZAGROUND-1 S3: 0x11 is GPL's SWITCH (gpl.exe 0x4cf9b0): value from source +4 (0 = camera distance to
+                # plane +8, clamped >= 0; 1 = the CAMERA's LAP POSITION in TRK units, 1/500 inch; 2 = its lateral; 3 =
+                # random; 4 = a table), compare op +12 (1 <=, 2 >=, 3 ==, 4 both non-zero), and the FIRST entry that
+                # holds is walked (none: nothing). Source 1 is evaluable here: the caller passes the object's own lap
+                # position (`lappos`, + `laplen` for the wrap). GPL draws an object for cameras up to 914 m along the lap
+                # either way (18e6 TRK), so the static choice is the RICHEST child any such camera gets (most
+                # triangles; trial walks, rolled back). Monza's trees72 (4e7 A | 0 B | -6000 A, op >=) is the sprite stub
+                # A beyond 2032 m of lap and its real armco/grass/fence/tree-row B before -- min-threshold picked A, and
+                # the PO's start straight lost its right-hand roadside and ground. JM_LOD_LAPPOS=0 = the old pick. Other
+                # sources keep the static rule below.
+                _src = u32(b, p+4); _op = u32(b, p+12)
+                if !LOD_ALL && _src == 1 && 1 <= _op <= 3 && isfinite(lappos) && get(ENV, "JM_LOD_LAPPOS", "1") != "0"
+                    cands = Int[]
+                    for dv in -18.0e6:0.5e6:18.0e6
+                        v = lappos + dv
+                        isfinite(laplen) && laplen > 0 && (v = mod(v, laplen))
+                        v < 0 && continue
+                        for k in 1:cnt
+                            hit = _op == 1 ? v <= ds[k] : _op == 2 ? v >= ds[k] : v == ds[k]
+                            hit || continue
+                            offs[k] >= 0 && !(k in cands) && push!(cands, k)
+                            break
+                        end
+                    end
+                    best = 0; bestn = -1
+                    if length(cands) == 1
+                        best = cands[1]
+                    else
+                        for k in cands                                  # trial walk, then roll back
+                            nt = length(tris); ng = length(groups); vis = copy(visited)
+                            walk(offs[k], curtex, depth+1, M, grp)
+                            n = length(tris) - nt
+                            resize!(tris, nt); resize!(groups, ng); empty!(visited); union!(visited, vis)
+                            n > bestn && (bestn = n; best = k)
+                        end
+                    end
+                    best > 0 && walk(offs[best], curtex, depth+1, M, grp)
+                elseif !LOD_ALL && length(unique(ds)) > 1 && !isempty(live)
                     k = live[_lodmax ? argmax([ds[k] for k in live]) : argmin([ds[k] for k in live])]
                     walk(offs[k], curtex, depth+1, M, grp)
                 else

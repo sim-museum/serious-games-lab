@@ -6086,6 +6086,8 @@ end   # SPA-FPS-1 S8: 40 is JIT warm-up
 # so the physics/camera/HUD smoothing settle before the dump (38 = the classic single-smoke warmup).
 # An optional 4th field "K=V,K=V" sets those ENV knobs when the shot starts (E64: sweep per-frame knobs such as
 # JM_MIRCAM_* in one launch instead of one 5-minute launch per value).
+# JM_SHOT_LAT=<m> (env or a shot's K=V) places the car that far off the centreline (RaceAI.pose_at's lat): at Monza
+# s ~340-430 GPL's centreline runs in the banking channel, right of the guardrail the road course is behind.
 struct SmokeShot; s::Float64; view::Int; name::String; env::Vector{Pair{String,String}}; end
 const SHOTS = [let f = split(String(spec), ":")
                    SmokeShot(parse(Float64, f[1]), length(f) >= 2 ? parse(Int, f[2]) : 0,
@@ -7486,7 +7488,9 @@ let objnames=Set{String}()
         p = objpath(inst.name)
         if p == ""; objmesh[inst.name]=nothing; continue; end
         try
-            _te = time(); full = Render.extract_gpl_car(p; track=true, mirror=OBJ_MIRROR, flatcol=OBJ_FLATCOL); _e92.ext[] += time() - _te; _e92.n[] += 1   # un-stripped: decides stub vs geometry
+            # MONZAGROUND-1 S3: the object's lap position in GPL's TRK units (1/500 inch) for its lap-position switches
+            _lp = let hr = JuliaMotor.hat(TRKSURF, Float64(inst.x), Float64(inst.y)); hr.found ? hr.lapdist*(500/0.0254) : NaN end
+            _te = time(); full = Render.extract_gpl_car(p; track=true, mirror=OBJ_MIRROR, flatcol=OBJ_FLATCOL, lappos=_lp, laplen=TRKSURF.lap_length*(500/0.0254)); _e92.ext[] += time() - _te; _e92.n[] += 1   # un-stripped: decides stub vs geometry
             # E65 S3: the treeish() force flattened every tree strip to a synthesized quad even when
             # the .3do carries REAL geometry — the E22-era anti-wall move, pre-graze-fade.  Monza's
             # strips are FOLDED PANORAMAS (S2 finding) that only render correctly as their real
@@ -7496,6 +7500,7 @@ let objnames=Set{String}()
             if isempty(full) || force_flat                 # a billboard stub (tree/sprite) — or a tree panel forced to one
                 h, wid, strs, aax = Render.billboard_stub(p); bb=nothing
                 for s in strs; bb = Render.build_billboard(s, TEXIDX); bb !== nothing && break; end
+                get(ENV, "JM_BBDIAG", "") != "" && println("  JM_BBDIAG stub ", inst.name, ": h ", h, " w ", wid, " strings ", strs)
                 bbinfo[inst.name] = bb===nothing ? nothing : (bb[1], bb[2], bb[3], h, wid, aax)   # E65 S2: + authored axis angle
             else
                 # E60 (D6) A/B matrix, tested vs the 260801 gold videos — no config wins outright:
@@ -7510,7 +7515,7 @@ let objnames=Set{String}()
                 # track-aware face selection at scenery-build time (instance transform × centreline).
                 # SUPERSEDED (E60-S4, 2026-10-06): MARTINI is `bigbosch` (sheet kendl03), not chmp4-1 (an A-frame with no
                 # placement among the 247 decoded); its blank was a coplanar reverse-wound back -- fixed by twinboard_classify!.
-                parts = Render.extract_gpl_car(p; track=true, mirror=OBJ_MIRROR, flatcol=OBJ_FLATCOL, dedup=(get(ENV,"JM_OBJ_DEDUP","old")=="orient" ? :orient : true), exclude=(CROWD_TEX..., obj_extra_excl(inst.name)...))  # strip painted-on crowds + per-object roadward parts (E58 startbox)
+                parts = Render.extract_gpl_car(p; track=true, mirror=OBJ_MIRROR, flatcol=OBJ_FLATCOL, lappos=_lp, laplen=TRKSURF.lap_length*(500/0.0254), dedup=(get(ENV,"JM_OBJ_DEDUP","old")=="orient" ? :orient : true), exclude=(CROWD_TEX..., obj_extra_excl(inst.name)...))  # strip painted-on crowds + per-object roadward parts (E58 startbox)
                 if isempty(parts); objmesh[inst.name]=nothing    # was an all-crowd object → drop (NOT a billboard)
                 else
                     lo=Inf32; hi=-Inf32; for pp in parts, k in 2:11:length(pp.verts); v=pp.verts[k]; lo=min(lo,v); hi=max(hi,v); end
@@ -9185,8 +9190,10 @@ let objnames=Set{String}()
     tstamp("  [E80] .. OBJECTS built; billboard/tree loop begins")
     global BILLBOARDS = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32}[]
     global STATICTREES = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32,Float32}[]
+    _bbwhy = get(ENV, "JM_BBDIAG", "") != ""            # MONZAGROUND-1: which rule removes each sprite / forest panel
     for i in insts
-        bb = get(bbinfo, i.name, nothing); (bb === nothing || dropi(i)) && continue
+        bb = get(bbinfo, i.name, nothing); bb === nothing && continue
+        dropi(i) && (_bbwhy && println("  JM_BBDIAG ", i.name, ": drop()"); true) && continue
         person_unsafe(i) && continue                    # SPECTATORS-1 (opt-in): a loose person too near the road
         # E79: a crowd ROW is metres wide, so testing its ORIGIN answers the wrong question — the
         # same origin-vs-footprint mistake the mesh path was fixed for (E69-S5) and this one never
@@ -9220,11 +9227,11 @@ let objnames=Set{String}()
                 continue
             end
         end
-        onground(i) || continue
+        onground(i) || (_bbwhy && println("  JM_BBDIAG ", i.name, ": not on the ground"); false) || continue
         # E31: drop sprites planted ON the road (the Monza tree "curtain" across the track). SPAFLAGS-1: the Stavelot flags
         # stand 8.7 m from the centreline, ~4 m past Spa's road edge there (its armco is at 5.6 m) -- for that row the
         # test is the tarmac itself (6 m), not the 9 m corridor.
-        on_road(i.x, i.y, spaflags_keep(i) ? 6.0 : ROAD_HALFW) && continue
+        on_road(i.x, i.y, spaflags_keep(i) ? 6.0 : ROAD_HALFW) && (_bbwhy && println("  JM_BBDIAG ", i.name, ": on the road (E31)"); true) && continue
         gz = ploz(i)
         item, tw, th, h, wid, aax = bb
         w = wid > 0f0 ? wid : h*tw/max(th,1f0)
@@ -13899,7 +13906,7 @@ function main()
         shot_idx[] = 1; shot_t0[] = 0
         CTL.view = SHOTS[1].view
         for (k, v) in SHOTS[1].env; ENV[k] = v; end
-        place_at_s!(SHOTS[1].s)
+        place_at_s!(SHOTS[1].s, parse(Float64, get(ENV, "JM_SHOT_LAT", "0")))   # MONZAGROUND-1: JM_SHOT_LAT=m off the centreline
         println("  JM_SHOTS: ", length(SHOTS), " shots → ", SHOTS_DIR); flush(stdout)
     end
     # PERF-4 (PO 2026-10-08: "a lag between control inputs and car response, especially noticable at the start of a race"):
