@@ -19,6 +19,19 @@
   BIQ_STRONG_2C_ASK_WEAK_RAISE): after 2D (and 3C) then 4 of my major, ask only with 25+. +0.022 (SE
   0.009); recorded Q-Plus calls unchanged (a first version that also covered 4m lost 2C-2D-3C-4C,
   where Q-Plus cue-bids). Test prog-1904 (268 checks).
+* Strong 2C opener's later rounds (10-18, uncommitted). In biq's own auctions (41 of 3000 curve deals)
+  the later-round passes are mostly right (2C-2D-2NT-3NT, Stayman 4M, weak 4M); the bad ones come from
+  calls a Q-Plus partner makes. Fixes, each with a switch:
+  - BIQ_RKC_VOID_ANSWER: after my 4NT, partner's 5NT or 6 of a suit below trumps -> 6 trump (was pass).
+  - BIQ_STRONG_2C_LONG_MINOR: 2C-..-3m (7+ m) - 3NT -> 4m; - 4m - 5m -> 6m.
+  - BIQ_STRONG_2C_ASK_CONTESTED: 2C-(their bid)-partner's free 4-level suit, 4+ support -> 4NT (live bd 62).
+  - BIQ_STRONG_2C_LATER_FIT: later round, partner's 3M with my 4+ -> cue 4C/4D (minor ace or void), else
+    4M (live bd 48; also fires over partner's 3M raise of my major, both recorded cases better).
+  - BIQ_RKC_ASKER_PLACES: partner asked 4NT, I answered, partner bid 6/7 -> pass (biq pulled 6S to 7D).
+  Q-Plus judge: 2/1 +72 IMP / 6 changed (6 better), Precision +27 / 3; all 9 = Q-Plus; sim keeps the
+  2C ones. Curve: 2/1 +0.007 (SE 0.005, 3 boards), Precision 0. Tests 261017-48/62/65, T-2c-8d(-5d),
+  T-rkc-void, prog-1711 (275 checks). Seen, not fixed: the RKC asker's trump choice (curve bd 1798:
+  1H-2C-2H-3C-4NT asked for hearts, 6H -3, 6C makes).
 
 ## STATUS — 2/1 catch-all rules from Q-Plus's recorded calls (2026-10-16 night, committed 10-17)
 * New plan (user, 10-16): map bidding weaknesses in groups instead of fixing the worst boards of each
