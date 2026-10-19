@@ -88,6 +88,17 @@ check(len(qss) > 1000 and "@UI@" not in qss, "theme applied")
 imgs = _re.findall(r"url\(([^)]+)\)", qss)
 check(imgs and all(os.path.exists(f) for f in imgs), f"theme images exist ({len(imgs)})")
 check("QPushButton#primary" in qss and w.drive.launch_b.objectName() == "primary", "Start is the primary button")
+# PO 2026-10-18: A+/A- make every text bigger/smaller (the guide's 12 pt and the base 11 pt), remembered across launches
+w.bigger_b.click(); w.bigger_b.click(); qb = app.styleSheet()
+check(jr.text_scale() == 1.3,
+      f"A+ twice scales the text to {jr.text_scale():.0%}")
+check(jr.text_scale() == 1.3 and "font-size: 15.6pt" in qb and "font-size: 14.3pt" in qb, "the guide 12->15.6 pt, base 11->14.3 pt")
+for _ in range(5): w.smaller_b.click()
+check(jr.text_scale() == 0.8 and "font-size: 8.8pt" in app.styleSheet(), f"A- stops at the smallest ({jr.text_scale():.0%})")
+jr.step_text_scale(app, 0)
+check(jr.text_scale() == 1.0 and "font-size: 11.0pt" in app.styleSheet(), "Ctrl+0 = normal size")
+acts = [a.text() for m in w.menuBar().actions() for a in (m.menu().actions() if m.menu() else [])]
+check("&Bigger text" in acts and "&Smaller text" in acts, "View menu has the text size actions")
 app.setStyleSheet(""); os.environ["JR_THEME"] = "classic"; jr.apply_theme(app)
 check(app.styleSheet() == "", "JR_THEME=classic keeps the platform look")
 print("LAUNCHER:", "PASS" if ok else "FAIL"); sys.exit(0 if ok else 1)

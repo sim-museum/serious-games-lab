@@ -135,4 +135,11 @@ for ax in ([-1, 1, 1, 1], [1, 1, 1, 1], [0, -1, 1, 1], [0, 1, -1, 1], [0, 1, 1, 
     feed(t, ax)
 feed(t, TXREST); t.capture(); feed(t, [-0.7, 1, 1, 1])
 check(jr.STEPS[t.step][0] == "steer", "NEGATIVE CONTROL: no assignment before the controls were seen at rest")
+# PO 2026-10-18: a recalibration swept lock to lock, then a quarter turn left "had no effect" (needed 60 % of the lock)
+j = Joy(); j.present = True; j.name = TX; j.axes = list(TXREST); j.buttons = [0] * 12
+t = jr.CalibrateTab(j, lambda: None); t.start_wizard(); feed(t, TXREST); t.capture()
+for ax in ([-1, 1, 1, 1], [1, 1, 1, 1], [0, -1, 1, 1], [0, 1, -1, 1], [0, 1, 1, 0.3]):
+    feed(t, ax)
+feed(t, TXREST); t.capture(); feed(t, TXREST); feed(t, [-0.2, 1, 1, 1])   # 90° of a 900° wheel
+check(jr.STEPS[t.step][0] == "wheel90" and t.work.steer.axis == 1, f"a quarter turn left after a full-lock sweep finds the wheel (at {jr.STEPS[t.step][0]})")
 sys.exit(0 if ok else 1)

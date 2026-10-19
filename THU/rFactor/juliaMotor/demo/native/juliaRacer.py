@@ -25,7 +25,7 @@ import sys
 import time
 
 from PyQt6.QtCore import QProcess, QProcessEnvironment, QSettings, Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QColor, QFont, QPalette
+from PyQt6.QtGui import QColor, QFont, QKeySequence, QPalette
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QFrame, QGridLayout, QGroupBox,
     QButtonGroup, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox, QProgressBar, QPushButton, QRadioButton,
@@ -495,7 +495,7 @@ STEPS = [
     ("rest", "Step 1 — CENTRE the wheel/stick and RELEASE every pedal, then click Next."),
     ("sweep", "Step 2 — Move EVERY control through its FULL travel: turn the wheel lock to lock (stick: every way), press "
               "each pedal to the floor and let it back, run any slider end to end. Then click Next."),
-    ("steer", "Step 3 — Turn the wheel (or push the stick) to the LEFT."),
+    ("steer", "Step 3 — Turn the wheel (or push the stick) to the LEFT: a quarter turn is plenty."),
     ("wheel90", "Step 4 — WHEEL: turn it exactly 90° LEFT (a quarter turn: the top of the rim at 9 o'clock) and click "
                 "Capture. Joystick, or a wheel the game already knows: Skip."),
     ("throttle", "Step 5 — Press the ACCELERATOR fully (stick: push forward), then release."),
@@ -510,6 +510,10 @@ STEPS = [
 STEP = {k: i for i, (k, _) in enumerate(STEPS)}
 PRESS = 0.6        # a control counts as used once it has moved 60 % of its swept travel from rest ...
 RELEASED = 0.2     # ... and the next step waits until every control is back within 20 % of rest
+# PO 2026-10-18: steering is found by DIRECTION, not by reaching most of the lock. At PRESS, a wheel swept lock to lock
+# (±450°) needed ~270° of left lock before step 3 reacted -- a first run swept only ±100° and worked, the recalibration
+# swept the full lock and "had no effect". 15 % of the swept half = ~70° on a 900° wheel, 15° on a ±100° sweep.
+STEER_PRESS = 0.15
 
 
 class CalibrateTab(QWidget):
@@ -595,7 +599,6 @@ class CalibrateTab(QWidget):
         self.instr = QLabel("Click Start to map the controller now plugged in.")
         self.instr.setWordWrap(True)
         self.instr.setMinimumHeight(60)
-        f = QFont(); f.setPointSize(11); self.instr.setFont(f)
         wv.addWidget(self.instr)
 
         brow = QHBoxLayout()
@@ -848,7 +851,12 @@ class CalibrateTab(QWidget):
             cand = [i for i in range(len(ax)) if sw.kind(i) == "centred"]
         else:
             cand = [i for i in range(len(ax)) if i != self.work.steer.axis - 1 and (i, side(i)) not in self._used]
-        cand = [i for i in cand if tr[i] >= PRESS]
+        need = STEER_PRESS if key == "steer" else PRESS
+        if key == "steer":                      # show the driver it is seeing the wheel move
+            far = max(cand, key=lambda k: tr[k], default=None)
+            if far is not None and tr[far] > 0.02:
+                self.capl.setText(f"Turning: axis {far + 1} at {min(1.0, tr[far] / need):.0%} -- keep turning LEFT")
+        cand = [i for i in cand if tr[i] >= need]
         if not cand:
             return
         i = max(cand, key=lambda k: tr[k])
@@ -1944,6 +1952,13 @@ class Main(QMainWindow):
         tabs.addTab(self.drive.settings_page(), "Settings")
         tabs.addTab(self.cal, "Controller")
         tabs.currentChanged.connect(self._tab)
+        corner = QWidget(); cl = QHBoxLayout(corner); cl.setContentsMargins(0, 0, 6, 0)
+        self.text_l = QLabel("Text"); cl.addWidget(self.text_l)
+        self.smaller_b = QPushButton("A−"); self.smaller_b.setToolTip("Smaller text (Ctrl+−)")
+        self.bigger_b = QPushButton("A+"); self.bigger_b.setToolTip("Bigger text (Ctrl++)")
+        for b, d in ((self.smaller_b, -1), (self.bigger_b, +1)):
+            b.clicked.connect(lambda _c=False, d=d: self._text_size(d)); cl.addWidget(b)
+        tabs.setCornerWidget(corner, Qt.Corner.TopRightCorner)
         self.setCentralWidget(tabs)
         self._build_menus()
         self.statusBar().showMessage("Ready")
@@ -1956,10 +1971,19 @@ class Main(QMainWindow):
         a = game.addAction("S&top"); a.triggered.connect(self.drive.stop)
         game.addSeparator()
         a = game.addAction("&Quit"); a.setShortcut("Ctrl+Q"); a.triggered.connect(self.close)
+        view = mb.addMenu("&View")
+        for txt, keys, d in (("&Bigger text", ("Ctrl++", "Ctrl+="), +1), ("&Smaller text", ("Ctrl+-",), -1),
+                             ("&Normal text size", ("Ctrl+0",), 0)):
+            a = view.addAction(txt); a.setShortcuts([QKeySequence(k) for k in keys])
+            a.triggered.connect(lambda _c=False, d=d: self._text_size(d))
         hlp = mb.addMenu("&Help")
         a = hlp.addAction("&How to race…"); a.triggered.connect(lambda: guide_dialog(self).exec())
         a = hlp.addAction("&Controls…"); a.setShortcut("F1"); a.triggered.connect(lambda: show_controls(self))
         a = hlp.addAction("&About Julia Racer"); a.triggered.connect(self._about)
+
+    def _text_size(self, d):
+        k = step_text_scale(QApplication.instance(), d)
+        self.statusBar().showMessage(f"Text size {k:.0%}", 3000)
 
     def _start(self):
         self.tabs.setCurrentWidget(self.drive)
@@ -2070,10 +2094,41 @@ QScrollBar::handle:vertical { background: #34495e; border-radius: 5px; min-heigh
 """
 
 
-def apply_theme(app):
+# PO 2026-10-18: "provide buttons to increase and decrease font size for guides, setup, any paragraphs of text". One
+# scale for the whole launcher: every pt size in THEME (and the classic look's app font) times TEXT_SCALE, remembered.
+TEXT_SCALES = (0.8, 0.9, 1.0, 1.15, 1.3, 1.5, 1.75, 2.0, 2.5)
+
+
+def text_scale():
+    try:
+        v = float(QSettings("juliaRacer", "launcher").value("ui/text_scale", 1.0))
+    except (TypeError, ValueError):
+        v = 1.0
+    return min(TEXT_SCALES, key=lambda x: abs(x - v))
+
+
+def scaled_pt(qss, k):
+    return re.sub(r"(\d+(?:\.\d+)?)pt\b", lambda m: f"{float(m.group(1)) * k:.1f}pt", qss)
+
+
+def apply_theme(app, scale=None):
+    k = text_scale() if scale is None else scale
     if os.environ.get("JR_THEME", "") != "classic":
         app.setStyle("Fusion")             # the platform style ignores parts of a stylesheet; Fusion honours all of it
-        app.setStyleSheet(THEME.replace("@UI@", UI_DIR.replace(os.sep, "/")))
+        app.setStyleSheet(scaled_pt(THEME.replace("@UI@", UI_DIR.replace(os.sep, "/")), k))
+    else:
+        if not hasattr(app, "_jr_base_pt"):
+            app._jr_base_pt = app.font().pointSizeF()
+        f = app.font(); f.setPointSizeF(app._jr_base_pt * k); app.setFont(f)
+
+
+def step_text_scale(app, d):
+    """d = +1 bigger, -1 smaller, 0 back to normal; applies and remembers the new scale, returns it."""
+    i = TEXT_SCALES.index(text_scale())
+    k = 1.0 if d == 0 else TEXT_SCALES[max(0, min(len(TEXT_SCALES) - 1, i + d))]
+    QSettings("juliaRacer", "launcher").setValue("ui/text_scale", k)
+    apply_theme(app, k)
+    return k
 
 
 def main():
