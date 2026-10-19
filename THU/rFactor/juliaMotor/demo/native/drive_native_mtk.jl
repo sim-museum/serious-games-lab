@@ -12223,6 +12223,10 @@ function main()
     end
     tstamp("physics build (mtkcompile) begins")
     cs = build_carX(x0=cs0.x, z0=cs0.z, θ0=θ0spawn, v0=0.0, y0=y0spawn)   # MTK car — standing start (planar or full-3D)
+    if CAR3D                                            # TRACKAIR-1: the track's own air (iRacing's 25.56 C at its altitude)
+        DriveRT3D.set_air!(cs, DriveRT3D.air_density(TRACKSEL))
+        println("  air:     ", round(DriveRT3D.air_density(TRACKSEL), digits = 3), " kg/m3 (", TRACKSEL, ")")
+    end
     tstamp("physics build done — game loop imminent")
     # E80-S3: is that ~95 s COMPILATION (first-call latency, which a sysimage can remove) or WORK
     # (per-model, which it cannot)? Build a second car and time it. JM_MTK_TWICE=1; diagnostic only,

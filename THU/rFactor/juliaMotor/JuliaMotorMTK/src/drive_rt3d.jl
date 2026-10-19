@@ -20,7 +20,7 @@ for f in ("tyre.jl","powertrain.jl","chassis_parts.jl","vehicle_3d.jl")
     include(joinpath(HERE, "components", f))
 end
 
-export Car3D, build_car3d, Chassis, CHASSIS, set_chassis!, chassis_from_setup, describe_chassis, toe_rad, bias_torque, set_shift_rpm!, set_suspension!, wheel_rate, set_ride_height!, step_car3d!, telemetry3d, respawn3d!, contain3d!, extforce3d!, contact_force, cap_total_contact, wheelmu3d!, world_velocity, damage_hit!, damage_impact!, damage_engine!, damage_mu, engine_power, engine_dead, damaged, damage_reset!
+export Car3D, build_car3d, air_density, set_air!, Chassis, CHASSIS, set_chassis!, chassis_from_setup, describe_chassis, toe_rad, bias_torque, set_shift_rpm!, set_suspension!, wheel_rate, set_ride_height!, step_car3d!, telemetry3d, respawn3d!, contain3d!, extforce3d!, contact_force, cap_total_contact, wheelmu3d!, world_velocity, damage_hit!, damage_impact!, damage_engine!, damage_mu, engine_power, engine_dead, damaged, damage_reset!
 
 # E100: the transmission is SESSION data, not a car constant. The Lotus 49's gears are
 # adjustable and the ibt captures prove it -- Nurburgring runs [2.23,1.72,1.32,1.04,0.846]
@@ -639,6 +639,21 @@ _wheel_u0(sys, v0) = CHASSIS[].diff === nothing ? [sys.ωr => v0/RW_R] : [sys.ω
 # IRGOLD-1 S15: iRacing's anti-stall clutch on every car this process builds (vehicle_3d.jl `antistall`). JM_ANTISTALL=0 turns it
 # off; tools that replay iRacing's ENGAGEMENT (Clutch channel, which already contains it) set ANTISTALL[] = false first.
 const ANTISTALL = Ref(get(ENV, "JM_ANTISTALL", "1") != "0")
+# TRACKAIR-1 (2026-10-18): each track's air as iRacing has it. Every gold session runs at 25.56 C with the pressure set by
+# the track's altitude (TrackAirDensity: Monza 182.7 m 1.151, skidpad 302 m 1.135, Watkins Glen 469 m 1.112, the Ring
+# 587-621 m 1.099/1.094); a standard-atmosphere pressure curve scaled to Monza reproduces all four to their rounding.
+# Spa (~410 m at the pits) and Zandvoort (~5 m) are the same law at their altitudes. Drag, lift and (ENGINERHO-1) the
+# engine all follow it; JM_TRACKAIR=0 = 1.10 everywhere as before, JM_AIR_RHO=<kg/m3> forces a value.
+const TRACK_ALT_M = Dict("monza" => 182.7, "skidpad" => 302.0, "watglen" => 469.2, "nurburgring" => 620.7,
+                         "spa" => 410.0, "zandvoort" => 5.0)
+_p_alt(h) = (1 - 2.25577e-5*h)^5.25588
+"Air density [kg/m3] at the track's altitude, iRacing's 25.56 C (Monza's 1.1509 as the anchor)."
+air_density(track::AbstractString) = haskey(ENV, "JM_AIR_RHO") ? parse(Float64, ENV["JM_AIR_RHO"]) :
+    get(ENV, "JM_TRACKAIR", "1") == "0" || !haskey(TRACK_ALT_M, track) ? 1.10 :
+    1.1509*_p_alt(TRACK_ALT_M[track])/_p_alt(182.7)
+"Set the car's air density (drag, lift, engine)."
+set_air!(c, ρ) = ModelingToolkit.setp(c.sys, c.sys.ρair)(c.integ, ρ)
+
 function build_car3d(; x0 = 0.0, z0 = 0.0, θ0 = 0.0, v0 = 0.0, y0 = 0.0,
                      brush = !haskey(ENV, "JM_MAGIC"), dt = 1/300)
     sys = mtkcompile(DrivenVehicle3D(name = :car, brush = brush, final = FINAL[], m = MASS[], front_frac = FRONT_FRAC[],
