@@ -156,6 +156,7 @@ _MAJORS = (Suit.HEARTS, Suit.SPADES)
 # 4NT that follows asks keycards, as Q-Plus answers it (2C-2D-2H-2S-2NT-3D-
 # 3H-4C-4D-4H-4NT: 5C), not a quantitative invite to pass.
 STRONG_2C_4NT_RKC = os.environ.get("BIQ_STRONG_2C_4NT_RKC", "1") == "1"
+BERGEN_NOT_GF = os.environ.get("BIQ_BERGEN_OPENER", "1") == "1"
 A1_NOT_RAISE = os.environ.get("BIQ_FORCING_FIXES", "1") == "1"
 
 # The system of the decision being made (set by native_bidder.decide_bid), so
@@ -409,7 +410,12 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
                     and b.suit != ctx.opening_bid.suit
                     and b.level >= 3
                     and b.alert
-                    and not _weak_minor_transfer(ctx.opening_bid, b)):
+                    and not _weak_minor_transfer(ctx.opening_bid, b)
+                    # Bergen 1M-3C / 3D: a constructive / limit raise, not a
+                    # jump shift (1S-3C-3S: Q-Plus passes, biq "raised").
+                    and not (BERGEN_NOT_GF and b.level == 3
+                             and ctx.opening_bid.suit in (Suit.HEARTS, Suit.SPADES)
+                             and b.suit in (Suit.CLUBS, Suit.DIAMONDS))):
                 ctx.gf_established = True
 
             # Strong artificial 1C opening: any positive response
@@ -508,7 +514,10 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
                         and b.alert
                         and b.level >= 3
                         and b.suit is not None
-                        and b.suit not in (_NT, opener_major)):
+                        and b.suit not in (_NT, opener_major)
+                        # Bergen 1M-3C / 3D is a raise, not a splinter.
+                        and not (BERGEN_NOT_GF and b.level == 3
+                                 and b.suit in (Suit.CLUBS, Suit.DIAMONDS))):
                     ctx.trump = TrumpAgreement(
                         suit=opener_major, level=b.level,
                         mechanism=TrumpMechanism.SPLINTER,

@@ -95,6 +95,243 @@ both systems, step vs the last commit); keep only if the judge gains and the cur
   The first version without those two guards cost the curve -0.023 (SE 0.011). Judge: Precision +53
   / 10 (7 better, 1 worse), 2/1 0; sim keeps all 10. Curve: Precision +0.002 (SE 0.006). Tests P-8
   (now also accepts 3C, Q-Plus's call), T-1c2n-st (287 checks).
+* Run 261018_qplus_prec_21_biqS started 22:01 on 7f586b2e (sprints 1-6). User: "run scrum
+  autonomously. Continuously improve biq - don't wait for the run to finish": sprints 7-12 meanwhile,
+  deployed into the live run with biq_deploy.py when judge + curve accept.
+* Sprint 7 — live board 1: 2NT-3C-3H passed with 5 HCP. `_opening_min_hcp`'s strong-club branch
+  counted a Precision 2NT as 5 (a preempt): now two_nt_min_hcp (BIQ_PREC_2NT_FLOOR). Judge 0 (no
+  record); the curve can't see it either: biq's Precision never opened 2NT (see sprint 10). T-2n-st.
+* Sprint 8 — passes of partner's cue (2/1 `_generic_responder_rebid` cluster -182 / 29):
+  `_cue_continuation` takes partner's weak two / preempt as trump via `_rkc_trump` and "I just cued"
+  no longer needs a formal agreement (BIQ_CUE_CONT_RKCT): 2S-2NT-3S-4C-4H, 2S-3D-3S-4C-4H-5C. Judge
+  2/1 +138 / 14 (12 better, 0 worse), Precision +12 / 3. Curve 0 / 0 (never arises biq vs biq).
+  Tests T-cue-wk2, T-cue-rep.
+* Sprint 9 — defence to their strong 1C (BIQ_STRONG1C_DEF, `_overcall_strong_1c`): Q-Plus is natural
+  and light: 2C = clubs (biq played Michaels, and as advancer bid partner's "majors"); X = 4+4+
+  majors, hearts >= spades, 8+; 15+ passes (no 1NT); suit quality gates (5-card overcall with 5+ in
+  the suit, 6-card weak jump 6-8 with 4+, 7-card 3-level with 3+); advancer raises to the LoTT level
+  (3C with four, 4C with five, 3-10 HCP). `_michaels_by(system)` returns None over a strong-club 1C.
+  Judge Precision -21 / 68 (SE 67) but agreement +46: the losses are mostly calls now EQUAL to
+  Q-Plus's (rollouts continue with biq). Kept as the Q-Plus way. Tests T-s1c-*.
+* Sprint 10 — Q-Plus P90M opens 2NT 20-21 balanced (`B-2NT.strong-balanced.range-20-21`; biq 1C on
+  all 15 records): no 5-card major, 5-6 minor ok, no bare Qx (BIQ_PREC_2NT_OPEN). Judge +14 / 12.
+  Curve for sprints 7-10: Precision +0.035 (SE 0.026, 59 better / 47 worse); losses = missed slams
+  after 2NT-transfer (sprint 12). Tests T-p2n-open, T-p2n-qx.
+* Sprint 11 — Q-Plus's 1NT counts a 5-card suit as a point (13 HCP 5-3-3-2 with a 5-card minor 1NT
+  9/9; 16 with a 5-card suit 1C 12/15); BIQ_PREC_NT_LEN, exactly-5 only (6-card minors lost). Judge
+  +32 / 38 (agreement +13). 5-4-2-2 left alone (Q-Plus 8 1NT / 9 1D). Tests T-p1n-*.
+* Sprint 12 — after 2NT-3D-3H / 2NT-3H-3S responder with five and no shortness offers 3NT (Q-Plus
+  2/2; biq bid 4M or passed with 4 HCP), floor 24 combined; opener corrects with three
+  (`_opener_xfer_3nt`). BIQ_NT2_XFER_CONT. Tests T-2n-x3n, T-2n-x3n-o (302 checks). Left: Q-Plus's
+  4C slam try with a 6-card major and 8+ (2NT-3H-3S-4C); biq has no opener answer to it yet.
+* Sprint 13 — partner's 3M preempt (live board 9: 3S-4S with KJ85.A4.AJT83.KJ, 13 tricks; Q-Plus
+  6S): 17+ with 3 trumps and 2+ keycards asks RKC (the preemptor answers, asker places: 3S-4NT-5D-6S);
+  15+ always raises to game, void or not (Q-Plus 2/2; biq passed). BIQ_PREEMPT_RESP. Tests
+  T-pre-rkc, T-pre-rkc2, T-pre-void (305 checks).
+* Judge sprints 11-13 (Precision, vs sp11): -17 / 8 but all 8 new calls = Q-Plus's (agreement +8);
+  2/1 +1 / 3. Curve step for 11-13: Precision +0.017 (SE 0.024), 2/1 +0.001. Deployed sprints 7-13
+  into the live run 22:41 (snapshot 261018_224103_aff68db030, verify p1c_ovc, pre_strong, slam_rkc).
+* Sprint 14 — opener's 3-level minor rebid over responder's 2-level sign-off ("Rebid 5+m at
+  3-level" -113 / 47): the 2-level block in the opener's rebid treated responder's SECOND-round
+  2-level call as a 2/1 response. Now: responder repeats their suit, or bids a lower new suit after
+  my 1NT, my rebid not a reverse, 16 or less -> pass (BIQ_OPENER_SIGNOFF_PASS). Judge 2/1 +111 / 20
+  (15 now = Q-Plus), Precision +12 / 7. Tests T-ob-sign, T-ob-sign2, T-ob-rev.
+* Sprint 15 — Bergen (`A-1MA-Bergen-3C.range-8-10`, 2/1 and P90M): biq's responder bid the weak 3M
+  but its opener "accepted the limit raise" with 14+; Q-Plus passes 1M-3M with 14-17. Opener passes
+  below 18 (BIQ_BERGEN_OPENER). Judge 2/1 +13 / 2, Precision +5 / 3 (all = Q-Plus). Curve step 14-15:
+  Precision 0.000, 2/1 -0.004 (SE 0.011): the losses were 8-9 HCP 3M raises passed with game on ->
+  Sprint 17: responder ranges set to Q-Plus's (3C 8-10, 3D 11-12, 3M 7 or less; under the same
+  switch). Test T-bergen-o, T-bergen-r.
+* Sprint 16 — partner's cue after my overcall: their suit is never natural (1D-(1S)-2D-(X)-3S-4D is
+  a second cue), and partner's new 4-level suit after raising me is a cue ((1D)-1H-3D-3H-4C):
+  back to trumps / cue an ace (BIQ_OVC_CUE2). Tests T-ovc-cue2, T-ovc-cue3 (312 checks).
+* Judge 16-17: 2/1 +109 / 22 (cues +63 / 3, Bergen 3C +32 / 14), Precision +93 / 31 (incl. sprint
+  18's +44). Curve 16-17 vs 0b224720: Precision -0.002 (SE 0.013), 2/1 +0.017 (SE 0.016).
+* Sprint 18 — raising partner's answer to my takeout double: Q-Plus passes with 12-17 and four
+  trumps (1D-X-P-2S jump with A652.J53.A65.K96; 1H-X-XX-1S with KQ94.5.AQ5.KQT93); biq raised from
+  ~21 "combined". BIQ_TOX_RAISE_TIGHT: shortness counted half, thresholds +2. Judge 2/1 +42 / 27,
+  Precision (in the 16-17 scan) +44 / 11. Test T-tox-pass.
+* Deployed sprints 14-18 into the live run 23:05 (snapshot 261018_230516_9935df2fbe).
+* Sprint 18 follow-up: curve 2/1 -0.010 (SE 0.013), losses incl. 23 HCP stopping in 3S opposite a
+  1S answer -> tight thresholds only with 18 HCP or less (curve then 0.000 / +0.003). A "opponents
+  silent" condition was tried and dropped (judge: Q-Plus passes in competition too).
+* Sprint 19 — `A-2NT-transfer-level-3.spades-for-minors` (both systems): 2NT-3S = both minors
+  (5-4+, no 4-card major; Q-Plus 3S with 5.K4.A872.K97643 and 93.-.KJ953.987542, biq 3NT); opener
+  names the better minor at four (Q-Plus 4C; biq raised to 4S); responder 10+ asks RKC, else 5m
+  (`_nt2_minors_cont`). BIQ_NT2_MINORS. Tests T-2n-3s, T-2n-3s-o.
+* Sprint 20 — 1NT jumps the Q-Plus way (BIQ_NT1_JUMPS): `A-1NT-3-minor.is-inviting` (both): 1NT-3m
+  = 6+ minor with 4+ in it and 6+ HCP; opener 3NT with the other three suits stopped, else pass
+  (exempt from stage 2d's forced raise and `_partner_was_forcing`; biq raised to 4m). Weak long
+  minor: Q-Plus PASSES 1NT (5/5; biq's 3m preempt). 1NT-2S (spades-for-minors) answered 3C, then
+  responder 3D with diamonds (biq raised partner's relay to 3S). P90M
+  `direct-3MA-is-three-suiter`: 1NT-3M = short M, 4+ in the others, 10-15 (Q-Plus 3H with
+  8743.J.AK92.KQ95); opener 4 of the other major with four, 3NT with M stopped, else 5m. Tests
+  T-1n-*. Judge (first version) 2/1 -6 / 10 (the 2S relay for weak minors; replaced by pass),
+  Precision +54 / 17. Curve 18b-20 vs 9f8e3473: Precision +0.003, 2/1 +0.000.
+* Sprint 21 — over their strong 1C, 5-4 majors with spades too weak to overcall double (Q-Plus X
+  with K9632.QJT5.A42.3, live board 18 -11; 1S with AKQ73.QT65). Test T-s1c-x54 (322 checks).
+* Judge 18b-21: Precision +114 / 20 (13 better, 2 worse), 2/1 -34 / 10 (the weak-minor pass, all =
+  Q-Plus). Curve vs 9f8e3473: -0.002 / -0.002 (SE 0.012).
+* Sprint 22 — responder's "don't abandon it" rebid of a 6-card suit over partner's game in partner's
+  own suit / 3NT: Q-Plus passes (1H-2C-2D-3H-4H with KQ.AK73.7.Q98765). BIQ_RESPECT_GAME; not when our
+  side already bid at the 4 level (slam exploration: 1NT-3H-4C-4S-5C is a cue, Q-Plus 6H) nor with 7
+  cards. Judge 2/1 +17 / 6, Precision +43 / 10.
+* Deployed sprints 19-22 into the live run 23:37 (snapshot 261018_233729_5e87f37965; swapped at
+  board 41).
+* Sprint 23 — "LAW compete": Q-Plus agreed with biq's LAW raise on 7 of 66 recorded calls. It
+  competes once, at its first chance; not after I already raised or passed partner's suit; as
+  opener (after partner's raise) only with a singleton / void (BIQ_LAW_ONCE). Judge 2/1 +82 / 14,
+  Precision +64 / 10 (7 better, 0 worse). Test T-law-once (323 checks). Curve step (with 19-22):
+  Precision +0.003 (SE 0.009), 2/1 -0.004 (SE 0.007; the losses are second competes vs biq
+  opponents). Kept (judge +146 / 24); watch item.
+* Live board 35 (-12): the bidding simulation replaced the strong-1C defence's 1S with a pass (its
+  KEEP_ACTION keeps rule calls whose reason says "overcall"). Reasons now say "overcall", and "their
+  strong 1c" is in bid_sim's _CONVENTIONAL list (no simulation over the Q-Plus defence).
+  Simulation check of sprints 9-23's changed calls (`scan --sim --only`): kept 94 / 100 (2/1),
+  182 / 192 (Precision); it replaced 2NT-3S-4C with 3NT -> "2nt-3s", "both minors",
+  "three-suiter" also in _CONVENTIONAL. Deployed sprint 23 + these 00:04 (261019_000439_711a0397c0).
+* Sprint 24 — forced raises of non-forcing calls (Precision "Sanity: raise partner's suit"):
+  (a) Precision 2C (11-15) raised by partner: auction_context reads an alerted 2C as the strong 2C
+  (GF on any response) -> stage 2 skips partner's club raise when the system is strong-club
+  (Q-Plus passed 2C-(X)-3C); (b) Bergen 1M-3C / 3D (alerted) was taken by auction_context's
+  splinter detector (trump + GF) and by the alerted jump-shift branch -> excluded
+  (BIQ_BERGEN_OPENER; Q-Plus passes 1S-3C-3S). Tests T-p2c-raise, T-bergen-so (325 checks).
+* Fresh cost map 10-19 (`changed` with OLD = sp23 scan with biq := Q-Plus; 7 min on 2 cores):
+  Precision -1140 / 2729 (tools/runs/agreement/261019_prec_cost.jsonl); 2/1 in 261019_21_cost.jsonl.
+* Sprint 25 — Precision openings by shape (BIQ_PREC_OPEN_SHAPE): 14-15 HCP with HCP + length points
+  (one per card past four) >= 18 opens 1C (Q-Plus 7 of 8: AKQT65.-.KQJ642.3, A.AQ3.AJT9754.95);
+  6+ clubs longer than any major opens 2C from 10 HCP (Q-Plus 8 of 8 10-counts; biq passed) and
+  over a 5-card major (T.QJ875.9.AKQJ93 2C). 9-counts left (Q-Plus mixed). Tests T-p1c-shape,
+  T-p2c-10 (327 checks).
+* Sprint 26 — RKC after one cue exchange: Q-Plus signs off in game with 12-14 (6 of 7: 1H-2H-3S-4D 4H
+  with 5.AJT985.4.AQJ74; biq 4NT). BIQ_RKC_CUE_GATE: 15+ and 27+ with partner's shown minimum (not
+  after a strong 2C). Test T-rkc-cue (328 checks).
+* Judge 24-26: Precision +114 / 42 (agreement +24; the cue gate +89 / 8), 2/1 +22 / 9. Curve 24-25
+  vs 47593eff: Precision +0.012 (SE 0.021), 2/1 -0.005 (SE 0.012).
+* Sprint 27 — once Bergen 3C / 3D stopped counting as GF (sprint 24) responder passed opener's game
+  try (1S-3C-3D) and cue (1H-3C-4C): `_bergen_cont` answers 3M with a minimum, 4M with the top or
+  over a 4-level cue (Q-Plus 3H / 4H). Judge Precision +55 / 4, 2/1 +11 / 1. Test T-bergen-try.
+  Deployed sprints 24-27 00:36 (261019_003609_0d34c80295).
+* Fresh 2/1 cost map: -2248 / 4351 (261019_21_cost.jsonl). Top: `_generic_responder_rebid` -483 /
+  154, `_opener_suit_rebid` -223 / 82, `_opener_rebid` -132 / 43, illegal -> pass -110 / 26,
+  "Overcaller rebid - no clear extras" -105 / 75.
+* Sprint 28 — sprint 1's king-ask grand ("source of tricks, any king count") cost -59 net on the
+  cost map; Q-Plus stayed in six after a 1-2 king answer on 7 of 9 recorded. BIQ_KING_GRAND_STRICT:
+  grand only with all three side kings between us. test_bidding_systems' Board-405 grand (spade
+  king out) now accepts 6H or 7H.
+* Sprint 29 — "support raise after partner's negative X" (-83 / 16): biq answered penalty-ish
+  doubles as negative ones (partner's late X after passing, X of their 1NT, 1S-(3D)-X-(5D)).
+  BIQ_NEG_X_STRICT: negative = partner's first call after the opening, over a suit overcall at
+  the 3 level or lower, no 4-level bid by them since. Tests T-negx-late, T-negx-5d (331 checks).
+* Judge 28-29: 2/1 +115 / 20, Precision +54 / 9. Deployed 00:48 (261019_004855_47573abd0d).
+* Sprint 30 — (a) no save over their slam after partner's preempt + my game raise (Q-Plus saved
+  over a 6-level bid on 7 of 22, over the 5 level on 28 of 35; BIQ_SAVE_NO_SLAM); (b) partner's
+  4NT over their 4M after my takeout double asks for a minor (BIQ_X_4NT_MINOR; biq passed 4NT,
+  Q-Plus 5C / 5D). Tests T-x-4nt, T-save-slam.
+* Sprint 31 — over their weak two with 17-19 balanced and a stopper Q-Plus doubles first (8 of 11;
+  biq jumped 3NT), BIQ_WEAK2_X_NT; after the double and a minor answer the balanced hand bids 3NT
+  (not a raise to 4m; weak-two openings only). Tests T-w2-x, T-w2-x-3n (335 checks).
+* Judge 30-31: 2/1 +224 / 36 (28 better, 7 worse; the weak-two X +106 / 12), Precision 0 / 1.
+  Curve 28-29: 0 boards changed either system (these auctions don't arise biq vs biq).
+* Deployed 30-31 00:59 (261019_005922_fa99fce25c).
+* Sprint 32 — opener's reopening X (2/1 -69 / 64): Q-Plus agreed with 14 of 78; its reopening
+  doubles are short (singleton / void) in their suit, biq's allowed a doubleton. BIQ_REOPEN_SHORT.
+  Tests T-reopen-2, T-reopen-1.
+  Judge 2/1 +109 / 43 (agreement +29), Precision +14 / 9 (+8). Curve 30-32 vs e380b5ef:
+  Precision +0.023 (SE 0.015), 2/1 +0.024 (SE 0.013). Deployed ~01:20.
+* Sprint 33 — Precision 1C-1M-2M (or switch 1NT = hearts) then partner's call: biq asked RKC with
+  17 HCP + 6 controls (live board 69: 6H -1, -11); Q-Plus never asked: 17-18 game / pass 3NT, 22-23
+  a slow 3M. BIQ_P1C_RAISE_SLAM: RKC from 21, balanced passes 3NT. Test T-p1c-raise.
+  Judge Precision +14 / 2. Deployed 01:17 (261019_011718_574b401a1d).
+* Sprint 34 — advancing a takeout double: (a) partner's X of their 1NT is penalty: pass with 5+
+  (Q-Plus; biq ran to 2S) BIQ_X1NT_PEN; (b) the longer major first, and 6+ cards with 4-8 HCP jump
+  to three (Q-Plus 3H / 4H with seven hearts where biq bid 1S on four) BIQ_TOX_ADV_LONG. Tests
+  T-x1nt-pen, T-tox-long.
+  Judge Precision +26 / 13, 2/1 +3 / 4. Curve for sprint 33: Precision +0.045 (SE 0.017, the
+  largest step of the night; Precision now +0.713 vs 893a540b), 2/1 -0.004 (SE 0.006). Deployed 34.
+* Sprint 35 — the strong 1C opener's "no clear rebid" passes (-154 / 33): partner's bid of THEIR
+  suit is a cue; `_strong_1c_cue_net` bids 3NT with it stopped (no 6-card suit) or my longest 5+ suit
+  (Q-Plus 1C-(1H)-2C-2S-(3H)-4H 4S, 1C-(1S)-3S-4C-4S 5C). BIQ_S1C_CUE_NET. Tests T-s1c-cue*.
+  Judge Precision +46 / 3 (all better). Deployed 01:32 (261019_013157_ff1dcc6ab9).
+* Sprint 36 — same net: partner's own new suit, or a raise at the 3 level, below game is forcing
+  opposite the strong 1C: `_safe_forced_bid` (Q-Plus 1C-1D-2S-3C 3NT, 1C-1D-2S-3D 3S, 1C-1D-1H-3H
+  4H; biq passed). Test T-s1c-new.
+  Judge Precision +42 / 6 (5 better, 1 worse). Curve 34-35: Precision +0.012 (SE 0.008; now
+  +0.725 vs 893a540b), 2/1 0. Deployed 36.
+* Sprint 37 — raises of partner's 3-level preempt: Q-Plus raises with three trumps and 8+ HCP or
+  four trumps (3S-4S with K75.J7.952.AJ652, 3D-4D with Q8.T863.Q83.A863; biq passed). Major to game,
+  minor one level, uncontested. BIQ_PREEMPT_RAISE. Judge Precision +17 / 3, 2/1 +17 / 6. Test
+  T-pre-raise (344 checks). Deployed.
+* Sprint 38 — Precision 5-3-3-2 with a five-card major in 1NT range: Q-Plus opens 1M with 5+ HCP
+  in the major (13 of 22) and 1NT with less (13 of 15). BIQ_PREC_NT_5M_Q. Judge +27 / 22 (10 better,
+  7 worse) but the curve: -93 IMP over the 39 boards it changed (biq's own 1M-1S-1NT / 1M-3C
+  continuations stop below the games 1NT-Stayman found). Switch OFF by default; not deployed.
+* Curve 36-37 (+38 in the snapshot): Precision -0.037 (SE 0.015) = sprint 38's -93 plus sprint 37's
+  preempt raises -19 / 5 boards; 2/1 -0.006 (SE 0.004, preempt raises). Sprint 37 kept (judge +34 /
+  9 calls, Q-Plus's recorded raises); watch item.
+* Sprint 39 — Precision's limited opener ran into the 2/1 "2NT balanced rebid (GF)" over partner's
+  repeated suit / jump / contested 2-level call; Q-Plus passed (1D-1H-1S-2H). BIQ_PREC_LIMITED_PASS.
+  Test T-p1d-pass.
+  Judge Precision +55 / 6 (5 better, 0 worse). Clean curve with 38 off (ecfaeff7): Precision +0.719,
+  2/1 +0.495 vs 893a540b; 36-37 step -0.006 / -0.006 (SE 0.004, the preempt raises). Deployed 39.
+* Sprint 40 — the 1NT opener after interference (`_nt_opener_x`, BIQ_NT_OPENER_X): 1NT-(2x)-X-(P)
+  is takeout, bid a four-card unbid major (Q-Plus 2S with AK32.QT9.T95.AK3); 1NT-P-P-(2x) doubles with
+  four of their suit and 5+ HCP in it (Q-Plus X with KQ543 over 2C). biq passed both. Tests
+  T-1n-x-tko, T-1n-bal-x.
+  Judge 2/1 +14 / 7, Precision -12 / 3; all 10 new calls = Q-Plus's (agreement +10). Deployed.
+* Sprint 41 — my weak two, partner's new suit below game is forcing (`_partner_was_forcing`,
+  BIQ_WEAK2_NEW_FORCING): live board 89 (-10) the simulation passed the rules' 3H over 2H-2S and
+  2S made 10 tricks; forcing auctions are not simulated. Test T-w2-new.
+  Judge 0 changed (rules-only scans; the fix is about the simulation). Deployed 02:2x.
+* Curve 39-40 vs ecfaeff7: Precision -0.008 (SE 0.009), 2/1 -0.003. The losses are sprint 40 in
+  biq-vs-biq play: biq's OWN responder doubles 1NT-(2x) for penalties, so the opener's pull to a
+  major (Q-Plus's takeout reading) loses there. Live partner is Q-Plus (takeout), judge +2 with all
+  calls = Q-Plus; kept. Open item: make biq's responder X over 1NT-(2x) takeout like Q-Plus's.
+* Sprint 42 — that open item: Q-Plus's responder X over 1NT-(2x) is negative (6-12 HCP, a four-card
+  or weak five-card unbid major: QJ2.7642.K42.AJ6 X over 2D; biq 3NT / Lebensohl 2NT), and with no
+  major it doesn't double for penalties. Wrapper `_respond_to_1nt_competitive` (rules renamed
+  `_rules`), BIQ_NT_RESP_NEGX. Cost map: -71 / 73 in this spot. Judge 2/1 +36 / 31 (agreement +14),
+  Precision +16 / 10. But the curve: -0.012 / -0.010, then with continuations (`_nt_opener_x` answers
+  2NT / 3NT / a minor without a major, `_negx_responder_cont` bids game with 10+) -0.008 / -0.010:
+  the X loses the old 3D-cue-to-3NT route when they compete again (1NT-(2D)-X-(2H)-P-(3D) stuck).
+  Switch OFF by default (test removed); needs responder follow-ups in competition before it pays.
+* Sprint 43 — live nt_save family (9 boards, -4.0): biq passed East's 1NT with a six-card spade suit
+  and 8 HCP where Q-Plus overcalled 2S (boards 26 / 33 / 56). Six-card major from 8 HCP over the
+  strong NT with an ace or king (J75432.Q7.Q64.QJ: Q-Plus passed). BIQ_OVC1NT_8. Test T-1n-ovc8.
+  Judge Precision +10 / 2, 2/1 0 (2/1 uses Multi-Landy 2D there). Deployed ~02:50.
+* Cost maps refreshed 02:45 (261019b_*_cost.jsonl, current code): Precision -917 / 2669 (from -1140),
+  2/1 -2082 / 4289 (from -2248).
+* Sprint 44 — 2/1 `_opener_suit_rebid` passes (-234 / 89): partner's 4-level new suit after a fit is
+  a cue but sprint 8's rule needed a both-bid trump and silent opponents. BIQ_CUE_CONT_ANY: at the 4
+  level, trump = `_rkc_trump` (any suit we bid, not theirs), or my major after partner's alerted
+  Bergen 3C / 3D; contested allowed (1S-3C-(3D)-4D-4H 4S, 1S-2D-2S-4C-4D-4H 4S). Test T-cue-any.
+  First version took partner's natural game (1D-4S, (1S)-2D-4H) and 5NT as cues (judge 2/1 -15 / 25);
+  now: not 5NT, not partner's 4M game unless partner supported us / Bergen / a cue round happened.
+  Judge 2/1 +19 / 13, Precision +20 / 10. Curve (41-44, 42 off) -0.001 / -0.001. Deployed 03:1x.
+* Sprint 45 — "don't abandon it" rebids: pass partner's return to another suit of mine (preference)
+  and stop rebidding with 4 HCP or less (Q-Plus 1C-1D-1S-1NT-2S pass with 92.93.Q97654.954).
+  BIQ_ABANDON_GATES. Judge Precision +34 / 4, 2/1 +16 / 8. Deployed 03:2x.
+* Sprint 46 — "accept limit raise" after a competitive 3M (cheapest level over their bid) or a passed
+  partner's 1M-3M: Q-Plus passes below 17 (1S-(2C)-2S-(3D)-P-3S with AKJ63.A94.74.Q82, P-1S-3S with
+  AK54.T875.AQ6.J3). BIQ_COMPETE_RAISE_PASS. Judge 2/1 -2 / 16, Precision -22 / 3: switch OFF, test
+  removed, not deployed.
+* Sprint 47 — compete rebid of a six-card major to game after partner's raise / cue raise (Q-Plus 4H
+  with A53.KQ9652.AJ98.-): judge 2/1 -59 / 37 (agreement -14), Precision -16 / 23; switch
+  BIQ_COMPETE_GAME OFF, not deployed. (The examples are real but the trigger is too broad.)
+* Sim check of sprints 24-45's changed calls: kept 138 / 146 (2/1), 104 / 112 (Precision). The
+  simulation passed the 1NT opener's 2S answer to partner's takeout X (x2), the strong-1C opener's
+  5C over partner's cue, and the 1NT opener's balancing X: their reasons ("for partner's takeout x",
+  "cue of theirs", "behind them") added to bid_sim `_CONVENTIONAL`. Deployed ~04:00.
+* Night summary (curve, 3000 deals vs 893a540b, paired steps): live code 9c24e52f (04:02) vs the
+  run's start 7f586b2e: Precision +0.138 IMP/board (SE 0.052; 216 boards better / 181 worse), 2/1
+  +0.019 (SE 0.029). vs f0bbb611 (before sprints 1-6): Precision +0.190 (SE 0.054), 2/1 +0.032.
+  Levels: Precision +0.711, 2/1 +0.491. Cost maps: Precision -1140 -> -917, 2/1 -2248 -> -2082.
+  Switches left OFF (measured, rejected): BIQ_PREC_NT_5M_Q (38), BIQ_NT_RESP_NEGX (42),
+  BIQ_COMPETE_RAISE_PASS (46), BIQ_COMPETE_GAME (47), BIQ_LAW_NO_SAVE_OVER_3NT (4).
+  Live: handover to 2/1 at board 150 not possible (spares North 2, West 1: no East) -> Precision
+  continues; the 2/1 segment needs an East spare window joined.
+* Live: the 2/1 spare windows joined as North, North, West (no East): the TM logs "handover not
+  possible" at board 150 and keeps playing Precision until an East spare joins.
 
 ## STATUS — 2/1 catch-all rules from Q-Plus's recorded calls (2026-10-16 night, committed 10-17)
 * New plan (user, 10-16): map bidding weaknesses in groups instead of fixing the worst boards of each

@@ -72,6 +72,9 @@ _CONVENTIONAL = (
     "strong, artificial", "strong artificial", "quant", "grand", "slam",
     "super-accept", "negative double", "responsive", "support double",
     "ucb", "unassuming", "sandwich", "forcing",
+    "their strong 1c",            # Q-Plus's defence to a strong club, kept as is
+    "2nt-3s", "both minors", "three-suiter",   # Q-Plus's 2NT / 1NT structures
+    "for partner's takeout x", "cue of theirs", "behind them",   # sprints 35 / 40 (10-19 sim check)
 )
 
 
