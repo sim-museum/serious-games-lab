@@ -26,7 +26,8 @@ nprocs() == 1 && addprocs(NW; exeflags = "--project=$(dirname(@__DIR__))", env =
     include(joinpath($(@__DIR__), "irgold_params.jl"))
     smooth(x, n) = (h = n ÷ 2; [mean(@view x[max(1, k-h):min(length(x), k+h)]) for k in eachindex(x)])
     "Drive force at the wheels [N] from pedal, rpm and the total ratio, through the sim's own engine tables."
-    drive_force(thr, rpm, Gt) = DriveRT3D.engine_torque(rpm, thr)*Gt*0.9/DriveRT3D.RW_R
+    # ENGINERHO-1: at the session's air density, as the car's engine now is
+    drive_force(thr, rpm, Gt, ρ) = DriveRT3D.engine_torque(rpm, thr; dens = DriveRT3D.ENGINE_RHO ? ρ/DriveRT3D.RHO_WOT : 1.0)*Gt*0.9/DriveRT3D.RW_R
     function gold_cells(g, sp)
         c = g.c; n = g.n; m = sum(values(sp.corner_weight_N))/9.81; sr = sp.steering_ratio
         a, b = DriveRT3D.cg_arms()
@@ -42,7 +43,7 @@ nprocs() == 1 && addprocs(NW; exeflags = "--project=$(dirname(@__DIR__))", env =
             abs(ay[k]) >= 0.25 || continue
             vx, vy = c["VelocityX"][k], c["VelocityY"][k]; δ = c["SteeringWheelAngle"][k]/sr
             Gt = sp.gear_ratios[gr]*sp.final_drive
-            drag = drive_force(c["Throttle"][k], c["RPM"][k], Gt) - m*dv[k] - 0.5*ρ*DriveRT3D.CDA_IBT*v[k]^2 - DriveRT3D.CRR_IBT*m*G -
+            drag = drive_force(c["Throttle"][k], c["RPM"][k], Gt, ρ) - m*dv[k] - 0.5*ρ*DriveRT3D.CDA_IBT*v[k]^2 - DriveRT3D.CRR_IBT*m*G -
                    m*G*sin(atan(c["grade"][k]))                     # the Ring's grade (Monza and the skidpad are flat)
             key = (Int(sign(ay[k])), floor(Int, abs(ay[k])/0.1))
             push!(get!(cells, key, NamedTuple[]), (V = vx, R = r[k], vy, δ = rad2deg(δ), β, gr, drag, ay = ay[k], thr = c["Throttle"][k],
@@ -81,7 +82,7 @@ nprocs() == 1 && addprocs(NW; exeflags = "--project=$(dirname(@__DIR__))", env =
         u, v, r, rpm = ModelingToolkit.getsym(s, [s.u, s.v, s.r, s.rpm])(car.integ)
         a = ModelingToolkit.getp(s, s.a)(car.integ); b = ModelingToolkit.getp(s, s.b)(car.integ)
         Gt = sp.gear_ratios[cl.gr]*sp.final_drive; m = sum(values(sp.corner_weight_N))/9.81; ρ = median(g.c["AirDensity"])
-        drag = drive_force(LASTSETTLE[].thr, rpm, Gt) - 0.5*ρ*DriveRT3D.CDA_IBT*u^2 - DriveRT3D.CRR_IBT*m*G
+        drag = drive_force(LASTSETTLE[].thr, rpm, Gt, ρ) - 0.5*ρ*DriveRT3D.CDA_IBT*u^2 - DriveRT3D.CRR_IBT*m*G
         (fail = false, δ = rad2deg(δ), β = rad2deg(atan(v, u)), drag, αf = rad2deg(δ - atan(v + a*r, u)), αr = rad2deg(-atan(v - b*r, u)), thr = LASTSETTLE[].thr)
     end
     function eval_steady(pv)

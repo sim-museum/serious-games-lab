@@ -27853,3 +27853,19 @@ give the heave-vs-speed signature at three front springs, and the garage gives t
   1.14, Watkins Glen 1.11, the Ring 1.09-1.10. julia runs every track at 1.10.
 * New items: **ENGINERHO-1** (combustion torque x rho/1.099; neutral in the game at 1.10) and **TRACKAIR-1** (each
   track's air at iRacing's 25.56 C and its altitude -- Zandvoort/Monza ~5-6 % more power AND drag than the Ring).
+
+### ENGINERHO-1 S1 (2026-10-18): the engine breathes -- full-throttle torque x rho/1.099
+* Retro: new item from IRDATA-261018 S3 (gold-to-gold: Monza 1.151 reads 1.047-1.078x the Ring 1.099 at full throttle).
+  The WOT table (torquefit_261004) is the Ring's; the part-throttle map (S6) was measured density-blind on 261010 rows.
+* `powertrain.jl`: `engine_torque(...; dens)` / `engine_torque_free(...; dens)` scale the combustion torque (not the
+  friction); `vehicle_3d.jl` passes `dens = rho_air/RHO_WOT` (RHO_WOT 1.099; JM_ENGINERHO=0 = before). The game runs at
+  1.10, so nothing changes on track until TRACKAIR-1. `irgold_steady.jl`'s drive-force estimate uses the session density.
+* Monza straight windows (261018 D2/D3 + 261017 + 261010 T7), full throttle, sim/gold acceleration by rpm band:
+  0.93/0.92/0.92/0.91/0.86 -> 0.99/0.98/0.98/0.97/0.94 (4-9k); pulls -0.32 -> -0.12 / -0.07 m/s^2, part throttle -0.20
+  -> -0.02 (261018), +0.03 (261017).
+* Acceptance (irgold_replay, all 261010 windows): yaw err 25 % both, ay 0.103 -> 0.100 g, beta 1.02 -> 1.01 deg; |dv| worse
+  on the 261010 skidpad/Monza part-throttle tests (T1 6.9 -> 7.7, T2 1.5 -> 2.4 km/h; WW T2 better 2.4 -> 1.8); settle
+  failures 5 -> 7. irgold_steady (261010 cells) 8.19/8 -> 8.85/7, all of it the derived cornering-drag term (steer and
+  beta unchanged). Open: the part-throttle map was measured with the 261010 sessions' density folded in; the 261010
+  part-throttle windows want no density factor, the 261018 Monza ones want it -- refit the map in the density frame
+  (throttlefit S6 method, f = (T + drag)/(dens·WOT + drag)) as S2.

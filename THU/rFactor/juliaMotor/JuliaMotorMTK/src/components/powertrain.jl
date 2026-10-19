@@ -188,17 +188,23 @@ function clutch_capacity(e)
     T
 end
 
+# ENGINERHO-1 (2026-10-18): iRacing's engine breathes -- its full-throttle torque scales with the air density (the PO's
+# gold, torque from m·ax + road load + grade: Monza at rho 1.151 reads 1.047-1.078x the Ring at 1.099, a 1.047 density
+# ratio; tools/wot_density_261018.jl). The WOT table was measured at the Ring's 1.099 (torquefit_261004), so the
+# combustion torque is scaled by rho/RHO_WOT; the friction is not. JM_ENGINERHO=0 = density-blind as before.
+const RHO_WOT = 1.099
+const ENGINE_RHO = get(ENV, "JM_ENGINERHO", "1") != "0"
 function engine_torque(rpm, throttle; redline = 9500.0, T0 = EFRIC_T0, k = EFRIC_K,
-                       r0 = EFRIC_R0, w = EFRIC_W)
-    wot = max(0.0, wot_torque(rpm))                                 # WOT (net) torque, measured
+                       r0 = EFRIC_R0, w = EFRIC_W, dens = 1.0)
+    wot = max(0.0, wot_torque(rpm))*dens                            # WOT (net) torque, measured; dens = rho/RHO_WOT
     cut = 0.5*(1 - tanh((rpm - redline)/200.0))                     # smooth redline fuel cut
     fric = (T0 + k*rpm) * 0.5*(1 + tanh((rpm - r0)/w))              # zero-throttle drag, fading at idle
     f = throttle_map(throttle, rpm)                                 # CARPHYS-1 S8 / IRGOLD-1 S6: progressive, by rpm
     f*wot*cut - (1 - f)*fric                                        # blend WOT ↔ engine drag
 end
 "The ENGINE alone (IRGOLD-1 S14): as engine_torque, with the engine's own drag instead of the in-gear total."
-function engine_torque_free(rpm, throttle; redline = 9500.0)
-    wot = max(0.0, wot_torque(rpm)); cut = 0.5*(1 - tanh((rpm - redline)/200.0))
+function engine_torque_free(rpm, throttle; redline = 9500.0, dens = 1.0)
+    wot = max(0.0, wot_torque(rpm))*dens; cut = 0.5*(1 - tanh((rpm - redline)/200.0))
     f = throttle_map(throttle, rpm)
     f*wot*cut - (1 - f)*engine_drag_free(rpm)
 end

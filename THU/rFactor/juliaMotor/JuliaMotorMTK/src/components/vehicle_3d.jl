@@ -302,7 +302,8 @@ function DrivenVehicle3D(; name,
     # (at the rear axle Igb·final²·η, in every gear) and the gearbox takes the rest of the in-gear coast drag, `Tgd` at its
     # input shaft, while the clutch is in (`engage`: so a clutch-out coast keeps the E91 road load it was fitted with).
     # JM_ENGINE_LUMPED=1 builds the lumped engine of before (Ie 0.18 at the crank, EFRIC drag on it).
-    Teng  = ENGINE_LUMPED ? engine_torque(rpm, throttle) : engine_torque_free(rpm, throttle)
+    dens  = ENGINE_RHO ? ρair/RHO_WOT : 1.0                  # ENGINERHO-1: the engine breathes the air the car drives in
+    Teng  = ENGINE_LUMPED ? engine_torque(rpm, throttle; dens) : engine_torque_free(rpm, throttle; dens)
     Tgd   = ENGINE_LUMPED ? 0.0 : engage*gearbox_drag(ωgb*60/(2π), throttle)
     Tidle = clamp(k_idle*max(0.0, idle_rpm - rpm), 0.0, 120.0) * (1.0 - engage)
     run   = clamp((rpm - 300.0)/150.0, 0.0, 1.0)
