@@ -3436,7 +3436,12 @@ else
     # sided, we drew both → grazing-angle poke-through = the PO's "z-fighting on guardrails
     # throughout".  (Exact-duplicate dedup was a near-no-op: extraction already collapses those.)
     # Per-part single-sided rendering for the rail family only — sign parts keep both faces (D6).
-    const TRACK_RAILCULL = Bool[railfam(p.tex) for p in TRACK]
+    # GROOVECULL-1 (PO 2026-10-18: "the braking marks, which reveal the line, are entirely missing from the tracks. Tracks
+    # are now a uniform grey color throughout. Restore the braking marks"): WGTD-1 (f) (2026-10-08) put the groove in
+    # railfam for its coplanar dedup -- and railfam also picks the parts drawn single-sided here, so every groove triangle
+    # whose winding faces away was culled: no marks on any track from 10-08. The groove keeps the dedup, never the cull.
+    # (Planted check: with the asphalt hidden no groove showed even over the grass; JM_GROOVE_DEDUP=0 brought it back.)
+    const TRACK_RAILCULL = Bool[railfam(p.tex) && !startswith(lowercase(p.tex), "groove") for p in TRACK]
     const BOARDCULL_MIN = parse(Float64, get(ENV, "JM_BOARDCULL_MIN", "0.2"))
     const TRACK_BOARDCULL = let rc0 = TRACK_RAILCULL, rc = falses(length(TRACK))
         # BOARDCULL-1 (2026-10-16; threshold JM_BOARDCULL_MIN 0.2): advertising boards in the track mesh are a FRONT part and a BACK part in one plane
