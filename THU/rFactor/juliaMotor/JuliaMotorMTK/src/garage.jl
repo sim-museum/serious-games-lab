@@ -54,6 +54,11 @@ Base.@kwdef struct GarageParams
     scrub::NTuple{2,Float64}  = (0.0, 0.0)       # half-track growth per mm of wheel travel (contact patch migration)
     cam_patch::Float64        = 0.0              # contact patch moves outward this far per degree of camber [mm/deg]
     cam_ref::NTuple{2,Float64} = (-0.4, -0.5)    # the base car's static camber (where cam_patch is zero)
+    # IRDATA-261018 (the camber sheets): a camber change acts like a perch change at that corner -- LF +4.4 deg raised LF
+    # 6 mm, compressed its shock 2.7 mm and moved ~70 N diagonally. The wheel's effective length grows this much per
+    # degree of camber KNOB away from cam_ref [mm/deg] (the upright/shim geometry), and by cam_jack2 per deg² (asymmetry).
+    cam_jack::Float64         = 0.0
+    cam_jack2::Float64        = 0.0
     # mass
     W0::Float64               = 5936.0 - 43.2*0.75*G   # weight with an empty tank [N]
     front0::Float64           = 0.448            # front share of W0
@@ -168,7 +173,9 @@ function solve_static(K::Knobs, P::GarageParams = PARAMS[]; warp::Float64 = 0.0)
         for i in 1:4
             a = axle(i)
             rh = (a == 1 ? hf : hr) + side(i)*ro*tr[a]/2 - gnd[i]          # chassis over the contact patch
-            r[i] = rh - (P.R0[a] + P.rp[a]*(K.pressure[i] - 152.0) - z[i] - W[i]/tyre_rate(P, a, K.pressure[i]))   # tyre + travel close the loop
+            dγ = K.camber[i] - P.cam_ref[a]
+            r[i] = rh - (P.R0[a] + P.rp[a]*(K.pressure[i] - 152.0) + P.cam_jack*dγ + P.cam_jack2*dγ^2 -
+                         z[i] - W[i]/tyre_rate(P, a, K.pressure[i]))   # tyre + travel close the loop
         end
         r[5] = (W[1] + W[2]) - Wf                                     # pitch balance
         r[6] = (W[3] + W[4]) - Wr

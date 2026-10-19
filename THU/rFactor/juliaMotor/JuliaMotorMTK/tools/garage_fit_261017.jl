@@ -81,7 +81,7 @@ end
 # ── parameter vector <-> GarageParams ─────────────────────────────────────────────────────────────────────────────────
 const PNAMES = [:L1, :L2, :MR1, :MR2, :MRq1, :MRq2, :s01, :s02, :R01, :R02, :u1, :u2, :kt1, :kt2, :karb1, :karb2,
                 :beta1, :beta2, :kbump1, :kbump2, :trackratio, :scrub1, :scrub2, :W0, :front0, :fuel_kgL, :fuel_front,
-                :cam1, :cam2, :camroll1, :camroll2, :toe_gain, :warp_skid, :warp_charlotte, :kt_p, :rp1, :rp2, :MRk1, :MRk2, :mix1, :mix2, :bar_shown, :gap1, :gap2, :cam_patch]
+                :cam1, :cam2, :camroll1, :camroll2, :toe_gain, :warp_skid, :warp_charlotte, :kt_p, :rp1, :rp2, :MRk1, :MRk2, :mix1, :mix2, :bar_shown, :gap1, :gap2, :cam_patch, :cam_jack, :cam_jack2]
 function toparams(θ)
     v = Dict(zip(PNAMES, θ))
     P = GarageParams(; L = (v[:L1], v[:L2]), MR = (v[:MR1], v[:MR2]), MRq = (v[:MRq1], v[:MRq2]),
@@ -91,12 +91,12 @@ function toparams(θ)
                      W0 = v[:W0], front0 = v[:front0], fuel_kgL = v[:fuel_kgL], fuel_front = v[:fuel_front],
                      cam_gain = (v[:cam1], v[:cam2]), cam_roll = (v[:camroll1], v[:camroll2]), toe_gain = v[:toe_gain],
                      kt_p = v[:kt_p], rp = (v[:rp1], v[:rp2]),
-                     MRk = (v[:MRk1], v[:MRk2]), rh_mix = (v[:mix1], v[:mix2]), bar_shown = v[:bar_shown], bump_gap = (v[:gap1], v[:gap2]), cam_patch = v[:cam_patch])
+                     MRk = (v[:MRk1], v[:MRk2]), rh_mix = (v[:mix1], v[:mix2]), bar_shown = v[:bar_shown], bump_gap = (v[:gap1], v[:gap2]), cam_patch = v[:cam_patch], cam_jack = v[:cam_jack], cam_jack2 = v[:cam_jack2])
     P, Dict(:flat => 0.0, :skidpad => v[:warp_skid], :charlotte => v[:warp_charlotte])
 end
 const θ0 = Float64[149.7, 89.4, 0.804, 0.646, 0.0, 0.0, 61.7, 58.7, 87.6, 110.5, 221.0, 250.0, 430.0, 430.0, 10.0, 10.0,
                    0.08, 0.08, 200.0, 200.0, 1.0, 0.0, 0.0, 5936.0 - 43.2*0.75*9.80665, 0.448, 0.75, 0.66,
-                   0.027, 0.02, 0.0, 0.0, -0.02, 0.0, 0.0, 0.0, 0.0, 0.0, 0.804, 0.64, 0.03, 0.03, 1.0, 10.0, 10.0, 0.0]
+                   0.027, 0.02, 0.0, 0.0, -0.02, 0.0, 0.0, 0.0, 0.0, 0.0, 0.804, 0.64, 0.03, 0.03, 1.0, 10.0, 10.0, 0.0, 0.0, 0.0]
 # GF_INIT=path: start from a previous fit (θ_fit), e.g. the symmetric stage
 const θINIT = (fn = get(ENV, "GF_INIT", ""); isempty(fn) ? nothing : (include(fn); θ_fit))
 const FIXED = Set(Symbol.(split(get(ENV, "GF_FIX", "MRq1,MRq2,kbump1,kbump2"), ',')))

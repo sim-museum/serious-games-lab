@@ -122,7 +122,9 @@ def solve_static(K, P=PARAMS):
         for i in range(4):
             a = _axle(i)
             rh = (hf if a == 0 else hr) + _side(i) * ro * tr[a] / 2
-            r[i] = rh - (P["R0"][a] + P["rp"][a] * (K["pressure"][i] - 152.0) - z[i]
+            dg = K["camber"][i] - P["cam_ref"][a]      # IRDATA-261018: camber jacks the corner (garage.jl cam_jack)
+            r[i] = rh - (P["R0"][a] + P["rp"][a] * (K["pressure"][i] - 152.0)
+                         + P.get("cam_jack", 0.0) * dg + P.get("cam_jack2", 0.0) * dg * dg - z[i]
                          - W[i] / tyre_rate(P, a, K["pressure"][i]))
         r[4] = (W[0] + W[1]) - Wf
         r[5] = (W[2] + W[3]) - Wr
