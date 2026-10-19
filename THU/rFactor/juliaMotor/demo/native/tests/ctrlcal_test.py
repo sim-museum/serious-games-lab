@@ -71,6 +71,10 @@ def feed(t, axes=None, buttons=None):
         t.joy.buttons = list(buttons)
     t.refresh()
 
+def settle(t, axes):                    # a control has to stay at rest for ARM_FRAMES updates before a step arms
+    for _ in range(jr.ARM_FRAMES + 1):
+        feed(t, axes)
+
 def run_wizard(name, rest, sweep_moves, steer_left, wheel90, pedals, up_btn, dn_btn):
     j = Joy(); j.present = True; j.name = name; j.axes = list(rest); j.buttons = [0] * 12
     t = jr.CalibrateTab(j, lambda: None)
@@ -78,14 +82,14 @@ def run_wizard(name, rest, sweep_moves, steer_left, wheel90, pedals, up_btn, dn_
     for ax in sweep_moves:
         feed(t, ax)
     feed(t, rest); t.capture()                                          # sweep done -> steer
-    feed(t, rest); feed(t, steer_left)                                  # arm, then turn left
+    settle(t, rest); feed(t, steer_left)                                # arm, then turn left
     if wheel90 is None:
         t.skip()
     else:
         feed(t, wheel90); t.capture()
     for ax in pedals:                                                   # throttle, brake, clutch: release, press
-        feed(t, rest); feed(t, ax)
-    feed(t, rest)
+        settle(t, rest); feed(t, ax)
+    settle(t, rest)
     b = [0] * 12; b[up_btn - 1] = 1; feed(t, buttons=[0] * 12); feed(t, buttons=b); feed(t, buttons=[0] * 12)
     b = [0] * 12; b[dn_btn - 1] = 1; feed(t, buttons=b); feed(t, buttons=[0] * 12)
     return t
@@ -140,7 +144,7 @@ j = Joy(); j.present = True; j.name = TX; j.axes = list(TXREST); j.buttons = [0]
 t = jr.CalibrateTab(j, lambda: None); t.start_wizard(); feed(t, TXREST); t.capture()
 for ax in ([-1, 1, 1, 1], [1, 1, 1, 1], [0, -1, 1, 1], [0, 1, -1, 1], [0, 1, 1, 0.3]):
     feed(t, ax)
-feed(t, TXREST); t.capture(); feed(t, TXREST); feed(t, [-0.2, 1, 1, 1])   # 90° of a 900° wheel
+feed(t, TXREST); t.capture(); settle(t, TXREST); feed(t, [-0.2, 1, 1, 1])   # 90° of a 900° wheel
 check(jr.STEPS[t.step][0] == "wheel90" and t.work.steer.axis == 1, f"a quarter turn left after a full-lock sweep finds the wheel (at {jr.STEPS[t.step][0]})")
 # PO 2026-10-18 (2): "still gets stuck at turn the wheel left -- no matter how hard you crank". (a) an uneven sweep (full
 # left, a third right) classed the wheel a pedal; (b) a pedal resting 30 % off its snapshot held the step un-armed.
@@ -150,6 +154,46 @@ for label, sweep, rest_now in (("uneven sweep", ([-1, 1, 1, 1], [0.3, 1, 1, 1], 
     t = jr.CalibrateTab(j, lambda: None); t.start_wizard(); feed(t, TXREST); t.capture()
     for ax in sweep:
         feed(t, ax)
-    feed(t, TXREST); t.capture(); feed(t, rest_now); feed(t, [-0.9] + rest_now[1:])
+    feed(t, TXREST); t.capture(); settle(t, rest_now); feed(t, [-0.9] + rest_now[1:])
     check(jr.STEPS[t.step][0] == "wheel90" and t.work.steer.axis == 1, f"{label}: cranking left finds the wheel (at {jr.STEPS[t.step][0]}; {t.capl.text()!r})")
+# PO 2026-10-18 (3): "it thinks the clutch is the accelerator, or the brake is the accelerator ... shift up does nothing";
+# the saved wheel was reversed. (a) cranked left before the step armed, the swing back past centre to the RIGHT must not be
+# taken as left; (b) a load-cell brake pressed to 45 % of its swept travel is the brake; (c) a button reading held all
+# along (17) must not block shift-up.
+j = Joy(); j.present = True; j.name = TX; j.axes = list(TXREST); j.buttons = [0] * 16 + [1]   # 17 reads held throughout
+t = jr.CalibrateTab(j, lambda: None); t.start_wizard(); feed(t, TXREST); t.capture()
+for ax in ([-1, 1, 1, 1], [1, 1, 1, 1], [0, -1, 1, 1], [0, 1, -1, 1], [0, 1, 1, -0.5]):
+    feed(t, ax)
+feed(t, TXREST); t.capture()
+for v in (-0.6, -0.4, -0.1, 0.12, 0.2, 0.1, 0.03):        # cranked left early, released: overshoots right, settles
+    feed(t, [v, 1, 1, 1])
+check(jr.STEPS[t.step][0] == "steer", f"(a) the swing back past centre is not taken as left (at {jr.STEPS[t.step][0]})")
+settle(t, TXREST); feed(t, [-0.25, 1, 1, 1])
+check(jr.STEPS[t.step][0] == "wheel90" and t.work.steer.a < t.work.steer.b, f"(a) then a real left turn: steer a {t.work.steer.a:.2f} < b {t.work.steer.b:.2f} (left = negative)")
+t.skip()
+settle(t, TXREST); feed(t, [0, -1, 1, 1])                 # accelerator
+settle(t, TXREST); feed(t, [0, 1, 1, 1 - 0.45 * 1.5])     # brake: 45 % of its swept 1.5
+settle(t, TXREST); feed(t, [0, 1, -1, 1])                 # clutch
+settle(t, TXREST)
+m = t.work
+check((m.throttle.axis, m.brake.axis, m.clutch.axis) == (2, 4, 3), f"(b) accelerator 2, brake 4 (load cell, 45 %), clutch 3 ({t._summary()})")
+held = [0] * 17; held[16] = 1
+feed(t, buttons=held); b = list(held); b[1] = 1; feed(t, buttons=b); feed(t, buttons=held)
+b = list(held); b[0] = 1; feed(t, buttons=b); feed(t, buttons=held)
+check((m.up_btn, m.dn_btn) == (2, 1) and jr.STEPS[t.step][0] == "done", f"(c) button 17 held all along: up 2, down 1 ({t._summary()}; at {jr.STEPS[t.step][0]})")
+# PO 2026-10-18 (4): "waiting for axis 3, even though I already moved the accelerator" -- the clutch's rest SNAPSHOT 0.9
+# against a true rest of 1.0; and a load-cell brake that moves under half its range (1.0 -> 0.3, pressed to 0.55 now).
+j = Joy(); j.present = True; j.name = TX; snap = [0.0, 1.0, 0.9, 1.0]; j.axes = list(snap); j.buttons = [0] * 17
+t = jr.CalibrateTab(j, lambda: None); t.start_wizard(); feed(t, snap); t.capture()
+for ax in ([-1, 1, 1, 1], [1, 1, 1, 1], [0, -1, 1, 1], [0, 1, -1, 1], [0, 1, 1, 0.3]):
+    feed(t, ax)
+feed(t, TXREST); t.capture(); settle(t, TXREST); feed(t, [-0.3, 1, 1, 1]); t.skip()
+settle(t, TXREST); feed(t, [0, -0.9, 1, 1])
+check(jr.STEPS[t.step][0] == "brake" and t.work.throttle.axis == 2, f"(d) clutch snapshot short of its end: the accelerator is axis 2 ({t._summary()}; {t.capl.text()!r})")
+settle(t, TXREST); feed(t, [0, 1, 1, 0.55])
+check(t.work.brake.axis == 4 and abs(t.work.brake.b - (0.3 + 0.02*0.7)) < 1e-6, f"(d) a load-cell brake (1.0 -> 0.3) found at 0.55: axis 4, full at {t.work.brake.b:.3f}")
+settle(t, TXREST); feed(t, [0, 1, -1, 1])
+check(t.work.clutch.axis == 3 and t.work.clutch.a > 0.9, f"(d) the clutch from its true rest: axis 3, rest {t.work.clutch.a:.3f}")
+_, thr, brk, clu, _, _ = t.work.apply(TXREST, [0] * 17)
+check(thr == 0 and brk == 0 and clu < 0.03, f"(d) at rest the map reads nothing: thr {thr} brk {brk} clu {clu:.3f}")
 sys.exit(0 if ok else 1)

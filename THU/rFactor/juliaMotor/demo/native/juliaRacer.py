@@ -475,16 +475,33 @@ class Sweep:
         end = self.hi[i] if v >= c else self.lo[i]
         return 0.0 if abs(end - c) < 1e-9 else (v - c) / (end - c)
 
+    def rest_end(self, i):
+        """A pedal's resting END: the swept end nearer its rest snapshot."""
+        c = self.centre[i]
+        return self.lo[i] if (c - self.lo[i]) < (self.hi[i] - c) else self.hi[i]
+
+    def pull(self, i, v):
+        """How far a control is from rest, 0..1. PO 2026-10-18 (4): "it says it's waiting for axis 3, even though I already
+        moved the accelerator" -- a pedal was measured from its rest SNAPSHOT toward the swept end on that side, so a
+        snapshot a little short of the end (0.9 against a true rest of 1.0) read a released pedal as 100 % pressed: the
+        clutch then won the accelerator step, or (with the arming wait) held it for good. A pedal is measured from its
+        resting END over its whole swept travel, so the snapshot's offset drops out; a centred axis as before."""
+        if self.kind(i) == "pedal":
+            r = self.range(i)
+            return 0.0 if r < 1e-9 else abs(v - self.rest_end(i)) / r
+        return abs(self.travel(i, v))
+
     def pedal_ctrl(self, i, v):
         """A Ctrl for a control pressed toward value v on axis i: from rest (0) to the swept end on v's side (1), with
         GPL's 2 % saturation at both ends. For a pedal the rest is an end; for a centred axis (a stick's push or pull)
         it is the centre."""
         c = self.centre[i]
-        if self.kind(i) == "pedal":
-            rest = self.lo[i] if (c - self.lo[i]) < (self.hi[i] - c) else self.hi[i]
+        if self.kind(i) == "pedal":                 # pressed = the end away from where it rests (snapshot offset irrelevant)
+            rest = self.rest_end(i)
+            far = self.hi[i] if rest == self.lo[i] else self.lo[i]
         else:
             rest = c
-        far = self.hi[i] if v >= c else self.lo[i]
+            far = self.hi[i] if v >= c else self.lo[i]
         d = far - rest
         return rest + self.END * d, far - self.END * d
 
@@ -523,6 +540,17 @@ RELEASED = 0.2     # ... and the next step waits until every control is back wit
 # (±450°) needed ~270° of left lock before step 3 reacted -- a first run swept only ±100° and worked, the recalibration
 # swept the full lock and "had no effect". 15 % of the swept half = ~70° on a 900° wheel, 15° on a ±100° sweep.
 STEER_PRESS = 0.15
+# PO 2026-10-18 (3): "calibration is broken - it thinks the clutch is the accelerator, or the brake is the accelerator ...
+# Also shift up does nothing", and the saved wheel read LEFT as positive (reversed). (a) The step armed the moment the wheel
+# swung back through centre, and the swing past centre to the right was taken as "left": a step now arms only after its
+# controls have stayed at rest (within REST_STILL of the snapshot) for ARM_FRAMES updates. (b) A pedal had to reach 60 %
+# of the travel swept at step 2 -- a load-cell brake pressed less firmly than in the sweep never did, and the next pedal
+# tried was taken: pedals now count at PEDAL_PRESS. (c) A button step waited for EVERY button to read released, so one
+# button reading held (a mode switch, a paddle resting on its stop) blocked shift-up for good: a button now counts when it
+# goes from released to pressed, whatever the others do.
+PEDAL_PRESS = 0.25    # of the travel the pedal reached in the sweep (PO: a load-cell brake may move < 50 % of its range)
+REST_STILL = 0.05
+ARM_FRAMES = 20
 
 
 class CalibrateTab(QWidget):
@@ -537,6 +565,7 @@ class CalibrateTab(QWidget):
         self._used = set()                      # (axis index, side) pairs already assigned in this run
         self.step = 0
         self._btn_armed = True
+        self._btn_held = set()
         self._sax = 0
         self.axis_bars = []
         self.btn_lamps = []
@@ -705,6 +734,8 @@ class CalibrateTab(QWidget):
         self.shiftl.setText(f"shift:  up {'▼' if up else '·'}   down {'▼' if dn else '·'}")
         # auto-capture for button steps
         key = STEPS[self.step][0]
+        key not in ("idle", "done") and self._trace({"step": key, "axes": [round(x, 4) for x in j.axes],
+                                                     "buttons": [i + 1 for i, v in enumerate(j.buttons) if v]})
         if key not in ("idle", "rest") and self.sweep.centre:
             self.sweep.update(j.axes)           # the sweep keeps growing through the whole run (GPL: every frame)
             for i, lab in enumerate(getattr(self, "axis_labels", [])):
@@ -774,6 +805,12 @@ class CalibrateTab(QWidget):
             return
         self.work = JoyMap()
         self.sweep = Sweep(); self._used = set()
+        # every wizard run leaves its raw input in joystick_wizard_trace.jsonl, so a failure can be replayed exactly
+        try:
+            self._tracef = open(os.path.join(HERE, "joystick_wizard_trace.jsonl"), "w")
+            self._trace({"event": "start", "device": self.joy.name})
+        except OSError:
+            self._tracef = None
         self._goto("rest")
 
     def _goto(self, key):
@@ -794,7 +831,8 @@ class CalibrateTab(QWidget):
         # from the previous step (e.g. the clutch button) isn't grabbed immediately; an axis step likewise waits for
         # every control to be back at rest.
         self._btn_armed = key not in ("up", "dn", "clutch_btn")
-        self._ax_armed = False
+        self._btn_held = set()
+        self._ax_armed = False; self._still = 0
         if key == "done":
             self.cap_b.setEnabled(False)
             self.capl.setText("Calibration captured. Review the preview, then Save.")
@@ -850,7 +888,7 @@ class CalibrateTab(QWidget):
         ax = self.joy.axes; sw = self.sweep
         if len(ax) != len(sw.centre):
             return
-        tr = [abs(sw.travel(i, v)) if sw.kind(i) else 0.0 for i, v in enumerate(ax)]
+        tr = [sw.pull(i, v) if sw.kind(i) else 0.0 for i, v in enumerate(ax)]
         if not self._ax_armed:                  # wait until the controls that matter are back at rest
             # PO 2026-10-18: waiting on EVERY axis let one pedal that rests a little off its snapshot block step 3 forever,
             # silently. Steering waits only for the centred axes; a pedal step for every axis but the wheel's.
@@ -858,15 +896,21 @@ class CalibrateTab(QWidget):
                 watch = [i for i in range(len(ax)) if sw.kind(i) == "centred"]
             else:
                 watch = [i for i in range(len(ax)) if i != self.work.steer.axis - 1]
-            busy = [i for i in watch if tr[i] >= RELEASED]
+            busy = [i for i in watch if tr[i] >= (REST_STILL if key == "steer" else RELEASED)]
             if not busy:
-                self._ax_armed = True
+                self._still = getattr(self, "_still", 0) + 1
+                if self._still >= ARM_FRAMES:
+                    self._ax_armed = True; self._still = 0
+                    self._trace({"event": "armed", "step": key})
+                    self.capl.setText("Ready -- " + ("turn the wheel LEFT." if key == "steer" else f"press the {key.upper()}."))
             else:
+                self._still = 0
                 i = max(busy, key=lambda k: tr[k])
                 self.capl.setText(f"Waiting for axis {i + 1} to come back to rest ({tr[i]:.0%} of its travel) -- "
                                   + ("centre the wheel." if key == "steer" else "release it."))
             return
-        side = lambda i: 1 if ax[i] >= sw.centre[i] else -1
+        # the side pressed: away from a pedal's resting end; for a centred axis, which way from its centre
+        side = lambda i: ((1 if ax[i] >= sw.rest_end(i) else -1) if sw.kind(i) == "pedal" else (1 if ax[i] >= sw.centre[i] else -1))
         if key == "steer":
             cand = [i for i in range(len(ax)) if sw.kind(i) == "centred"]
             if not cand:
@@ -875,7 +919,7 @@ class CalibrateTab(QWidget):
                 return
         else:
             cand = [i for i in range(len(ax)) if i != self.work.steer.axis - 1 and (i, side(i)) not in self._used]
-        need = STEER_PRESS if key == "steer" else PRESS
+        need = STEER_PRESS if key == "steer" else PEDAL_PRESS
         if key == "steer":                      # show the driver it is seeing the wheel move
             far = max(cand, key=lambda k: tr[k], default=None)
             if far is not None and tr[far] > 0.02:
@@ -885,6 +929,7 @@ class CalibrateTab(QWidget):
             return
         i = max(cand, key=lambda k: tr[k])
         self._used.add((i, side(i)))
+        self._trace({"event": "assign", "step": key, "axis": i + 1, "side": side(i), "tr": [round(x, 3) for x in tr]})
         if key == "steer":
             a, b = sw.steer_ctrl(i, ax[i])
             self.work.steer = Ctrl(i + 1, a, b)
@@ -900,12 +945,14 @@ class CalibrateTab(QWidget):
 
     def _auto_button(self):
         bs = self.joy.buttons
-        if not self._btn_armed:                 # wait for a fully-released frame first
-            if not any(bs):
-                self._btn_armed = True
+        if not self._btn_armed:                 # the buttons held as the step begins do not count until released
+            self._btn_held = {i for i, v in enumerate(bs) if v}
+            self._btn_armed = True
             return
+        self._btn_held -= {i for i, v in enumerate(bs) if not v}
         for i, v in enumerate(bs):
-            if v:
+            if v and i not in self._btn_held:
+                self._trace({"event": "button", "step": STEPS[self.step][0], "button": i + 1, "held": sorted(self._btn_held)})
                 key = STEPS[self.step][0]
                 if key == "clutch_btn":
                     self.work.clutch_btn = i + 1
@@ -920,6 +967,16 @@ class CalibrateTab(QWidget):
                     self.capl.setText(f"Shift-down button = {i + 1}")
                     self._goto("done")
                 return
+
+    def _trace(self, d):
+        f = getattr(self, "_tracef", None)
+        if f is None:
+            return
+        try:
+            d = dict(d); d.setdefault("t", round(time.monotonic(), 3)); f.write(json.dumps(d) + "\n")
+            d.get("event") in ("assign", "button", "armed", "start", "save") and f.flush()
+        except (OSError, ValueError):
+            pass
 
     def _summary(self):
         m = self.work
@@ -939,6 +996,7 @@ class CalibrateTab(QWidget):
             meta["label"] = name + " " + time.strftime("%Y-%m-%d")
             self.work.save(device_file(name), meta)
         self.work.save(CONF, meta)
+        self._trace({"event": "save", "summary": self._summary()})
         self.map = JoyMap.load(CONF)
         self.auto_r.blockSignals(True); self.auto_r.setChecked(True); self.auto_r.blockSignals(False)
         self.profile.setEnabled(False); self.use_b.setEnabled(False)
