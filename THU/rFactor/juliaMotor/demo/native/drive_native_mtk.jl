@@ -14930,7 +14930,9 @@ function main()
                 # VertAccel is REAL in 3-D mode (the planar model has no vertical DOF → 1 g stub)
                 "LongAccel"=>tl.ax, "LatAccel"=>tl.ay, "VertAccel"=>(CAR3D ? tl.vacc : 9.80665),
                 "LFspeed"=>tl.ωf*0.30, "RFspeed"=>tl.ωf*0.30, "LRspeed"=>tl.ωRL*DriveRT3D.RW_R, "RRspeed"=>tl.ωRR*DriveRT3D.RW_R,
-                "Alt"=>cs.y)
+                "Alt"=>cs.y,
+                # FUELIBT-1: the tank (litres, as iRacing's FuelLevel) -- it was never written, so 0 for every session
+                "FuelLevel"=>fuel[], "FuelLevelPct"=>fuel[]/DriveRT3D.FUEL_MAX_L)
             if CAR3D                                   # real ride heights + body attitude (Flugplatz benchmark)
                 # E106-S37: export ride height ONLY while the wheels are loaded. Measured
                 # (E106-S36): settled and grounded it reads 0.082/0.082/0.106/0.106 m, matching
