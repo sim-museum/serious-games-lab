@@ -142,4 +142,14 @@ for ax in ([-1, 1, 1, 1], [1, 1, 1, 1], [0, -1, 1, 1], [0, 1, -1, 1], [0, 1, 1, 
     feed(t, ax)
 feed(t, TXREST); t.capture(); feed(t, TXREST); feed(t, [-0.2, 1, 1, 1])   # 90° of a 900° wheel
 check(jr.STEPS[t.step][0] == "wheel90" and t.work.steer.axis == 1, f"a quarter turn left after a full-lock sweep finds the wheel (at {jr.STEPS[t.step][0]})")
+# PO 2026-10-18 (2): "still gets stuck at turn the wheel left -- no matter how hard you crank". (a) an uneven sweep (full
+# left, a third right) classed the wheel a pedal; (b) a pedal resting 30 % off its snapshot held the step un-armed.
+for label, sweep, rest_now in (("uneven sweep", ([-1, 1, 1, 1], [0.3, 1, 1, 1], [0, -1, 1, 1], [0, 1, -1, 1], [0, 1, 1, 0.3]), [0.0, 1, 1, 1]),
+                               ("a pedal off its rest", ([-1, 1, 1, 1], [1, 1, 1, 1], [0, -1, 1, 1], [0, 1, -1, 1], [0, 1, 1, 0.3]), [0.0, 1, 0.4, 1])):
+    j = Joy(); j.present = True; j.name = TX; j.axes = list(TXREST); j.buttons = [0] * 12
+    t = jr.CalibrateTab(j, lambda: None); t.start_wizard(); feed(t, TXREST); t.capture()
+    for ax in sweep:
+        feed(t, ax)
+    feed(t, TXREST); t.capture(); feed(t, rest_now); feed(t, [-0.9] + rest_now[1:])
+    check(jr.STEPS[t.step][0] == "wheel90" and t.work.steer.axis == 1, f"{label}: cranking left finds the wheel (at {jr.STEPS[t.step][0]}; {t.capl.text()!r})")
 sys.exit(0 if ok else 1)

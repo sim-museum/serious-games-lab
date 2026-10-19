@@ -458,7 +458,16 @@ class Sweep:
         if r < self.MIN_RANGE:
             return None
         p = (self.centre[i] - self.lo[i]) / r
-        return "centred" if CENTRED_LO <= p <= 1.0 - CENTRED_LO else "pedal"
+        if CENTRED_LO <= p <= 1.0 - CENTRED_LO:
+            return "centred"
+        # PO 2026-10-18 ("no matter how hard you crank the wheel left, nothing happens"): a wheel swept further one way
+        # than the other (full left, a third right) put its rest outside the middle 41 % and was classed a PEDAL, so step 3
+        # had no candidate at all. GLFW normalises every axis to +-1: an axis resting near 0 that moved both ways is
+        # centred whatever the sweep's balance (pedals rest at an end, +-1).
+        c = self.centre[i]
+        if abs(c) <= 0.25 and self.lo[i] < c - 0.1 and self.hi[i] > c + 0.1:
+            return "centred"
+        return "pedal"
 
     def travel(self, i, v):
         """How far value v is from rest toward the far end on its side, 0..1 (signed side via `side`)."""
@@ -842,13 +851,28 @@ class CalibrateTab(QWidget):
         if len(ax) != len(sw.centre):
             return
         tr = [abs(sw.travel(i, v)) if sw.kind(i) else 0.0 for i, v in enumerate(ax)]
-        if not self._ax_armed:                  # wait until everything is back at rest
-            if max(tr, default=0.0) < RELEASED:
+        if not self._ax_armed:                  # wait until the controls that matter are back at rest
+            # PO 2026-10-18: waiting on EVERY axis let one pedal that rests a little off its snapshot block step 3 forever,
+            # silently. Steering waits only for the centred axes; a pedal step for every axis but the wheel's.
+            if key == "steer":
+                watch = [i for i in range(len(ax)) if sw.kind(i) == "centred"]
+            else:
+                watch = [i for i in range(len(ax)) if i != self.work.steer.axis - 1]
+            busy = [i for i in watch if tr[i] >= RELEASED]
+            if not busy:
                 self._ax_armed = True
+            else:
+                i = max(busy, key=lambda k: tr[k])
+                self.capl.setText(f"Waiting for axis {i + 1} to come back to rest ({tr[i]:.0%} of its travel) -- "
+                                  + ("centre the wheel." if key == "steer" else "release it."))
             return
         side = lambda i: 1 if ax[i] >= sw.centre[i] else -1
         if key == "steer":
             cand = [i for i in range(len(ax)) if sw.kind(i) == "centred"]
+            if not cand:
+                self.capl.setText("No axis was swept as a wheel/stick (centred). Click Restart and, at step 2, turn the "
+                                  "wheel all the way LEFT and all the way RIGHT.")
+                return
         else:
             cand = [i for i in range(len(ax)) if i != self.work.steer.axis - 1 and (i, side(i)) not in self._used]
         need = STEER_PRESS if key == "steer" else PRESS
