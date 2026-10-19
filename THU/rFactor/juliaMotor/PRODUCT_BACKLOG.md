@@ -27869,3 +27869,45 @@ give the heave-vs-speed signature at three front springs, and the garage gives t
   beta unchanged). Open: the part-throttle map was measured with the 261010 sessions' density folded in; the 261010
   part-throttle windows want no density factor, the 261018 Monza ones want it -- refit the map in the density frame
   (throttlefit S6 method, f = (T + drag)/(dens·WOT + drag)) as S2.
+
+### UNDERSTEER-1 S6 (2026-10-18): a drifting settle driver -- the controller was not the limit; rotated (6/6)
+* `irgold_replay.jl` settle_vr!: `JM_SETTLE_DRIFT=1` adds a fast proportional counter-steer on the yaw-rate error
+  (neutral-steer gain, ~15 deg/s at the road wheel) + a sideslip-RATE damper on top of the slow integral, and lifts the
+  throttle with the yaw-rate excess (integrator frozen meanwhile). Default unchanged.
+* 261018 cells (score / fails): plain 33.5/8, mur 1.46 28.4/7, 1.40 26.3/14. Drift settle with a TARGET sideslip
+  52.8/12 (it fought the yaw target: julia makes the gold's yaw with less sideslip); with the damper 33.9/8, 28.3/7,
+  24.7/13 (= plain); with the lift as well 29.8/11, 24.5/12, 17.7/18 -- spins gone (1 left), but the failing cells now
+  cannot hold the gold's SPEED and yaw together: at mur 1.46 the car needs pedal 0.72-0.76 where the gold uses 0.48,
+  then slows to 93-95 km/h and tightens.
+* Reading: with less rear grip julia's drift costs far more drive force than iRacing's -- the rear's COMBINED slip under
+  drive (how much lateral a driven rear keeps at kappa 4-8 %, and what the slide costs longitudinally), not the
+  controller and not peak mu. Next cycle: fit the rear's combined-slip ellipse to the D1 slides (gold kappa 4-8 %,
+  alpha_r 5-7 deg, ay 1.15 g at pedal 0.5) -- with the longitudinal fits (launch, traction) as constraints.
+
+### SETUPMODEL-1 S6 (2026-10-18): camber jacking shipped (camber terms only) + the sheets' knob ranges
+* S5's full refit moved identified constants to unphysical values (front tyre rate 362 -> 127 N/mm, rear to its 600
+  wall, front unsprung 141 N) to buy 8.3 -> 5.3 digits -- not shipped. Refit with everything fixed but cam_jack,
+  cam_jack2, cam_patch (GF_FIX): rms 8.9 -> 6.8 digits on the 75 frames; camber_high 95 -> 30, camber_low 36 -> 12, WW103
+  20 -> 16, skidpad setups slightly better, fuel frames unchanged. cam_jack 1.513 mm/deg, cam_jack2 0.0024, cam_patch
+  20.7 -> 14.1. In garage.jl AND the launcher's garage.py (same solver), constants in garage_lotus49.toml.
+* Knob specs from the sheets: brake bias 30-70 % (known), front toe -45..+53 mm and rear toe -6..+17 mm (known, 1 mm
+  display step), front perch -36.9..309.2 mm, camber -2.5..+4.0 (front seen; rear still provisional), final 4.00, 2nd
+  1.61, 4th 1.00, drive ramp 65 seen. Pressure stays provisional (the "max" sheet reads 179 kPa, 207 is seen elsewhere).
+
+### TRACKAIR-1 S1 (2026-10-18): each track's air as iRacing has it
+* Retro: new (IRDATA-261018 S3). iRacing: 25.56 C always, pressure by altitude. julia: 1.10 on every track.
+* `DriveRT3D.air_density(track)`: a standard-atmosphere pressure curve scaled to Monza's 1.1509 (reproduces the skidpad
+  1.135, the Glen 1.112, the Ring 1.095 to their rounding): monza 1.151, zandvoort 1.176 (5 m), spa 1.120 (410 m), watglen
+  1.112, nurburgring 1.095, skidpad 1.135. `set_air!` after the car is built (drive_native_mtk.jl prints "air:").
+  JM_TRACKAIR=0 = 1.10 everywhere; JM_AIR_RHO forces a value. With ENGINERHO-1 the engine, drag and lift all follow it:
+  top speed barely moves (power and drag both scale), acceleration and lift do.
+
+### RARBARMS-1 S1 (2026-10-18): the rear bar's arm law from the PO's E3 runs
+* Retro: new item (10-18 morning); the front law (IRGOLD-1 S4) came from tools/arbarms_261011.jl -- the bar object's
+  stiffness that reproduces the gold session's roll gradient through the car. IRPLAN-3 E3 ran the rear arms soft/firm.
+* `tools/arbarms_261018.jl` (same method, 261018 E3 files): REAR bar object soft / 5 / firm = 6075 / 12440 / 16923 N/m
+  (session's own at 5: 11995); bar alone (corners' -719 share removed) 0.52 / 1 / 1.34 of arms 5. Firm/5 = the front
+  law's 1.31 and the garage fit's arm law 1.32; soft is far stiffer relative to 5 than the front's soft. FRONT check
+  (bar alone): base 2 1556 (S4: 1535), soft ~0 (S4: 567), firm 6040 (S4: 6804) -- the front law stands.
+* `ARB_ARM_REAR` in drive_rt3d.jl (2-4, 6 interpolated in hole number); chassis_from_setup now applies it for any bar
+  set without an identified entry (the default and WW103 keys are unchanged). Before: rear arms ignored.

@@ -244,13 +244,29 @@ function settle_vr!(car, sp, u0, V, R, gr; δcap = 0.3, warm = nothing, δg = no
         # only trims ±0.2 around it) -- a free integral throttle from a cold kinematic start wound up and spun the car
         δ = δg === nothing ? R*(LWB/max(V, 5.0)) : δg; ie = 0.0; nset = parse(Int, Base.get(ENV, "JM_SETTLE_N", "240"))
     end
+    # UNDERSTEER-1 S6: JM_SETTLE_DRIFT=1 -- a driver who can hold a power drift: on top of the slow integral, a fast
+    # proportional counter-steer on the yaw-rate error (neutral-steer gain L/V) and a damper on the sideslip RATE (a
+    # target sideslip fought the yaw target: julia makes the gold's yaw with less sideslip), rate-limited to ~15 deg/s. The plain loop (2 deg/s, integral only) cannot catch
+    # a rear that steps out, so at the limit it read "unholdable" or "spun" for a car that may hold the attitude.
+    drift = Base.get(ENV, "JM_SETTLE_DRIFT", "0") == "1"
+    βlast = atan(vy, max(V, 1.0)); δi = δ; δp = 0.0
     for k in 1:nset
         u, v, r = get(car.integ)
+        if drift
+            δi = clamp(δi + clamp(0.35*(R - r)/60*(30/max(V, 15)), -0.0006, 0.0006), -δcap, δcap)
+            β = atan(v, max(u, 1.0)); dβ = (β - βlast)*60; βlast = β
+            want = clamp(1.0*(R - r)*LWB/max(u, 5.0) + 0.15*dβ, -0.15, 0.15)
+            δp += clamp(want - δp, -0.0045, 0.0045)
+            δ = clamp(δi + δp, -δcap - 0.15, δcap)
+        else
         δ = clamp(δ + clamp(0.35*(R - r)/60*(30/max(V, 15)), -0.0006, 0.0006), -δcap, δcap)
+        end
         # from the gold's pedal, a gentle PI over the full range (the ±0.2 trim could not hold the speed when the gold was
         # coasting into a brake -- the sim started 10-15 km/h slow and the replay read it as over-braking)
         thr = thrg === nothing ? clamp(0.3 + 0.3*(V - u) + ie, 0, 1) : clamp(thrg + 0.1*(V - u) + ie, 0, 1)
-        ie = thrg === nothing ? clamp(ie + 0.01*(V - u), -0.4, 0.8) : clamp(ie + 0.004*(V - u), -0.8, 0.8)
+        over = drift ? max(0.0, abs(r) - abs(R)) : 0.0           # S6: a drifting driver lifts as the rear steps out
+        thr = clamp(thr - 4.0*over, 0, 1)
+        over > 0.02 || (ie = thrg === nothing ? clamp(ie + 0.01*(V - u), -0.4, 0.8) : clamp(ie + 0.004*(V - u), -0.8, 0.8))
         DriveRT3D.step_car3d!(car, thr, 0.0, δ/DriveRT3D.MAXSTEER, 1/60; clutch = 0.0, manual = true)
     end
     SETTLED[] = (copy(car.integ.u), δ, ie)
