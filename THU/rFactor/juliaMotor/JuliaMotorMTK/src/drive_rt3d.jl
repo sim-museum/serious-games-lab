@@ -1282,6 +1282,21 @@ function place3d!(c::Car3D, x, z, θ; v = 0.0)
     c.x = x; c.z = z; c.θ = θ; c.v = v
     c
 end
+"""HEDGEJOLT-1 (PO 2026-10-18: "when the car ran into a hedge, there was levitating and fibrilating"): a frozen wreck was
+re-placed every frame with `place3d!` -- position, heading, speed -- but its yaw rate and vertical states ran on: a corner
+the impact left 1.1 m down drove the body up and down 0.2 m and the nose +-7 deg between placements, for as long as the
+wreck sat there. `pin3d!` also zeroes the yaw rate and the vertical subsystem and puts the body on the ground at `h`."""
+function pin3d!(c::Car3D, x, z, θ, h)
+    place3d!(c, x, z, θ; v = 0.0)
+    gs = get!(() -> (ModelingToolkit.getsym(c.sys, c.sys.r), ModelingToolkit.setu(c.sys, c.sys.r)), _RSET3D, c.sys)
+    gs[2](c.integ, 0.0)
+    c.s_vreset(c.integ, zeros(14)); delete!(_VREF, c)
+    c.heave = 0.0; c.pitch = 0.0; c.roll = 0.0; c.vacc = 9.80665
+    isfinite(h) && (c.zref = Float64(h))
+    c.zr_prev = ntuple(_ -> 0.0, 4); c.y = c.zref
+    OrdinaryDiffEq.SciMLBase.u_modified!(c.integ, true)
+    c
+end
 const _WSET3D = IdDict()
 const _PPSET3D = IdDict()
 const _QSET3D = IdDict()

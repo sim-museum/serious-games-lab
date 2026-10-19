@@ -275,10 +275,18 @@ function ai_cooldown_step!(f, AICARS, GPLAI_T, crossed, ent_name, phase, race_do
                     end
                 elseif st[1] === :cool && isfinite(PIT_IN[]) && haskey(GPLAI_T.lines, GPLAI.PIT) &&
                        PIT_IN[] - 60.0 <= gc.s < PIT_BOX[]                      # WGTD-1 S9: into GPL's pit lane
-                    q = 15.0*count(v -> v[1] === :pit, values(AI_COOL))          # boxes 15 m apart, the first car furthest on
+                    # PITPARK-1: boxes along the pit lane (PIT_BOX = its entrance .. PIT_END), the first car furthest on, 15 m
+                    # apart -- closer if the field would not fit -- never short of the entrance (JM_PITPARK=0: as before)
+                    nb = count(v -> v[1] === :pit, values(AI_COOL))
+                    if PITPARK && isfinite(PIT_END[]) && PIT_END[] - PIT_BOX[] > 30.0
+                        sp = min(15.0, (PIT_END[] - PIT_BOX[] - 20.0) / max(length(AICARS) - 1, 1))
+                        box = max(PIT_END[] - 10.0 - sp*nb, PIT_BOX[] + 10.0)
+                    else
+                        box = PIT_BOX[] + 30.0 - 15.0*nb
+                    end
                     GPLAI.join_pit!(GPLAI_T, gc); gc.hold = typemax(Int) ÷ 4
-                    AI_COOL[i] = (:pit, st[2], PIT_BOX[] + 30.0 - q)
-                    AI_COOL_DIAG && println("  [cooldown] ", ent_name(i), " into the pits, box at ", round(Int, PIT_BOX[] + 30.0 - q), " m")
+                    AI_COOL[i] = (:pit, st[2], box)
+                    AI_COOL_DIAG && println("  [cooldown] ", ent_name(i), " into the pits, box at ", round(Int, box), " m")
                 elseif st[1] === :pit
                     rem = st[3] - gc.s                                           # metres to its box
                     gc.pace = st[2] * clamp(rem / 40.0, 0.0, 1.0); gc.hold = typemax(Int) ÷ 4

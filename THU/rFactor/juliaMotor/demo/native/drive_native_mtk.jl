@@ -255,11 +255,12 @@ const AI_COOL_DIAG = get(ENV, "JM_AI_COOLDIAG", "0") != "0"
 # TD261017-1 (a4) (PO 2026-10-17: the AI "didn't make it around the 2nd lap, though there seemed to be plenty of time"): at 0.6
 # of race pace a Spa cool-down lap took over 10 minutes (45-100 km/h); 0.9 brings them round in about a race lap.
 const AI_COOL_PACE = parse(Float64, get(ENV, "JM_AI_COOLPACE", "0.9"))
+const PITPARK = get(ENV, "JM_PITPARK", "1") != "0"   # PITPARK-1: AI boxes along the pit lane, not at its entrance
 const AI_COOL_STOPPED = Set{Int}()
 const AI_COOL = Dict{Int,Tuple{Symbol,Float64,Float64}}()        # AI index -> (state, its race pace, where the stop began)
 const AI_ROADSHIFT_CHECK = get(ENV, "JM_AI_ROADSHIFT_CHECK", "1") != "0"   # MONZAROAD-1
 const AI_PITLINE = get(ENV, "JM_AI_PITLINE", "1") != "0"         # WGTD-1 S9: the cool-down lap ends in GPL's pit lane
-const PIT_IN = Ref(NaN); const PIT_BOX = Ref(NaN)
+const PIT_IN = Ref(NaN); const PIT_BOX = Ref(NaN); const PIT_END = Ref(NaN)
 const PRACTICE_SEC = 60.0 * (tryparse(Float64, get(ENV, "JM_PRACTICE_MIN", "15")) |> x -> x === nothing ? 15.0 : x)   # GPL-style practice session length before the race (T = accelerate time)
 # In REPLAY the field size comes from the RECORDING (so every recorded car gets a chassis to
 # draw + camera-focus), not JM_AI — else focusing the replay camera on an AI shows empty track.
@@ -6287,6 +6288,7 @@ const WRECK_CLOSE  = parse(Float64, get(ENV, "JM_WRECK_CLOSE", "12.0"))
 const WRECKED      = Ref(false)          # latched: a wreck is permanent, that is the point
 const WRECK_FROZEN = Ref(false)          # E95g: the wreck has come to rest and is pinned there
 const WRECK_PX     = Ref(0.0); const WRECK_PZ = Ref(0.0); const WRECK_PT = Ref(0.0)
+const WRECK_PH = Ref(NaN); const WRECK_PIN = get(ENV, "JM_WRECK_PIN", "1") != "0"   # HEDGEJOLT-1: a frozen wreck rests ON the ground, still
 const WRECK_DAMP   = parse(Float64, get(ENV, "JM_WRECK_DAMP", "6.0"))   # E95e: 1/s; raised from 2.2 -- a totalled car should stop in a car length or two, not coast on
 # Detached wheels: each is (x, y, z, vx, vy, vz, spin, spinrate, name). World frame, metres.
 # E95: 8 Float64s + the wheel's model NAME. Declared NTuple{9,Float64} at first, which threw
@@ -11037,8 +11039,14 @@ const ARMS2 = get(ENV, "JM_ARMS2", "1") != "0"
 # the gloves' cuffs open OUTWARD (GPL lays the forearms in from the cockpit sides), and a shoulder 0.26 m out brought each
 # sleeve up from below -- a right angle at the wrist. 0.52 m runs the sleeve in from the side, in line with the cuff
 # (cockpit sweep 0.26 / 0.40 / 0.52, Spa s 1000). JM_SHOULDER_Z=0.26 = before.
-const SHOULDER = (parse(Float32, get(ENV, "JM_SHOULDER_X", "0.18")), parse(Float32, get(ENV, "JM_SHOULDER_Y", "0.22")),
-                  parse(Float32, get(ENV, "JM_SHOULDER_Z", "0.52")))
+# WRISTS-3 (PO 2026-10-18: "the driver's fingers point about 90 degrees from the driver's forearms"; "the wrists look
+# broken! Refer to GPL gold standard cockpit view"): the 0.52 m shoulder laid each sleeve almost flat across a lower
+# corner of the view, and the fists rise from the rim at a right angle to it. GPL's forearms come up from BELOW the frame,
+# elbows near the centre line (gold Monza cockpit t 30: left elbow x 350/1280, right 760), straight into the fists. A low,
+# inboard far end (0.05, 0.0, +-0.20) does that (Monza s 4700 sweep: 0.52 slabs; 0.26 high = white sail bottom-left;
+# low 0.20 = forearm, wrist and fist in one line). JM_SHOULDER_X/Y/Z=0.18/0.22/0.52 = before.
+const SHOULDER = (parse(Float32, get(ENV, "JM_SHOULDER_X", "0.05")), parse(Float32, get(ENV, "JM_SHOULDER_Y", "0.0")),
+                  parse(Float32, get(ENV, "JM_SHOULDER_Z", "0.20")))
 const ARM_THICK = parse(Float32, get(ENV, "JM_ARM_THICK", "1.2"))
 const ARM_STRIPE = get(ENV, "JM_ARM_STRIPE", "1") != "0"   # HANDS-2 S4: the stripe face aimed at the eye (JM_ARM_STRIPE=0 reverts)
 """Per side (+1 = mesh z > 0): the sleeve's (wrist, far-end) points -- the ends of its principal axis, the wrist the lower."""
@@ -13075,8 +13083,15 @@ function main()
                     k = n; while k > 1 && abs(lp.d[k-1] - lr.d[min(k-1, length(lr.d))]) > 3.0; k -= 1; end
                     PIT_IN[] = 3.0*(k - 1)
                     kb = k - 1 + argmin([lp.v[j] for j in k:n]); PIT_BOX[] = 3.0*(kb - 1)
-                    println("  [pit] GPL pit line: in at ", round(Int, PIT_IN[]), " m, slowest (boxes) at ", round(Int, PIT_BOX[]),
-                            " m of ", round(Int, 3.0*n), " (JM_AI_PITLINE=0: stop at the edge of the straight, as before)")
+                    # PITPARK-1 (PO 2026-10-18, Monza: "AI cars didn't all park in the pits, some AI cars parked before the
+                    # pits"): the slowest point is where the line REACHES pit-lane speed -- the lane's entrance (Monza 5517 m);
+                    # the boxes are the flat stretch after it, at that offset (Monza 5517-5667 m, -13 m, 8.8 m/s). The queue
+                    # was centred on the entrance, so its tail stopped short of the lane. PIT_END = the stretch's far end
+                    # (not past the lap's end).
+                    ke = kb; while ke < n && abs(lp.d[ke + 1] - lp.d[kb]) < 1.5; ke += 1; end
+                    PIT_END[] = 3.0*(ke - 1)
+                    println("  [pit] GPL pit line: in at ", round(Int, PIT_IN[]), " m, pit lane (boxes) ", round(Int, PIT_BOX[]), "-",
+                            round(Int, PIT_END[]), " m of ", round(Int, 3.0*n), " (JM_AI_PITLINE=0: stop at the edge of the straight, as before)")
                 end
             end
             trkb = read(track_file(GPLNAME, ".trk"))
@@ -13860,6 +13875,7 @@ function main()
     show_after <= 0 && reveal!()
     crash_plat = Ref(NaN); crash_thru = Ref(false); crash_invis = Ref(0); crash_ninv = Ref(0)
     crash_i = Ref(0); crash_t0 = Ref(0); crash_rec = Ref((0.0, 0.0, 0.0)); crash_sum = Ref((0, 0, 0.0, 0.0))
+    crash_jit = Ref((Inf, -Inf, Inf, -Inf))   # HEDGEJOLT-1: (y min, y max, heading min, heading max) while the wreck is frozen
     if CRASH_ON && CLINE !== nothing && GPLW_ON
         if startswith(CRASH_SPEC, "auto")
             stp = parse(Float64, split(CRASH_SPEC, ":")[2]); ang = parse(Float64, get(ENV, "JM_CRASH_ANG", "45"))
@@ -14539,9 +14555,13 @@ function main()
                         WRECK_FROZEN[] = true
                         WRECK_PX[] = cs.x; WRECK_PZ[] = cs.z; WRECK_PT[] = cs.θ
                         println("  [WRECK] car came to rest"); flush(stdout)
+                        WRECK_PH[] = Float64(groundz_phys(cs.x, cs.z))   # HEDGEJOLT-1: the ground it rests on, once
                     end
                     if WRECK_FROZEN[]
-                        DriveRT3D.place3d!(cs, WRECK_PX[], WRECK_PZ[], WRECK_PT[]; v=0.0)
+                        # HEDGEJOLT-1: pin ALL of it (yaw rate, heave, pitch, roll on the ground), not just x/z/heading --
+                        # the vertical states ran on against a smashed corner: the wreck hovered and twitched. JM_WRECK_PIN=0 = before.
+                        WRECK_PIN && CAR3D ? DriveRT3D.pin3d!(cs, WRECK_PX[], WRECK_PZ[], WRECK_PT[], WRECK_PH[]) :
+                                             DriveRT3D.place3d!(cs, WRECK_PX[], WRECK_PZ[], WRECK_PT[]; v=0.0)
                     end
                 end
                 # E95: the torn-off wheels live in the world now, not on the car.
@@ -14646,6 +14666,8 @@ function main()
                                 " m, drawn-face pen max ", round(sp, digits = 2), " m, old-box pen max ", round(bp, digits = 2), " m, end lat ", r === nothing ? "?" : round(r[3], digits = 2),
                                 " in [", round(lo, digits = 1), ", ", round(hi, digits = 1), "] -> ", ok ? "CONTAINED" : "THROUGH",
                                 WRECKED[] ? "  (wrecked)" : "", "  v_end ", round(cs.v, digits = 1),
+                                isfinite(crash_jit[][1]) ? string("  REST JITTER y ", round(crash_jit[][2] - crash_jit[][1], digits = 3), " m, heading ",
+                                    round(rad2deg(crash_jit[][4] - crash_jit[][3]), digits = 2), " deg") : "",
                                 crash_invis[] > 0 ? "  INVISIBLE-CONTACT frames $(crash_invis[])" : ""); flush(stdout)
                     end
                     crash_i[] += 1
@@ -14661,7 +14683,7 @@ function main()
                         end
                         gplw_teleported!(); OBS_STAT[] = (hits = 0, clamps = 0, maxpen = 0.0)
                         crash_t0[] = frames; crash_rec[] = (0.0, 0.0, 0.0)
-                        crash_plat[] = NaN; crash_thru[] = false; crash_invis[] = 0
+                        crash_plat[] = NaN; crash_thru[] = false; crash_invis[] = 0; crash_jit[] = (Inf, -Inf, Inf, -Inf)
                     else
                         println("  [crash] SUMMARY ", TRACKSEL, ": ", crash_sum[][1], " scenarios, THROUGH ", crash_sum[][2],
                                 ", deepest GPL-wall penetration ", round(crash_sum[][3], digits = 2), " m, deepest drawn-face penetration ",
@@ -14669,6 +14691,7 @@ function main()
                                 "; wall+obstacle cost ", round(1e6*GPLW_T[][1]/max(GPLW_T[][2], 1), digits = 1), " us/frame"); flush(stdout)
                     end
                 else
+                    WRECK_FROZEN[] && (j_ = crash_jit[]; crash_jit[] = (min(j_[1], cs.y), max(j_[2], cs.y), min(j_[3], cs.θ), max(j_[4], cs.θ)))
                     (_, _, _, glo, ghi, _, _, _, _, gend_) = gplwall_gaps(cs.x, cs.z, cs.θ)
                     glo = min(glo, gend_)          # an END face counts as wall penetration too (measurement only)
                     # THROUGH, measured directly: the car's centre inside a blocking wall (beyond the clamp's reach), or in a
