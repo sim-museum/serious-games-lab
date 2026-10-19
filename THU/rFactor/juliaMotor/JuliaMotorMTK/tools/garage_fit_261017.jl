@@ -7,6 +7,9 @@
 #   julia --project=JuliaMotorMTK JuliaMotorMTK/tools/garage_fit_261017.jl [--fit] [--report]
 #   GF_STALE_W=0.3   weight of screenshot frames whose labels carry the "not re-solved" asterisk
 #   GF_OUT=path      write the fitted constants as Julia (default 261017/garage/garage_params_fit.jl)
+#   GF_DROP=a,b      leave out frames whose name contains any of these (e.g. spring_perch_low: the LF shock past full
+#                    extension, a regime the model does not have)
+#   GF_SHEETS=0      leave out 261018/ingest/frames_sheets.csv (the PO's 261018 setup sheets: exact solves, IRPLAN-3 A)
 using Printf
 include(joinpath(@__DIR__, "..", "src", "garage.jl")); using .Garage
 
@@ -45,7 +48,9 @@ end
 
 function frames()
     F = Frame[]
-    for (fn, kind) in (("frames_screens.csv", :screen), ("frames_ibt.csv", :ibt))
+    srcs = [("frames_screens.csv", :screen), ("frames_ibt.csv", :ibt)]
+    get(ENV, "GF_SHEETS", "1") == "1" && push!(srcs, (joinpath(ROOT, "..", "..", "261018", "ingest", "frames_sheets.csv"), :ibt))
+    for (fn, kind) in srcs
         for d in readcsv(joinpath(ROOT, fn))
             c4(p) = (num(d, p*"LF"), num(d, p*"RF"), num(d, p*"LR"), num(d, p*"RR"))
             arm(s) = (s = strip(s); endswith(s, ".0") ? s[1:end-2] : s)
@@ -58,13 +63,14 @@ function frames()
                       pressure = kind == :screen ? (152.0, 152.0, 152.0, 152.0) : c4("pr"))
             src = d["src"]
             track = occursin("skidpad", src) ? :skidpad : occursin("charlotte", src) ? :charlotte : :flat
-            nm = kind == :screen ? "snip" * d["snip"] : first(split(basename(src), ".ibt"))
+            nm = kind == :screen ? "snip" * d["snip"] : first(split(first(split(basename(src), ".ibt")), ".htm"))
             w = kind == :screen && d["stale"] == "1" ? STALE_W : 1.0
             ONLY == "trusted" && w < 1 && continue
             if ONLY == "sym"
                 c = c4("p"); k = c4("k")
                 (c[1] == c[2] && c[3] == c[4] && k[1] == k[2] && k[3] == k[4] && w == 1) || continue
             end
+            any(x -> occursin(x, nm), split(get(ENV, "GF_DROP", ""), ","; keepempty = false)) && continue
             push!(F, Frame(nm, w, K, track, c4("cw"), c4("rh"), c4("sh"), c4("ca"), num(d, "cross"), num(d, "toeF"),
                            kind == :screen))
         end

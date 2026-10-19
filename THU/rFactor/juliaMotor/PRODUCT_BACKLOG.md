@@ -31,7 +31,7 @@ this index was written; that is what it exists to stop.
 | **RARBARMS-1** | PO 2026-10-18 (same question): the rear anti-roll bar's ARMS setting is ignored by the driving model (diameter only); front arms 3 and 5 are interpolated. Give the rear bar an arm law (torsion-bar lever, as the front's) and use the garage fit's bar model so every arm/diameter is physical; settle with IRPLAN-3 C5 | open |
 | **MRCONSIST-1** | PO 2026-10-18 (same question): the garage solve and the driving model use different motion ratios (garage fit 0.81/0.69 shock, 0.81/0.67 spring vs driving 0.78/0.648) and tyre vertical rates (garage 362/169 N/mm vs driving 180/200 N/mm), so wheel rates differ ~6-8 %. One set of suspension constants (garage_lotus49.toml) for both; re-check stability suite + closed-loop judge | open |
 | **IRPLAN-3** | PO 2026-10-18: update the iRacing test plan, save as PDF in 261018 | ✅ **DONE (2026-10-18):** `261018/documents/iracing_test_plan_261018.pdf` (+ .md source), 7 pages, about 2 h 20 min: IRPLAN-2 plus D1 held on-power skidpad slides (UNDERSTEER-1 S4), new E4 trail braking at 250 km/h (TRAILBRAKE-DRIFT), E2 tied to the same rear grip; fuel now in julia's .ibt (FUELIBT-1) |
-| **FUELIBT-1** | (found 2026-10-18) julia's .ibt export leaves FuelLevel at 0 for the whole session (the PO's 10-17 Spa file too), so fuel cannot be checked or compared against iRacing from julia's telemetry | **S1 (2026-10-18) awaiting gates:** FuelLevel (litres) and FuelLevelPct exported from the tank (Zandvoort race 30 s: 5.013 -> 4.717 L); change on disk, uncommitted -- gates stopped at 45/63 passed (0 failed) when the PO powered off; rerun and commit |
+| **FUELIBT-1** | (found 2026-10-18) julia's .ibt export leaves FuelLevel at 0 for the whole session (the PO's 10-17 Spa file too), so fuel cannot be checked or compared against iRacing from julia's telemetry | ✅ **S1 (2026-10-18), gates 63/63:** FuelLevel (litres) and FuelLevelPct exported from the tank (Zandvoort race 30 s: 5.013 -> 4.717 L) passed (0 failed) when the PO powered off; rerun and commit |
 | **TRAILBRAKE-DRIFT** | (found 2026-10-18, UNDERSTEER-1 S1) the stability suite's trail-braking check (250 km/h, 2.5 deg, 0.4 pedal) gave 10.6 deg max sideslip on the default setup on 2026-10-14 (PHYSFID-1 S2) and 18.9 deg on 2026-10-18 before any tyre change: something between loosened the car under braking. Bisect the commits | ✅ **CLOSED (S1, 2026-10-18):** PHYSFID-1 S9 (2026-10-15: iRacing's MEASURED aero lift, front -0.06 / rear -0.04 m2, + the bars' measured 46 % front split) -- JM_PHYSFID_S9=0 gives 10.6 / 9.2 deg again exactly; JM_SLIP_BODYFRAME=1 (TD261016-1) changes nothing. S9 improved the closed loop on the PO's iRacing laps (1.0373 -> 1.0346), so the looser high-speed trail braking is the measured car, not a defect. Worth a direct iRacing check (trail braking at 250 km/h) in the next test plan |
 | **DOCGUIDES-2** | PO 2026-10-17 (after DOCGUIDES-1): track guides -- only the CURRENT track; condense every guide, nothing not absolutely needed (where it came from, references to GPL or iRacing); Racecraft A-Z -> a GLOSSARY: drop the half least relevant to julia racing, halve the words, no quotes, simplify; the setup guides (Skippy, iRacing, LSD) -> ONE plain document, reached from the Garage (setup) tab, not the Guides tab; remove the redundant one-paragraph track text that is not under the Guides tab | 🟡 **S1 (2026-10-17 night), for the PO's look:** docs/guides_text/*.md (5 track guides with .trk maps + 53 julia corner shots, glossary 15 entries, one setup guide behind Garage "Setup guide…"); Guides tab follows the Race tab's track; analyser fs paragraph and source names removed; guides_test |
 | **HORIZON-SKIRT-1** | (found 2026-10-17 chasing the Stavelot pocket) where GPL's mesh ends below the horizon (Spa s ~8500 left, past the bank) our horizon ring's lower art (hedges) shows through as a dark pocket | ✅ **CLOSED (S1-S2, 2026-10-17), nothing to fix in the ground:** against the gold (260802 Spa chase t 215.5-216.5 vs our s 8465-8495, `261017/stavelot/gold_vs_ours_8480.jpg`) GPL stands a long row of SPECTATORS with flags and a rail along that verge -- they hide the same gap in GPL. Removed by the PO's 2026-08-27 loose-people order, the gap shows. Goes with the SPECTATORS-1 decision |
@@ -27763,3 +27763,93 @@ give the heave-vs-speed signature at three front springs, and the garage gives t
 
 * FUELIBT-1 S1 (2026-10-18): the .ibt row now carries FuelLevel (litres) and FuelLevelPct. Zandvoort race, autodrive, 30 s:
   5.013 -> 4.717 L (0.296 L burnt) -- which also verifies at run time the burn path LOOPSPLIT-1 cycle 2 S4 moved.
+
+## IRDATA-261018 -- the PO's IRPLAN-3 iRacing session (2026-10-18), ingested
+
+### IRDATA-261018 S1 (2026-10-18): copied, catalogued, first readings
+* Retro: the 261017 capture taught that screenshots can show a lagging solve and that the .sto files are encrypted, so
+  IRPLAN-3 asked for setup SHEETS; the 10-17 ingest identified files by hand. This time a catalog tool does it.
+* Copied byte-for-byte (79 files, md5-checked) from the USB stick to `~/gold standard/julia racer/261018/`. File map:
+  `261018/ingest/README.md`; `tools/irsession_catalog_261018.jl` -> `261018/ingest/catalog.csv` (setup, knobs, signature).
+  Done: A (31 sheets), D1, D2/D3, E1 (+ extra WW103 runs, one with 23 N/mm front), E2, E3 (bar ARMS, not diameters),
+  E4, F (three AI races, 7/12/21 cars). Not done: B and C as screenshots (the sheets cover the endpoints of B and C1-C3;
+  C4/C5, the bar rate per hole under a big twist, are still missing).
+* **The PO's throttle topped out at 0.807 from 13:44 on** (every run before reached 1.000): E1's last two WW103 runs,
+  all of E2, E3, E4 and F were driven without the pedal's top 19 %. Replays are unaffected (they feed iRacing's own
+  Throttle); "full throttle" analyses must use each file's own top (`irtest_draft_261015.jl` now does). Tell the PO.
+* **E4 trail braking, gold only** (`tools/trailbrake_261018.jl`): 11 events with 0.4-1.2 s of brake under steer from
+  210-269 km/h (both setups): iRacing's peak sideslip <= 6.9 deg, no spin. julia's stability suite reports 19-30 deg for
+  0.4/0.6 pedal trail braking from 250 km/h -- julia looks far too loose there; to be confirmed by replaying these exact
+  inputs (irgold_replay, JM_IRG_DIRS=261018 JM_IRG_KIND=brake).
+* **E2 diff, gold only** (`difframp_261017.jl`, JM_DIFFDIR): drive ramp 35 deg locking 0.83 (568 samples; 261017: 0.92),
+  75 deg 1.63 (the inner rear spins up). Confirms SETUPMODEL-1 S4 on more exits.
+* **E3 roll per bar** (`tools/rollbar_261018.jl`): roll 1.24/1.43 deg/g (two base runs), front soft 1.48, front firm
+  1.16, rear soft 1.60, rear firm 1.20. The two base runs differ as much as the bar steps -- not enough to settle the
+  46 % front split from the gold alone.
+* **F drafting** (`irtest_draft_261015.jl`, now fitting the lone car per setup and gear): race traffic gives no clean
+  lone baseline -- the 50-150 m bin still reads a 26 % "cut", so the near bins (0-5 m 10 %, 5-10 m 0 %) cannot be read.
+  Inconclusive; the PO's F2 controlled runs (lone / behind / 10-20-40 m) are not separable inside the race files.
+
+### UNDERSTEER-1 S5 (2026-10-18): the PO's D1 power slides -- the rear is too grippy at the limit AND julia cannot hold the drift
+* Retro: S1-S4 cut rear mu 1.65 -> 1.52, ruled out overall grip, lift and the rear combined-slip knobs on the 261010 cells,
+  and named the gap: the gold holds its fastest circles in a power drift. IRPLAN-3 D1 asked for exactly that.
+* Gold (`tools/powerslide_261018.jl`): 19 held slides (default) + 11 (WW103) at 105-118 km/h, 1.05-1.20 g, beta 4-6 deg
+  (to 9.4), pedal ~0.5, rear slip ratios 4-8 % (inside > outside at 75 deg ramp, equal at 35 deg).
+* irgold_steady on the 261018 skidpad files (26 cells; JM_ST_DIR): shipped car 33.5 (8 fail). At >= 1.07 g julia runs
+  1.2-2.1 deg LESS sideslip and 1.3-2 deg less rear slip angle than the gold; at 0.67-0.92 g it matches within 0.2 deg.
+* Grid: mur 1.46 28.4 (7 fail) -- the beta gap halves but the cells that failed for lack of grip now fail by SPINNING
+  (sim beta 38-87 deg); mur 1.40 26.3 (14 fail, mostly spins); ckr 12 36.3; ckr 12 + mur 1.46 28.2 (10); car 22 31.8.
+* Reading: iRacing holds a stable 5-6 deg drift; julia goes from "won't drift" straight to "spins". The sim tyre's
+  lateral force is flat past its peak (rsy 0.975), so it is not tyre fall-off. The next suspect is the settle controller
+  (integral steering on yaw rate) being unable to hold an open-loop-unstable drift: a counter-steering settle
+  (yaw-rate + sideslip feedback) is needed before judging rear mu below 1.52. Nothing shipped.
+
+### SETUPMODEL-1 S5 (2026-10-18): the PO's setup sheets as exact garage frames -- camber jacking found
+* Retro: S1's open question was the "lateral balance": camber moved corner weights in ways a rigid car cannot, and the
+  fit used a contact-patch migration (`cam_patch`, 20.7 mm/deg) as a stand-in. The 10-17 screenshots also showed lagging
+  solves. The sheets (IRPLAN-3 Part A) are finished solves.
+* `261018/ingest/sheet_frames.py` -> `frames_sheets.csv` (31 frames, the 261017 CSV columns) + `knobs_sheets.csv`;
+  `garage_fit_261017.jl` takes them by default (GF_SHEETS=0 to leave out; GF_DROP=<name parts> to drop frames).
+* Knob endpoints on the sheets: front perch -36.9 .. 309.2 mm (was 94.1 .. 305.6 "known"), front toe -45 .. +53 mm, rear
+  toe -6 .. +17 mm, LF camber -2.5 .. +4.0 deg, brake bias 30 .. 70 %, packer 0 .. 19.0, dampers 0 .. 12; gearing seen on
+  iRacing's monza_default: final 4.00, 2nd 1.61, 4th 1.00, drive ramp 65. The "tire_pressure_max" sheet reads 179 kPa
+  though 207 kPa is on the 261004 skidpad setup -- not the max; pressure stays provisional.
+* The camber sheets: LF +4.4 deg raises LF 6.0 mm, RF 4.2 mm, compresses the LF shock 2.7 mm and moves ~60-80 N
+  diagonally; -2.1 deg does the opposite at about half. A camber change acts like a PERCH change at that corner.
+  New `cam_jack` (+ `cam_jack2`) in garage.jl: the wheel's effective length per degree of camber knob. Fit (sheets +
+  261017 frames, perch_low dropped -- its LF shock is past full extension, a regime the model does not have):
+  rms 8.3 -> 5.3 digits; camber_high 86 -> 21, camber_low 32 -> 13.5; cam_jack 1.85 mm/deg, and cam_patch falls to
+  -0.27 (it was standing in for this). Worst frames now = stale 10-17 screenshots.
+
+### TRAILBRAKE-DRIFT S2 (2026-10-18): the PO's E4 runs replayed -- julia follows the gold on the inputs actually driven
+* Gold (`tools/trailbrake_261018.jl`): 11 stops with brake under steer (0.4-1.2 s) from 210-269 km/h, peak beta <= 6.9
+  deg, no spin; most of the PO's E4 stops were full pedal in a straight line, the trail part short and gentle.
+* `irgold_replay.jl` gained `JM_IRG_INJECT=1` (brake/trail windows start from the gold's own u, v, r: a stop after full
+  throttle has no steady speed to settle on -- 3 of 4 windows failed to settle before) and a comma list in JM_IRG_KIND.
+  261018 E4 files, 4 windows: the 244 km/h trail stop beta max gold 6.8 / julia 5.0 deg (no spin); straight stops
+  1.0/0.7, 2.1/1.8, 4.5/3.7; yaw-rate error 30 % of gold RMS, beta 0.86 deg.
+* Reading: on the PO's own inputs julia is not looser than iRacing. The 19-30 deg of the stability suite come from its
+  synthetic input (0.4/0.6 pedal held into the turn), harsher than anything the PO drove. Not settled either way; a
+  sharper E4 (a longer brake-and-turn at 40 % pedal) would settle it -- queued for the next iRacing plan.
+
+### IRDATA-261018 S2 (2026-10-18): D2/D3 pulls and coasts replayed -- julia ~0.02 g short on the straights
+* `irgold_replay.jl` (JM_IRG_INJECT=1, all kinds) on the five D2/D3 files (13-15-11 .. 13-23-59, both setups, pedal still
+  reaching 1.0 then): 30 windows, 1 settle failure. Speed after 5 s, sim - gold: median -3.5 km/h over the 27 straight
+  windows (range +16 .. -25; the big ones are lifts/brakes where the gold's timing dominates), i.e. a steady ~0.2 m/s^2
+  (~0.02 g) deficit in drive or extra drag, same sign in both setups, pulls and coasts alike.
+* Next (IRGOLD-1 longitudinal): split pulls vs coasts per gear and check the session air density / CdA / the throttle
+  map at 1.0 before touching the engine.
+
+### IRDATA-261018 S3 (2026-10-18): the straight-line deficit is air density -- iRacing's engine breathes, julia's does not
+* Split of S2's windows (JM_IRG_DUMP traces): coasts match (sim - gold -0.03 m/s^2), full-throttle pulls -0.32,
+  part throttle -0.20. By rpm band, full throttle, sim/gold acceleration 0.93 (4-5k) .. 0.86 (8-9k). Same on the 261017
+  Monza files and the 261010 T7 runs (pulls -0.27) -- not a 261018 artefact. longval_261002 (the Ring) still reads
+  0.97-0.99 in 4th/5th.
+* Gold only (`tools/wot_density_261018.jl`: torque implied by m·ax + drag + rolling + grade, per rpm band): the Ring
+  (rho 1.099) 232 / 258 / 283 N·m at 4-5 / 5-6 / 6-7k; Monza (1.151) 243 / 276 / 305 -- ratios 1.047 / 1.070 / 1.078 for a
+  density ratio of 1.047. iRacing's engine makes ~density-proportional torque; julia's WOT table (torquefit_261004, the
+  Ring at ~1.099) is the same in any air. Hence: right at the Ring, 7-9 % short at Monza.
+* iRacing's air in every gold session: 25.56 C always, pressure by altitude -> Monza 1.15, Charlotte 1.15, skidpad
+  1.14, Watkins Glen 1.11, the Ring 1.09-1.10. julia runs every track at 1.10.
+* New items: **ENGINERHO-1** (combustion torque x rho/1.099; neutral in the game at 1.10) and **TRACKAIR-1** (each
+  track's air at iRacing's 25.56 C and its altitude -- Zandvoort/Monza ~5-6 % more power AND drag than the Ring).

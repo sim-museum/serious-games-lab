@@ -1,0 +1,39 @@
+file,track,setup,dur_s,vmax_kph,laps,dir,steady_s,ay_p99_g,fspring,farb,rarb,ramp,trailbrake_s,coast_s
+lotus49_monza nochicane 2026-10-18 13-15-11.ibt,monza nochicane,261010_rung_official.sto,141,265,1,LR,0,0.41,30 N/mm,0.375"/2,0.6875"/5,75 deg,0.8,5
+lotus49_monza nochicane 2026-10-18 13-18-02.ibt,monza nochicane,261005_jr_ww103.sto,86,294,0,LR,0,1.05,18 N/mm,0.375"/5,0.6875"/firm,35 deg,2.2,3
+lotus49_monza nochicane 2026-10-18 13-19-45.ibt,monza nochicane,261005_jr_ww103.sto,37,254,0,LR,0,0.57,18 N/mm,0.375"/5,0.6875"/firm,35 deg,0.9,1
+lotus49_monza nochicane 2026-10-18 13-20-53.ibt,monza nochicane,261010_rung_official.sto,172,255,1,LR,0,1.24,30 N/mm,0.375"/2,0.6875"/5,75 deg,0.0,57
+lotus49_monza nochicane 2026-10-18 13-23-59.ibt,monza nochicane,261005_jr_ww103.sto,163,255,1,LR,0,1.20,18 N/mm,0.375"/5,0.6875"/firm,35 deg,0.0,62
+lotus49_monza nochicane 2026-10-18 13-29-28.ibt,monza nochicane,261010_rung_official.sto,191,255,1,LR,2,1.37,30 N/mm,0.375"/2,0.6875"/5,75 deg,0.0,25
+lotus49_monza nochicane 2026-10-18 13-33-09.ibt,monza nochicane,261010_rung_official.sto,100,259,0,L,0,1.42,35 N/mm,0.375"/2,0.6875"/5,75 deg,0.0,9
+lotus49_monza nochicane 2026-10-18 13-35-08.ibt,monza nochicane,261010_rung_official.sto,93,255,0,L,0,1.42,35 N/mm,0.375"/2,0.6875"/5,75 deg,0.0,25
+lotus49_monza nochicane 2026-10-18 13-37-08.ibt,monza nochicane,261005_jr_ww103.sto,97,254,0,L,0,1.31,18 N/mm,0.375"/5,0.6875"/firm,35 deg,0.0,16
+lotus49_monza nochicane 2026-10-18 13-38-57.ibt,monza nochicane,261005_jr_ww103.sto,96,261,0,L,0,1.58,18 N/mm,0.375"/5,0.6875"/firm,35 deg,0.0,14
+lotus49_monza nochicane 2026-10-18 13-44-44.ibt,monza nochicane,261005_jr_ww103.sto,104,255,0,L,0,1.41,23 N/mm,0.375"/5,0.6875"/firm,35 deg,0.0,17
+lotus49_monza nochicane 2026-10-18 13-46-32.ibt,monza nochicane,261005_jr_ww103.sto,102,253,0,L,2,1.45,23 N/mm,0.375"/5,0.6875"/firm,35 deg,0.0,32
+lotus49_monza nochicane 2026-10-18 13-49-30.ibt,monza nochicane,261010_rung_official.sto,434,287,3,R,2,1.34,30 N/mm,0.375"/2,0.6875"/5,35 deg,1.2,74
+lotus49_monza nochicane 2026-10-18 13-57-05.ibt,monza nochicane,261010_rung_official.sto,395,289,6,R,0,1.45,30 N/mm,0.375"/2,0.6875"/5,75 deg,2.0,72
+lotus49_monza nochicane 2026-10-18 14-20-09.ibt,monza nochicane,261004_skidpad.sto,9,0,0,-,0,0.00,30 N/mm,0.375"/2,0.6875"/firm,75 deg,0.0,0
+lotus49_monza nochicane 2026-10-18 14-20-33.ibt,monza nochicane,261010_rung_official.sto,250,280,1,LR,2,1.36,30 N/mm,0.375"/2,0.6875"/5,75 deg,1.0,44
+lotus49_monza nochicane 2026-10-18 14-24-50.ibt,monza nochicane,261010_rung_official.sto,183,286,1,R,0,1.44,30 N/mm,0.375"/2,0.6875"/5,75 deg,0.5,36
+lotus49_monza nochicane 2026-10-18 14-27-59.ibt,monza nochicane,261010_rung_official.sto,527,286,4,LR,0,1.44,30 N/mm,0.375"/2,0.6875"/5,75 deg,2.3,92
+lotus49_monza nochicane 2026-10-18 14-37-00.ibt,monza nochicane,261005_jr_ww103.sto,247,272,7,R,0,1.53,18 N/mm,0.375"/5,0.6875"/firm,35 deg,3.4,43
+lotus49_monza nochicane 2026-10-18 14-41-14.ibt,monza nochicane,261005_jr_ww103.sto,260,284,2,R,2,1.43,18 N/mm,0.375"/5,0.6875"/firm,35 deg,3.7,43
+lotus49_monza nochicane 2026-10-18 14-50-59.ibt,monza nochicane,261005_jr_ww103.sto,162,245,1,R,0,1.43,18 N/mm,0.375"/5,0.6875"/firm,35 deg,0.6,16
+lotus49_monza nochicane 2026-10-18 14-59-12.ibt,monza nochicane,261005_jr_ww103.sto,487,298,4,R,0,1.42,18 N/mm,0.375"/5,0.6875"/firm,35 deg,6.2,57
+lotus49_monza nochicane 2026-10-18 15-11-16.ibt,monza nochicane,261005_jr_ww103.sto,555,283,4,R,2,1.30,18 N/mm,0.375"/5,0.6875"/firm,35 deg,6.1,42
+lotus49_monza nochicane 2026-10-18 15-29-17.ibt,monza nochicane,261005_jr_ww103.sto,17,0,0,-,0,0.00,18 N/mm,0.375"/5,0.6875"/firm,35 deg,0.0,0
+lotus49_monza nochicane 2026-10-18 15-31-56.ibt,monza nochicane,261005_jr_ww103.sto,143,273,1,R,2,1.53,18 N/mm,0.375"/5,0.6875"/firm,35 deg,0.8,9
+lotus49_monza nochicane 2026-10-18 15-37-17.ibt,monza nochicane,261005_jr_ww103.sto,222,260,1,LR,0,1.26,18 N/mm,0.375"/5,0.6875"/firm,35 deg,1.1,15
+lotus49_monza nochicane 2026-10-18 15-47-16.ibt,monza nochicane,monza.sto,410,297,3,LR,4,1.38,30 N/mm,0.375"/3,0.6875"/4,65 deg,3.1,35
+lotus49_monza nochicane 2026-10-18 15-56-39.ibt,monza nochicane,monza.sto,131,177,1,LR,0,1.28,30 N/mm,0.375"/3,0.6875"/4,65 deg,0.0,5
+lotus49_monza nochicane 2026-10-18 16-03-27.ibt,monza nochicane,monza.sto,173,272,1,LR,0,1.28,30 N/mm,0.375"/3,0.6875"/4,65 deg,0.8,6
+lotus49_monza nochicane 2026-10-18 16-10-08.ibt,monza nochicane,monza.sto,351,287,2,LR,2,1.29,30 N/mm,0.375"/3,0.6875"/4,65 deg,1.1,42
+lotus49_monza nochicane 2026-10-18 16-18-14.ibt,monza nochicane,monza.sto,393,297,3,R,4,1.25,30 N/mm,0.375"/3,0.6875"/4,65 deg,2.4,34
+lotus49_skidpad 2026-10-18 13-00-28.ibt,skidpad,261004_skidpad.sto,432,118,10,LR,160,1.29,30 N/mm,0.375"/2,0.6875"/5,75 deg,0.0,2
+lotus49_skidpad 2026-10-18 13-09-27.ibt,skidpad,261005_jr_ww103.sto,216,125,4,LR,60,1.27,18 N/mm,0.375"/5,0.6875"/firm,35 deg,0.0,2
+lotus49_skidpad 2026-10-18 14-07-37.ibt,skidpad,261004_skidpad.sto,186,110,5,L,20,1.21,30 N/mm,0.375"/2,0.6875"/5,75 deg,0.0,1
+lotus49_skidpad 2026-10-18 14-11-39.ibt,skidpad,261004_skidpad.sto,85,111,9,L,30,1.25,30 N/mm,0.375"/soft,0.6875"/5,75 deg,0.0,1
+lotus49_skidpad 2026-10-18 14-13-23.ibt,skidpad,261004_skidpad.sto,68,110,12,L,22,1.18,30 N/mm,0.375"/firm,0.6875"/5,75 deg,0.0,1
+lotus49_skidpad 2026-10-18 14-15-00.ibt,skidpad,261004_skidpad.sto,83,109,16,L,40,1.19,30 N/mm,0.375"/2,0.6875"/soft,75 deg,0.0,0
+lotus49_skidpad 2026-10-18 14-16-45.ibt,skidpad,261004_skidpad.sto,98,113,21,L,58,1.21,30 N/mm,0.375"/2,0.6875"/firm,75 deg,0.0,1

@@ -23,16 +23,21 @@ isempty(files) && (println("usage: irtest_draft_261015.jl <dir or .ibt files>");
 
 # samples: (gear, v, a, gap)
 S = Tuple{Int,Float64,Float64,Float64}[]
+SETUPS = String[]                                   # a gear key is setup*10 + gear (lone fits per setup)
 for fn in files
     f = ibt_open(fn); c(n) = haskey(f.vars, n) ? channel(f, n) : nothing
+    m = match(r"DriverSetupName: ([^\n]*)", f.yaml); su = m === nothing ? "?" : m.captures[1]
+    su in SETUPS || push!(SETUPS, su); si = findfirst(==(su), SETUPS)
     v = c("Speed"); ax = c("LongAccel"); thr = c("Throttle"); brk = c("Brake"); ay = c("LatAccel"); gear = c("Gear"); gap = c("CarDistAhead")
     any(x -> x === nothing, (v, ax, thr, brk, ay, gear)) && (println("  skip ", basename(fn), ": missing channels"); continue)
     n = length(v); kept = 0
+    # 2026-10-18 (IRPLAN-3 F): the PO's pedal topped out at 0.807 from 13:44 that day -- "full" is the file's own top
+    full = 0.98*maximum(thr); full < 0.95 && @printf("  %s: the pedal tops out at %.3f -- full throttle taken as > %.3f\n", basename(fn), maximum(thr), full)
     for k in 31:n
-        (thr[k] > 0.98 && brk[k] < 0.01 && abs(ay[k]) < 0.12G && v[k] > 25 && gear[k] >= 2) || continue
-        all(j -> gear[j] == gear[k] && thr[j] > 0.9, k-30:k) || continue          # 0.5 s settled in this gear, on power
+        (thr[k] > full && brk[k] < 0.01 && abs(ay[k]) < 0.12G && v[k] > 25 && gear[k] >= 2) || continue
+        all(j -> gear[j] == gear[k] && thr[j] > 0.92*full, k-30:k) || continue          # 0.5 s settled in this gear, on power
         g = gap === nothing ? Inf : (gap[k] > 0 ? Float64(gap[k]) : Inf)
-        push!(S, (Int(gear[k]), Float64(v[k]), Float64(ax[k]), g)); kept += 1
+        push!(S, (10si + Int(gear[k]), Float64(v[k]), Float64(ax[k]), g)); kept += 1
     end
     @printf("  %-60s %6d full-throttle straight samples\n", basename(fn)[1:min(end, 60)], kept)
 end
@@ -46,7 +51,7 @@ for g in sort(unique(first.(S)))
     X = hcat(ones(length(L)), [s[2] for s in L], [s[2]^2 for s in L]); y = [s[3] for s in L]
     fits[g] = X \ y
     r = y - X*fits[g]
-    @printf("  gear %d: lone fit on %d samples, residual %.3f m/s^2 RMS (v %.0f-%.0f km/h)\n", g, length(L), sqrt(mean(abs2, r)),
+    @printf("  %s gear %d: lone fit on %d samples, residual %.3f m/s^2 RMS (v %.0f-%.0f km/h)\n", SETUPS[g ÷ 10], g % 10, length(L), sqrt(mean(abs2, r)),
             3.6minimum(s[2] for s in L), 3.6maximum(s[2] for s in L))
 end
 isempty(fits) && (println("no gear with enough lone samples (>= 60 with no car within $(LONE_GAP) m) -- record the lone runs (test 5a)"); exit(1))

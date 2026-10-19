@@ -292,7 +292,10 @@ function replay(car, sp, u0, g, w; warm = nothing)
     car.s_fy(car.integ, m*G*sin(c["bank"][w.k0]))                 # S20: the settle on the window start's bank (0 if off)
     gr = clamp(round(Int, c["Gear"][w.k0]), 1, 5)
     off = rad2deg(c["SteeringWheelAngle"][w.k0])
-    if w.kind === :steady || w.kind === :brake || w.kind === :trail
+    # IRDATA-261018 (E4): JM_IRG_INJECT=1 starts :brake/:trail windows from the gold's own state (u, v, r) instead of a
+    # settle -- a stop from 250 km/h follows full throttle, so there is no steady speed to settle on
+    inj = Base.get(ENV, "JM_IRG_INJECT", "0") == "1" && (w.kind === :brake || w.kind === :trail)
+    if !inj && (w.kind === :steady || w.kind === :brake || w.kind === :trail)
         δg = abs(c["SteeringWheelAngle"][w.k0])/sr
         k0 = w.k0
         δ0, ok = settle_vr!(car, sp, u0, c["VelocityX"][k0], c["YawRate"][k0], gr; δcap = δg + deg2rad(2), warm,
@@ -380,7 +383,7 @@ function main()
     rows = NamedTuple[]; fails = NamedTuple[]
     for fn in files
         g = goldfile(fn); W = windows(g)
-        isempty(kinds) || (W = filter(w -> String(w.kind) == kinds, W))
+        isempty(kinds) || (W = filter(w -> String(w.kind) in split(kinds, ","), W))
         test = testof(fn); stem = match(r"(\d\d-\d\d-\d\d)\.ibt$", fn).captures[1]
         @printf("\n== %s  %s  (%d windows)\n", stem, test, length(W)); flush(stdout)
         isempty(W) && continue
