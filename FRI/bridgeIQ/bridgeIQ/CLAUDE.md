@@ -30,8 +30,71 @@
   - BIQ_RKC_ASKER_PLACES: partner asked 4NT, I answered, partner bid 6/7 -> pass (biq pulled 6S to 7D).
   Q-Plus judge: 2/1 +72 IMP / 6 changed (6 better), Precision +27 / 3; all 9 = Q-Plus; sim keeps the
   2C ones. Curve: 2/1 +0.007 (SE 0.005, 3 boards), Precision 0. Tests 261017-48/62/65, T-2c-8d(-5d),
-  T-rkc-void, prog-1711 (275 checks). Seen, not fixed: the RKC asker's trump choice (curve bd 1798:
-  1H-2C-2H-3C-4NT asked for hearts, 6H -3, 6C makes).
+  T-rkc-void, prog-1711 (275 checks). Committed f0bbb611.
+
+## Sprints (autonomous, 2026-10-18; user: "run scrum autonomously"; nothing committed without asking)
+Each sprint: one weakness group, fix the Q-Plus way behind a switch, measure on the Q-Plus judge
+(`qplus_rules_ab.py` scan+changed, both systems, sim check) and the progress curve (`biq_progress.py`,
+both systems, step vs the last commit); keep only if the judge gains and the curve doesn't drop.
+* Sprint 1 — RKC trump choice + king-ask answers. Of the recorded 4NT askers' placing calls, biq's
+  trump matched Q-Plus's on 23/43 (2/1) and 16/19 (Precision): cue bids after a minor raise read as
+  trump (1D-2C-2D-4D-4H-4NT), splinters missed (1D-1H-3S-4S-4NT), partner's weak two ignored
+  (2D-2NT-3H-4C-4H-4NT). `_rkc_trump` (BIQ_RKC_TRUMP), used by every RKC step: partner's weak two /
+  preempt; splinter; formal agreement unless an unconfirmed splinter; then both-partners suit /
+  most bid / latest, 4-level new suits after a fit are cues, alerted calls never. Now 37/43, 17/19.
+  King ask (BIQ_KING_ASK_STEPS): Q-Plus answers 5NT in steps 6C/6D/6H = 0/1/2 side kings (9/9);
+  biq named a king. Asker reads the steps; grand on its own source even with 0 kings (Q-Plus 2/2;
+  curve 9 made / 3 failed). Judge: 2/1 +227 IMP / 32 changed (17 better, 1 worse), Precision +30 / 9;
+  sim keeps all 41. Curve: 2/1 +0.003 (SE 0.008), Precision 0.000 (SE 0.015). Tests T-rkct-cue,
+  T-rkct-splinter, T-kask-steps (278 checks).
+* Cost map (10-18 evening): every current disagreement scored vs Q-Plus's call (`changed` with OLD =
+  the scan with biq := Q-Plus; files tools/runs/agreement/261018_*_rules_rkct3_cost.jsonl): 2/1 -2187 /
+  4408, Precision -1104 / 2864. Top: reasonless pass at the end of `_generic_responder_rebid` (2/1 -609
+  / 170, Precision -140 / 92), `_opener_suit_rebid` end (-238 / 91), `_opener_rebid` (-185 / 49),
+  "LAW compete" (-162 / 39 and -113 / 27), Precision "Sanity: raise partner's suit" (-163 / 51) and
+  "Precision 1x: no clear rebid" (-158 / 38).
+* Sprint 2 — `_generic_responder_rebid` passes, two clusters: (C1) partner's weak two / preempt / 2NT
+  and my forcing call (-243 / 34), (C2) partner's cue after a fit (-131 / 17). Fixes: weak 2D -
+  2NT - answer had no continuation (BIQ_WEAK_2D_ASK_CONT: 3NT, 5D with an unbalanced 16+ and a fit,
+  pass 3D below 17); `_cue_continuation` takes the suit both partners bid when no formal trump
+  (BIQ_CUE_CONT_FIT; minor raises set none). Judge: 2/1 +73 / 10 (8 better), Precision +46 / 3; sim
+  keeps all 13. Curve: 2/1 0, Precision +0.004 (SE 0.002). Tests T-2d-ask, T-cue-mfit (280 checks).
+  Left: preempt follow-ups (3D-3S-4C, 3S-4C-4D, 3NT-4C-4H: Q-Plus 4NT / 5D), Q-Plus's 4C slam move
+  after 2D-2NT.
+* Sprint 3 — `_opener_suit_rebid` passes (-238 / 91): opener over partner's 3NT. Q-Plus (all recorded
+  opener-vs-3NT calls, both systems) bids 4M with a singleton / void and either its own 6+ major or 3+
+  in partner's natural major (raised or not); passes balanced hands, after 2M-3NT direct, and as the
+  strong 1C opener. `_opener_3nt_to_major` (BIQ_OPENER_3NT_TO_MAJOR), weak twos only after the 2NT
+  ask. Judge: 2/1 +26 / 15 (SE 27), Precision -5 / 6 (SE 20) (neutral; agreement +6). Curve: 2/1 +0.004 (SE
+  0.012), Precision +0.010 (0.008). Kept as the Q-Plus way. Tests T-3nt-4m, T-3nt-bal (282 checks).
+  Left in this group: cue continuations after a fit where partner's cue is in my own suit (1D-1H-3S-4S),
+  partner's 4-level new suit after my 2-suiter (1S-2D-2S-4H).
+* Sprint 4 — "LAW compete" (2/1 -162 / 39, Precision -113 / 27; Q-Plus passes 50 of 66). BIQ_LAW_TIGHT:
+  no LAW raise of partner's answer to my takeout double (it is not a 5-card overcall: (1H)-X-(P)-1S-
+  (1NT) 2S), none over their 1NT. Judge: 2/1 +12 / 7, Precision +32 / 4; sim keeps all 11; curve 2/1 0,
+  Precision -0.002 (SE 0.007). Test T-law-tox (283 checks). Unresolved, switch OFF by default:
+  BIQ_LAW_NO_SAVE_OVER_3NT (no 4M "compete" over their 3NT). Q-Plus passes 10 of 10 recorded and the
+  judge says +55 / 6 (2/1) + 5 (Prec), but the curve (biq opponents bid 3NT more freely) says 2/1 -0.007
+  (SE 0.004, 4 boards: 4H -1/-2 beat 3NT made). Decide with a live check or a bigger sample.
+* Sprint 5 — "Sanity: raise partner's suit" (Precision -163 / 51, 2/1 -67 / 40): `_safe_forced_bid`
+  raised partner's last suit after misjudged forces. BIQ_FORCING_FIXES: (1) only the opener reverses
+  (responder's 1C-1D-2D-2H isn't one), except after my strong 1C where partner's suit stays forcing
+  (Q-Plus never passed 1C-1D-2x-2M); (2) auction_context A1: a 3-level raise of opener's rebid suit
+  (1D-1H-2C-3C) is a limit raise, not GF; (3) stage 2d': after our NT opening a free bid over their
+  interference is competitive (1NT-(2H)-2S: pass); (4) stage 2d: partner's suit over Precision 2D is
+  to play; (5) partner's forcing 3C with the unbid suits stopped -> 3NT, not 4C (clubs only: over 3D
+  3NT lost, the 3D is often artificial). Judge: 2/1 +7 / 16, Precision +72 / 22 (SE 29, agreement
+  +10); sim keeps all 38. Curve: 2/1 +0.005 (SE 0.010), Precision +0.037 (SE 0.014), the largest step
+  since 10-16. Tests T-1nt-free, T-p2d-2s, T-3c-3nt (286 checks).
+* Sprint 6 — Precision 1C opener's "no clear rebid" (-158 / 38): diffuse (half contested, many slam
+  sequences). Fixed the one structural gap: 1C-1D-2NT (20-24) now reads as a 2NT opening for both
+  hands, like 1C-1D-1NT (BIQ_NT2_AFTER_1C, in `_nt_after_1c_view`): Q-Plus answers in its 2NT system
+  (3C Stayman, 3H transfer, opener 3D); biq bid 3NT at once or passed 3C. In the view the opener
+  counts at most 21 (it had jumped 3NT to 6NT with 23-24); responder counts +1, passes with 0-2
+  instead of Stayman, and after Stayman / a transfer bids game with 4+ (it passed 3C-3D with 4-7).
+  The first version without those two guards cost the curve -0.023 (SE 0.011). Judge: Precision +53
+  / 10 (7 better, 1 worse), 2/1 0; sim keeps all 10. Curve: Precision +0.002 (SE 0.006). Tests P-8
+  (now also accepts 3C, Q-Plus's call), T-1c2n-st (287 checks).
 
 ## STATUS — 2/1 catch-all rules from Q-Plus's recorded calls (2026-10-16 night, committed 10-17)
 * New plan (user, 10-16): map bidding weaknesses in groups instead of fixing the worst boards of each

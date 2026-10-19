@@ -188,6 +188,29 @@ FAMILIES = {
     "p1c_ovc": ("S holds a two-suiter or long suit over East's strong 1C", "E",
                 {"E": {"ok": _band(16, 21)}, "S": _ml_hand(6, 12)}, "ESNW",
                 lambda a: a and a[0] == "1C"),
+    "p1c_2nt": ("S opens a strong 1C with 20-24 balanced, partner is weak (1C-1D-2NT)", "S",
+                {"S": {"shapes": _shapes(lambda x: max(x.values()) <= 4 or (max(x["S"], x["H"]) <= 4
+                                                                             and min(x.values()) >= 2)),
+                       "ok": _band(20, 24, _balanced)},
+                 "N": {"ok": _band(0, 7)}}, "SNEW",
+                lambda a: len(a) > 4 and a[0] == "1C" and a[4] == "2NT"),
+    # 2026-10-18 sprint families: the open questions and tonight's changes.
+    "nt_save": ("S overcalls East's 1NT in spades, partner has three, East/West reach 3NT (save or pass)", "E",
+                {"E": _NT, "S": {"shapes": _shapes(lambda x: x["S"] == 6), "ok": _band(8, 11)},
+                 "N": {"shapes": _shapes(lambda x: x["S"] == 3), "ok": _band(5, 9)},
+                 "W": {"ok": _band(8, 11, _balanced)}},
+                "ESNW", lambda a: "3NT" in a[2::2]),
+    "slam_rkc": ("S has a long spade suit and 16-20, partner 12-16 with support (keycards, trump, kings)", "S",
+                 {"S": {"shapes": _shapes(lambda x: x["S"] >= 6), "ok": _band(16, 20)},
+                  "N": {"shapes": _shapes(lambda x: x["S"] >= 3), "ok": _band(12, 16)}}, "SNEW",
+                 lambda a: "4NT" in a),
+    "pre_strong": ("partner opens a 3-level preempt, S has 15-20 (the follow-ups)", "N",
+                   {"N": {"shapes": _shapes(lambda x: max(x.values()) == 7), "ok": _band(5, 9)},
+                    "S": {"ok": _band(15, 20)}}, "NSEW",
+                   lambda a: a and a[0][0] == "3" and a[0] != "3NT"),
+    "wk2d_ask": ("partner opens a weak 2D, S has 15-20 (2NT ask and after)", "N",
+                 {"N": _weak_two("D"), "S": {"ok": _band(15, 20)}}, "NSEW",
+                 lambda a: a and a[0] == "2D"),
 }
 VULS = ["None", "NS", "EW", "Both"]
 

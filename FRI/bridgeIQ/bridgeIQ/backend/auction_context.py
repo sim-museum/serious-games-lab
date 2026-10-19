@@ -156,6 +156,7 @@ _MAJORS = (Suit.HEARTS, Suit.SPADES)
 # 4NT that follows asks keycards, as Q-Plus answers it (2C-2D-2H-2S-2NT-3D-
 # 3H-4C-4D-4H-4NT: 5C), not a quantitative invite to pass.
 STRONG_2C_4NT_RKC = os.environ.get("BIQ_STRONG_2C_4NT_RKC", "1") == "1"
+A1_NOT_RAISE = os.environ.get("BIQ_FORCING_FIXES", "1") == "1"
 
 # The system of the decision being made (set by native_bidder.decide_bid), so
 # callers that pass no system still read 1NT-2D/2H right: natural weak
@@ -635,7 +636,12 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
                 and resp[1][1].level == 3
                 and resp[1][1].suit not in (None, _NT)
                 and resp[1][1].suit not in (ctx.opening_bid.suit,
-                                            resp[0][1].suit)):
+                                            resp[0][1].suit)
+                # A raise of opener's rebid suit (1D-1H-2C-3C) is a limit
+                # raise, not a third suit.
+                and not (A1_NOT_RAISE and resp[1][1].suit in
+                         {b.suit for s, b in state.bids[:resp[1][0]]
+                          if s == ctx.opener_seat})):
             idx3, b3 = resp[1]
             prior = [b for s, b in state.bids[:idx3]
                      if not b.is_pass and not b.is_double

@@ -1084,6 +1084,87 @@ def _rkc_response_levels(variant: str) -> dict:
     }
 
 
+RKC_TRUMP = os.environ.get("BIQ_RKC_TRUMP", "1") == "1"
+KING_ASK_STEPS = os.environ.get("BIQ_KING_ASK_STEPS", "1") == "1"
+
+
+def _rkc_trump(state: 'AuctionState', system=None) -> Optional[Suit]:
+    """The trump suit a 4NT asks about, read the way Q-Plus does (2/1 and
+    Precision records of RKC askers' placing calls). In order:
+      a) partner's weak two / 3-level preempt, uncontested: partner's suit,
+         or mine if partner raised it (2D-2NT-3H-4C-4H-4NT is diamonds);
+      b) a splinter: a jump in a new suit to the 3/4 level (a double jump, a
+         jump to the 4 level, or a single jump once game forced or over
+         partner's 2-level suit: 1D-2C-3S) agrees the
+         splinterer's partner's last suit (1D-1H-3S-4S-4NT is hearts);
+      c) the formal agreement (derive_context), unless it is a splinter (b)
+         did not confirm;
+      d) else a suit both partners bid, then the most-bid suit, then the
+         latest; once both partners have bid a suit, a new suit first bid
+         at the 4 level is a cue, not a trump candidate (1D-2C-2D-4D-4H-4NT
+         is diamonds; 2C-2S-3NT-4D-4NT is diamonds).
+    Alerted (artificial) calls are never trump candidates.
+    BIQ_RKC_TRUMP=0 keeps _agreed_trump."""
+    if not RKC_TRUMP:
+        return _agreed_trump(state)
+    me, pd = state.seat, state.seat.partner()
+    side = (me, pd)
+    i4 = next((i for i, (s_, b) in enumerate(state.bids) if s_ in side
+               and b.level == 4 and b.suit == Suit.NOTRUMP and not b.is_pass), len(state.bids))
+    prior = state.bids[:i4]
+    nat, last = [], None                       # (idx, seat, bid, jump)
+    for i, (s_, b) in enumerate(prior):
+        if b.is_pass or b.is_double or b.is_redouble or b.suit is None:
+            continue
+        cheapest = 1 if last is None else (last[0] if _BID_RANK[b.suit] > _BID_RANK[last[1]]
+                                           else last[0] + 1)
+        if s_ in side and b.suit != Suit.NOTRUMP and not b.alert:
+            nat.append((i, s_, b, b.level - cheapest))
+        last = (b.level, b.suit)
+    if not nat:
+        return _agreed_trump(state)
+    opp_bid = any(s_ not in side and not b.is_pass for s_, b in prior)
+    first = next(((s_, b) for s_, b in prior if not b.is_pass), None)
+    # a) partner's weak two / preempt
+    if (first is not None and first[0] == pd and not opp_bid
+            and first[1].suit not in (None, Suit.NOTRUMP)
+            and (first[1].level == 3
+                 or (first[1].level == 2 and first[1].suit in (Suit.HEARTS, Suit.SPADES))
+                 or (first[1].level == 2 and first[1].suit == Suit.DIAMONDS
+                     and not _strong_club(system)))):
+        mine = [b.suit for _, s_, b, _ in nat if s_ == me]
+        raised = [b.suit for _, s_, b, _ in nat if s_ == pd and b.suit in mine]
+        return raised[-1] if raised else first[1].suit
+    ctx = derive_context(state)
+    # b) splinter
+    for k in range(len(nat) - 1, -1, -1):
+        i, s_, b, jump = nat[k]
+        seen_before = {x[2].suit for x in nat[:k]}
+        partner_bids_ = [x[2] for x in nat[:k] if x[1] != s_]
+        if (b.suit not in seen_before and partner_bids_ and b.level >= 3 and jump >= 1
+                and (jump >= 2 or b.level == 4 or ctx.gf_established
+                     or partner_bids_[-1].level >= 2)):
+            return partner_bids_[-1].suit
+    # c) formal agreement
+    if ctx.trump is not None and ctx.trump.mechanism != TrumpMechanism.SPLINTER:
+        return ctx.trump.suit
+    # d) both partners, most bid, latest; 4-level new suits are cues
+    cands, fit = {}, False
+    for k, (i, s_, b, jump) in enumerate(nat):
+        if b.suit not in cands:
+            if b.level >= 4 and fit:
+                continue
+            cands[b.suit] = {"seats": set(), "n": 0, "last": i}
+        c = cands[b.suit]
+        c["seats"].add(s_)
+        c["n"] += 1
+        c["last"] = i
+        fit = fit or len(c["seats"]) == 2
+    if not cands:
+        return _agreed_trump(state)
+    return max(cands, key=lambda x: (len(cands[x]["seats"]), cands[x]["n"], cands[x]["last"]))
+
+
 def _respond_to_rkc(state: 'AuctionState', e: HandEval, system) -> Bid:
     """Partner just bid 4NT — answer with the key/ace count.
 
@@ -1092,7 +1173,7 @@ def _respond_to_rkc(state: 'AuctionState', e: HandEval, system) -> Bid:
       • 1430 RKC: 5♣=0/3, 5♦=1/4, 5♥=2 no Q, 5♠=2 with Q.
       • 0314 RKC: same as 1430 with 5♣/5♦ swapped.
     """
-    trump = _agreed_trump(state)
+    trump = _rkc_trump(state, system)
     keys = _keycard_count(e, trump, system)
     has_q = _has_trump_queen(e, trump)
     variant = getattr(system, "rkc_variant", "1430") or "1430"
@@ -1236,7 +1317,7 @@ def _asker_after_rkc(state: 'AuctionState', e: HandEval, system) -> Bid:
       • Just enough keys for slam → 6 of trump
     """
     variant = getattr(system, "rkc_variant", "1430") or "1430"
-    trump = _agreed_trump(state)
+    trump = _rkc_trump(state, system)
     if trump is None:
         return passb(why="No trump fit detected — RKC fallback pass")
     partner_resp = state.partner_bids[-1] if state.partner_bids else None
@@ -1332,12 +1413,18 @@ def _respond_to_king_ask(state: 'AuctionState', e: HandEval, system) -> Bid:
     Q-Plus's actual 5NT answers are slightly system-specific; this
     cheap-step style is the most common.
     """
-    trump = _agreed_trump(state)
+    trump = _rkc_trump(state, system)
     if trump is None:
         return passb(why="No trump — can't answer king-ask")
     side_kings = [s for s in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS)
                   if s != trump and e.has_king.get(s, False)]
     n_kings = len(side_kings)
+    # Q-Plus counts side kings in steps: 6C = 0, 6D = 1, 6H = 2, 6S = 3
+    # (9 of 9 recorded 2/1 + Precision answers).
+    if KING_ASK_STEPS:
+        st = (Suit.CLUBS, Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES)[n_kings]
+        return bid(6, st, alert=st != trump,
+                   why=f"King-ask: {n_kings} side king{'s' if n_kings != 1 else ''} (step 6{st.to_char()})")
     if n_kings == 0:
         return bid(6, trump, why="King-ask: 0 side kings")
     if n_kings == 3:
@@ -1363,11 +1450,28 @@ def _asker_after_king_response(state: 'AuctionState', e: HandEval, system) -> Bi
     one king, the source-of-tricks usually exists for 7. With 0
     kings shown (partner returned to 6 of trump), settle for 6.
     """
-    trump = _agreed_trump(state)
+    trump = _rkc_trump(state, system)
     if trump is None:
         return passb(why="No trump after king-ask")
     resp = state.partner_bids[-1] if state.partner_bids else None
     if resp is None:
+        return passb()
+    if KING_ASK_STEPS and resp.level == 6 and resp.suit not in (None, Suit.NOTRUMP):
+        # With no side king Q-Plus still bids the grand on its own running
+        # side suit (2S-4NT-5H-5NT-6C 7S with A542.AQ.AKJ932.9; 1S-2H-2S-4NT-
+        # 5H-5NT-6C 7S with KQ4.AKT87.AQ73.K): the same test for any count.
+        n = _BID_RANK[resp.suit]
+        has_src = (e.suit_lengths.get(trump, 0) >= 5
+                   or any(e.suit_lengths.get(x, 0) >= 5 and e.has_ace.get(x, False)
+                          for x in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS)))
+        if has_src and _keycard_count(e, trump, system) >= 2 and e.hcp >= 12:
+            return bid(7, trump, why=f"{n} side king(s) + source of tricks → 7{trump.to_char()}")
+        if resp.suit == trump:
+            return passb(why=f"{n} side king(s), no clear source — small slam stands")
+        for cand in (bid(6, trump, why=f"{n} side king(s), no clear source → 6{trump.to_char()}"),
+                     bid(6, Suit.NOTRUMP, why=f"{n} side king(s), past 6{trump.to_char()} → 6NT")):
+            if _is_legal_bid(cand, state):
+                return cand
         return passb()
     # Partner returned to 6 of trump = 0 side kings → small slam.
     if resp.level == 6 and resp.suit == trump:
@@ -1788,7 +1892,7 @@ def _answer_queen_ask(state: 'AuctionState', e: HandEval, system) -> Optional[Bi
     if not (ans.level == 5 and ans.suit in step and ask.level == 5
             and ask.suit == step[ans.suit]):
         return None
-    T = _agreed_trump(state)
+    T = _rkc_trump(state, system)
     if T not in (Suit.HEARTS, Suit.SPADES) or T == ask.suit:
         return None
     if not e.has_queen.get(T, False):
@@ -1869,7 +1973,7 @@ def _try_rkc_pipeline(state: 'AuctionState', e: HandEval, system) -> Optional[Bi
             and ((last_partner.level == 5 and last_partner.suit == Suit.NOTRUMP)
                  or (last_partner.level == 6
                      and last_partner.suit not in (None, Suit.NOTRUMP)))):
-        T = _agreed_trump(state)
+        T = _rkc_trump(state, system)
         if T is not None and T != Suit.NOTRUMP and last_partner.suit != T:
             cand = bid(6, T, why=f"6{T.to_char()}: partner's void-showing answer to 4NT")
             if _is_legal_bid(cand, state):
@@ -1878,7 +1982,7 @@ def _try_rkc_pipeline(state: 'AuctionState', e: HandEval, system) -> Optional[Bi
     # Case 3: partner bid 5NT after an RKC sequence → I show kings.
     if (last_partner is not None and last_partner.level == 5
             and last_partner.suit == Suit.NOTRUMP):
-        if _agreed_trump(state) is not None and last_mine is not None \
+        if _rkc_trump(state, system) is not None and last_mine is not None \
                 and last_mine.level == 5:
             return _respond_to_king_ask(state, e, system)
 
@@ -2259,6 +2363,10 @@ def _is_partner_signoff_in_game(state: AuctionState) -> bool:
     return False
 
 
+LAW_TIGHT = os.environ.get("BIQ_LAW_TIGHT", "1") == "1"
+LAW_NO_SAVE_OVER_3NT = os.environ.get("BIQ_LAW_NO_SAVE_OVER_3NT", "0") == "1"
+
+
 def _law_competitive_bid(state, e) -> Optional[Tuple[int, Suit]]:
     """Law of Total Tricks for competitive raises.
 
@@ -2343,6 +2451,14 @@ def _law_competitive_bid(state, e) -> Optional[Tuple[int, Suit]]:
         for pb in state.partner_bids:
             if pb.is_pass or pb.suit not in (Suit.HEARTS, Suit.SPADES):
                 continue
+            # Partner's answer to my takeout double is not an overcall: it
+            # may be four cards and nothing (r:1H X 1S 1NT: Q-Plus passed).
+            if LAW_TIGHT:
+                i_pb = next(i for i, (s_, b_) in enumerate(state.bids) if b_ is pb)
+                mine_before = [b_ for s_, b_ in state.bids[:i_pb]
+                               if s_ == state.seat and not b_.is_pass]
+                if mine_before and mine_before[-1].is_double:
+                    break
             if e.suit_lengths.get(pb.suit, 0) >= 4:
                 our_trump = pb.suit
                 partner_min_trumps = 5  # overcall promises 5+
@@ -2374,6 +2490,13 @@ def _law_competitive_bid(state, e) -> Optional[Tuple[int, Suit]]:
         if _seat in (state.seat, state.seat.partner()):
             return None  # most recent bid was ours
         opp_bid_recent = True
+        # Their last bid was notrump: no trump suit of theirs for the LAW to
+        # count, and over 3NT a 4M "compete" is a save of ten tricks (Q-Plus
+        # passed all 10 recorded 2/1 + Precision cases).
+        # (Not their 2NT: usually a conventional raise, 1H-(1S)-2NT 3S.)
+        if (LAW_TIGHT and b.suit == Suit.NOTRUMP and b.level != 2
+                and (b.level == 1 or LAW_NO_SAVE_OVER_3NT)):
+            return None
         break
     if not opp_bid_recent:
         return None
@@ -2500,7 +2623,17 @@ def _partner_was_forcing(state: AuctionState) -> bool:
             and _BID_RANK[pl.suit] > _BID_RANK[state.partner_bids[0].suit]
             # A RAISE of my suit (1D-1H-2H) is not a reverse (RUN2-038
             # competed to 3H with 6 HCP on this misreading).
-            and pl.suit not in state.suit_bid_by_me):
+            and pl.suit not in state.suit_bid_by_me
+            # Only the opener reverses: responder's 1C-1D-2D-2H is not one
+            # (Q-Plus 3D / pass; biq "raised" 2H).
+            and not (FORCING_FIXES and state.opener_seat != state.seat.partner()
+                     # After my strong 1C partner's suit stays forcing (Q-Plus
+                     # never passed 1C-1D-2D-2S).
+                     and not (state.opener_seat == state.seat
+                              and state.opening_bid is not None
+                              and state.opening_bid.level == 1
+                              and state.opening_bid.suit == Suit.CLUBS
+                              and state.opening_bid.alert))):
         return True
 
     # Splinter: alerted JUMP in a NEW suit (level ≥ 3) — must be
@@ -3128,6 +3261,7 @@ def _nt_after_2c_view(state, system):
 
 NT_AFTER_2C = os.environ.get("BIQ_NT_AFTER_2C", "1") == "1"
 NT_AFTER_1C = os.environ.get("BIQ_NT_AFTER_1C", "1") == "1"
+NT2_AFTER_1C = os.environ.get("BIQ_NT2_AFTER_1C", "1") == "1"
 
 
 def _nt_after_1c_view(state, system):
@@ -3144,13 +3278,18 @@ def _nt_after_1c_view(state, system):
     calls = [b for _, b in state.bids]
     if len(calls) < k + 6 or not _is_call(calls[k], 1, Suit.CLUBS):
         return state
+    # 1C-1D-2NT (20-24) likewise reads as a 2NT opening: Q-Plus answers in
+    # its 2NT system (3C Stayman with QJT4.T43.K5.9762, 3H transfer with
+    # A9654.T7.T6.T754, opener 3D); biq bid 3NT or passed 3C.
+    lvl = (1 if _is_call(calls[k + 4], 1, Suit.NOTRUMP) else
+           2 if NT2_AFTER_1C and _is_call(calls[k + 4], 2, Suit.NOTRUMP) else None)
     if not (calls[k + 1].is_pass and _is_call(calls[k + 2], 1, Suit.DIAMONDS)
-            and calls[k + 3].is_pass and _is_call(calls[k + 4], 1, Suit.NOTRUMP)
+            and calls[k + 3].is_pass and lvl is not None
             and calls[k + 5].is_pass):
         return state
-    calls = calls[:k] + [bid(1, Suit.NOTRUMP)] + calls[k + 5:]
+    calls = calls[:k] + [bid(lvl, Suit.NOTRUMP)] + calls[k + 5:]
     view = parse_auction(state.seat, state.dealer, calls, vulnerability=state.vulnerability)
-    view._nt_after_1c = True
+    view._nt_after_1c = lvl
     return view
 
 
@@ -3158,9 +3297,14 @@ def _nt_after_1c_eval(view, e: HandEval) -> HandEval:
     """Opener holds 16-19, not the view's 14-16: responder counts two HCP
     more, so 7+ moves towards game (Q-Plus bid 3NT with 7, passed with 6 or
     less; biq's 1NT responder passes up to 8)."""
-    if not getattr(view, "_nt_after_1c", False) or view.opener_seat == view.seat:
+    if not getattr(view, "_nt_after_1c", False):
         return e
-    return replace(e, hcp=e.hcp + 2)
+    if view.opener_seat == view.seat:
+        # The 2NT rebid already showed 20-24: count no extras over the 2NT
+        # opening's 20-21 (biq jumped 1C-1D-2NT-3NT to 6NT with 23-24).
+        return replace(e, hcp=min(e.hcp, 21)) if view._nt_after_1c == 2 else e
+    # 1C-1D-2NT is 20-24 against the 2NT opening's 20-21: one point more.
+    return replace(e, hcp=e.hcp + (1 if view._nt_after_1c == 2 else 2))
 
 
 def _nt_after_1c_fix(b: Bid, view, e: HandEval) -> Bid:
@@ -3168,6 +3312,29 @@ def _nt_after_1c_fix(b: Bid, view, e: HandEval) -> Bid:
     3NT (opposite 16-19; Q-Plus 3NT with 952.86.Q875.KQ63)."""
     if not getattr(view, "_nt_after_1c", False) or view.opener_seat == view.seat:
         return b
+    if view._nt_after_1c == 2:
+        # No Stayman with nothing (T653.T853.3.T654: Q-Plus passed).
+        if (not view.my_bids and _is_call(b, 3, Suit.CLUBS) and e.hcp < 3):
+            return passb(why=f"{e.hcp} HCP: pass 1C-1D-2NT")
+        # After my Stayman / transfer, 4+ opposite 20-24 is game: 4M with a
+        # fit, else 3NT (biq passed 1C-1D-2NT-3C-3D with 4-7 HCP).
+        if (len(view.my_bids) == 1 and b.is_pass and e.hcp >= 4
+                and view.my_bids[0].level == 3 and view.partner_bids
+                and not _partnership_has_reached_game(view)):
+            pl = view.partner_bids[-1]
+            if pl.suit in (Suit.HEARTS, Suit.SPADES) and (
+                    e.suit_lengths.get(pl.suit, 0) >= 4
+                    or (view.my_bids[0].suit != Suit.CLUBS
+                        and e.suit_lengths.get(pl.suit, 0) >= 5)):
+                cand = bid(4, pl.suit, why=f"4{pl.suit.to_char()}: game opposite 1C-1D-2NT")
+            else:
+                cand = bid(3, Suit.NOTRUMP, why=f"3NT: {e.hcp} HCP opposite 1C-1D-2NT (20-24)")
+            if _is_legal_bid(cand, view):
+                return cand
+        if view.my_bids or not b.is_pass or not (
+                e.hcp >= 4 or (e.hcp >= 2 and max(e.suit_lengths.values()) >= 6)):
+            return b
+        return bid(3, Suit.NOTRUMP, why=f"3NT: {e.hcp} HCP opposite 1C-1D-2NT (20-24)")
     if view.my_bids or not b.is_pass or e.hcp < 7:
         return b
     return bid(3, Suit.NOTRUMP, why=f"3NT: {e.hcp} HCP opposite 1C-1D-1NT (16-19)")
@@ -3843,6 +4010,14 @@ def _cue_continuation(state: AuctionState, e: HandEval,
                         and state.partner_bids[0].level >= 3))
     if T is None and preempt:
         T = op.suit
+    if T is None and CUE_CONT_FIT:
+        # A suit both of us bid naturally (a minor raise sets no formal trump:
+        # 2C-2S-3D-4D-4H, 1D-2C-2D-4D-4H; Q-Plus cue-bid or asked, biq passed).
+        mine = {b.suit for b in state.my_bids
+                if b.suit not in (None, Suit.NOTRUMP) and not b.alert}
+        both = [b.suit for b in state.partner_bids[:-1] if b.suit in mine and not b.alert]
+        if both:
+            T = both[-1]
     if T is None or T == Suit.NOTRUMP or pl.suit == T:
         return None
     if pl.suit == Suit.NOTRUMP:
@@ -3881,6 +4056,66 @@ def _cue_continuation(state: AuctionState, e: HandEval,
     cand = bid(signoff, T, why=f"{signoff}{T.to_char()}: back to trumps over "
                                f"partner's forcing {pl.level}{pl.suit.to_char()}")
     return cand if _is_legal_bid(cand, state) else None
+
+
+CUE_CONT_FIT = os.environ.get("BIQ_CUE_CONT_FIT", "1") == "1"
+FORCING_FIXES = os.environ.get("BIQ_FORCING_FIXES", "1") == "1"
+OPENER_3NT_TO_MAJOR = os.environ.get("BIQ_OPENER_3NT_TO_MAJOR", "1") == "1"
+
+
+def _opener_3nt_to_major(state: AuctionState, e: HandEval, system) -> Optional[Bid]:
+    """I opened (one of a suit, or a weak two that partner asked about with
+    2NT), uncontested, and partner bid 3NT. With a singleton or void, play
+    4M in my own 6+ card major, or in partner's natural major with 3+ cards,
+    raised or not (Q-Plus's recorded opener calls: 1H-1S-2S-3NT 4S
+    with AKQ6.K8752.952.6, 1S-1NT-3D-3NT 4S with AJ9753.T.AK92.AT,
+    2S-2NT-3S-3NT 4S; balanced hands pass, the strong 1C opener passes).
+    BIQ_OPENER_3NT_TO_MAJOR=0 disables."""
+    if not OPENER_3NT_TO_MAJOR or state.opener_seat != state.seat:
+        return None
+    op = state.opening_bid
+    pl = state.partner_bids[-1] if state.partner_bids else None
+    if (op is None or pl is None or not (pl.level == 3 and pl.suit == Suit.NOTRUMP)
+            or op.suit in (None, Suit.NOTRUMP)):
+        return None
+    if op.level == 1 and op.suit == Suit.CLUBS and _strong_club(system):
+        return None
+    if op.level == 2:
+        if op.suit == Suit.CLUBS or _strong_club(system) or not state.partner_bids \
+                or not (state.partner_bids[0].level == 2
+                        and state.partner_bids[0].suit == Suit.NOTRUMP):
+            return None
+    elif op.level != 1:
+        return None
+    if any(s_ not in (state.seat, state.seat.partner()) and not b.is_pass
+           for s_, b in state.bids):
+        return None
+    if min(e.suit_lengths.values()) > 1:
+        return None
+    mine = [b for b in state.my_bids if b.suit in (Suit.HEARTS, Suit.SPADES)]
+    own = [b.suit for b in mine if e.suit_lengths.get(b.suit, 0) >= 6]
+    pm = [b.suit for b in state.partner_bids[:-1]
+          if b.suit in (Suit.HEARTS, Suit.SPADES) and not b.alert
+          and e.suit_lengths.get(b.suit, 0) >= 3]
+    # A double jump in a new suit (a splinter) already showed my support.
+    jumped, last, seen = False, None, set()
+    for s_, b in state.bids:
+        if b.is_pass or b.is_double or b.is_redouble or b.suit is None:
+            continue
+        if s_ == state.seat and b.suit != Suit.NOTRUMP and b.suit not in seen and last:
+            cheapest = last[0] if _BID_RANK[b.suit] > _BID_RANK[last[1]] else last[0] + 1
+            jumped = jumped or (b.level - cheapest >= 2
+                                and b.suit not in state.suit_bid_by_partner)
+        if s_ == state.seat:
+            seen.add(b.suit)
+        last = (b.level, b.suit)
+    M = own[0] if own else (pm[-1] if pm and not jumped else None)
+    if M is None:
+        return None
+    cand = bid(4, M, why=f"4{M.to_char()} over partner's 3NT: "
+                         f"{e.suit_lengths[M]} {M.to_char()} and a short suit")
+    return cand if _is_legal_bid(cand, state) else None
+WEAK_2D_ASK_CONT = os.environ.get("BIQ_WEAK_2D_ASK_CONT", "1") == "1"
 
 
 MINORS_4NT = os.environ.get("BIQ_MINORS_4NT", "1") == "1"
@@ -4157,6 +4392,20 @@ def _safe_forced_bid(state: AuctionState, eval_: HandEval,
         if lvl <= (4 if pl.suit in (Suit.HEARTS, Suit.SPADES) else 3):
             cand = bid(lvl, pl.suit, why=f"Sanity: two-card support for partner's "
                                          f"rebid {pl.suit.to_char()}")
+            if _is_legal_bid(cand, state):
+                return cand
+
+    # Partner's forcing 3C with 3NT still available and the unbid suits
+    # stopped: 3NT, not 4C (Q-Plus 1C-1H-2S-2NT-3C, 1S-2C-2D-2H-3D,
+    # 1C-1NT-2C-3C 3NT; biq raised to 4m).
+    # Clubs only: partner's 3D is often artificial (1S-3C-3D) or I have a
+    # major to rebid, and there 3NT lost (2/1 -29 / 4, Precision -14 / 8).
+    if (FORCING_FIXES and pl.level == 3 and pl.suit == Suit.CLUBS and not pl.alert):
+        ours = set(state.suit_bid_by_me) | set(state.suit_bid_by_partner)
+        if all(_has_stopper(eval_, x) for x in
+               (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS) if x not in ours):
+            cand = bid(3, Suit.NOTRUMP, why=f"3NT over partner's forcing 3{pl.suit.to_char()}: "
+                                            "unbid suits stopped")
             if _is_legal_bid(cand, state):
                 return cand
 
@@ -4467,7 +4716,8 @@ def _sanity_wrap(raw: Bid, state: AuctionState, eval_: HandEval,
                 return sub
         if raw.is_pass and partner_spoke_last:
             sub = (_cue_continuation(state, eval_) or _minors_4nt_advance(state, eval_)
-                   or _answer_opener_double(state, eval_))
+                   or _answer_opener_double(state, eval_)
+                   or _opener_3nt_to_major(state, eval_, system))
             if sub is not None:
                 return sub
 
@@ -4647,8 +4897,11 @@ def _sanity_wrap(raw: Bid, state: AuctionState, eval_: HandEval,
             # weak takeout, 1NT-3D an invitation (both passable).
             nat_nt = (op is not None and op.suit == Suit.NOTRUMP
                       and not _nt_transfers(system, "1NT" if op.level == 1 else "2NT"))
+            # Precision's 2D (three-suiter): partner's suit is to play.
+            prec_2d = (FORCING_FIXES and op is not None and op.level == 2
+                       and op.suit == Suit.DIAMONDS and _strong_club(system))
             if (pl.suit is not None and pl.suit != Suit.NOTRUMP
-                    and op is not None and pl.suit != op.suit and not nat_nt):
+                    and op is not None and pl.suit != op.suit and not nat_nt and not prec_2d):
                 sub = _safe_forced_bid(state, eval_, system)
                 if sub is not None:
                     return sub
@@ -4667,10 +4920,13 @@ def _sanity_wrap(raw: Bid, state: AuctionState, eval_: HandEval,
                 and state.last_non_pass[0] == state.seat.partner()):
             pl = state.partner_bids[0]
             op = state.opening_bid
+            # After our 1NT/2NT opening a free bid over their interference
+            # is competitive, not forcing (1NT-(2H)-2S: Q-Plus passes).
             if (pl.suit is not None and pl.suit != Suit.NOTRUMP
                     and op is not None and pl.suit != op.suit
                     and pl.suit not in state.suit_bid_by_opps
-                    and pl.level <= 3):
+                    and pl.level <= 3
+                    and not (FORCING_FIXES and op.suit == Suit.NOTRUMP)):
                 sub = _safe_forced_bid(state, eval_, system)
                 if sub is not None:
                     return sub
@@ -5353,6 +5609,27 @@ def _convention_followups(state: AuctionState, e: HandEval, system) -> Optional[
         cand = bid(3, M, why=f"3{M.to_char()}: back to partner's suit")
         return cand if _is_legal_bid(cand, state) else bid(3, Suit.NOTRUMP,
                                                         why="3NT after the 2NT ask")
+
+    # The same after a weak 2D: biq had no continuation and passed the answer
+    # (2D-2NT-3H with AT62.985.A82.AK9: Q-Plus 3NT; 2D-2NT-3D/3S likewise).
+    # 3NT, or 5D with a diamond fit and an unbalanced 16+.
+    if (WEAK_2D_ASK_CONT and state.opener_seat == partner and op.level == 2
+            and op.suit == Suit.DIAMONDS and not _strong_two(op, system)
+            and not _strong_club(system)
+            and len(state.my_bids) == 1 and state.my_bids[0].level == 2
+            and state.my_bids[0].suit == Suit.NOTRUMP
+            and len(state.partner_bids) == 2 and pl.level == 3
+            and not state.opp_overcalled):
+        if pl.suit == Suit.NOTRUMP:
+            return passb(why="3NT after the 2NT ask over 2D")
+        if e.suit_lengths.get(Suit.DIAMONDS, 0) >= 3 and not e.is_balanced and hcp >= 16:
+            return bid(5, Suit.DIAMONDS, why="5D after the 2NT ask: diamond fit, unbalanced")
+        # 3D = minimum, no feature: Q-Plus passed it with AJ82.AT85.K643.K.
+        if pl.suit == Suit.DIAMONDS and hcp < 17:
+            return passb(why="Pass 3D (minimum) after the 2NT ask")
+        cand = bid(3, Suit.NOTRUMP, why="3NT after the 2NT ask over 2D")
+        if _is_legal_bid(cand, state):
+            return cand
 
     # Precision 1D-2NT (16+, forcing): opener must answer, not pass (bd378).
     if (state.opener_seat == state.seat
