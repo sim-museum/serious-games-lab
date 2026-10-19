@@ -2,6 +2,7 @@
 # as arbarms_261011.jl did the front: the bar object's stiffness that gives the gold session's roll gradient. Data: the
 # PO's IRPLAN-3 E3 (2026-10-18, skidpad, default car, ~0.8 g circles): base, front arms soft / firm, rear arms soft / firm.
 #   julia --project=. tools/arbarms_261018.jl            (JM_ARB_AXLE=front|rear|both, default both)
+#   JM_ARB_CHECK=1: no fit -- each E3 session's roll gradient with the car exactly as built from it, vs the gold
 using Printf, Statistics
 include(joinpath(@__DIR__, "arbfit_261005.jl"))              # steady, sim_curve, install!, DriveRT3D
 const D18 = expanduser("~/gold standard/julia racer/261018/telemetry")
@@ -14,7 +15,18 @@ function gold_roll(fn)
     0.5*abs((X \ [rad2deg(p.φf) for p in Q])[1] + (X \ [rad2deg(p.φr) for p in Q])[1]), length(Q)
 end
 
+function check()
+    for (lab, stem) in (("base 2/5", "14-07-37"), ("front soft", "14-11-39"), ("front firm", "14-13-23"), ("rear soft", "14-15-00"), ("rear firm", "14-16-45"))
+        fn = first(filter(f -> occursin(stem, f), readdir(D18; join = true)))
+        gr, n = gold_roll(fn)
+        sp = install!(fn); car = DriveRT3D.build_car3d(; v0 = 30.0); u0 = copy(car.integ.u)
+        @printf("%-11s %s  gold %.3f °/g  sim %.3f °/g  (%s / %s)\n", lab, stem, gr, sim_curve(car, sp, u0).roll, sp.arb_front, sp.arb_rear)
+        flush(stdout)
+    end
+end
+
 function main()
+    get(ENV, "JM_ARB_CHECK", "0") == "1" && return check()
     ax = get(ENV, "JM_ARB_AXLE", "both")
     for (lab, stem, axle) in RUNS
         (ax == "both" || ax == String(axle)) || continue

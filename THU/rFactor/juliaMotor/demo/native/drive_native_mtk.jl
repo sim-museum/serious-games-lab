@@ -11956,9 +11956,17 @@ tstamp("  [E80] .. main() defined; physics build next")
 # cs and the heading) it compiled the FIRST time the car came within 1.2 m of the road edge -- a 316 ms
 # freeze mid-race on every track (`--trace-compile-timing`: the last compile of a Monza run, matching the
 # 300-335 ms max frame interval seen on all five). Typed and top-level, and called once below at load.
+# TARMACMU-1 (PO 2026-10-18, Monza: "twice while shifting into 5th gear the car started moving exactly sideways"): the
+# 9 m rule alone called the DRAWN tarmac grass where the road is wider than 18 m and the centreline sits off its middle --
+# Monza's pit straight, s 5450-5730, where the line jogs 11.6 m toward the banking's merge. Both of the PO's spins: car
+# straight on the tarmac 10-21 m off the line, rears on grass grip, wheelspin in 5th, sideways at 200 km/h. A wheel over
+# a road-only HAT triangle keeps tarmac grip. JM_TARMACMU=0 = before.
+const TARMAC_MU = get(ENV, "JM_TARMACMU", "1") != "0"
 @inline function wheel_mu(cx::Float64, cz::Float64, c::Float64, s::Float64, xi::Float64, yi::Float64)
-    hw = JuliaMotor.hat(TRKSURF, cx + xi*c - yi*s, cz + xi*s + yi*c)
-    (hw.found && abs(hw.lateral) > ROAD_HALFW) ? GRASS_MU : 1.0
+    px = cx + xi*c - yi*s; pz = cz + xi*s + yi*c
+    hw = JuliaMotor.hat(TRKSURF, px, pz)
+    (hw.found && abs(hw.lateral) > ROAD_HALFW) || return 1.0
+    (TARMAC_MU && ROADHAT !== TERRAIN0 && JuliaMotor.hat3d(ROADHAT, px, pz; ref = Inf)[3]) ? 1.0 : GRASS_MU
 end
 # SKIDPAD has no GPL surface (TRKSURF is defined only for GPL tracks) and never calls wheel_mu -- warming it
 # there threw UndefVarError at load and closed the window on every skidpad launch since PERF-3 (2026-09-30).
@@ -13960,6 +13968,12 @@ function main()
                 replay_out[] = new_replay_path()
             end
             flush_ibt!(ibt_samples)
+            # RESTARTGROUND-1 (PO 2026-10-18, Monza: "at start of 2nd lap ... car sinks entirely below road surface, then
+            # breaks through road surface and levitates high in the air"): Monza's wall guard in groundz holds LASTZ, and a
+            # restart never re-anchored it -- after a wreck at Parabolica (ground ~ -4 m) the new race ran off the road band
+            # 1.3 m under the mesh, was launched 12 m when the spline took over at s 460, and the step guard then held the
+            # stale -4.17 m so the next wreck sank into the ground. Re-anchor at the spawn first, as SHIFT+R does.
+            groundz(cs0.x, cs0.z; acquire = true)
             PLAYER_G[] = NaN; respawnX!(cs; groundz = groundz_phys); DriveRT3D.damage_reset!()
             DC[].lastz = 0.0   # LAPTIME-1: see the respawn below
             WRECKED[] = false; WRECK_FROZEN[] = false; empty!(LOOSE_WHEELS)   # a detached corner is never redrawn otherwise
@@ -14312,7 +14326,8 @@ function main()
                 WRECKED[] = false; WRECK_FROZEN[] = false; empty!(LOOSE_WHEELS); CLUTCH_GATE[] = -1.0
             end
         # E94-P4: a respawn is a NEW car, not a repaired one.
-        elseif rst; PLAYER_G[] = NaN; respawnX!(cs; groundz=groundz_phys); DriveRT3D.damage_reset!(); DC[].lastz = 0.0
+        elseif rst; groundz(cs0.x, cs0.z; acquire = true)   # RESTARTGROUND-1: re-anchor Monza's LASTZ (see the restart)
+            PLAYER_G[] = NaN; respawnX!(cs; groundz=groundz_phys); DriveRT3D.damage_reset!(); DC[].lastz = 0.0
             WRECKED[] = false; WRECK_FROZEN[] = false; empty!(LOOSE_WHEELS); CLUTCH_GATE[] = -1.0   # ...and not a wreck
             # LAPTIME-1: skip ONE frame of the bounce test after a respawn. The car settles onto the
             # ground at a respawn exactly as it does at spawn -- a legitimate one-frame height step

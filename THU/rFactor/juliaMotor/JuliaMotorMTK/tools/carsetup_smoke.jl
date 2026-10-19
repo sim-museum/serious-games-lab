@@ -35,9 +35,19 @@ check(cw.diff == (41.0, 35.0, 85.0, 4.0) && cd.diff == (41.0, 75.0, 60.0, 4.0), 
 check(cw.toe[1] < 0 && cd.toe[1] < 0 && cw.toe[1] < cd.toe[1] && cw.toe[2] > cd.toe[2] > 0, "toe: WW more front toe-out and more rear toe-in than the default")
 # PHYSFID-1 S9: the identified TOTALS are kept and split 46 % front (JM_PHYSFID_S9=0: the table's pairs as they are)
 _kw = DriveRT3D.ARB_ID[("0.375\" 5", "0.6875\" firm")]; _kd = DriveRT3D.ARB_ID[("0.375\" 2", "0.6875\" 5")]
-check(isapprox(sum(cw.karb), sum(_kw)) && isapprox(sum(cd.karb), sum(_kd)) &&
-      (DriveRT3D.PHYSFID_S9 ? (isapprox(cw.karb[1]/sum(cw.karb), 0.46) && isapprox(cd.karb[1]/sum(cd.karb), 0.46)) : (cw.karb == _kw && cd.karb == _kd)) &&
-      sum(cw.karb) > sum(cd.karb), "bars: identified totals, split 46 % front (PHYSFID-1 S9), WW stiffer")
+# RARBARMS-1 S2: unless JM_ARB_RESPLIT / JM_ARB_FRONT_SHARE asks for the old re-split, each bar stands alone -- the
+# default's split bars x diameter^4 x that bar's arm law (default 0.375" 2 / 0.6875" 5 = laws 1/1; WW103 5 / firm = 1.72/1.57)
+_laws = DriveRT3D.PHYSFID_S9 && !haskey(ENV, "JM_ARB_FRONT_SHARE") && !haskey(ENV, "JM_ARB_RESPLIT")
+if _laws
+    check(isapprox(collect(cd.karb), [DriveRT3D.ARB_BAR_F, DriveRT3D.ARB_BAR_R]) &&
+          isapprox(collect(cw.karb), [DriveRT3D.ARB_BAR_F*DriveRT3D.ARB_LAW_F["5"], DriveRT3D.ARB_BAR_R*DriveRT3D.ARB_LAW_R["firm"]]) &&
+          isapprox(sum(cd.karb), sum(_kd)) && sum(cw.karb) > sum(cd.karb),
+          "bars: per-bar arm laws (RARBARMS-1), default = its identified total, WW stiffer")
+else
+    check(isapprox(sum(cw.karb), sum(_kw)) && isapprox(sum(cd.karb), sum(_kd)) &&
+          (DriveRT3D.PHYSFID_S9 ? (isapprox(cw.karb[1]/sum(cw.karb), 0.46) && isapprox(cd.karb[1]/sum(cd.karb), 0.46)) : (cw.karb == _kw && cd.karb == _kd)) &&
+          sum(cw.karb) > sum(cd.karb), "bars: identified totals, split 46 % front (PHYSFID-1 S9), WW stiffer")
+end
 check(cw.cscale == (1.0, 1.15) && cd.cscale == (1.0, 1.0), "dampers: WW measured ratio, default unscaled")
 check(cw.bias > cd.bias && abs(cd.bias - 0.585) < 1e-9, "brake split: 53.5 % -> 0.585 (BRAKE-2), 54 % slightly more front")
 check(cw.camber !== nothing && cd.camber !== nothing && all(isapprox.(rad2deg.(cw.camber), (-0.4, 0.0, -0.4, 0.2); atol = 0.051)) &&

@@ -22,7 +22,7 @@ src = read(SRC, String)
 i = findfirst("if restart", src)
 i === nothing && error("no `if restart` block in $SRC -- has CTRL+R been removed?")
 # take a generous window; the block is short
-blk = src[first(i):min(length(src), first(i) + 4500)]
+blk = src[first(i):min(length(src), first(i) + 6000)]
 j = findfirst("\n        end\n", blk)
 blk = j === nothing ? blk : blk[1:last(j)]
 
@@ -58,6 +58,9 @@ required = [
     ("fuel",                     "fuel[] ="),
     # WGTD-1 (e): the AI's cool-down/stop state after the flag -- a new race's field must race again
     ("AI cool-down cleared",     "empty!(AI_COOL)"),
+    # RESTARTGROUND-1 (PO 2026-10-18): Monza's wall guard keeps LASTZ; a restart after a wreck ran the new race on the
+    # crash site's ground (1.3 m under the road, launched 12 m, then sank). The restart must re-anchor it.
+    ("ground guard re-anchored", "acquire = true"),
 ]
 for (name, needle) in required
     check(name, occursin(needle, blk), occursin(needle, blk) ? "" : "MISSING `$needle`")

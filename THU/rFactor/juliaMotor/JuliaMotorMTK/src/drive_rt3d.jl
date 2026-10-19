@@ -244,6 +244,10 @@ const ARB_ID = Dict{Tuple{String,String},NTuple{2,Float64}}(
 # (567 / 1535 / 3535 / 6804 N/m; arms 2 is the mean of two sessions) -- a torsion bar shortened by its arm. The garage's
 # positions are soft, 2, 3, 4, 5, firm; 3 and 5 are interpolated. The REAR arms have no test: still ignored.
 const ARB_ARM_FRONT = Dict("soft" => 0.37, "1" => 0.37, "2" => 1.0, "3" => 1.65, "4" => 2.30, "5" => 3.37, "firm" => 4.43, "6" => 4.43)
+# RARBARMS-1 S2: each bar's own rate in the 46 %-split car (see chassis_from_setup): the default's bars and the arm laws
+const ARB_BAR_F = 0.46*(1121.0 + 12714.0); const ARB_BAR_R = 0.54*(1121.0 + 12714.0)
+const ARB_LAW_F = Dict("soft" => 0.76, "1" => 0.76, "2" => 1.0, "3" => 1.24, "4" => 1.48, "5" => 1.72, "6" => 1.96, "firm" => 2.20, "7" => 2.20)
+const ARB_LAW_R = Dict("soft" => 0.20, "1" => 0.20, "2" => 0.40, "3" => 0.60, "4" => 0.80, "5" => 1.0, "6" => 1.285, "firm" => 1.57, "7" => 1.57)
 _armof(s) = (m = match(r"\"\s*(\S+)\s*$", s); m === nothing ? "" : lowercase(m.captures[1]))
 _firstnum(s) = (m = match(r"[-+]?\d+(?:\.\d+)?", s); m === nothing ? NaN : parse(Float64, m.match))
 const ARB_REF = (("0.375\" 2", "0.6875\" 5"), 0.375, 0.6875)   # the reference for bars with no gold run
@@ -310,7 +314,25 @@ function chassis_from_setup(sp; source::AbstractString = "unknown")
     # PHYSFID-1 S9: with the measured lift the table's split (by diameter⁴, ~8 % front) left the WW car too free at speed
     # (WW Glen closed-loop 0.90 → 1.45); 46 % front, the same total, judged best of 8 / 30 / 46 % (with the shipped lift
     # J 1.0346 vs 1.0373 before S9). A judged split until SETUPMODEL-1's twisted-car garage sweep measures it.
-    if haskey(ENV, "JM_ARB_FRONT_SHARE") || PHYSFID_S9
+    # RARBARMS-1 S2 (2026-10-18): the 46 % re-split made EVERY bar change a change of the total only -- rear arms soft
+    # also softened the front bar. Each bar now stands alone: the default's split bars (front 6364, rear 7471 N/m = 46 %
+    # of 13835) × diameter⁴ × that bar's own arm law, identified in this car from the PO's IRPLAN-3 E3 runs
+    # (tools/arbarms_261018.jl: front soft/2/firm 0.76/1/2.20 of arms 2 -- firm calibrated on the as-built car's roll
+    # gradient, JM_ARB_CHECK=1; the fit-mode estimate was 1.66 -- rear soft/5/firm 0.20/1/1.57 of arms 5, the rear's
+    # firm/5 being WW103's own identified 1.57). Unmeasured holes interpolated by hole number. The default car is
+    # unchanged; WW103 becomes (10946, 11729) from (9981, 11717). JM_ARB_RESPLIT=1 = the 46 % re-split of before.
+    if PHYSFID_S9 && !haskey(ENV, "JM_ARB_FRONT_SHARE") && !haskey(ENV, "JM_ARB_RESPLIT")
+        df = occursin(r"(?i)disc", sp.arb_front) ? 0.0 : _firstnum(sp.arb_front)
+        dr = occursin(r"(?i)disc", sp.arb_rear)  ? 0.0 : _firstnum(sp.arb_rear)
+        lf = get(ARB_LAW_F, _armof(sp.arb_front), NaN); lr = get(ARB_LAW_R, _armof(sp.arb_rear), NaN)
+        if all(isfinite, (df, dr, lf, lr))
+            karb = (ARB_BAR_F*(df/0.375)^4*lf, ARB_BAR_R*(dr/0.6875)^4*lr)
+            push!(notes, "bars $(sp.arb_front) / $(sp.arb_rear): front $(round(Int, karb[1])), rear $(round(Int, karb[2])) N/m (RARBARMS-1 per-bar laws)")
+        else
+            f = 0.46; tot = karb[1] + karb[2]; karb = (f*tot, (1 - f)*tot)
+            push!(notes, "bars $(sp.arb_front) / $(sp.arb_rear) unreadable: ARB front share $(f)")
+        end
+    elseif haskey(ENV, "JM_ARB_FRONT_SHARE") || PHYSFID_S9
         f = parse(Float64, get(ENV, "JM_ARB_FRONT_SHARE", "0.46")); tot = karb[1] + karb[2]; karb = (f*tot, (1 - f)*tot)
         push!(notes, "ARB front share $(f)")
     end
