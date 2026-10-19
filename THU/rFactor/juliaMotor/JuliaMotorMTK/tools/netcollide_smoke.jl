@@ -50,7 +50,7 @@ end
 close(hio)
 
 ct = read(clientlog, String)
-nets = [m for m in eachmatch(r"\[net\] t=[0-9.]+ rx=(\d+) .* hits=(\d+) dmin=([0-9.Inf]+)", ct)]
+nets = [m for m in eachmatch(r"\[net\] t=[0-9.]+ rx=(\d+) .* hits=(\d+) dmin=([0-9.Inf]+) pen=([0-9.]+) pennow=([0-9.]+)", ct)]
 rx = isempty(nets) ? 0 : parse(Int, nets[end][1])
 hits = isempty(nets) ? 0 : parse(Int, nets[end][2])
 dmin = isempty(nets) ? Inf : parse(Float64, nets[end][3])
@@ -58,6 +58,14 @@ for m in eachmatch(r"\[netcollide\][^\n]*", ct); println("    ", m.match); end
 chk("the client received the host's car", rx > 0, "rx=$rx")
 chk("the client closed on it (it was reachable)", dmin < 6.0, "dmin=$(round(dmin, digits = 2)) m")
 chk("a closing contact with the remote car registered", hits >= 1, "hits=$hits")
-chk("no pass-through: closest approach >= 2.0 m", dmin >= 2.0, "dmin=$(round(dmin, digits = 2)) m")
+# CARCOLLIDE-2 S2: the cars are tyres + a narrow tub now (open wheelers alongside touch at 1.72-1.80 m and can interleave
+# their wheels closer), so the old ">= 2.0 m centre to centre" no longer means "did not pass through". Measured instead:
+# the overlap of the cars' parts: the first hit on a car that cannot answer in the same frame (it is moved by the OTHER
+# machine) leaves a brief overlap the push-out resolves -- bounded (<= 0.5 m; nose-to-tail pass-through is 3.5 m) and
+# gone by the end (<= 0.05 m) -- and, as a gross guard, never within a tub's width (1.0 m).
+pen = isempty(nets) ? Inf : parse(Float64, nets[end][4]); pennow = isempty(nets) ? Inf : parse(Float64, nets[end][5])
+chk("no pass-through: the first-hit overlap stays <= 0.5 m", pen <= 0.5, "pen=$(round(pen, digits = 2)) m")
+chk("no pass-through: the cars end apart (overlap <= 0.05 m)", pennow <= 0.05, "pennow=$(round(pennow, digits = 2)) m")
+chk("no pass-through: closest approach >= 1.0 m (a tub's width)", dmin >= 1.0, "dmin=$(round(dmin, digits = 2)) m")
 println(fails[] == 0 ? "\n  NETCOLLIDE GATE: PASS ✓" : "\n  NETCOLLIDE GATE: FAIL ✗")
 exit(fails[] == 0 ? 0 : 1)

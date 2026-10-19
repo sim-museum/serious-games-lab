@@ -12,9 +12,10 @@ const SRC = read(joinpath(@__DIR__, "..", "..", "demo", "native", "drive_native_
 grab(rx) = (m = match(rx, SRC); m === nothing && error("not found: $rx"); m.match)
 for rx in (r"const CAR_HALF_L = .*", r"const CAR_HALF_W = .*", r"const CONTACT_CIRCLE = .*", r"const CONTACT_D = .*",
            r"carrad\(θ, ux, uz\) = [^\n]*\n[^\n]*", r"contact_d\(dx, dz, d, θa, θb\) =\n[^\n]*",
-           r"const CAR_M = [^\n]*", r"function car_contact_impulse\(.*?\nend"s)
+           )
     eval(Meta.parseall(grab(rx)))
 end
+include(joinpath(@__DIR__, "..", "..", "demo", "native", "carcontact.jl"))   # the sim's contact law (CARCOLLIDE-2)
 
 flat(x, z) = 0.0
 wvel(c) = (a = c.getall(c.integ); θ = a[3]; (a[4]*cos(θ) - a[5]*sin(θ), a[4]*sin(θ) + a[5]*cos(θ)))
@@ -33,10 +34,10 @@ function run(lat, vB; vA = 229/3.6, secs = 1.5, both = true)
         DriveRT3D.step_car3d!(B, 0.0, 0.0, 0.0, dt; manual = true, groundz = flat)
         isnan(t_hit) && (rh0 = (A.rh[1], A.rh[3]))           # the ride heights on the frame before contact
         dx = B.x - A.x; dz = B.z - A.z; d = hypot(dx, dz)
-        if d <= contact_d(dx, dz, d, A.θ, B.θ)
+        if car_near(dx, dz, d, A.θ, B.θ)
             (avx, avz) = wvel(A); (bvx, bvz) = wvel(B)
-            ia = car_contact_impulse(A.x, A.z, A.θ, avx, avz, DriveRT3D.yawrate3d(A), B.x, B.z, bvx, bvz)
-            ib = both ? car_contact_impulse(B.x, B.z, B.θ, bvx, bvz, DriveRT3D.yawrate3d(B), A.x, A.z, avx, avz) : nothing
+            ia = car_contact_impulse(A.x, A.z, A.θ, avx, avz, DriveRT3D.yawrate3d(A), B.x, B.z, bvx, bvz; θb = B.θ, rb = DriveRT3D.yawrate3d(B))
+            ib = both ? car_contact_impulse(B.x, B.z, B.θ, bvx, bvz, DriveRT3D.yawrate3d(B), A.x, A.z, avx, avz; θb = A.θ, rb = DriveRT3D.yawrate3d(A)) : nothing
             if ia !== nothing
                 isnan(t_hit) && (t_hit = A.t; v0 = hypot(avx, avz); r0 = DriveRT3D.yawrate3d(A))
                 DriveRT3D.bump3d!(A, ia[1], ia[2], ia[3]); rec = merge(rec, (j = rec.j + ia[4],))
@@ -76,10 +77,10 @@ function run_side(xoff, vlat; v = 75/3.6, secs = 1.0)
         DriveRT3D.step_car3d!(A, 0.0, 0.0, 0.0, dt; manual = true, groundz = flat)
         DriveRT3D.step_car3d!(B, 0.0, 0.0, 0.0, dt; manual = true, groundz = flat)
         dx = B.x - A.x; dz = B.z - A.z; d = hypot(dx, dz)
-        if d <= contact_d(dx, dz, d, A.θ, B.θ)
+        if car_near(dx, dz, d, A.θ, B.θ)
             (avx, avz) = wvel(A); (bvx, bvz) = wvel(B)
-            ia = car_contact_impulse(A.x, A.z, A.θ, avx, avz, DriveRT3D.yawrate3d(A), B.x, B.z, bvx, bvz)
-            ib = car_contact_impulse(B.x, B.z, B.θ, bvx, bvz, DriveRT3D.yawrate3d(B), A.x, A.z, avx, avz)
+            ia = car_contact_impulse(A.x, A.z, A.θ, avx, avz, DriveRT3D.yawrate3d(A), B.x, B.z, bvx, bvz; θb = B.θ, rb = DriveRT3D.yawrate3d(B))
+            ib = car_contact_impulse(B.x, B.z, B.θ, bvx, bvz, DriveRT3D.yawrate3d(B), A.x, A.z, avx, avz; θb = A.θ, rb = DriveRT3D.yawrate3d(A))
             ia !== nothing && (isnan(t_hit) && (t_hit = A.t; r0 = DriveRT3D.yawrate3d(A)); DriveRT3D.bump3d!(A, ia[1], ia[2], ia[3]))
             ib !== nothing && DriveRT3D.bump3d!(B, ib[1], ib[2], ib[3])
         end

@@ -411,11 +411,7 @@ contact_d(dx, dz, d, θa, θb) =
 # contact -- 261009/kicks.py). Physics: normal impulse jn = (1+e)·v_closing·m_eff with the player's rotation in m_eff,
 # Coulomb bodywork friction along the tangent (|jt| ≤ μ·jn: a side-swipe bleeds speed), yaw from the contact point's
 # lever arm (Izz 890). A hit at a rear corner still spins a car -- that is real.
-const CAR_M = 617.0; const CAR_IZZ = 890.0; const CAR_E = 0.12; const CAR_MU = 0.4
-"""Impulse on the player from a contact with another car: player at (px,pz) heading θ, world velocity (pvx,pvz), yaw rate
-r; the other car's centre (qx,qz) and world velocity (avx,avz), assumed not rotating and of equal mass. Returns
-(dvx, dvz, dr, jn) -- the player's world velocity and yaw-rate changes and the normal impulse [N·s] -- or nothing when
-the bodies are separating."""
+include("carcontact.jl")      # CARCOLLIDE-2: the car-to-car contact law (shared with tools/carcollide_harness.jl)
 # CARINTERACT-1 (PO 2026-10-15: julia allows "bumper cars" -- "every incentive to knock other cars out of the way
 # because there's no downside"): a car-to-car hit pushed both cars (HANDLING-1's rigid-body impulse) but DAMAGED
 # NEITHER -- damage_impact! ran only on scenery/wall contact (E94-P4). Now the player's car takes the same damage law
@@ -435,27 +431,6 @@ function carhit_damage!(cs, pdvx, pdvz, j)
     closing > DriveRT3D.DMG_ONSET_MS && println("  [carhit] t=", round(cs.t, digits = 2), " closing ", round(closing, digits = 2),
                                                " m/s  damage ", round.(DriveRT3D.DAMAGE, digits = 3), " engine ", round(DriveRT3D.ENGINE_DAMAGE[], digits = 3))
     nothing
-end
-function car_contact_impulse(px, pz, θ, pvx, pvz, r, qx, qz, avx, avz)
-    dx = qx - px; dz = qz - pz; d = hypot(dx, dz); d < 1e-6 && return nothing
-    nx = dx/d; nz = dz/d                                         # normal, player -> other
-    # contact point: the other car's centre clamped into the player's body rectangle (player frame), back to world
-    c = cos(θ); s_ = sin(θ)
-    lx = clamp(dx*c + dz*s_, -CAR_HALF_L, CAR_HALF_L); ly = clamp(-dx*s_ + dz*c, -CAR_HALF_W, CAR_HALF_W)
-    rx = lx*c - ly*s_; rz = lx*s_ + ly*c                         # lever arm from the player's CG
-    # velocity of the player's contact point (planar: ω × r with ω = r ŷ-up → (-r·rz, r·rx)) relative to the other car
-    vcx = pvx - r*rz - avx; vcz = pvz + r*rx - avz
-    vn = vcx*nx + vcz*nz
-    vn <= 0.2 && return nothing                                 # separating (or a resting touch): no new impulse
-    rxn = rx*nz - rz*nx                                          # r × n (scalar, planar)
-    meff = 1.0/(2.0/CAR_M + rxn^2/CAR_IZZ)
-    jn = (1 + CAR_E)*vn*meff
-    tx = -nz; tz = nx; vt = vcx*tx + vcz*tz                      # tangential slip at the contact
-    rxt = rx*tz - rz*tx
-    mt = 1.0/(2.0/CAR_M + rxt^2/CAR_IZZ)
-    jt = -sign(vt)*min(CAR_MU*jn, abs(vt)*mt)
-    jx = -jn*nx + jt*tx; jz = -jn*nz + jt*tz                     # impulse ON the player (pushed away from the other car)
-    (jx/CAR_M, jz/CAR_M, (rx*jz - rz*jx)/CAR_IZZ, jn)
 end
 
 # E55/E38: a physics AI whose heading deviates more than this from the rail tangent has SPUN OUT (the
@@ -1172,6 +1147,8 @@ const NETPOSES = Ref(Tuple{Int,NTuple{6,Float64}}[])   # MP-5: (car id, grounded
 const NETVEL = Ref(Dict{Int,NTuple{2,Float64}}())
 const NET_HITS = Ref(0)
 const NET_DMIN_AT = Ref{Any}(nothing)   # LOADHANG-1 S4: ((s,lat) self, (s,lat) remote) at the closest approach
+const NET_PENNOW = Ref(0.0)     # CARCOLLIDE-2: the overlap NOW (a resolved first-hit transient ends at 0)
+const NET_PENMAX = Ref(0.0)     # CARCOLLIDE-2: deepest overlap of the two cars' parts (m) -- the gate's pass-through test
 const NET_DMIN = Ref(Inf)       # closest centre-to-centre approach to any remote car so far (m) -- the gate's pass-through test
 const NET_COLLIDE = get(ENV, "JM_NET_COLLIDE", "1") != "0"
 # E85-S7: receiver-side prediction-error census (JM_NET_ERR=1).
@@ -15419,7 +15396,7 @@ function main()
             pvx = WVX[]; pvz = WVZ[]
             for (k, p) in enumerate(ai_poses)
                 dx = p[1] - cs.x; dz = p[3] - cs.z; d = hypot(dx, dz)
-                (d < 1e-3 || d > contact_d(dx, dz, d, cs.θ, p[4])) && continue   # oriented: ~4 m nose-to-tail, ~1.8 m alongside
+                (d < 1e-3 || !car_near(dx, dz, d, cs.θ, p[4])) && continue   # CARCOLLIDE-2: broad phase; carcontact.jl finds the touching parts
                 nx = dx/d; nz = dz/d                          # contact normal, player → AI
                 ac = AICARS[k]; aθ = p[4]
                 lat = -dx*sin(cs.θ) + dz*cos(cs.θ)            # contact offset in the player's frame → spin sign
@@ -15429,7 +15406,7 @@ function main()
                 avx = ac.v*cos(aθ); avz = ac.v*sin(aθ)
                 # HANDLING-1 S3: a rigid-body impulse at the contact point (car_contact_impulse) -- no amplification, no
                 # side-only yaw kick, no invented hop/roll/scrub; the bodywork friction bleeds speed on a side-swipe.
-                imp = car_contact_impulse(cs.x, cs.z, cs.θ, pvx, pvz, CAR3D ? DriveRT3D.yawrate3d(cs) : 0.0, p[1], p[3], avx, avz)
+                imp = car_contact_impulse(cs.x, cs.z, cs.θ, pvx, pvz, CAR3D ? DriveRT3D.yawrate3d(cs) : 0.0, p[1], p[3], avx, avz; θb = aθ)
                 imp === nothing && continue                   # separating → no new impulse (the contact kick already fired)
                 (pdvx, pdvz, pdr, j) = imp
                 bumpX!(cs, pdvx, pdvz, pdr)
@@ -15464,12 +15441,12 @@ function main()
             pvx = WVX[]; pvz = WVZ[]
             for (nid, p) in NETPOSES[]
                 dx = p[1] - cs.x; dz = p[3] - cs.z; d = hypot(dx, dz)
-                (d < 1e-3 || d > contact_d(dx, dz, d, cs.θ, p[4])) && continue
+                (d < 1e-3 || !car_near(dx, dz, d, cs.θ, p[4])) && continue
                 nx = dx/d; nz = dz/d
                 avx, avz = get(NETVEL[], nid, (0.0, 0.0))
                 lat = -dx*sin(cs.θ) + dz*cos(cs.θ)
                 ffb_jolt = clamp(-sign(lat)*0.6, -1.0, 1.0)
-                imp = car_contact_impulse(cs.x, cs.z, cs.θ, pvx, pvz, CAR3D ? DriveRT3D.yawrate3d(cs) : 0.0, p[1], p[3], avx, avz)
+                imp = car_contact_impulse(cs.x, cs.z, cs.θ, pvx, pvz, CAR3D ? DriveRT3D.yawrate3d(cs) : 0.0, p[1], p[3], avx, avz; θb = p[4], b_fixed = true)   # remote: answers a latency later
                 imp === nothing && continue                   # HANDLING-1 S3: the same rigid-body impulse as the AI contact
                 (pdvx, pdvz, pdr, j) = imp
                 bumpX!(cs, pdvx, pdvz, pdr)
@@ -15566,6 +15543,11 @@ function main()
             NETPOSES[] = netp
             for (_, p) in netp
                 _d = hypot(p[1] - cs.x, p[3] - cs.z)
+                # CARCOLLIDE-2: open wheelers alongside touch tyre to tyre at 1.72-1.80 m and interleave closer, so the
+                # pass-through measure is the deepest OVERLAP of the two cars' parts (carcontact.jl), not the distance
+                _g = _d < CAR_BOUND_D ? car_contact_geom(cs.x, cs.z, cs.θ, p[1], p[3], p[4]) : nothing
+                _g !== nothing && (NET_PENMAX[] = max(NET_PENMAX[], _g[5]))
+                NET_PENNOW[] = _g === nothing ? 0.0 : _g[5]
                 if _d < NET_DMIN[]
                     NET_DMIN[] = _d
                     # LOADHANG-1 S4: WHERE the closest approach was -- each car's (s, lateral) on the centreline, so a
@@ -15581,7 +15563,7 @@ function main()
                 println("  [net] t=", round(cs.t,digits=1), " rx=", NETLINK.rx,
                         " dropped=", NETLINK.dropped, " peers=", length(NETLINK.peers),
                         " known=", length(NETLINK.remote), " drawn=", length(netp),
-                        " hits=", NET_HITS[], " dmin=", round(NET_DMIN[], digits = 2), " v=", round(cs.v, digits = 1),
+                        " hits=", NET_HITS[], " dmin=", round(NET_DMIN[], digits = 2), " pen=", round(NET_PENMAX[], digits = 2), " pennow=", round(NET_PENNOW[], digits = 2), " v=", round(cs.v, digits = 1),
                         NET_DMIN_AT[] === nothing ? "" : string(" at self(s,lat)=", round.(NET_DMIN_AT[][1], digits = 2),
                                                                 " remote=", round.(NET_DMIN_AT[][2], digits = 2)))
                 flush(stdout)
