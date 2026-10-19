@@ -27,7 +27,7 @@ function run(lat, vB; vA = 229/3.6, secs = 1.5, both = true)
     for c in (A, B); c.gear = 5; c.s_gr(c.integ, DriveRT3D.GEARS[5]); end
     DriveRT3D.place3d!(A, 0.0, 0.0, 0.0; v = vA); DriveRT3D.place3d!(B, gap, lat, 0.0; v = vB)
     dt = 1/60; t_hit = NaN; v0 = vA; r0 = 0.0
-    rec = (dv = 0.0, ax = 0.0, dr = 0.0, rlift = 0.0, fdip = 0.0, pitch = 0.0, Bdr = 0.0, Bspin = 0.0, j = 0.0)
+    rec = (dv = 0.0, ax = 0.0, dr = 0.0, rlift = 0.0, fdip = 0.0, pitch = 0.0, Bdr = 0.0, Bspin = 0.0, j = 0.0, ahv = 0.0, bhv = 0.0, bpitch = 0.0)
     rh0 = (NaN, NaN)
     for k in 1:round(Int, secs/dt)
         DriveRT3D.step_car3d!(A, 0.0, 0.0, 0.0, dt; manual = true, groundz = flat)
@@ -40,10 +40,11 @@ function run(lat, vB; vA = 229/3.6, secs = 1.5, both = true)
             ib = both ? car_contact_impulse(B.x, B.z, B.θ, bvx, bvz, DriveRT3D.yawrate3d(B), A.x, A.z, avx, avz; θb = A.θ, rb = DriveRT3D.yawrate3d(A)) : nothing
             if ia !== nothing
                 isnan(t_hit) && (t_hit = A.t; v0 = hypot(avx, avz); r0 = DriveRT3D.yawrate3d(A))
-                DriveRT3D.bump3d!(A, ia[1], ia[2], ia[3]); rec = merge(rec, (j = rec.j + ia[4],))
+                DriveRT3D.bump3d!(A, ia[1], ia[2], ia[3], ia[5], ia[6], ia[7]); rec = merge(rec, (j = rec.j + ia[4],))
             end
-            ib !== nothing && DriveRT3D.bump3d!(B, ib[1], ib[2], ib[3])
+            ib !== nothing && DriveRT3D.bump3d!(B, ib[1], ib[2], ib[3], ib[5], ib[6], ib[7])
         end
+        isfinite(t_hit) && A.t - t_hit <= 0.6 && (rec = merge(rec, (ahv = max(rec.ahv, A.heave), bhv = max(rec.bhv, B.heave), bpitch = max(rec.bpitch, abs(B.pitch)))))
         if isfinite(t_hit) && A.t - t_hit <= 0.30
             (avx, avz) = wvel(A)
             rec = merge(rec, (dv = v0 - hypot(avx, avz), dr = max(rec.dr, abs(DriveRT3D.yawrate3d(A) - r0)),
@@ -58,12 +59,12 @@ end
 println("CARCOLLIDE-2 harness: A 229 km/h, lifting, hits B from behind (the sim's car_contact_impulse on both cars)")
 println("  iRacing 261018 15-11-16 t 183.2:  dv ~10 m/s in 0.25 s, yaw kick 1.3-1.7 rad/s, front ride -85 mm, rear ride +164 mm")
 @printf("  %-8s %-9s %7s %8s %8s %9s %9s %8s %8s %9s\n", "lat m", "close m/s", "dv m/s", "J kN.s", "dyaw", "fdip mm",
-        "rlift mm", "pitch°", "B yaw", "B head°")
+        "rlift mm", "pitch°", "B yaw", "B head°"); println("        (+ A heave, B heave max m, B pitch°)")
 for lat in (0.0, 0.8, 1.4), close in (5.0, 10.0, 20.0)
     r = run(lat, 229/3.6 - close)
     r.hit || (@printf("  %-8.1f %-9.0f  no contact\n", lat, close); continue)
     @printf("  %-8.1f %-9.0f %7.2f %8.2f %8.2f %9.0f %9.0f %8.2f %8.2f %9.1f\n", lat, close, r.dv, r.j/1000, r.dr,
-            1000r.fdip, 1000r.rlift, rad2deg(r.pitch), r.Bdr, rad2deg(r.Bspin))
+            1000r.fdip, 1000r.rlift, rad2deg(r.pitch), r.Bdr, rad2deg(r.Bspin)); @printf("           A heave %.2f  B heave %.2f  B pitch %.1f\n", r.ahv, r.bhv, rad2deg(r.bpitch))
 end
 
 "Side-swipe: B alongside A (centres `xoff` apart along the road), B moving toward A at `vlat` m/s; both at `v`."
@@ -81,8 +82,8 @@ function run_side(xoff, vlat; v = 75/3.6, secs = 1.0)
             (avx, avz) = wvel(A); (bvx, bvz) = wvel(B)
             ia = car_contact_impulse(A.x, A.z, A.θ, avx, avz, DriveRT3D.yawrate3d(A), B.x, B.z, bvx, bvz; θb = B.θ, rb = DriveRT3D.yawrate3d(B))
             ib = car_contact_impulse(B.x, B.z, B.θ, bvx, bvz, DriveRT3D.yawrate3d(B), A.x, A.z, avx, avz; θb = A.θ, rb = DriveRT3D.yawrate3d(A))
-            ia !== nothing && (isnan(t_hit) && (t_hit = A.t; r0 = DriveRT3D.yawrate3d(A)); DriveRT3D.bump3d!(A, ia[1], ia[2], ia[3]))
-            ib !== nothing && DriveRT3D.bump3d!(B, ib[1], ib[2], ib[3])
+            ia !== nothing && (isnan(t_hit) && (t_hit = A.t; r0 = DriveRT3D.yawrate3d(A)); DriveRT3D.bump3d!(A, ia[1], ia[2], ia[3], ia[5], ia[6], ia[7]))
+            ib !== nothing && DriveRT3D.bump3d!(B, ib[1], ib[2], ib[3], ib[5], ib[6], ib[7])
         end
         if isfinite(t_hit) && A.t - t_hit <= 0.3
             (avx, avz) = wvel(A); dv = max(dv, v0 - hypot(avx, avz))

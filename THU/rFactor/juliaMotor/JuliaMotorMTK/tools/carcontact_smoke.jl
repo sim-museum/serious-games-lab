@@ -30,6 +30,20 @@ imp !== nothing && check("side-swipe: yaw kick >= 0.5 rad/s (iRacing steps 1.1-2
 imp !== nothing && check("side-swipe: costs < 2 m/s of speed", abs(imp[1]) < 2.0, "dvx $(round(imp[1], digits = 2)) m/s")
 old = _car_contact_impulse_old(0.0, 0.0, 0.0, v, 0.0, 0.0, 0.3, 1.76, v, -3.0)
 check("control (the old law): the same swipe barely turns the car", old !== nothing && abs(old[3]) < 0.4, old === nothing ? "none" : "$(round(old[3], digits = 2)) rad/s")
+# S3: the vertical response. A nose cone into a gearbox is low -> nose DOWN (Car3D +pitch = nose up, so dq < 0)
+imp = car_contact_impulse(0.0, 0.0, 0.0, 25.0, 0.0, 0.0, 3.5, 0.0, 15.0, 0.0; θb = 0.0)
+check("nose into gearbox: an impulse", imp !== nothing)
+imp !== nothing && check("nose into gearbox: pitches nose DOWN (rear lifts, as iRacing)", imp[7] < -0.1, "dq $(round(imp[7], digits = 2)) rad/s")
+imp !== nothing && check("nose into gearbox: no launch (bodywork, not tread)", abs(imp[5]) < 1e-9, "dvy $(round(imp[5], digits = 2))")
+# tread on tread: A's left-front tyre runs into B's right-rear tyre, B 5 m/s slower -> A's front driven UP, nose up
+imp = car_contact_impulse(0.0, 0.0, 0.0, 30.0, 0.0, 0.0, 3.0, 1.4, 25.0, 0.0; θb = 0.0)
+check("tyre into tyre: an impulse", imp !== nothing)
+if imp !== nothing
+    check("tyre into tyre: the trailing car is launched (heave up)", imp[5] > 0.5, "dvy $(round(imp[5], digits = 2)) m/s")
+    check("tyre into tyre: its nose goes up", imp[7] > 0.5, "dq $(round(imp[7], digits = 2)) rad/s")
+end
+ib = car_contact_impulse(3.0, 1.4, 0.0, 25.0, 0.0, 0.0, 0.0, 0.0, 30.0, 0.0; θb = 0.0)
+ib !== nothing && check("tyre into tyre: the LEADING car's rear is pushed down", ib[5] < 0.0, "dvy $(round(ib[5], digits = 2)) m/s")
 # separating cars get nothing
 check("separating: no impulse", car_contact_impulse(0.0, 0.0, 0.0, v, 0.0, 0.0, 0.3, 1.76, v, 3.0; θb = 0.0) === nothing)
 println(fails[] == 0 ? "CARCONTACT: PASS" : "CARCONTACT: FAIL ($(fails[]))")

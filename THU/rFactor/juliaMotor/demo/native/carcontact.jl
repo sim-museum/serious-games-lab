@@ -13,6 +13,16 @@
 # its effective mass, and rubber friction when a tyre is in the pair. JM_CARCONTACT=old = HANDLING-1's law.
 
 const CAR_M = 617.0; const CAR_IZZ = 890.0; const CAR_E = 0.12; const CAR_MU = 0.4
+const CAR_IYY = 850.0; const CAR_IXX = 120.0; const CAR_HCG = 0.30   # vehicle_3d.jl defaults (pitch, roll inertia; CG height)
+# S3: the touching part's height above the road -- the nose cone is low (0.18 m), so a car that runs into another pitches
+# nose-DOWN and lifts its rear (iRacing 261018 15-11-16 t 183.2: front ride -85 mm, rear +164 mm); hubs and gearbox ~CG
+const NOSE_H = 0.18; const BODY_H = 0.30
+# S3: tread on tread. Two tyres touching FACE to face (one behind the other) slide past each other vertically at about the
+# sum of the cars' speeds (a rolling tyre's front face moves down, its rear face up); rubber friction on that slip drives
+# the trailing wheel UP and the leading one down -- the open-wheel launch (PO: "when an open wheel tire hits something that
+# acts like a ramp, the car launches upward dramatically"). JM_TREAD_MU = its friction coefficient (0 = off).
+const TREAD_MU = parse(Float64, get(ENV, "JM_TREAD_MU", "0.7"))
+const CONTACT_VERT = get(ENV, "JM_CONTACT_VERT", "1") != "0"         # S3 on/off (0 = planar only, as S2)
 const TYRE_MU = parse(Float64, get(ENV, "JM_TYRE_CONTACT_MU", "1.0"))   # rubber on rubber / rubber on bodywork
 const TYRE_E = parse(Float64, get(ENV, "JM_TYRE_CONTACT_E", "0.5"))     # a tyre bounces: restitution ~0.5 (bodywork 0.12)
 const CARCONTACT_OLD = get(ENV, "JM_CARCONTACT", "") == "old"
@@ -76,7 +86,7 @@ function car_contact_geom(ax, az, θa, bx, bz, θb; margin = 0.0)
             else
                 cpx = sx/n; cpz = sz/n
             end
-            best = (cpx, cpz, r[2], r[3], r[1], pa[5] || pb[5])
+            best = (cpx, cpz, r[2], r[3], r[1], pa[5] || pb[5], pa, pb)
         end
     end
     best
@@ -93,7 +103,8 @@ end
 
 """Impulse on car A (at (px,pz) heading θ, world velocity (pvx,pvz), yaw rate r) from a contact with car B (centre
 (qx,qz), velocity (avx,avz), heading θb, yaw rate rb). Returns (dvx, dvz, dr, jn) -- A's world velocity and yaw-rate
-changes and the normal impulse [N·s] -- or nothing when the cars are apart or separating. B takes the opposite impulse at
+changes and the normal impulse [N·s], then (S3) its heave velocity, left-up roll rate and nose-up pitch rate changes
+(Car3D's bump3d! dvy, dpp, dq) -- or nothing when the cars are apart or separating. B takes the opposite impulse at
 the same point (car_contact_impulse with the cars swapped gives it). `b_fixed`: B cannot answer within this frame (a
 REMOTE car, moved by the other machine after the network latency) -- A then takes the whole stop, as from a wall; with
 equal masses A kept ~44 % of its closing speed for the latency's frames and ran 0.5 m into the other car
@@ -106,7 +117,7 @@ function car_contact_impulse(px, pz, θ, pvx, pvz, r, qx, qz, avx, avz; θb = θ
     margin = clamp(hypot(pvx - avx, pvz - avz)*CONTACT_DT, 0.02, 0.8)
     g = car_contact_geom(px, pz, θ, qx, qz, θb; margin)
     g === nothing && return nothing
-    (cx, cz, nx, nz, ov, tyre) = g
+    (cx, cz, nx, nz, ov, tyre, pa, pb) = g
     depth = ov - margin                                             # > 0: the parts overlap; < 0: the gap still left
     rx = cx - px; rz = cz - pz; sx = cx - qx; sz = cz - qz          # lever arms from each CG
     # velocity of A's contact point relative to B's (planar: ω × r with ω up = (-ω·rz, ω·rx))
@@ -131,7 +142,28 @@ function car_contact_impulse(px, pz, θ, pvx, pvz, r, qx, qz, avx, avz; θb = θ
     μ = tyre ? TYRE_MU : CAR_MU
     jt = -sign(vt)*min(μ*jn, abs(vt)*mt)                            # friction: never more than stops the slip
     jx = -jn*nx + jt*tx; jz = -jn*nz + jt*tz                        # impulse ON A (pushed away from B)
-    (jx/CAR_M, jz/CAR_M, (rx*jz - rz*jx)/CAR_IZZ, jn)
+    CONTACT_VERT || return (jx/CAR_M, jz/CAR_M, (rx*jz - rz*jx)/CAR_IZZ, jn, 0.0, 0.0, 0.0)
+    # S3: the vertical response. Car frame: x forward, y left (CAR_PARTS' sign), z up from the CG.
+    c = cos(θ); s_ = sin(θ)
+    xl = rx*c + rz*s_; yl = -rx*s_ + rz*c                            # the contact point in A's frame
+    jxb = jx*c + jz*s_; jyb = -jx*s_ + jz*c                          # the horizontal impulse in A's frame
+    zc = (pa[5] ? (pa[1] > 0 ? 0.30 : 0.334) : xl > 1.0 ? NOSE_H : BODY_H) - CAR_HCG
+    jv = 0.0
+    if pa[5] && pb[5] && TREAD_MU > 0
+        ua = pvx*c + pvz*s_                                         # A's and B's forward speeds (rolling tyres)
+        cb = cos(θb); sb = sin(θb); ub = avx*cb + avz*sb
+        an = nx*c + nz*s_; bn = -(nx*cb + nz*sb)                    # each car's heading along the normal toward the other
+        if abs(an) > 0.7 && abs(bn) > 0.7                           # FACE to face: one tyre behind the other
+            wa = (an > 0 ? -1.0 : 1.0)*ua                           # A's touching face moves down at the front, up at the rear
+            wb = (bn > 0 ? -1.0 : 1.0)*ub
+            slip = wa - wb
+            mv = 1.0/(2.0/CAR_M + xl^2/CAR_IYY + (pb[1])^2/CAR_IYY)
+            jv = -sign(slip)*min(TREAD_MU*jn, abs(slip)*mv)
+        end
+    end
+    dq  = (xl*jv - zc*jxb)/CAR_IYY                                  # nose-up rate (Car3D's +pitch)
+    dpp = (yl*jv - zc*jyb)/CAR_IXX                                  # left-up roll rate (Car3D's +roll)
+    (jx/CAR_M, jz/CAR_M, (rx*jz - rz*jx)/CAR_IZZ, jn, jv/CAR_M, dpp, dq)
 end
 
 # HANDLING-1 S3's law (JM_CARCONTACT=old): contact point = B's centre clamped into A's 4 x 1.8 m rectangle, B not rotating.
@@ -152,5 +184,5 @@ function _car_contact_impulse_old(px, pz, θ, pvx, pvz, r, qx, qz, avx, avz)
     mt = 1.0/(2.0/CAR_M + rxt^2/CAR_IZZ)
     jt = -sign(vt)*min(CAR_MU*jn, abs(vt)*mt)
     jx = -jn*nx + jt*tx; jz = -jn*nz + jt*tz
-    (jx/CAR_M, jz/CAR_M, (rx*jz - rz*jx)/CAR_IZZ, jn)
+    (jx/CAR_M, jz/CAR_M, (rx*jz - rz*jx)/CAR_IZZ, jn, 0.0, 0.0, 0.0)
 end

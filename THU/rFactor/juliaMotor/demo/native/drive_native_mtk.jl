@@ -523,7 +523,7 @@ function solid_hit(x, z, θ, v)
         e = 0.45; j = (1+e)*(-vn)                         # bounce straight back (linear)
         lift  = clamp(abs(across)/CARHALF * (-vn) * 0.45, 0.0, 6.0)   # a WHEEL (offset) hit climbs → launch
         droll = clamp(sign(across)*lift*0.8, -5.0, 5.0)               # …and rolls toward the climb
-        dpitch = clamp(-sign(along)*lift*0.7, -4.0, 4.0)             # rear wheel climbs ⇒ nose down ⇒ REAR LIFTS
+        dpitch = clamp(sign(along)*lift*0.7, -4.0, 4.0)              # front wheel climbs ⇒ nose up; rear ⇒ REAR LIFTS (bump3d!'s +dq is NOSE UP: CARCOLLIDE-2 S3 measured; the old sign pitched the wrong way)
         dr    = clamp(-sign(across)*(-vn)*0.04, -1.0, 1.0)            # yaw twitch off the obstacle
         return (j*nx, j*nz, dr, lift, droll, dpitch)
     end
@@ -15409,7 +15409,7 @@ function main()
                 imp = car_contact_impulse(cs.x, cs.z, cs.θ, pvx, pvz, CAR3D ? DriveRT3D.yawrate3d(cs) : 0.0, p[1], p[3], avx, avz; θb = aθ)
                 imp === nothing && continue                   # separating → no new impulse (the contact kick already fired)
                 (pdvx, pdvz, pdr, j) = imp
-                bumpX!(cs, pdvx, pdvz, pdr)
+                bumpX!(cs, pdvx, pdvz, pdr, imp[5], imp[6], imp[7])   # CARCOLLIDE-2 S3: + heave/roll/pitch (nose-dive, launch)
                 carhit_damage!(cs, pdvx, pdvz, j)              # CARINTERACT-1: a car hit costs YOU, as a wall does
                 ffb_jolt = clamp(ffb_jolt - sign(lat)*(j/pm)*0.4 - 0.5, -1.0, 1.0)   # a CLOSING hit adds a bigger kick
                 if AI_PHYSICS                                  # the AI is a real physics car → impulse it too
@@ -15449,7 +15449,7 @@ function main()
                 imp = car_contact_impulse(cs.x, cs.z, cs.θ, pvx, pvz, CAR3D ? DriveRT3D.yawrate3d(cs) : 0.0, p[1], p[3], avx, avz; θb = p[4], b_fixed = true)   # remote: answers a latency later
                 imp === nothing && continue                   # HANDLING-1 S3: the same rigid-body impulse as the AI contact
                 (pdvx, pdvz, pdr, j) = imp
-                bumpX!(cs, pdvx, pdvz, pdr)
+                bumpX!(cs, pdvx, pdvz, pdr, imp[5], imp[6], imp[7])   # CARCOLLIDE-2 S3
                 carhit_damage!(cs, pdvx, pdvz, j)              # CARINTERACT-1: the other human's car too
                 vrel = j/((1 + CAR_E)*CAR_M/2); scrub = 0.0   # (the diag line below: closing speed, no separate scrub any more)
                 ffb_jolt = clamp(ffb_jolt - sign(lat)*(j/pm)*0.4 - 0.5, -1.0, 1.0)

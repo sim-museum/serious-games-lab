@@ -1350,7 +1350,7 @@ function bump3d!(c::Car3D, dvx, dvz, dr, dvy = 0.0, dpp = 0.0, dq = 0.0)
     if dq != 0.0
         try
             qs = get!(() -> (ModelingToolkit.getsym(c.sys, c.sys.q), ModelingToolkit.setu(c.sys, c.sys.q)), _QSET3D, c.sys)
-            qs[2](c.integ, qs[1](c.integ) + dq)      # add pitch velocity → nose down / rear lifts
+            qs[2](c.integ, qs[1](c.integ) + dq)      # add pitch velocity: + = NOSE UP (+pitch raises the front ride height; CARCOLLIDE-2 S3 measured)
         catch; end
     end
     c.v = sqrt(nu^2 + nv^2)
