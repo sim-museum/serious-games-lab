@@ -10408,6 +10408,21 @@ if !SKIDPAD && get(ENV, "JM_FLOAT", "0") != "0"
     end
     exit(0)
 end
+# 2026-10-20: JM_OBSAT="x,z[,heading_deg]" -- the drawn obstacles within 6 m of a world point (a [STUCK]/[jolt] position): name,
+# kind, segment ends, radius and the car's gap at that pose; then exits.
+if OBS_ON && haskey(ENV, "JM_OBSAT")
+    let v = parse.(Float64, split(ENV["JM_OBSAT"], ",")), x = v[1], z = v[2], θ = length(v) > 2 ? deg2rad(v[3]) : 0.0
+        println("  [obsat] obstacles near (", x, ", ", z, "):")
+        for i in obs_near(x, z)
+            (ax, az, bx, bz, r) = OBS_SEG[i]
+            d = hypot((ax + bx)/2 - x, (az + bz)/2 - z); d > 6.0 + hypot(bx - ax, bz - az)/2 && continue
+            g = obs_gap(i, x, z, θ, x, z)[1]
+            println("     ", rpad(OBS_NAME[i], 14), " ", OBS_KIND[i], "  seg (", round(ax, digits=1), ",", round(az, digits=1), ")-(",
+                    round(bx, digits=1), ",", round(bz, digits=1), ") r ", round(r, digits=2), "  gap ", round(g, digits=2))
+        end
+    end
+    exit(0)
+end
 # GPLWALL-1 S9: is the ROAD itself ever blocked? (JM_CORRIDOR=1 prints and exits) A car on the racing line, aimed along the
 # road, every 1 m round the lap, at lanes -1.5/0/+1.5 m: any hard obstacle or GPL wall it would touch is a road block.
 # PO 2026-10-01: "a solid curtain of trees that blocked the road" at the Ring -- a drawn curtain that GPLWALL-1 made solid.
