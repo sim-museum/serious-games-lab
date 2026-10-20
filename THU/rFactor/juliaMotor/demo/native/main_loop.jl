@@ -1394,3 +1394,81 @@ function drawworld_impl!(vp_, eye_, flip::Bool, cs, AICHASSIS, _tp_d, aiBody, ai
         end
     end
 end
+
+"""Cockpit view: the gloved hands on the wheel and the sleeves laid from glove to shoulder (ARMS2), one frame.
+LOOPSPLIT-1 cycle 3 S4: moved unchanged."""
+function hands_draw!(cs, inp, vp, bodyModel, swModel)
+    _hcull = glIsEnabled(GL_CULL_FACE) == GL_TRUE
+    # COCKPIT-2 S7: the lever-side glove's offset to the knob (body-local), zero with the hands on the rim
+    _hoff = (0f0, 0f0, 0f0)
+    if SHIFT_HAND && SHIFT_KNOB !== nothing && !isempty(shiftItems) && length(handLR) == 2
+        _u = Float32(shift_hand_u(cs.gear))
+        if _u > 0f0
+            _swr = Render.translate(SWCENTER) * Render.rotaxis(SWAXIS, Float32(HSIGN*inp.steer*2.5 + SW_ROT)) * Render.translate(-SWCENTER[1], -SWCENTER[2], -SWCENTER[3])
+            _g = _swr * gripmat(SHIFT_HAND_K == 1 ? 1 : -1) * Float32[FIST_C[SHIFT_HAND_K]..., 1f0]
+            _k = SHIFT_LASTM[] * Float32[SHIFT_KNOB..., 1f0]
+            _hoff = (_u*(_k[1] + SHIFT_HAND_UP[1] - _g[1]), _u*(_k[2] + SHIFT_HAND_UP[2] - _g[2]), _u*(_k[3] + SHIFT_HAND_UP[3] - _g[3]))
+        end
+    end
+    HAND_CULL || glDisable(GL_CULL_FACE)          # HANDS-1 S2: A/B the gloves two-sided (inside-out fists?)
+    if ARMS
+        # HANDS-1 S4: in lotus.3do the arms and gloves share the steering-wheel assembly's positioner (node 15060), so
+        # GPL turns the arms with the wheel; JM_ARMS_ON_WHEEL=1 draws them with the gloves' transform, no ARMFIX (A/B).
+        if ARMS2 && length(armLR) == 2 && SLEEVE_ENDS[1] !== nothing && SLEEVE_ENDS[2] !== nothing
+            swRel = Render.translate(SWCENTER) * Render.rotaxis(SWAXIS, Float32(HSIGN*inp.steer*2.5 + SW_ROT)) * Render.translate(-SWCENTER[1], -SWCENTER[2], -SWCENTER[3])
+            for (k, sgn) in ((1, 1), (2, -1))          # armLR[1] = z > 0 with gripmat(+1), as handLR
+                W, E, nf = SLEEVE_ENDS[k]
+                h = swRel * gripmat(sgn) * Float32[W[1], W[2], W[3], 1f0]
+                k == SHIFT_HAND_K && (h = Float32[h[1] + _hoff[1], h[2] + _hoff[2], h[3] + _hoff[3], 1f0])   # COCKPIT-2 S7
+                S = (SHOULDER[1], SHOULDER[2], sgn*SHOULDER[3])
+                # TD261013-1 (a2) (PO 2026-10-13: "a large white triangle on the left when the player turns all the way
+                # right"): at full lock (~143 deg) the glove crosses to the top of the rim and a strip from a shoulder
+                # beside the eye lies broad across the view. GPL's sleeve then rises steeply from below (gold Spa La Source
+                # t 361-363): the elbow drops and comes in. The far end slides toward ARM_LOCK_S as the wheel passes
+                # 50 deg, fully by 130 deg; straight ahead it is the gold-fitted shoulder. JM_ARM_LOCK_S="" = fixed.
+                if ARM_LOCK_S !== nothing
+                    _u = clamp((abs(HSIGN*inp.steer*2.5) - deg2rad(ARM_LOCK_DEG[1])) / deg2rad(ARM_LOCK_DEG[2] - ARM_LOCK_DEG[1]), 0.0, 1.0)
+                    S = (S[1] + _u*(ARM_LOCK_S[1] - S[1]), S[2] + _u*(ARM_LOCK_S[2] - S[2]), S[3] + _u*(sgn*ARM_LOCK_S[3] - S[3]))
+                end
+                if SLEEVE_HOLD && SLEEVE_NREF[k] === nothing    # the straight-wheel face normal, once
+                    sw0 = Render.translate(SWCENTER) * Render.rotaxis(SWAXIS, Float32(SW_ROT)) * Render.translate(-SWCENTER[1], -SWCENTER[2], -SWCENTER[3])
+                    h0 = sw0 * gripmat(sgn) * Float32[W[1], W[2], W[3], 1f0]
+                    sleeve_mat(W, E, (h0[1], h0[2], h0[3]), S, nf); SLEEVE_NREF[k] = SLEEVE_LASTR[] * collect(nf)
+                end
+                # HANDS-2 S3: lit toward the gold's white sleeve (it read grey at 1.15 / 0.60)
+                # COCKPIT-2 S4 (PO 2026-10-07: "the wrists are see-through"): the sleeve's end stopped AT the glove's
+                # cuff point, and the glove is an open band round the rim -- between them the dash showed through.
+                # Run the sleeve on along its own line ARM_INTO metres into the glove so the two overlap.
+                # TD261016-1 (c1) (PO 2026-10-16: "wrists are still transparent in places"): at 6 cm the rim and dash still
+                # showed between sleeve and glove near straight ahead; 12 cm closes it (sweep 0/6/12/18 cm, Ring cockpit),
+                # but at full lock 12 cm pushes the sleeve out past the rim -- so 12 cm fades to 6 cm over the arms'
+                # lock schedule (ARM_LOCK_DEG). JM_ARM_INTO fixes one value for every angle, as before.
+                _ul = clamp((abs(HSIGN*inp.steer*2.5) - deg2rad(ARM_LOCK_DEG[1])) / deg2rad(ARM_LOCK_DEG[2] - ARM_LOCK_DEG[1]), 0.0, 1.0)
+                _into = haskey(ENV, "JM_ARM_INTO") ? parse(Float64, ENV["JM_ARM_INTO"]) : ARM_INTO_STRAIGHT + _ul*(ARM_INTO - ARM_INTO_STRAIGHT)
+                _d = (h[1] - S[1], h[2] - S[2], h[3] - S[3]); _l = sqrt(_d[1]^2 + _d[2]^2 + _d[3]^2)
+                h = _l > 1e-6 ? (h[1] + _into*_d[1]/_l, h[2] + _into*_d[2]/_l, h[3] + _into*_d[3]/_l) : h
+                # TD261013-1 (a2) (PO 2026-10-13: "the driver's left arm has a large white triangle on the left when the
+                # player turns all the way right"): at full lock the wheel turns ~143 deg and the left glove sits top-right;
+                # the strip, still held to its straight-wheel face, crossed the wheel FACE-ON -- the white sail. GPL turns
+                # the arms with the wheel assembly (HANDS-1 S4), so the held face turns with the wheel too.
+                # JM_ARM_ROLLWHEEL=0 = the straight-wheel face, as before.
+                _tgt = SLEEVE_HOLD ? (ARM_ROLLWHEEL && SLEEVE_NREF[k] !== nothing ?
+                       (Render.rotaxis(SWAXIS, Float32(HSIGN*inp.steer*2.5)) * Float32[SLEEVE_NREF[k]..., 0f0])[1:3] : SLEEVE_NREF[k]) : nothing
+                Render.draw(prog, armLR[k], vp, bodyModel * sleeve_mat(W, E, (h[1], h[2], h[3]), S, nf; target = _tgt);
+                            bright=1.35, spec=0.05, ambfill=0.85)
+            end
+        else
+            _amod = ARMS_ON_WHEEL ? swModel : bodyModel*ARMFIX
+            for it in armItems;  Render.draw(prog, it, vp, _amod; bright=1.15, spec=0.05, ambfill=0.60); end
+        end
+    end
+    if length(handLR) == 2                      # left fist +grip, right fist −grip → gold's 10-and-2
+        _hm(k) = (k == SHIFT_HAND_K && _hoff != (0f0, 0f0, 0f0)) ? bodyModel * Render.translate(_hoff) * inv(bodyModel) : Render.ident()   # COCKPIT-2 S7
+        Render.draw(prog, handLR[1], vp, _hm(1)*swModel*gripmat(+1)*fistrot(1); bright=1.15, spec=0.05, ambfill=0.60)
+        Render.draw(prog, handLR[2], vp, _hm(2)*swModel*gripmat(-1)*fistrot(2); bright=1.15, spec=0.05, ambfill=0.60)
+    else
+        for it in handItems; Render.draw(prog, it, vp, swModel; bright=1.15, spec=0.05, ambfill=0.60); end
+    end
+    (!HAND_CULL && _hcull) && glEnable(GL_CULL_FACE)
+    nothing
+end
