@@ -432,6 +432,7 @@ const LOOSE_BRAKE = parse(Float64, get(ENV, "JM_LOOSE_BRAKE", "1.0"))   # the st
 const LOOSE_STAT = Ref((n = 0, maxdr = 0.0, maxup = 0.0))
 const RAM_AI = (r = get(ENV, "JM_RAM_AI", ""); isempty(r) ? nothing : Tuple(parse.(Float64, split(r, ":"))))
 const RAM_STATE = Ref((t0 = NaN, done = false))
+const RAM_SOLO = get(ENV, "JM_RAM_SOLO", "0") != "0"; const RAM_SOLO_DONE = Ref(false)
 """CARCOLLIDE-2 S4: AI car k (pose p, heading aθ, world velocity (avx,avz)) hit by the player car `pc0`. Hands it to a
 free pool car when the hit is hard, or applies the impulse to its pool car when it is loose already. true = handled here
 (the caller skips the field's own gentle answer)."""
@@ -15439,6 +15440,11 @@ function main()
         end
         # CARCOLLIDE-2 S4: AI cars knocked loose run as free Car3D (brakes on) until they settle, then rejoin where they are
         if !isempty(LOOSE_OF) && !REPLAY && !isempty(ai_poses)
+            # S5 probe: JM_RAM_SOLO=1 moves the player 30 m aside once a car is loose -- the spin with no follow-up contact
+            if RAM_SOLO && !RAM_SOLO_DONE[]
+                RAM_SOLO_DONE[] = true; PLAYER_G[] = NaN; GPLW_ON && gplw_teleported!()
+                DriveRT3D.place3d!(cs, cs.x - 30*sin(cs.θ), cs.z + 30*cos(cs.θ), cs.θ; v = 0.0)
+            end
             for (k, sl) in collect(LOOSE_OF)
                 if k > length(ai_poses) || k > length(AICARS)
                     delete!(LOOSE_OF, k); continue
