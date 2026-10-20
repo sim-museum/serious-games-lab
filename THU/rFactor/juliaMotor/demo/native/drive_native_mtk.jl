@@ -10989,7 +10989,7 @@ function split_fists(parts, tex)
     [Render.Item(Render.upload(a)..., tex, (1f0,1f0,1f0)) for a in (L, R)]
 end
 handLR = isempty(handItems) ? Render.Item[] : split_fists(HANDP, handItems[1].tex)
-const HAND_GRIP = deg2rad(parse(Float32, get(ENV,"JM_HAND_GRIP","0")))    # HANDS-2: 0 = the gold's 9-and-3 (HANDS-1 S2)
+const HAND_GRIP = deg2rad(parse(Float32, get(ENV,"JM_HAND_GRIP","30")))   # WRISTS-3 S2: 30 = GPL's 10-and-2 (Monza cockpit gold, t 20); HANDS-2 had 0 = 9-and-3
 # COCKPIT-2 S7 (2026-10-15): GPL's right hand goes to the lever on every shift. Gold 260801 Zandvoort cockpit, read at 15 fps
 # against its HUD gear: the 2->3 upshift (t 28.0-28.5) and the 3->N->2 downshift (t 36.0-36.5) -- the glove leaves the rim in
 # 1-2 frames, covers the red knob for ~0.45-0.8 s, and is back on the rim in 1-2 frames. On a gear change the glove on the
@@ -11078,8 +11078,13 @@ const ARMS2 = get(ENV, "JM_ARMS2", "1") != "0"
 # elbows near the centre line (gold Monza cockpit t 30: left elbow x 350/1280, right 760), straight into the fists. A low,
 # inboard far end (0.05, 0.0, +-0.20) does that (Monza s 4700 sweep: 0.52 slabs; 0.26 high = white sail bottom-left;
 # low 0.20 = forearm, wrist and fist in one line). JM_SHOULDER_X/Y/Z=0.18/0.22/0.52 = before.
-const SHOULDER = (parse(Float32, get(ENV, "JM_SHOULDER_X", "0.05")), parse(Float32, get(ENV, "JM_SHOULDER_Y", "0.0")),
-                  parse(Float32, get(ENV, "JM_SHOULDER_Z", "0.20")))
+# WRISTS-3 S2 (2026-10-19): judged against GPL's Monza cockpit at the SAME steering (JM_SHOT_STEER: straight = gold t 20,
+# half lock = gold t 139/141). GPL grips at 10-and-2 (JM_HAND_GRIP 30, was 0 = 9-and-3) with the forearms rising
+# diagonally from the bottom corners -- at 9-and-3 no shoulder lines forearm, wrist and fist up. A wider, lower shoulder
+# (z 0.40, y -0.20) gives GPL's ~35-40 deg forearms straight and keeps the arm that crosses the top at lock a slim diagonal
+# from the bottom corner (y 0.0 put its near end at the eye: a broad white sheet). JM_SHOULDER_Y/Z=0.0/0.20 = S1.
+const SHOULDER = (parse(Float32, get(ENV, "JM_SHOULDER_X", "0.05")), parse(Float32, get(ENV, "JM_SHOULDER_Y", "-0.20")),
+                  parse(Float32, get(ENV, "JM_SHOULDER_Z", "0.40")))
 const ARM_THICK = parse(Float32, get(ENV, "JM_ARM_THICK", "1.2"))
 const ARM_STRIPE = get(ENV, "JM_ARM_STRIPE", "1") != "0"   # HANDS-2 S4: the stripe face aimed at the eye (JM_ARM_STRIPE=0 reverts)
 """Per side (+1 = mesh z > 0): the sleeve's (wrist, far-end) points -- the ends of its principal axis, the wrist the lower."""
@@ -14012,6 +14017,11 @@ function main()
         (rst || restart) && GPLW_ON && gplw_teleported!()
         CRASH_ON && (inp = JuliaMotor.DriveInput(throttle = 0.0, brake = 0.0, steer = 0.0, clutch = inp.clutch,
                                                  shift_up = false, shift_down = false, autoshift = true))
+        # WRISTS-3: JM_SHOT_STEER=<-1..1> holds the steering for smoke photographs (env or a shot's K=V) -- the hands at lock
+        if SMOKE && haskey(ENV, "JM_SHOT_STEER")
+            inp = JuliaMotor.DriveInput(throttle = 0.0, brake = 1.0, steer = parse(Float64, ENV["JM_SHOT_STEER"]), clutch = inp.clutch,
+                                        shift_up = false, shift_down = false, autoshift = true)
+        end
         # CARCOLLIDE-2 S4 test hook: after the ram the player's driver brakes for 3 s (an undriven car kept shoving the
         # struck car from behind -- 99 more impulses in 4 s -- which is the harness, not the contact law)
         (RAM_AI !== nothing && RAM_STATE[].done && cs.t - RAM_STATE[].t0 - RAM_AI[4] < 3.0) &&
