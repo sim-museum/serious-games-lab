@@ -141,7 +141,7 @@ end
 # to the raw ibt numbers, which would have stiffened the car by 64% while looking like the
 # removal of a hardcoded parameter. The factor is real physics, so it is named here rather than
 # left to be rediscovered.
-const MR2 = 0.6083                       # (motion ratio)^2, wheel rate = spring rate x MR2 (FRONT; was every corner)
+const MR2 = parse(Float64, get(ENV, "JM_MR2_F", "0.6083"))   # (motion ratio)^2, wheel rate = spring rate x MR2 (FRONT; was every corner); MRCONSIST-1 A/B knob (tools include the source; the sim's precompiled package bakes the default)
 # IRFIT-261004 SUSP-1 (2026-10-04): the REAR motion ratio is lower. Measured on the PO's 261004 Ring session at
 # 360 Hz (tools/suspfit_261004.jl: the four suspension forces carry the sprung mass, regressed on the shock
 # deflections/velocities, 204 842 straight samples, R² 0.91): per-shock-mm force front 22.9 N/mm = 30 N/mm x
@@ -149,7 +149,7 @@ const MR2 = 0.6083                       # (motion ratio)^2, wheel rate = spring
 # The ride-height channels agree independently (rideHeight vs shockDefl: front MR 0.78-0.81, rear 0.69-0.70).
 # So the Ring's 48 N/mm rear spring is a 20.2 kN/m wheel rate, not 29.2: the rear was 45 % too stiff in heave
 # and pitch -- the crest behaviour. Roll is kept (see ARB_R).
-const MR2_R = (31.1/48)^2                # 0.4198
+const MR2_R = parse(Float64, get(ENV, "JM_MR2_R", string((31.1/48)^2)))   # 0.4198; MRCONSIST-1 A/B knob
 const KS  = Ref((18_250.0, 18_250.0, 20_150.0, 20_150.0))    # FL, FR, RL, RR wheel rates [N/m]
 const KS_SRC = Ref("built-in fallback (Nurburgring setup -- NOT from an ibt)")
 
