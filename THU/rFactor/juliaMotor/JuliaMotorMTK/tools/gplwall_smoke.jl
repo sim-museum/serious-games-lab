@@ -34,7 +34,10 @@ check("decoder: start-line free interval = (-13.41, 40.84) m", abs(lo + 13.41) <
 check("decoder: every section ends with exactly one type-10 record", all(v -> count(s -> s.typ == 10, v) == 1 && v[end].typ == 10, W.secs), "")
 
 function sweep(extra::Dict)
-    env = merge(Dict(ENV), Dict("TRACK" => "watglen", "JM_MODE" => "practice", "JM_CRASH" => "auto:300", "JM_SMOKE" => "1"), extra)
+    # 2026-10-19: the sim's step is wall-clock (clamped <= 0.05 s), so under load (three sims at once) the same code
+    # penetrated 0.73 m against 0.31 m unloaded -- the gate measured the machine. A fixed 1/60 s step, as JM_FIXED_DT exists for.
+    env = merge(Dict(ENV), Dict("TRACK" => "watglen", "JM_MODE" => "practice", "JM_CRASH" => "auto:300", "JM_SMOKE" => "1",
+                                "JM_FIXED_DT" => string(1/60)), extra)
     log = tempname()
     cmd = setenv(`julia -t 2 --project=$D $(joinpath(D, "drive_native_mtk.jl"))`, env)
     run(pipeline(ignorestatus(cmd); stdout = log, stderr = log))
