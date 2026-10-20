@@ -1147,6 +1147,13 @@ const AUTODRIVE_V = parse(Float64, get(ENV, "JM_AUTODRIVE_V", "45"))   # target 
 # to follow the racing line, which is the one path that never reproduces an off-road defect -- so a
 # deliberate excursion needs its own knob. Positive = one side, negative = the other.
 const AUTODRIVE_LAT = parse(Float64, get(ENV, "JM_AUTODRIVE_LAT", "0"))
+# 2026-10-20: JM_AUTODRIVE_RECOVER=<s> -- the headless driver presses SHIFT+R (recover to track) after s seconds below
+# 0.5 m/s once the race is under way, as a driver who has spun, gone wide into a fence or been pinned by a car would
+# (not after a wreck: that ends the race). The driver still has no traffic awareness -- it rams AI cars and can wreck.
+# Without it an integration race ends at the first such moment (the STUCK watchdog); 0 (default) = off, so the gates that
+# detect a pinned or stuck car keep seeing it.
+const AUTODRIVE_RECOVER = parse(Float64, get(ENV, "JM_AUTODRIVE_RECOVER", "0"))
+const AD_SLOW_T = Ref(0.0)
 const AUTODRIVE_PROF_PACE = parse(Float64, get(ENV, "JM_AUTODRIVE_PROFILE", "0"))   # AUTODRIVE-RING-1: 0 = off
 const AUTODRIVE_PROF = Ref{Any}(nothing)
 const GROUND_LAT_SMOOTH = get(ENV, "JM_GROUND_LAT_SMOOTH", "0") != "0"   # TD261016-1: 1 = lateral from the smoothed ribbon
@@ -14041,6 +14048,14 @@ function main()
         end
         if SMOKE && !isempty(RECOVER_AT) && RECOVER_I[] <= length(RECOVER_AT) && cs.t >= RECOVER_AT[RECOVER_I[]]
             recover = true; rst = true; RECOVER_I[] += 1; println("  [test] recover (SHIFT+R) at t=", round(cs.t, digits = 2)); flush(stdout)
+        end
+        if AUTODRIVE && AUTODRIVE_RECOVER > 0 && race_go[] && cs.t > 3.0 && !WRECKED[]   # a wreck ends the race: no recover loop
+            AD_SLOW_T[] = abs(cs.v) < 0.5 ? AD_SLOW_T[] + max(dt, 0.0) : 0.0
+            if AD_SLOW_T[] >= AUTODRIVE_RECOVER
+                recover = true; rst = true; AD_SLOW_T[] = 0.0
+                println("  [auto] stuck ", AUTODRIVE_RECOVER, " s at lapdist ", round(cs.lapdist, digits = 1), " -- recover (SHIFT+R) at t=",
+                        round(cs.t, digits = 2)); flush(stdout)
+            end
         end
         if SMOKE && WRECK_AT > 0 && cs.t >= WRECK_AT && !WRECK_AT_DONE[]
             WRECK_AT_DONE[] = true; wreck!(max(cs.v, 20.0); closing = 20.0, x = cs.x, z = cs.z)
