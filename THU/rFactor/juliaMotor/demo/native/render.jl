@@ -1885,6 +1885,33 @@ const _TEXSTAT = (uploads=Ref(0), lookups=Ref(0), names=Set{String}(),
 # (E92-S4 looked at an early sample, saw 7%, and called this negligible. It is not -- and the error
 # was generalising from one reading, not the reading itself.)
 const _TEXCACHE = Dict{String,GLuint}()
+# MONZAGROUND-1 S4 (2026-10-19): Monza's left tree wall (trees50, `trft01`) showed a thin white line along a polygon edge --
+# picked: the same part either side, so no crack: the edge's UV sits ON the texture's top row, and linear filtering under
+# GL_REPEAT blended in the OPPOSITE row -- the transparent sky above the treetops -- so the cutout opened a sky-coloured
+# line. Every texture kept GL_REPEAT; a texture that is never TILED on an axis (all UVs of every part using it within
+# [0,1] on that axis) gets GL_CLAMP_TO_EDGE there instead. Tiled axes keep REPEAT. JM_TEX_EDGECLAMP=0 = before.
+const UVRANGE = Dict{GLuint,NTuple{4,Float32}}()     # GL texture -> (umin, umax, vmin, vmax) over every part that uses it
+function uvrange_note!(tid, v)
+    umn, umx, vmn, vmx = get(UVRANGE, tid, (Inf32, -Inf32, Inf32, -Inf32))
+    @inbounds for i in 0:(length(v) ÷ 11 - 1)
+        u = v[11i + 10]; w = v[11i + 11]
+        umn = min(umn, u); umx = max(umx, u); vmn = min(vmn, w); vmx = max(vmx, w)
+    end
+    UVRANGE[tid] = (umn, umx, vmn, vmx)
+    nothing
+end
+"Set GL_CLAMP_TO_EDGE on each axis a texture never tiles (call once, after every build_gpl). Returns (S, T) clamped counts."
+function clamp_untiled_textures!()
+    get(ENV, "JM_TEX_EDGECLAMP", "1") == "0" && return (0, 0)
+    ns = 0; nt = 0; e = 0.002f0
+    for (tid, (umn, umx, vmn, vmx)) in UVRANGE
+        glBindTexture(GL_TEXTURE_2D, tid)
+        (umn >= -e && umx <= 1 + e) && (glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); ns += 1)
+        (vmn >= -e && vmx <= 1 + e) && (glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); nt += 1)
+    end
+    glBindTexture(GL_TEXTURE_2D, 0)
+    (ns, nt)
+end
 """E102 S16: split a part whose triangles fall into two fore/aft clusters separated by a large gap.
 
 `fsusp:1` measured 102 vertices at x <= -0.94 and 180 at x >= 1.35 with 2.29 m of nothing between
@@ -2018,6 +2045,7 @@ function build_gpl(parts0, idx::GPLTex; tag::String="")
         # which means a zero from a TEXTURED item says nothing at all. Dropping the texture id puts
         # the item on the untextured path, the one item 16 proved honours the colour.
         push!(items, Item(vao, n, _intint(length(items) + 1) ? GLuint(0) : tid, p.col))
+        tid != 0 && uvrange_note!(tid, p.verts)
         # JM_ITEMDUMP=1: index -> texture, so a pixel bisected to item N can be NAMED.
         # There was no way to attribute a drawn pixel to a mesh in this tree (Item carries no
         # name), which is what made the engine-graphics item (E106-S38) take several sprints.

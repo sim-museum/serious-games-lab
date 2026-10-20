@@ -12131,6 +12131,9 @@ include(joinpath(@__DIR__, "main_loop.jl"))      # LOOPSPLIT-1: frame-loop piece
 const _MAIN_Q = quote
 function main()
     tstamp("  [E80] .. main() entered (its compile is the gap above)")
+    let c = Render.clamp_untiled_textures!()   # MONZAGROUND-1 S4: untiled axes CLAMP_TO_EDGE (every build_gpl is done by now)
+        println("  textures clamped to edge on untiled axes: S ", c[1], ", T ", c[2], " of ", length(Render.UVRANGE))
+    end
     # E106-S13b: the physics-facing ground closure. It converts the app's -999 "off the HAT"
     # SENTINEL into NaN, because drive_rt3d guards only `isfinite` and -999 is finite -- a wheel
     # over a hole was told the ground lay 999 m below, sank toward it, and the correction on
