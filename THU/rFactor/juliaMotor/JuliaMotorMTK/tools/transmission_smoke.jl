@@ -103,10 +103,10 @@ let springs = Dict{String,NTuple{4,Float64}}()
     # through wheel_rate(). E100-S3 nearly "fixed" them to the raw ibt numbers, which would have
     # stiffened the car 64% while looking like the removal of a hardcoded parameter.
     check("wheel_rate reproduces the shipped front constant",
-          round(DriveRT3D.wheel_rate(30.0)) == 18_249, string(round(DriveRT3D.wheel_rate(30.0))))
+          round(DriveRT3D.wheel_rate(30.0)) == (DriveRT3D.KARBR_COMP ? 18_249 : 19_677), string(round(DriveRT3D.wheel_rate(30.0))))   # MRCONSIST-1 S2: the garage's MR 0.81
     # IRFIT-261004 SUSP-1: the rear has its own, MEASURED motion ratio (tools/suspfit_261004.jl): 48 N/mm -> 20 150 N/m.
     check("wheel_rate reproduces the shipped rear constant (rear motion ratio)",
-          round(DriveRT3D.wheel_rate(48.0; rear = true)) == 20_150, string(round(DriveRT3D.wheel_rate(48.0; rear = true))))
+          round(DriveRT3D.wheel_rate(48.0; rear = true)) == (DriveRT3D.KARBR_COMP ? 20_150 : 21_470), string(round(DriveRT3D.wheel_rate(48.0; rear = true))))   # garage MR 0.669
 end
 
 # 3c. E100 S5: STATIC RIDE HEIGHT, per corner. The old single 0.075 m constant was wrong for both

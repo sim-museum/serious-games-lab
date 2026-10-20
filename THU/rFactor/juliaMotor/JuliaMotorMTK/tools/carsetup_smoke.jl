@@ -41,7 +41,7 @@ _laws = DriveRT3D.PHYSFID_S9 && !haskey(ENV, "JM_ARB_FRONT_SHARE") && !haskey(EN
 if _laws
     check(isapprox(collect(cd.karb), [DriveRT3D.ARB_BAR_F, DriveRT3D.ARB_BAR_R]) &&
           isapprox(collect(cw.karb), [DriveRT3D.ARB_BAR_F*DriveRT3D.ARB_LAW_F["5"], DriveRT3D.ARB_BAR_R*DriveRT3D.ARB_LAW_R["firm"]]) &&
-          isapprox(sum(cd.karb), sum(_kd)) && sum(cw.karb) > sum(cd.karb),
+          isapprox(sum(cd.karb), DriveRT3D.KARBR_COMP ? sum(_kd) : 17_400.0; rtol = 0.01) && sum(cw.karb) > sum(cd.karb),   # MRCONSIST-1 S2: re-identified on one MR
           "bars: per-bar arm laws (RARBARMS-1), default = its identified total, WW stiffer")
 else
     check(isapprox(sum(cw.karb), sum(_kw)) && isapprox(sum(cd.karb), sum(_kd)) &&

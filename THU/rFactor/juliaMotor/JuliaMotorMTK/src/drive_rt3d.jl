@@ -141,7 +141,12 @@ end
 # to the raw ibt numbers, which would have stiffened the car by 64% while looking like the
 # removal of a hardcoded parameter. The factor is real physics, so it is named here rather than
 # left to be rediscovered.
-const MR2 = parse(Float64, get(ENV, "JM_MR2_F", "0.6083"))   # (motion ratio)^2, wheel rate = spring rate x MR2 (FRONT; was every corner); MRCONSIST-1 A/B knob (tools include the source; the sim's precompiled package bakes the default)
+# MRCONSIST-1 S2 (2026-10-20): ONE set of suspension constants -- the garage fit's spring motion ratios (garage_lotus49.toml
+# MRk 0.8099 / 0.6688 -> MR2 0.6559 / 0.4473, inside the driving fit's own CI) with the rear roll compensation dropped and
+# both bar laws re-identified (ARB_LAW_*): E3 roll gradients within 1 % on all five sessions, closed-loop judge 0.6921 ->
+# 0.6873, Flugplatz crest 0.065 -> 0.067 s / 0.21 g, steady skidpad 9.09 -> 9.19 (7 -> 9 limit cells unheld).
+# JM_MR2_F=0.6083 JM_MR2_R=0.4198 JM_KARBR_COMP=1 = before.
+const MR2 = parse(Float64, get(ENV, "JM_MR2_F", "0.6559"))   # (motion ratio)^2, wheel rate = spring rate x MR2 (FRONT; was every corner); MRCONSIST-1 A/B knob (tools include the source; the sim's precompiled package bakes the default)
 # IRFIT-261004 SUSP-1 (2026-10-04): the REAR motion ratio is lower. Measured on the PO's 261004 Ring session at
 # 360 Hz (tools/suspfit_261004.jl: the four suspension forces carry the sprung mass, regressed on the shock
 # deflections/velocities, 204 842 straight samples, R² 0.91): per-shock-mm force front 22.9 N/mm = 30 N/mm x
@@ -149,8 +154,11 @@ const MR2 = parse(Float64, get(ENV, "JM_MR2_F", "0.6083"))   # (motion ratio)^2,
 # The ride-height channels agree independently (rideHeight vs shockDefl: front MR 0.78-0.81, rear 0.69-0.70).
 # So the Ring's 48 N/mm rear spring is a 20.2 kN/m wheel rate, not 29.2: the rear was 45 % too stiff in heave
 # and pitch -- the crest behaviour. Roll is kept (see ARB_R).
-const MR2_R = parse(Float64, get(ENV, "JM_MR2_R", string((31.1/48)^2)))   # 0.4198; MRCONSIST-1 A/B knob
-const KS  = Ref((18_250.0, 18_250.0, 20_150.0, 20_150.0))    # FL, FR, RL, RR wheel rates [N/m]
+const MR2_R = parse(Float64, get(ENV, "JM_MR2_R", "0.4473"))   # was (31.1/48)^2 = 0.4198; MRCONSIST-1 S2
+# MRCONSIST-1 S2: JM_KARBR_COMP=1 = the two-set car of before (rear corner-share roll compensation `_karb_r`, the old bar
+# laws, shock travel through the spring MR) -- an A/B knob, read where the tools include the source.
+const KARBR_COMP = get(ENV, "JM_KARBR_COMP", "0") != "0"
+const KS  = Ref((19_677.0, 19_677.0, 21_470.0, 21_470.0))   # 30 / 48 N/mm x MR2 (MRCONSIST-1 S2; was 18_250 / 20_150)    # FL, FR, RL, RR wheel rates [N/m]
 const KS_SRC = Ref("built-in fallback (Nurburgring setup -- NOT from an ibt)")
 
 """    set_suspension!(fl, fr, rl, rr; source) -> nothing
@@ -168,9 +176,11 @@ function set_suspension!(fl::Real, fr::Real, rl::Real, rr::Real; source::Abstrac
 end
 
 """CARPHYS-1 S7: wheel travel (bump, droop) [m] per corner FL FR RL RR from the garage's shock deflection static/max
-and packer [mm]: bump = (max − static − packer)/MR, droop = −static/MR (MR front 0.78, rear 0.648)."""
+and packer [mm]: bump = (max − static − packer)/MR, droop = −static/MR. MRCONSIST-1 S2: MR is the SHOCK's (garage fit
+MR 0.814 / 0.693, garage_lotus49.toml), not the spring's; JM_KARBR_COMP=1 keeps the old sqrt(MR2) (0.78 / 0.648)."""
+const MR_SHOCK = (0.814256, 0.693304)
 function travel_from_setup(static, maxd, packer)
-    mr = (sqrt(MR2), sqrt(MR2), sqrt(MR2_R), sqrt(MR2_R))
+    mr = KARBR_COMP ? (sqrt(MR2), sqrt(MR2), sqrt(MR2_R), sqrt(MR2_R)) : (MR_SHOCK[1], MR_SHOCK[1], MR_SHOCK[2], MR_SHOCK[2])
     ntuple(i -> ((maxd[i] - static[i] - packer[i])/1000/mr[i], -static[i]/1000/mr[i]), 4)
 end
 # the 261004 default setup's ShockDeflection (LF RF LR RR, static / max mm) and packers
@@ -245,9 +255,16 @@ const ARB_ID = Dict{Tuple{String,String},NTuple{2,Float64}}(
 # positions are soft, 2, 3, 4, 5, firm; 3 and 5 are interpolated. The REAR arms have no test: still ignored.
 const ARB_ARM_FRONT = Dict("soft" => 0.37, "1" => 0.37, "2" => 1.0, "3" => 1.65, "4" => 2.30, "5" => 3.37, "firm" => 4.43, "6" => 4.43)
 # RARBARMS-1 S2: each bar's own rate in the 46 %-split car (see chassis_from_setup): the default's bars and the arm laws
-const ARB_BAR_F = 0.46*(1121.0 + 12714.0); const ARB_BAR_R = 0.54*(1121.0 + 12714.0)
-const ARB_LAW_F = Dict("soft" => 0.76, "1" => 0.76, "2" => 1.0, "3" => 1.24, "4" => 1.48, "5" => 1.72, "6" => 1.96, "firm" => 2.20, "7" => 2.20)
-const ARB_LAW_R = Dict("soft" => 0.20, "1" => 0.20, "2" => 0.40, "3" => 0.60, "4" => 0.80, "5" => 1.0, "6" => 1.285, "firm" => 1.57, "7" => 1.57)
+# MRCONSIST-1 S2 (JM_KARBR_COMP=0, with the garage MRs): no rear corner-share compensation, so the bars carry all of the
+# roll stiffness the springs at their own MR do not: re-identified from the same E3 sessions (tools/arbarms_261018.jl at
+# JM_MR2_F=0.6559 JM_MR2_R=0.4473): base total ~17,400 N/m, split 46 % front as before; front soft/2/firm 0.75/1/1.92,
+# rear soft/5/firm 0.33/1/1.47 (holes between linear, as before).
+const _KC = KARBR_COMP
+const ARB_BAR_F = _KC ? 0.46*(1121.0 + 12714.0) : 8004.0; const ARB_BAR_R = _KC ? 0.54*(1121.0 + 12714.0) : 9396.0
+const ARB_LAW_F = _KC ? Dict("soft" => 0.76, "1" => 0.76, "2" => 1.0, "3" => 1.24, "4" => 1.48, "5" => 1.72, "6" => 1.96, "firm" => 2.20, "7" => 2.20) :
+    Dict("soft" => 0.75, "1" => 0.75, "2" => 1.0, "3" => 1.184, "4" => 1.368, "5" => 1.552, "6" => 1.736, "firm" => 1.92, "7" => 1.92)
+const ARB_LAW_R = _KC ? Dict("soft" => 0.20, "1" => 0.20, "2" => 0.40, "3" => 0.60, "4" => 0.80, "5" => 1.0, "6" => 1.285, "firm" => 1.57, "7" => 1.57) :
+    Dict("soft" => 0.33, "1" => 0.33, "2" => 0.4975, "3" => 0.665, "4" => 0.8325, "5" => 1.0, "6" => 1.235, "firm" => 1.47, "7" => 1.47)
 _armof(s) = (m = match(r"\"\s*(\S+)\s*$", s); m === nothing ? "" : lowercase(m.captures[1]))
 _firstnum(s) = (m = match(r"[-+]?\d+(?:\.\d+)?", s); m === nothing ? NaN : parse(Float64, m.match))
 const ARB_REF = (("0.375\" 2", "0.6875\" 5"), 0.375, 0.6875)   # the reference for bars with no gold run
@@ -622,7 +639,7 @@ end
 # identified here). The rear's roll stiffness the TYRE-1-R handling was identified with came from the old motion
 # ratio, so a rear roll-only coupling keeps exactly that: per side ks + 2·karb = spring x MR2, as before. Heave and
 # pitch take the measured rate; the cornering balance is unchanged.
-_karb_r(ks) = 0.5 * float(ks) * (MR2/MR2_R - 1.0)
+_karb_r(ks) = KARBR_COMP ? 0.5 * float(ks) * (MR2/MR2_R - 1.0) : 0.0
 _corner(axle::Symbol, ks::Real; ch::Chassis = CHASSIS[], i::Int = 0) = (d = _dknee(ch); axle === :f ?
     (ks = float(ks), cs = 2500.0*ch.cscale[1]*d.scale, clo = d.clo, vk = d.vk, karb = 0.0, m_s = _msprung(i, 120.0), m_u = 20.0, kt = 180_000.0, ct = 1000.0) :
     (ks = float(ks), cs = 3000.0*ch.cscale[2]*d.scale, clo = d.clo, vk = d.vk, karb = _karb_r(ks), m_s = _msprung(i, 148.0), m_u = 20.0, kt = 200_000.0, ct = 1100.0))

@@ -1,5 +1,5 @@
 # CARPHYS-1 S7: the shock travel limits (TravelStops, chassis_parts.jl) from the setup's ShockDeflection and Packer.
-#   * the 261004 default's 61.8 of 104.6 mm (front) and 58.1 of 113.0 (rear) give wheel travel +55/−79 and +85/−90 mm;
+#   * the 261004 default's 61.8 of 104.6 mm (front) and 58.1 of 113.0 (rear) give wheel travel +53/−76 and +79/−84 mm through the shock MR (MRCONSIST-1 S2; +55/−79, +85/−90 before);
 #   * the setup parser reads ShockDeflection (static, max) and Packer per corner;
 #   * a wheel in the air hangs near full droop instead of falling away (before S7: 150–210 mm over Flugplatz);
 #   * parked, the stops carry nothing: the static state is the same as without them.
@@ -8,8 +8,10 @@ using ModelingToolkit
 fails = Ref(0)
 chk(name, ok, detail = "") = (println("  ", rpad(name, 66), ok ? "PASS" : "FAIL", "   ", detail); ok || (fails[] += 1); ok)
 tr = DriveRT3D.travel_from_setup(DriveRT3D.TRAVEL_REF...)
-chk("261004 default: front +55/−79 mm, rear +85/−90 mm", isapprox(1000tr[1][1], 54.9; atol = 0.2) && isapprox(1000tr[1][2], -79.2; atol = 0.2) &&
-    isapprox(1000tr[3][1], 84.7; atol = 0.2) && isapprox(1000tr[3][2], -89.7; atol = 0.2), join((string(round(Int, 1000t[1]), "/", round(Int, 1000t[2])) for t in tr), " "))
+# MRCONSIST-1 S2: through the garage's SHOCK motion ratio (0.814 / 0.693); JM_KARBR_COMP=1 = the spring MR of before
+const _TV = DriveRT3D.KARBR_COMP ? (54.9, -79.2, 84.7, -89.7) : (52.6, -75.9, 79.2, -83.8)
+chk("261004 default: wheel travel from the shock deflection and the shock MR", isapprox(1000tr[1][1], _TV[1]; atol = 0.2) && isapprox(1000tr[1][2], _TV[2]; atol = 0.2) &&
+    isapprox(1000tr[3][1], _TV[3]; atol = 0.2) && isapprox(1000tr[3][2], _TV[4]; atol = 0.2), join((string(round(Int, 1000t[1]), "/", round(Int, 1000t[2])) for t in tr), " "))
 include(joinpath(@__DIR__, "..", "src", "ibt.jl")); using .IBT
 include(joinpath(@__DIR__, "..", "src", "setup.jl")); using .Setup
 const DEF = joinpath(expanduser("~/gold standard/julia racer"), "261004", "lotus49_skidpad 2026-10-04 14-36-48.ibt")
