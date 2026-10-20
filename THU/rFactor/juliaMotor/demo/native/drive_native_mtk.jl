@@ -14309,39 +14309,7 @@ function main()
             # nothing within 2 m before the step (it moves <= 1.33 m): no clamp, but keep the obstacle "came from" fresh --
             # a stale one would mis-side a fence the car has since driven round the end of
             (GPLW_PHYS && CAR3D && !rst && !GPLW_NEAR[] && OBS_ON) && (OBS_PREV[] = (cs.x, cs.z))
-            if JOLT_MS > 0 && CAR3D && !SKIDPAD && !rst && JOLT_N[] < 60   # SPATD-1: name every impulse
-                (_jvx, _jvz) = DriveRT3D.world_velocity(cs); _jp = JOLT_PRE[]
-                _jd = hypot(_jvx - _jp[1], _jvz - _jp[2])
-                if _jd > JOLT_MS
-                    JOLT_N[] += 1
-                    _js = CLINE === nothing ? NaN : RaceAI.project(CLINE, cs.x, cs.z)
-                    println("  [jolt] t=", round(cs.t, digits = 2), " s=", round(_js[1], digits = 1), " lat=", round(_js[2], digits = 2),
-                            " v=", round(cs.v, digits = 1), "  dv ", round(_jd, digits = 2), " m/s in ", round(dt*1000, digits = 1),
-                            " ms  | solids F=(", round(_jp[3], digits = 0), ",", round(_jp[4], digits = 0), ") pk ", round(_jp[5], digits = 0),
-                            "  wall hits +", GPLW_STAT[].hits - _jp[6], " clamps +", GPLW_STAT[].clamps - _jp[7],
-                            "  obstacle hits +", OBS_STAT[].hits - _jp[8], " clamps +", OBS_STAT[].clamps - _jp[9],
-                            "  step-guard +", STEP_GUARD_HITS[] - _jp[10], "  rh (", round(cs.rh[1], digits = 3), ", ", round(cs.rh[2], digits = 3),
-                            ", ", round(cs.rh[3], digits = 3), ", ", round(cs.rh[4], digits = 3), ")")   # no broadcast: no closure to compile mid-race (PERF-4)
-                    # the solid this step penetrated deepest (name, kind, radius or box, gap) and where the car is
-                    _jg = Inf; _jk = 0
-                    for _k in eachindex(SOLIDS)
-                        SOLIDS[_k][3] < -100 && continue
-                        _g = car_gap(cs.x, cs.z, cs.θ, _k)[1]; _g < _jg && (_jg = _g; _jk = _k)
-                    end
-                    println("         at (", round(cs.x, digits = 1), ", ", round(cs.z, digits = 1), ")  deepest solid: ",
-                            _jk == 0 ? "none" : string(_jk <= length(SOLIDNAMES) ? SOLIDNAMES[_jk] : "?", " kind=", SOLIDS[_jk][4],
-                            " r=", round(SOLIDS[_jk][3], digits = 1), (_jk <= length(SOLIDBOX) && SOLIDBOX[_jk] !== nothing) ? " (box)" : "",
-                            " at (", round(SOLIDS[_jk][1], digits = 1), ", ", round(SOLIDS[_jk][2], digits = 1), ") gap ", round(_jg, digits = 2), " m"))
-                    if GPLW_PHYS                                            # GPL's walls at this spot (no tracking state touched)
-                        (_sec, _f, _lat, _, _) = gplw_locate(cs.x, cs.z; update = false)
-                        (_lo, _hi, _, _) = GPLWall.free_interval(GPLWALLS, _sec, _f, _lat, _lat; hmin = GPLW_HMIN)
-                        _L = GPLWALLS.seclen[_sec]
-                        println("         GPL: section ", _sec, " at ", round(_f*_L, digits = 1), "/", round(_L, digits = 1), " m, lat ",
-                                round(_lat, digits = 2), ", free [", round(_lo, digits = 2), ", ", round(_hi, digits = 2), "]")
-                    end
-                    flush(stdout)
-                end
-            end
+            jolt_report!(cs, frames, CLINE, STEP_GUARD_HITS, dt, rst)
             GPLW_PHYS && (GPLW_T[] = (GPLW_T[][1] + time() - _tgc, GPLW_T[][2]))
             if CRASH_ON && !isempty(CRASHES) && crash_i[] <= length(CRASHES) && frames >= 2
                 crash_step!(cs, frames, place_at_s!, crash_i, crash_invis, crash_jit, crash_ninv, crash_plat, crash_rec, crash_sum, crash_t0, crash_thru)
@@ -15349,28 +15317,7 @@ function main()
         end
         # JM_SHOT_AT: time-triggered captures (see SHOTS_AT). Arm on the trigger, dump SHOT_SETTLE
         # frames later so a view switch has settled; in a replay the clock is the replay clock.
-        if _DX_SHOTS
-            _tnow = REPLAY ? rep_rt[] : cs.t
-            for (k, ts) in enumerate(SHOTS_AT)
-                SHOTS_AT_ARMED[k] == -2 && continue
-                if SHOTS_AT_ARMED[k] < 0
-                    fire = startswith(ts.when, "finish+") ? (race_done && RACEEND_T0[] >= 0 && cs.t - RACEEND_T0[] >= parse(Float64, ts.when[8:end])) :
-                                                          (_tnow >= parse(Float64, ts.when))
-                    if fire
-                        SHOTS_AT_ARMED[k] = frames; ts.view >= 0 && (CTL.view = ts.view)
-                        println("  JM_SHOT_AT: armed ", ts.name, " at t=", round(_tnow, digits=2)); flush(stdout)
-                    end
-                elseif frames - SHOTS_AT_ARMED[k] >= SHOT_SETTLE
-                    buf=Vector{UInt8}(undef,W*H*3); glReadPixels(0,0,W,H,GL_RGB,GL_UNSIGNED_BYTE,buf)
-                    open(joinpath(SHOTS_DIR, ts.name * ".ppm"),"w") do io; write(io,"P6\n$W $H\n255\n")
-                        for y in H:-1:1, x in 1:W; o=((y-1)*W+(x-1))*3; write(io,buf[o+1],buf[o+2],buf[o+3]); end; end
-                    println("  JM_SHOT_AT: dumped ", ts.name); flush(stdout)
-                    isempty(PICKS) || pick_report(vp, eye, ts.name)   # BLINDTURN-1: name pixels in replay captures too
-                    SHOTS_AT_ARMED[k] = -2
-                    all(==(-2), SHOTS_AT_ARMED) && haskey(ENV, "JM_SHOT_AT_EXIT") && break
-                end
-            end
-        end
+        dx_shots!(cs, frames, REPLAY, eye, race_done, rep_rt, vp)
         if SMOKE && !isempty(AICAM_SEQ) && frames >= 40
             seg = (frames - 40) ÷ AICAM_SEG + 1
             if seg <= length(AICAM_SEQ)
@@ -15394,30 +15341,7 @@ function main()
             reveal!()
         end
         # PERF-1 diag: JM_ALLOCSITES=1 samples allocations over frames 300..600 and prints the top sites.
-        if ALLOCSITES
-            if frames == 300
-                @eval Main using Profile; Base.invokelatest(() -> (Profile.Allocs.clear(); Profile.Allocs.start(sample_rate = 0.02)))
-            elseif frames == 600
-                Base.invokelatest() do
-                    Profile.Allocs.stop(); r = Profile.Allocs.fetch()
-                    cnt = Dict{String,Tuple{Int,Int}}()
-                    for a in r.allocs
-                        site = "?"
-                        for fr in a.stacktrace
-                            f = string(fr.file)
-                            (occursin("drive_native_mtk", f) || occursin("render.jl", f) || occursin("ai.jl", f) || occursin("drive_rt", f)) || continue
-                            site = string(basename(f), ":", fr.line, " ", fr.func); break
-                        end
-                        c = get(cnt, site, (0, 0)); cnt[site] = (c[1] + 1, c[2] + a.size)
-                    end
-                    println("  [allocsites] top sites (sampled 2%, frames 300-600):")
-                    for (k, v) in sort(collect(cnt), by = x -> -x[2][2])[1:min(end, 25)]
-                        println("     ", lpad(round(Int, v[2]/0.02/300/1024), 6), " KB/frame  ", lpad(v[1], 6), " samples  ", k)
-                    end
-                    flush(stdout)
-                end
-            end
-        end
+        allocsites_report!(cs, frames)
         # SPA-FPS-1 S6: smoothed frame time for the adaptive mirror decision above. An EMA rather
         # than the instantaneous dt so one slow frame (a texture upload, a GC pause) cannot flip the
         # mirror off and on, which would itself look like strobing.
