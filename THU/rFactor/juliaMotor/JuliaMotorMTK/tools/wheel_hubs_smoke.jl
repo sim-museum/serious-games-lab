@@ -29,7 +29,7 @@ for (dir, (fx, rx, fy, ry)) in expect
         "tracks $(round(h.fy,digits=2))/$(round(h.ry,digits=2))")
     chk("$dir: not the old table (1.05/-1.15)", !(near(h.fx, 1.05) && near(h.rx, -1.15)), "")
 end
-src = read(joinpath(NATIVE, "drive_native_mtk.jl"), String); rsrc = read(joinpath(NATIVE, "render.jl"), String)
+src = (read(joinpath(NATIVE, "drive_native_mtk.jl"), String) * read(joinpath(NATIVE, "main_loop.jl"), String)); rsrc = read(joinpath(NATIVE, "render.jl"), String)
 chk("AI loader places wheels from the mesh (source)", occursin("wheelspec = wheelspec_from_mesh(hubs, wheelspec, off_x, off_z)", rsrc))
 chk("Lotus WHEELS come from lotus.3do (source)", occursin("Render.mesh_wheel_hubs(LOT3DO)", src))
 println(fails[] == 0 ? "ALL PASS" : "FAILURES: $(fails[])")

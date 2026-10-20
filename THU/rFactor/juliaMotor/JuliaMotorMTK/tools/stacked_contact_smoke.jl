@@ -39,7 +39,7 @@ pass(b3t <= DriveRT3D.VN_OUT_MAX + 0.05, "treatment: three stacked, capped -> no
 pass(abs(b1t - b1c) < 1e-6 && abs(e1t - e1c) < 1e-6, "the cap is a no-op on a single contact", @sprintf("%.3f vs %.3f", e1t, e1c))
 pass(e3t < 1.0,                          "treatment: the car is stopped, not skating away",    @sprintf("%.2f m/s", e3t))
 # the sim must build one disc per spot and cap the sum
-SRC = read(joinpath(@__DIR__, "..", "..", "demo", "native", "drive_native_mtk.jl"), String)
+SRC = (read(joinpath(@__DIR__, "..", "..", "demo", "native", "drive_native_mtk.jl"), String) * read(joinpath(@__DIR__, "..", "..", "demo", "native", "main_loop.jl"), String))
 pass(occursin("_key in _solidseen", SRC) && occursin("push!(SOLIDS, _key)", SRC), "SOLIDS builder drops exact duplicates", "source check")
 pass(occursin("DriveRT3D.cap_total_contact(Fx, Fy, vbx, vby", SRC), "solid_contact caps the summed force", "source check")
 println(fails == 0 ? "STACKED-CONTACT GATE: PASS" : "STACKED-CONTACT GATE: FAIL ($fails)")

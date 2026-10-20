@@ -10,7 +10,7 @@
 #
 # offroad_smoke proves the PHYSICS handles NaN. This gate proves the APP actually sends it -- the
 # half that was missing, and the half that let the bug ship.
-const SRC0 = read(joinpath(@__DIR__, "..", "..", "demo", "native", "drive_native_mtk.jl"), String)
+const SRC0 = (read(joinpath(@__DIR__, "..", "..", "demo", "native", "drive_native_mtk.jl"), String) * read(joinpath(@__DIR__, "..", "..", "demo", "native", "main_loop.jl"), String))
 
 fails = 0
 

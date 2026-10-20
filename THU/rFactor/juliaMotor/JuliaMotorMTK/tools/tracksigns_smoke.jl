@@ -3,7 +3,7 @@
 # track folder indexed by lower-case name), and the add-on's km stones (0.45 m) pass the "under 1 m tall" rule.
 # With the PO's GPL install present, also: every TS_/SI_/KM_ file the Ring places resolves through that index.
 const D = joinpath(@__DIR__, "..", "..", "demo", "native")
-src = read(joinpath(D, "drive_native_mtk.jl"), String)
+src = (read(joinpath(D, "drive_native_mtk.jl"), String) * read(joinpath(D, "main_loop.jl"), String))
 fails = Ref(0)
 chk(name, ok, detail = "") = (println("  ", rpad(name, 66), ok ? "PASS" : "FAIL", "   ", detail); ok || (fails[] += 1); ok)
 chk("object files are looked up case-blind", occursin("const _ZD_LC = Dict(lowercase(f) => f", src) && occursin("objpath0(nm) = (p=_zd_file(nm*\".3do\")", src))   # TD261013-1: objpath = objpath0 + OBJ_ALIAS

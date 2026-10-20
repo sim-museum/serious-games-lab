@@ -57,7 +57,7 @@ end
 
 # TRACKGOLD-1 S3 (2026-09-06): the Ring's sprite-stub path (gpl_scenery) bypassed drop(); it must
 # apply the same rule. Source check, because the sim cannot be loaded here.
-let src = read(joinpath(@__DIR__, "..", "..", "demo", "native", "drive_native_mtk.jl"), String)
+let src = (read(joinpath(@__DIR__, "..", "..", "demo", "native", "drive_native_mtk.jl"), String) * read(joinpath(@__DIR__, "..", "..", "demo", "native", "main_loop.jl"), String))
     check("Ring sprite stubs go through PeopleFilter", occursin("if PeopleFilter.is_loose_person(lowercase(nm)) && get(ENV, \"JM_KEEP_CROWDROWS\", \"0\") == \"0\"", src), "")
 end
 println(fails[] == 0 ? "PEOPLE GATE: PASS" : "PEOPLE GATE: FAIL ($(fails[]))")

@@ -113,7 +113,7 @@ check("old 8-field maps still build (wheel range 0)", JoyCfg.txmap().wheel_half_
 check("unknown wheel with a measured range -> physical steering", JoyCfg.wheel_half_range_deg("Some Wheel"; measured = 270.0) == 270.0)
 check("unknown device, no measurement -> endpoint steering", JoyCfg.wheel_half_range_deg("Some Wheel") == 0.0)
 check("the sim passes the calibration's range", occursin("wheel_half_range_deg(JOYNAME; measured = JOYMAP.wheel_half_deg)",
-      read(joinpath(NATIVE, "drive_native_mtk.jl"), String)))
+      (read(joinpath(NATIVE, "drive_native_mtk.jl"), String) * read(joinpath(NATIVE, "main_loop.jl"), String))))
 
 # 4. AppImage update keeps the autodetect store
 sh = read(normpath(joinpath(@__DIR__, "..", "..", "tools", "appimage", "build_julia.sh")), String)

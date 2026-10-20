@@ -21,7 +21,7 @@ for (chassis, file, ids) in (("eagle", "eagle/eagle.3do", Set([29108, 39200])), 
     others0 = count(g -> !(g in ids), m0.groups); others1 = length(m1.tris)
     pass(others0 == others1, "every other group untouched", "$others1 tris")
 end
-SRC = read(joinpath(@__DIR__, "..", "..", "demo", "native", "drive_native_mtk.jl"), String)
+SRC = (read(joinpath(@__DIR__, "..", "..", "demo", "native", "drive_native_mtk.jl"), String) * read(joinpath(@__DIR__, "..", "..", "demo", "native", "main_loop.jl"), String))
 pass(occursin("AI_PARKED_SUSP_GROUPS = Dict(\"eagle\" => Set([29108, 39200]), \"brabham\" => Set([32916, 48284]), \"cooper\" => Set([30048, 41624]))", SRC), "loader hides Eagle/Brabham/Cooper blade groups (BRM/Ferrari untouched)", "source check")
 # CARGOLD-2 S3 (2026-10-05): posing at the hub plane drew the parked halves as diagonal blades beside the rear tyres (Lotus,
 # Cooper); the default is now HIDE plus BUILT driveshafts per chassis (AI_AXLES), JM_AI_REAR_POSE=1 restores the pose.

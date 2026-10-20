@@ -5,7 +5,8 @@
 #   * the range is set for the track-mesh loop only and reset after it (objects, cars, sky are not cut);
 #   * the shader discards beyond it, and the per-frame uniforms default it off.
 const D = joinpath(@__DIR__, "..", "..", "demo", "native")
-src = read(joinpath(D, "drive_native_mtk.jl"), String); rnd = read(joinpath(D, "render.jl"), String)
+src = read(joinpath(D, "drive_native_mtk.jl"), String) * read(joinpath(D, "main_loop.jl"), String)   # LOOPSPLIT-1: the world draw moved to main_loop.jl
+rnd = read(joinpath(D, "render.jl"), String)
 fails = Ref(0)
 chk(name, ok) = (println("  ", rpad(name, 70), ok ? "PASS" : "FAIL"); ok || (fails[] += 1); ok)
 m = match(r"const TRACK_MAXD = parse\(Float32, get\(ENV, \"JM_TRACK_MAXD\", \"(\d+)\"\)\)", src)
@@ -40,7 +41,7 @@ end
 chk("the track loop draws the window's ranges; draw takes a range", occursin("for (f0, n0) in lapranges(TRACKLAPOFF[ti], _clap)", src) &&
     occursin("glDrawArrays(GL_TRIANGLES, first, count < 0 ? item.n : count)", rnd))
 chk("objects get the same window (backdrops exempt; either leg, TD261013-1)", occursin("!lapwin_in(OBJLAP[oi], _olap) &&", src) && occursin("lapwin_in(OBJLAP2[oi], _olap))) && continue", src) &&
-    occursin("if isbackdrop(lowercase(String(o[5])))\n                        OBJLAP[k] = NaN; OBJLAP2[k] = NaN", src))
+    occursin(r"if isbackdrop\(lowercase\(String\(o\[5\]\)\)\)\n\s+OBJLAP\[k\] = NaN; OBJLAP2\[k\] = NaN", src))   # any indentation (LOOPSPLIT-1 moved it)
 chk("on by default on all five tracks (914 m, GPL's 18,000,000 TRK; BLINDTURN-1 S7/S10, TD261013-1 b5)", occursin("get(ENV, \"JM_LAPWIN\", (NURB || WATGLEN || MONZA || SPA || ZANDV) ? \"914\" : \"0\")", src))
 chk("sprites and forest panels take the lap window too (TD261013-1 b5)", occursin("_bbin(_nst + _k) || continue", src) && occursin("_bbin(_k) || continue", src))
 # TD261013-1 (c1): geometry near two legs of the lap (the Ring's pit row between the start straight and the return

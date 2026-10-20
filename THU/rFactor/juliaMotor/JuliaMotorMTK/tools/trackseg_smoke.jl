@@ -26,6 +26,6 @@ check(findfirst(==("Eschbach"), ring) < findfirst(==("Brünnchen"), ring), "Esch
 check(all(n -> n in ring, ("Kottenborn", "Postbrücke", "Kompression", "Spiegelkurve", "Dreifach-Rechts", "Lauda Links", "Steilstrecke",
                            "Posten 147", "Hedwigshöhe", "Stefan-Bellof-S", "Großer Sprunghügel", "Kleines Karussell")), "the iRacing names are there")
 check(findfirst(==("Dreifach-Rechts"), ring) == findfirst(==("Wehrseifen"), ring) - 1, "Dreifach-Rechts leads into Wehrseifen")
-src = read(joinpath(ROOT, "drive_native_mtk.jl"), String)
+src = (read(joinpath(ROOT, "drive_native_mtk.jl"), String) * read(joinpath(ROOT, "main_loop.jl"), String))
 check(occursin("get(ENV, \"JM_SEGNAME_SECS\", \"6.0\")", src), "names stay up 6 s by default (was 3)")
 println("TRACKSEG GATE: ", ok ? "PASS" : "FAIL"); exit(ok ? 0 : 1)

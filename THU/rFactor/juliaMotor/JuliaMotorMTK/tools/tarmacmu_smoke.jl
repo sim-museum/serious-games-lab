@@ -47,7 +47,7 @@ edge(x, z, dir) = (for d in 0.5:0.5:40.0; road(x, z + dir*d) || return d; end; I
 ends = [(edge(p[1], p[2], +1.0), edge(p[1], p[2], -1.0)) for p in PO]
 chk("2. the tarmac ends within 40 m on both sides of every pose", all(e -> isfinite(e[1]) && isfinite(e[2]), ends),
     "widest " * string(round(maximum(e[1] + e[2] for e in ends), digits = 1)) * " m")
-src = read(joinpath(D, "drive_native_mtk.jl"), String)
+src = (read(joinpath(D, "drive_native_mtk.jl"), String) * read(joinpath(D, "main_loop.jl"), String))
 m = match(r"function wheel_mu\(.*?\nend"s, src)
 chk("3. wheel_mu consults ROADHAT before GRASS_MU", m !== nothing && occursin("hat3d(ROADHAT", m.match) &&
     occursin("GRASS_MU", m.match), m === nothing ? "wheel_mu not found" : "")

@@ -1200,3 +1200,197 @@ function player_step3d!(cs, dt, rst, inp, groundz, ffb_jolt, groundz_phys, race_
                              μRL*DriveRT3D.damage_mu(3), μRR*DriveRT3D.damage_mu(4))
     (cfx, cfy, cpk, ffb_jolt)
 end
+
+"""The shared world draw (main pass and E64 mirror pass): track, objects, billboards, AI and remote cars. LOOPSPLIT-1
+cycle 3 S3: the per-frame `drawworld` closure's body, moved unchanged; the loop's closure now only forwards to it."""
+function drawworld_impl!(vp_, eye_, flip::Bool, cs, AICHASSIS, _tp_d, aiBody, aiWheel, ai_poses, spin)
+    (HORIZON_RING === nothing || LAYOFF_HZ) || Render.draw_horizon(prog, HORIZON_RING, vp_, eye_; tint=GRADE.ringtint)   # GPL horizon ring backdrop
+    # E60 (D6, 260801 gold video): TRACK-mesh signs (VREDESTEIN at Tarzan …) drew with uBackFlip=0, so
+    # when the coplanar dedup keeps the away-facing decal the text renders MIRRORED.  Objects already
+    # un-mirror back faces; give the track mesh the same treatment (road/kerb back faces are unseen).
+    glUniform1i(Render.uloc(prog,"uBackFlip"), 1)
+    secfrom = (@isdefined SEC_FROM) ? SEC_FROM : typemax(Int)
+    PROF_DEPTH[] += time() - _tp_d; _tp_t = time()
+    glUniform1f(Render.uloc(prog,"uMaxDist"), TRACK_MAXD)    # TRACKS-TD-1 S2: the track mesh's draw range
+    _clap = _LW === nothing ? 0.0 : lapnear(Float64(eye_[1]), -Float64(eye_[3]))   # BLINDTURN-1: the eye's lap position
+    for (ti, it) in enumerate(trackItems)                        # ambfill lifts shadowed walls/fences out of the "carbonized" black under the flat overcast light
+        # RING-HAIRPIN-1 S3: with the tessellated road on, the .3do's asphalt/groove strips are not drawn
+        # SKIDPAD-GOLD-1 S2: same guard as RINGSPRITES above -- ROADTESS is a const defined
+        # inside the GPL-track branch, so on the synthetic SKIDPAD it does not exist and this
+        # line threw UndefVarError from inside main(). Second of the same class in one file.
+        if (@isdefined ROADTESS) && ROADTESS && ti <= length(TRACKMAIN) && TRACK_ASPGROOVE[ti]   # PERF-3: precomputed (was a lowercase() String per part per frame)
+            continue
+        end
+        # E68 S9b: landmass SECTIONS draw single-sided like GPL — culls the dark edge-skirt
+        # slabs (Ring s≈18400) that our two-sided draw exposed.  Winding per OBJ_FF_CW.
+        # E68 S10b: rail-family parts also draw single-sided (guardrail shimmer).
+        # TRACKGOLD-1 S4 probe: JM_SEC_TWOSIDED=1 draws the landmass sections two-sided again -- if a
+        # section's winding is the wrong way it is invisible from the road and the ground behind a bank
+        # (last01 at s=1000) is sky; the bank then reads as a ramp into the air.
+        if ti == secfrom && SEC_TWOSIDED; glDisable(GL_CULL_FACE)
+        elseif ti == secfrom; glEnable(GL_CULL_FACE); glCullFace(xor(OBJ_FF_CW, flip) ? GL_FRONT : GL_BACK)
+        elseif ti < secfrom && (@isdefined TRACK_RAILCULL) && ti <= length(TRACK_RAILCULL)
+            if TRACK_RAILCULL[ti]; glEnable(GL_CULL_FACE); glCullFace(xor(OBJ_FF_CW, flip) ? GL_FRONT : GL_BACK)
+            elseif TRACK_BOARDCULL[ti]; glEnable(GL_CULL_FACE); glCullFace(flip ? GL_FRONT : GL_BACK)   # BOARDCULL-1: keep the faces whose normal faces the eye
+            else; glDisable(GL_CULL_FACE); end
+        end
+        TRACKCULL && !infrustum(vp_, TRACKBOUND[ti][1], TRACKBOUND[ti][2]) && continue   # PERF-3 (after the cull-state toggles)
+        if MONZA                                                 # E57: per-surface grade — its asphalt MIP is over-bright, its barriers carbonized
+            cat = TRACKCAT[ti]
+            b, a = cat === :road ? (MZ_ROAD_B, MZ_ROAD_A) : cat === :dark ? (MZ_DARK_B, MZ_DARK_A) :
+                   cat === :bank ? (MZ_BANK_B, MZ_BANK_A) : (MZ_OTHER_B, MZ_OTHER_A)
+            gg = ti <= length(TRACKGAIN) ? TRACKGAIN[ti] : 1f0
+            Render.draw(prog, it, vp_, Render.IDENT; bright=b*gg, ambfill=a*gg)
+        else
+            # E69-S7: make the track-draw lighting tunable so the warm cast measured against
+            # gold (asphalt R-B: gold -2.5..-5.3, native +7.8..+12.7 across three tracks
+            # each) can be attributed rather than guessed at.
+            gg = ti <= length(TRACKGAIN) ? TRACKGAIN[ti] : 1f0   # GRADEGOLD-1
+            if _LW !== nothing && ti <= length(TRACKLAPOFF)     # BLINDTURN-1 S5: GPL's lap window
+                for (f0, n0) in lapranges(TRACKLAPOFF[ti], _clap)
+                    n0 > 0 && Render.draw(prog, it, vp_, Render.IDENT; bright=TRACK_BRIGHT*gg, ambfill=TRACK_AMB*gg, first=f0, count=n0)
+                end
+            else
+                Render.draw(prog, it, vp_, Render.IDENT; bright=TRACK_BRIGHT*gg, ambfill=TRACK_AMB*gg)
+            end
+        end
+    end
+    glUniform1f(Render.uloc(prog,"uMaxDist"), 0f0)
+    (@isdefined SEC_FROM) && length(trackItems) >= SEC_FROM && glDisable(GL_CULL_FACE)   # E68 S9b: section cull off before objects
+    if OBJ_CULLFACE                                           # E60: GPL culls single-sided faces —
+        # double-sided signs keep both decals (dedup=:orient), each visible only from its own side.
+        # NEVER touch glFrontFace: the two-sided-Lambert shader keys off gl_FrontFacing globally
+        # (flipping the convention darkened the whole world) — pick the culled SIDE instead.
+        # GPL is D3D-era (CW front); after the winding-preserving remap those faces are GL "back",
+        # so cull GL_FRONT to keep them.  JM_OBJ_FF=ccw culls GL_BACK if a track's data disagrees.
+        glEnable(GL_CULL_FACE); glCullFace(xor(OBJ_FF_CW, flip) ? GL_FRONT : GL_BACK)
+        glUniform1i(Render.uloc(prog,"uBackFlip"), 0)
+    end
+    PROF_TRACK[] += time() - _tp_t; _tp_o = time()
+    # SPA-FPS-1 S3 (2026-09-07): Spa's frame was 9-15 ms of trackside objects + 9-15 ms of billboards, one
+    # draw call each for everything inside the radius -- behind the camera and off to the sides included.
+    # A clip-space test skips what this pass's camera cannot see (each mirror pass brings its own vp_,
+    # so it culls for its own view). JM_FRUSTUM_CULL=0 reverts.
+    # PERF-1: function barrier -- OBJECTS/OBJBOUND are untyped globals, so the loop body boxed every value
+    # (a top allocation site). Passing them in lets the loop compile for their concrete types.
+    (function (_OBJS, _BND)
+    _cseg = gplvis_seg(eye_[1], eye_[3])
+    _olap = _LW === nothing ? 0.0 : lapnear(Float64(eye_[1]), -Float64(eye_[3]))
+    if _LW !== nothing && length(OBJLAP) != length(_OBJS)                 # BLINDTURN-1 S5: each object's lap position
+        resize!(OBJLAP, length(_OBJS)); resize!(OBJLAP2, length(_OBJS))
+        for (k, o) in enumerate(_OBJS)
+            if isbackdrop(lowercase(String(o[5])))
+                OBJLAP[k] = NaN; OBJLAP2[k] = NaN
+            else
+                sl, dsq = lapnear_d(Float64(o[4][1]), -Float64(o[4][3]))
+                OBJLAP[k] = sl; OBJLAP2[k] = lapnear2(Float64(o[4][1]), -Float64(o[4][3]), sl, dsq)
+            end
+        end
+    end
+    for (oi,(items,mat,grz,opos,onm)) in enumerate(_OBJS)   # trackside objects
+        LAYOFF_OBJ && continue   # (trees graze-fade; uBackFlip stays 1 when un-culled)
+        _ocl = oi <= length(OBJCLIP) ? OBJCLIP[oi] : nothing                 # GPLVIS-1 S4: GPL's cells (clipped)
+        (_ocl === nothing && _cseg > 0 && oi <= length(OBJVIS) && OBJVIS[oi] !== nothing && !OBJVIS[oi][_cseg]) && continue   # GREY-1: GPL's window
+        (OBJ_SCENEDUP[oi] && _ocl === nothing && !(oi <= length(OBJVIS) && OBJVIS[oi] !== nothing)) && continue   # RING-GOLD-1 S3 (E109-S15: not the veils -- their scenery copy is hidden; GPLVIS-1: nor a cell-clipped object)
+        bc, br = oi <= length(_BND) ? _BND[oi] : ((opos[1], opos[2], opos[3]), 80f0)   # CULLBOUND-1: the object's real bounding sphere
+        (_LW !== nothing && oi <= length(OBJLAP) && !isnan(OBJLAP[oi]) && !isnan(_olap) && !lapwin_in(OBJLAP[oi], _olap) &&
+         !(oi <= length(OBJLAP2) && !isnan(OBJLAP2[oi]) && lapwin_in(OBJLAP2[oi], _olap))) && continue   # BLINDTURN-1 S5 (+ TD261013-1: either leg)
+        max(sqrt((eye_[1]-bc[1])^2+(eye_[2]-bc[2])^2+(eye_[3]-bc[3])^2) - br, 0f0)^2 > (flip ? MIR_OBJ_CULL2 : OBJ_CULL2) && continue   # distance cull (mirror gets its own radius, S14)
+        FRUSTUM_CULL && !infrustum(vp_, bc, br) && continue
+        # PERF-1: size cull -- an object whose bounding sphere covers < JM_MINPIX pixels is not drawn
+        br < (flip ? MINPIX_K_MIR : MINPIX_K) * sqrt((eye_[1]-bc[1])^2+(eye_[2]-bc[2])^2+(eye_[3]-bc[3])^2) && continue
+        ob, oa = OBJ_BRIGHT, OBJ_AMB                           # default object grade (grandstands/buildings); SHADE-1. PERF-4 S2: Float32 like the
+                                                               # vegetation branch -- a Float64/Float32 mix made every draw's keywords allocate
+        # SPAYELLOW-1 (PO 2026-09-26, Spa: "the initial view shows mostly a yellow blob, like a
+        # hillside colored bright yellow, on the left side of the screen"). Bisected with
+        # JM_LAYERS_OFF: with objects off the pixel is sky, so the blob is a placed OBJECT --
+        # `hill13`, a 300 x 20 m foliage backdrop ridge 61 m from the Spa grid, textured `pinend`
+        # (a dark green tree-line: mean RGB 61,85,76). It was drawn at the GRANDSTAND grade,
+        # 1.05/0.55, while the SAME foliage on the track draws at TRACK_BRIGHT*VEG_GAIN = 0.583
+        # and TRACK_AMB*VEG_GAIN = 0.275 -- GRADEGOLD-1 gave the track's vegetation a gain and
+        # never gave one to objects. Measured on the Spa grid: the ridge rendered (249,250,73),
+        # i.e. 2.4x its texture with red and green CLIPPED, against ~1.2x for the same texture on
+        # the track, and gold shows no yellow there at all. Ground cover is ground cover: grade a
+        # vegetation-textured object like the track's vegetation. JM_OBJ_VEG=0 restores 1.05/0.55.
+        _ovg = OBJ_VEG_GRADE ? get(OBJVEG, onm, nothing) : nothing
+        if MONZA                                               # E57: tone the combined-circuit paved/banking object surfaces
+            g = monza_obj_grade(onm)
+            g === :road && ((ob, oa) = (Float32(MZ_ROAD_B), Float32(MZ_ROAD_A))); g === :bank && ((ob, oa) = (Float32(MZ_BANK_B), Float32(MZ_BANK_A)))
+        end
+        otint = is_crowd_obj(onm) ? CROWD_TINT : (1f0,1f0,1f0)   # E46: warm/de-blue the over-blue grandstand crowd MIP
+        # OBJDUP-1 (PO 2026-09-19, WG: "banner over start/finish is placed twice, a couple of metres
+        # apart"). The `startbox` gantry's DUNLOP board is a 1 m-thick box with a textured face on
+        # each side; drawn two-sided (objects are, JM_OBJ_CULL=0) the far face shows through as a
+        # ghost copy. The A/B with E60's cull rule (parity/po_260919/wg_banner_cull_ab.jpg) kept
+        # the WRONG face (mirrored text): this model winds the other way. Cull it by name with the
+        # opposite face; nothing else changes. JM_STARTBOX_CULL=0 reverts.
+        _twin = OBJ_CULLFACE ? nothing : get(TWINBOARD, onm, nothing)   # OBJDUP-2: geometric face choice
+        _sbcull = (STARTBOX_CULL && !OBJ_CULLFACE && onm == "startbox") || _twin !== nothing
+        if _sbcull
+            glEnable(GL_CULL_FACE); glCullFace(_twin === nothing ? (xor(OBJ_FF_CW, flip) ? GL_BACK : GL_FRONT) : (xor(_twin, flip) ? GL_BACK : GL_FRONT))
+            glUniform1i(Render.uloc(prog,"uBackFlip"), 0)
+        end
+        _obd = BACKDROP_ON ? get(OBJBACKDROP, onm, nothing) : nothing
+        _bdfar = _obd !== nothing && hypot(eye_[1] - opos[1], eye_[3] - opos[3]) > backdrop_r(onm)   # out of its viewing area
+        for _cpl in (_ocl === nothing ? (nothing,) : _ocl)                       # GPLVIS-1 S4: once per GPL cell, clipped
+        _cpl === nothing || Render.clip_planes!(prog, _cpl)
+        for (_ii, it) in enumerate(items)                                        # SPAYELLOW-1: foliage PARTS take the track's vegetation grade
+            _fol = _ovg !== nothing && _ii <= length(_ovg) && _ovg[_ii]
+            _bd = _obd !== nothing && _ii <= length(_obd) && _obd[_ii]       # RING-GOLD-1 S2: backdrop panorama part
+            (_bd && _bdfar) && continue
+            Render.draw(prog, it, vp_, mat; bright = _fol ? TRACK_BRIGHT*VEG_GAIN : (OBJ_FLAT[1] > 0f0 ? 1f0 : ob),
+                        ambfill = _fol || OBJ_FLAT[1] > 0f0 ? (_fol ? TRACK_AMB*VEG_GAIN : 0f0) : oa, graze=grz || _bd, tint=otint,
+                        flat = _fol ? (0f0, 0f0) : OBJ_FLAT)   # SHADE-1: buildings flat-lit as GPL; foliage keeps its grade
+        end
+        end
+        _ocl === nothing || Render.clip_planes!(prog, nothing)   # grandstands/buildings: ambfill kills the "post-Hiroshima carbonized" shadow faces → vibrant GPL look
+        if _sbcull; glDisable(GL_CULL_FACE); glUniform1i(Render.uloc(prog,"uBackFlip"), 1); end
+    end
+    end)(OBJECTS, OBJBOUND)
+    PROF_OBJ[] += time() - _tp_o; _tp_b = time()
+    # TD261013-1 (b5) (PO 2026-10-13, Spa: "around white mountain after stavelot you can see the road ribbon after the
+    # start/finish line like a suspended bridge in the distance"): the lap window (now on at Spa) hides that ground, so the
+    # sprites standing on it must go with it -- else a row of tree tops floats in the sky. Sprites and forest panels take
+    # the objects' window (either leg). JM_LAPWIN_SPRITES=0 = the distance cull only.
+    _blap = (_LW === nothing || !LAPWIN_SPRITES) ? NaN : lapnear(Float64(eye_[1]), -Float64(eye_[3]))
+    if !isnan(_blap) && length(BBLAP) != length(BILLBOARDS) + length(STATICTREES)
+        empty!(BBLAP); empty!(BBLAP2)
+        for (_, pos) in Iterators.flatten((((x[1], x[2]) for x in STATICTREES), ((x[1], x[2]) for x in BILLBOARDS)))
+            sl, dsq = lapnear_d(Float64(pos[1]), -Float64(pos[3])); push!(BBLAP, sl); push!(BBLAP2, lapnear2(Float64(pos[1]), -Float64(pos[3]), sl, dsq))
+        end
+    end
+    _bbin(k) = isnan(_blap) || k > length(BBLAP) || isnan(BBLAP[k]) || lapwin_in(BBLAP[k], _blap) || (!isnan(BBLAP2[k]) && lapwin_in(BBLAP2[k], _blap))
+    for (_k, (it,pos,w,h,yaw)) in enumerate(STATICTREES)     # wide forest-edge panels (authored yaw, graze-fade)
+        _bbin(_k) || continue
+        (eye_[1]-pos[1])^2+(eye_[2]-pos[2])^2+(eye_[3]-pos[3])^2 > BB_CULL2 && continue
+        FRUSTUM_CULL && !infrustum(vp_, pos, max(w, h) + 5f0) && continue
+        Render.draw(prog, it, vp_, Render.translate(pos[1],pos[2],pos[3])*Render.roty(yaw)*Render.scalexyz(w,h,1f0); bright=1.3, ambfill=0.8, graze=true, unlit=!BB_LIT)   # E63/MZ3: the comment always claimed graze-fade but the call never passed it → a wide Monza forest strip seen EDGE-ON rendered as a dark triangular SLAB at the S/F. graze=true fades edge-on quads (uGraze) so the strip shows face-on as a tree-line and vanishes edge-on
+    end
+    OBJ_CULLFACE && glDisable(GL_CULL_FACE)
+    glUniform1i(Render.uloc(prog,"uBackFlip"), 0)
+    (function (_BBS, _nst, _bbin)   # PERF-1: function barrier (BILLBOARDS is an untyped global)
+    for (_k, (it,pos,w,h)) in enumerate(_BBS)            # trees/sprites
+        LAYOFF_BB && continue
+        _bbin(_nst + _k) || continue                     # TD261013-1 (b5): the lap window
+        _d2 = (eye_[1]-pos[1])^2+(eye_[2]-pos[2])^2+(eye_[3]-pos[3])^2
+        _d2 > (flip ? MIR_BB_CULL2 : BB_CULL2) && continue       # distance cull (mirror radius, S14)
+        max(w, h) < 2f0 * (flip ? MINPIX_K_MIR : MINPIX_K) * sqrt(_d2) && continue       # PERF-1: sub-pixel sprite
+        FRUSTUM_CULL && !infrustum(vp_, pos, max(w, h) + 5f0) && continue
+        Render.draw(prog, it, vp_, Render.billboard_model(pos,w,h,eye_); bright=BB_BRIGHT, ambfill=BB_AMB, unlit=!BB_LIT)  # E83-S3: unlit by default (GPL pre-lit art); E70-S7 tunables only matter with JM_BILLBOARD_LIT=1
+    end
+    end)(BILLBOARDS, length(STATICTREES), _bbin)
+    PROF_BB[] += time() - _tp_b; _tp_c = time()
+    # AI grid (Ferrari/Brabham/BRM/Eagle/Cooper). E106-S25: JM_NO_AI_WHEELS=1 suppresses the AI wheel draw
+    # (the rods on the AI rear tyre were neither the wheel mesh nor the wrapper). PERF-3: typed barrier.
+    draw_ai_main!(prog, vp_, ai_poses, AICHASSIS, spin, AI_NOWHEELS)
+    PROF_CARS[] += time() - _tp_c
+    # E85-S5: the REMOTE cars, drawn through exactly the same path as the AI field -- same
+    # body/wheel transforms, so anything true of an AI car's placement is true of theirs.
+    if !isempty(NETPOSES[]) && !isempty(AICARMODELS)
+        for (nid, p) in NETPOSES[]          # MP-5: the host's AI ids pick their own chassis
+            cm = AICARMODELS[NetPlay.chassis_slot(nid, length(AICARMODELS))]
+            let _bm = aiBody(p, cm); for it in cm.body; Render.draw(prog, it, vp_, _bm; bright=AI_BRIGHT, spec=0.10, ambfill=AI_AMB); end; end
+            for (wx,wz,_,r,nm) in cm.wheelspec, it in cm.wheels[nm]; Render.draw(prog, it, vp_, aiWheel(p,cm,wx,wz,r)); end
+        end
+    end
+end

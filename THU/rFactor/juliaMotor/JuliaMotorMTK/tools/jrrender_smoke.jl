@@ -3,7 +3,7 @@
 # includes the very files the sim's fallback does; its workload is there; it loads in this project and its modules
 # are the ones the sim names; the AppImage refreshes and cache-checks it.
 const ROOT = normpath(joinpath(@__DIR__, "..", ".."))
-src = read(joinpath(ROOT, "demo", "native", "drive_native_mtk.jl"), String)
+src = (read(joinpath(ROOT, "demo", "native", "drive_native_mtk.jl"), String) * read(joinpath(ROOT, "demo", "native", "main_loop.jl"), String))
 pkg = read(joinpath(ROOT, "JRRender", "src", "JRRender.jl"), String)
 app = read(joinpath(ROOT, "tools", "appimage", "build_julia.sh"), String)
 fails = Ref(0)
