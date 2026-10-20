@@ -15142,66 +15142,7 @@ function main()
             end
         end
         if !REPLAY && race_go[] && !rst && !isempty(ai_poses)
-            # E56 slipstream for the PLAYER: tuck behind a car on a straight → reduced frontal drag
-            # (CdA_scale<1) → you reel them in + slingshot past.  A REAL aero effect integrated by the
-            # chassis ODE next frame, not a forward velocity bump.  Works vs the default kinematic field too.
-            if CAR3D && (ph = JuliaMotor.hat(TRKSURF, cs.x, cs.z); ph.found && abs(ph.lateral) <= ROAD_HALFW)
-                plds = [(p[1], p[3], p[4], AICARS[k].v) for (k,p) in enumerate(ai_poses)]
-                ptw = draft_tow(cs.x, cs.z, cs.θ, cs.v, plds)
-                ptw > 0.0 && (PLAYER_CDA[] = 1.0 - DRAFT_DRAG_CUT * clamp(ptw/TOW_MAX, 0.0, 1.0))
-            end
-            pm = 560.0; am = 560.0                    # FFB / AI-response scales; the player's impulse is car_contact_impulse (CAR_E 0.12: inelastic)
-            # E96-S5: the PLAYER's world velocity, not speed x heading. `cs.v` is UNSIGNED, so a car
-            # being shoved backwards after a clash still read as travelling along its nose -- and the
-            # closing test below (`vrel <= 0.2 && continue`) would then see CLOSING where the cars are
-            # actually separating, and hand out another impulse every frame. That is the same sign
-            # error E96-S2 found in solid_contact and the world fence; this site was missed because
-            # car-to-car contact was not what the PO was reporting at the time.
-            # The AI side keeps v x heading: AI cars are driven along their own nose and are never
-            # shoved backwards by this path (it bounds their response deliberately, R1), so their
-            # speed and heading agree. The player is the body that gets pushed around.
-            pvx = WVX[]; pvz = WVZ[]
-            for (k, p) in enumerate(ai_poses)
-                dx = p[1] - cs.x; dz = p[3] - cs.z; d = hypot(dx, dz)
-                (d < 1e-3 || !car_near(dx, dz, d, cs.θ, p[4])) && continue   # CARCOLLIDE-2: broad phase; carcontact.jl finds the touching parts
-                nx = dx/d; nz = dz/d                          # contact normal, player → AI
-                ac = AICARS[k]; aθ = p[4]
-                lat = -dx*sin(cs.θ) + dz*cos(cs.θ)            # contact offset in the player's frame → spin sign
-                # ANY car contact (even a sustained scrape, before the closing-impulse test) gives a clear
-                # FF kick, so you always FEEL the AI — not just on a square closing hit.
-                ffb_jolt = clamp(-sign(lat)*0.6, -1.0, 1.0)
-                avx = ac.v*cos(aθ); avz = ac.v*sin(aθ)
-                if haskey(LOOSE_OF, k)                        # CARCOLLIDE-2 S4: a loose car moves as its Car3D does
-                    lc = LOOSE_CARS[LOOSE_OF[k]]; la = lc.getall(lc.integ)
-                    avx = la[4]*cos(lc.θ) - la[5]*sin(lc.θ); avz = la[4]*sin(lc.θ) + la[5]*cos(lc.θ)
-                end
-                # HANDLING-1 S3: a rigid-body impulse at the contact point (car_contact_impulse) -- no amplification, no
-                # side-only yaw kick, no invented hop/roll/scrub; the bodywork friction bleeds speed on a side-swipe.
-                imp = car_contact_impulse(cs.x, cs.z, cs.θ, pvx, pvz, CAR3D ? DriveRT3D.yawrate3d(cs) : 0.0, p[1], p[3], avx, avz; θb = aθ)
-                imp === nothing && continue                   # separating → no new impulse (the contact kick already fired)
-                (pdvx, pdvz, pdr, j) = imp
-                bumpX!(cs, pdvx, pdvz, pdr, imp[5], imp[6], imp[7])   # CARCOLLIDE-2 S3: + heave/roll/pitch (nose-dive, launch)
-                carhit_damage!(cs, pdvx, pdvz, j)              # CARINTERACT-1: a car hit costs YOU, as a wall does
-                ffb_jolt = clamp(ffb_jolt - sign(lat)*(j/pm)*0.4 - 0.5, -1.0, 1.0)   # a CLOSING hit adds a bigger kick
-                if !AI_PHYSICS && loose_hit!(k, p, aθ, avx, avz, cs, pvx, pvz, CAR3D ? DriveRT3D.yawrate3d(cs) : 0.0, cs.t)
-                    # CARCOLLIDE-2 S4: knocked loose (or already loose) -- the struck car answers with its own physics
-                elseif AI_PHYSICS                              # the AI is a real physics car → impulse it too
-                    alat = -dx*sin(aθ) + dz*cos(aθ)
-                    # E55: PLANAR push + mild yaw only — no vertical launch / roll on the AI (it must not
-                    # flip or cartwheel when the player nudges it), even though the player still feels the hit.
-                    AIbump!(AIPHYS[k], (j/am)*nx, (j/am)*nz, clamp(sign(alat)*(j/am)*0.05, -1.0, 1.0))
-                else
-                    # PO: the kinematic AI must NOT "flit off like an insect" or get ROCKETED forward (which
-                    # inflated its lap count — see R1).  A real crash is ENERGY-LOSSY: it does not propel the
-                    # victim.  So the AI HOLDS its line (tiny lateral shove + a decaying yaw twitch carry the
-                    # "knocked" look) and its speed change is BOUNDED — nosed ⇒ slowed, rear-ended ⇒ only a
-                    # small bounded nudge, never dragged up toward the (fast) player's speed.
-                    along  = nx*cos(aθ) + nz*sin(aθ); across = -nx*sin(aθ) + nz*cos(aθ)
-                    ac.v   = max(0.0, ac.v + clamp((j/am)*along, -8.0, 2.5))            # bounded: no escape-velocity boost
-                    ac.lane = clamp(ac.lane + clamp((j/am)*across*0.04, -0.7, 0.7), -RaceAI.LANE_MAX, RaceAI.LANE_MAX)  # gentle nudge, not a dart
-                    ac.spin += clamp((j/am)*across*0.06, -0.8, 0.8)   # yaw twitch (decays) — looks knocked, not weightless
-                end
-            end
+            ffb_jolt = ai_contact_step!(cs, ai_poses, AICARS, AIPHYS, PLAYER_CDA, ffb_jolt)
         end
         # MP-COLLIDE-1 (PO 2026-09-19, the first two-PC race: "cars can see each other but drive through each other").
         # E85-S5/MP-5 drew remote cars (the other human, and on a client the host's AI field) but never collided them.
