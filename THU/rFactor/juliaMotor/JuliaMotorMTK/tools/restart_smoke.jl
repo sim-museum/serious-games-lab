@@ -18,12 +18,19 @@
 
 const SRC = normpath(joinpath(@__DIR__, "..", "..", "demo", "native", "drive_native_mtk.jl"))
 src = read(SRC, String)
+# LOOPSPLIT-1 cycle 2 (2026-10-20): the restart body moved out of the frame loop into main_loop.jl's restart_session!;
+# the loop's `if restart` now only calls it and takes the reset locals back
+const SRC2 = normpath(joinpath(@__DIR__, "..", "..", "demo", "native", "main_loop.jl"))
+src2 = read(SRC2, String)
 
 i = findfirst("if restart", src)
 i === nothing && error("no `if restart` block in $SRC -- has CTRL+R been removed?")
-# take a generous window; the block is short
-blk = src[first(i):min(length(src), first(i) + 6000)]
-j = findfirst("\n        end\n", blk)
+call = src[first(i):min(length(src), first(i) + 2000)]
+k = findfirst("\n        end\n", call); call = k === nothing ? call : call[1:last(k)]
+i2 = findfirst("function restart_session!", src2)
+i2 === nothing && error("no restart_session! in $SRC2")
+blk = src2[first(i2):end]
+j = findfirst("\nend\n", blk)
 blk = j === nothing ? blk : blk[1:last(j)]
 
 fails = Ref(0)
@@ -64,6 +71,11 @@ required = [
 ]
 for (name, needle) in required
     check(name, occursin(needle, blk), occursin(needle, blk) ? "" : "MISSING `$needle`")
+end
+# the loop must call it, and take back every reset the function returns
+check("the loop calls restart_session!", occursin("restart_session!(", call), "")
+for v in ("lap_t0", "last_lap", "best_lap", "prev_laps", "race_done", "player_prog", "player_s_prev")
+    check("the loop takes back $v", occursin("$v = _rs.$v", call), occursin("$v = _rs.$v", call) ? "" : "MISSING `$v = _rs.$v`")
 end
 
 # The progress anchor must be re-seeded FROM THE CAR, not zeroed: `player_s_prev = 0.0` would make

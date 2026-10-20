@@ -331,3 +331,71 @@ function fuel_step!(cs, inp, dt, FUEL1, FUEL_ON, fuel, fuel_mass_t, race_go, rst
         end
     inp
 end
+
+"""CTRL+R: the session restarts on the current track (LOOPSPLIT-1 cycle 2, moved unchanged from the frame loop; the
+per-session state that main() holds in plain locals comes back as a NamedTuple). restart_smoke reads THIS body."""
+function restart_session!(cs, cs0, groundz, groundz_phys, AICARS, AILINE, CLINE, DO_QUAL, HOLD_START, FUEL1, FUEL_ON, GPLAI_F, PLAYER_G, REPLAY_NCAR, ai_best, ai_lap_prev, ai_lapt0, burn_lap, fuel_laps, fuel, cd_armed, cd_left, cd_said, cd_t0, flush_ibt!, form_grid!, ibt_samples, launch_done, new_replay_path, phase, player_finpos, player_grid, player_laps, race_go, replay_buf, replay_names, replay_out, replay_saved, replay_t, tele_buf, player_s_prev)
+    t_restart = time()
+    # REPLAY-4: the session that just ended gets its own replay and .ibt; the restart starts new ones
+    if replay_buf !== nothing && !isempty(replay_buf)
+        write_replay(replay_out[], replay_buf, tele_buf, REPLAY_NCAR, replay_names, CLINE; final = true)
+        println("  [session] replay saved: ", basename(replay_out[])); flush(stdout)
+        empty!(replay_buf); empty!(tele_buf); replay_t[] = -1.0; replay_saved[] = time()
+        replay_out[] = new_replay_path()
+    end
+    flush_ibt!(ibt_samples)
+    # RESTARTGROUND-1 (PO 2026-10-18, Monza: "at start of 2nd lap ... car sinks entirely below road surface, then
+    # breaks through road surface and levitates high in the air"): Monza's wall guard in groundz holds LASTZ, and a
+    # restart never re-anchored it -- after a wreck at Parabolica (ground ~ -4 m) the new race ran off the road band
+    # 1.3 m under the mesh, was launched 12 m when the spline took over at s 460, and the step guard then held the
+    # stale -4.17 m so the next wreck sank into the ground. Re-anchor at the spawn first, as SHIFT+R does.
+    groundz(cs0.x, cs0.z; acquire = true)
+    PLAYER_G[] = NaN; respawnX!(cs; groundz = groundz_phys); DriveRT3D.damage_reset!()
+    DC[].lastz = 0.0   # LAPTIME-1: see the respawn below
+    WRECKED[] = false; WRECK_FROZEN[] = false; empty!(LOOSE_WHEELS)   # a detached corner is never redrawn otherwise
+    CLUTCH_GATE[] = -1.0
+    TELLTALE[] = 0.0   # COCKPIT-TACH-1: a restart re-arms the tell-tale
+    empty!(AI_COOL)    # WGTD-1 (e): the new race's field races again
+    # lap + race state
+    cs.laps = 0; lap_t0 = cs.t; last_lap = 0.0; best_lap = 0.0; prev_laps = 0
+    race_done = false; empty!(player_laps)
+    player_finpos[] = 0; player_grid[] = 0
+    launch_done[] = false
+    # accumulated arc-length progress. MUST be re-seeded from the RESPAWNED position: zeroing
+    # `player_s_prev` would make the next frame's delta a whole lap's worth of progress --
+    # the same failure mode as the teleport bug this file already fixes in `prog_delta`.
+    player_prog = 0.0
+    CLINE !== nothing && (player_s_prev = RaceAI.project(CLINE, cs.x, cs.z)[1])
+    # phase + start
+    # mirror the ORIGINAL initialisation exactly (line ~5650:
+    #   phase = Ref(DO_QUAL ? :practice : :race)
+    # -- inventing a variant here is how a restart drifts from a fresh launch.
+    phase[] = DO_QUAL ? :practice : :race
+    # ...which is `Ref(!HOLD_START)`. Spell it with the FLAG, not a copy of its expression:
+    # STARTSEQ-1 added a term (!REPLAY) and this copy would have silently kept the old one,
+    # leaving a replay held at a start it can never be given.
+    race_go[] = !HOLD_START
+    cd_t0[] = -1.0; cd_left[] = -1.0
+    # A restart re-asks for the spacebar. Leaving cd_armed latched would skip the prompt and
+    # roll straight into the countdown -- the restart would not look like a fresh start.
+    cd_armed[] = false; cd_said[] = false
+    # AI field back to the grid
+    if !isempty(AICARS)
+        AICARS .= RaceAI.init_cars(AILINE, length(AICARS); start_s = 30.0)
+        fill!(ai_lapt0, cs.t); fill!(ai_lap_prev, 0); fill!(ai_best, Inf)
+        RaceAI.aistat_reset!()
+        # 2026-10-03 (PO: "rear ended by AI car at start" after R): init_cars is the OLD ad-hoc
+        # stagger that RACESTART-2 replaced at launch -- it left AI beside and behind the player.
+        # Re-form the grid exactly as the launch does (`if !DO_QUAL && HOLD_START` below the
+        # definition of form_grid!): every AI on rows AHEAD of the player.
+        (!DO_QUAL && HOLD_START) && (player_grid[] = form_grid!(Inf))
+        GPLAI_F[] = nothing                                       # AIGPL-2: rebuilt from the new grid
+    end
+    # restart refuels (restart_smoke checks for the `fuel[] =` reset here); FUEL-1: and the tank's burnt mass back to 0
+    FUEL_ON && (fuel[] = FUEL1 ? FUEL_START_L[] : burn_lap * fuel_laps; CAR3D && FUEL1 && DriveRT3D.set_fuel_burnt!(cs, 0.0))
+    println("  [restart] session reset on ", TRACKSEL, " in ",
+            round((time() - t_restart)*1000, digits=1), " ms (track NOT reloaded)")
+    flush(stdout)
+    (lap_t0 = lap_t0, last_lap = last_lap, best_lap = best_lap, prev_laps = prev_laps, race_done = race_done,
+     player_prog = player_prog, player_s_prev = player_s_prev)
+end
