@@ -399,3 +399,140 @@ function restart_session!(cs, cs0, groundz, groundz_phys, AICARS, AILINE, CLINE,
     (lap_t0 = lap_t0, last_lap = last_lap, best_lap = best_lap, prev_laps = prev_laps, race_done = race_done,
      player_prog = player_prog, player_s_prev = player_s_prev)
 end
+
+"""E85-S6 HEADLESS AUTODRIVE (JM_AUTODRIVE=1): the AI controller drives the player on the centreline; returns the
+frame's input. LOOPSPLIT-1 cycle 2 S2: moved unchanged from the frame loop -- in the loop its `let` wrote main()'s own
+`ps` and `step` (and the loop's `up` / `dn` / `thr` / `brk` / `st`) as a side effect; here they are its own."""
+function autodrive_step!(cs, CLINE, frames, dt, groundz, inp)
+    let (s0, lat0) = RaceAI.project(CLINE, cs.x, cs.z)
+        # BNDWRECK-1 S10: THIS is the actor that wrecks, and S9 showed it consults no
+        # previous s at all -- so the measurement has to bring its own.
+        if TRACE_DS
+            DS_PREV[] >= 0.0 && ds_note!(s0 - DS_PREV[], cs.v, dt, CLINE.total)
+            DS_PREV[] = s0
+        end
+        # ⚠️ The 10th argument is the YAW RATE, not a gain. I first passed a placeholder
+        # 1.0 and the car never moved: the controller's anti-spin logic reads ~1 rad/s as a
+        # car already sliding and cuts the throttle, so telemetry showed `thr 0.0 kmh 0.0`
+        # while steer twitched -- the controller WAS running and correctly refusing to
+        # accelerate a car it believed was spinning. Pass the real rate.
+        # `cs` has no yaw-rate FIELD -- the model exposes it as a function,
+        # DriveRT3D.yawrate3d (aliased AIyaw), which is what the AI field itself uses.
+        # `cs.r` would have thrown FieldError at runtime; parse_smoke cannot see that.
+        yawrate = try; y = AIyaw(cs); isfinite(y) ? y : 0.0; catch; 0.0; end
+        # AUTODRIVE-RING-1 (2026-10-16): one fixed speed wrecks the autodriver in the Ring's first bends (s 619 at
+        # 45 m/s; at 28 m/s it stalls by s 816), so whole-lap checks (JM_DRIVECHECK) could not cover the Ring.
+        # JM_AUTODRIVE_PROFILE=<pace> caps the target at that fraction of the AI's free-running speed profile on
+        # this line (RaceAI.free_speed_profile, computed once), read a car-length ahead. Off by default.
+        _vt = AUTODRIVE_V
+        if AUTODRIVE_PROF_PACE > 0
+            AUTODRIVE_PROF[] === nothing && (AUTODRIVE_PROF[] = RaceAI.free_speed_profile(CLINE; amax = AI_AMAX))
+            (ps, pv) = AUTODRIVE_PROF[]
+            _k = clamp(floor(Int, mod(s0 + 2.0*cs.v, CLINE.total) / (ps[2] - ps[1])) + 1, 1, length(pv))
+            _vt = min(_vt, AUTODRIVE_PROF_PACE * pv[_k])
+        end
+        thr, brk, st = RaceAI.controller(CLINE, s0, lat0, AUTODRIVE_LAT, _vt,
+                                         cs.x, cs.z, cs.θ, cs.v, yawrate; power = 1.0)
+        # E106-S15 (PO: "ensure nurburgring and spa can be driven without obstacles
+        # (levitation, bouncing) etc on the part of the human driver"). While autodrive is
+        # running the lap, WATCH for the three failures the PO named, per frame:
+        #   * levitation -- the car's height above the ground under it exceeds AIR_MAX;
+        #   * bounce     -- an upward velocity spike with no jump to explain it;
+        #   * stuck      -- moving under STUCK_V for STUCK_S seconds ("a graze should scrub
+        #                   you but not end your race").
+        # Reported at exit as a verdict, so a lap either states it is clean or names where
+        # and by how much it was not. JM_DRIVECHECK=1.
+        if DRIVECHECK
+            # cs.y is the car's WORLD HEIGHT (it is what the replay records as the pose's
+            # y and what read back as 620.x at the Ring); cs.x/cs.z are the plan coords.
+            # The step comes from the car's own clock, not an assumed `dt` in scope.
+            step = max(Float64(cs.t) - DC[].lastt, 1e-4)
+            DC[].lastt = Float64(cs.t)
+            gh = groundz(cs.x, cs.z)
+            # ⚠️ `gh <= -900` CANNOT FIRE HERE, and that is the finding, not an oversight.
+            # There are TWO groundz in this file: the top-level one at :2921 returns the
+            # -999 "off the HAT" sentinel, but the one in scope here (:5166, nested in
+            # main) never does -- off the mesh it HOLDS `LASTZ[]`, the last valid height,
+            # and reports the excursion through `ONTRACK[]` instead. So the old
+            # `if gh > -900f0` guard was always true (it was guarding against a value this
+            # closure cannot produce), and off-mesh frames were measured against a STALE
+            # reference height rather than skipped. Read the flag the closure actually
+            # sets, immediately after the call that sets it.
+            if !ONTRACK[]
+                DC[].off_bad += 1
+                if DC[].off_bad == 1 || Float64(cs.y) > DC[].off_y
+                    DC[].off_s = s0; DC[].off_y = Float64(cs.y)
+                end
+                length(DC[].offevents) < 24 && (isempty(DC[].offevents) ||
+                    abs(DC[].offevents[end][1] - s0) > 20.0) &&
+                    push!(DC[].offevents, (s0, Float64(cs.y), Float64(cs.v)*3.6))
+            end
+            gh < DC[].ghmin && (DC[].ghmin = Float64(gh))   # does the sentinel EVER arrive?
+            if gh > -900f0
+                air = Float64(cs.y) - Float64(gh)
+                if air > DC[].airmax; DC[].airmax = air; DC[].air_s = s0; end
+                if air > DC_AIR_MAX
+                    DC[].air_bad += 1
+                    # log each DISTINCT excursion (a new one only after coming back down),
+                    # so the verdict names the SITES rather than one global maximum -- a
+                    # single "worst" figure cannot be cross-referenced against the track.
+                    if !DC[].inair && length(DC[].events) < 24
+                        push!(DC[].events, (s0, air, cs.v*3.6, Float64(cs.x), Float64(cs.z)))
+                    elseif DC[].inair && !isempty(DC[].events)
+                        # track the PEAK of this excursion, not its onset: recording only
+                        # the crossing value made a 9.4 m launch read as 0.84 m, which is
+                        # an instrument that understates exactly the thing it is for.
+                        (es, epk, ekmh, ex, ez) = DC[].events[end]
+                        air > epk && (DC[].events[end] = (es, air, ekmh, ex, ez))
+                    end
+                    DC[].inair = true
+                elseif air < DC_AIR_MAX*0.5
+                    DC[].inair = false
+                end
+            end
+            # Skip the first second: the car SETTLES onto the track at spawn, which is a
+            # legitimate one-frame height step (27.7 m/s on the Glen). Counting it made
+            # every run report a "bounce" at s=0 -- an instrument that always fails is as
+            # useless as one that never does.
+            if DC[].lastz != 0.0 && cs.t > DC_SETTLE_S
+                vz = (Float64(cs.y) - DC[].lastz) / step
+                if vz > DC[].vzmax; DC[].vzmax = vz; DC[].vz_s = s0; end
+                vz > DC_VZ_MAX && (DC[].vz_bad += 1)
+            end
+            DC[].lastz = Float64(cs.y)
+            if cs.v < DC_STUCK_V
+                DC[].stuck += step
+                if DC[].stuck > DC[].stuckmax; DC[].stuckmax = DC[].stuck; DC[].stuck_s = s0; end
+            else
+                DC[].stuck = 0.0
+            end
+            DC[].maxs = max(DC[].maxs, s0)
+        end
+        if AUTODRIVE_DIAG > 0 && (frames % AUTODRIVE_DIAG) == 0
+            println("  [auto] t=", round(cs.t,digits=1), " v=", round(cs.v*3.6,digits=1),
+                    " km/h  thr=", round(thr,digits=2), " brk=", round(brk,digits=2),
+                    " steer=", round(st,digits=2), " s=", round(s0,digits=1))
+            flush(stdout)
+        end
+        if AUTODRIVE_MANUAL && !CTL.auto           # (a stall drops the car to AUTO: then drive as AUTO does)
+            h = ADM[].hold
+            if h == 0
+                up = cs.gear == 0 || (cs.rpm > 8700 && cs.gear < 5)
+                dn = !up && cs.gear > 1 && cs.rpm < 4300 && brk > 0.1
+                (up || dn) && (ADM[] = (hold = 8, up = up, dn = dn))
+            end
+            h = ADM[].hold; ADM[] = (hold = max(h - 1, 0), up = ADM[].up, dn = ADM[].dn)
+            # clutch in for 8 frames; the paddle pulse in the middle one (the gearbox reads an edge)
+            # a launch as a driver does it: slip the clutch until the car rolls (70 % in at rest, out by 7 m/s)
+            launch = cs.v < 7.0 ? clamp(0.7 - cs.v / 10, 0.0, 1.0) : 0.0
+            inp = DriveInput(throttle = h > 0 ? 0.0 : (launch > 0 ? max(clamp(thr, 0, 1), 0.5) : clamp(thr, 0, 1)),
+                             brake = clamp(brk, 0, 1), steer = clamp(st, -1, 1), clutch = h > 0 ? 1.0 : launch,
+                             shift_up = h == 4 && ADM[].up, shift_down = h == 4 && ADM[].dn, autoshift = false)
+        else
+            inp = DriveInput(throttle = clamp(thr, 0, 1), brake = clamp(brk, 0, 1),
+                             steer = clamp(st, -1, 1), clutch = inp.clutch,
+                             shift_up = false, shift_down = false, autoshift = true)
+        end
+    end
+    inp
+end
