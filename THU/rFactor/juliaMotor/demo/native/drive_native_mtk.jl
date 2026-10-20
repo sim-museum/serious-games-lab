@@ -7432,6 +7432,36 @@ const CROWD_TEX = ("ltraymap","lshad")
 # the census by exactly 0 (108 -> 108), and the reason is that NO TRIANGLE REFERENCES IT: parsing
 # ho18/armcow3/epolsp3 per face gives only real textures (Saeule, Ziegel, dach, armcow_s, polewbr1).
 # The name is an unused string-table entry. Nothing to exclude, so no exclusion.
+# GPLWALL-1 helpers, defined before the object build (MONZAGROUND-1 S5: the sprite pass asks GPL's road interval)
+const GPLW_NODEGRID = !GPLW_ON ? Dict{Tuple{Int,Int},Vector{Int}}() : let g = Dict{Tuple{Int,Int},Vector{Int}}()
+    for (k, p) in enumerate(GPLREF); push!(get!(g, (floor(Int, p[1]/16), floor(Int, p[2]/16)), Int[]), k); end
+    g
+end
+"locate without a hint: nearest GPL node from the node grid (within ~150 m), then the hinted search"
+function gplw_locate_any(x, z)
+    ci = floor(Int, x/16); cj = floor(Int, z/16); best = 0; bd = Inf
+    for r in 0:10
+        for i in ci-r:ci+r, j in cj-r:cj+r
+            (abs(i - ci) == r || abs(j - cj) == r) || continue
+            for k in get(GPLW_NODEGRID, (i, j), Int[])
+                d = (GPLREF[k][1] - x)^2 + (GPLREF[k][2] - z)^2
+                d < bd && (bd = d; best = k)
+            end
+        end
+        best != 0 && r >= 1 && break
+    end
+    best == 0 ? nothing : gplw_locate(x, z; hint = best)
+end
+"the free interval that holds GPL's road at (section, fraction)"
+function gplw_road_interval(sec, f)
+    v = GPLWALLS.secs[sec]; bw = -1.0; mid = 0.0
+    for k in 1:length(v)-1
+        (v[k].typ & 0x7ff) == 1 || continue
+        a = GPLWall.edge(GPLWALLS, sec, k, f); b = GPLWall.edge(GPLWALLS, sec, k + 1, f)
+        b - a > bw && (bw = b - a; mid = (a + b)/2)
+    end
+    GPLWall.free_interval(GPLWALLS, sec, f, mid, mid; hmin = GPLW_HMIN)
+end
 let objnames=Set{String}()
     for f in readdir(ZD); endswith(lowercase(f),".3do") && push!(objnames, lowercase(replace(f,r"\.3do$"i=>""))); end
     for k in keys(DATPACK); endswith(k,".3do") && push!(objnames, replace(k,r"\.3do$"=>"")); end
@@ -9217,6 +9247,17 @@ let objnames=Set{String}()
     global BILLBOARDS = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32}[]
     global STATICTREES = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32,Float32}[]
     _bbwhy = get(ENV, "JM_BBDIAG", "") != ""            # MONZAGROUND-1: which rule removes each sprite / forest panel
+    # MONZAGROUND-1 S5: our road centreline can run down a JUNCTION STUB the race never uses -- at Monza's start it follows
+    # the banking branch, while GPL's road (and the PO's line) is beside it. GPL's start-line lamp pylons (light01: the
+    # FINA "Motor Oil" banner the gold shows at t 9, and the loudspeaker post) stand there, and E31 dropped all four as
+    # "on the road". A point GPL's own walls put OUTSIDE the race road's free interval (by > 1 m) is not on the road.
+    # JM_GPLSTUB_KEEP=0 = the old test.
+    _stubkeep = GPLW_ON && get(ENV, "JM_GPLSTUB_KEEP", "1") != "0"
+    gpl_offroad(x, y) = _stubkeep && let r = gplw_locate_any(Float64(x), Float64(y))
+        r === nothing && return false
+        (lo, hi) = gplw_road_interval(r[1], r[2])
+        isfinite(lo) && isfinite(hi) && (r[3] < lo - 1.0 || r[3] > hi + 1.0)
+    end
     for i in insts
         bb = get(bbinfo, i.name, nothing); bb === nothing && continue
         dropi(i) && (_bbwhy && println("  JM_BBDIAG ", i.name, ": drop()"); true) && continue
@@ -9257,7 +9298,7 @@ let objnames=Set{String}()
         # E31: drop sprites planted ON the road (the Monza tree "curtain" across the track). SPAFLAGS-1: the Stavelot flags
         # stand 8.7 m from the centreline, ~4 m past Spa's road edge there (its armco is at 5.6 m) -- for that row the
         # test is the tarmac itself (6 m), not the 9 m corridor.
-        on_road(i.x, i.y, spaflags_keep(i) ? 6.0 : ROAD_HALFW) && (_bbwhy && println("  JM_BBDIAG ", i.name, ": on the road (E31)"); true) && continue
+        on_road(i.x, i.y, spaflags_keep(i) ? 6.0 : ROAD_HALFW) && !gpl_offroad(i.x, i.y) && (_bbwhy && println("  JM_BBDIAG ", i.name, ": on the road (E31)"); true) && continue
         gz = ploz(i)
         item, tw, th, h, wid, aax = bb
         w = wid > 0f0 ? wid : h*tw/max(th,1f0)
@@ -9689,35 +9730,6 @@ end
 # (a bridge deck overhead is not one), or a drawn trackside object. Covered = some SOLID's boundary within 0.3 m.
 end
 if !_OBJ_SKIP   # E80-S12: the object build continues (one top-level statement per ~300 lines, see above)
-const GPLW_NODEGRID = let g = Dict{Tuple{Int,Int},Vector{Int}}()
-    for (k, p) in enumerate(GPLREF); push!(get!(g, (floor(Int, p[1]/16), floor(Int, p[2]/16)), Int[]), k); end
-    g
-end
-"locate without a hint: nearest GPL node from the node grid (within ~150 m), then the hinted search"
-function gplw_locate_any(x, z)
-    ci = floor(Int, x/16); cj = floor(Int, z/16); best = 0; bd = Inf
-    for r in 0:10
-        for i in ci-r:ci+r, j in cj-r:cj+r
-            (abs(i - ci) == r || abs(j - cj) == r) || continue
-            for k in get(GPLW_NODEGRID, (i, j), Int[])
-                d = (GPLREF[k][1] - x)^2 + (GPLREF[k][2] - z)^2
-                d < bd && (bd = d; best = k)
-            end
-        end
-        best != 0 && r >= 1 && break
-    end
-    best == 0 ? nothing : gplw_locate(x, z; hint = best)
-end
-"the free interval that holds GPL's road at (section, fraction)"
-function gplw_road_interval(sec, f)
-    v = GPLWALLS.secs[sec]; bw = -1.0; mid = 0.0
-    for k in 1:length(v)-1
-        (v[k].typ & 0x7ff) == 1 || continue
-        a = GPLWall.edge(GPLWALLS, sec, k, f); b = GPLWall.edge(GPLWALLS, sec, k + 1, f)
-        b - a > bw && (bw = b - a; mid = (a + b)/2)
-    end
-    GPLWall.free_interval(GPLWALLS, sec, f, mid, mid; hmin = GPLW_HMIN)
-end
 if GPLW_ON && get(ENV, "JM_GPLWALL_INTERIOR", "0") != "0"
     let tex = Dict{String,Vector{Any}}(), nin = Ref(0), nunc = Ref(0), nsamp = Ref(0)
         covered(x, z) = any(k -> solid_gap(x, z, k)[1] <= 0.3, eachindex(SOLIDS))
