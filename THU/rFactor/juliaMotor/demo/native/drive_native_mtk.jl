@@ -13332,7 +13332,6 @@ function main()
                 push!(cars, gc)
             end
             f = GPLAI.Field(GPLAI_T, cars; seed = rand(AI_RNG[], UInt32)); GPLAI_F[] = f
-            SMOKE && atexit(() -> println("  [gplai] field contact ticks: ", f.stats))   # CARCOLLIDE-2 S6: AI-vs-AI census
         end
         f
     end
@@ -16534,6 +16533,8 @@ function main()
     GLFW.Terminate()
     GPLW_PHYS && GPLW_T[][2] > 0 && println("  GPLWALL-1 cost: ", round(1e6*GPLW_T[][1]/GPLW_T[][2], digits = 1),
                                             " us/frame over ", GPLW_T[][2], " frames (walls + drawn obstacles, contact + clamp)")
+    # CARCOLLIDE-2 S6: the GPL-AI field's contact census (AI-vs-AI ticks, player contacts) for smoke races
+    SMOKE && GPLAI_F[] !== nothing && println("  [gplai] field contact ticks: ", GPLAI_F[].stats)
     println("bye"); flush(stdout); flush(stderr)
     # HARD exit: skip Julia's atexit handlers.  PortAudio registers one that calls Pa_Terminate, which
     # SEGFAULTS in the ALSA/PipeWire stream teardown ("free(): corrupted unsorted chunks") on this box —
