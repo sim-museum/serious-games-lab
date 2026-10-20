@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, 
 
 import garage as gm
 import gpl_setup
+import iracing_sheet
 
 CORNERS = ("LEFT FRONT", "RIGHT FRONT", "LEFT REAR", "RIGHT REAR")
 SESSION_KEYS = ("default", "ww103")          # the Race tab's car setup combo, in its order
@@ -188,10 +189,23 @@ class GarageTab(QWidget):
                               "(GPL wheel rate -> iRacing spring rate), dampers and bars by range position, camber, toe, bias,\n"
                               "fuel, diff and the nearest iRacing gearing. What iRacing's ranges cannot take is reported.")
         self.gpl_b.clicked.connect(self.import_gpl)
+        # SETUPIO-1 (PO 2026-10-19): GPL export, iRacing setup sheet import/export
+        self.gplx_b = QPushButton("Export GPL setup…")
+        self.gplx_b.setToolTip("SETUPIO-1: write this garage as a GPL Lotus 49 setup (.kj1, GPL's own file) -- pressures,\n"
+                               "springs (iRacing spring rate -> GPL wheel rate), dampers and bars by range position, camber,\n"
+                               "toe, bias, fuel, diff (ramps snap to GPL's 30/45/60/85) and GPL's nearest gear teeth.")
+        self.gplx_b.clicked.connect(self.export_gpl)
+        self.sheet_b = QPushButton("Import iRacing sheet…")
+        self.sheet_b.setToolTip("SETUPIO-1: read an iRacing Lotus 49 setup sheet (.htm, the garage's Print/Export): every knob,\n"
+                                "camber and front toe as iRacing displays them; differences in derived numbers are reported.")
+        self.sheet_b.clicked.connect(self.import_sheet)
+        self.sheetx_b = QPushButton("Export iRacing sheet…")
+        self.sheetx_b.setToolTip("SETUPIO-1: write this garage as an iRacing-layout setup sheet (.htm) with julia's derived numbers.")
+        self.sheetx_b.clicked.connect(self.export_sheet)
         self.guide_b = QPushButton("Setup guide…")              # DOCGUIDES-2: the setup guide lives with the knobs
         self.guide_b.setToolTip("What each knob does, how to work through a setup, and a table of fixes by symptom.")
         self.guide_b.clicked.connect(self.show_guide)
-        for b in (self.reset_b, self.save_b, self.load_b, self.gpl_b, self.guide_b):
+        for b in (self.reset_b, self.save_b, self.load_b, self.gpl_b, self.gplx_b, self.sheet_b, self.sheetx_b, self.guide_b):
             btns.addWidget(b)
         btns.addStretch(1)
         self.status = QLabel()
@@ -458,9 +472,74 @@ class GarageTab(QWidget):
         self.status.setText(f"imported {os.path.basename(fn)}")
         return notes
 
+    # ---- SETUPIO-1: GPL export, iRacing sheet import/export (file functions shared with the tests) ----------------------
+    def export_gpl_file(self, fn):
+        """Write the garage as a GPL .kj1; returns the notes."""
+        med = gm.load_toml().get("gpl", {}).get("arb_median")
+        g, notes = gpl_setup.export(self.K, self.session, arb_median=tuple(med) if med else None)
+        with open(fn, "wb") as fh:
+            fh.write(gpl_setup.encode_kj1(g))
+        self.status.setText(f"exported {os.path.basename(fn)}")
+        return notes
+
+    def export_gpl(self):
+        fn, _ = QFileDialog.getSaveFileName(self, "Export as a GPL Lotus 49 setup", os.path.expanduser("~/julia_garage.kj1"),
+                                            "GPL Lotus 49 setups (*.kj1)")
+        if not fn:
+            return
+        fn = fn if fn.lower().endswith(".kj1") else fn + ".kj1"
+        try:
+            notes = self.export_gpl_file(fn)
+        except Exception as e:
+            QMessageBox.warning(self, "Export GPL setup", f"Could not write {fn}: {e}")
+            return
+        QMessageBox.information(self, "Exported " + os.path.basename(fn),
+                                "The garage is now a GPL Lotus 49 setup (copy it to GPL's players/<you>/setups/<track>/).\n\n" + "\n".join(notes))
+
+    def import_sheet_file(self, fn):
+        """Read an iRacing setup sheet into the garage; returns the notes."""
+        with open(fn, encoding="latin-1") as fh:
+            d = iracing_sheet.parse(fh.read())
+        K, notes = iracing_sheet.to_knobs(d, self.session)
+        self.K = K
+        self.save_current()
+        self.refresh()
+        self.status.setText(f"imported {os.path.basename(fn)}")
+        return notes
+
+    def import_sheet(self):
+        fn, _ = QFileDialog.getOpenFileName(self, "Import an iRacing Lotus 49 setup sheet", os.path.expanduser("~"),
+                                            "iRacing setup sheets (*.htm *.html *.txt);;All files (*)")
+        if not fn:
+            return
+        try:
+            notes = self.import_sheet_file(fn)
+        except Exception as e:
+            QMessageBox.warning(self, "Import iRacing sheet", f"Could not read {fn}: {e}")
+            return
+        QMessageBox.information(self, "Imported " + os.path.basename(fn),
+                                "The sheet is now the garage (on the " + self.session_key + " base).\n\n" +
+                                ("\n".join(notes) if notes else "Every knob read; julia's derived numbers agree with the sheet's."))
+
+    def export_sheet_file(self, fn, name=None):
+        with open(fn, "w", encoding="latin-1", errors="replace") as fh:
+            fh.write(iracing_sheet.from_knobs(self.K, self.session, name=name or os.path.splitext(os.path.basename(fn))[0]))
+        self.status.setText(f"exported {os.path.basename(fn)}")
+
+    def export_sheet(self):
+        fn, _ = QFileDialog.getSaveFileName(self, "Export as an iRacing setup sheet", os.path.expanduser("~/julia_garage.htm"),
+                                            "Setup sheets (*.htm)")
+        if not fn:
+            return
+        fn = fn if fn.lower().endswith((".htm", ".html")) else fn + ".htm"
+        try:
+            self.export_sheet_file(fn)
+        except Exception as e:
+            QMessageBox.warning(self, "Export iRacing sheet", f"Could not write {fn}: {e}")
+
     def import_gpl(self):
         start = os.path.expanduser("~")
-        fn, _ = QFileDialog.getOpenFileName(self, "Import a GPL Lotus 49 setup", start, "GPL setups (*.kj1);;All files (*)")
+        fn, _ = QFileDialog.getOpenFileName(self, "Import a GPL Lotus 49 setup", start, "GPL Lotus 49 setups (*.kj1 *.lo1);;All files (*)")
         if not fn:
             return
         try:
