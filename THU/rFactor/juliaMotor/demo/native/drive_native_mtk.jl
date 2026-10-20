@@ -11142,7 +11142,12 @@ const SLEEVE_LASTR = Ref(Matrix(1.0I, 3, 3))
 const SLEEVE_HOLD = get(ENV, "JM_ARM_HOLDROLL", "1") != "0"
 const ARM_ROLLWHEEL = get(ENV, "JM_ARM_ROLLWHEEL", "0") != "0"   # TD261013-1 (a2)
 const ARM_LOCK_DEG = Tuple(parse.(Float64, split(get(ENV, "JM_ARM_LOCK_DEG", "50,130"), ",")))   # wheel angles: slide begins, ends
-const ARM_LOCK_S = let v = get(ENV, "JM_ARM_LOCK_S", "0.40,0.02,0.15")   # TD261013-1 (a2): the far end at full lock
+# WRISTS-3 S3 (2026-10-20): the slide was made for the OLD shoulder beside the eye (y +0.22); since S2's low shoulder
+# (y -0.20) its target (y +0.02) LIFTS the elbow toward the eye at lock -- the white wedge at full lock, and at half lock a
+# steeper, broader crossing arm than GPL's (gold Monza t 139/141: elbow ~25 % across, ours 38 %). With no slide the far end
+# stays at the shoulder: half lock matches GPL's diagonal, full lock is the slim steep strip of gold Spa La Source t 363-364
+# (261019/wrists/s3_*). Default now "" (no slide); JM_ARM_LOCK_S="0.40,0.02,0.15" = before.
+const ARM_LOCK_S = let v = get(ENV, "JM_ARM_LOCK_S", "")   # TD261013-1 (a2): the far end at full lock
     isempty(v) ? nothing : Tuple(parse.(Float64, split(v, ",")))
 end
 const ARM_INTO_STRAIGHT = 0.12               # TD261016-1 (c1): near straight ahead (fades to ARM_INTO at lock)
@@ -13327,6 +13332,7 @@ function main()
                 push!(cars, gc)
             end
             f = GPLAI.Field(GPLAI_T, cars; seed = rand(AI_RNG[], UInt32)); GPLAI_F[] = f
+            SMOKE && atexit(() -> println("  [gplai] field contact ticks: ", f.stats))   # CARCOLLIDE-2 S6: AI-vs-AI census
         end
         f
     end
