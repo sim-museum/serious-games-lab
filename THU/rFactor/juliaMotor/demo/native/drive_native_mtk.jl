@@ -412,6 +412,54 @@ contact_d(dx, dz, d, θa, θb) =
 # Coulomb bodywork friction along the tangent (|jt| ≤ μ·jn: a side-swipe bleeds speed), yaw from the contact point's
 # lever arm (Izz 890). A hit at a rear corner still spins a car -- that is real.
 include("carcontact.jl")      # CARCOLLIDE-2: the car-to-car contact law (shared with tools/carcollide_harness.jl)
+# CARCOLLIDE-2 S4: an AI car the player hits HARD comes loose. The AI field (GPL's AI by default) answered a player contact
+# only by easing away sideways and matching speed (gplai.jl tick!), so a hit that spun or launched the player left the AI
+# on its line -- the PO's "two cars hitting is like two beanbags hitting". Now the struck car takes the same impulse as the
+# player (car_contact_impulse from its side, launch included) as a free Car3D from a small pool built at startup (a
+# mid-race build would compile in the race: jr-race-start-jit), slides/spins/flies under its own physics with the brakes
+# on, and rejoins its line where it ends up once it has settled (< 4 m/s and < 0.5 rad/s, or after 4 s). A light touch
+# keeps the field's own gentle answer. JM_AI_LOOSE=0 = before.
+const AI_LOOSE = get(ENV, "JM_AI_LOOSE", "1") != "0"
+const LOOSE_N = 2
+const LOOSE_CARS = Any[]                  # the pool: Car3D, built at startup
+const LOOSE_OF = Dict{Int,Int}()          # AI index -> pool slot
+const LOOSE_T0 = zeros(LOOSE_N)           # sim time each slot came loose
+const LOOSE_DIAG = get(ENV, "JM_LOOSE_DIAG", "0") != "0"
+const LOOSE_HITS = zeros(Int, LOOSE_N)     # impulses a loose car took after it came loose
+const LOOSE_REC = falses(LOOSE_N)         # the slot has settled and is driving back round to its line (recovery)
+const LOOSE_DR = 0.6; const LOOSE_DV = 4.0; const LOOSE_UP = 2.0   # "hard": yaw kick rad/s, speed change m/s, launch m/s
+const LOOSE_BRAKE = parse(Float64, get(ENV, "JM_LOOSE_BRAKE", "1.0"))   # the struck driver's foot on the brake (1 = locked)
+const LOOSE_STAT = Ref((n = 0, maxdr = 0.0, maxup = 0.0))
+const RAM_AI = (r = get(ENV, "JM_RAM_AI", ""); isempty(r) ? nothing : Tuple(parse.(Float64, split(r, ":"))))
+const RAM_STATE = Ref((t0 = NaN, done = false))
+"""CARCOLLIDE-2 S4: AI car k (pose p, heading aθ, world velocity (avx,avz)) hit by the player car `pc0`. Hands it to a
+free pool car when the hit is hard, or applies the impulse to its pool car when it is loose already. true = handled here
+(the caller skips the field's own gentle answer)."""
+function loose_hit!(k, p, aθ, avx, avz, pc0, pvx, pvz, pr, t)
+    (AI_LOOSE && !isempty(LOOSE_CARS)) || return false
+    sl = get(LOOSE_OF, k, 0)
+    if sl > 0
+        pc = LOOSE_CARS[sl]
+        a = pc.getall(pc.integ); vx = a[4]*cos(pc.θ) - a[5]*sin(pc.θ); vz = a[4]*sin(pc.θ) + a[5]*cos(pc.θ)
+        ib = car_contact_impulse(pc.x, pc.z, pc.θ, vx, vz, DriveRT3D.yawrate3d(pc), pc0.x, pc0.z, pvx, pvz; θb = pc0.θ, rb = pr)
+        ib === nothing || (DriveRT3D.bump3d!(pc, ib[1], ib[2], ib[3], ib[5], ib[6], ib[7]); LOOSE_HITS[sl] += 1)
+        return true
+    end
+    ib = car_contact_impulse(p[1], p[3], aθ, avx, avz, 0.0, pc0.x, pc0.z, pvx, pvz; θb = pc0.θ, rb = pr)
+    ib === nothing && return false
+    (abs(ib[3]) > LOOSE_DR || ib[5] > LOOSE_UP || hypot(ib[1], ib[2]) > LOOSE_DV) || return false
+    used = Set(values(LOOSE_OF)); sl = findfirst(i -> !(i in used), eachindex(LOOSE_CARS))
+    sl === nothing && return false
+    pc = LOOSE_CARS[sl]
+    DriveRT3D.place3d!(pc, p[1], p[3], aθ; v = hypot(avx, avz))
+    pc.zref = p[2]; pc.y = p[2]; pc.heave = 0.0; pc.pitch = 0.0; pc.roll = 0.0
+    DriveRT3D.bump3d!(pc, ib[1], ib[2], ib[3], ib[5], ib[6], ib[7])
+    LOOSE_OF[k] = sl; LOOSE_T0[sl] = t; LOOSE_REC[sl] = false; LOOSE_HITS[sl] = 0
+    st = LOOSE_STAT[]; LOOSE_STAT[] = (n = st.n + 1, maxdr = max(st.maxdr, abs(ib[3])), maxup = max(st.maxup, ib[5]))
+    println("  [loose] t=", round(t, digits = 2), " AI ", k, " knocked loose: dv ", round(hypot(ib[1], ib[2]), digits = 2),
+            " m/s, yaw kick ", round(ib[3], digits = 2), " rad/s, launch ", round(ib[5], digits = 2), " m/s"); flush(stdout)
+    true
+end
 # CARINTERACT-1 (PO 2026-10-15: julia allows "bumper cars" -- "every incentive to knock other cars out of the way
 # because there's no downside"): a car-to-car hit pushed both cars (HANDLING-1's rigid-body impulse) but DAMAGED
 # NEITHER -- damage_impact! ran only on scenery/wall contact (E94-P4). Now the player's car takes the same damage law
@@ -13031,6 +13079,17 @@ function main()
         AIPHYS = AIbuild(poses)
         println("done")
     end
+    if AI_LOOSE && CAR3D && AILINE !== nothing && isempty(REPLAY_FILE) && isempty(LOOSE_CARS) && !isempty(AICARS)
+        for _ in 1:LOOSE_N; push!(LOOSE_CARS, DriveRT3D.build_car3d(; x0 = 0.0, v0 = 0.0)); end   # CARCOLLIDE-2 S4 pool
+        # PERF-4: step a pool car once with the AI ground function NOW -- the step's specialisation for this closure took
+        # 175 ms of compiling the first time a car came loose in a race (warm_smoke, frame 216); warmgen cannot list it
+        # (closure names change with every edit). The pool car is placed afresh whenever it is used.
+        let pc = LOOSE_CARS[1], p0 = RaceAI.pose_at(AILINE, 0.0, 0.0)
+            DriveRT3D.place3d!(pc, p0[1], p0[3], p0[4]; v = 10.0)
+            DriveRT3D.step_car3d!(pc, 0.0, LOOSE_BRAKE, 0.0, 1/60; manual = true, groundz = groundz_ai)
+            DriveRT3D.step_car3d!(pc, 0.1, 0.0, 0.0, 1/60; manual = false, groundz = groundz_ai)
+        end
+    end
     # E11: pace the field.  Target laptime = refLap × (100/pct); the speed scale that
     # hits it = naturalLap / targetLap (lap time ∝ 1/speed).  Clamped to a sane band.
     AI_T0    = AILINE === nothing ? 0.0 : RaceAI.natural_laptime(AILINE)
@@ -13952,6 +14011,11 @@ function main()
         (rst || restart) && GPLW_ON && gplw_teleported!()
         CRASH_ON && (inp = JuliaMotor.DriveInput(throttle = 0.0, brake = 0.0, steer = 0.0, clutch = inp.clutch,
                                                  shift_up = false, shift_down = false, autoshift = true))
+        # CARCOLLIDE-2 S4 test hook: after the ram the player's driver brakes for 3 s (an undriven car kept shoving the
+        # struck car from behind -- 99 more impulses in 4 s -- which is the harness, not the contact law)
+        (RAM_AI !== nothing && RAM_STATE[].done && cs.t - RAM_STATE[].t0 - RAM_AI[4] < 3.0) &&
+            (inp = JuliaMotor.DriveInput(throttle = 0.0, brake = 1.0, steer = 0.0, clutch = inp.clutch,
+                                         shift_up = false, shift_down = false, autoshift = true))
         # STARTSEQ-3 (PO 2026-09-07): "don't allow the car to move until a key has been pressed to start the
         # countdown" -- until the countdown is armed the car is held: throttle ignored, brakes on.
         if START_ARM && HOLD_START && !cd_armed[] && phase[] == :race && !race_go[]
@@ -15360,6 +15424,65 @@ function main()
         # GD: rigid-body collision — when the player and an AI overlap and are CLOSING, apply a
         # momentum-exchange impulse: the player (real vehicle physics) is knocked off line + spun
         # via bumpX!, the AI is shoved aside + spun + scrubbed.  The wheels keep spinning with motion.
+        if RAM_AI !== nothing && CAR3D && race_go[] && !RAM_STATE[].done && !isempty(ai_poses)
+            isnan(RAM_STATE[].t0) && (RAM_STATE[] = (t0 = cs.t, done = false))
+            if cs.t - RAM_STATE[].t0 >= RAM_AI[4]
+                k = Int(RAM_AI[1]); q = ai_poses[k]; qθ = q[4]; vk = AICARS[k].v
+                rx = q[1] - 4.7*cos(qθ) - RAM_AI[3]*sin(qθ); rz = q[3] - 4.7*sin(qθ) + RAM_AI[3]*cos(qθ)
+                PLAYER_G[] = NaN; GPLW_ON && gplw_teleported!()
+                DriveRT3D.place3d!(cs, rx, rz, qθ; v = vk + RAM_AI[2])
+                h = groundz(rx, rz; acquire = true); isfinite(h) && (cs.zref = Float64(h); cs.y = cs.zref)
+                RAM_STATE[] = (t0 = RAM_STATE[].t0, done = true)
+                println("  [ram] t=", round(cs.t, digits = 2), " player placed 4.7 m behind AI ", k, " (", round(vk*3.6), " km/h), lat ",
+                        RAM_AI[3], " m, closing ", RAM_AI[2], " m/s"); flush(stdout)
+            end
+        end
+        # CARCOLLIDE-2 S4: AI cars knocked loose run as free Car3D (brakes on) until they settle, then rejoin where they are
+        if !isempty(LOOSE_OF) && !REPLAY && !isempty(ai_poses)
+            for (k, sl) in collect(LOOSE_OF)
+                if k > length(ai_poses) || k > length(AICARS)
+                    delete!(LOOSE_OF, k); continue
+                end
+                pc = LOOSE_CARS[sl]
+                # tumble with the brakes locked until settled; then (the field would snap a car sitting 100-160 deg off its
+                # line back round in half a second) drive it slowly round to the line with the physics AI's controller
+                (lrs, _) = RaceAI.project(AILINE, pc.x, pc.z; hint = AICARS[k].s)
+                lherr = RaceAI.wrapπ(pc.θ - RaceAI.pose_at(AILINE, lrs, 0.0)[4])
+                if !LOOSE_REC[sl] && ((pc.v < 4.0 && abs(DriveRT3D.yawrate3d(pc)) < 0.5) || cs.t - LOOSE_T0[sl] > 4.0)
+                    LOOSE_REC[sl] = true; LOOSE_T0[sl] = cs.t
+                end
+                if LOOSE_REC[sl]
+                    (lthr, lbrk, lst) = RaceAI.controller(AILINE, lrs, 0.0, 0.0, 6.0, pc.x, pc.z, pc.θ, pc.v, DriveRT3D.yawrate3d(pc))
+                    DriveRT3D.step_car3d!(pc, lthr, lbrk, lst, ddt; manual = false, groundz = groundz_ai)
+                else
+                    DriveRT3D.step_car3d!(pc, 0.0, LOOSE_BRAKE, 0.0, ddt; manual = true, groundz = groundz_ai)
+                end
+                LOOSE_DIAG && (frames % 6 == 0) && println("   [loosediag] t ", round(cs.t, digits = 2), " v ", round(pc.v, digits = 2),
+                    " r ", round(DriveRT3D.yawrate3d(pc), digits = 2), " θ ", round(pc.θ, digits = 2), " grounded ", pc.grounded,
+                    " rh ", round.(pc.rh, digits = 3), " heave ", round(pc.heave, digits = 3), " ddt ", round(ddt, digits = 4), " rec ", LOOSE_REC[sl])
+                bk = aibankP(pc)
+                gy = isfinite(pc.y) ? pc.y : groundz(pc.x, pc.z)
+                ai_poses[k] = (pc.x, gy, pc.z, pc.θ, bk[1], bk[2])
+                done = (LOOSE_REC[sl] && ((abs(lherr) < 0.35 && pc.v > 2.0) || cs.t - LOOSE_T0[sl] > 10.0)) || !isfinite(pc.x)
+                if GPLAI_T !== nothing
+                    gc = gplai_field!().cars[k]
+                    (gs, gd, _) = GPLAI.tlocate(GPLAI_T, pc.x, pc.z, 0)
+                    (lo, hi) = GPLAI.corridor(GPLAI_T, gs)
+                    gc.s = gs; gc.d = done ? clamp(gd, lo + 0.5, hi - 0.5) : gd; gc.v = pc.v; gc.dv = 0.0
+                    gc.yaw = pc.θ; gc.yawr = DriveRT3D.yawrate3d(pc); gc.pose = ai_poses[k]; gc.prev = gc.pose
+                    (rs, rl) = RaceAI.project(AILINE, pc.x, pc.z; hint = AICARS[k].s); AICARS[k].s = rs; AICARS[k].lane = rl; AICARS[k].v = pc.v
+                else
+                    (rs, rl) = RaceAI.project(AILINE, pc.x, pc.z; hint = AICARS[k].s)
+                    AICARS[k].s = rs; AICARS[k].lane = clamp(rl, -RaceAI.LANE_MAX, RaceAI.LANE_MAX); AICARS[k].v = pc.v
+                    done && (AICARS[k].spin = RaceAI.wrapπ(pc.θ - RaceAI.pose_at(AILINE, rs, 0.0)[4]))
+                end
+                if done
+                    delete!(LOOSE_OF, k)
+                    println("  [loose] t=", round(cs.t, digits = 2), " AI ", k, " rejoins at ", round(pc.v*3.6), " km/h after ", LOOSE_HITS[sl], " more hits, heading off the line ",
+                            round(rad2deg(RaceAI.wrapπ(pc.θ - RaceAI.pose_at(AILINE, RaceAI.project(AILINE, pc.x, pc.z)[1], 0.0)[4]))), " deg"); flush(stdout)
+                end
+            end
+        end
         CAR3D && (PLAYER_CDA[] = 1.0)             # E56: default = full drag; the draft below cuts it for next frame's step
         if AIJIT_ON && !REPLAY && !isempty(ai_poses) && GPLAI_T === nothing   # AIJIT-1 (rail field only; GPLAI poses are GPL's own)
             ai_poses = NTuple{6,Float64}[ai_smooth(k, ai_poses[k], dt > 1e-4 ? dt : 1/60) for k in eachindex(ai_poses)]
@@ -15404,6 +15527,10 @@ function main()
                 # FF kick, so you always FEEL the AI — not just on a square closing hit.
                 ffb_jolt = clamp(-sign(lat)*0.6, -1.0, 1.0)
                 avx = ac.v*cos(aθ); avz = ac.v*sin(aθ)
+                if haskey(LOOSE_OF, k)                        # CARCOLLIDE-2 S4: a loose car moves as its Car3D does
+                    lc = LOOSE_CARS[LOOSE_OF[k]]; la = lc.getall(lc.integ)
+                    avx = la[4]*cos(lc.θ) - la[5]*sin(lc.θ); avz = la[4]*sin(lc.θ) + la[5]*cos(lc.θ)
+                end
                 # HANDLING-1 S3: a rigid-body impulse at the contact point (car_contact_impulse) -- no amplification, no
                 # side-only yaw kick, no invented hop/roll/scrub; the bodywork friction bleeds speed on a side-swipe.
                 imp = car_contact_impulse(cs.x, cs.z, cs.θ, pvx, pvz, CAR3D ? DriveRT3D.yawrate3d(cs) : 0.0, p[1], p[3], avx, avz; θb = aθ)
@@ -15412,7 +15539,9 @@ function main()
                 bumpX!(cs, pdvx, pdvz, pdr, imp[5], imp[6], imp[7])   # CARCOLLIDE-2 S3: + heave/roll/pitch (nose-dive, launch)
                 carhit_damage!(cs, pdvx, pdvz, j)              # CARINTERACT-1: a car hit costs YOU, as a wall does
                 ffb_jolt = clamp(ffb_jolt - sign(lat)*(j/pm)*0.4 - 0.5, -1.0, 1.0)   # a CLOSING hit adds a bigger kick
-                if AI_PHYSICS                                  # the AI is a real physics car → impulse it too
+                if !AI_PHYSICS && loose_hit!(k, p, aθ, avx, avz, cs, pvx, pvz, CAR3D ? DriveRT3D.yawrate3d(cs) : 0.0, cs.t)
+                    # CARCOLLIDE-2 S4: knocked loose (or already loose) -- the struck car answers with its own physics
+                elseif AI_PHYSICS                              # the AI is a real physics car → impulse it too
                     alat = -dx*sin(aθ) + dz*cos(aθ)
                     # E55: PLANAR push + mild yaw only — no vertical launch / roll on the AI (it must not
                     # flip or cartwheel when the player nudges it), even though the player still feels the hit.
