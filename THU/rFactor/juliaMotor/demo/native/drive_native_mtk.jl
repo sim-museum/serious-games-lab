@@ -13442,7 +13442,10 @@ function main()
     # ---- force feedback: self-aligning torque from the front-axle lateral force ----
     # force = SIGN·GAIN·(Fy_FL+Fy_FR), faded out near standstill.  The front Fy rises as the
     # tyres bite and DROPS past the grip peak → the wheel goes light = you feel understeer.
-    ffb = (FFB_ON && !SMOKE) ? FFB.open_ffb() : nothing
+    # 2026-10-20: JM_FFB_FAKE=1 -- a device that reports ok (its writes go to fd -1 and fail harmlessly), so headless runs
+    # exercise the FFB path (ffb_step!) that otherwise runs only with the PO's wheel attached
+    ffb = get(ENV, "JM_FFB_FAKE", "0") != "0" ? FFB.FFBDevice(Cint(-1), Int16(0), zeros(UInt8, 48), true, "fake") :
+          (FFB_ON && !SMOKE) ? FFB.open_ffb() : nothing
     (ffb !== nothing && ffb.ok) ? println("  force feedback: ON  (", ffb.path, ", gain ", FFB_GAIN, ")") :
                                   println("  force feedback: off", FFB_ON ? " (no wheel found)" : " (JM_NOFFB)")
     spin = 0.0; last = time(); frames = 0; titleT = last
@@ -14794,82 +14797,13 @@ function main()
         # pneumatic trail collapses (you feel understeer). A mechanical-trail floor keeps
         # it from going dead; tanh soft-clips so it never hard-pins (always some headroom).
         if ffb !== nothing && ffb.ok
-            τrim = (FFB_PHYS && CAR3D) ? DriveRT3D.rimtorque3d(cs) : nothing
-            if τrim !== nothing                                # CARPHYS-1 S5: the column's rim torque, in old road-term units
-                fy = -τrim / FFB_TREF; trail = 1.0
-            else                                               # legacy: front Fy × a hand-drawn trail curve
-                tl  = telemetryX(cs)
-                αf  = atan(tl.v + FFB_AF*tl.r, max(tl.u, 1.0)) - clamp(inp.steer, -1, 1)*FFB_DELTA
-                trail = FFB_TFLOOR + (1 - FFB_TFLOOR) * clamp(1 - abs(αf)/FFB_ATRAIL, 0.0, 1.0)
-                fy = cs.tc[1][2] + cs.tc[2][2]                 # front-axle lateral force (mg/4 units) — the ROAD feel
-            end
-            fy_lp += (fy - fy_lp) * clamp(dt/FFB_DESPIKE, 0.0, 1.0)   # de-spike the coarse GPL mesh (1-frame 11g jolts → smooth)
-            fy = fy_lp * fy_lp*fy_lp / (fy_lp*fy_lp + FFB_SQ*FFB_SQ)   # squelch tyre-force noise (jostle), not the spring
-            mz  = fy * trail
-            spd = clamp(cs.v/2.5, 0.0, 1.0)                    # road feel fades in with speed
-            # self-centering spring ∝ WHEEL ANGLE — ALWAYS present ⇒ no dead center. Per wheel degree, as it was
-            # tuned (raw ±1 = ±450° on the TX): with physical steering (STEER_GAIN) inp.steer is road angle / lock,
-            # 2.6x more per wheel degree, which silently stiffened the spring 2.6x (2026-10-03). Divide it back out.
-            spr = FFB_SPRING * clamp(STEER_GAIN[] > 0 ? inp.steer / STEER_GAIN[] : inp.steer, -1, 1)
-            target = if FFB_IRMODE && τrim !== nothing           # PHYSFID-1 S1: iRacing's linear law (see FFB_IRMODE)
-                clamp(FFB_SIGN * (mz * FFB_TREF / FFB_MAXNM) + FFB_SIGN * FFB_SPRING_IR * clamp(STEER_GAIN[] > 0 ? inp.steer / STEER_GAIN[] : inp.steer, -1, 1), -1.0, 1.0)
-            else
-                tanh(FFB_SIGN * (FFB_GAIN * mz * spd + spr))
-            end
-            ffb_f += (target - ffb_f) * clamp(dt/FFB_LP, 0.0, 1.0)   # 1st-order low-pass: smooth, continuous
-            # the impact JOLT takes PRIORITY over the steering force: scale the road/spring force down by
-            # the jolt size so a hit is always FELT, even mid-corner when ffb_f is already near full lock
-            # (otherwise `ffb_f + jolt` just clamps and you feel nothing — why AI hits read as "no kick").
-            FFB.set_force!(ffb, clamp(ffb_f*(1.0 - min(abs(ffb_jolt), 1.0)) + ffb_jolt, -1.0, 1.0))
+            (fy_lp, ffb_f) = ffb_step!(ffb, cs, inp, dt, fy_lp, ffb_f, ffb_jolt)
         end
         ffb_jolt *= exp(-(dt > 1e-4 ? dt : 1/60)/0.06)              # the impact jolt decays fast (~60 ms)
 
         # ---- iRacing .ibt telemetry sample (one row per frame, ~60 Hz) ----
         if ibt_samples !== nothing && !rst
-            tl = telemetryX(cs); δw = inp.steer * (CAR3D ? DriveRT3D.MAXSTEER : SKIDPAD ? 0.30 : CAR.max_steer)   # the angle the physics used
-            row = Dict{String,Float64}(
-                "SessionTime"=>cs.t, "SessionTick"=>Float64(length(ibt_samples)+1),
-                "IsOnTrack"=>cs.ontrack ? 1.0 : 0.0,
-                "Speed"=>cs.v, "RPM"=>cs.rpm, "Gear"=>Float64(cs.gear),
-                "Throttle"=>inp.throttle, "Brake"=>inp.brake, "Clutch"=>1.0-inp.clutch,
-                # PHYSFID-1 S4: iRacing's channel is the STEERING-WHEEL angle (rad at the rim); julia wrote the road-wheel angle,
-                # ~10x smaller -- julia and iRacing .ibt files could not be compared. Road angle x the session's steering ratio.
-                "SteeringWheelAngle"=>δw*STEER_RATIO[], "SteeringWheelAngleMax"=>deg2rad(DriveRT3D.WHEEL_LOCK_DEG), "FrameRate"=>FRAME_FPS[],   # PERF-4: was never filled (always 0)
-                "Lap"=>Float64(cs.laps+1), "LapCompleted"=>Float64(cs.laps),
-                "LapDist"=>cs.lapdist, "LapDistPct"=>(SKIDPAD ? 0.0 : (LAPLEN>0 ? cs.lapdist/LAPLEN : 0.0)),
-                "Yaw"=>cs.θ, "YawRate"=>tl.r,
-                "VelocityX"=>tl.u, "VelocityY"=>tl.v, "VelocityZ"=>0.0,
-                # VertAccel is REAL in 3-D mode (the planar model has no vertical DOF → 1 g stub)
-                "LongAccel"=>tl.ax, "LatAccel"=>tl.ay, "VertAccel"=>(CAR3D ? tl.vacc : 9.80665),
-                "LFspeed"=>tl.ωf*0.30, "RFspeed"=>tl.ωf*0.30, "LRspeed"=>tl.ωRL*DriveRT3D.RW_R, "RRspeed"=>tl.ωRR*DriveRT3D.RW_R,
-                "Alt"=>cs.y,
-                # FUELIBT-1: the tank (litres, as iRacing's FuelLevel) -- it was never written, so 0 for every session
-                "FuelLevel"=>fuel[], "FuelLevelPct"=>fuel[]/DriveRT3D.FUEL_MAX_L)
-            if CAR3D                                   # real ride heights + body attitude (Flugplatz benchmark)
-                # E106-S37: export ride height ONLY while the wheels are loaded. Measured
-                # (E106-S36): settled and grounded it reads 0.082/0.082/0.106/0.106 m, matching
-                # the .ibt setup (82.9/82.9/105.2/105.2 mm) exactly -- the formula is right. But
-                # `zref` is frozen whenever the car is airborne (by design, so the body falls
-                # relative to it), and while frozen `terr - zref` is unbounded: the PO's Spa
-                # capture exported a minimum of -73.5 m and a mean of -0.16 m. A consumer cannot
-                # tell that from a real measurement.
-                # NaN, not a clamp: NaN says "not measured here", a clamp would export a
-                # plausible lie -- and ride height is the channel the PO's "car is several inches
-                # off the ground" report depends on, so a lie there is worse than a gap.
-                # JM_RH_RAW=1 exports the raw value for A/B against the old captures.
-                _rhok = get(ENV,"JM_RH_RAW","") != "" || getproperty(tl, :grounded)
-                row["LFrideHeight"]= _rhok ? tl.rh[1] : NaN
-                row["RFrideHeight"]= _rhok ? tl.rh[2] : NaN
-                row["LRrideHeight"]= _rhok ? tl.rh[3] : NaN
-                row["RRrideHeight"]= _rhok ? tl.rh[4] : NaN
-                row["Pitch"]=tl.pitch; row["Roll"]=tl.roll
-                bp = DriveRT3D.brakepress3d(cs)            # CARPHYS-1 S6: the BrakeSystem object's line pressures, as iRacing logs them
-                if bp !== nothing
-                    row["LFbrakeLinePress"] = bp[1]; row["RFbrakeLinePress"] = bp[1]
-                    row["LRbrakeLinePress"] = bp[2]; row["RRbrakeLinePress"] = bp[2]
-                end
-            end
-            push!(ibt_samples, row)
+            ibt_sample!(ibt_samples, cs, inp, fuel)
         end
 
         # ---- lap timing + telemetry log ----
@@ -16209,6 +16143,7 @@ function main()
                                             " us/frame over ", GPLW_T[][2], " frames (walls + drawn obstacles, contact + clamp)")
     # CARCOLLIDE-2 S6: the GPL-AI field's contact census (AI-vs-AI ticks, player contacts) for smoke races
     SMOKE && GPLAI_F[] !== nothing && println("  [gplai] field contact ticks: ", GPLAI_F[].stats)
+    ffb !== nothing && ffb.path == "fake" && println("  [ffb] fake device: last level ", reinterpret(Int16, FFB._getu16(ffb.buf, 16)))
     println("bye"); flush(stdout); flush(stderr)
     # HARD exit: skip Julia's atexit handlers.  PortAudio registers one that calls Pa_Terminate, which
     # SEGFAULTS in the ALSA/PipeWire stream teardown ("free(): corrupted unsorted chunks") on this box —

@@ -14,7 +14,9 @@ chk("left turn (control)", ay > 0.5, "ay $(round(ay, digits = 2)) g")
 chk("rim torque = -ΣFy_front × 0.0478 m / 10", τ !== nothing && isapprox(τ, -0.0478*fy/10; rtol = 1e-6), "τ $(round(τ, digits = 2)) N·m, ΣFy $(round(fy)) N")
 chk("it self-centres (opposes the turn)", τ < 0)
 chk("magnitude at ~0.7 g within iRacing's range (5..17 N·m)", 5 <= abs(τ) <= 17, "$(round(abs(τ), digits = 1)) N·m at $(round(ay, digits = 2)) g")
-src = read(joinpath(@__DIR__, "..", "..", "demo", "native", "drive_native_mtk.jl"), String)
+# LOOPSPLIT-1 cycle 2 S5: the FFB block moved to main_loop.jl (ffb_step!) -- read both sources
+src = read(joinpath(@__DIR__, "..", "..", "demo", "native", "drive_native_mtk.jl"), String) *
+      read(joinpath(@__DIR__, "..", "..", "demo", "native", "main_loop.jl"), String)
 chk("the FFB road term reads the column's torque by default", occursin("τrim = (FFB_PHYS && CAR3D) ? DriveRT3D.rimtorque3d(cs) : nothing", src) &&
     occursin("const FFB_PHYS    = !haskey(ENV, \"JM_FFB_LEGACY\")", src))
 chk("15 ms smoothing (the gold has no measurable lag), legacy keeps 50 ms",
@@ -38,6 +40,19 @@ let fn = expanduser("~/gold standard/julia racer/lotus49_nurburgring nordschleif
     else
         println("  (no June Ring template on this machine: session-car checks skipped)")
     end
+end
+# 2026-10-20 (LOOPSPLIT-1 cycle 2 S5): the sim's FFB path (ffb_step!) runs only with a wheel attached, so no other gate
+# reaches it. JM_FFB_FAKE=1 gives the headless sim a device that reports ok; 300 autodriven frames must run it and leave a
+# nonzero force level (the road term at speed).
+let nat = normpath(joinpath(@__DIR__, "..", "..", "demo", "native")), log = tempname()
+    cmd = Cmd(`julia -t 2 --project=$nat $(joinpath(nat, "drive_native_mtk.jl"))`; dir = nat)
+    env = copy(ENV); env["TRACK"] = "zandvoort"; env["JM_FFB_FAKE"] = "1"; env["JM_AUTODRIVE"] = "1"
+    env["JM_AUTODRIVE_PROFILE"] = "0.7"; env["JM_SMOKE"] = "1"; env["JM_SMOKE_FRAMES"] = "300"
+    ok = success(pipeline(setenv(cmd, env); stdout = log, stderr = log))
+    out = read(log, String)
+    m = match(r"\[ffb\] fake device: last level (-?\d+)", out)
+    chk("sim FFB path runs headless on a fake device (JM_FFB_FAKE)", ok && m !== nothing && parse(Int, m.captures[1]) != 0,
+        m === nothing ? "no [ffb] line (rc ok=$(ok)); log $log" : "last level $(m.captures[1])")
 end
 println(fails[] == 0 ? "ALL PASS" : "FAILURES: $(fails[])")
 exit(fails[] == 0 ? 0 : 1)

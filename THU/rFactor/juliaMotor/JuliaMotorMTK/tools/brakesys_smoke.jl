@@ -22,7 +22,9 @@ chk("53.5 %: axle torques are the BRAKE-2 fit (2956 N·m, 0.585 front)", isappro
     isapprox(T0[1]/(T0[1] + T0[2]), 0.585; atol = 1e-6), "$(round(T0[1], digits = 1)) + $(round(T0[2], digits = 1)) N·m")
 chk("58 %: more front torque, total moves with the calipers", T2[1]/(T2[1]+T2[2]) > T0[1]/(T0[1]+T0[2]) + 0.04 && T2[1] + T2[2] > T0[1] + T0[2],
     "split $(round(T2[1]/(T2[1]+T2[2]), digits = 3)), total $(round(T2[1] + T2[2], digits = 1)) N·m")
-src = read(joinpath(@__DIR__, "..", "..", "demo", "native", "drive_native_mtk.jl"), String)
+# LOOPSPLIT-1 cycle 2 S5: the .ibt row moved to main_loop.jl (ibt_sample!) -- read both sources
+src = read(joinpath(@__DIR__, "..", "..", "demo", "native", "drive_native_mtk.jl"), String) *
+      read(joinpath(@__DIR__, "..", "..", "demo", "native", "main_loop.jl"), String)
 chk("the sim's .ibt writes LF/RF/LR/RR brakeLinePress", all(occursin("row[\"$(w)brakeLinePress\"]", src) for w in ("LF", "RF", "LR", "RR")))
 println(fails[] == 0 ? "ALL PASS" : "FAILURES: $(fails[])")
 exit(fails[] == 0 ? 0 : 1)
