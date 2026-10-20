@@ -14095,51 +14095,7 @@ function main()
             end
         end
         if REPLAY                                   # E18 PLAYBACK: VCR + set poses from the recording, skip the sim
-            # REPLAY-5 (PO 2026-10-08: "allow the user to move to the end or the beginning with one command. Currently when you
-            # reach the end of the replay it just gets stuck, and you can't back up"): at the end playback kept running into
-            # the clamp, so a tap of <- moved back a fraction of a second and play carried it straight back to the end. Now
-            # the replay PAUSES at the end (the arrows then scrub freely), SPACE at the end plays again from the start,
-            # HOME / END jump to the start / end, PAGE UP / PAGE DOWN jump 10 s back / forward.
-            sp = key(GLFW.KEY_SPACE)
-            if sp && !rep_psp[]
-                rep_play[] = !rep_play[]
-                (rep_play[] && rep_rt[] >= rep_dur - 1e-6) && (rep_rt[] = 0.0)   # SPACE at the end: from the start
-            end
-            rep_psp[] = sp
-            kh = key(GLFW.KEY_HOME); (kh && !rep_phome[]) && (rep_rt[] = 0.0); rep_phome[] = kh
-            ke = key(GLFW.KEY_END);  (ke && !rep_pend[]) && (rep_rt[] = rep_dur; rep_play[] = false); rep_pend[] = ke
-            kpu = key(GLFW.KEY_PAGE_UP);   (kpu && !rep_ppu[]) && (rep_rt[] = clamp(rep_rt[] - 10.0, 0.0, rep_dur)); rep_ppu[] = kpu
-            kpd = key(GLFW.KEY_PAGE_DOWN); (kpd && !rep_ppd[]) && (rep_rt[] = clamp(rep_rt[] + 10.0, 0.0, rep_dur)); rep_ppd[] = kpd
-            up = key(GLFW.KEY_UP);   (up && !rep_pup[]) && (rep_speed[] = clamp(rep_speed[]*2, 0.25, 8.0)); rep_pup[] = up
-            dn = key(GLFW.KEY_DOWN); (dn && !rep_pdn[]) && (rep_speed[] = clamp(rep_speed[]/2, 0.25, 8.0)); rep_pdn[] = dn
-            key(GLFW.KEY_RIGHT) && (rep_rt[] = clamp(rep_rt[] + 8*dt, 0.0, rep_dur))   # hold to scrub
-            key(GLFW.KEY_LEFT)  && (rep_rt[] = clamp(rep_rt[] - 8*dt, 0.0, rep_dur))
-            rep_play[] && (rep_rt[] = clamp(rep_rt[] + dt*rep_speed[], 0.0, rep_dur))
-            (rep_play[] && rep_rt[] >= rep_dur - 1e-6) && (rep_play[] = false)   # REPLAY-5: stop AT the end, do not grind on it
-            cf = key(GLFW.KEY_C); (cf && !rep_pn[]) && (rep_focus[] = mod(rep_focus[]+1, repd.ncar)); rep_pn[] = cf   # E25: switch CAR
-            cvv = key(GLFW.KEY_V); (cvv && !rep_pv[]) && (rep_cam[] = mod1(rep_cam[]+1, length(REPLAY_CAMS))); rep_pv[] = cvv  # E25: switch ANGLE
-            (pp, rep_ai_raw) = replay_poses(rep_rt[])
-            rep_team[] = (REP_TEAMCOCKPIT && REPLAY_CAMS[rep_cam[]] === :cockpit && rep_focus[] >= 1 && !rep_ai_lotus(rep_focus[])) ?
-                         rep_team_items(rep_focus[]) : nothing                                   # COCKPIT-2 S6
-            rep_swap[] = REP_AICOCKPIT && REPLAY_CAMS[rep_cam[]] === :cockpit && (rep_ai_lotus(rep_focus[]) || rep_team[] !== nothing)
-            if rep_swap[]                                   # COCKPIT-2 S5: ride in the AI Lotus's cockpit
-                k_ = rep_focus[]; rep_ai_raw = copy(rep_ai_raw); (pp, rep_ai_raw[k_]) = (rep_ai_raw[k_], pp)
-            end
-            cs.x = pp[1]; cs.y = pp[2]; cs.z = pp[3]; cs.θ = pp[4]; cs.v = 0.0; cs.pitch = 0.0; cs.roll = 0.0
-            if REP_NT > 0     # COCKPIT-2 S1: wheel, gloves, needles and HUD follow the recording, not the live controller
-                rt_ = replay_tele(rep_rt[])
-                cs.v = rt_.speed; cs.rpm = rt_.rpm; cs.gear = rt_.gear
-                inp = DriveInput(throttle = rt_.throttle, brake = rt_.brake, steer = rt_.steer, clutch = rt_.clutch)
-                rep_tyres[] = rt_.tyres
-            end
-            if rep_swap[]                                   # COCKPIT-2 S5: the AI's derived steer / revs / gear
-                ai_ = rep_ai_inputs(rep_rt[], rep_focus[])
-                cs.v = ai_.v; cs.rpm = ai_.rpm; cs.gear = ai_.gear; rep_tyres[] = nothing
-                inp = DriveInput(throttle = 0.0, brake = 0.0, steer = ai_.steer, clutch = 0.0)
-            end
-            kw = key(GLFW.KEY_W); (kw && !rep_pw[]) && (rep_tyshow[] = !rep_tyshow[]); rep_pw[] = kw   # REPLAY-6: W = tyres
-            # cockpit interior only renders for the player car in COCKPIT mode; every other angle shows the driver figure + full car
-            CTL.view = (REPLAY_CAMS[rep_cam[]] === :cockpit && (rep_focus[] == 0 || rep_swap[])) ? 0 : 1
+            (inp, rep_ai_raw) = replay_step!(cs, inp, dt, REP_AICOCKPIT, REP_NT, REP_TEAMCOCKPIT, rep_ai_inputs, rep_ai_lotus, rep_cam, rep_dur, rep_focus, rep_pdn, rep_pend, rep_phome, rep_play, rep_pn, rep_ppd, rep_ppu, rep_psp, rep_pup, rep_pv, rep_pw, rep_rt, rep_speed, rep_swap, rep_team, rep_team_items, rep_tyres, rep_tyshow, repd, replay_poses, replay_tele)
             @goto skipsim
         end
         # E9: end qualifying on ENTER (or it auto-ends on a clean lap).  This guarantees you
