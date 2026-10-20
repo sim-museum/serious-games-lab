@@ -403,7 +403,7 @@ end
 """E85-S6 HEADLESS AUTODRIVE (JM_AUTODRIVE=1): the AI controller drives the player on the centreline; returns the
 frame's input. LOOPSPLIT-1 cycle 2 S2: moved unchanged from the frame loop -- in the loop its `let` wrote main()'s own
 `ps` and `step` (and the loop's `up` / `dn` / `thr` / `brk` / `st`) as a side effect; here they are its own."""
-function autodrive_step!(cs, CLINE, frames, dt, groundz, inp)
+function autodrive_step!(cs, CLINE, frames, dt, groundz, inp, ONTRACK)
     let (s0, lat0) = RaceAI.project(CLINE, cs.x, cs.z)
         # BNDWRECK-1 S10: THIS is the actor that wrecks, and S9 showed it consults no
         # previous s at all -- so the measurement has to bring its own.
@@ -855,4 +855,117 @@ function ai_contact_step!(cs, ai_poses, AICARS, AIPHYS, PLAYER_CDA, ffb_jolt)
         end
     end
     ffb_jolt
+end
+
+"""JM_CRASH harness, one frame (GPLWALL-1): teleports the car into the next scripted crash, watches it for going THROUGH
+a wall, scores the penetration, and prints one line per scenario. LOOPSPLIT-1 cycle 3 S1: moved unchanged."""
+function crash_step!(cs, frames, place_at_s!, crash_i, crash_invis, crash_jit, crash_ninv, crash_plat, crash_rec, crash_sum, crash_t0, crash_thru)
+    if crash_i[] == 0 || frames - crash_t0[] >= CRASH_FRAMES
+        if crash_i[] > 0                                  # close the running scenario
+            (s0, sd, ang, vv) = CRASHES[crash_i[]]
+            r = gplw_locate_any(cs.x, cs.z)
+            (lo, hi) = r === nothing ? (NaN, NaN) : gplw_road_interval(r[1], r[2])
+            ok = !crash_thru[]
+            crash_invis[] > 0 && (crash_ninv[] += 1)
+            (wp, sp, bp) = crash_rec[]
+            crash_sum[] = (crash_sum[][1] + 1, crash_sum[][2] + (ok ? 0 : 1), max(crash_sum[][3], wp), max(crash_sum[][4], sp))
+            println("  [crash] ", crash_i[], "/", length(CRASHES), " s=", round(Int, s0), " ", sd > 0 ? "L" : "R", " ",
+                    round(Int, ang), "deg ", round(Int, vv), " m/s: wall pen max ", round(wp, digits = 2),
+                    " m, drawn-face pen max ", round(sp, digits = 2), " m, old-box pen max ", round(bp, digits = 2), " m, end lat ", r === nothing ? "?" : round(r[3], digits = 2),
+                    " in [", round(lo, digits = 1), ", ", round(hi, digits = 1), "] -> ", ok ? "CONTAINED" : "THROUGH",
+                    WRECKED[] ? "  (wrecked)" : "", "  v_end ", round(cs.v, digits = 1),
+                    isfinite(crash_jit[][1]) ? string("  REST JITTER y ", round(crash_jit[][2] - crash_jit[][1], digits = 3), " m, heading ",
+                        round(rad2deg(crash_jit[][4] - crash_jit[][3]), digits = 2), " deg") : "",
+                    crash_invis[] > 0 ? "  INVISIBLE-CONTACT frames $(crash_invis[])" : ""); flush(stdout)
+        end
+        crash_i[] += 1
+        if crash_i[] <= length(CRASHES)
+            (s0, sd, ang, vv) = CRASHES[crash_i[]]
+            place_at_s!(s0)
+            DriveRT3D.damage_reset!(); WRECKED[] = false; WRECK_FROZEN[] = false; empty!(LOOSE_WHEELS); DC[].lastz = 0.0
+            r = gplw_locate_any(cs.x, cs.z)
+            if r !== nothing
+                (_, _, _, gx, gz) = r; a = deg2rad(ang)
+                dx = cos(cs.θ)*cos(a) + sd*gx*sin(a); dz = sin(cs.θ)*cos(a) + sd*gz*sin(a)
+                DriveRT3D.place3d!(cs, cs.x, cs.z, atan(dz, dx); v = vv)
+            end
+            gplw_teleported!(); OBS_STAT[] = (hits = 0, clamps = 0, maxpen = 0.0)
+            crash_t0[] = frames; crash_rec[] = (0.0, 0.0, 0.0)
+            crash_plat[] = NaN; crash_thru[] = false; crash_invis[] = 0; crash_jit[] = (Inf, -Inf, Inf, -Inf)
+        else
+            println("  [crash] SUMMARY ", TRACKSEL, ": ", crash_sum[][1], " scenarios, THROUGH ", crash_sum[][2],
+                    ", deepest GPL-wall penetration ", round(crash_sum[][3], digits = 2), " m, deepest drawn-face penetration ",
+                    round(crash_sum[][4], digits = 2), " m; scenarios with an INVISIBLE-wall contact ", crash_ninv[],
+                    "; wall+obstacle cost ", round(1e6*GPLW_T[][1]/max(GPLW_T[][2], 1), digits = 1), " us/frame"); flush(stdout)
+        end
+    else
+        WRECK_FROZEN[] && (j_ = crash_jit[]; crash_jit[] = (min(j_[1], cs.y), max(j_[2], cs.y), min(j_[3], cs.θ), max(j_[4], cs.θ)))
+        (_, _, _, glo, ghi, _, _, _, _, gend_) = gplwall_gaps(cs.x, cs.z, cs.θ)
+        glo = min(glo, gend_)          # an END face counts as wall penetration too (measurement only)
+        # THROUGH, measured directly: the car's centre inside a blocking wall (beyond the clamp's reach), or in a
+        # DIFFERENT free interval from last frame's centre at this same station (it crossed a wall between frames).
+        rr = gplw_locate(cs.x, cs.z)                # the player's continuous locator (hint), not nearest-any
+        if rr !== nothing
+            (sc_, fc_, lc_) = rr
+            Icur = GPLWall.free_interval(GPLWALLS, sc_, fc_, lc_, lc_; hmin = GPLW_HMIN)
+            inwall = !(Icur[1] <= lc_ <= Icur[2])
+            crossed = false
+            if !isnan(crash_plat[])
+                Iprev = GPLWall.free_interval(GPLWALLS, sc_, fc_, crash_plat[], crash_plat[]; hmin = GPLW_HMIN)
+                crossed = (Iprev[1] <= crash_plat[] <= Iprev[2]) && !inwall && Iprev[1:2] != Icur[1:2] &&
+                          abs(crash_plat[] - lc_) < 5.0
+            end
+            # a centre past a face by more than the half-width = the body is wholly beyond it. (A car jammed in a
+            # closing wedge narrower than itself has its centre a little past one face; that is not through.)
+            (inwall && min(abs(lc_ - Icur[1]), abs(lc_ - Icur[2])) > CARW) && (crash_thru[] = true)
+            crossed && (crash_thru[] = true)
+            if get(ENV, "JM_CRASH_TRACE", "0") != "0" && frames - crash_t0[] <= parse(Int, get(ENV, "JM_CRASH_TRACE_N", "90"))
+                (_, _, _, glo2, ghi2) = gplwall_gaps(cs.x, cs.z, cs.θ)
+                println("   [ctrace] f", frames - crash_t0[], " x ", round(cs.x, digits = 1), " z ", round(cs.z, digits = 1),
+                        " sec ", sc_, " f ", round(fc_, digits = 2), " lat ", round(lc_, digits = 2), " I ", round.(Icur[1:2], digits = 2),
+                        " prev ", round(GPLW_PREV[], digits = 2), " glo ", round(glo2, digits = 2), " ghi ", round(ghi2, digits = 2),
+                        " v ", round(cs.v, digits = 1), inwall ? " INWALL" : "", crossed ? " CROSSED" : "")
+            end
+            crash_plat[] = lc_
+        end
+        # INVISIBLE contact: touching a GPL wall with nothing drawn (no hard drawn face, no solid) within 0.5 m
+        if min(glo, ghi) < 0.0        # touching a GPL wall: is ANY drawn vertical face within 1 m of the car?
+            near = false
+            ci = floor(Int, cs.x/OBS_C); cj = floor(Int, cs.z/OBS_C)
+            for gi in ci-1:ci+1, gj in cj-1:cj+1, (ax, az, bx, bz) in get(DRAWN_GRID, (gi, gj), NTuple{4,Float64}[])
+                seg_seg(cs.x + CARLF*cos(cs.θ), cs.z + CARLF*sin(cs.θ), cs.x - CARLF*cos(cs.θ), cs.z - CARLF*sin(cs.θ),
+                        ax, az, bx, bz)[1] < CARW + 1.0 && (near = true; break)
+            end
+            near = near || any(k -> car_gap(cs.x, cs.z, cs.θ, k)[1] < 1.0, eachindex(SOLIDS))
+            if !near     # a drawn BANK: GPL models dunes/earth banks as raised strips; we draw them as slopes
+                (_, _, _, _, _, gx_, gz_) = gplwall_gaps(cs.x, cs.z, cs.θ)
+                sgn_ = glo < ghi ? -1.0 : 1.0                    # toward the wall being touched
+                h0 = JuliaMotor.hat3d(TERRAIN, cs.x, cs.z; ref = Inf)
+                for dd in 0.5:0.5:(CARW + 2.0)
+                    h = JuliaMotor.hat3d(TERRAIN, cs.x + sgn_*gx_*dd, cs.z + sgn_*gz_*dd; ref = Inf)
+                    (h0[3] && h[3] && h[1] - h0[1] >= 0.25) && (near = true; break)
+                end
+            end
+            near || (crash_invis[] += 1)
+        end
+        bpn = 0.0                                   # old SOLIDS (discs/boxes; no positional limit)
+        for k in eachindex(SOLIDS); bpn = max(bpn, -car_gap(cs.x, cs.z, cs.θ, k)[1]); end
+        opn = 0.0                                   # DRAWN hard faces, at the rendered (post-clamp) position
+        if OBS_ON
+            (ppx, ppz) = OBS_PREV[]; wi = 0
+            for i in obs_near(cs.x, cs.z)
+                OBS_KIND[i] === :soft && continue
+                g_ = -obs_gap(i, cs.x, cs.z, cs.θ, ppx, ppz)[1]
+                g_ > opn && (opn = g_; wi = i)
+            end
+            if wi > 0 && opn > 0.35 && get(ENV, "JM_CRASH_TRACE", "0") != "0"
+                sg = OBS_SEG[wi]
+                println("   [otrace] f", frames - crash_t0[], " obstacle ", wi, " ", OBS_NAME[wi], " len ", round(hypot(sg[3]-sg[1], sg[4]-sg[2]), digits = 2),
+                        " r ", sg[5], " pen ", round(opn, digits = 2), " car (", round(cs.x, digits = 2), ",", round(cs.z, digits = 2), ") θ ",
+                        round(rad2deg(cs.θ), digits = 1), " seg (", round.(sg[1:4], digits = 2), ")")
+            end
+        end
+        crash_rec[] = (max(crash_rec[][1], -min(glo, ghi)), max(crash_rec[][2], opn), max(crash_rec[][3], bpn))
+    end
+    nothing
 end
