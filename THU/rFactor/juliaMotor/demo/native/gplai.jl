@@ -237,6 +237,7 @@ const ROLLFIX = Base.Ref(get(ENV, "JM_AI_ROLLFIX", "1") != "0")   # TD261017-1 (
 const ROLL_MAX = 0.07                           # rad (4 deg): a road's steepest camber
 const PIT = 5                                   # WGTD-1 S9: GPL's pit.lp -- the cool-down lap's way into the pit lane
 const CAR_LEN = 4.0; const CAR_W = 1.75
+const PLAYER_HIT_V = parse(Float64, get(ENV, "JM_GPLAI_HITV", "5.0"))   # AISTOP-1: closing speed [m/s] above which the AI does not just match the player's speed (Inf = before)
 const EDGE = 0.30                         # the goal keeps this far inside the corridor (ours, not GPL's: see goal)
 const GLASS = 0.10                        # track.ini glass_wall_offset (-0.1): the in-corridor test's tolerance
 struct Track
@@ -815,7 +816,10 @@ function tick!(f::Field, player, scale, vrel)
             hit = true; f.stats[:player_contact] = get(f.stats, :player_contact, 0) + 1
             sg = c.d >= player[2] ? 1.0 : -1.0
             cl = (player[3] - c.dv)*sg; cl > 0 && (c.dv += sg*cl)      # the AI yields the converging rate
-            ds < -CAR_LEN/2 && (c.v = min(c.v, player[4]))
+            # AISTOP-1: a car CLOSING on the player faster than PLAYER_HIT_V is a real collision, answered by the game's
+            # contact law (impulse on both cars, the struck car knocked loose) -- matching speeds here stopped it dead behind
+            # a wreck (106 -> 1 km/h in one tick) with no impulse on either
+            ds < -CAR_LEN/2 && c.v - player[4] < PLAYER_HIT_V && (c.v = min(c.v, player[4]))
         end
     end
     for c in f.cars; c.contact += 1; end
