@@ -14280,6 +14280,7 @@ function main()
         # The list is deliberately explicit rather than a helper call: a restart that silently
         # forgets one field is worse than no restart, and the compiler cannot catch a missing one.
         if restart
+            ctrace_start!("restart")    # RESTARTJIT-1: name what compiles at R (the PO's 10-20 Monza restart: 867 ms, 526 compiling)
             _rs = restart_session!(cs, cs0, groundz, groundz_phys, AICARS, AILINE, CLINE, DO_QUAL, HOLD_START, FUEL1, FUEL_ON, GPLAI_F, PLAYER_G, REPLAY_NCAR, ai_best, ai_lap_prev, ai_lapt0, burn_lap, fuel_laps, fuel, cd_armed, cd_left, cd_said, cd_t0, flush_ibt!, form_grid!, ibt_samples, launch_done, new_replay_path, phase, player_finpos, player_grid, player_laps, race_go, replay_buf, replay_names, replay_out, replay_saved, replay_t, tele_buf, player_s_prev)
             lap_t0 = _rs.lap_t0; last_lap = _rs.last_lap; best_lap = _rs.best_lap; prev_laps = _rs.prev_laps
             race_done = _rs.race_done; player_prog = _rs.player_prog; player_s_prev = _rs.player_s_prev
@@ -14695,6 +14696,10 @@ function main()
                                      precompile(player_bump!, (typeof(cs), ntuple(_ -> Float64, 6)...)))           # hitting the wreck
             (CRASHBODY && CAR3D) && precompile(wreck_body_step!, typeof.((cs, inp, dt, groundz_phys, roll_ter)))   # + the keyword-free entry
             precompile(restart_session!, typeof.((cs, cs0, groundz, groundz_phys, AICARS, AILINE, CLINE, DO_QUAL, HOLD_START, FUEL1, FUEL_ON, GPLAI_F, PLAYER_G, REPLAY_NCAR, ai_best, ai_lap_prev, ai_lapt0, burn_lap, fuel_laps, fuel, cd_armed, cd_left, cd_said, cd_t0, flush_ibt!, form_grid!, ibt_samples, launch_done, new_replay_path, phase, player_finpos, player_grid, player_laps, race_go, replay_buf, replay_names, replay_out, replay_saved, replay_t, tele_buf, player_s_prev)))
+            # RESTARTJIT-1: restart_session! only PASSES groundz_phys on (respawnX!(cs; groundz)), so Julia does not specialise
+            # on it and the keyword call compiled at the R press (61.5 ms; the PO's 10-20 Monza restart: 526 ms compiling)
+            CAR3D && precompile(Core.kwcall, (NamedTuple{(:groundz,), Tuple{typeof(groundz_phys)}}, typeof(DriveRT3D.respawn3d!), typeof(cs)))
+            precompile(Render.translate, (NTuple{3,Float32},))   # ARMFREEZE-1's leftover: 13 ms once in the race
         end
         if !isempty(LOOSE_OF) && !REPLAY && !isempty(ai_poses)
             loose_cars_step!(cs, ai_poses, ddt, AICARS, AILINE, GPLAI_T, PLAYER_G, aibankP, frames, gplai_field!, groundz, groundz_ai)
