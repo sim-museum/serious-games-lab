@@ -618,7 +618,8 @@ end
 """JOLT_MS (SPATD-1): name every impulse (LOOPSPLIT-1 cycle 3 S5: moved unchanged from the frame loop)."""
 function jolt_report!(cs, frames, CLINE, STEP_GUARD_HITS, dt, rst)
     if JOLT_MS > 0 && CAR3D && !SKIDPAD && !rst && JOLT_N[] < 60   # SPATD-1: name every impulse
-        (_jvx, _jvz) = DriveRT3D.world_velocity(cs); _jp = JOLT_PRE[]
+        # WRECKJIT-1 S1: a crash-body wreck's velocity is the body's (written to WVX/WVZ); the integrator stays at the handover
+        (_jvx, _jvz) = WBODY[] === nothing ? DriveRT3D.world_velocity(cs) : (WVX[], WVZ[]); _jp = JOLT_PRE[]
         _jd = hypot(_jvx - _jp[1], _jvz - _jp[2])
         if _jd > JOLT_MS
             JOLT_N[] += 1

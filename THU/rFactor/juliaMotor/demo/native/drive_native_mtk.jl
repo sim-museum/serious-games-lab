@@ -6556,6 +6556,18 @@ telemetryX(c)              = CAR3D ? DriveRT3D.telemetry3d(c) : DriveRT.telemetr
 respawnX!(c; groundz=nothing) = CAR3D ? DriveRT3D.respawn3d!(c; groundz=groundz) : DriveRT.respawn!(c)
 containX!(c, x, z; kw...)  = CAR3D ? DriveRT3D.contain3d!(c, x, z; kw...) : DriveRT.contain!(c, x, z; kw...)
 bumpX!(c, dvx, dvz, dr, dvy=0.0, dpp=0.0, dq=0.0) = CAR3D ? DriveRT3D.bump3d!(c, dvx, dvz, dr, dvy, dpp, dq) : DriveRT.bump!(c, dvx, dvz, dr)   # GD: collision impulse (+vertical launch + roll/pitch for cartwheels + rear-lift, 3-D)
+# WRECKJIT-1 S2: a car hit on the PLAYER goes into the wreck's rigid body while it is one -- bumpX! writes the driving
+# model, which a wreck does not step, so an AI car struck the wreck and it never moved (nor felt it at rest)
+player_yawrate(cs) = WBODY[] === nothing ? (CAR3D ? Float64(DriveRT3D.yawrate3d(cs)) : 0.0) : (WBODY[].R * WBODY[].ω)[2]
+const WBODY_KICKS = Ref(0)
+function player_bump!(cs, dvx, dvz, dr, dvy=0.0, dpp=0.0, dq=0.0)
+    b = WBODY[]
+    b === nothing && return bumpX!(cs, dvx, dvz, dr, dvy, dpp, dq)
+    WreckBody.kick!(b, WreckBody.V3(dvx, dvy, -dvz), Float64(dr))   # (render frame: Z = -game z)
+    (WBODY_KICKS[] += 1) <= 20 && (println("  [crashbody] struck by a car: dv ", round(hypot(dvx, dvz), digits = 2), " m/s, yaw ",
+                                           round(dr, digits = 2), " rad/s"); flush(stdout))
+    nothing
+end
 # AI run the full 3-D physics model too (weight transfer + jumps).  Aliases keep call sites tidy.
 const AICarT  = DriveRT3D.Car3D
 const AIbuild = DriveRT3D.build_cars3d
@@ -14428,6 +14440,13 @@ function main()
             # step, so both are forces the solver INTEGRATES — no post-step bumpX!/containX! state hack.
             WRECKED[] || (WBODY[] = nothing)
             if CAR3D && CRASHBODY && WRECKED[]      # CRASHBODY-1: the wreck is a free rigid body (wreck_body.jl), not the driving model
+                # WRECKJIT-1 S1: the jolt log's "before" for this frame -- set only on the driving path, it kept the last
+                # driving frame's velocity, so every wreck frame logged a false jolt and used up the log's 60 lines.
+                # The handover starts from the velocity AFTER the wrecking step: WVX/WVZ were read before it, so the body
+                # began at the pre-impact velocity and hit the wall a second time (the same dv logged twice)
+                WBODY[] === nothing && ((WVX[], WVZ[]) = DriveRT3D.world_velocity(cs))
+                (JOLT_MS > 0 && !SKIDPAD && !rst) && (JOLT_PRE[] = (WVX[], WVZ[], 0.0, 0.0, 0.0, GPLW_STAT[].hits, GPLW_STAT[].clamps,
+                                              OBS_STAT[].hits, OBS_STAT[].clamps, STEP_GUARD_HITS[]))
                 wreck_body_step!(cs, inp, dt, groundz_phys, roll_ter)
                 _tgc = time()                       # read by the GPLWALL cost line below
             else
@@ -14449,6 +14468,9 @@ function main()
                         clutch=inp.clutch, up=inp.shift_up, dn=inp.shift_down, manual=!inp.autoshift,
                         groundz=groundz_phys)
             DS_SIM[1] += time() - _tps
+            # WRECKJIT-1 S1 (JM_CRASHBODY=0 only): the frozen wreck was pinned BEFORE the step, so each step started from the pin
+            # and the smashed car jumped (57-104 m/s, up to 0.7 m) for the frame that is drawn -- pin it after the step too
+            (WRECKED[] && WRECK_FROZEN[] && WRECK_PIN && CAR3D) && DriveRT3D.pin3d!(cs, WRECK_PX[], WRECK_PZ[], WRECK_PT[], WRECK_PH[])
             if VDIAG && CAR3D && cs.t - VDIAG_T[] >= 0.5     # TD261016-1: the car's height vs the road it is on
                 VDIAG_T[] = cs.t
                 println("  [vdiag] t ", round(cs.t, digits = 1), " s ", round(cs.lapdist, digits = 0), " v ", round(cs.v*3.6, digits = 0),
@@ -14669,6 +14691,8 @@ function main()
             precompile(loose_cars_step!, typeof.((cs, ai_poses, ddt, AICARS, AILINE, GPLAI_T, PLAYER_G, aibankP, frames, gplai_field!, groundz, groundz_ai)))
             # CRASHBODY-1: the crash body first runs at the moment of a wreck -- compiled here, not at the impact
             (CRASHBODY && CAR3D) && wreck_body_step!(cs, inp, dt, groundz_phys, roll_ter; dry = true)   # a scratch body, nothing written back
+            (CRASHBODY && CAR3D) && (precompile(WreckBody.kick!, (WreckBody.Body, WreckBody.V3, Float64));   # WRECKJIT-1 S2: an AI car
+                                     precompile(player_bump!, (typeof(cs), ntuple(_ -> Float64, 6)...)))           # hitting the wreck
             (CRASHBODY && CAR3D) && precompile(wreck_body_step!, typeof.((cs, inp, dt, groundz_phys, roll_ter)))   # + the keyword-free entry
             precompile(restart_session!, typeof.((cs, cs0, groundz, groundz_phys, AICARS, AILINE, CLINE, DO_QUAL, HOLD_START, FUEL1, FUEL_ON, GPLAI_F, PLAYER_G, REPLAY_NCAR, ai_best, ai_lap_prev, ai_lapt0, burn_lap, fuel_laps, fuel, cd_armed, cd_left, cd_said, cd_t0, flush_ibt!, form_grid!, ibt_samples, launch_done, new_replay_path, phase, player_finpos, player_grid, player_laps, race_go, replay_buf, replay_names, replay_out, replay_saved, replay_t, tele_buf, player_s_prev)))
         end
@@ -14710,10 +14734,10 @@ function main()
                 avx, avz = get(NETVEL[], nid, (0.0, 0.0))
                 lat = -dx*sin(cs.θ) + dz*cos(cs.θ)
                 ffb_jolt = clamp(-sign(lat)*0.6, -1.0, 1.0)
-                imp = car_contact_impulse(cs.x, cs.z, cs.θ, pvx, pvz, CAR3D ? DriveRT3D.yawrate3d(cs) : 0.0, p[1], p[3], avx, avz; θb = p[4], b_fixed = true)   # remote: answers a latency later
+                imp = car_contact_impulse(cs.x, cs.z, cs.θ, pvx, pvz, player_yawrate(cs), p[1], p[3], avx, avz; θb = p[4], b_fixed = true)   # remote: answers a latency later
                 imp === nothing && continue                   # HANDLING-1 S3: the same rigid-body impulse as the AI contact
                 (pdvx, pdvz, pdr, j) = imp
-                bumpX!(cs, pdvx, pdvz, pdr, imp[5], imp[6], imp[7])   # CARCOLLIDE-2 S3
+                player_bump!(cs, pdvx, pdvz, pdr, imp[5], imp[6], imp[7])   # CARCOLLIDE-2 S3
                 carhit_damage!(cs, pdvx, pdvz, j)              # CARINTERACT-1: the other human's car too
                 vrel = j/((1 + CAR_E)*CAR_M/2); scrub = 0.0   # (the diag line below: closing speed, no separate scrub any more)
                 ffb_jolt = clamp(ffb_jolt - sign(lat)*(j/pm)*0.4 - 0.5, -1.0, 1.0)

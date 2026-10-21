@@ -126,5 +126,13 @@ run!(b, 3.0); p0 = b.p; R0 = b.R
 run!(b, 2.0)
 check(b.rest && b.p == p0 && b.R == R0, "at rest it does not move at all (no rocking)")
 
+# 7. WRECKJIT-1 S2: a car hit on the resting wreck wakes it, pushes it and turns it, and it comes to rest again
+b.brake = 1.0                                  # (free, it rolls on at walking pace on the flat: bearing drag only)
+WB.kick!(b, V3(0.0, 0.0, 3.0), 1.0)          # side-on, as an AI car hits a wreck at the wall
+moved = Ref(0.0); turned = Ref(0.0)
+run!(b, 5.0; every = (b, k) -> (moved[] = max(moved[], norm(b.p - p0)); turned[] = max(turned[], abs(WB.attitude(b)[1]))))
+check(moved[] > 0.2 && turned[] > deg2rad(2) && b.rest && grounded(b),
+      @sprintf("a car hit wakes a resting wreck (moved %.2f m, turned %.0f deg) and it settles again", moved[], deg(turned[])))
+
 println("WRECKBODY GATE: ", ok ? "PASS" : "FAIL")
 exit(ok ? 0 : 1)

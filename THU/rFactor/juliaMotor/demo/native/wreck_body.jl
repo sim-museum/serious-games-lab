@@ -187,6 +187,15 @@ function depenetrate!(b::Body, walls::Vector{WallPlane})
     b
 end
 
+"""An impulse from outside (another car hits the wreck): `dv` the render-frame velocity change, `dyaw` a yaw-rate change
+about the world vertical. Wakes a body at rest (WRECKJIT-1 S2: a car hit went into the driving model, which is not
+stepped in a wreck, so the wreck never felt it)."""
+function kick!(b::Body, dv::V3, dyaw::Float64)
+    b.v += dv; b.ω += b.R' * V3(0.0, dyaw, 0.0)
+    b.rest = false; b.still = 0.0
+    b
+end
+
 """One frame of `dt` s on the ground `plane`, against this frame's `walls`."""
 function step!(b::Body, dt::Float64, ground::Union{Plane,Terrain}; walls::Vector{WallPlane} = WallPlane[])
     b.rest && return b

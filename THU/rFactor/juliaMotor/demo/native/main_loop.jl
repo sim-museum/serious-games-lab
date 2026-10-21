@@ -843,13 +843,13 @@ function ai_contact_step!(cs, ai_poses, AICARS, AIPHYS, PLAYER_CDA, ffb_jolt)
         end
         # HANDLING-1 S3: a rigid-body impulse at the contact point (car_contact_impulse) -- no amplification, no
         # side-only yaw kick, no invented hop/roll/scrub; the bodywork friction bleeds speed on a side-swipe.
-        imp = car_contact_impulse(cs.x, cs.z, cs.θ, pvx, pvz, CAR3D ? DriveRT3D.yawrate3d(cs) : 0.0, p[1], p[3], avx, avz; θb = aθ)
+        imp = car_contact_impulse(cs.x, cs.z, cs.θ, pvx, pvz, player_yawrate(cs), p[1], p[3], avx, avz; θb = aθ)
         imp === nothing && continue                   # separating → no new impulse (the contact kick already fired)
         (pdvx, pdvz, pdr, j) = imp
-        bumpX!(cs, pdvx, pdvz, pdr, imp[5], imp[6], imp[7])   # CARCOLLIDE-2 S3: + heave/roll/pitch (nose-dive, launch)
+        player_bump!(cs, pdvx, pdvz, pdr, imp[5], imp[6], imp[7])   # CARCOLLIDE-2 S3: + heave/roll/pitch (nose-dive, launch)
         carhit_damage!(cs, pdvx, pdvz, j)              # CARINTERACT-1: a car hit costs YOU, as a wall does
         ffb_jolt = clamp(ffb_jolt - sign(lat)*(j/pm)*0.4 - 0.5, -1.0, 1.0)   # a CLOSING hit adds a bigger kick
-        if !AI_PHYSICS && loose_hit!(k, p, aθ, avx, avz, cs, pvx, pvz, CAR3D ? DriveRT3D.yawrate3d(cs) : 0.0, cs.t)
+        if !AI_PHYSICS && loose_hit!(k, p, aθ, avx, avz, cs, pvx, pvz, player_yawrate(cs), cs.t)
             # CARCOLLIDE-2 S4: knocked loose (or already loose) -- the struck car answers with its own physics
         elseif AI_PHYSICS                              # the AI is a real physics car → impulse it too
             alat = -dx*sin(aθ) + dz*cos(aθ)
@@ -1497,12 +1497,15 @@ function ram_ai_step!(cs, ai_poses, ddt, AICARS, PLAYER_G, groundz)
     isnan(RAM_STATE[].t0) && (RAM_STATE[] = (t0 = cs.t, done = false))
     if cs.t - RAM_STATE[].t0 >= RAM_AI[4]
         k = Int(RAM_AI[1]); q = ai_poses[k]; qθ = q[4]; vk = AICARS[k].v
-        rx = q[1] - 4.7*cos(qθ) - RAM_AI[3]*sin(qθ); rz = q[3] - 4.7*sin(qθ) + RAM_AI[3]*cos(qθ)
+        # WRECKJIT-1 S2: a 5th field > 0 = a WRECK lying that many metres AHEAD of car k instead (stopped, wrecked), for it to hit
+        ahead = length(RAM_AI) >= 5 && RAM_AI[5] > 0 ? RAM_AI[5] : -4.7
+        rx = q[1] + ahead*cos(qθ) - RAM_AI[3]*sin(qθ); rz = q[3] + ahead*sin(qθ) + RAM_AI[3]*cos(qθ)
         PLAYER_G[] = NaN; GPLW_ON && gplw_teleported!()
-        DriveRT3D.place3d!(cs, rx, rz, qθ; v = vk + RAM_AI[2])
+        DriveRT3D.place3d!(cs, rx, rz, qθ; v = ahead > 0 ? 0.0 : vk + RAM_AI[2])
+        ahead > 0 && (WRECKED[] = true)
         h = groundz(rx, rz; acquire = true); isfinite(h) && (cs.zref = Float64(h); cs.y = cs.zref)
         RAM_STATE[] = (t0 = RAM_STATE[].t0, done = true)
-        println("  [ram] t=", round(cs.t, digits = 2), " player placed 4.7 m behind AI ", k, " (", round(vk*3.6), " km/h), lat ",
+        println("  [ram] t=", round(cs.t, digits = 2), ahead > 0 ? " a wreck placed $(ahead) m ahead of AI " : " player placed 4.7 m behind AI ", k, " (", round(vk*3.6), " km/h), lat ",
                 RAM_AI[3], " m, closing ", RAM_AI[2], " m/s"); flush(stdout)
     end
     nothing
