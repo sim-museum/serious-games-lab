@@ -16,6 +16,16 @@ export Mesh3DO, parse_3do, gpl_placements
 
 # E64 S4: walk every LOD child (the pre-fix behaviour) instead of only the highest-detail one
 const LOD_ALL = get(ENV,"JM_LOD_ALL","0") != "0"
+# WRISTS-4 S2: JM_SWITCH_VARS="14,..." resolves op-5 switches (src 4: child = int(table[idx])) on those GPL switch-table
+# variables from the 0x14 "set" nodes met earlier in the walk (gpl.exe: 0x14 = table[idx & 0x3ff] = val at 0x4cfa50; op 5
+# at 0x4cf9b0); "14=0" forces a value. Unlisted variables (wheel frames, gauges, ... set by the game per frame) keep walking
+# every child. Default "": nothing resolved. Var 14 is the cockpit glove (10-face fist + sleeves = 0, 6-face fist = 1);
+# the sim's glove extraction forces it (drive_native_mtk.jl HAND_SWITCH).
+# Read per parse, not as consts: this file is precompiled into JRRender, which would freeze an ENV const.
+function switch_spec()
+    sp = [split(e, "=") for e in filter(!isempty, split(get(ENV, "JM_SWITCH_VARS", ""), ","))]
+    Set{Int}(parse(Int, e[1]) for e in sp), Dict{Int,Int}(parse(Int, e[1]) => parse(Int, e[2]) for e in sp if length(e) == 2)
+end
 const POSTPROC = Ref{Any}(nothing)   # ROADCURVE-1: (path, mesh) -> mesh, see the end of parse_3do
 
 # positioner local matrix: Translate(d) * Rot(m, GPL Euler about X,Y,Z) * Scale(s).
@@ -201,6 +211,8 @@ function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}
     PARKDEPTH = Ref(0); PARKED_GROUPS = Set{Int}(); ALL_GROUPS = Set{Int}()
     TEXVERT_WANT = Set(filter(!isempty, split(get(ENV, "JM_TEXVERTS", ""), ',')))
     TEXVERT_N = Dict{String,Int}()   # S10d/S10e: per-texture JM_TEXVERTS print budget
+    SWITCH_VARS, SWITCH_FORCE = switch_spec()
+    SWV = copy(SWITCH_FORCE)                     # WRISTS-4 S2: switch-table values set by 0x14 nodes so far
     PATH = UInt32[]; TRIPATH = String[]          # E82 diag: node-type path per triangle (JM_POSDIAG)
     # S10k: count the pushes independently of the array. If pushes > 0 while length(TRIPATH) == 0,
     # the emit closure and the report are not looking at the same array -- which is the only
@@ -278,6 +290,8 @@ function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}
                 end
             end
             walk(child, tex, depth+1, M, grp)
+        elseif typ == 0x14                          # WRISTS-4 S2: set a switch-table variable: 0x14, idx, val
+            (Int(u32(b, p+4)) & 0x3ff) in SWITCH_VARS && !haskey(SWITCH_FORCE, Int(u32(b, p+4)) & 0x3ff) && (SWV[Int(u32(b, p+4)) & 0x3ff] = Int(i32(b, p+8)))
         elseif typ == 0x0E                          # external mesh: 0x0E, strofs(file), 0
             # E106-S6: a wrapper's whole point -- re-enter another .3do with THIS file's bound
             # texture table (llftire0 -> lotulf with the tyre set; lotd -> lotus with the cockpit
@@ -373,8 +387,11 @@ function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}
                 # A beyond 2032 m of lap and its real armco/grass/fence/tree-row B before -- min-threshold picked A, and
                 # the PO's start straight lost its right-hand roadside and ground. JM_LOD_LAPPOS=0 = the old pick. Other
                 # sources keep the static rule below.
-                _src = u32(b, p+4); _op = u32(b, p+12)
-                if !LOD_ALL && _src == 1 && 1 <= _op <= 3 && isfinite(lappos) && get(ENV, "JM_LOD_LAPPOS", "1") != "0"
+                _src = u32(b, p+4); _op = u32(b, p+12); _var = Int(u32(b, p+8)) & 0x3ff
+                if !LOD_ALL && _src == 4 && _op == 5 && haskey(SWV, _var)          # WRISTS-4 S2: child = the variable
+                    k = SWV[_var] + 1
+                    1 <= k <= cnt && offs[k] >= 0 && walk(offs[k], curtex, depth+1, M, grp)
+                elseif !LOD_ALL && _src == 1 && 1 <= _op <= 3 && isfinite(lappos) && get(ENV, "JM_LOD_LAPPOS", "1") != "0"
                     cands = Int[]
                     for dv in -18.0e6:0.5e6:18.0e6
                         v = lappos + dv

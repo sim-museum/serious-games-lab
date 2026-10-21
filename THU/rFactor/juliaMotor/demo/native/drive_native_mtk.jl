@@ -4666,7 +4666,18 @@ const MIRRORP = Render.extract_gpl_car(LOT3DO; only=MIRROR_DRAW, maxlat=0.95f0) 
 # 261016/td16/c1_glove_uv_raw_vs_vflip.png); the flip threw the cards half off the art onto its transparent background --
 # the see-through gloves. The "dark palm" HANDS-1 S2 saw unflipped was the fists facing the eye palm-first: FIST_TURN.
 const HAND_VFLIP = get(ENV, "JM_HAND_VFLIP", "0") != "0"
-const HANDP  = Render.extract_gpl_car(LOT3DO; only=("lohand",),  maxlat=0.95f0, vflip = HAND_VFLIP)  # E64 S2: gloved hands on the rim — ride the wheel rotation
+# WRISTS-4 S2 (2026-10-21): lotus.3do holds TWO fists per hand behind GPL switch variable 14 (child 0: a 10-face fist +
+# the lotarms sleeves; child 1: a 6-face fist) -- the parse walked both, overlapped: the "silver streaky" gloves were the
+# two fists' faces interleaved, turned half round (FIST_ROT y_180) to show any knuckle art at all. gpl.exe's cockpit
+# branch sets 14 = 1 before the hands, but the gold's red-striped sleeves are lotarms, which only child 0 has; child 1
+# alone sat small behind the rim (sweep 261021/wrists4s2/). So the gloves take child 0, unturned (GPL's own pose: a
+# solid fist over the rim), lit brighter (bright 1.6, ambfill 1.0, no spec: the white glove of the gold, not grey).
+# JM_HAND_SWITCH="" JM_FIST_ROT=y_180 JM_GLOVE_LIGHT=1.15,0.05,0.60 = before; JM_HAND_SWITCH=1 = the 6-face fist.
+const HAND_SWITCH = get(ENV, "JM_HAND_SWITCH", "0")
+const GLOVE_LIGHT = (parse.(Float32, split(get(ENV, "JM_GLOVE_LIGHT", "1.6,0.0,1.0"), ","))...,)   # bright, spec, ambfill
+const HANDP  = withenv("JM_SWITCH_VARS" => (HAND_SWITCH == "" ? get(ENV, "JM_SWITCH_VARS", "") : "14=" * HAND_SWITCH)) do
+    Render.extract_gpl_car(LOT3DO; only=("lohand",),  maxlat=0.95f0, vflip = HAND_VFLIP)
+end  # E64 S2: gloved hands on the rim — ride the wheel rotation
 # E64 S7 (D12 residual): the runtime-hidden HIGH-DETAIL rear-suspension assemblies (groups
 # 27288/39792 — the S4 exclusions).  S4 mis-read their raw GPL coords as displaced (raw y is
 # LATERAL, not up): they are near-correctly authored left/right halves — arms/driveshafts/
@@ -11096,7 +11107,7 @@ end
 # 180 and y +-90, 261016/td16/c1_fist_turns.jpg). JM_FIST_ROT="x|y|z_deg[_mirror]" (read per frame; "mirror" negates
 # the angle for the second fist); JM_FIST_ROT=0 = no turn.
 function fistrot(k)
-    sp = get(ENV, "JM_FIST_ROT", "y_180"); (isempty(sp) || sp == "0") && return Render.ident()   # default: knuckles to the eye
+    sp = get(ENV, "JM_FIST_ROT", "0"); (isempty(sp) || sp == "0") && return Render.ident()   # WRISTS-4 S2: default no turn (one fist now)
     f = split(sp, "_"); ax = f[1] == "x" ? Float32[1, 0, 0] : f[1] == "y" ? Float32[0, 1, 0] : Float32[0, 0, 1]
     θ = deg2rad(parse(Float32, f[2])) * (length(f) > 2 && f[3] == "mirror" && k == 2 ? -1f0 : 1f0)
     Render.translate(FIST_C[k]) * Render.rotaxis(ax, Float32(θ)) * Render.translate(-FIST_C[k])

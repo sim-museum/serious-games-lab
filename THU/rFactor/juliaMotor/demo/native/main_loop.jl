@@ -1483,8 +1483,8 @@ function hands_draw!(cs, inp, vp, bodyModel, swModel)
     end
     if length(handLR) == 2                      # left fist +grip, right fist −grip → gold's 10-and-2
         _hm(k) = (k == SHIFT_HAND_K && _hoff != (0f0, 0f0, 0f0)) ? bodyModel * Render.translate(_hoff) * inv(bodyModel) : Render.ident()   # COCKPIT-2 S7
-        Render.draw(prog, handLR[1], vp, _hm(1)*swModel*gripmat(+1)*fistrot(1); bright=1.15, spec=0.05, ambfill=0.60)
-        Render.draw(prog, handLR[2], vp, _hm(2)*swModel*gripmat(-1)*fistrot(2); bright=1.15, spec=0.05, ambfill=0.60)
+        Render.draw(prog, handLR[1], vp, _hm(1)*swModel*gripmat(+1)*fistrot(1); bright=GLOVE_LIGHT[1], spec=GLOVE_LIGHT[2], ambfill=GLOVE_LIGHT[3])
+        Render.draw(prog, handLR[2], vp, _hm(2)*swModel*gripmat(-1)*fistrot(2); bright=GLOVE_LIGHT[1], spec=GLOVE_LIGHT[2], ambfill=GLOVE_LIGHT[3])
     else
         for it in handItems; Render.draw(prog, it, vp, swModel; bright=1.15, spec=0.05, ambfill=0.60); end
     end
