@@ -337,8 +337,35 @@ const COUNTDOWN = max(0.0, parse(Float64, get(ENV, "JM_COUNTDOWN", "5")))
 # The race must not begin until the player is ready: the countdown itself is ARMED by SPACE.
 # A countdown that starts before you are looking is no better than a rev. Automated runs cannot
 # press a key, so autodrive/headless arm themselves -- JM_NO_START_ARM=1 forces that anywhere.
-const START_ARM = get(ENV, "JM_NO_START_ARM", "0") == "0" && get(ENV, "JM_AUTODRIVE", "0") == "0"
+# ARMFREEZE-1: JM_ARM_KEY=<s> keeps the PO's "press any key" state even under autodrive and presses the key at <s>
+# (JM_ARM_AFTER arms by a side door, so the prompt -> countdown switch the PO goes through never ran in a test).
+const ARM_KEY = max(0.0, parse(Float64, get(ENV, "JM_ARM_KEY", "0")))
+const START_ARM = (get(ENV, "JM_NO_START_ARM", "0") == "0" && get(ENV, "JM_AUTODRIVE", "0") == "0") || ARM_KEY > 0
 const ARM_AFTER = max(0.0, parse(Float64, get(ENV, "JM_ARM_AFTER", "0")))   # test hook, see the countdown block
+# ARMFREEZE-1: the PO's races freeze 1.3-1.5 s at the countdown key press and no test reproduces it (JM_ARM_KEY presses
+# a real key, held car, sound, replay -- nothing compiles). So the game names it itself: for 2 s after the key press and
+# after the green, Julia prints each method it compiles to stderr (`#= ms =# precompile(...)`, into the race log).
+# Costs nothing while nothing compiles. JM_CTRACE=0 = off.
+const CTRACE = get(ENV, "JM_CTRACE", "1") != "0"
+const CTRACE_UNTIL = Ref(0.0)
+# JM_CTRACE_PROF=1 (tests): also a sampling profile over the window, printed as a tree -- a compile that is runtime type
+# inference (Core.Compiler.return_type from a comprehension/broadcast) never shows as a precompile line (the green, 2026-10-21)
+# JM_CTRACE_PROF=<why> profiles only that window ("green", "countdown armed"); "ready" (the load-time call) warms the profiler.
+const CTRACE_PROF = get(ENV, "JM_CTRACE_PROF", "")
+!isempty(CTRACE_PROF) && @eval Main using Profile
+function ctrace_start!(why, secs = 2.0)
+    CTRACE || return nothing
+    CTRACE_UNTIL[] == 0.0 && ccall(:jl_force_trace_compile_timing_enable, Cvoid, ())
+    (!isempty(CTRACE_PROF) && CTRACE_UNTIL[] == 0.0 && (why == CTRACE_PROF || why == "ready")) &&
+        Base.invokelatest(() -> (Main.Profile.clear(); Main.Profile.start_timer()))
+    CTRACE_UNTIL[] = time() + secs
+    println(stderr, "  [ctrace] ", why, ": tracing compiles for ", secs, " s"); flush(stderr)
+    nothing
+end
+ctrace_tick!() = (CTRACE_UNTIL[] > 0.0 && time() >= CTRACE_UNTIL[] &&
+                  (ccall(:jl_force_trace_compile_timing_disable, Cvoid, ()); CTRACE_UNTIL[] = 0.0;
+                   !isempty(CTRACE_PROF) && Base.invokelatest(() -> (Main.Profile.stop_timer();
+                       Main.Profile.print(stderr; format = :tree, C = false, mincount = 3, maxdepth = 60, noisefloor = 1.0)))); nothing)
 # PO 2026-08-28: JM_POLE=1 puts the HUMAN on pole regardless of qualifying. Without a practice lap
 # `grid_order` gives you no time and grids you LAST (correct, and what the PO saw as "P5 of 5").
 const POLE = get(ENV, "JM_POLE", "0") != "0"
@@ -11456,7 +11483,11 @@ mutable struct Ctl; prevUp::Bool; prevDn::Bool; prevV::Bool; prevG::Bool; prevM:
 # on the line or out of a slow corner.  Press G in-app for MANUAL (work the clutch on C, shift E/Q —
 # release the clutch too low and it crawls/bogs, just like the real thing).  ZAND_SHIFT=manual forces it.
 const CTL = Ctl(false,false,false,false,false,false,false, parse(Int, get(ENV,"JM_VIEW","1")), get(ENV,"ZAND_SHIFT","auto") != "manual", false)   # view 1=chase 0=cockpit; AUTO gearbox by default (G toggles)
-key(k) = GLFW.GetKey(win, k) == GLFW.PRESS
+# ARMFREEZE-1: JM_ARM_KEY=<s> holds the key JM_ARM_KEY_NAME (default SPACE) down for 0.15 s from that sim time, as a
+# person's press: every reader of key() sees it, not only the countdown's anykey().
+const ARM_KEY_K = getfield(GLFW, Symbol("KEY_", get(ENV, "JM_ARM_KEY_NAME", "SPACE")))
+const ARM_KEY_T = Ref(0.0)    # wall clock when the test press began (0 = not yet)
+key(k) = GLFW.GetKey(win, k) == GLFW.PRESS || (ARM_KEY > 0 && k == ARM_KEY_K && ARM_KEY_T[] > 0 && time() - ARM_KEY_T[] < 0.15)
 # STARTSEQ-2 (PO 2026-09-06): "start the countdown whenever the user presses any keyboard key - not only
 # spacebar". Polled like every other key here (no callback): letters, digits, space, enter, tab, arrows,
 # shift/ctrl/alt. ESC stays quit and is not in the list.
@@ -14142,9 +14173,15 @@ function main()
         println("  [warm] ", _wok, " in-race methods compiled ahead (", _wbad, " skipped) in ",
                 round(Int, 1000 * (time() - _wt)), " ms"); flush(stdout)
     end
+    ctrace_start!("ready", 0.0); ctrace_tick!()    # ARMFREEZE-1: compile the tracer now, not at the PO's key press (107 ms)
+    view0 = CTL.view
     while !GLFW.WindowShouldClose(win)
         GLFW.PollEvents()
         key(GLFW.KEY_ESCAPE) && break
+        # ARMFREEZE-1 (the PO's 1.3-1.5 s freeze at the countdown key, every race since 10-16): races start in the chase
+        # view and the PO's first key is V -- the first cockpit frame compiled sleeve_mat 969 ms, shift_model 122, the
+        # dials ~100. The hidden warm-up drew the starting view only; its first frame now draws the other one.
+        (!win_shown[] && show_after >= 2) && (CTL.view = frames == 0 ? 1 - view0 : view0)
         # SPA-FPS-1 S8: the smoke run's 40 frames are JIT warm-up, so a headless FRAME-TIME
         # measurement was impossible -- JM_FPSDIAG's first report never arrived, and any report that
         # did would have been timing the compiler. JM_SMOKE_FRAMES=<n> raises the bound so the
@@ -14233,6 +14270,10 @@ function main()
         # this adds no second driving model to keep true.
         if AUTODRIVE && CLINE !== nothing
             inp = autodrive_step!(cs, CLINE, frames, dt, groundz, inp, ONTRACK)
+            # ARMFREEZE-1: under JM_ARM_KEY the headless driver waits on the grid, braked, as the PO does, until the green
+            (START_ARM && HOLD_START && phase[] == :race && !race_go[]) &&
+                (inp = JuliaMotor.DriveInput(throttle = 0.0, brake = 1.0, steer = inp.steer, clutch = inp.clutch,
+                                             shift_up = false, shift_down = false, autoshift = inp.autoshift))
         end
         # SKIDPAD-GOLD-1 S3: the constant-input driver. Overrides whatever the human or the AI
         # produced, holds the clutch engaged and leaves autoshift on so the car actually pulls.
@@ -14277,6 +14318,7 @@ function main()
         # COUNTDOWN start (PO 2026-08-31). While it runs, nobody moves and the HUD shows the
         # seconds; at zero the race goes green for the whole field at once, with no throttle gate --
         # that is the difference between a countdown and the old "green when you decide to go".
+        ctrace_tick!()
         lap_t0 = countdown_step!(cs, AICARS, HOLD_START, ai_release, cd_armed, cd_left, cd_said, cd_t0, phase, race_go, lap_t0)   # LOOPSPLIT-1 S6: moved to main_loop.jl (returns lap_t0: it sets it at the green)
         if SMOKE_HOLD > 0 && !race_go[] && cs.t >= SMOKE_HOLD   # JM_SMOKE_HOLD: the smoke race's green light
             race_go[] = true; lap_t0 = cs.t; ai_release[] = cs.t + AI_HEADSTART
@@ -14680,6 +14722,18 @@ function main()
         end
         # E18: record all car poses (player + AI) at ~15 Hz once the race is GREEN, for replay
         cs.t < replay_t[] && (replay_t[] = cs.t - 1.0)   # REPLAY-2: a session restart (R) rewinds the clock -- keep recording
+        # ARMFREEZE-1 S2: the recording's first frame is at the green, and replay_saved was stamped before the load (> 20 s),
+        # so that frame also AUTOSAVES -- the first serialize/join compiled 130 ms there in every race the PO records (a smoke
+        # race records none, so no gate saw it). Run one recorded frame + its autosave on a hidden warm-up frame, into scratch
+        # buffers and a temp file. (Scratch AI poses too: on frame 1 the field's are not filled yet, and the recorder skips a
+        # frame without them.)
+        if frames == 1 && replay_buf !== nothing && !race_go[]
+            _rb = Float32[]; _ro = Ref(joinpath(mktempdir(), "warm.jmr"))
+            replay_record!(cs, inp, AICARS, fill!(similar(ai_poses, length(AICARS)), ntuple(_ -> 0.0, 6)), CLINE, REPLAY_AUTOSAVE,
+                           REPLAY_NCAR, phase, Ref(true), false, _rb, replay_names, _ro, Ref(-Inf), Ref(-1.0), Float32[], tyre_lp)
+            println("  [warm] replay recorder: dry frame of ", length(_rb), " values, autosave ", isfile(_ro[]) ? "written" : "MISSING")
+            flush(stdout); rm(dirname(_ro[]); recursive = true, force = true)
+        end
         replay_record!(cs, inp, AICARS, ai_poses, CLINE, REPLAY_AUTOSAVE, REPLAY_NCAR, phase, race_go, rst, replay_buf, replay_names, replay_out, replay_saved, replay_t, tele_buf, tyre_lp)   # LOOPSPLIT-1 cycle 2 S1: moved to main_loop.jl
         # PERF-1: one fused matrix per call (was 4 matrices + 3 products), and the body matrix is computed once
         # per car per pass below (it was recomputed for every body PART) -- the top allocation site.

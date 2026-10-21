@@ -16,9 +16,12 @@ log = tempname()
 env = Dict("TRACK" => "watglen", "JM_MODE" => "race", "JM_AI" => "5", "JM_LAPS" => "3", "JM_AUTODRIVE" => "1",
            "JM_AUTODRIVE_MANUAL" => "1", "ZAND_SHIFT" => "manual", "JM_SMOKE" => "1", "JM_SMOKE_FRAMES" => "3600",
            "JM_NOREPLAY" => "1", "JM_NOIBT" => "1", "JM_NOSOUND" => "1",
-           # 2026-10-20: the PO's start -- the field holds on the grid and goes green at 3 s. A smoke race is otherwise green
-           # from frame 0, so the green-light compiles (815 ms after LOOPSPLIT-1 moved the AI step out of main) never showed.
-           "JM_SMOKE_HOLD" => "3")
+           # 2026-10-20: the PO's start -- the field holds on the grid. A smoke race is otherwise green from frame 0, so the
+           # green-light compiles (815 ms after LOOPSPLIT-1 moved the AI step out of main) never showed.
+           # ARMFREEZE-1 (2026-10-21): and exactly as the PO starts it -- the countdown waits for a key, the key is V (races
+           # open in the chase view; the first cockpit frame compiled 1.3 s at the key), and the replay records (its first
+           # frame compiled 130 ms at the green). Known positives: both, before ARMFREEZE-1.
+           "JM_SMOKE_COUNTDOWN" => "1", "JM_ARM_KEY" => "2", "JM_ARM_KEY_NAME" => "V", "JM_REPLAY_REC" => "1")
 open(log, "w") do io
     run(pipeline(setenv(`julia -t 2 --gcthreads=3,1 --project=$D $(joinpath(D, "drive_native_mtk.jl"))`, merge(copy(ENV), env));
                  stdout = io, stderr = io); wait = true)
@@ -36,5 +39,6 @@ comp = sum((s[3] for s in late); init = 0.0)
 for s in late; s[3] > 0 && println("    stall at frame ", s[1], ": ", s[2], " ms, compile ", s[3], " ms"); end
 chk("compiling inside race stalls <= $(BUDGET) ms", comp <= BUDGET, "$(round(comp, digits = 1)) ms in $(length(late)) stall(s)")
 chk("the race ran (window revealed)", occursin("window revealed", txt), "")
+chk("the PO's start ran (key pressed, green)", occursin("COUNTDOWN ARMED", txt) && occursin("→ GREEN", txt), "")
 println(fails[] == 0 ? "\n  WARM GATE: PASS ✓" : "\n  WARM GATE: FAIL ✗")
 exit(fails[] == 0 ? 0 : 1)

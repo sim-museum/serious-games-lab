@@ -213,7 +213,9 @@ function countdown_step!(cs, AICARS, HOLD_START, ai_release, cd_armed, cd_left, 
                     cd_said[] = true
                     println("  ★ PRESS ANY KEY TO START COUNTDOWN"); flush(stdout)
                 end
+                (ARM_KEY > 0 && cs.t >= ARM_KEY && ARM_KEY_T[] == 0) && (ARM_KEY_T[] = time())
                 if anykey()
+                    ctrace_start!("countdown armed")
                     cd_armed[] = true
                     cd_t0[] = cs.t
                     println("  → COUNTDOWN ARMED"); flush(stdout)
@@ -226,6 +228,7 @@ function countdown_step!(cs, AICARS, HOLD_START, ai_release, cd_armed, cd_left, 
             end
             if cd_left[] <= 0 && !(START_ARM && !cd_armed[])
                 cd_left[] = 0.0
+                ctrace_start!("green")
                 race_go[] = true; lap_t0 = cs.t
                 ai_release[] = cs.t + AI_HEADSTART
                 println("  → GREEN"); flush(stdout)
