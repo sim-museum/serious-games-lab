@@ -1841,3 +1841,102 @@ function track_position_step!(cs, dt, rst, race_go, player_prog, player_s_prev, 
     end
     return (player_prog, player_s_prev, ffb_jolt)
 end
+
+# LOOPSPLIT-1 cycle 4 S4: the frame loop's network block (moved unchanged): yield to the socket reader, send this car's
+# pose (and the host's AI field), take the remote poses re-grounded on this machine's terrain, the JM_NET_ERR prediction
+# error, the closest-approach / overlap measures and the JM_NET_DIAG report. In the loop, JM_NET_ERR's packet interval
+# `dt = (q.tick - pv.tick)/1000` overwrote the frame's dt for the rest of the frame; it is local here.
+function netlink_step!(cs, inp, frames, ai_poses, AICARS, CLINE, aibankK, ai_ground, net_last)
+    # ⚠️ YIELD FIRST. The socket reader is an `@async` task (netplay.jl keeps one long-lived
+    # reader so `poll!` never blocks the frame), and a Julia task only runs when something
+    # yields to the scheduler. The probe loops `sleep(0.002)` and so yields constantly; this
+    # render loop does not sleep at all, so the reader was NEVER SCHEDULED and every packet
+    # sat in the kernel buffer. Measured before this line existed: client `peers=1` (it was
+    # sending) and host `rx=0 peers=0` (it received nothing, so never learned a peer, so
+    # never replied) -- a one-way link that was really a starved task.
+    yield()
+    NetPlay.poll!(NETLINK)
+    if cs.t - net_last[] >= 1/NET_HZ
+        net_last[] = cs.t
+        NetPlay.send_pose!(NETLINK, NET_ID, round(Int, cs.t*1000),
+                           cs.x, cs.y, cs.z, cs.θ, cs.v, inp.steer)
+        # MP-5: the HOST is the authority for the AI field -- one packet per AI car, ids
+        # AI_ID0.., at the same cadence as its own car. The client has no field of its own.
+        if NETMODE == "host" && !isempty(ai_poses)
+            for (k, p) in enumerate(ai_poses)
+                NetPlay.send_pose!(NETLINK, NetPlay.AI_ID0 + (k - 1), round(Int, cs.t*1000),
+                                   p[1], p[2], p[3], p[4],
+                                   k <= length(AICARS) ? AICARS[k].v : 0.0, 0.0)
+            end
+        end
+    end
+    # ⚠️ THE E104(a) RULE, ENFORCED AT THE RECEIVING END. `predict` deliberately does not
+    # extrapolate height, and the packet's y is the SENDER's ground -- which is not this
+    # machine's ground if the two disagree by so much as a terrain rounding. A remote car's
+    # height must come from the terrain UNDER IT, exactly as the AI field's does since
+    # E104-S4, or remote cars float for the same reason the AI did.
+    netp = Tuple{Int,NTuple{6,Float64}}[]; empty!(NETVEL[])
+    for (id, q) in NetPlay.remote_poses_at(NETLINK, time())
+        b = aibankK((q.x, 0.0, q.z, q.yaw))
+        push!(netp, (Int(id), ai_ground((q.x, q.y, q.z, q.yaw, b[1], b[2]))))
+        NETVEL[][Int(id)] = (q.v*cos(q.yaw), q.v*sin(q.yaw))
+    end
+    # ── E85-S7: PREDICTION ERROR, measured receiver-side with no clock sync ─────────────
+    # When a NEW packet arrives for a car, we already know what the PREVIOUS packet
+    # predicted for that instant: dead-reckon the old pose forward by the tick difference
+    # and compare against the position the new packet actually reports. Both numbers come
+    # from the same sender's own clock, so nothing has to be synchronised and no two logs
+    # have to be correlated afterwards -- which is what made S4's version need an analytic
+    # trajectory. Here the trajectory is whatever the other car really did.
+    if NET_ERR
+        for (id, q) in NETLINK.remote
+            pv = get(NET_PREV[], id, nothing)
+            if pv !== nothing && q.tick != pv.tick
+                dt = (q.tick - pv.tick) / 1000
+                if 0 < dt < 1.0                       # ignore huge gaps (startup, stalls)
+                    pr = NetPlay.predict(pv, dt)
+                    push!(NET_ERRS, hypot(q.x - pr.x, q.z - pr.z))
+                    push!(NET_DTS, dt)
+                end
+            end
+            NET_PREV[][id] = q
+        end
+        if !isempty(NET_ERRS) && (frames % 600) == 0
+            m = sum(NET_ERRS)/length(NET_ERRS)
+            println("  [neterr] n=", length(NET_ERRS),
+                    "  interval mean=", round(sum(NET_DTS)/length(NET_DTS), digits=3), "s",
+                    "  ERR mean=", round(m, digits=4), " m  max=",
+                    round(maximum(NET_ERRS), digits=4), " m")
+            flush(stdout)
+        end
+    end
+    NETPOSES[] = netp
+    for (_, p) in netp
+        _d = hypot(p[1] - cs.x, p[3] - cs.z)
+        # CARCOLLIDE-2: open wheelers alongside touch tyre to tyre at 1.72-1.80 m and interleave closer, so the
+        # pass-through measure is the deepest OVERLAP of the two cars' parts (carcontact.jl), not the distance
+        _g = _d < CAR_BOUND_D ? car_contact_geom(cs.x, cs.z, cs.θ, p[1], p[3], p[4]) : nothing
+        _g !== nothing && (NET_PENMAX[] = max(NET_PENMAX[], _g[5]))
+        NET_PENNOW[] = _g === nothing ? 0.0 : _g[5]
+        if _d < NET_DMIN[]
+            NET_DMIN[] = _d
+            # LOADHANG-1 S4: WHERE the closest approach was -- each car's (s, lateral) on the centreline, so a
+            # miss alongside says which car is off the line (netcollide_smoke went red with dmin 2.4-2.7 m)
+            CLINE !== nothing && (NET_DMIN_AT[] = (RaceAI.project(CLINE, cs.x, cs.z), RaceAI.project(CLINE, p[1], p[3])))
+        end
+    end
+    # JM_NET_DIAG=<n>: report the link every n frames. "No car appeared" has at least four
+    # causes -- nothing sent, nothing received, everything judged stale, or nothing drawn --
+    # and a screenshot cannot tell them apart, especially with the two cars 80 m apart on a
+    # curving track. Print the counts instead of squinting.
+    if NET_DIAG > 0 && (frames % NET_DIAG) == 0
+        println("  [net] t=", round(cs.t,digits=1), " rx=", NETLINK.rx,
+                " dropped=", NETLINK.dropped, " peers=", length(NETLINK.peers),
+                " known=", length(NETLINK.remote), " drawn=", length(netp),
+                " hits=", NET_HITS[], " dmin=", round(NET_DMIN[], digits = 2), " pen=", round(NET_PENMAX[], digits = 2), " pennow=", round(NET_PENNOW[], digits = 2), " v=", round(cs.v, digits = 1),
+                NET_DMIN_AT[] === nothing ? "" : string(" at self(s,lat)=", round.(NET_DMIN_AT[][1], digits = 2),
+                                                        " remote=", round.(NET_DMIN_AT[][2], digits = 2)))
+        flush(stdout)
+    end
+    return nothing
+end
