@@ -6376,6 +6376,27 @@ const CRASHBODY = get(ENV, "JM_CRASHBODY", "1") != "0"
 const WBODY = Ref{Union{Nothing,WreckBody.Body}}(nothing)   # the wreck's rigid body while it is one (typed: an Any here left
 #   the whole crash path to dynamic dispatch, ~140 ms of compiling at the impact that the warm-up precompile could not reach)
 const CRASHBODY_DIAG = get(ENV, "JM_CRASHBODY_DIAG", "0") != "0"   # print the body 4x a second (height, roll, pitch, speed, contacts)
+# CARLAUNCH-1 (PO 2026-10-21: "after a collision, the player's car lacks rotational degrees of freedom. In the monza
+# collision from last night ... the point of contact the front left wheel of the player car. The player car should have
+# pitched up and rolled right"): the driving model did pitch it 25 deg and roll it 20 deg (the .ibt), but it is a
+# small-angle model and the drawn car caps its tilt at ~6 deg with the wheels on the ground. A car launched past the
+# driving model's range (a corner more than JM_AIRBODY_RH up; normal driving peaks at 0.22 m, the Ring's jumps) becomes
+# the free rigid body until it stands on its four tyres again, then drives on. JM_AIRBODY=0 = before.
+const AIRBODY = get(ENV, "JM_AIRBODY", "1") != "0"
+const AIRBODY_RH = parse(Float64, get(ENV, "JM_AIRBODY_RH", "0.40"))
+const AIRBORNE = Ref(false)        # the player car is the rigid body (not wrecked) until it lands
+const AIR_LAND = Ref(0.0)          # seconds it has stood on its four tyres
+const AIR_PEAK = Ref((0.0, 0.0))   # the flight's largest roll (lean right +) and pitch (nose up +), signed [rad]
+const _ATTR_GET = Ref{Any}(nothing)
+"""The driving model's roll rate (left side up +), pitch rate (nose up +) and heave rate (up +), for a handover."""
+function attrates3d(cs)
+    g = _ATTR_GET[]
+    if g === nothing
+        MT = DriveRT3D.ModelingToolkit
+        g = _ATTR_GET[] = (MT.getsym(cs.sys, cs.sys.pp), MT.getsym(cs.sys, cs.sys.q), MT.getsym(cs.sys, cs.sys.w))
+    end
+    (Float64(g[1](cs.integ)), Float64(g[2](cs.integ)), Float64(g[3](cs.integ)))
+end
 const WBODY_PLANE = Ref{WreckBody.Plane}(WreckBody.Plane(0.0))   # the last good ground plane under it (kept over a hole in the mesh)
 "Wheel `nm`'s drawn rotation: its own spin while the wreck is a rigid body, else the shared driving spin."
 wheel_spin_angle(nm, spin) = (WBODY[] === nothing || isempty(nm)) ? spin :
@@ -6396,7 +6417,7 @@ const WHEEL_NAMES  = ("lotwlf","lotwrf","lotwlr","lotwrr")
 PO 2026-08-29: "detach the wheel that hit the barrier - or both wheels, if two wheels hit before
 the car comes to a stop". So which wheels leave is decided per-wheel, per-frame, by whether that
 CORNER actually contacts something (see detach_hit_wheels!) — not by picking corners up front."""
-function wreck!(v; closing = NaN, bnd_peak = NaN, x = NaN, z = NaN)
+function wreck!(v; closing = NaN, bnd_peak = NaN, x = NaN, z = NaN, cause = "")
     WRECKED[] && return
     WRECKED[] = true
     println("  [WRECK] hard impact at ", round(v*3.6, digits=0), " km/h — engine disconnected, race over")
@@ -6408,7 +6429,7 @@ function wreck!(v; closing = NaN, bnd_peak = NaN, x = NaN, z = NaN)
     # Say which branch, and say where, so the next occurrence locates itself.
     closes = !isnan(closing)  && closing  > WRECK_CLOSE
     bnds   = !isnan(bnd_peak) && bnd_peak > 1.0e3
-    println("  [WRECK]   cause: ",
+    println("  [WRECK]   cause: ", !isempty(cause) ? cause :
             bnds && !closes ? "BOUNDARY penetration peak $(round(bnd_peak, digits=0)) -- this is the " *
                               "fence/wall test, which is INVISIBLE geometry, not a drawn object" :
             closes && !bnds ? "CLOSING speed $(round(closing, digits=1)) m/s into a solid" :
@@ -14423,12 +14444,12 @@ function main()
             if get(ENV, "JM_RECOVER_KEEPWRECK", "0") == "0"
                 PLAYER_G[] = NaN; DriveRT3D.damage_reset!(); DC[].lastz = 0.0
                 WRECKED[] && println("  [recover] SHIFT+R: the wreck is cleared -- engine and gearbox back"); flush(stdout)
-                WRECKED[] = false; WRECK_FROZEN[] = false; empty!(LOOSE_WHEELS); CLUTCH_GATE[] = -1.0
+                WRECKED[] = false; WRECK_FROZEN[] = false; AIRBORNE[] = false; empty!(LOOSE_WHEELS); CLUTCH_GATE[] = -1.0
             end
         # E94-P4: a respawn is a NEW car, not a repaired one.
         elseif rst; groundz(cs0.x, cs0.z; acquire = true)   # RESTARTGROUND-1: re-anchor Monza's LASTZ (see the restart)
             PLAYER_G[] = NaN; respawnX!(cs; groundz=groundz_phys); DriveRT3D.damage_reset!(); DC[].lastz = 0.0
-            WRECKED[] = false; WRECK_FROZEN[] = false; empty!(LOOSE_WHEELS); CLUTCH_GATE[] = -1.0   # ...and not a wreck
+            WRECKED[] = false; WRECK_FROZEN[] = false; AIRBORNE[] = false; empty!(LOOSE_WHEELS); CLUTCH_GATE[] = -1.0   # ...and not a wreck
             # LAPTIME-1: skip ONE frame of the bounce test after a respawn. The car settles onto the
             # ground at a respawn exactly as it does at spawn -- a legitimate one-frame height step
             # that the settle window (`cs.t > DC_SETTLE_S`) exists to ignore. That window used to
@@ -14439,8 +14460,8 @@ function main()
             # E56 ALL-MODELICA human car: feed the trackside spring-damper CONTACT force (wall = bounce,
             # hedge/hay = bury & stick) + last frame's draft drag-scale into the chassis ODE BEFORE the
             # step, so both are forces the solver INTEGRATES — no post-step bumpX!/containX! state hack.
-            WRECKED[] || (WBODY[] = nothing)
-            if CAR3D && CRASHBODY && WRECKED[]      # CRASHBODY-1: the wreck is a free rigid body (wreck_body.jl), not the driving model
+            (WRECKED[] || AIRBORNE[]) || (WBODY[] = nothing)
+            if CAR3D && CRASHBODY && (WRECKED[] || AIRBORNE[])   # CRASHBODY-1 / CARLAUNCH-1: a wreck or a launched car is the free rigid body
                 # WRECKJIT-1 S1: the jolt log's "before" for this frame -- set only on the driving path, it kept the last
                 # driving frame's velocity, so every wreck frame logged a false jolt and used up the log's 60 lines.
                 # The handover starts from the velocity AFTER the wrecking step: WVX/WVZ were read before it, so the body
@@ -14472,6 +14493,11 @@ function main()
             # WRECKJIT-1 S1 (JM_CRASHBODY=0 only): the frozen wreck was pinned BEFORE the step, so each step started from the pin
             # and the smashed car jumped (57-104 m/s, up to 0.7 m) for the frame that is drawn -- pin it after the step too
             (WRECKED[] && WRECK_FROZEN[] && WRECK_PIN && CAR3D) && DriveRT3D.pin3d!(cs, WRECK_PX[], WRECK_PZ[], WRECK_PT[], WRECK_PH[])
+            # CARLAUNCH-1: launched past the driving model's range -- the rigid body from the next frame
+            if AIRBODY && CRASHBODY && CAR3D && !WRECKED[] && !rst && !SKIDPAD && maximum(cs.rh) > AIRBODY_RH
+                AIRBORNE[] = true; AIR_LAND[] = 0.0; AIR_PEAK[] = (0.0, 0.0); ctrace_start!("launch")
+                println(launch_msg(Float64(cs.v), cs.rh)); flush(stdout)
+            end
             if VDIAG && CAR3D && cs.t - VDIAG_T[] >= 0.5     # TD261016-1: the car's height vs the road it is on
                 VDIAG_T[] = cs.t
                 println("  [vdiag] t ", round(cs.t, digits = 1), " s ", round(cs.lapdist, digits = 0), " v ", round(cs.v*3.6, digits = 0),
@@ -14692,6 +14718,11 @@ function main()
             precompile(loose_cars_step!, typeof.((cs, ai_poses, ddt, AICARS, AILINE, GPLAI_T, PLAYER_G, aibankP, frames, gplai_field!, groundz, groundz_ai)))
             # CRASHBODY-1: the crash body first runs at the moment of a wreck -- compiled here, not at the impact
             (CRASHBODY && CAR3D) && wreck_body_step!(cs, inp, dt, groundz_phys, roll_ter; dry = true)   # a scratch body, nothing written back
+            (CRASHBODY && CAR3D) && attrates3d(cs)                                                     # CARLAUNCH-1: the handover's rates
+            (CRASHBODY && CAR3D) && (precompile(launch_msg, (Float64, NTuple{4,Float64}));   # and its log lines (a call here was
+                                     precompile(body_msg, (Bool, Float64, Int, Float64, Float64, Float64));   # inlined: launch_msg
+                                     precompile(landed_msg, (Float64, Float64, Float64, Tuple{Float64,Float64})))   # still compiled 30 ms)
+            (CRASHBODY && CAR3D) && precompile(airbody_land!, (typeof(cs), WreckBody.Body, typeof(groundz_phys), Int, Int, WreckBody.V3, Float64))
             (CRASHBODY && CAR3D) && (precompile(WreckBody.kick!, (WreckBody.Body, WreckBody.V3, Float64));   # WRECKJIT-1 S2: an AI car
                                      precompile(player_bump!, (typeof(cs), ntuple(_ -> Float64, 6)...)))           # hitting the wreck
             (CRASHBODY && CAR3D) && precompile(wreck_body_step!, typeof.((cs, inp, dt, groundz_phys, roll_ter)))   # + the keyword-free entry

@@ -196,6 +196,22 @@ function kick!(b::Body, dv::V3, dyaw::Float64)
     b
 end
 
+"""CARLAUNCH-1: (tyres touching, hull points touching) the ground now -- a launched car hands back to the driving model
+only once it stands on its four tyres and nothing else."""
+function touching(b::Body, ground::Union{Plane,Terrain})
+    g = b.g; plane = ground isa Plane ? ground : ground.plane; nrm = plane_n(plane)
+    nh = count(q -> _depth(ground, b.p + b.R*q, nrm) > 0, g.hull)
+    a = b.R[:, 3]; nt = 0
+    for i in 1:4
+        b.on[i] || continue
+        rh = b.R * V3(g.wheel_x[i], g.wheel_r[i] - g.hcg, g.wheel_z[i])
+        nd = nrm - dot(nrm, a)*a; ndn = norm(nd)
+        rc = rh - (ndn > 1e-6 ? g.wheel_r[i]*(nd/ndn) : V3(0, 0, 0)) - g.wheel_w*sign(dot(nrm, a))*a
+        _depth(ground, b.p + rc, nrm) > -0.01 && (nt += 1)
+    end
+    (nt, nh)
+end
+
 """One frame of `dt` s on the ground `plane`, against this frame's `walls`."""
 function step!(b::Body, dt::Float64, ground::Union{Plane,Terrain}; walls::Vector{WallPlane} = WallPlane[])
     b.rest && return b

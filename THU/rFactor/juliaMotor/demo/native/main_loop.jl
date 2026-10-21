@@ -355,7 +355,7 @@ function restart_session!(cs, cs0, groundz, groundz_phys, AICARS, AILINE, CLINE,
     groundz(cs0.x, cs0.z; acquire = true)
     PLAYER_G[] = NaN; respawnX!(cs; groundz = groundz_phys); DriveRT3D.damage_reset!()
     DC[].lastz = 0.0   # LAPTIME-1: see the respawn below
-    WRECKED[] = false; WRECK_FROZEN[] = false; empty!(LOOSE_WHEELS)   # a detached corner is never redrawn otherwise
+    WRECKED[] = false; WRECK_FROZEN[] = false; AIRBORNE[] = false; empty!(LOOSE_WHEELS)   # a detached corner is never redrawn otherwise
     CLUTCH_GATE[] = -1.0
     TELLTALE[] = 0.0   # COCKPIT-TACH-1: a restart re-arms the tell-tale
     empty!(AI_COOL)    # WGTD-1 (e): the new race's field races again
@@ -785,7 +785,7 @@ function ffb_step!(ffb, cs, inp, dt, fy_lp, ffb_f, ffb_jolt)
     mz  = fy * trail
     # CRASHBODY-1 (PO 2026-10-20: "don't rock the ff back and forth when the car crashes"): a wrecked car's rim torque is the
     # crash's own chatter (contacts, a pinned or tumbling body) -- the wheel keeps only its centring spring. JM_CRASHBODY=0 = before.
-    (CRASHBODY && WRECKED[]) && (mz = 0.0; τrim = nothing)
+    (CRASHBODY && (WRECKED[] || AIRBORNE[])) && (mz = 0.0; τrim = nothing)   # CARLAUNCH-1: nor in the air
     spd = clamp(cs.v/2.5, 0.0, 1.0)                    # road feel fades in with speed
     # self-centering spring ∝ WHEEL ANGLE — ALWAYS present ⇒ no dead center. Per wheel degree, as it was
     # tuned (raw ±1 = ±450° on the TX): with physical steering (STEER_GAIN) inp.steer is road angle / lock,
@@ -896,7 +896,7 @@ function crash_step!(cs, frames, place_at_s!, crash_i, crash_invis, crash_jit, c
         if crash_i[] <= length(CRASHES)
             (s0, sd, ang, vv) = CRASHES[crash_i[]]
             place_at_s!(s0)
-            DriveRT3D.damage_reset!(); WRECKED[] = false; WRECK_FROZEN[] = false; empty!(LOOSE_WHEELS); DC[].lastz = 0.0
+            DriveRT3D.damage_reset!(); WRECKED[] = false; WRECK_FROZEN[] = false; AIRBORNE[] = false; empty!(LOOSE_WHEELS); DC[].lastz = 0.0
             r = gplw_locate_any(cs.x, cs.z)
             if r !== nothing
                 (_, _, _, gx, gz) = r; a = deg2rad(ang)
@@ -1497,15 +1497,16 @@ function ram_ai_step!(cs, ai_poses, ddt, AICARS, PLAYER_G, groundz)
     isnan(RAM_STATE[].t0) && (RAM_STATE[] = (t0 = cs.t, done = false))
     if cs.t - RAM_STATE[].t0 >= RAM_AI[4]
         k = Int(RAM_AI[1]); q = ai_poses[k]; qθ = q[4]; vk = AICARS[k].v
-        # WRECKJIT-1 S2: a 5th field > 0 = a WRECK lying that many metres AHEAD of car k instead (stopped, wrecked), for it to hit
-        ahead = length(RAM_AI) >= 5 && RAM_AI[5] > 0 ? RAM_AI[5] : -4.7
+        # WRECKJIT-1 S2: a 5th field > 0 = a WRECK lying that many metres AHEAD of car k instead (stopped, wrecked), for it to hit;
+        # CARLAUNCH-1: < 0 = the ram from that many metres behind (centre to centre) instead of 4.7
+        ahead = length(RAM_AI) >= 5 && RAM_AI[5] != 0 ? RAM_AI[5] : -4.7
         rx = q[1] + ahead*cos(qθ) - RAM_AI[3]*sin(qθ); rz = q[3] + ahead*sin(qθ) + RAM_AI[3]*cos(qθ)
         PLAYER_G[] = NaN; GPLW_ON && gplw_teleported!()
         DriveRT3D.place3d!(cs, rx, rz, qθ; v = ahead > 0 ? 0.0 : vk + RAM_AI[2])
         ahead > 0 && (WRECKED[] = true)
         h = groundz(rx, rz; acquire = true); isfinite(h) && (cs.zref = Float64(h); cs.y = cs.zref)
         RAM_STATE[] = (t0 = RAM_STATE[].t0, done = true)
-        println("  [ram] t=", round(cs.t, digits = 2), ahead > 0 ? " a wreck placed $(ahead) m ahead of AI " : " player placed 4.7 m behind AI ", k, " (", round(vk*3.6), " km/h), lat ",
+        println("  [ram] t=", round(cs.t, digits = 2), ahead > 0 ? " a wreck placed $(ahead) m ahead of AI " : " player placed $(-ahead) m behind AI ", k, " (", round(vk*3.6), " km/h), lat ",
                 RAM_AI[3], " m, closing ", RAM_AI[2], " m/s"); flush(stdout)
     end
     nothing
@@ -1972,11 +1973,12 @@ function wreck_body_step!(cs, inp, dt, groundz_phys::G, roll_ter; dry::Bool = fa
     elseif b === nothing
         b = WB.Body(WB.Geometry(m = DriveRT3D.MASS[]))
         on = ntuple(i -> !is_loose(WHEEL_NAMES[i]), 4)
-        WB.start!(b, cs.x, cs.z, cs.y, cs.θ, cs.pitch, roll_ter + cs.roll, V3(WVX[], 0.0, -WVZ[]),
-                  V3(0.0, Float64(DriveRT3D.yawrate3d(cs)), 0.0); on = on, dmu = ntuple(i -> DriveRT3D.damage_mu(i), 4))
+        # CARLAUNCH-1: the body takes the driving model's roll, pitch and heave rates too (a launch IS those rates)
+        (pp, q, w) = attrates3d(cs)
+        WB.start!(b, cs.x, cs.z, cs.y, cs.θ, cs.pitch, roll_ter + cs.roll, V3(WVX[], w, -WVZ[]),
+                  V3(pp, Float64(DriveRT3D.yawrate3d(cs)), q); on = on, dmu = ntuple(i -> DriveRT3D.damage_mu(i), 4))
         WBODY[] = b; WBODY_PLANE[] = WB.Plane(cs.x, -cs.z, cs.y, 0.0, 0.0)
-        println("  [crashbody] the wreck is a free rigid body from here: ", round(cs.v*3.6, digits = 0), " km/h, ", count(on),
-                " wheels on"); flush(stdout)
+        println(body_msg(WRECKED[], Float64(cs.v), count(on), pp, q, w)); flush(stdout)
     end
     dry || for i in 1:4; b.on[i] = !is_loose(WHEEL_NAMES[i]); b.dmu[i] = DriveRT3D.damage_mu(i); end
     b.brake = clamp(inp.brake, 0.0, 1.0)
@@ -2009,8 +2011,9 @@ function wreck_body_step!(cs, inp, dt, groundz_phys::G, roll_ter; dry::Bool = fa
     # each touching point asks the TERRAIN mesh for the surface just below it (a pure query: groundz_phys keeps the
     # driving car's step-guard and layer state, which 24 points a substep would scramble)
     th(X, Z, yref) = (r = JuliaMotor.hat3d(TERRAIN, X, -Z; ref = yref); r[3] ? Float64(r[1]) : NaN)
-    WB.step!(b, gdt, WB.Terrain(th, pl); walls = walls)
-    dry && return nothing
+    ter = WB.Terrain(th, pl)
+    WB.step!(b, gdt, ter; walls = walls)
+    dry && (WB.touching(b, ter); return nothing)   # (CARLAUNCH-1: the landing test compiled here too)
     # a hard wall hit tears off the wheels that lead into it, as for the driving car (E95: "detach the wheel that hit the
     # barrier"); the wall normal in game coordinates, pointing out of the wall
     (b.wall_peak > 3.0e4 && norm(b.v) > 3.0) &&
@@ -2047,5 +2050,58 @@ function wreck_body_step!(cs, inp, dt, groundz_phys::G, roll_ter; dry::Bool = fa
             WVX[] = b.v[1]; WVZ[] = -b.v[3]; cs.v = hypot(b.v[1], b.v[3])
         end
     end
+    if AIRBORNE[] && !WRECKED[]                           # CARLAUNCH-1: a launched car's landing
+        (nt, nh) = WB.touching(b, ter)
+        airbody_land!(cs, b, groundz_phys, nt, nh, WB.plane_n(pl), gdt)
+    end
     nothing
 end
+
+"""CARLAUNCH-1: a launched car's flight, each frame after its step. A wheel lost in the air wrecks it; once it stands on its
+four tyres, upright and settled, for 0.15 s, the driving model takes it back where it is, at its speed, slip and yaw rate;
+if it comes to rest any other way (on its side, its roof, a hull point down) it is a wreck."""
+function airbody_land!(cs, b, groundz_phys::G, nt::Int, nh::Int, n, gdt) where {G}
+    WB = WreckBody; V3 = WB.V3
+    if !all(b.on)
+        AIRBORNE[] = false
+        wreck!(cs.v; x = cs.x, z = cs.z, cause = "a wheel came off while the car was in the air (CARLAUNCH-1)")
+        return nothing
+    end
+    (_, _p, _r) = WB.attitude(b)
+    AIR_PEAK[] = (abs(_r) > abs(AIR_PEAK[][1]) ? _r : AIR_PEAK[][1], abs(_p) > abs(AIR_PEAK[][2]) ? _p : AIR_PEAK[][2])
+    up = dot(b.R[:, 2], n)
+    settled = nt == 4 && nh == 0 && up > cos(deg2rad(6.0)) && abs(b.ω[1]) < 0.6 && abs(b.ω[3]) < 0.6 && abs(dot(b.v, n)) < 0.6
+    AIR_LAND[] = settled ? AIR_LAND[] + gdt : 0.0
+    if b.rest && !settled
+        AIRBORNE[] = false
+        wreck!(cs.v; x = cs.x, z = cs.z, cause = "the launched car came to rest off its wheels (CARLAUNCH-1)")
+        return nothing
+    end
+    (AIR_LAND[] >= 0.15 || (b.rest && settled)) || return nothing
+    # hand back: the ground point under the CG, the heading, the body-frame speed and slip, the yaw rate
+    θ = WB.attitude(b)[1]
+    o = b.p - b.R * V3(0.0, b.g.hcg, 0.0)
+    x = o[1]; z = -o[3]; wvx = b.v[1]; wvz = -b.v[3]
+    u = wvx*cos(θ) + wvz*sin(θ); vl = -wvx*sin(θ) + wvz*cos(θ)
+    r = (b.R * b.ω)[2]
+    h = groundz_phys(x, z)
+    DriveRT3D.pin3d!(cs, x, z, θ, h > -900 ? Float64(h) : o[2])
+    cs.s_vel(cs.integ, [u, vl]); cs.v = hypot(u, vl)
+    DriveRT3D._RSET3D[cs.sys][2](cs.integ, r)              # (pin3d! filled the setter cache)
+    DriveRT3D.OrdinaryDiffEq.SciMLBase.u_modified!(cs.integ, true)
+    WVX[] = wvx; WVZ[] = wvz
+    AIRBORNE[] = false; AIR_LAND[] = 0.0; WBODY[] = nothing
+    println(landed_msg(b.t, b.peak_h, Float64(cs.v), AIR_PEAK[])); flush(stdout)
+    nothing
+end
+
+# CARLAUNCH-1: the flight's log lines as Strings, warmed on the hidden frame -- a println of a long mixed argument list
+# compiled ~40 ms at the launch and again at the landing
+launch_msg(v::Float64, rh) = string("  [airbody] launched at ", round(v*3.6, digits = 0), " km/h: ride heights ", round(rh[1], digits = 2), " ",
+    round(rh[2], digits = 2), " ", round(rh[3], digits = 2), " ", round(rh[4], digits = 2), " m -- a free rigid body until it lands")
+body_msg(wrecked::Bool, v::Float64, n::Int, pp::Float64, q::Float64, w::Float64) = string("  [crashbody] ",
+    wrecked ? "the wreck" : "the launched car", " is a free rigid body from here: ", round(v*3.6, digits = 0), " km/h, ", n,
+    " wheels on, roll rate ", round(pp, digits = 2), " pitch rate ", round(q, digits = 2), " heave ", round(w, digits = 2))
+landed_msg(t::Float64, h::Float64, v::Float64, pk::Tuple{Float64,Float64}) = string("  [airbody] landed after ", round(t, digits = 2),
+    " s (highest CG ", round(h, digits = 2), " m, roll to ", round(rad2deg(pk[1]), digits = 0), " deg, pitch to ",
+    round(rad2deg(pk[2]), digits = 0), " deg): back on the driving model at ", round(v*3.6, digits = 0), " km/h")
