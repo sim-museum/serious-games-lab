@@ -574,10 +574,35 @@ class TableManager:
     def _spare_txt(self) -> str:
         return ", ".join(f"{NAME[s]} {len(v)}" for s, v in self.spares.items() if v) or "none"
 
+    def _prune_spares(self):
+        """Drop spare windows whose connection is gone. A spare only waits for
+        "Start of board", so anything readable is a close ('') or a Q-Plus
+        "abort_connection" (261020: a window joined East, left and rejoined as
+        West; the stale East spare aborted at the handover and the TM stopped)."""
+        for seat, lst in self.spares.items():
+            for rc in list(lst):
+                dead = False
+                try:
+                    data = rc.sock.recv(4096, socket.MSG_PEEK | socket.MSG_DONTWAIT)
+                    dead = (data == b"" or b"abort" in data.lower())
+                except (BlockingIOError, InterruptedError):
+                    dead = False
+                except OSError:
+                    dead = True
+                if dead:
+                    lst.remove(rc)
+                    try:
+                        rc.sock.close()
+                    except OSError:
+                        pass
+                    self.log(f"spare window for {NAME[seat]} gone (spares: {self._spare_txt()})")
+
     def poll_lobby(self):
         """Accept new windows and move their join handshake on, without
         blocking. A window that joins a remote seat becomes that seat's spare
         once it says "ready to start"; it then waits for "Start of board"."""
+        if self.spares:
+            self._prune_spares()
         if self.listener is not None:
             while True:
                 try:
@@ -989,6 +1014,7 @@ class TableManager:
         if not segs or self.seg + 1 >= len(segs):
             return False
         self.poll_lobby()
+        self._prune_spares()
         if not all(self.spares.get(s) for s in self.remote_seats):
             self.log(f"handover to segment {self.seg + 2} not possible ({why}): "
                      f"spares {self._spare_txt()}")

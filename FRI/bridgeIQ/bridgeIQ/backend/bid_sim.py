@@ -75,6 +75,9 @@ _CONVENTIONAL = (
     "their strong 1c",            # Q-Plus's defence to a strong club, kept as is
     "2nt-3s", "both minors", "three-suiter",   # Q-Plus's 2NT / 1NT structures
     "for partner's takeout x", "cue of theirs", "behind them",   # sprints 35 / 40 (10-19 sim check)
+    "preference to partner's first suit", "instead of a takeout double",
+    "no raise to the",                                            # sprints 64 / 80 / 82 (10-21 sim check)
+    "accept the invitation (",                                    # sprint 96
 )
 
 

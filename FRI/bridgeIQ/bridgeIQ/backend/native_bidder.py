@@ -1430,6 +1430,22 @@ def _asker_after_rkc(state: 'AuctionState', e: HandEval, system) -> Bid:
         return bid(5, Suit.NOTRUMP, alert=True,
                    why=f"RKC {variant}: all {total}/5 keys + Q — asking for kings")
 
+    # 4 keys and no trump queen in my hand, partner's 5C/5D answer (silent on
+    # the queen), trumps a major: Q-Plus asks for the queen with the next step
+    # (AK652.-.A8.AQJ875 1C-..-4NT-5C 5D, AK3.AQJ2.KQT95.6 4NT-5D 5H) and
+    # stops in 5 without it; biq bid 6 at once. BIQ_RKC_QUEEN_ASK.
+    if (RKC_QUEEN_ASK and total == 4 and not e.has_queen.get(trump, False) and pq is not True
+            and trump in (Suit.HEARTS, Suit.SPADES) and partner_resp.level == 5
+            and partner_resp.suit in (Suit.CLUBS, Suit.DIAMONDS)
+            # not over partner's 3-level preempt in trumps (3S-4NT-5D: Q-Plus 6S)
+            and not (state.partner_bids and state.partner_bids[0].level == 3
+                     and state.partner_bids[0].suit == trump)):
+        step = Suit.DIAMONDS if partner_resp.suit == Suit.CLUBS else Suit.HEARTS
+        if step != trump:
+            cand = bid(5, step, alert=True, why=f"Trump-queen ask (4/5 keys, no {trump.to_char()} queen)")
+            if _is_legal_bid(cand, state):
+                return cand
+
     # 4 keys (off one) — small slam is the ceiling, queen or not.
     if total == 4:
         return bid(6, trump,
@@ -2003,6 +2019,26 @@ def _try_rkc_pipeline(state: 'AuctionState', e: HandEval, system) -> Optional[Bi
         if sub is not None:
             return sub
 
+    # Case 1c: my queen ask (4NT, 5C/5D, next step) was answered: 5 of trump
+    # = no queen, stop; the queen (5S over hearts, 5NT over spades) -> 6.
+    mb, pb_ = state.my_bids, state.partner_bids
+    if (RKC_QUEEN_ASK and len(mb) >= 2 and len(pb_) >= 2
+            and mb[-2].level == 4 and mb[-2].suit == Suit.NOTRUMP
+            and pb_[-2].level == 5 and pb_[-2].suit in (Suit.CLUBS, Suit.DIAMONDS)
+            and mb[-1].level == 5
+            and mb[-1].suit == (Suit.DIAMONDS if pb_[-2].suit == Suit.CLUBS else Suit.HEARTS)
+            and _is_rkc_context(state, mb[-2])):
+        T = _rkc_trump(state, system)
+        if T in (Suit.HEARTS, Suit.SPADES) and T != mb[-1].suit:
+            if last_partner.level == 5 and last_partner.suit == T:
+                return passb(why=f"No trump queen: stop in 5{T.to_char()}")
+            if last_partner.level == 5 and last_partner.suit in (Suit.SPADES, Suit.NOTRUMP):
+                cand = bid(6, T, why=f"Trump queen shown: 6{T.to_char()}")
+                if _is_legal_bid(cand, state):
+                    return cand
+            if last_partner.level >= 6:
+                return passb(why="Partner placed the slam after my queen ask")
+
     # Case 2: I bid 4NT, partner gave the keycard answer → my move.
     if last_mine is not None and _is_rkc_context(state, last_mine):
         if last_partner is not None and last_partner.level == 5 \
@@ -2569,6 +2605,12 @@ def _law_competitive_bid(state, e) -> Optional[Tuple[int, Suit]]:
         return None
     if our_trump in (Suit.CLUBS, Suit.DIAMONDS) and next_level > 5:
         return None
+    # Q-Plus leaves the four level to them (11 of 12 recorded spots: 1NT-(2S)-
+    # 3D-3S-(3NT) pass with KJT63.5.87.AT932; biq 4S) and doesn't compete
+    # on 2 HCP or less (9763.JT5.8643.T7 passed (1D)-1S-(X); RUN2-049's 3 HCP
+    # raise stays). BIQ_LAW_NO_4.
+    if LAW_NO_4 and (next_level >= 4 or e.hcp <= 2):
+        return None
     # Don't go BACKWARDS from where we already are.
     our_highest = 0
     for _seat, b in state.bids:
@@ -2708,6 +2750,11 @@ def _partner_was_forcing(state: AuctionState) -> bool:
             # A RAISE of my suit (1D-1H-2H) is not a reverse (RUN2-038
             # competed to 3H with 6 HCP on this misreading).
             and pl.suit not in state.suit_bid_by_me
+            # Nor partner's third call, nor a suit shown over my negative
+            # double (1D-(1H)-X-(2H)-2S: Q-Plus passes with J952.4.Q95.QJT95,
+            # biq "raised" 3S). BIQ_REVERSE_STRICT.
+            and not (REVERSE_STRICT and (len(state.partner_bids) != 2
+                                         or (state.my_bids and state.my_bids[0].is_double)))
             # Only the opener reverses: responder's 1C-1D-2D-2H is not one
             # (Q-Plus 3D / pass; biq "raised" 2H).
             and not (FORCING_FIXES and state.opener_seat != state.seat.partner()
@@ -3894,6 +3941,59 @@ WEAK2_NEW_FORCING = os.environ.get("BIQ_WEAK2_NEW_FORCING", "1") == "1"
 OVC1NT_8 = os.environ.get("BIQ_OVC1NT_8", "1") == "1"
 CUE_CONT_ANY = os.environ.get("BIQ_CUE_CONT_ANY", "1") == "1"
 ABANDON_GATES = os.environ.get("BIQ_ABANDON_GATES", "1") == "1"
+REBID_2NT_ANS = os.environ.get("BIQ_REBID_2NT_ANS", "1") == "1"
+S1C_FORCE_COMP = os.environ.get("BIQ_S1C_FORCE_COMP", "0") == "1"   # off: judge -14 / 5 (sprint 49)
+ABANDON_NOJUMP = os.environ.get("BIQ_ABANDON_NOJUMP", "1") == "1"
+OVC_X_ANSWER = os.environ.get("BIQ_OVC_X_ANSWER", "1") == "1"
+RAISE_TRY_LTC = os.environ.get("BIQ_RAISE_TRY_LTC", "1") == "1"
+LIMIT_ACCEPT_LTC = os.environ.get("BIQ_LIMIT_ACCEPT_LTC", "1") == "1"
+ADV_SAVE_5M = os.environ.get("BIQ_ADV_SAVE_5M", "1") == "1"
+LAW_NO_4 = os.environ.get("BIQ_LAW_NO_4", "1") == "1"
+UCB_LEVEL_FIX = os.environ.get("BIQ_UCB_LEVEL_FIX", "1") == "1"
+ADV_JUMP_RAISE = os.environ.get("BIQ_ADV_JUMP_RAISE", "1") == "1"
+JUMPRAISE_GATE = os.environ.get("BIQ_JUMPRAISE_GATE", "1") == "1"
+P1C1D_CONT = os.environ.get("BIQ_P1C1D_CONT", "1") == "1"
+TRANSFER_ONCE = os.environ.get("BIQ_TRANSFER_ONCE", "1") == "1"
+W2_RESP = os.environ.get("BIQ_W2_RESP", "1") == "1"
+OPENER_21_REBID = os.environ.get("BIQ_OPENER_21_REBID", "1") == "1"
+W2_ASK_BAL = os.environ.get("BIQ_W2_ASK_BAL", "0") == "1"   # off: curve -30 / 10 boards (sprint 60)
+ADV_JR_OVER_BID = os.environ.get("BIQ_ADV_JR_OVER_BID", "0") == "1"   # off: judge 2/1 -47 / 8 (sprint 62)
+ADV_RAISE_STALE = os.environ.get("BIQ_ADV_RAISE_STALE", "1") == "1"
+XFER_PASSED = os.environ.get("BIQ_XFER_PASSED", "1") == "1"
+FALSE_PREF = os.environ.get("BIQ_FALSE_PREF", "1") == "1"
+OVC_RAISE_GATE = os.environ.get("BIQ_OVC_RAISE_GATE", "1") == "1"
+REVERSE_STRICT = os.environ.get("BIQ_REVERSE_STRICT", "1") == "1"
+RKC_QUEEN_ASK = os.environ.get("BIQ_RKC_QUEEN_ASK", "0") == "1"   # off: curve Precision -0.007 (2 boards: 6S made without the queen; sprint 67)
+COMPETE_WEAK6 = os.environ.get("BIQ_COMPETE_WEAK6", "1") == "1"
+OPENER_4M = os.environ.get("BIQ_OPENER_4M", "1") == "1"
+P1D_LIGHT = os.environ.get("BIQ_P1D_LIGHT", "1") == "1"
+LEGALIZE_2ND = os.environ.get("BIQ_LEGALIZE_2ND", "1") == "1"
+WEAK2_X_SHAPE = os.environ.get("BIQ_WEAK2_X_SHAPE", "1") == "1"
+X_SLAM_VOID = os.environ.get("BIQ_X_SLAM_VOID", "1") == "1"
+FLAT_NO_STAYMAN = os.environ.get("BIQ_FLAT_NO_STAYMAN", "1") == "1"
+NEGX_SUPPORT_FIRST = os.environ.get("BIQ_NEGX_SUPPORT_FIRST", "0") == "1"   # off: curve -0.009 / -0.011 (sprint 75)
+NEW3_NT = os.environ.get("BIQ_NEW3_NT", "1") == "1"
+STAYMAN_3NT_S = os.environ.get("BIQ_STAYMAN_3NT_S", "1") == "1"
+WEAK2_COMPETE4 = os.environ.get("BIQ_WEAK2_COMPETE4", "1") == "1"
+LEGALIZE_MORE = os.environ.get("BIQ_LEGALIZE_MORE", "1") == "1"
+X_LONG_MAJOR = os.environ.get("BIQ_X_LONG_MAJOR", "1") == "1"
+LEGALIZE_3RD = os.environ.get("BIQ_LEGALIZE_3RD", "1") == "1"
+OVC_RAISE4 = os.environ.get("BIQ_OVC_RAISE4", "1") == "1"
+PREEMPT_ONCE = os.environ.get("BIQ_PREEMPT_ONCE", "1") == "1"
+PULL_LOWX = os.environ.get("BIQ_PULL_LOWX", "1") == "1"
+NT_OVC_16 = os.environ.get("BIQ_NT_OVC_16", "0") == "1"   # off: curve -0.004 / -0.008 (sprint 85)
+X_TWICE = os.environ.get("BIQ_X_TWICE", "1") == "1"
+LEB_DIRECT = os.environ.get("BIQ_LEB_DIRECT", "1") == "1"
+SUPERACC_8 = os.environ.get("BIQ_SUPERACC_8", "1") == "1"
+CUE_NOT_AGREED = os.environ.get("BIQ_CUE_NOT_AGREED", "1") == "1"
+P2NT_LIMIT = os.environ.get("BIQ_P2NT_LIMIT", "1") == "1"
+SUPPORT_X_FIRST = os.environ.get("BIQ_SUPPORT_X_FIRST", "1") == "1"
+P1C_BOTH_OPPS = os.environ.get("BIQ_P1C_BOTH_OPPS", "1") == "1"
+OVC_OVER_XFER = os.environ.get("BIQ_OVC_OVER_XFER", "1") == "1"
+XFER_MINOR_3M = os.environ.get("BIQ_XFER_MINOR_3M", "1") == "1"
+RESP_LONG_M = os.environ.get("BIQ_RESP_LONG_M", "1") == "1"
+ACCEPT_3M_INV = os.environ.get("BIQ_ACCEPT_3M_INV", "1") == "1"
+NT_REBID_ACCEPT = os.environ.get("BIQ_NT_REBID_ACCEPT", "0") == "1"   # off: curve 2/1 -17 / 4 boards, Precision -31 / 11 (sprint 48)
 COMPETE_GAME = os.environ.get("BIQ_COMPETE_GAME", "0") == "1"   # off: judge -75 / 60 (sprint 47)
 COMPETE_RAISE_PASS = os.environ.get("BIQ_COMPETE_RAISE_PASS", "0") == "1"   # off: judge -24 / 19 (sprint 46)
 NT_RESP_NEGX = os.environ.get("BIQ_NT_RESP_NEGX", "0") == "1"   # off: curve -0.008 / -0.010 (sprint 42)
@@ -4286,6 +4386,194 @@ def _strong_1c_cue_net(state: AuctionState, e: HandEval, system) -> Optional[Bid
                 return cand
         break
     return None
+
+
+def _weak2_compete_4(state: AuctionState, e: HandEval) -> Optional[Bid]:
+    """Partner's weak 2M, RHO jumps to four of another suit: with three or
+    more trumps and 10+ HCP or shortness in their suit, 4M (nine trumps;
+    Q-Plus 2S-(4H)-4S with Q93.Q.AJ754.JT42 and JT7.-.AQJ532.KT42, biq passed;
+    pass with 9853.52.974.AQ92). BIQ_WEAK2_COMPETE4."""
+    if not WEAK2_COMPETE4:
+        return None
+    nb = [(s_, b) for s_, b in state.bids if not b.is_pass]
+    if len(nb) != 2:
+        return None
+    (s0, op), (s1, ov) = nb
+    if not (s0 == state.seat.partner() and op.level == 2 and op.suit in (Suit.HEARTS, Suit.SPADES)
+            and s1 == state.seat.next().partner() and ov.level == 4
+            and ov.suit not in (None, Suit.NOTRUMP, op.suit) and not op.alert):
+        return None
+    M = op.suit
+    if e.suit_lengths[M] < 3 or not (e.hcp >= 10 or e.suit_lengths.get(ov.suit, 0) <= 1):
+        return None
+    cand = bid(4, M, why=f"4{M.to_char()}: {e.suit_lengths[M]} trumps opposite the weak two, "
+                         f"compete over their 4{ov.suit.to_char()}")
+    return cand if _is_legal_bid(cand, state) else None
+
+
+def _accept_1nt_3m_invite(state: AuctionState, e: HandEval) -> Optional[Bid]:
+    """1M-1NT-3M (opener's six-card invitation), uncontested: accept with
+    three trumps and 6+ or two and 9+ (Q-Plus 4S with JT2.AT3.J872.T63 and
+    62.AT76.Q763.A42; passes 1-2 trumps with less). BIQ_ACCEPT_3M_INV."""
+    if not ACCEPT_3M_INV:
+        return None
+    nb = [(s_, b) for s_, b in state.bids if not b.is_pass]
+    if len(nb) != 3 or any(s_ not in (state.seat, state.seat.partner()) for s_, _ in nb):
+        return None
+    (s0, o), (s1, r), (s2, j) = nb
+    if not (s0 == state.seat.partner() and o.level == 1 and o.suit in (Suit.HEARTS, Suit.SPADES)
+            and s1 == state.seat and r.level == 1 and r.suit == Suit.NOTRUMP
+            and j.level == 3 and j.suit == o.suit):
+        return None
+    fit = e.suit_lengths[o.suit]
+    if (fit >= 3 and e.hcp >= 6) or (fit >= 2 and e.hcp >= 9):
+        cand = bid(4, o.suit, why=f"4{o.suit.to_char()}: accept the invitation ({fit} trumps, {e.hcp} HCP)")
+        return cand if _is_legal_bid(cand, state) else None
+    return None
+
+
+def _xfer_minor_3m(state: AuctionState, e: HandEval) -> Optional[Bid]:
+    """1NT-2D/2H-2M-3m (my forcing second suit)-3M: opener chose my major;
+    bid the game (Q-Plus 4S with K8764.-.J52.AJT64 over 1NT-2H-2S-3C-3S, 4H
+    with 3.K9752.KQ863.T7; biq passed). BIQ_XFER_MINOR_3M."""
+    if not XFER_MINOR_3M:
+        return None
+    nb = [(s_, b) for s_, b in state.bids if not b.is_pass]
+    if len(nb) != 5 or any(s_ not in (state.seat, state.seat.partner()) for s_, _ in nb):
+        return None
+    (_, o), (_, t), (_, acc), (_, m), (_, r) = nb
+    if not (o.level == 1 and o.suit == Suit.NOTRUMP and t.level == 2
+            and t.suit in (Suit.DIAMONDS, Suit.HEARTS) and nb[1][0] == state.seat):
+        return None
+    M = Suit.HEARTS if t.suit == Suit.DIAMONDS else Suit.SPADES
+    if not (acc.suit == M and m.level == 3 and m.suit in (Suit.CLUBS, Suit.DIAMONDS)
+            and r.level == 3 and r.suit == M):
+        return None
+    cand = bid(4, M, why=f"4{M.to_char()}: opener chose my major after my forcing 3{m.suit.to_char()}")
+    return cand if _is_legal_bid(cand, state) else None
+
+
+def _stayman_3nt_spades(state: AuctionState, e: HandEval) -> Optional[Bid]:
+    """1NT-2C-2H-3NT, uncontested, four spades: partner's Stayman showed a
+    major and it was not hearts, so 4S (Q-Plus with AJ63.AQJ8.J7.Q75; biq
+    passed 3NT). BIQ_STAYMAN_3NT_S."""
+    if not STAYMAN_3NT_S or e.suit_lengths[Suit.SPADES] < 4:
+        return None
+    nb = [(s_, b) for s_, b in state.bids if not b.is_pass]
+    if [(s_ == state.seat, b.level, b.suit) for s_, b in nb] != [
+            (True, 1, Suit.NOTRUMP), (False, 2, Suit.CLUBS),
+            (True, 2, Suit.HEARTS), (False, 3, Suit.NOTRUMP)]:
+        return None
+    if any(s_ not in (state.seat, state.seat.partner()) for s_, _ in nb):
+        return None
+    cand = bid(4, Suit.SPADES, why="4S: partner's Stayman was for spades (3NT denied hearts)")
+    return cand if _is_legal_bid(cand, state) else None
+
+
+def _partner_new3_nt(state: AuctionState, e: HandEval) -> Optional[Bid]:
+    """Partner opened, nobody else bid, partner's last call is a new suit at
+    the three level and I hold 10+: Q-Plus never passes, mostly 3NT
+    (1C-2NT-3S 3NT with K52.QJT.KJT5.J63, 1D-1S-1NT-3C-3H 3NT with
+    K9765.-.875.AK832); it passes only with 2-3 HCP. BIQ_NEW3_NT."""
+    if not NEW3_NT or e.hcp < 10 or not state.partner_bids or not state.my_bids:
+        return None
+    if state.opener_seat != state.seat.partner():
+        return None
+    if any(not b.is_pass for s_, b in state.bids if s_ not in (state.seat, state.seat.partner())):
+        return None
+    pl = state.partner_bids[-1]
+    if not (pl.level == 3 and pl.suit not in (None, Suit.NOTRUMP)):
+        return None
+    if pl.suit in [b.suit for b in state.my_bids] + [b.suit for b in state.partner_bids[:-1]]:
+        return None
+    if _partner_was_forcing(state):        # the forced-bid net answers those (splinters: 4M)
+        return None
+    cand = bid(3, Suit.NOTRUMP, why=f"3NT: partner's new 3{pl.suit.to_char()} is forcing ({e.hcp} HCP)")
+    return cand if _is_legal_bid(cand, state) else None
+
+
+def _opener_4m_raised(state: AuctionState, e: HandEval, system=None) -> Optional[Bid]:
+    """I opened 1m, partner raised it to 4m, nobody else bid: Q-Plus never
+    passes (1D-2C-2D-4D 4H with AKQ5.KJ6.T8654.8, 1C-1S-3H-4C 4NT with
+    AKQJ.Q.A62.KT875; biq passed, playing 4m). Cue the cheapest suit with a
+    control (ace, king, singleton or void) below 5m, else 5m. BIQ_OPENER_4M."""
+    if not OPENER_4M or not state.my_bids or not state.partner_bids:
+        return None
+    op = state.my_bids[0]
+    pl = state.partner_bids[-1]
+    if not (state.opener_seat == state.seat and op.level == 1
+            and op.suit in (Suit.CLUBS, Suit.DIAMONDS)
+            and pl.level == 4 and pl.suit == op.suit
+            and not (op.suit == Suit.CLUBS and _strong_club(system))
+            # not after my notrump (1D-1H-2D-3C-3NT-4D: the cue 4H was passed)
+            and not any(b.suit == Suit.NOTRUMP for b in state.my_bids)):
+        return None
+    if any(not b.is_pass for s_, b in state.bids if s_ not in (state.seat, state.seat.partner())):
+        return None
+    m = op.suit
+    for x in (Suit.CLUBS, Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES):
+        if x == m or _BID_RANK[x] <= _BID_RANK[m]:
+            continue
+        ln = e.suit_lengths.get(x, 0)
+        if e.has_ace.get(x, False) or e.has_king.get(x, False) or ln <= 1:
+            cand = bid(4, x, alert=True, why=f"Cue {x.to_char()}: control, partner's 4{m.to_char()} raise is forcing")
+            if _is_legal_bid(cand, state):
+                return cand
+    cand = bid(5, m, why=f"5{m.to_char()}: partner's 4{m.to_char()} raise, no control to cue")
+    return cand if _is_legal_bid(cand, state) else None
+
+
+def _rebid_2nt_answer(state: AuctionState, e: HandEval, system=None) -> Optional[Bid]:
+    """1x-(..)-1y/2y-2z-2NT (or partner's first call 2NT after my 2-level
+    rebid): Q-Plus never passes the 2NT unless partner answered 1NT. Three
+    cards in partner's major: 3M (Q73.AKQT98.63.82 1H-1S-2H-2NT 3S); a six-card
+    suit and 12 HCP or less: three of it (92.Q82.K6.AQJ763 1C-1D-2C-2NT 3C);
+    13+ balanced or with a six-card suit: 3NT (KT.Q83.KQT8.A643 1D-2D-2H-2NT,
+    J.A3.AKQ6.KQ7432 1C-1S-2D-2NT); 13+ otherwise: back to my first suit
+    (AQ.AT42.AQ743.T5 1D-1S-2H-2NT 3D). biq passed all of them.
+    BIQ_REBID_2NT_ANS."""
+    if not REBID_2NT_ANS or state.opener_seat != state.seat:
+        return None
+    op = state.opening_bid
+    if (op is None or op.level != 1 or op.suit in (None, Suit.NOTRUMP)
+            or (op.suit == Suit.CLUBS and _strong_club(system))):
+        return None
+    mine = [b for b in state.my_bids if not b.is_pass]
+    pts = [b for b in state.partner_bids if not b.is_pass]
+    if len(mine) != 2 or not pts:
+        return None
+    r2, pl = mine[1], pts[-1]
+    if (r2.is_double or r2.is_redouble or r2.level != 2 or r2.suit in (None, Suit.NOTRUMP)
+            or r2.alert or pl.is_double or pl.is_redouble
+            or pl.level != 2 or pl.suit != Suit.NOTRUMP):
+        return None
+    p1 = pts[0]
+    if len(pts) > 2 or (len(pts) == 2 and (p1.is_double or p1.is_redouble
+                                           or p1.suit in (None, Suit.NOTRUMP)
+                                           or p1.suit == r2.suit or p1.alert)):
+        return None
+    ln = e.suit_lengths
+    lens = [ln.get(x, 0) for x in (Suit.CLUBS, Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES)]
+    if e.hcp >= 13 and (e.is_balanced or (min(lens) >= 2 and sum(n >= 4 for n in lens) == 1)):
+        x = bid(3, Suit.NOTRUMP, why=f"3NT over partner's 2NT ({e.hcp} HCP)")
+        return x if _is_legal_bid(x, state) else None
+    if (len(pts) == 2 and p1.suit in (Suit.HEARTS, Suit.SPADES)
+            and ln.get(p1.suit, 0) == 3):
+        x = bid(4 if e.hcp >= 15 else 3, p1.suit,
+                why=f"Three-card support for partner's {p1.suit.to_char()} over 2NT")
+        return x if _is_legal_bid(x, state) else None
+    long_s = max((Suit.CLUBS, Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES),
+                 key=lambda x: (ln.get(x, 0), x == op.suit))
+    six = ln.get(long_s, 0) >= 6
+    if six and e.hcp <= 12:
+        x = bid(3, long_s, why=f"Six-card {long_s.to_char()} over partner's 2NT, minimum")
+    elif e.hcp >= 13 and (six or e.is_balanced or e.is_semi_balanced):
+        x = bid(3, Suit.NOTRUMP, why=f"3NT over partner's 2NT ({e.hcp} HCP)")
+    elif e.hcp >= 13:
+        x = bid(3, op.suit, why=f"Back to my {op.suit.to_char()} over partner's 2NT ({e.hcp} HCP)")
+    else:
+        return None
+    return x if _is_legal_bid(x, state) else None
 
 
 def _nt_opener_x(state: AuctionState, e: HandEval) -> Optional[Bid]:
@@ -4974,11 +5262,33 @@ def _legalize(b: Bid, state: AuctionState) -> Optional[Bid]:
     # 5C doubled (Q-Plus board 74, -2300).
     if LEGALIZE_STRICT and b.alert:
         return None
+    # Nor a minimum "second suit" rebid the opponents have bid past: Q-Plus
+    # passes (1D-(P)-1S-(2H) with J8.8652.AT6.AKT6, 1S-(P)-1NT-(2H) with
+    # QJT98.Q952.A.QT4; biq bid it a level higher). BIQ_LEGALIZE_2ND.
+    if LEGALIZE_2ND and (b.explanation or "").startswith("Second suit"):
+        return None
+    # Same for these families (Q-Plus passes every recorded case once the
+    # call is gone: 7 natural overcalls, 8 UCB declines, 5 Landy answers, 2
+    # weak jump overcalls, 2 Truscott sign-offs). BIQ_LEGALIZE_MORE.
+    ex_ = b.explanation or ""
+    if LEGALIZE_MORE and ((ex_.startswith("Natural ") and " overcall" in ex_)
+                          or ex_.startswith(("Decline UCB", "Landy pass-or-correct",
+                                             "Landy preference", "Weak jump overcall",
+                                             "Truscott"))):
+        return None
     last_suit = next((x for _s, x in reversed(state.bids)
                       if not x.is_pass and not x.is_double
                       and not x.is_redouble), None)
     if last_suit is None:
         return b if _is_legal_bid(b, state) else None
+    # A third bid of my suit pushed a level up (1H-1NT-2H-P-P-X: 3H). Q-Plus
+    # passes (8 records) unless the suit has seven cards. BIQ_LEGALIZE_3RD.
+    if (LEGALIZE_3RD and ex_.startswith("Rebid ") and "card suit" in ex_
+            and sum(1 for x in state.my_bids if x.suit == b.suit) >= 2
+            and "7-card" not in ex_ and "8-card" not in ex_
+            and (last_suit.is_double or last_suit.level >= 3
+                 or any(x.is_double for _s, x in state.bids[-3:]))):
+        return None
 
     # Illegal NT bid → cheapest legal NT, same one-level discipline. The
     # bidder can produce a balancing/reopening 1NT when the auction is
@@ -5063,6 +5373,26 @@ def _sanity_wrap(raw: Bid, state: AuctionState, eval_: HandEval,
     make the engine crashier than it already is.
     """
     try:
+        # 0. A takeout double holding a long unbid major: Q-Plus bids the
+        # major (6+ cards: 10 / 10 records, never X; 5 cards and <= 13 HCP:
+        # 10 bid it, 6 pass, 0 X): K87654.4.AQ3.A43 3S over (1H)-P-(3H).
+        # BIQ_X_LONG_MAJOR.
+        if (X_LONG_MAJOR and raw.is_double
+                and (raw.explanation or "").startswith("Takeout double")
+                and "NT later" not in (raw.explanation or "")):
+            theirs = set(state.suit_bid_by_opps)
+            cands = [m for m in (Suit.SPADES, Suit.HEARTS) if m not in theirs
+                     and m not in state.suit_bid_by_partner
+                     and (eval_.suit_lengths[m] >= 6 and eval_.hcp <= 16
+                          or eval_.suit_lengths[m] == 5 and eval_.hcp <= 13)]
+            if cands:
+                m = max(cands, key=lambda x: eval_.suit_lengths[x])
+                lv = _cheapest_level_over_auction(state, m)
+                if lv <= (3 if eval_.suit_lengths[m] >= 6 else 2):
+                    cand = bid(lv, m, why=f"{lv}{m.to_char()}: {eval_.suit_lengths[m]}-card "
+                                          f"major instead of a takeout double ({eval_.hcp} HCP)")
+                    if _is_legal_bid(cand, state):
+                        return cand
         # 1. Illegality
         if not _is_legal_bid(raw, state):
             legalized = _legalize(raw, state)
@@ -5105,11 +5435,17 @@ def _sanity_wrap(raw: Bid, state: AuctionState, eval_: HandEval,
                    or _bergen_cont(state, eval_)
                    or _strong_1c_cue_net(state, eval_, system)
                    or _nt_opener_x(state, eval_)
-                   or _negx_responder_cont(state, eval_))
+                   or _negx_responder_cont(state, eval_)
+                   or _rebid_2nt_answer(state, eval_, system)
+                   or _opener_4m_raised(state, eval_, system)
+                   or _partner_new3_nt(state, eval_)
+                   or _stayman_3nt_spades(state, eval_)
+                   or _xfer_minor_3m(state, eval_)
+                   or _accept_1nt_3m_invite(state, eval_))
             if sub is not None:
                 return sub
         if raw.is_pass and not partner_spoke_last:
-            sub = _nt_opener_x(state, eval_)
+            sub = _nt_opener_x(state, eval_) or _weak2_compete_4(state, eval_)
             if sub is not None:
                 return sub
 
@@ -5122,6 +5458,8 @@ def _sanity_wrap(raw: Bid, state: AuctionState, eval_: HandEval,
                          and state.opener_seat == state.seat
                          and state.partner_bids and state.partner_bids[-1].suit == Suit.CLUBS)
         if (raw.is_pass and partner_spoke_last and not prec_2c_raise
+                and not (SUPERACC_8 and (raw.explanation or "").startswith("Weak: pass the super-accept"))
+                and not (P2NT_LIMIT and (raw.explanation or "").startswith("Limit 2NT: pass"))
                 and _partner_was_forcing(state)):
             sub = _safe_forced_bid(state, eval_, system)
             if sub is not None:
@@ -5169,6 +5507,12 @@ def _sanity_wrap(raw: Bid, state: AuctionState, eval_: HandEval,
                         and eval_.hcp < 15):
                     continue
                 if times >= 2 and long_ < 7:
+                    continue
+                # Six cards and <= 8 HCP at the three level, partner never
+                # raised it: Q-Plus passes (11 of 13 records: 8.KJ9754.J64.JT5
+                # over 1D-(1NT)-2H-(2S)-P-(P); after partner's XX or X too).
+                if (COMPETE_WEAK6 and lvl == 3 and long_ == 6 and eval_.hcp <= 8
+                        and not any(b_.suit == s for b_ in state.partner_bids)):
                     continue
                 # Partner raised (or cue-raised their suit) and I hold six
                 # in a major with a short side suit, or partner's raise was
@@ -5260,9 +5604,16 @@ def _sanity_wrap(raw: Bid, state: AuctionState, eval_: HandEval,
             ctx_ = derive_context(state, system)
             pl = state.partner_bids[-1] if state.partner_bids else None
             tr = ctx_.trump.suit if ctx_.trump is not None else None
+            # Not when partner's suit is one we have both bid: that is a
+            # second fit, to play (1D-1S-2C-3C-...-5C: Q-Plus passes 4 / 4,
+            # biq "signed off" in 5S). BIQ_CUE_NOT_AGREED.
+            both_bid = (pl is not None and pl.suit is not None
+                        and pl.suit in state.suit_bid_by_me
+                        and pl.suit in [b_.suit for b_ in state.partner_bids[:-1]])
             if (tr is not None and pl is not None and pl.suit is not None
                     and pl.suit not in (tr, Suit.NOTRUMP) and pl.level >= 3
                     and tr in (Suit.HEARTS, Suit.SPADES)
+                    and not (CUE_NOT_AGREED and both_bid)
                     and tr in state.suit_bid_by_me + state.suit_bid_by_partner):
                 lvl = pl.level if _BID_RANK[tr] > _BID_RANK[pl.suit] else pl.level + 1
                 if lvl <= 5:
@@ -5379,6 +5730,20 @@ def _sanity_wrap(raw: Bid, state: AuctionState, eval_: HandEval,
                                 or eval_.suit_lengths[s]
                                 > eval_.suit_lengths[best]):
                             best = s
+                    # A low-level double of partner's weak two or overcall is
+                    # takeout / negative: Q-Plus leaves partner's suit unless
+                    # it holds 10+ or a strong seven-card suit (10 of 11 pass:
+                    # QT8732.J4.KJT.93 over P-2H-X, K9.J98543.T74.94 over
+                    # 1D-1S-X; pulls with KQJT983). BIQ_PULL_LOWX.
+                    p_first = next((b_ for s_, b_ in state.bids if s_ == partner and not b_.is_pass), None)
+                    weak2_or_ovc = (pb.level <= 2 and p_first is pb
+                                    and (state.opener_seat != partner or pb.level == 2))
+                    if (PULL_LOWX and best is not None and weak2_or_ovc
+                            and dbl_seat == state.seat.next().partner()
+                            and eval_.hcp < 10
+                            and not (eval_.suit_lengths[best] >= 7
+                                     and eval_.suit_hcp.get(best, 0) >= 6)):
+                        best = None
                     if best is not None:
                         for lvl in (pb.level, pb.level + 1):
                             if lvl > 4:
@@ -5458,6 +5823,7 @@ def _sanity_wrap(raw: Bid, state: AuctionState, eval_: HandEval,
             op = state.opening_bid
             if (pb.suit in (Suit.HEARTS, Suit.SPADES) and not pb.is_double
                     and op is not None and pb.suit != op.suit
+                    and not (TRANSFER_ONCE and op.suit == Suit.NOTRUMP)   # 1NT-2H is a transfer
                     and pb.level >= 2
                     and eval_.suit_lengths.get(pb.suit, 0) >= 4):
                 cand = bid(4, pb.suit,
@@ -5900,6 +6266,10 @@ def _learned_game_net(state: AuctionState, e: HandEval, system,
     partner's calls have shown (learned from biq's own bidding) add up."""
     if not GNET or not out.is_pass or state.opener_seat is None:
         return None
+    if ((out.explanation or "").startswith(("Pass the single raise", "Decline the raise",
+                                            "Opener's 3", "Pass opener's 3"))
+            or "minimum after the 2NT ask" in (out.explanation or "")):
+        return None                       # Q-Plus's loser count (BIQ_RAISE_TRY_LTC)
     if _partnership_has_reached_game(state):
         return None
     natural = [b for b in state.partner_bids
@@ -6023,6 +6393,11 @@ def _convention_followups(state: AuctionState, e: HandEval, system) -> Optional[
             cand = bid(3, M, why=f"3{M.to_char()}: sign off after the 2NT ask")
             if _is_legal_bid(cand, state):
                 return cand
+            # Partner's answer WAS 3M (minimum, no feature): the sign-off is a
+            # pass; 3M being illegal sent biq to 4M (curve 2S-2NT-3S-4S, -45 /
+            # 10 boards). BIQ_W2_RESP.
+            if W2_RESP and pl.suit == M:
+                return passb(why=f"Pass 3{M.to_char()}: minimum after the 2NT ask")
             return bid(4, M, why=f"4{M.to_char()} after the 2NT ask")
         if hcp >= 15:
             return bid(3, Suit.NOTRUMP, why="3NT after the 2NT ask, no fit")
@@ -6735,6 +7110,21 @@ def _cheapest_level_over_auction(state: AuctionState, suit: Suit) -> int:
     return top.level if _BID_RANK[suit] > _BID_RANK[top.suit] else top.level + 1
 
 
+def _cheapest_level_over_auction_before(state: AuctionState, b: Bid) -> int:
+    """Lowest legal level for b's suit just before partner's call b (its last
+    occurrence by partner): b.level equal to it means b was not a jump."""
+    pa = state.seat.partner()
+    idx = next((i for i in range(len(state.bids) - 1, -1, -1)
+                if state.bids[i][0] == pa and state.bids[i][1] is b), None)
+    if idx is None or b.suit is None:
+        return 0
+    top = next((x for _s, x in reversed(state.bids[:idx])
+                if not (x.is_pass or x.is_double or x.is_redouble) and x.suit is not None), None)
+    if top is None:
+        return 1
+    return top.level if _BID_RANK[b.suit] > _BID_RANK[top.suit] else top.level + 1
+
+
 def _doubled_rescue(state: AuctionState, e: HandEval, system) -> Optional[Bid]:
     """Two spots where passing leaves us in a contract nobody chose.
 
@@ -7188,6 +7578,16 @@ def _respond_to_precision_1d(state, e: HandEval) -> Bid:
     """
     hcp = e.hcp
 
+    # A five-card major and diamond shortness: Q-Plus responds anyway (its
+    # 1D can be two cards): 1H with Q932.QJ942.-.9754 and T2.J7652.5.QT963,
+    # 1S with AT8543.JT54.97.T; pass with three diamonds or 2 HCP.
+    # BIQ_P1D_LIGHT.
+    if P1D_LIGHT and hcp <= 5 and not state.rho_bids:
+        sp, he, di = (e.suit_lengths[Suit.SPADES], e.suit_lengths[Suit.HEARTS],
+                      e.suit_lengths[Suit.DIAMONDS])
+        if max(sp, he) >= 5 and ((hcp >= 4 and di <= 2) or (hcp == 3 and di <= 1)):
+            M = Suit.SPADES if sp >= he else Suit.HEARTS
+            return bid(1, M, why=f"1{M.to_char()}: five-card major, short diamonds ({hcp} HCP)")
     if hcp <= 5:
         return passb(why="Precision 1D: insufficient values")
 
@@ -7536,6 +7936,18 @@ def _respond_to_1nt(e: HandEval, system) -> Bid:
         return bid(2, Suit.SPADES, alert=True,
                    why="Minor-suit transfer to clubs (6+ ♣)")
 
+    # 4-3-3-3 with the four-card major: Q-Plus skips Stayman below slam
+    # values (8 pass, 10-14 3NT opposite 15-17; 10 2NT, 11+ 3NT opposite
+    # 14-16: 8632.A864.98.A54 passes, Q72.AK82.JT5.J62 3NT). BIQ_FLAT_NO_STAYMAN.
+    if (FLAT_NO_STAYMAN and (has_4S or has_4H) and hcp < t["quant_lo"]
+            and sorted(e.suit_lengths[x] for x in (Suit.SPADES, Suit.HEARTS,
+                                                   Suit.DIAMONDS, Suit.CLUBS)) == [3, 3, 3, 4]):
+        if hcp <= t["invite_lo"]:
+            return passb(why=f"Pass 1NT: 4-3-3-3, {hcp} HCP (no Stayman)")
+        if hcp <= t["invite_hi"]:
+            return bid(2, Suit.NOTRUMP, why=f"2NT invite: 4-3-3-3, {hcp} HCP (no Stayman)")
+        return bid(3, Suit.NOTRUMP, why=f"3NT: 4-3-3-3, {hcp} HCP (no Stayman)")
+
     # Stayman: 4cM and at least invitational values.
     if hcp >= t["invite_lo"] and (has_4S or has_4H):
         return bid(2, Suit.CLUBS, alert=True, why="Stayman, asks for 4cM")
@@ -7709,6 +8121,22 @@ def _respond_to_1nt_competitive_rules(state, e, system):
     # Only legal against a 2-level overcall — over (3X) the relay
     # would be below the overcall and is just skipped.
     passed_before = any(s_ == state.seat and b_.is_pass for s_, b_ in state.bids)
+    # Q-Plus bids a five-card suit that still fits at the 2 level directly
+    # (54.QT4.QJT74.J74 2D over 1NT-(2C), QJ752.87.74.QJ52 2S over (2D)) and
+    # passes with 0-5 and no six-card suit (83.QJT86.52.J642 over (2S));
+    # the relay is for suits that need the 3 level. BIQ_LEB_DIRECT.
+    if (LEB_DIRECT and overcall.level == 2 and hcp <= 8 and not passed_before):
+        two = [s for s in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS)
+               if s != overcall_suit and e.suit_lengths[s] >= 5
+               and _BID_RANK[s] > _BID_RANK[overcall_suit]]
+        if two and hcp >= 5:
+            s2 = max(two, key=lambda x: e.suit_lengths[x])
+            return bid(2, s2, why=f"2{s2.to_char()}: five-card suit at the 2 level over their "
+                                  f"2{overcall_suit.to_char()} (to play)")
+        if hcp <= 5 and not any(e.suit_lengths[x] >= 6 for x in
+                                (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS)
+                                if x != overcall_suit):
+            return passb(why="Pass their overcall: weak, no six-card suit")
     if (overcall.level == 2
             and hcp <= 8
             and not passed_before     # run 5 RANDOM-049: relay by a passed hand
@@ -7904,7 +8332,9 @@ def _respond_to_weak_two(state, e: HandEval, system) -> Bid:
             continue
         if e.suit_lengths[m] >= 6 and hcp >= 13:
             return bid(4, m, why=f"4{m.to_char()}: own six-card suit, {hcp} HCP")
-        if hcp >= 11:
+        # Q-Plus passes the weak two with 11-12 and a five-card major
+        # (KQJT9.AQ87.3.T65 and KJ654.Q8.Q75.AT6 passed). BIQ_W2_RESP.
+        if hcp >= (13 if W2_RESP else 11):
             cand = bid(_cheapest_level_over_auction(state, m), m,
                        why=f"New suit over the weak two: 5+ {m.to_char()} (forcing)")
             if cand.level <= 3 and _is_legal_bid(cand, state):
@@ -7915,6 +8345,13 @@ def _respond_to_weak_two(state, e: HandEval, system) -> Bid:
                    why=f"2NT inquiry ({inquiry})")
     if hcp >= 15 and e.is_balanced:
         return bid(3, Suit.NOTRUMP, why="3NT to play")
+    # Balanced 13-14: Q-Plus asks (T97.A542.AK2.K97 and AK5.J983.T42.AQ4
+    # 2NT over 2H / 2S; biq passed). Judge +16 / 7, but opposite biq's own
+    # weak two the curve lost ~-30 / 10 boards (3M one down where 2M made):
+    # BIQ_W2_ASK_BAL, off.
+    if W2_ASK_BAL and hcp >= 13 and e.is_balanced and _is_legal_bid(bid(2, Suit.NOTRUMP), state):
+        inquiry = "Ogust" if system.has("A-2MA-2NT.Ogust-5-A") else "feature ask"
+        return bid(2, Suit.NOTRUMP, alert=True, why=f"2NT inquiry ({inquiry}), balanced {hcp}")
     return passb()
 
 
@@ -8647,7 +9084,13 @@ def _respond_to_major_competitive(state, e: HandEval, system) -> Bid:
     # Deal #1 (seed 7371): partner 1S overcalled by 3C; S had 4
     # hearts + 12 HCP; the cap of 2 prevented negative X (-9 IMP).
     neg_max = _negative_double_max_level(system)
-    if (hcp >= 6 and overcall.level <= neg_max
+    # Support for partner's major comes first: Q-Plus raises or cue-bids
+    # with three or more trumps even holding the other major (28 of 32
+    # records: A652.852.854.QJ5 2H over 1H-(2D), AJ65.Q543.T.QJ63 3C over
+    # 1S-(2C)). BIQ_NEGX_SUPPORT_FIRST.
+    support_first = (NEGX_SUPPORT_FIRST and e.suit_lengths.get(op_suit, 0) >= 3
+                     and hcp <= 12 and overcall.level <= 2)
+    if (hcp >= 6 and overcall.level <= neg_max and not support_first
             and overcall.suit is not None
             and overcall.suit != Suit.NOTRUMP
             and overcall.suit != op_suit):
@@ -9016,7 +9459,12 @@ def _precision_1c_rebid(state, e: HandEval, p_last: Bid, system=None) -> Bid:
             and not state.partner_bids[0].is_pass
             and not state.partner_bids[0].is_double
             and state.last_non_pass is not None
-            and state.last_non_pass[0] == state.seat.partner()
+            and (state.last_non_pass[0] == state.seat.partner()
+                 # Their call after partner's positive doesn't let me pass:
+                 # Q-Plus 3C over 1C-(1S)-2S-(X), 4D over 1C-(2D)-3C-(3D).
+                 # BIQ_S1C_FORCE_COMP.
+                 or (S1C_FORCE_COMP and state.last_non_pass[0] not in (state.seat, state.seat.partner())
+                     and not state.last_non_pass[1].is_redouble))
             and not _partnership_has_reached_game(state)):
         # Partner's four of a minor is past the sanity raise's 4-level cap:
         # 1C-2D-2NT-4D with AK43.A5.A92.A653 passed; 7D made (board 57).
@@ -9147,6 +9595,15 @@ def _opener_rebid(state, e: HandEval, system: str) -> Bid:
             and not state.last_non_pass[1].is_double):
         M = state.partner_bids[0].suit
         sup = e.suit_lengths.get(M, 0)
+        # Exactly three: the support double comes first (Q-Plus doubles in ~30
+        # records: 743.KJ5.AK4.Q976 over 1D-1H-(1S), K.A63.AKJ76.KQJ4 over
+        # (2S); biq raised). Not over a cue of my suit. BIQ_SUPPORT_X_FIRST.
+        ov = state.last_non_pass[1]
+        if (SUPPORT_X_FIRST and sup == 3 and system.has("C-support-double")
+                and _strong_club(system)          # 2/1: judge -16 / 21, curve flat
+                and op.suit in (Suit.CLUBS, Suit.DIAMONDS) and e.hcp >= 10
+                and ov.level <= 2 and ov.suit is not None and ov.suit != op.suit):
+            return double(why=f"Support double — exactly 3-card {M.to_char()}")
         if sup >= 3:
             lvl = _cheapest_level_over_auction(state, M)
             if sup >= 4 and e.hcp >= 15:
@@ -9203,7 +9660,11 @@ def _opener_rebid(state, e: HandEval, system: str) -> Bid:
             and state.last_non_pass is not None
             and state.last_non_pass[0] == state.seat.partner()):
         five = any(n >= 5 for n in e.suit_lengths.values())
-        if e.hcp >= 14 or (e.hcp == 13 and five):
+        # Q-Plus's 2/1 accepts with 13 (3NT 3 of 4 recorded). Precision keeps
+        # 14 / 13 with a five-card suit: accepting 12 lost on the curve
+        # (-0.006, 11 boards). BIQ_NT_REBID_ACCEPT.
+        lo = 13 if NT_REBID_ACCEPT and not _strong_club(system) else 14
+        if e.hcp >= lo or (e.hcp == 13 and five):
             return bid(3, Suit.NOTRUMP, why=f"Accept 2NT invite ({e.hcp} HCP, "
                                             f"top of 12-14)")
         return passb(why=f"Decline 2NT invite ({e.hcp} HCP)")
@@ -9376,6 +9837,25 @@ def _opener_rebid(state, e: HandEval, system: str) -> Bid:
                 nt_lvl = last_lvl
             else:
                 nt_lvl = last_lvl + 1
+            # Both opponents bid (overcall + raise / response, X + bid) and
+            # partner passed: Q-Plus's opener passes with 16-19 (8 / 8:
+            # AJ85.K832.Q82.AK over 1C-(X)-P-(1D), KQ.AQT4.98.AKJ65 over
+            # 1C-(1D)-P-(2D)) and rebids five clubs naturally (3 / 3,
+            # K5.AK9.K8.AKQT85 2C over 1C-(1D)-P-(1S)). BIQ_P1C_BOTH_OPPS.
+            if P1C_BOTH_OPPS:
+                both_acted = (any(not b_.is_pass for b_ in state.lho_bids)
+                              and any(not b_.is_pass for b_ in state.rho_bids))
+                long_red = any(e.suit_lengths[x] >= 5 for x in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS))
+                clubs_lvl = (last_lvl if last_suit is None or _BID_RANK[Suit.CLUBS] > _BID_RANK[last_suit]
+                             else last_lvl + 1)
+                if (e.suit_lengths[Suit.CLUBS] >= 5 and not long_red
+                        and clubs_lvl <= (2 if both_acted else 3)):
+                    cand = bid(clubs_lvl, Suit.CLUBS, why=f"Precision 1C-(opps)-P: natural "
+                                                          f"{e.suit_lengths[Suit.CLUBS]}-card clubs ({hcp} HCP)")
+                    if _is_legal_bid(cand, state):
+                        return cand
+                if both_acted and hcp <= 19 and not long_red:
+                    return passb(why=f"Precision 1C-(opps)-P: both opponents bid, {hcp} HCP — pass")
             # Balanced rebid via NT.
             if e.is_balanced:
                 # Stopper check: when opps showed a suit, need to
@@ -9484,6 +9964,12 @@ def _opener_rebid(state, e: HandEval, system: str) -> Bid:
                 if once:
                     ok = (lvl <= 2 or (lvl == 3 and (e.hcp >= 15 or long_ >= 7))
                           or (lvl == 4 and (e.hcp >= 15 or long_ >= 7)))
+                    # A weak opener (<= 11 HCP: a preempt or a light 1m) does
+                    # not compete again at the 3-4 level: Q-Plus 20 / 20 pass
+                    # (952.AJ976532.7.8 3H-X-P-4D, QJT9874.6.AJ.854 3S-X-4C).
+                    # BIQ_PREEMPT_ONCE.
+                    if PREEMPT_ONCE and e.hcp <= 11 and lvl >= 3:
+                        ok = False
                 else:
                     # A second rebid only as a shape save: 7+ trumps and at
                     # most one card in their suit (A/B: 5D made or cheap
@@ -9642,8 +10128,50 @@ def _opener_rebid(state, e: HandEval, system: str) -> Bid:
                  else Suit.DIAMONDS)
             return bid(5, m, why=f"5{m.to_char()}: no {M.to_char()} stopper opposite the three-suiter")
 
-    # Jacoby transfer accept
-    if op.level == 1 and op.suit == Suit.NOTRUMP and p_last.level == 2:
+    # Jacoby transfer accept. Only as my first answer to partner's first call:
+    # biq "accepted" again after 1NT-2H-2S-P-P-X (legalized to 3S; Q-Plus
+    # passes) and read 1NT-2C-2D-2H as a transfer. Over their bid after the
+    # transfer Q-Plus bids the major only with four (pass with A76.963.KJ82.AK3
+    # over 1NT-2D-(2S)). BIQ_TRANSFER_ONCE.
+    xfer_first = (sum(1 for b_ in state.my_bids if not b_.is_pass) == 1
+                  and sum(1 for b_ in state.partner_bids if not b_.is_pass) == 1)
+    if (TRANSFER_ONCE and xfer_first and op.level == 1 and op.suit == Suit.NOTRUMP
+            and p_last.level == 2 and p_last.suit in (Suit.DIAMONDS, Suit.HEARTS)
+            and state.bids and not state.bids[-1][1].is_pass
+            and not state.bids[-1][1].is_double and not state.bids[-1][1].is_redouble):
+        M = Suit.HEARTS if p_last.suit == Suit.DIAMONDS else Suit.SPADES
+        if e.suit_lengths[M] >= 4:
+            lv = _cheapest_level_over_auction(state, M)
+            if lv <= 3:
+                return bid(lv, M, why=f"Transfer over their bid: four {M.to_char()}")
+        return passb(why="Transfer over their bid: pass without four")
+    # I passed over their bid; partner silent since: the transfer is not
+    # accepted later (1NT-2D-(2S)-P-(3C)-P-P-3H with AT5.T9.KJT54.AK9, live
+    # 261019 bd 133, -8). Four trumps compete, else pass. BIQ_XFER_PASSED.
+    if (XFER_PASSED and xfer_first and op.level == 1
+            and sum(1 for s_, _ in state.bids if s_ == state.seat) >= 2
+            and op.suit == Suit.NOTRUMP and p_last.level == 2
+            and p_last.suit in (Suit.DIAMONDS, Suit.HEARTS)):
+        M = Suit.HEARTS if p_last.suit == Suit.DIAMONDS else Suit.SPADES
+        lv = _cheapest_level_over_auction(state, M)
+        if e.suit_lengths[M] >= 4 and lv <= 3:
+            return bid(lv, M, why=f"Transfer, passed over their bid: compete with four {M.to_char()}")
+        return passb(why="Transfer, passed over their bid: pass")
+    # My second turn after completing it, partner silent since: compete only
+    # with four (Q-Plus 3H with 98.A876.QJT5.AK8 over 1NT-2D-2H-P-P-X).
+    mine_nb = [b_ for b_ in state.my_bids if not b_.is_pass]
+    if (TRANSFER_ONCE and op.level == 1 and op.suit == Suit.NOTRUMP and len(mine_nb) == 2
+            and sum(1 for b_ in state.partner_bids if not b_.is_pass) == 1
+            and p_last.level == 2 and p_last.suit in (Suit.DIAMONDS, Suit.HEARTS)
+            and mine_nb[1].suit == (Suit.HEARTS if p_last.suit == Suit.DIAMONDS else Suit.SPADES)):
+        M = mine_nb[1].suit
+        if e.suit_lengths[M] >= 4:
+            lv = _cheapest_level_over_auction(state, M)
+            if lv <= 3 and _is_legal_bid(bid(lv, M), state):
+                return bid(lv, M, why=f"Compete in partner's {M.to_char()}: four trumps")
+        return passb(why="Transfer completed: pass")
+    if (op.level == 1 and op.suit == Suit.NOTRUMP and p_last.level == 2
+            and (xfer_first or not TRANSFER_ONCE)):
         # Not after 1C-1D-1NT: responder holds 0-7 (Q-Plus completes it).
         sup_ok = not getattr(state, "_nt_after_1c", False)
         if p_last.suit == Suit.DIAMONDS:
@@ -10305,9 +10833,29 @@ def _opener_suit_rebid(state, e, op, p_last, system) -> Bid:
     if p_last.suit == op_suit:
         if p_last.level == 2:
             # Simple raise → 6-9. Pass with min, invite with 17, jump with 18+.
-            if e.hcp <= 14:
+            # A major: Q-Plus judges by losers, not points (1S-2S 3D with
+            # AK862.3.AQ972.54, 3S with KQJ965.8.KJ73.J2; pass with
+            # AK432.QT.AK9.T85 and KJ953.A9.K.AT972). Try with 5 losers, or
+            # 6 with a small singleton / void and six trumps or 14+ HCP; game
+            # with 5 losers and 16+. BIQ_RAISE_TRY_LTC.
+            direct = (sum(1 for b_ in state.my_bids if not b_.is_pass) == 1
+                      and sum(1 for b_ in state.partner_bids if not b_.is_pass) == 1
+                      and not state.suit_bid_by_opps)
+            if (RAISE_TRY_LTC and op_suit in (Suit.HEARTS, Suit.SPADES)
+                    and e.hcp < 18 and direct):
+                small1 = any(e.suit_lengths.get(x, 0) == 0
+                             or (e.suit_lengths.get(x, 0) == 1 and e.suit_hcp.get(x, 0) == 0)
+                             for x in (Suit.CLUBS, Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES)
+                             if x != op_suit)
+                if e.losers <= 5 and e.hcp >= 16:
+                    return bid(4, op_suit, why=f"To-play game: {e.losers} losers, {e.hcp} HCP")
+                if not (e.losers <= 5 or (e.losers == 6 and small1
+                                          and (e.suit_lengths.get(op_suit, 0) >= 6
+                                               or e.hcp >= 14))):
+                    return passb(why=f"Pass the single raise: {e.losers} losers")
+            elif e.hcp <= 14:
                 return passb()
-            if 15 <= e.hcp <= 17:
+            if e.hcp <= 17:
                 # Minor-suit opener with balanced shape: prefer 2NT
                 # (descriptive 15-17 balanced) over 3-of-minor (which
                 # commits to a minor-suit partial that often goes
@@ -10458,6 +11006,21 @@ def _opener_suit_rebid(state, e, op, p_last, system) -> Bid:
                           or p_last.level == last_opp.level + 1 and _BID_RANK[op_suit] <= _BID_RANK[last_opp.suit]))
                 if (state.opp_overcalled and cheap) or _partner_is_passed_hand(state):
                     return passb(why=f"Pass partner's competitive 3{op_suit.to_char()} ({e.hcp} HCP)")
+            # Q-Plus accepts a major raise to three by losers: five or fewer,
+            # or six when they stayed out (P-1S-3S pass with AK54.T875.AQ6.J3,
+            # 1H-3H-(X) pass with K62.AKT74.4.KJ65; 4C with AQJT9.K4.98.AK87).
+            # BIQ_LIMIT_ACCEPT_LTC.
+            p_first = next((b_ for b_ in state.partner_bids if not b_.is_pass), None)
+            via_1nt = (p_first is not None and p_first.level == 1
+                       and p_first.suit == Suit.NOTRUMP)
+            # Not after partner's 1NT answer (1S-1NT-2S-3S): biq's own invite
+            # there made 4M / 3NT on the curve (-40 / 6 boards with the gate).
+            if LIMIT_ACCEPT_LTC and op_suit in (Suit.HEARTS, Suit.SPADES) and not via_1nt:
+                contested = any(s_ not in (state.seat, state.seat.partner()) and not b_.is_pass
+                                for s_, b_ in state.bids)
+                if e.losers <= 5 or (e.losers == 6 and not contested):
+                    return bid(4, op_suit, why=f"Accept the raise: {e.losers} losers ({e.hcp} HCP)")
+                return passb(why=f"Decline the raise: {e.losers} losers")
             if e.hcp >= 14:
                 return bid(4, op_suit, why="Accept limit raise (14+ HCP)")
             # Shortness is worth tricks opposite a fit (run 5 RANDOM-061:
@@ -10951,6 +11514,26 @@ def _opener_suit_rebid(state, e, op, p_last, system) -> Bid:
                          and _BID_RANK[p_last.suit] < _BID_RANK[pa_nb[0].suit]
                          and p_last.suit not in state.suit_bid_by_me))):
             return passb(why=f"Pass partner's 2{p_last.suit.to_char()} sign-off")
+        # 1M-1NT-2x-2y: partner's new suit after the 1NT answer is a sign-off
+        # (Q-Plus passed 1S-1NT-2C-2D with T7642.T4.A4.AK32; biq rebid 2S).
+        if (OPENER_21_REBID and len(mine_nb) == 2 and len(pa_nb) == 2
+                and pa_nb[0].level == 1 and pa_nb[0].suit == Suit.NOTRUMP
+                and p_last.suit not in state.suit_bid_by_me and e.hcp <= 16
+                and e.suit_lengths[op_suit] <= 5):
+            return passb(why=f"Pass partner's 2{p_last.suit.to_char()} after the 1NT answer")
+        # The uncontested 2/1 itself: Q-Plus's opener raises with four
+        # (5431 / 5422, 3 of partner's minor) and bids 2NT with 5-3-3-2
+        # (AQ863.AK2.T98.Q4 1S-2C 2NT; K52.KJT53.KT8.K7 1H-2D 2NT); biq
+        # rebid the five-card major. BIQ_OPENER_21_REBID.
+        if (OPENER_21_REBID and len(mine_nb) == 1 and len(pa_nb) == 1
+                and not state.suit_bid_by_opps and op_suit in (Suit.HEARTS, Suit.SPADES)
+                and e.suit_lengths[op_suit] == 5):
+            if e.suit_lengths.get(p_last.suit, 0) >= 4 and p_last.suit in (Suit.CLUBS, Suit.DIAMONDS):
+                return bid(3, p_last.suit, why=f"Raise partner's 2/1 {p_last.suit.to_char()}: four trumps")
+            if p_last.suit == Suit.HEARTS and e.suit_lengths.get(Suit.HEARTS, 0) >= 3:
+                return bid(3, Suit.HEARTS, why="Raise partner's 2/1 H: three trumps")
+            if e.is_balanced and _is_legal_bid(bid(2, Suit.NOTRUMP), state):
+                return bid(2, Suit.NOTRUMP, why=f"2NT: 5-3-3-2 after the 2/1 ({e.hcp} HCP)")
         # Second suit at the 2-level — legal only when it ranks
         # both BELOW op_suit and ABOVE partner's last bid.
         if (e.second_suit is not None
@@ -11149,6 +11732,67 @@ def _prec_1c_resp2(state, e: HandEval) -> Optional[Bid]:
     return ok(bid(2, Suit.NOTRUMP, why=f"{tag}: no fit, waiting"))
 
 
+def _prec_1c1d_resp2(state, e: HandEval) -> Optional[Bid]:
+    """Precision 1C-1D-2C / 2D, nobody else bidding: Q-Plus answers opener's
+    natural minor (biq passed with 4-5 HCP or jumped to 3NT with 6-8 off the
+    learned net). Over 2D: four spades 2S, four hearts 2H, else 2NT balanced
+    (KJ93.932.J53.765 2S, 75.QT96.86.AT742 2H, Q42.72.Q982.KT42 2NT); over 2C:
+    a five-card major at two, else 2D waiting (52.K9652.JT52.J7 2H,
+    9874.KJ32.T9754.- 2D). Pass with 3 HCP or less, or a six-card minor and
+    a singleton in opener's suit (J642.85.4.KJ9875). BIQ_P1C1D_CONT."""
+    op = state.opening_bid
+    if (not P1C1D_CONT or op is None or op.level != 1 or op.suit != Suit.CLUBS
+            or state.opener_seat != state.seat.partner()
+            or len(state.my_bids) != 1 or len(state.partner_bids) != 2
+            or any(not b.is_pass for b in list(state.rho_bids) + list(state.lho_bids))):
+        return None
+    a, r = state.my_bids[0], state.partner_bids[1]
+    if not (a.level == 1 and a.suit == Suit.DIAMONDS):
+        return None
+    L = e.suit_lengths
+    # 1C-1D-1M is forcing too: four trumps raise (2M, 3M with 7), four
+    # spades over 1H bid them, a six-card suit from 5 HCP at two, else 1NT
+    # with 6 or less (98.K8643.96.T843 2H, J8.T8653.852.964 1NT,
+    # T954.843.J.JT542 1S; biq passed or the learned net bid 4M).
+    if (r.level == 1 and r.suit in (Suit.HEARTS, Suit.SPADES) and not r.alert
+            and not r.is_double and not r.is_redouble):
+        tag = f"Precision 1C-1D-1{r.suit.to_char()}"
+        if L.get(r.suit, 0) >= 4:
+            return bid(3 if e.hcp >= 7 else 2, r.suit, why=f"{tag}: four-card support")
+        if r.suit == Suit.HEARTS and L.get(Suit.SPADES, 0) >= 4:
+            return bid(1, Suit.SPADES, why=f"{tag}: four spades")
+        for x in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS):
+            if x != r.suit and L.get(x, 0) >= 6 and e.hcp >= 5:
+                c = bid(2, x, why=f"{tag}: six-card {x.to_char()}")
+                if _is_legal_bid(c, state):
+                    return c
+        # Q-Plus's 1NT with nothing (J8.T8653.852.964) lost -45 / 4 on the judge:
+        # biq's own opener drives to game over it. Keep biq's pass.
+        return None
+    if (r.is_pass or r.is_double or r.is_redouble or r.level != 2
+            or r.suit not in (Suit.CLUBS, Suit.DIAMONDS) or r.alert):
+        return None
+    if e.hcp <= 3:
+        return passb(why=f"Precision 1C-1D-2{r.suit.to_char()}: nothing to add")
+    if L.get(r.suit, 0) <= 1 and any(L.get(m, 0) >= 6 for m in (Suit.CLUBS, Suit.DIAMONDS)):
+        return passb(why=f"Precision 1C-1D-2{r.suit.to_char()}: misfit, long minor")
+    tag = f"Precision 1C-1D-2{r.suit.to_char()}"
+    if (L.get(r.suit, 0) >= 4 and e.hcp <= 5
+            and not any(L.get(m, 0) >= 5 for m in (Suit.HEARTS, Suit.SPADES))):
+        return passb(why=f"{tag}: support, nothing else (T93.K5.J87.T9862)")
+    if r.suit == Suit.DIAMONDS:
+        for m in (Suit.SPADES, Suit.HEARTS):
+            if L.get(m, 0) >= 4:
+                return bid(2, m, why=f"{tag}: four {m.to_char()}")
+        if e.is_balanced or e.is_semi_balanced:
+            return bid(2, Suit.NOTRUMP, why=f"{tag}: balanced, no major")
+        return None
+    for m in (Suit.SPADES, Suit.HEARTS):
+        if L.get(m, 0) >= 5:
+            return bid(2, m, why=f"{tag}: five {m.to_char()}")
+    return bid(2, Suit.DIAMONDS, why=f"{tag}: waiting")
+
+
 def _responder_rebid(state, e: HandEval, system) -> Bid:
     if not state.partner_bids or len(state.partner_bids) < 2:
         # Opener has only made one bid — we should still be in our first
@@ -11223,6 +11867,10 @@ def _responder_rebid(state, e: HandEval, system) -> Bid:
         r = _prec_1c_resp2(state, e)
         if r is not None:
             return r
+    if _strong_club(system):
+        r = _prec_1c1d_resp2(state, e)
+        if r is not None:
+            return r
 
     # Kokish 2♠ relay: after Precision 1♣-1♦-2♥ with Kokish in force,
     # responder MUST bid 2♠ regardless of own hand. Opener's next bid
@@ -11262,7 +11910,10 @@ def _responder_rebid(state, e: HandEval, system) -> Bid:
             if e.hcp >= 15:
                 return bid(4, Suit.NOTRUMP, alert=True,
                            why=f"RKC after super-accept ({e.hcp} HCP)")
-            if e.hcp >= 4:
+            # Q-Plus passes the super-accept (or a competitive 3M after
+            # their bid) with 4-7: KJT84.962.94.875 1NT-2H-3S, J8752.A2.842.954
+            # 1NT-2H-(3D)-3S (10 of 10 records). BIQ_SUPERACC_8.
+            if e.hcp >= (8 if SUPERACC_8 and mlen <= 5 else 4):
                 return bid(4, major, why=f"4{major.to_char()}: game after "
                                          f"super-accept")
             return passb(why="Weak: pass the super-accept")
@@ -11320,6 +11971,13 @@ def _responder_rebid(state, e: HandEval, system) -> Bid:
         # No slam interest — settle in the agreed major's GAME.
         if p_last.suit == trump and p_last.level >= 4:
             return passb(why=f"Jacoby 2NT: accept 4{trump.to_char()} sign-off")
+        # Precision's 1M-2NT is a limit raise (three trumps, 10-13): opener's
+        # 3M is the minimum sign-off; pass with 11 or less (Q-Plus 5 / 5:
+        # Q62.AJ3.Q9873.J6 1S-2NT-3S pass, KQ5.T75.63.AT862 1H-2NT-3H pass).
+        # BIQ_P2NT_LIMIT.
+        if (P2NT_LIMIT and system.has("A-1MA-2NT.support-3-10-13")
+                and p_last.suit == trump and p_last.level == 3 and e.hcp <= 11):
+            return passb(why=f"Limit 2NT: pass opener's 3{trump.to_char()} sign-off ({e.hcp} HCP)")
         return bid(4, trump,
                    why=f"Jacoby 2NT: sign off in 4{trump.to_char()} game")
 
@@ -11908,6 +12566,14 @@ def _generic_responder_rebid(state, e, opener_rebid, system=None):
         # opener has already denied 4+ in either (else they'd have
         # raised), so just bid 3NT directly. Q-Plus's style on
         # seed=400 board 7: 1D-1H-1NT-3NT with 14 HCP 4-4 majors.
+        myM0 = state.my_bids[-1].suit if state.my_bids else None
+        if (RESP_LONG_M and myM0 in (Suit.HEARTS, Suit.SPADES) and len(state.my_bids) == 1
+                and not state.opp_overcalled and e.suit_lengths.get(myM0, 0) >= 7
+                and 9 <= hcp <= 15):
+            cand = bid(4, myM0, why=f"4{myM0.to_char()}: {e.suit_lengths[myM0]}-card suit "
+                                    f"opposite the 1NT rebid")
+            if _is_legal_bid(cand, state):
+                return cand
         if nmf_available and (
                 e.suit_lengths.get(state.my_bids[-1].suit, 0) >= 5
                 and hcp >= 11 + sh
@@ -11925,6 +12591,17 @@ def _generic_responder_rebid(state, e, opener_rebid, system=None):
         # 8 HCP bid 2NT and the auction reached a failing 3NT).
         if hcp == 10 + sh:
             return bid(2, Suit.NOTRUMP, why=f"Invitational raise ({hcp} HCP opposite {rb_lo}-{rb_hi})")
+        # A long major of my own: seven cards and 9+ go to game, six cards and
+        # a weak hand sign off in 2M (Q-Plus 3 / 3 each: QJ98532.KT4.-.QJ5 4S,
+        # QJ8762.J.A984.95 2S over 1x-1S-1NT). BIQ_RESP_LONG_M.
+        myM = state.my_bids[-1].suit if state.my_bids else None
+        if (RESP_LONG_M and myM in (Suit.HEARTS, Suit.SPADES) and len(state.my_bids) == 1
+                and not state.opp_overcalled):
+            Lm = e.suit_lengths.get(myM, 0)
+            if Lm >= 6 and hcp <= 9 + sh:
+                cand = bid(2, myM, why=f"2{myM.to_char()}: {Lm}-card suit, sign-off over 1NT")
+                if _is_legal_bid(cand, state):
+                    return cand
         if hcp <= 9 + sh:
             return passb(why=f"Pass 1NT: {hcp} HCP opposite {rb_lo}-{rb_hi}")
         # 1m-1M-1NT-? scale by HCP — opener showed 12-14 balanced,
@@ -12117,6 +12794,19 @@ def _generic_responder_rebid(state, e, opener_rebid, system=None):
                                f"{e.suit_lengths.get(major, 0)}-card "
                                f"{major.to_char()}, slam zone "
                                f"(combined ≥ 31)")
+            # Q-Plus needs 8 (7 with a singleton) opposite the jump raise and
+            # passes opener's 3M after my own try or in competition below 8
+            # (1D-1S-3S pass with 9872.QJ7.T63.K97, 1D-1S-2S-2NT-3S pass
+            # with A985.985.A5.QT95). BIQ_JUMPRAISE_GATE.
+            if JUMPRAISE_GATE:
+                mine_n = sum(1 for b_ in state.my_bids if not b_.is_pass)
+                pn = [b_ for b_ in state.partner_bids if not b_.is_pass]
+                raised = len(pn) >= 2 and pn[-2].suit == major
+                if mine_n >= 2 and raised:
+                    return passb(why=f"Opener's 3{major.to_char()} declined my try")
+                # Q-Plus also passes the jump raise itself below 8 HCP, but
+                # opposite biq's own jump raise 4M made on all four curve
+                # boards (+0.011): keep biq's 6-HCP game there.
             if hcp >= 6:
                 return bid(4, major,
                            why=f"4{major.to_char()}: game after "
@@ -12690,6 +13380,22 @@ def _generic_responder_rebid(state, e, opener_rebid, system=None):
                 and e.suit_lengths.get(my_suit, 0) <= 6):
             return passb(why=f"Partner placed the contract in "
                              f"{pl.level}{pl.suit.to_char() if pl.suit != Suit.NOTRUMP else 'NT'}")
+        # Q-Plus gives preference to opener's major with three cards before
+        # rebidding its own minor (1S-2C-3H 3S with A75.52.Q4.AJT964), and
+        # after a two-level response it rebids without a jump (1H-2D-3C 3D,
+        # 1D-2C-2D 3NT / 3C; biq 4C / 4D). BIQ_ABANDON_NOJUMP.
+        two_level = (state.my_bids[0].level == 2 and op is not None and op.level == 1
+                     and state.opener_seat == state.seat.partner()
+                     and not state.suit_bid_by_opps)
+        if (ABANDON_NOJUMP and op is not None and op.suit in (Suit.HEARTS, Suit.SPADES)
+                and state.opener_seat == state.seat.partner()
+                and e.suit_lengths.get(op.suit, 0) == 3 and my_suit != op.suit
+                and pl.suit != op.suit and op.suit not in state.suit_bid_by_opps):
+            for lv in (2, 3):
+                cand = bid(lv, op.suit, why=f"Preference: three-card {op.suit.to_char()} "
+                                            f"before my {my_suit.to_char()}")
+                if _is_legal_bid(cand, state):
+                    return cand
         rank = {Suit.CLUBS: 0, Suit.DIAMONDS: 1, Suit.HEARTS: 2,
                 Suit.SPADES: 3, Suit.NOTRUMP: 4}
         lvl = (opener_rebid.level if rank[my_suit] > rank[opener_rebid.suit]
@@ -12708,7 +13414,8 @@ def _generic_responder_rebid(state, e, opener_rebid, system=None):
         # Game values, NT stoppers in every suit the partnership hasn't bid,
         # and 3NT still available: prefer it to a 4-level rebid of my suit.
         ours = set(state.suit_bid_by_me) | set(state.suit_bid_by_partner)
-        if (combined >= 25 and my_suit in (Suit.CLUBS, Suit.DIAMONDS)
+        if (combined >= (23 if ABANDON_NOJUMP and two_level else 25)
+                and my_suit in (Suit.CLUBS, Suit.DIAMONDS)
                 and all(_has_stopper(e, x) for x in
                         (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS)
                         if x not in ours)):
@@ -12722,12 +13429,32 @@ def _generic_responder_rebid(state, e, opener_rebid, system=None):
                                        f"({hcp} HCP)")
             if _is_legal_bid(cand, state):
                 return cand
-        if hcp >= 10 and lvl < 4:
+        if hcp >= 10 and lvl < 4 and not (ABANDON_NOJUMP and two_level):
             lvl += 1                              # invitational+ — push on
         if lvl <= 7:
             return bid(lvl, my_suit,
                        why=f"Rebid {e.suit_lengths[my_suit]}-card "
                            f"{my_suit.to_char()} ({hcp} HCP) — don't abandon it")
+
+    # 1x-1y-2z (z lower than x, uncontested), 6-10: Q-Plus goes back to 2x
+    # with two or more x, even holding one more z, and with 7+ even 2-4
+    # (KJ63.843.Q98.Q75 and K6.Q9532.Q7.JT65 2D over 1D-1S/1H-2C,
+    # K8742.Q3.K9.T753 2H over 1H-1S-2D); it passes with 5+ z or 6 HCP and
+    # four (964.A652.75.Q985). BIQ_FALSE_PREF.
+    pb = state.partner_bids
+    if (FALSE_PREF and len(pb) == 2 and len(state.my_bids) == 1 and 6 <= hcp <= 10
+            and pb[0].level == 1 and pb[0].suit in (Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES)
+            and state.my_bids[0].level == 1 and state.my_bids[0].suit not in (None, Suit.NOTRUMP)
+            and pb[1].level == 2 and pb[1].suit not in (None, Suit.NOTRUMP, pb[0].suit,
+                                                        state.my_bids[0].suit)
+            and _BID_RANK[pb[1].suit] < _BID_RANK[pb[0].suit]
+            and all(b_.is_pass for s_, b_ in state.bids
+                    if s_ not in (state.seat, state.seat.partner()))):
+        x, z = pb[0].suit, pb[1].suit
+        lx, lz = e.suit_lengths[x], e.suit_lengths[z]
+        if lx >= 2 and lz <= 4 and (lx >= lz - 1 or hcp >= 7):
+            return bid(2, x, why=f"Preference to partner's first suit: {lx} {x.to_char()}, "
+                                 f"{lz} {z.to_char()}")
 
     return passb()
 
@@ -12840,13 +13567,31 @@ def _overcall_over_1nt(state, e: HandEval, system) -> Bid:
     # the penalty double — a 6-card suit one-suiter belongs in its suit,
     # not defending 1NT(xx).
     nat_min = 8 if weak_nt else 9
+    # Over their transfer the target suit is theirs (1NT-2D: no "natural" 2H;
+    # Q-Plus passed KJ5.AKQ752.-.T953) and over their Stayman a natural
+    # overcall needs 10+ (Q-Plus passed 865432.Q.Q64.A83, Q4.KJT.K98642.98).
+    # BIQ_OVC_OVER_XFER.
+    their_target = None
+    if OVC_OVER_XFER and nt_responder_acted:
+        rb = next((b_ for s_, b_ in state.bids if s_ == nt_responder and not b_.is_pass), None)
+        if rb is not None and rb.level == 2 and rb.suit == Suit.DIAMONDS:
+            their_target = Suit.HEARTS
+        elif rb is not None and rb.level == 2 and rb.suit == Suit.HEARTS:
+            their_target = Suit.SPADES
+        elif (rb is not None and rb.level == 2 and rb.suit == Suit.CLUBS
+              and sorted(e.suit_lengths.values())[-2] < 5):      # not with a 6-5 two-suiter
+            nat_min = max(nat_min, 10)
     for s in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS):
+        if s == their_target:
+            continue
         # Q-Plus overcalls a six-card major from 8 HCP over the strong NT too
         # (live nt_save boards 26 / 33 / 56: JT7654.Q.763.AJ8, KJT852.7.AT83.87,
         # AT9732.T2.J8.K83 2S; biq passed). BIQ_OVC1NT_8.
         lo = (8 if (OVC1NT_8 and s in (Suit.HEARTS, Suit.SPADES)
                     and (any(e.has_ace.values()) or any(e.has_king.values())))
               else nat_min)       # (J75432.Q7.Q64.QJ, no ace or king: Q-Plus passed)
+        if OVC_OVER_XFER and nt_responder_acted and sorted(e.suit_lengths.values())[-2] < 5:
+            lo = max(lo, nat_min)
         if e.suit_lengths[s] >= 6 and lo <= hcp <= 17:
             return bid(2, s, why=f"Natural 2{s.to_char()} overcall (6+ cards)")
     # SHAPE_ACT: a five-card major in a 5-5 / 6-5 two-suiter competes too.
@@ -12854,6 +13599,8 @@ def _overcall_over_1nt(state, e: HandEval, system) -> Bid:
     # (Q-Plus run board 16).
     if SHAPE_ACT and max(9 - hcp_adjustment, 0) <= hcp <= 16:
         for s in (Suit.SPADES, Suit.HEARTS):
+            if s == their_target:
+                continue
             if (e.suit_lengths[s] == 5
                     and any(e.suit_lengths[x] >= 5 for x in e.suit_lengths
                             if x != s)):
@@ -12978,7 +13725,14 @@ def _overcall_over_weak_two(state, e: HandEval, system) -> Bid:
     # Takeout double — shortness in opener's suit and tolerance for others.
     unbid = [s for s in (Suit.CLUBS, Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES)
              if s != op_suit]
-    if hcp >= 12 and e.suit_lengths.get(op_suit, 0) <= 2:
+    # A doubleton in their major: Q-Plus passes with 3 cards in the other
+    # major (7 / 7 records with 11-14: 95.J54.AKQ76.QJ4 over 2S) and with
+    # 11-12 even holding four (53.K987.AK98.QT9). BIQ_WEAK2_X_SHAPE.
+    om = (Suit.HEARTS if op_suit == Suit.SPADES else Suit.SPADES)
+    x_shape_ok = not (WEAK2_X_SHAPE and op_suit in (Suit.HEARTS, Suit.SPADES)
+                      and e.suit_lengths.get(op_suit, 0) == 2 and hcp <= 14
+                      and (e.suit_lengths.get(om, 0) < 4 or hcp <= 12))
+    if hcp >= 12 and e.suit_lengths.get(op_suit, 0) <= 2 and x_shape_ok:
         if sum(1 for s in unbid if e.suit_lengths.get(s, 0) >= 3) >= 3:
             return double(why="Takeout double of weak 2")
     # Too strong for a simple overcall (18+): double first, bid the suit
@@ -13492,8 +14246,12 @@ def _overcall(state, e: HandEval, system) -> Bid:
             and not state.my_bids):
         return double(why="Strong-balanced takeout X (19+ HCP, plan NT rebid)")
 
-    # 1NT overcall: 15-18 balanced with a stopper in opener's suit.
-    if 15 <= hcp <= 18 and e.is_balanced and _has_stopper(e, op.suit):
+    # 1NT overcall: 15-18 balanced with a stopper in opener's suit. Q-Plus
+    # overcalls 1NT from 16 in the direct seat: with 15 it passed 26 of 43
+    # recorded hands (A8.AK73.Q974.Q73 over 1D), 1NT twice. BIQ_NT_OVC_16.
+    nt_lo = 16 if (NT_OVC_16 and not (len(state.bids) >= 3 and state.bids[-1][1].is_pass
+                                      and state.bids[-2][1].is_pass)) else 15
+    if nt_lo <= hcp <= 18 and e.is_balanced and _has_stopper(e, op.suit):
         return bid(1, Suit.NOTRUMP, why="1NT overcall: 15-18, stopper")
     # A five-card MINOR and no singleton (5-3-3-2, 5-4-2-2) is still a 1NT
     # overcall: the minor is too weak / too costly to show at the 2-level
@@ -13649,7 +14407,11 @@ def _overcall(state, e: HandEval, system) -> Bid:
         # -14 and -11 IMP; Q-Plus passed both).
         theirs_long = any(e.suit_lengths[x] >= 4
                           for x in set(state.suit_bid_by_opps))
-        if all(l >= 3 for l in unbid_lengths) and not theirs_long:
+        # Not a second takeout double with a minimum: after my double and
+        # their raise / new suit Q-Plus passes with 12-13 (8 of 9 records:
+        # AT75.JT94.K9.AJ4 over 1D-X-2NT-P-3C). BIQ_X_TWICE.
+        twice = X_TWICE and hcp <= 13 and any(b_.is_double for b_ in state.my_bids)
+        if all(l >= 3 for l in unbid_lengths) and not theirs_long and not twice:
             return double(why="Takeout double")
 
     # Weak jump overcall: 6-card suit with a respectable holding,
@@ -14034,6 +14796,35 @@ def _overcaller_rebid(state, e: HandEval, system) -> Bid:
             if _is_legal_bid(cand, state):
                 return cand
 
+    # Partner's double of their suit bid at the 2 / 3 level, next hand
+    # passing or redoubling, is competitive: Q-Plus bids a four-card unbid
+    # suit, else rebids a five-card overcall (1C-(1H)-2D-X-XX 2H with
+    # AT5.AJ532.J65.92, (1NT)-P-P-2H-(3C)-X-(XX) 3D with 85.KQ984.AJ65.T4,
+    # (1D)-1S-(2D)-X-(P) 2S). BIQ_OVC_X_ANSWER.
+    if (OVC_X_ANSWER and p_last.is_double and my_suit not in (None, Suit.NOTRUMP)
+            and state.last_non_pass is not None
+            and (state.last_non_pass[0] == state.seat.partner()
+                 or state.last_non_pass[1].is_redouble)):
+        theirs = [b_ for s_, b_ in state.bids
+                  if s_ not in (state.seat, state.seat.partner())
+                  and not (b_.is_pass or b_.is_double or b_.is_redouble)]
+        pbids = [b_ for b_ in state.partner_bids if not b_.is_pass]
+        if (theirs and theirs[-1].suit not in (None, Suit.NOTRUMP)
+                and 2 <= theirs[-1].level <= 3 and len(pbids) == 1):
+            used = ({b_.suit for b_ in theirs} | {my_suit}
+                    | {b_.suit for b_ in state.my_bids if not b_.is_pass})
+            for x in sorted((x for x in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS)
+                             if x not in used and e.suit_lengths.get(x, 0) >= 4),
+                            key=lambda x: (_cheapest_level_over_auction(state, x),
+                                           -e.suit_lengths.get(x, 0))):
+                lv = _cheapest_level_over_auction(state, x)
+                if lv <= 3:
+                    return bid(lv, x, why=f"Partner's competitive X: four-card {x.to_char()}")
+            lv = _cheapest_level_over_auction(state, my_suit)
+            if my_length >= 5 and lv <= 3:
+                return bid(lv, my_suit, why=f"Partner's competitive X: rebid my "
+                                            f"{my_length}-card {my_suit.to_char()}")
+
     # Partner doubled / redoubled — leave it.
     if p_last.is_double or p_last.is_redouble:
         return passb(why="Overcaller rebid — partner's X/XX, pass")
@@ -14048,6 +14839,11 @@ def _overcaller_rebid(state, e: HandEval, system) -> Bid:
         # biq passed → 3H-N for -50; Q-Plus accepted to 4♥-W for
         # +700 NS, costing -13 IMP. Distributional points compensate
         # for low HCP when we have 5-5 shape + a void.
+        if (LIMIT_ACCEPT_LTC and my_suit in (Suit.HEARTS, Suit.SPADES)
+                and p_last.level == 3 and p_last.suit == my_suit):
+            if e.losers <= 5:
+                return bid(4, my_suit, why=f"Accept the raise of my overcall: {e.losers} losers")
+            return passb(why=f"Decline the raise: {e.losers} losers")
         if (my_suit in (Suit.HEARTS, Suit.SPADES)
                 and p_last.level == 3
                 and p_last.level < 5):
@@ -14132,7 +14928,26 @@ def _overcaller_rebid(state, e: HandEval, system) -> Bid:
     # Partner bid a new suit / NT.
     if p_last.suit is not None and p_last.suit != Suit.NOTRUMP:
         # Support partner's suit with 3+ cards + extras.
-        if (e.suit_lengths.get(p_last.suit, 0) >= 3
+        # Not when the raise is no longer legal (it was legalized a level up:
+        # 1D-1NT-X-2D-..-3NT-4D), not over partner's forced answer to my later
+        # double (1C-1D-3C-P-P-X-P-3S: Q-Plus passes with KQ8.A94.KJ843.J7),
+        # and not over partner's runout / preference after my notrump
+        # overcall (1NT-2NT-P-3D: pass with 2.J87.AQJ7.AJ973). BIQ_OVC_RAISE_GATE.
+        mine_nb = [b_ for b_ in state.my_bids if not b_.is_pass]
+        raise_ok = True
+        if OVC_RAISE_GATE:
+            if not _is_legal_bid(bid(p_last.level + 1, p_last.suit), state):
+                raise_ok = False
+            elif len(mine_nb) >= 2 and mine_nb[-1].is_double:
+                if hcp <= 16 and p_last.level == _cheapest_level_over_auction_before(state, p_last):
+                    return passb(why="Overcaller rebid — partner's forced answer to my double: pass")
+                raise_ok = False
+            elif (mine_nb and mine_nb[0].suit == Suit.NOTRUMP
+                  and (mine_nb[0].level == 1
+                       or (state.opening_bid is not None and state.opening_bid.level == 1))
+                  and p_last.level == _cheapest_level_over_auction_before(state, p_last)):
+                raise_ok = False
+        if (raise_ok and e.suit_lengths.get(p_last.suit, 0) >= 3
                 and hcp >= 13
                 and p_last.level < 4):
             return bid(p_last.level + 1, p_last.suit,
@@ -14226,6 +15041,21 @@ def _advance_partner_overcall(state, e: HandEval, system) -> Bid:
         L = e.suit_lengths
         m = Suit.CLUBS if L[Suit.CLUBS] > L[Suit.DIAMONDS] else Suit.DIAMONDS
         cand = bid(5, m, why=f"5{m.to_char()}: my minor for partner's 4NT (both minors)")
+        if _is_legal_bid(cand, state):
+            return cand
+    # My takeout double of their preempt, partner's 5-level suit, a void in
+    # their suit, four of partner's suit and 13+: Q-Plus bids the slam
+    # (-.AKJT643.AT.A942 (3S)-X-(4S)-5C 6C; -.AJT753.AJT8.K86 5H 6H). BIQ_X_SLAM_VOID.
+    if (X_SLAM_VOID and have_already_spoken and p_last.level == 5
+            and p_last.suit not in (None, Suit.NOTRUMP)
+            and all(bb.is_double or bb.is_pass for bb in state.my_bids)
+            and any(bb.is_double for bb in state.my_bids)
+            and state.opening_bid is not None and state.opening_bid.suit not in (None, Suit.NOTRUMP)
+            and state.opening_bid.level >= 3
+            and e.suit_lengths.get(state.opening_bid.suit, 0) == 0
+            and e.suit_lengths.get(p_last.suit, 0) >= 4 and e.hcp >= 13):
+        cand = bid(6, p_last.suit, why=f"6{p_last.suit.to_char()}: void in their suit, "
+                                       f"{e.suit_lengths[p_last.suit]} of partner's suit")
         if _is_legal_bid(cand, state):
             return cand
     if have_already_spoken and is_partner_game_signoff:
@@ -14747,9 +15577,70 @@ def _advance_partner_overcall(state, e: HandEval, system) -> Bid:
             if (state.last_suit_bid
                     and _BID_RANK[opener_suit] <= _BID_RANK[state.last_suit_bid]):
                 cue_level = state.last_level + 1
-            return bid(cue_level, opener_suit, alert=True,
-                       why=f"Unassuming cue-bid: limit raise+ "
-                           f"of {suit.to_char()} (10-12 HCP, 3+ support)")
+            # The level above came out 1 (or 0 after their X) and the sanity
+            # check passed it: 2/1 -22 / 16 calls (Q-Plus 2D over 1D-1S-P with
+            # KQ5.AJT63.T7.962). BIQ_UCB_LEVEL_FIX.
+            if UCB_LEVEL_FIX:
+                cue_level = _cheapest_level_over_auction(state, opener_suit)
+                if cue_level > 3:              # not a cue at the five level (-24 / 2)
+                    cue_level = 0
+            if cue_level:
+                return bid(cue_level, opener_suit, alert=True,
+                           why=f"Unassuming cue-bid: limit raise+ "
+                               f"of {suit.to_char()} (10-12 HCP, 3+ support)")
+        # Four trumps and 6-9 HCP over a one-level major overcall: Q-Plus
+        # jumps to 3M (K976.J6.J97.KJ84 1H-1S-P 3S, QJ76.Q874.Q8.Q94 1D-1H-X
+        # 3H; biq 2M), and with five and a singleton goes to game
+        # (K8653.T.QJ73.Q72 1H-1S-P 4S). BIQ_ADV_JUMP_RAISE.
+        # Also over RHO's new suit (1D-1S-2H: 3S with T962.43.J964.KQJ, 4S with
+        # the heart void JT97.-.J8642.A864; biq raised to 2S or passed, then
+        # retried the stale 2S: live 261019 boards 23 / 44). BIQ_ADV_JR_OVER_BID.
+        rho = state.bids[-1][1] if state.bids else None
+        over_bid = (ADV_JR_OVER_BID and rho is not None and rho.suit is not None
+                    and rho.suit != Suit.NOTRUMP and rho.suit != suit and rho.level == 2)
+        if (ADV_JUMP_RAISE and is_my_first_call and p_last.level == 1
+                and suit in (Suit.HEARTS, Suit.SPADES) and fit >= 4
+                and 6 <= hcp <= 9
+                and rho is not None and (rho.is_pass or over_bid)
+                and not (over_bid and any(s_ == state.seat for s_, _ in state.bids))):   # not after their X (2/1 -29)
+            lv = 4 if (fit >= 5 and (e.singletons + e.voids) >= 1) else 3
+            if over_bid and e.voids >= 1:
+                lv = 4
+            x = bid(lv, suit, why=f"{lv}{suit.to_char()}: preemptive raise of the overcall "
+                                  f"({fit} trumps, {hcp} HCP)")
+            if _is_legal_bid(x, state):
+                return x
+        # Partner's four-level major overcall, their raise to four of theirs:
+        # Q-Plus competes on shape, not points. 5M with 3+ trumps and a
+        # singleton / void in their suit, or 4+ and a doubleton (also 2 trumps,
+        # a void and two five-card suits); 6M with a void, 4+ trumps and 8+ HCP;
+        # else pass (3S-4H-4S: 5H with 4.KQ92.T8643.872 and 96.9875.Q.JT9873,
+        # 6H with -.T982.AT5.KJ8642, pass with Q5.953.K76.QT652).
+        # BIQ_ADV_SAVE_5M.
+        rho_last = state.last_non_pass
+        if (ADV_SAVE_5M and is_my_first_call and p_last.level == 4
+                and suit in (Suit.HEARTS, Suit.SPADES)
+                and rho_last is not None and rho_last[0] == state.seat.next().partner()
+                and not rho_last[1].is_double and not rho_last[1].is_redouble
+                and rho_last[1].suit not in (None, Suit.NOTRUMP, suit)
+                and rho_last[1].level == 4):
+            t = rho_last[1].suit
+            short = e.suit_lengths.get(t, 0)
+            fives = sum(1 for x in (Suit.CLUBS, Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES)
+                        if x not in (t, suit) and e.suit_lengths.get(x, 0) >= 5)
+            if short == 0 and fit >= 4 and hcp >= 8:
+                x = bid(6, suit, why=f"6{suit.to_char()}: void in their {t.to_char()}, "
+                                     f"{fit} trumps ({hcp} HCP)")
+                if _is_legal_bid(x, state):
+                    return x
+            if ((fit >= 3 and short <= 1) or (fit >= 4 and short <= 2)
+                    or (fit == 2 and short == 0 and fives >= 2)):
+                x = bid(5, suit, why=f"5{suit.to_char()} over their 4{t.to_char()}: "
+                                     f"{fit} trumps, {short} {t.to_char()}")
+                if _is_legal_bid(x, state):
+                    return x
+            if fit <= 3 and hcp <= 9:
+                return passb(why=f"Pass their 4{t.to_char()}: {fit} trumps, {short} {t.to_char()}")
         if fit >= 3:
             # Partner overcalled a major at the 3-level (over a preempt):
             # with support and 9+ HCP raise to game. The 3NT advance below
@@ -14763,7 +15654,25 @@ def _advance_partner_overcall(state, e: HandEval, system) -> Bid:
                                         f"{suit.to_char()} overcall to game "
                                         f"({fit} cards, {hcp} HCP)")
             if 6 <= hcp <= 10:
-                return bid(p_last.level + 1, suit, why="Simple raise of overcall")
+                # A "simple" raise to the four level or higher with three
+                # trumps: Q-Plus passes (27 of 36 records: Q842.Q8.T982.Q64
+                # 5S over partner's 4S, JT4.KQT32.J532.J 4S over 3S).
+                # BIQ_OVC_RAISE4.
+                if OVC_RAISE4 and p_last.level + 1 >= 4 and fit <= 3:
+                    return passb(why=f"Pass partner's {p_last.level}{suit.to_char()}: "
+                                     f"three trumps, no raise to the {p_last.level + 1} level")
+                x = bid(p_last.level + 1, suit, why="Simple raise of overcall")
+                # A later turn (after my pass) retried the stale raise; the
+                # sanity check passed it as illegal (live 261019: 19 such
+                # calls). Compete to the three level with four, else pass.
+                # BIQ_ADV_RAISE_STALE.
+                if ADV_RAISE_STALE and not _is_legal_bid(x, state):
+                    lv = _cheapest_level_over_auction(state, suit)
+                    if fit >= 4 and lv <= 3:
+                        return bid(lv, suit, why=f"Compete in partner's overcall suit: "
+                                                 f"{fit} trumps")
+                    return passb(why="Raise of the overcall no longer available: pass")
+                return x
             # Limit raise only applies to 1- and 2-level overcalls. After
             # partner's 3-level overcall (eg, lead-direct 3♦ over a
             # Precision 2♦ three-suiter) a +2 jump lands past game —
