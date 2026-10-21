@@ -14750,68 +14750,19 @@ function main()
         # momentum-exchange impulse: the player (real vehicle physics) is knocked off line + spun
         # via bumpX!, the AI is shoved aside + spun + scrubbed.  The wheels keep spinning with motion.
         if RAM_AI !== nothing && CAR3D && race_go[] && !RAM_STATE[].done && !isempty(ai_poses)
-            isnan(RAM_STATE[].t0) && (RAM_STATE[] = (t0 = cs.t, done = false))
-            if cs.t - RAM_STATE[].t0 >= RAM_AI[4]
-                k = Int(RAM_AI[1]); q = ai_poses[k]; qθ = q[4]; vk = AICARS[k].v
-                rx = q[1] - 4.7*cos(qθ) - RAM_AI[3]*sin(qθ); rz = q[3] - 4.7*sin(qθ) + RAM_AI[3]*cos(qθ)
-                PLAYER_G[] = NaN; GPLW_ON && gplw_teleported!()
-                DriveRT3D.place3d!(cs, rx, rz, qθ; v = vk + RAM_AI[2])
-                h = groundz(rx, rz; acquire = true); isfinite(h) && (cs.zref = Float64(h); cs.y = cs.zref)
-                RAM_STATE[] = (t0 = RAM_STATE[].t0, done = true)
-                println("  [ram] t=", round(cs.t, digits = 2), " player placed 4.7 m behind AI ", k, " (", round(vk*3.6), " km/h), lat ",
-                        RAM_AI[3], " m, closing ", RAM_AI[2], " m/s"); flush(stdout)
-            end
+            ram_ai_step!(cs, ai_poses, ddt, AICARS, PLAYER_G, groundz)
         end
         # CARCOLLIDE-2 S4: AI cars knocked loose run as free Car3D (brakes on) until they settle, then rejoin where they are
+        # LOOPSPLIT-1 cycle 3 S6: a moved function first called MID-race compiles then (loose_cars_step!: 189 ms the first
+        # time a car is knocked loose -- warm_smoke's stall). Their signatures carry main()'s closure types, so
+        # warm_statements.jl cannot list them: compile them here, on a hidden warm-up frame, from the real types. (The first
+        # R's ~300 ms was mostly the replay bookkeeping it does -- Dates.format, the writer task -- now in warm_statements.jl.)
+        if frames == 1
+            precompile(loose_cars_step!, typeof.((cs, ai_poses, ddt, AICARS, AILINE, GPLAI_T, PLAYER_G, aibankP, frames, gplai_field!, groundz, groundz_ai)))
+            precompile(restart_session!, typeof.((cs, cs0, groundz, groundz_phys, AICARS, AILINE, CLINE, DO_QUAL, HOLD_START, FUEL1, FUEL_ON, GPLAI_F, PLAYER_G, REPLAY_NCAR, ai_best, ai_lap_prev, ai_lapt0, burn_lap, fuel_laps, fuel, cd_armed, cd_left, cd_said, cd_t0, flush_ibt!, form_grid!, ibt_samples, launch_done, new_replay_path, phase, player_finpos, player_grid, player_laps, race_go, replay_buf, replay_names, replay_out, replay_saved, replay_t, tele_buf, player_s_prev)))
+        end
         if !isempty(LOOSE_OF) && !REPLAY && !isempty(ai_poses)
-            # S5 probe: JM_RAM_SOLO=1 moves the player 30 m aside once a car is loose -- the spin with no follow-up contact
-            if RAM_SOLO && !RAM_SOLO_DONE[]
-                RAM_SOLO_DONE[] = true; PLAYER_G[] = NaN; GPLW_ON && gplw_teleported!()
-                DriveRT3D.place3d!(cs, cs.x - 30*sin(cs.θ), cs.z + 30*cos(cs.θ), cs.θ; v = 0.0)
-            end
-            for (k, sl) in collect(LOOSE_OF)
-                if k > length(ai_poses) || k > length(AICARS)
-                    delete!(LOOSE_OF, k); continue
-                end
-                pc = LOOSE_CARS[sl]
-                # tumble with the brakes locked until settled; then (the field would snap a car sitting 100-160 deg off its
-                # line back round in half a second) drive it slowly round to the line with the physics AI's controller
-                (lrs, _) = RaceAI.project(AILINE, pc.x, pc.z; hint = AICARS[k].s)
-                lherr = RaceAI.wrapπ(pc.θ - RaceAI.pose_at(AILINE, lrs, 0.0)[4])
-                if !LOOSE_REC[sl] && ((pc.v < 4.0 && abs(DriveRT3D.yawrate3d(pc)) < 0.5) || cs.t - LOOSE_T0[sl] > 4.0)
-                    LOOSE_REC[sl] = true; LOOSE_T0[sl] = cs.t
-                end
-                if LOOSE_REC[sl]
-                    (lthr, lbrk, lst) = RaceAI.controller(AILINE, lrs, 0.0, 0.0, 6.0, pc.x, pc.z, pc.θ, pc.v, DriveRT3D.yawrate3d(pc))
-                    DriveRT3D.step_car3d!(pc, lthr, lbrk, lst, ddt; manual = false, groundz = groundz_ai)
-                else
-                    DriveRT3D.step_car3d!(pc, 0.0, LOOSE_BRAKE, 0.0, ddt; manual = true, groundz = groundz_ai)
-                end
-                LOOSE_DIAG && (frames % 6 == 0) && println("   [loosediag] t ", round(cs.t, digits = 2), " v ", round(pc.v, digits = 2),
-                    " r ", round(DriveRT3D.yawrate3d(pc), digits = 2), " θ ", round(pc.θ, digits = 2), " grounded ", pc.grounded,
-                    " rh ", round.(pc.rh, digits = 3), " heave ", round(pc.heave, digits = 3), " ddt ", round(ddt, digits = 4), " rec ", LOOSE_REC[sl])
-                bk = aibankP(pc)
-                gy = isfinite(pc.y) ? pc.y : groundz(pc.x, pc.z)
-                ai_poses[k] = (pc.x, gy, pc.z, pc.θ, bk[1], bk[2])
-                done = (LOOSE_REC[sl] && ((abs(lherr) < 0.35 && pc.v > 2.0) || cs.t - LOOSE_T0[sl] > 10.0)) || !isfinite(pc.x)
-                if GPLAI_T !== nothing
-                    gc = gplai_field!().cars[k]
-                    (gs, gd, _) = GPLAI.tlocate(GPLAI_T, pc.x, pc.z, 0)
-                    (lo, hi) = GPLAI.corridor(GPLAI_T, gs)
-                    gc.s = gs; gc.d = done ? clamp(gd, lo + 0.5, hi - 0.5) : gd; gc.v = pc.v; gc.dv = 0.0
-                    gc.yaw = pc.θ; gc.yawr = DriveRT3D.yawrate3d(pc); gc.pose = ai_poses[k]; gc.prev = gc.pose
-                    (rs, rl) = RaceAI.project(AILINE, pc.x, pc.z; hint = AICARS[k].s); AICARS[k].s = rs; AICARS[k].lane = rl; AICARS[k].v = pc.v
-                else
-                    (rs, rl) = RaceAI.project(AILINE, pc.x, pc.z; hint = AICARS[k].s)
-                    AICARS[k].s = rs; AICARS[k].lane = clamp(rl, -RaceAI.LANE_MAX, RaceAI.LANE_MAX); AICARS[k].v = pc.v
-                    done && (AICARS[k].spin = RaceAI.wrapπ(pc.θ - RaceAI.pose_at(AILINE, rs, 0.0)[4]))
-                end
-                if done
-                    delete!(LOOSE_OF, k)
-                    println("  [loose] t=", round(cs.t, digits = 2), " AI ", k, " rejoins at ", round(pc.v*3.6), " km/h after ", LOOSE_HITS[sl], " more hits, heading off the line ",
-                            round(rad2deg(RaceAI.wrapπ(pc.θ - RaceAI.pose_at(AILINE, RaceAI.project(AILINE, pc.x, pc.z)[1], 0.0)[4]))), " deg"); flush(stdout)
-                end
-            end
+            loose_cars_step!(cs, ai_poses, ddt, AICARS, AILINE, GPLAI_T, PLAYER_G, aibankP, frames, gplai_field!, groundz, groundz_ai)
         end
         CAR3D && (PLAYER_CDA[] = 1.0)             # E56: default = full drag; the draft below cuts it for next frame's step
         if AIJIT_ON && !REPLAY && !isempty(ai_poses) && GPLAI_T === nothing   # AIJIT-1 (rail field only; GPLAI poses are GPL's own)
