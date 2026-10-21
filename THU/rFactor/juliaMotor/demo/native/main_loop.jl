@@ -1596,3 +1596,85 @@ function gplai_poses!(cs, ddt, ai_hit, AICARS, AILINE, GPLAI_PD, GPLAI_PH, GPLAI
     ai_cooldown_step!(f, AICARS, GPLAI_T, crossed, ent_name, phase, race_done, race_go)   # LOOPSPLIT-1 cycle 2 S2: moved to main_loop.jl
     poses
 end
+
+"""The physics AI field (JM_AI_PHYSICS), one frame: plan, drive and step each AI Car3D, grass and solids, car-car
+contact; returns the field's poses. LOOPSPLIT-1 cycle 4 S2: moved unchanged."""
+function aiphys_poses!(cs, ddt, ai_hit, AICARS, AILINE, AIPHYS, ai_onroad, ai_stuck, groundz_ai, aibankP, groundz)
+    # GC HYBRID: project each physics car onto the line → update the brain → the controller
+    # steers it toward its rail at the planned speed → step the JM 2-D physics.
+    for (i, pc) in enumerate(AIPHYS)
+        # SEAM-1: last frame's arc length as the projection hint -- it keeps the search on this
+        # car's own stretch of rail (a circuit that passes close to itself has two feet to find)
+        # and costs 0.355 us instead of 2.12 (measured); a stale hint falls back to a full sweep.
+        prevs = AICARS[i].s
+        s, lat = RaceAI.project(AILINE, pc.x, pc.z; hint = prevs)
+        AICARS[i].s = s; AICARS[i].lane = lat; AICARS[i].v = pc.v
+        (prevs > AILINE.total*0.7 && s < AILINE.total*0.3) && (AICARS[i].lap += 1)
+        TRACE_DS && ds_note!(s - prevs, pc.v, ddt, AILINE.total)
+        # recovery: a stalled AI, or one that's run WAY off the racing line (off track at a
+        # corner), is snapped back onto the line — so an AI can never drive off and vanish.
+        # recover BEFORE it can climb a dune/leave the world: at the road-edge (not 14 m out),
+        # and hard-recover if it's off the terrain HAT entirely (the "mid-air on the dune" case).
+        offhat = !JuliaMotor.hat3d(TERRAIN, pc.x, pc.z; ref=Inf)[3]
+        railθ = RaceAI.pose_at(AILINE, s, 0.0)[4]
+        spun = abs(atan(sin(pc.θ - railθ), cos(pc.θ - railθ))) > SPIN_LIM   # heading way off the rail = spun out
+        off = pc.v < 1.4 || abs(lat) > 9.0 || offhat || spun
+        if off
+            ai_stuck[i] += 1
+            lim = (offhat || abs(lat) > 12.0 || spun) ? 6 : (abs(lat) > 9.0 ? 18 : 90)   # snap back fast when truly off / spun
+            if ai_stuck[i] > lim
+                rp = RaceAI.pose_at(AILINE, s + 10.0, 0.0); AIplace!(pc, rp[1], rp[3], rp[4]; v = max(8.0, pc.v*0.6)); ai_stuck[i] = 0
+            end
+        else; ai_stuck[i] = 0; end
+    end
+    # physics handles the pace (engine + grip); no per-frame rubber-band (rel=Inf), no corner-speed
+    # scaling — the FIXED tune is the engine power (AI_POWER).  Conservative grip cap (amax).
+    # The HUMAN is fed in as a racecraft object so the AI tailgate-then-pass the player too
+    # (strategic: wait for a straight, own the corner — see RaceAI.plan!).
+    ppr = RaceAI.project(AILINE, cs.x, cs.z)
+    vts = RaceAI.plan!(AICARS, AILINE; scale = 1.0, amax = AI_AMAX, dt = ddt,
+                       player = (ppr[1], ppr[2], cs.v))
+    for (i, pc) in enumerate(AIPHYS)
+        thr, brk, st = RaceAI.controller(AILINE, AICARS[i].s, AICARS[i].lane, AICARS[i].tlane, vts[i],
+                                         pc.x, pc.z, pc.θ, pc.v, AIyaw(pc); power = AI_POWER)
+        _tas = time(); DriveRT3D.step_car3d!(pc, thr, brk, st, ddt; manual=false, groundz=groundz_ai); DS_SIM[2] += time() - _tas
+        # GRASS by the rendered road half-width (|lateral|>ROAD_HALFW), the SAME yardstick as the
+        # player — NOT TRKSURF.on_track, whose 9 m half-width is far wider than the visible road, so
+        # AI ran the verge near the finish straight penalty-free + drafting (PO saw them do exactly that).
+        hs = JuliaMotor.hat(TRKSURF, pc.x, pc.z)
+        ai_onroad[i] = !(hs.found && abs(hs.lateral) > ROAD_HALFW)
+        if !ai_onroad[i] && pc.v > 2.5                        # AI off the racing surface → grass penalty
+            AIbump!(pc, -GRASS_DRAG*pc.v*cos(pc.θ)*ddt, -GRASS_DRAG*pc.v*sin(pc.θ)*ddt, (2*rand()-1)*GRASS_SLIP*ddt)
+        end
+        ho = solid_hit(pc.x, pc.z, pc.θ, pc.v)               # E15: AI vs solid objects (no driving through bales)
+        ho !== nothing && AIbump!(pc, ho[1], ho[2], ho[3], ho[4], ho[5], ho[6])
+    end
+    # slipstream: each AI tucked behind the player or another AI on a straight gets a forward tow
+    let plead = (cs.x, cs.z, cs.θ, cs.v)
+        for (i, pc) in enumerate(AIPHYS)
+            ai_onroad[i] || continue                         # no slingshot while off the road (you crawl on grass)
+            leads = NTuple{4,Float64}[plead]
+            for j in 1:length(AIPHYS); j != i && push!(leads, (AIPHYS[j].x, AIPHYS[j].z, AIPHYS[j].θ, AIPHYS[j].v)); end
+            tw = draft_tow(pc.x, pc.z, pc.θ, pc.v, leads)
+            tw > 0.0 && AIbump!(pc, tw*cos(pc.θ)*ddt, tw*sin(pc.θ)*ddt, 0.0)
+        end
+    end
+    # AI↔AI collisions (physics): pairwise overlap + closing → PLANAR momentum exchange only.
+    # E55 (PO-authorised "ignore wheelspin in AI collisions"): the old response injected a
+    # wheel-climb LAUNCH (upward heave) + ROLL into each car's 3-D body, so AI flipped, cartwheeled
+    # and — the violent impulse diverging the MTK integrator — hyperspaced off-track (E38).  AI now
+    # bump like billiard balls: push apart along the contact normal + a mild yaw nudge, NO vertical
+    # launch and NO roll, so the field stays flat and nose-to-tail.  Impulse capped (no hyperspace).
+    for a in 1:length(AIPHYS)-1, b in a+1:length(AIPHYS)
+        pa = AIPHYS[a]; pb = AIPHYS[b]
+        dx = pb.x-pa.x; dz = pb.z-pa.z; d = hypot(dx,dz)
+        (d < 1e-3 || d > contact_d(dx, dz, d, pa.θ, pb.θ)) && continue   # oriented contact
+        nx = dx/d; nz = dz/d
+        vrel = (pa.v*cos(pa.θ)-pb.v*cos(pb.θ))*nx + (pa.v*sin(pa.θ)-pb.v*sin(pb.θ))*nz
+        vrel <= 0.2 && continue
+        imp = clamp(1.45*vrel*280.0/560, 0.0, 4.0)   # (1+e)·vrel·reduced-mass / m, capped at 4 m/s
+        AIbump!(pa, -imp*nx, -imp*nz, clamp(-imp*0.04, -0.6, 0.6))   # planar push + mild yaw; no dvy/dpp
+        AIbump!(pb,  imp*nx,  imp*nz, clamp( imp*0.04, -0.6, 0.6))
+    end
+    [(b=aibankP(pc); (pc.x, isfinite(pc.y) ? pc.y : groundz(pc.x, pc.z), pc.z, pc.θ, b[1], b[2])) for pc in AIPHYS]   # pc.y = 3-D height → AI visibly jump/heave; pitch/roll → list + roll
+end

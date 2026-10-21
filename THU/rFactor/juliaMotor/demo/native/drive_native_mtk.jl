@@ -12182,7 +12182,29 @@ function main()
     if get(ENV, "JM_FREECHECK", "0") != "0"
         # positive control: a function filed under main_loop.jl that names a global nobody defines MUST be reported
         get(ENV, "JM_FREECHECK_CONTROL", "0") != "0" &&
-            include_string(Main, "function _freecheck_control(x)\n    x + _freecheck_no_such_name\nend\n", joinpath(@__DIR__, "main_loop.jl"))
+            include_string(Main, "function _freecheck_control(x)\n    [y + _freecheck_no_such_name for y in x]\nend\n", joinpath(@__DIR__, "main_loop.jl"))
+        # the free names of a method AND of every closure it builds (comprehension and generator bodies, do-blocks, local
+        # functions): those are separate methods of '#'-named closure types, reached from the lowered code (2026-10-20: a
+        # comprehension in aiphys_poses! named the aibankP closure and the first scan did not look inside it)
+        function _freenames(m::Method, miss::Set{Symbol}, seen::Set{Any})
+            m in seen && return miss; push!(seen, m)
+            ci = try; Base.uncompressed_ast(m); catch; return miss; end
+            _walk(x) = if x isa GlobalRef
+                    if !isdefined(x.mod, x.name); push!(miss, x.name)
+                    else
+                        v = getfield(x.mod, x.name)
+                        if v isa DataType && v <: Function && startswith(String(x.name), "#")
+                            for mm in Base._methods_by_ftype(Tuple{v, Vararg{Any}}, -1, Base.get_world_counter())
+                                _freenames(mm.method, miss, seen)
+                            end
+                        end
+                    end
+                elseif x isa Expr; foreach(_walk, x.args)
+                elseif x isa Core.ReturnNode && isdefined(x, :val); _walk(x.val)
+                end
+            foreach(_walk, ci.code)
+            miss
+        end
         bad = Base.invokelatest() do        # the latest world: the control function above is newer than main()
             nb = 0
             for f in (getfield(Main, n) for n in names(Main; all = true) if isdefined(Main, n))
@@ -12190,19 +12212,28 @@ function main()
                 for m in methods(f)
                     file = String(m.file)
                     (endswith(file, "main_loop.jl") || endswith(file, "main_diag.jl")) || continue
-                    ci = try; Base.uncompressed_ast(m); catch; nothing; end
-                    ci === nothing && continue
-                    miss = Set{Symbol}()
-                    for st in ci.code
-                        _walk(x) = x isa GlobalRef ? (isdefined(x.mod, x.name) || push!(miss, x.name)) :
-                                   x isa Expr ? foreach(_walk, x.args) : nothing
-                        _walk(st)
-                    end
+                    miss = setdiff(_freenames(m, Set{Symbol}(), Set{Any}()), (:Profile,))   # Profile: `@eval Main using Profile` at run time
                     isempty(miss) || (nb += 1; println("  [freecheck] ", m.name, " (", basename(file), ":", m.line, "): undefined ", join(sort(collect(miss)), ", ")))
                 end
             end
             nb
         end
+        # main()'s own locals that SHADOW a global of the same name (an assignment anywhere in main(), even inside an `if`,
+        # makes the name local for the whole function: the JM_SWEEP `solid_hit = Dict(...)` broke every call of the global
+        # solid_hit() in main(); 2026-10-20). Listed for review, not failed: many are deliberate.
+        shadow = Base.invokelatest() do
+            sh = Symbol[]
+            for m in methods(main)
+                ci = try; Base.uncompressed_ast(m); catch; nothing; end
+                ci === nothing && continue
+                for nm in unique(ci.slotnames)
+                    st = String(nm); (isempty(st) || startswith(st, "#")) && continue
+                    isdefined(Main, nm) && (v = getfield(Main, nm); v isa Function || v isa Type || isconst(Main, nm)) && push!(sh, nm)
+                end
+            end
+            sh
+        end
+        println("  [freecheck] main() locals shadowing a global function/const: ", isempty(shadow) ? "none" : join(sort(shadow), ", "))
         println("  [freecheck] ", bad == 0 ? "OK: every moved function's globals exist" : "$(bad) function(s) name undefined globals")
         flush(stdout); exit(bad == 0 ? 0 : 1)
     end
@@ -12673,7 +12704,9 @@ function main()
         end
         kept_solid = [(k <= length(SOLIDNAMES) ? SOLIDNAMES[k] : "solid$k", SOLIDS[k][1], SOLIDS[k][2], olat(SOLIDS[k][1], SOLIDS[k][2]),
                        0.0, SOLIDS[k][3], k) for k in eachindex(SOLIDS) if SOLIDS[k][3] > 0]
-        solid_hit = Dict(k => (use_tarmac ? solid_on_tarmac(k) : abs(lat) < ROAD_HALFW) for (nm,ox,oz,lat,dy,r,k) in kept_solid)
+        # 2026-10-20: was named `solid_hit` -- an assignment at main() scope (an `if` makes no scope) turned the GLOBAL
+        # solid_hit() into an undefined LOCAL for all of main(), so JM_AI_PHYSICS crashed at its first solid check (UndefVarError).
+        solid_onroad = Dict(k => (use_tarmac ? solid_on_tarmac(k) : abs(lat) < ROAD_HALFW) for (nm,ox,oz,lat,dy,r,k) in kept_solid)
         n_inert = count(((nm,ox,oz,oy,kind,issolid),) -> issolid && live_r(ox,oz) <= 0, OBJINSTS)
         println("  census frame: ", use_tarmac ? "tarmac (ROADHAT + on_track)" : "corridor |lat| < ROAD_HALFW-1",
                 "  live solids=", length(kept_solid), "  inert by clearance=", n_inert)
@@ -12692,7 +12725,7 @@ function main()
             (top[3] && prevtop[3] && abs(top[1]-prevtop[1]) > 3.0) && push!(flags, "WALL/CLIFF Δh=$(round(top[1]-prevtop[1],digits=1))m")
             (!hr.found || abs(hr.lateral) > ROAD_HALFW) && push!(flags, "FALSE-GRASS lat=$(hr.found ? round(hr.lateral,digits=1) : "MISS")")
             sobs = ["$nm(lat=$lat,r=$(round(r,digits=1)))" for (nm,ox,oz,lat,dy,r,k) in kept_solid
-                    if hypot(ox-px, oz-pz) < ROAD_HALFW + r + 8.0 && solid_hit[k]]
+                    if hypot(ox-px, oz-pz) < ROAD_HALFW + r + 8.0 && solid_onroad[k]]
             mobs = ["$nm(lat=$lat,dy=$dy)" for (nm,ox,oz,lat,dy) in kept_mesh if hypot(ox-px, oz-pz) < ROAD_HALFW && dy < OBJ_MAX_DY && (use_tarmac ? mesh_on_tarmac(nm, ox, oz) : abs(lat) < BLOCK_LAT)]
             bobs = ["$nm(lat=$lat,dy=$dy)" for (nm,ox,oz,lat,dy) in kept_bb   if hypot(ox-px, oz-pz) < ROAD_HALFW && dy < OBJ_MAX_DY && (use_tarmac ? tarmac_at(ox, oz) : abs(lat) < BLOCK_LAT)]
             isempty(sobs) || push!(flags, "SOLID-ON-ROAD(collidable!): " * join(unique(sobs)[1:min(end,4)], ","))
@@ -14615,83 +14648,7 @@ function main()
             GPLAI_T !== nothing ? NTuple{6,Float64}[c.pose for c in gplai_field!().cars] :
                          [(p=RaceAI.pose_at(AILINE, c.s, c.lane); b=aibankK(p); ai_ground((p[1],p[2],p[3],p[4],b[1],b[2]))) for c in AICARS]
         elseif AI_PHYSICS
-            # GC HYBRID: project each physics car onto the line → update the brain → the controller
-            # steers it toward its rail at the planned speed → step the JM 2-D physics.
-            for (i, pc) in enumerate(AIPHYS)
-                # SEAM-1: last frame's arc length as the projection hint -- it keeps the search on this
-                # car's own stretch of rail (a circuit that passes close to itself has two feet to find)
-                # and costs 0.355 us instead of 2.12 (measured); a stale hint falls back to a full sweep.
-                prevs = AICARS[i].s
-                s, lat = RaceAI.project(AILINE, pc.x, pc.z; hint = prevs)
-                AICARS[i].s = s; AICARS[i].lane = lat; AICARS[i].v = pc.v
-                (prevs > AILINE.total*0.7 && s < AILINE.total*0.3) && (AICARS[i].lap += 1)
-                TRACE_DS && ds_note!(s - prevs, pc.v, ddt, AILINE.total)
-                # recovery: a stalled AI, or one that's run WAY off the racing line (off track at a
-                # corner), is snapped back onto the line — so an AI can never drive off and vanish.
-                # recover BEFORE it can climb a dune/leave the world: at the road-edge (not 14 m out),
-                # and hard-recover if it's off the terrain HAT entirely (the "mid-air on the dune" case).
-                offhat = !JuliaMotor.hat3d(TERRAIN, pc.x, pc.z; ref=Inf)[3]
-                railθ = RaceAI.pose_at(AILINE, s, 0.0)[4]
-                spun = abs(atan(sin(pc.θ - railθ), cos(pc.θ - railθ))) > SPIN_LIM   # heading way off the rail = spun out
-                off = pc.v < 1.4 || abs(lat) > 9.0 || offhat || spun
-                if off
-                    ai_stuck[i] += 1
-                    lim = (offhat || abs(lat) > 12.0 || spun) ? 6 : (abs(lat) > 9.0 ? 18 : 90)   # snap back fast when truly off / spun
-                    if ai_stuck[i] > lim
-                        rp = RaceAI.pose_at(AILINE, s + 10.0, 0.0); AIplace!(pc, rp[1], rp[3], rp[4]; v = max(8.0, pc.v*0.6)); ai_stuck[i] = 0
-                    end
-                else; ai_stuck[i] = 0; end
-            end
-            # physics handles the pace (engine + grip); no per-frame rubber-band (rel=Inf), no corner-speed
-            # scaling — the FIXED tune is the engine power (AI_POWER).  Conservative grip cap (amax).
-            # The HUMAN is fed in as a racecraft object so the AI tailgate-then-pass the player too
-            # (strategic: wait for a straight, own the corner — see RaceAI.plan!).
-            ppr = RaceAI.project(AILINE, cs.x, cs.z)
-            vts = RaceAI.plan!(AICARS, AILINE; scale = 1.0, amax = AI_AMAX, dt = ddt,
-                               player = (ppr[1], ppr[2], cs.v))
-            for (i, pc) in enumerate(AIPHYS)
-                thr, brk, st = RaceAI.controller(AILINE, AICARS[i].s, AICARS[i].lane, AICARS[i].tlane, vts[i],
-                                                 pc.x, pc.z, pc.θ, pc.v, AIyaw(pc); power = AI_POWER)
-                _tas = time(); DriveRT3D.step_car3d!(pc, thr, brk, st, ddt; manual=false, groundz=groundz_ai); DS_SIM[2] += time() - _tas
-                # GRASS by the rendered road half-width (|lateral|>ROAD_HALFW), the SAME yardstick as the
-                # player — NOT TRKSURF.on_track, whose 9 m half-width is far wider than the visible road, so
-                # AI ran the verge near the finish straight penalty-free + drafting (PO saw them do exactly that).
-                hs = JuliaMotor.hat(TRKSURF, pc.x, pc.z)
-                ai_onroad[i] = !(hs.found && abs(hs.lateral) > ROAD_HALFW)
-                if !ai_onroad[i] && pc.v > 2.5                        # AI off the racing surface → grass penalty
-                    AIbump!(pc, -GRASS_DRAG*pc.v*cos(pc.θ)*ddt, -GRASS_DRAG*pc.v*sin(pc.θ)*ddt, (2*rand()-1)*GRASS_SLIP*ddt)
-                end
-                ho = solid_hit(pc.x, pc.z, pc.θ, pc.v)               # E15: AI vs solid objects (no driving through bales)
-                ho !== nothing && AIbump!(pc, ho[1], ho[2], ho[3], ho[4], ho[5], ho[6])
-            end
-            # slipstream: each AI tucked behind the player or another AI on a straight gets a forward tow
-            let plead = (cs.x, cs.z, cs.θ, cs.v)
-                for (i, pc) in enumerate(AIPHYS)
-                    ai_onroad[i] || continue                         # no slingshot while off the road (you crawl on grass)
-                    leads = NTuple{4,Float64}[plead]
-                    for j in 1:length(AIPHYS); j != i && push!(leads, (AIPHYS[j].x, AIPHYS[j].z, AIPHYS[j].θ, AIPHYS[j].v)); end
-                    tw = draft_tow(pc.x, pc.z, pc.θ, pc.v, leads)
-                    tw > 0.0 && AIbump!(pc, tw*cos(pc.θ)*ddt, tw*sin(pc.θ)*ddt, 0.0)
-                end
-            end
-            # AI↔AI collisions (physics): pairwise overlap + closing → PLANAR momentum exchange only.
-            # E55 (PO-authorised "ignore wheelspin in AI collisions"): the old response injected a
-            # wheel-climb LAUNCH (upward heave) + ROLL into each car's 3-D body, so AI flipped, cartwheeled
-            # and — the violent impulse diverging the MTK integrator — hyperspaced off-track (E38).  AI now
-            # bump like billiard balls: push apart along the contact normal + a mild yaw nudge, NO vertical
-            # launch and NO roll, so the field stays flat and nose-to-tail.  Impulse capped (no hyperspace).
-            for a in 1:length(AIPHYS)-1, b in a+1:length(AIPHYS)
-                pa = AIPHYS[a]; pb = AIPHYS[b]
-                dx = pb.x-pa.x; dz = pb.z-pa.z; d = hypot(dx,dz)
-                (d < 1e-3 || d > contact_d(dx, dz, d, pa.θ, pb.θ)) && continue   # oriented contact
-                nx = dx/d; nz = dz/d
-                vrel = (pa.v*cos(pa.θ)-pb.v*cos(pb.θ))*nx + (pa.v*sin(pa.θ)-pb.v*sin(pb.θ))*nz
-                vrel <= 0.2 && continue
-                imp = clamp(1.45*vrel*280.0/560, 0.0, 4.0)   # (1+e)·vrel·reduced-mass / m, capped at 4 m/s
-                AIbump!(pa, -imp*nx, -imp*nz, clamp(-imp*0.04, -0.6, 0.6))   # planar push + mild yaw; no dvy/dpp
-                AIbump!(pb,  imp*nx,  imp*nz, clamp( imp*0.04, -0.6, 0.6))
-            end
-            [(b=aibankP(pc); (pc.x, isfinite(pc.y) ? pc.y : groundz(pc.x, pc.z), pc.z, pc.θ, b[1], b[2])) for pc in AIPHYS]   # pc.y = 3-D height → AI visibly jump/heave; pitch/roll → list + roll
+            aiphys_poses!(cs, ddt, ai_hit, AICARS, AILINE, AIPHYS, ai_onroad, ai_stuck, groundz_ai, aibankP, groundz)
         elseif GPLAI_T !== nothing
             gplai_poses!(cs, ddt, ai_hit, AICARS, AILINE, GPLAI_PD, GPLAI_PH, GPLAI_SC, GPLAI_T, ent_name, gplai_field!, phase, race_done, race_go)
         else
@@ -14708,6 +14665,7 @@ function main()
             precompile(ai_cooldown_step!, (GPLAI.Field, typeof(AICARS), typeof(GPLAI_T), BitVector, typeof(ent_name), typeof(phase),
                                            typeof(race_done), typeof(race_go)))
             precompile(ai_contact_step!, typeof.((cs, ai_poses, AICARS, AIPHYS, PLAYER_CDA, ffb_jolt)))
+            AI_PHYSICS && precompile(aiphys_poses!, typeof.((cs, ddt, ai_hit, AICARS, AILINE, AIPHYS, ai_onroad, ai_stuck, groundz_ai, aibankP, groundz)))
             # a car knocked loose: its attitude closure and the Car3D step with the AI's ground closure (closure-typed)
             precompile(aibankP, (typeof(cs),))
             precompile(Core.kwcall, (NamedTuple{(:manual, :groundz), Tuple{Bool, typeof(groundz_ai)}}, typeof(DriveRT3D.step_car3d!),
