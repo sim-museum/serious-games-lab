@@ -34,7 +34,7 @@ from PyQt6.QtWidgets import (
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from garage_tab import GarageTab          # SETUPMODEL-1: iRacing's garage (garage.py = the static solve's mirror)
+from garage_tab import GarageTab, named_setups, BASE_NAMES          # SETUPMODEL-1: iRacing's garage (garage.py = the static solve's mirror)
 from guides_tab import GuidesTab          # DOCGUIDES-2: the current track's guide + the glossary
 UI_DIR = os.path.join(HERE, "assets", "ui")
 GUIDE = os.path.join(HERE, "docs", "HOW_TO_RACE.md")    # DOC-RACE-1: ships with the launcher (AppImage rule)    # the theme's glyphs ship with the module (fixed even if HERE is redirected)
@@ -1075,13 +1075,13 @@ class DriveTab(QWidget):
         # Each choice is an iRacing session the car physics is locked to (JM_CARSETUP; see drive_native_mtk.jl).
         cform.addWidget(QLabel("Setup:"), 0, 0)
         self.carsetup = QComboBox()
-        self.carsetup.addItems(["iRacing default", "WW103 fast loose (Wolfgang Wagner)"])
+        # SETUPLIST-1 (PO 2026-10-20): the two base setups, then every saved setup (Save as, or a GPL / iRacing import)
+        self.reload_setups(select=st.value("car/setup_choice", None), fallback=int(st.value("car/setup", 0)))
         self.carsetup.setToolTip("iRacing default: the Lotus 49 setup Julia has always raced.\n"
                                  "WW103 fast loose: Wolfgang Wagner's GPL Watkins Glen setup, driven in iRacing "
                                  "(session 261005) -- soft front springs, stiff rear bar, 35° drive ramp (the diff "
                                  "locks under power), front toe-out, long gearing. Loose on power, controllable at speed.")
-        self.carsetup.setCurrentIndex(min(max(int(st.value("car/setup", 0)), 0), 1))
-        self.carsetup.currentIndexChanged.connect(lambda i: QSettings("juliaRacer", "launcher").setValue("car/setup", i))
+        self.carsetup.currentIndexChanged.connect(self._remember_setup)
         cform.addWidget(self.carsetup, 0, 1)
         cform.addWidget(QLabel("Gearbox:"), 1, 0)
         self.gearbox = QComboBox()
@@ -1518,6 +1518,44 @@ class DriveTab(QWidget):
         m, s = divmod(sec, 60)
         return f"{int(m)}:{s:06.3f}"
 
+
+    # ---- SETUPLIST-1: the setup choice -------------------------------------------------------------------------------
+    def reload_setups(self, select=None, fallback=0):
+        """Fill the Setup list: the two base setups, then the saved ones ('<name> (on <base>)'). select: a choice key
+        ('default', 'ww103', 'saved:<name>') or a saved setup's bare name; else keep the current choice."""
+        cur = select if select is not None else (self.carsetup.currentData() if self.carsetup.count() else None)
+        if isinstance(cur, str) and cur not in ("default", "ww103") and not cur.startswith("saved:"):
+            cur = "saved:" + cur
+        self.carsetup.blockSignals(True)
+        self.carsetup.clear()
+        self.carsetup.addItem("iRacing default", "default")
+        self.carsetup.addItem("WW103 fast loose (Wolfgang Wagner)", "ww103")
+        for name, _path, base in named_setups():
+            self.carsetup.addItem(f"{name}  (on {BASE_NAMES[base]})", "saved:" + name)
+        k = self.carsetup.findData(cur) if cur is not None else -1
+        self.carsetup.setCurrentIndex(k if k >= 0 else min(max(int(fallback), 0), 1))
+        self.carsetup.blockSignals(False)
+        if select is not None and self.carsetup.currentData() != getattr(self, "_setup_shown", None):
+            self._remember_setup()
+            self.carsetup.currentIndexChanged.emit(self.carsetup.currentIndex())
+        self._setup_shown = self.carsetup.currentData()
+
+    def _remember_setup(self, _i=None):
+        st = QSettings("juliaRacer", "launcher")
+        st.setValue("car/setup_choice", self.carsetup.currentData())
+        st.setValue("car/setup", 1 if self.setup_choice()[0] == "ww103" else 0)
+        self._setup_shown = self.carsetup.currentData()
+
+    def setup_choice(self):
+        """-> (base session key, saved setup path or None, its name or None)"""
+        key = self.carsetup.currentData() or "default"
+        if key.startswith("saved:"):
+            name = key[len("saved:"):]
+            for n, path, base in named_setups():
+                if n == name:
+                    return (base, path, n)
+            return ("default", None, None)
+        return (key, None, None)
     def launch(self):
         if self.proc and self.proc.state() != QProcess.ProcessState.NotRunning:
             return
@@ -1543,7 +1581,7 @@ class DriveTab(QWidget):
         qenv.insert("JM_AI", str(self.ai.value() if is_race else 0))   # Practice = lone car (no AI grid)
         qenv.insert("JM_AI_PCT", str(self.ai_pct.value()))
         qenv.insert("ZAND_SHIFT", "auto" if self.gearbox.currentIndex() == 0 else "manual")
-        qenv.insert("JM_CARSETUP", ["default", "ww103"][self.carsetup.currentIndex()])
+        qenv.insert("JM_CARSETUP", self.setup_choice()[0])
         gf = self.garage_file() if getattr(self, "garage_file", None) else None   # SETUPMODEL-1
         if gf:
             qenv.insert("JM_GARAGE", gf)
@@ -2022,7 +2060,8 @@ class Main(QMainWindow):
         # watch it back; then the things changed once (Settings, Controller).
         tabs.addTab(self.drive, "Race")
         # SETUPMODEL-1: iRacing's garage on the base setup the Race tab has chosen
-        self.garage = GarageTab(lambda: self.drive.carsetup.currentIndex())
+        self.garage = GarageTab(self.drive.setup_choice)
+        self.garage.on_setups_changed = lambda name: self.drive.reload_setups(select="saved:" + name)   # SETUPLIST-1
         self.drive.carsetup.currentIndexChanged.connect(lambda _i: self.garage.load_session(keep_saved=True))
         self.drive.garage_file = self.garage.garage_file_for_launch
         tabs.addTab(self.garage, "Garage")

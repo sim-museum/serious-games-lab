@@ -23,7 +23,8 @@ import gpl_setup
 import iracing_sheet
 
 CORNERS = ("LEFT FRONT", "RIGHT FRONT", "LEFT REAR", "RIGHT REAR")
-SESSION_KEYS = ("default", "ww103")          # the Race tab's car setup combo, in its order
+SESSION_KEYS = ("default", "ww103")          # the Race tab's car setup combo, in its order (then the saved setups)
+BASE_NAMES = {"default": "iRacing default", "ww103": "WW103 fast loose"}
 PROVISIONAL_TIP = ("† Provisional range: the PO's iRacing capture (261017) shows this knob's values but not yet its "
                    "limits; SETUPMODEL-1 Part C will settle them.")
 
@@ -60,6 +61,27 @@ def garage_dir():
     return d
 
 
+def named_setups():
+    """SETUPLIST-1 (PO 2026-10-20: an imported setup must be choosable): every saved garage setup -- Save as, or an
+    import -- as (name, path, base). The current_*.toml files are the per-choice working copies, not setups."""
+    out = []
+    for fn in sorted(glob.glob(os.path.join(garage_dir(), "*.toml")), key=lambda f: os.path.basename(f).lower()):
+        name = os.path.splitext(os.path.basename(fn))[0]
+        if name.startswith("current_"):
+            continue
+        try:
+            base, _ = gm.read_garage_file(fn)
+        except Exception:
+            continue
+        if base in SESSION_KEYS:
+            out.append((name, fn, base))
+    return out
+
+
+def safe_name(name):
+    return "".join(c if c.isalnum() or c in "-_ " else "_" for c in name.strip())
+
+
 def spec(key):
     return next(k for k in gm.KNOB_SPECS if k["key"] == key)
 
@@ -79,9 +101,12 @@ def same_knobs(a, b):
 
 
 class GarageTab(QWidget):
-    def __init__(self, get_session_index, parent=None):
+    def __init__(self, get_choice, parent=None):
         super().__init__(parent)
-        self._session_index = get_session_index       # -> 0 default, 1 ww103 (the Race tab's combo)
+        # SETUPLIST-1: the Race tab's choice -> (base session key, saved setup path or None, its name or None). An int
+        # (the old API: 0 default, 1 ww103) still works.
+        self._choice = get_choice
+        self.on_setups_changed = None                 # the Race tab's list refresh, called with the name to select
         self._sessions = gm.sessions()
         self._busy = False
         self.widgets = {}                             # (field, corner|None) -> widget
@@ -91,16 +116,24 @@ class GarageTab(QWidget):
         self.load_session(keep_saved=True)
 
     # ---- state ---------------------------------------------------------------------------------------------------
+    def choice(self):
+        c = self._choice()
+        if isinstance(c, int):
+            return (SESSION_KEYS[max(0, min(c, len(SESSION_KEYS) - 1))], None, None)
+        return c
+
     @property
     def session_key(self):
-        return SESSION_KEYS[max(0, min(self._session_index(), len(SESSION_KEYS) - 1))]
+        return self.choice()[0]
 
     @property
     def session(self):
         return self._sessions[self.session_key]
 
     def current_path(self):
-        return os.path.join(garage_dir(), f"current_{self.session_key}.toml")
+        base, _, name = self.choice()
+        # each choice has its own working copy: a saved setup's edits never leak into the base's garage or another setup's
+        return os.path.join(garage_dir(), f"current_{base}.toml" if name is None else f"current_{base}@{safe_name(name)}.toml")
 
     def is_modified(self):
         return not same_knobs(self.K, self.session["knobs"])
@@ -108,6 +141,12 @@ class GarageTab(QWidget):
     def load_session(self, keep_saved=False):
         """Start from the chosen session; keep_saved: resume the last garage made on it (if any)."""
         self.K = copy.deepcopy(self.session["knobs"])
+        _, named, name = self.choice()
+        if named is not None:
+            try:
+                _, self.K = gm.read_garage_file(named, self.K)
+            except Exception:
+                pass
         p = self.current_path()
         if keep_saved and os.path.exists(p):
             try:
@@ -116,7 +155,8 @@ class GarageTab(QWidget):
                     self.K = K
             except Exception:
                 pass
-        self.base_lbl.setText(f"Base setup: <b>{'iRacing default' if self.session_key == 'default' else 'WW103 fast loose'}"
+        pre = f"Setup: <b>{name}</b> on the base " if name is not None else "Base setup: "
+        self.base_lbl.setText(f"{pre}<b>{BASE_NAMES[self.session_key]}"
                               f"</b> &nbsp;<span style='color:gray'>({self.session['source']})</span>")
         self.refresh()
 
@@ -433,6 +473,12 @@ class GarageTab(QWidget):
 
     def reset(self):
         self.K = copy.deepcopy(self.session["knobs"])
+        _, named, _ = self.choice()
+        if named is not None:                         # a saved setup resets to itself, as saved
+            try:
+                _, self.K = gm.read_garage_file(named, self.K)
+            except Exception:
+                pass
         self.save_current()
         self.refresh()
 
@@ -440,9 +486,32 @@ class GarageTab(QWidget):
         name, ok = QInputDialog.getText(self, "Save garage setup", "Name:")
         if not ok or not name.strip():
             return
-        fn = os.path.join(garage_dir(), "".join(c if c.isalnum() or c in "-_ " else "_" for c in name.strip()) + ".toml")
+        self.save_named(name)
+
+    def save_named(self, name, unique=False):
+        """Write the garage as a saved setup and make it the Race tab's choice (SETUPLIST-1). unique: never overwrite a
+        different saved setup of that name -- an import takes 'name 2', 'name 3', ... instead."""
+        stem = safe_name(name) or "setup"
+        fn = os.path.join(garage_dir(), stem + ".toml")
+        if unique:
+            n = 2
+            while os.path.exists(fn):
+                try:
+                    b, K = gm.read_garage_file(fn)
+                    if b == self.session_key and same_knobs({**self.session["knobs"], **K}, self.K):
+                        break                         # the same setup again: reuse it
+                except Exception:
+                    pass
+                fn = os.path.join(garage_dir(), f"{stem} {n}.toml"); n += 1
         gm.write_garage_file(fn, self.K, base=self.session_key)
+        name = os.path.splitext(os.path.basename(fn))[0]
+        wc = os.path.join(garage_dir(), f"current_{self.session_key}@{safe_name(name)}.toml")
+        if os.path.exists(wc):
+            os.remove(wc)                             # its working copy restarts from what was just saved
         self.status.setText(f"saved {os.path.basename(fn)}")
+        if self.on_setups_changed is not None:
+            self.on_setups_changed(name)
+        return name
 
     def load_from(self):
         fn, _ = QFileDialog.getOpenFileName(self, "Load garage setup", garage_dir(), "Garage setups (*.toml)")
@@ -467,9 +536,9 @@ class GarageTab(QWidget):
         med = gm.load_toml().get("gpl", {}).get("arb_median")
         K, notes = gpl_setup.translate(g, self.session["knobs"], arb_median=tuple(med) if med else None)
         self.K = K
-        self.save_current()
         self.refresh()
-        self.status.setText(f"imported {os.path.basename(fn)}")
+        name = self.save_named(os.path.splitext(os.path.basename(fn))[0], unique=True)   # SETUPLIST-1: choosable
+        self.status.setText(f"imported {os.path.basename(fn)} as '{name}'")
         return notes
 
     # ---- SETUPIO-1: GPL export, iRacing sheet import/export (file functions shared with the tests) ----------------------
@@ -502,9 +571,9 @@ class GarageTab(QWidget):
             d = iracing_sheet.parse(fh.read())
         K, notes = iracing_sheet.to_knobs(d, self.session)
         self.K = K
-        self.save_current()
         self.refresh()
-        self.status.setText(f"imported {os.path.basename(fn)}")
+        name = self.save_named(os.path.splitext(os.path.basename(fn))[0], unique=True)   # SETUPLIST-1: choosable
+        self.status.setText(f"imported {os.path.basename(fn)} as '{name}'")
         return notes
 
     def import_sheet(self):
@@ -518,7 +587,7 @@ class GarageTab(QWidget):
             QMessageBox.warning(self, "Import iRacing sheet", f"Could not read {fn}: {e}")
             return
         QMessageBox.information(self, "Imported " + os.path.basename(fn),
-                                "The sheet is now the garage (on the " + self.session_key + " base).\n\n" +
+                                "The sheet is now the garage (on the " + self.session_key + " base), saved as a setup you can choose on the Race tab.\n\n" +
                                 ("\n".join(notes) if notes else "Every knob read; julia's derived numbers agree with the sheet's."))
 
     def export_sheet_file(self, fn, name=None):
@@ -548,7 +617,7 @@ class GarageTab(QWidget):
             QMessageBox.warning(self, "Import GPL setup", f"Could not read {fn}: {e}")
             return
         QMessageBox.information(self, "Imported " + os.path.basename(fn),
-                                "The GPL setup is now the garage (on the " + self.session_key + " base).\n\n" + "\n".join(notes))
+                                "The GPL setup is now the garage (on the " + self.session_key + " base), saved as a setup you can choose on the Race tab.\n\n" + "\n".join(notes))
 
     # ---- display -------------------------------------------------------------------------------------------------
     def refresh(self):

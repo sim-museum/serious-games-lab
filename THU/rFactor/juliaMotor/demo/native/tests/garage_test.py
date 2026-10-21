@@ -84,5 +84,28 @@ check(g.K["spring"][:2] == [18.0, 18.0] and g.K["bump"] == [6, 6, 9, 9] and g.K[
 check(all(abs(g.D["rh"][i] - [83.1, 83.1, 105.1, 105.1][i]) < 1.0 for i in range(4)),
       f"the import keeps the base car's ride heights by its perches ({[round(x, 1) for x in g.D['rh']]})")
 check(any("outside iRacing's range" in n for n in notes) and any("bar" in n for n in notes), "the import reports what iRacing's ranges cut")
+# SETUPLIST-1 (PO 2026-10-20: an imported fs_monza_lot was not in the Setup list): an import is a setup you can choose
+items = [d.carsetup.itemText(i) for i in range(d.carsetup.count())]
+check(d.carsetup.currentData() == "saved:ww103" and any(t.startswith("ww103") and "iRacing default" in t for t in items),
+      f"the import is listed and chosen on the Race tab ({items}, chosen {d.carsetup.currentText()!r})")
+d.proc = None; d.launch_b.setEnabled(True); d.launch()
+env = started[-1][0].processEnvironment()
+_, Kl = gm.read_garage_file(env.value("JM_GARAGE"))
+check(env.value("JM_CARSETUP") == "default" and Kl["spring"][:2] == [18.0, 18.0] and Kl["final_drive"] == 3.78,
+      "racing the imported setup: its base session + its knobs")
+d.carsetup.setCurrentIndex(d.carsetup.findData("default"))
+check(not g.is_modified() and g.K["final_drive"] != 3.78, "choosing the base again gives the base, not the import")
+# a setup saved earlier (the PO's case: fs_monza_lot.toml, Save as on the WW103 base) is listed at the next start
+w3 = jr.Main()
+gm.write_garage_file(os.path.join(os.environ["XDG_CONFIG_HOME"], "juliaRacer", "garage", "fs_monza_lot.toml"),
+                     dict(w3.garage.session["knobs"], fuel=33.0), base="ww103")
+w4 = jr.Main(); d4 = w4.drive
+k = d4.carsetup.findData("saved:fs_monza_lot")
+check(k >= 0 and "WW103" in d4.carsetup.itemText(k), f"a saved setup is listed at start ({d4.carsetup.itemText(k) if k >= 0 else 'missing'})")
+d4.carsetup.setCurrentIndex(k)
+check(w4.garage.session_key == "ww103" and w4.garage.K["fuel"] == 33.0 and "fs_monza_lot" in w4.garage.base_lbl.text(),
+      "choosing it loads its knobs on its own base")
+w5 = jr.Main()
+check(w5.drive.carsetup.currentData() == "saved:fs_monza_lot", "the choice is remembered")
 print("GARAGE TAB:", "PASS" if ok else "FAIL")
 sys.exit(0 if ok else 1)
