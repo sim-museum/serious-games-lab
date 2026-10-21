@@ -52,11 +52,16 @@ if r !== nothing
     check("treatment: no car ends THROUGH a wall", r.thru == 0, "$(r.thru) of $(r.n)")
     check("treatment: GPL-wall penetration <= 0.35 m", r.wall <= 0.35, "$(r.wall) m")
     check("treatment: drawn hard-face penetration <= 0.35 m", r.drawn <= 0.35, "$(r.drawn) m")
-    # HEDGEJOLT-1 S2: the side label is the DRIVER's -- an "L" crash ends in the left (+lat) half of GPL's free interval
-    sides = [(m[1], parse(Float64, m[2]), parse(Float64, m[3]), parse(Float64, m[4])) for m in
-             eachmatch(r"\[crash\] \d+/\d+ s=\d+ ([LR]) .*? end lat (-?[0-9.]+) in \[(-?[0-9.]+), (-?[0-9.]+)\]", r.txt)]
+    # HEDGEJOLT-1 S2: the side label is the DRIVER's -- an "L" crash ends in the left (+lat) half of GPL's free interval.
+    # CRASHBODY-1 (2026-10-21): a wreck is now a free rigid body that can bounce or tumble back across the road, so where it
+    # ENDS no longer says which wall it was sent at; the label is a harness fact, checked on a sweep with the driving
+    # model's wreck (JM_CRASHBODY=0, every 600 m), as before.
+    rs = sweep(Dict("JM_CRASHBODY" => "0", "JM_CRASH" => "auto:600"))
+    sides = rs === nothing ? Tuple{String,Float64,Float64,Float64}[] :
+            [(m[1], parse(Float64, m[2]), parse(Float64, m[3]), parse(Float64, m[4])) for m in
+             eachmatch(r"\[crash\] \d+/\d+ s=\d+ ([LR]) .*? end lat (-?[0-9.]+) in \[(-?[0-9.]+), (-?[0-9.]+)\]", rs.txt)]
     good = count(t -> (t[2] > (t[3] + t[4])/2) == (t[1] == "L"), sides)
-    check("treatment: L/R crashes end on the driver's left/right", length(sides) >= 20 && good >= 0.8*length(sides),
+    check("harness: L/R crashes end on the driver's left/right (JM_CRASHBODY=0)", length(sides) >= 10 && good >= 0.8*length(sides),
           "$(good) of $(length(sides)) on the labelled side")
 end
 c = sweep(Dict("JM_GPLWALL" => "0"))

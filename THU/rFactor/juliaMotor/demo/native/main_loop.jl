@@ -32,7 +32,7 @@ function mirror_render!(drawworld, cs, cam_pitch, cam_roll, frames, _mir_alt, li
             for (i,it) in enumerate(carItems); _in_car_range(i) || continue; Render.draw(prog, it, mvp, bodyModel; bright=1.2, spec=0.08, ambfill=0.78); end   # your own tail at the inner edge
             for (wx,wz,steer,r,nm) in WHEELS, it in WHEELITEMS[nm]
                 is_loose(nm) && continue
-                Render.draw(prog, it, mvp, wheelmat(wx,wz,steer,r); bright=1.0, ambfill=0.75)
+                Render.draw(prog, it, mvp, wheelmat(wx,wz,steer,r,nm); bright=1.0, ambfill=0.75)
             end
             for (lx,ly,lz,_,_,_,sp,_,nm) in LOOSE_WHEELS, it in WHEELITEMS[nm]
                 Render.draw(prog, it, mvp, loosemat(lx,ly,lz,sp); bright=1.0, ambfill=0.75)
@@ -780,6 +780,9 @@ function ffb_step!(ffb, cs, inp, dt, fy_lp, ffb_f, ffb_jolt)
     fy_lp += (fy - fy_lp) * clamp(dt/FFB_DESPIKE, 0.0, 1.0)   # de-spike the coarse GPL mesh (1-frame 11g jolts → smooth)
     fy = fy_lp * fy_lp*fy_lp / (fy_lp*fy_lp + FFB_SQ*FFB_SQ)   # squelch tyre-force noise (jostle), not the spring
     mz  = fy * trail
+    # CRASHBODY-1 (PO 2026-10-20: "don't rock the ff back and forth when the car crashes"): a wrecked car's rim torque is the
+    # crash's own chatter (contacts, a pinned or tumbling body) -- the wheel keeps only its centring spring. JM_CRASHBODY=0 = before.
+    (CRASHBODY && WRECKED[]) && (mz = 0.0; τrim = nothing)
     spd = clamp(cs.v/2.5, 0.0, 1.0)                    # road feel fades in with speed
     # self-centering spring ∝ WHEEL ANGLE — ALWAYS present ⇒ no dead center. Per wheel degree, as it was
     # tuned (raw ±1 = ±450° on the TX): with physical steering (STEER_GAIN) inp.steer is road angle / lock,
@@ -1426,7 +1429,8 @@ function hands_draw!(cs, inp, vp, bodyModel, swModel)
             swRel = Render.translate(SWCENTER) * Render.rotaxis(SWAXIS, Float32(HSIGN*inp.steer*2.5 + SW_ROT)) * Render.translate(-SWCENTER[1], -SWCENTER[2], -SWCENTER[3])
             for (k, sgn) in ((1, 1), (2, -1))          # armLR[1] = z > 0 with gripmat(+1), as handLR
                 W, E, nf = SLEEVE_ENDS[k]
-                h = swRel * gripmat(sgn) * Float32[W[1], W[2], W[3], 1f0]
+                Wt = (CUFF && CUFF_RAW[k] !== nothing) ? CUFF_RAW[k] : W     # WRISTS-4: the sleeve ends at the glove's cuff
+                h = swRel * gripmat(sgn) * Float32[Wt[1], Wt[2], Wt[3], 1f0]
                 k == SHIFT_HAND_K && (h = Float32[h[1] + _hoff[1], h[2] + _hoff[2], h[3] + _hoff[3], 1f0])   # COCKPIT-2 S7
                 S = (SHOULDER[1], SHOULDER[2], sgn*SHOULDER[3])
                 # TD261013-1 (a2) (PO 2026-10-13: "a large white triangle on the left when the player turns all the way
@@ -1440,7 +1444,7 @@ function hands_draw!(cs, inp, vp, bodyModel, swModel)
                 end
                 if SLEEVE_HOLD && SLEEVE_NREF[k] === nothing    # the straight-wheel face normal, once
                     sw0 = Render.translate(SWCENTER) * Render.rotaxis(SWAXIS, Float32(SW_ROT)) * Render.translate(-SWCENTER[1], -SWCENTER[2], -SWCENTER[3])
-                    h0 = sw0 * gripmat(sgn) * Float32[W[1], W[2], W[3], 1f0]
+                    h0 = sw0 * gripmat(sgn) * Float32[Wt[1], Wt[2], Wt[3], 1f0]
                     sleeve_mat(W, E, (h0[1], h0[2], h0[3]), S, nf); SLEEVE_NREF[k] = SLEEVE_LASTR[] * collect(nf)
                 end
                 # HANDS-2 S3: lit toward the gold's white sleeve (it read grey at 1.15 / 0.60)
@@ -1452,7 +1456,11 @@ function hands_draw!(cs, inp, vp, bodyModel, swModel)
                 # but at full lock 12 cm pushes the sleeve out past the rim -- so 12 cm fades to 6 cm over the arms'
                 # lock schedule (ARM_LOCK_DEG). JM_ARM_INTO fixes one value for every angle, as before.
                 _ul = clamp((abs(HSIGN*inp.steer*2.5) - deg2rad(ARM_LOCK_DEG[1])) / deg2rad(ARM_LOCK_DEG[2] - ARM_LOCK_DEG[1]), 0.0, 1.0)
-                _into = haskey(ENV, "JM_ARM_INTO") ? parse(Float64, ENV["JM_ARM_INTO"]) : ARM_INTO_STRAIGHT + _ul*(ARM_INTO - ARM_INTO_STRAIGHT)
+                _into = haskey(ENV, "JM_ARM_INTO") ? parse(Float64, ENV["JM_ARM_INTO"]) :
+                        haskey(ENV, "JM_CUFF_INTO") && CUFF ? parse(Float64, ENV["JM_CUFF_INTO"]) :
+                        (CUFF && CUFF_RAW[k] !== nothing) ? CUFF_INTO[1] + clamp((abs(HSIGN*inp.steer*2.5) - deg2rad(CUFF_LOCK_DEG[1])) /
+                                                              deg2rad(CUFF_LOCK_DEG[2] - CUFF_LOCK_DEG[1]), 0.0, 1.0)*(CUFF_INTO[2] - CUFF_INTO[1]) :
+                        ARM_INTO_STRAIGHT + _ul*(ARM_INTO - ARM_INTO_STRAIGHT)
                 _d = (h[1] - S[1], h[2] - S[2], h[3] - S[3]); _l = sqrt(_d[1]^2 + _d[2]^2 + _d[3]^2)
                 h = _l > 1e-6 ? (h[1] + _into*_d[1]/_l, h[2] + _into*_d[2]/_l, h[3] + _into*_d[3]/_l) : h
                 # TD261013-1 (a2) (PO 2026-10-13: "the driver's left arm has a large white triangle on the left when the
@@ -1939,4 +1947,99 @@ function netlink_step!(cs, inp, frames, ai_poses, AICARS, CLINE, aibankK, ai_gro
         flush(stdout)
     end
     return nothing
+end
+
+"""CRASHBODY-1: the wreck as a free rigid body (wreck_body.jl), one frame. Hands the car over on the first call -- its pose,
+speed and yaw rate, the wheels still on, each corner's grip -- then steps it on the ground under it against the GPL walls
+and the trackside objects near it (a hedge gives and holds), with the driver's brake on the wheels, and writes the result
+back to the game's car (position, heading, speed, attitude, the session clock) so lap position, camera, telemetry and the
+replay carry on. Torn-off wheels leave the body as they leave the car (is_loose)."""
+function wreck_body_step!(cs, inp, dt, groundz_phys::G, roll_ter; dry::Bool = false) where {G}   # ::G: specialise on the closure (passed only into hq, Julia would not)
+    WB = WreckBody; V3 = WB.V3
+    gdt = dt > 1e-4 ? dt : 1/60
+    b = WBODY[]
+    if dry
+        # the hidden warm-up frame: one step of a scratch body at the car's pose, nothing written back -- so the crash path
+        # is COMPILED before the race (a precompile of this function left ~140 ms of its callees to compile at the impact)
+        b = WB.Body(WB.Geometry(m = DriveRT3D.MASS[]))
+        WB.start!(b, cs.x, cs.z, cs.y, cs.θ, cs.pitch, roll_ter + cs.roll, V3(WVX[], 0.0, -WVZ[]), V3(0.0, Float64(DriveRT3D.yawrate3d(cs)), 0.0))
+    elseif b === nothing
+        b = WB.Body(WB.Geometry(m = DriveRT3D.MASS[]))
+        on = ntuple(i -> !is_loose(WHEEL_NAMES[i]), 4)
+        WB.start!(b, cs.x, cs.z, cs.y, cs.θ, cs.pitch, roll_ter + cs.roll, V3(WVX[], 0.0, -WVZ[]),
+                  V3(0.0, Float64(DriveRT3D.yawrate3d(cs)), 0.0); on = on, dmu = ntuple(i -> DriveRT3D.damage_mu(i), 4))
+        WBODY[] = b; WBODY_PLANE[] = WB.Plane(cs.x, -cs.z, cs.y, 0.0, 0.0)
+        println("  [crashbody] the wreck is a free rigid body from here: ", round(cs.v*3.6, digits = 0), " km/h, ", count(on),
+                " wheels on"); flush(stdout)
+    end
+    dry || for i in 1:4; b.on[i] = !is_loose(WHEEL_NAMES[i]); b.dmu[i] = DriveRT3D.damage_mu(i); end
+    b.brake = clamp(inp.brake, 0.0, 1.0)
+    # the ground: a plane fitted under the car (render frame, Z = -game z); over a hole in the mesh keep the last one
+    hq(X, Z) = (y = groundz_phys(X, -Z); y > -900 ? Float64(y) : NaN)
+    pl = WB.fit_plane(hq, b.p[1], b.p[3])
+    (isfinite(pl.h0) && isfinite(pl.gx) && isfinite(pl.gz)) ? (dry || (WBODY_PLANE[] = pl)) : (pl = WBODY_PLANE[])
+    # the walls near it, as planes through the CG's nearest face point (game frame -> render frame)
+    walls = WB.WallPlane[]
+    gx, gz = b.p[1], -b.p[3]
+    if GPLW_PHYS && !dry                                   # (gplwall_gaps keeps the wall's "came from" state)
+        (lat, lo, hi, glo, ghi, ngx, ngz, nlo, nhi, gend, nend) = gplwall_gaps(gx, gz, cs.θ)
+        for (g, n) in ((glo, nlo), (ghi, nhi))
+            d = g + CARLF*abs(cos(cs.θ)*n[1] + sin(cs.θ)*n[2]) + CARW           # the CG to that face along its normal
+            (isfinite(d) && d < 4.0) || continue
+            push!(walls, WB.WallPlane(V3(gx - d*n[1], b.p[2], -(gz - d*n[2])), V3(n[1], 0.0, -n[2])))
+        end
+        if isfinite(gend) && gend < 3.0
+            d = gend + CARLF
+            push!(walls, WB.WallPlane(V3(gx - d*nend[1], b.p[2], -(gz - d*nend[2])), V3(nend[1], 0.0, -nend[2])))
+        end
+    end
+    for k in eachindex(SOLIDS)
+        (ox, oz, r, kind) = SOLIDS[k]
+        hypot(ox - gx, oz - gz) < r + 6.0 || continue
+        (g, nx, nz) = solid_gap(gx, gz, k)
+        g < 4.0 || continue
+        push!(walls, WB.WallPlane(V3(gx - g*nx, b.p[2], -(gz - g*nz)), V3(nx, 0.0, -nz), kind === :soft))
+    end
+    # each touching point asks the TERRAIN mesh for the surface just below it (a pure query: groundz_phys keeps the
+    # driving car's step-guard and layer state, which 24 points a substep would scramble)
+    th(X, Z, yref) = (r = JuliaMotor.hat3d(TERRAIN, X, -Z; ref = yref); r[3] ? Float64(r[1]) : NaN)
+    WB.step!(b, gdt, WB.Terrain(th, pl); walls = walls)
+    dry && return nothing
+    # a hard wall hit tears off the wheels that lead into it, as for the driving car (E95: "detach the wheel that hit the
+    # barrier"); the wall normal in game coordinates, pointing out of the wall
+    (b.wall_peak > 3.0e4 && norm(b.v) > 3.0) &&
+        detach_hit_wheels!(cs.x, cs.z, cs.θ, norm(b.v); fence = true, fence_nx = b.wall_n[1], fence_nz = -b.wall_n[3])
+    θ, pitch, roll = WB.attitude(b)
+    _px = b.p[1]; _pz = b.p[3]          # plain locals for the closure below: capturing `b` (assigned in three branches) boxed it
+    if CRASHBODY_DIAG && (floor(Int, 4*b.t) != floor(Int, 4*(b.t - gdt)) || b.rest)
+        println("  [crashbody] t ", round(b.t, digits = 2), " CG ", round(b.p[2] - WB.plane_y(pl, b.p[1], b.p[3]), digits = 2),
+                " m up  roll ", round(rad2deg(roll), digits = 0), " pitch ", round(rad2deg(pitch), digits = 0), " heading ",
+                round(rad2deg(θ), digits = 0), "  v ", round(norm(b.v), digits = 1), " m/s  w ", round(norm(b.ω), digits = 1),
+                " rad/s  contacts ", b.contacts, "  walls ", length(walls), b.rest ? "  AT REST" : "",
+                "  ground ", round(pl.h0, digits = 2), " [", join([round(hq(_px + dx, _pz + dz), digits = 2) for (dx, dz) in ((1.5, 0.0), (-1.5, 0.0), (0.0, 1.5), (0.0, -1.5))], " "),
+                "] at game (", round(b.p[1], digits = 1), ", ", round(-b.p[3], digits = 1), ")"); flush(stdout)
+    end
+    o = b.p - b.R * V3(0.0, b.g.hcg, 0.0)                 # the model's origin: the ground point under the CG
+    cs.x = o[1]; cs.z = -o[3]; cs.y = o[2]; cs.θ = θ
+    cs.v = hypot(b.v[1], b.v[3]); WVX[] = b.v[1]; WVZ[] = -b.v[3]
+    cs.pitch = pitch; cs.roll = roll
+    cs.toff += gdt; cs.t = cs.integ.t + cs.toff           # the session clock runs on (the driving model is not stepped)
+    # the safety net the driving car has: never deeper than GPLW_PEN into a GPL wall nor through a drawn obstacle face. The
+    # body sees only the walls beside its CG; a fast tumble went 19 m through Watkins Glen's s 1650 wall (gplwall_smoke).
+    # Whatever the clamps move the car, the body moves too, and loses its speed into that face.
+    if GPLW_PHYS
+        x0, z0 = cs.x, cs.z
+        for _ in 1:2
+            gplwall_clamp!(cs)
+            OBS_ON && obs_clamp!(cs)
+        end
+        dx = cs.x - x0; dz = cs.z - z0; dl = hypot(dx, dz)
+        if dl > 1e-4
+            nr = V3(dx/dl, 0.0, -dz/dl)
+            b.p += V3(dx, 0.0, -dz)
+            vn = dot(b.v, nr); vn < 0 && (b.v -= vn*nr)
+            WVX[] = b.v[1]; WVZ[] = -b.v[3]; cs.v = hypot(b.v[1], b.v[3])
+        end
+    end
+    nothing
 end

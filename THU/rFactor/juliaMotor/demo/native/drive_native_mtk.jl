@@ -28,7 +28,9 @@ end
 include(joinpath(@__DIR__,"people_filter.jl")); using .PeopleFilter   # E101: loose-people name rule, shared with its gate
 include(joinpath(@__DIR__,"gpl_lp.jl")); using .GPLLP                    # E84/E89: GPL .lp AI lines (race.lp speed table)
 include(joinpath(@__DIR__,"susp_pose.jl")); using .SuspPose
-include(joinpath(@__DIR__,"wreck_seal.jl")); using .WreckSeal   # E103: where a wreck is sealed, shared with its gate             # E82: rear-suspension corrective transform, shared with its gate  # full-3D physics (JM_3D=1)
+include(joinpath(@__DIR__,"wreck_seal.jl")); using .WreckSeal
+include(joinpath(@__DIR__, "wreck_body.jl"))   # CRASHBODY-1: a wreck as a free rigid body (wheels with their own spin)
+   # E103: where a wreck is sealed, shared with its gate             # E82: rear-suspension corrective transform, shared with its gate  # full-3D physics (JM_3D=1)
 include(normpath(joinpath(@__DIR__,"..","..","JuliaMotorMTK","src","ibt.jl"))); using .IBT           # iRacing .ibt telemetry writer
 # E80-S10: the render/track modules come from the JRRender PACKAGE (its image caches their compiled code: Spa launch
 # −14 s measured); JM_RENDER_INCLUDE=1 loads the loose files instead, with their module-level ENV knobs live.
@@ -6328,6 +6330,18 @@ const WRECK_MS     = WRECK_KMH/3.6
 const WRECK_CLOSE  = parse(Float64, get(ENV, "JM_WRECK_CLOSE", "12.0"))
 const WRECKED      = Ref(false)          # latched: a wreck is permanent, that is the point
 const WRECK_FROZEN = Ref(false)          # E95g: the wreck has come to rest and is pinned there
+# CRASHBODY-1 (PO 2026-10-20: "the car levitated about 2 m and then slid over into a hedge ... The car should be treated as
+# a rigid body with rotation, including rotation of each wheel, with moments of inertia"): from the frame after a wreck the
+# car is wreck_body.jl's rigid body -- full 3-D attitude, ground and wall contact at the wheels and the chassis outline --
+# instead of the small-angle driving model, and it is DRAWN with that attitude (wheels included). JM_CRASHBODY=0 = before.
+const CRASHBODY = get(ENV, "JM_CRASHBODY", "1") != "0"
+const WBODY = Ref{Union{Nothing,WreckBody.Body}}(nothing)   # the wreck's rigid body while it is one (typed: an Any here left
+#   the whole crash path to dynamic dispatch, ~140 ms of compiling at the impact that the warm-up precompile could not reach)
+const CRASHBODY_DIAG = get(ENV, "JM_CRASHBODY_DIAG", "0") != "0"   # print the body 4x a second (height, roll, pitch, speed, contacts)
+const WBODY_PLANE = Ref{WreckBody.Plane}(WreckBody.Plane(0.0))   # the last good ground plane under it (kept over a hole in the mesh)
+"Wheel `nm`'s drawn rotation: its own spin while the wreck is a rigid body, else the shared driving spin."
+wheel_spin_angle(nm, spin) = (WBODY[] === nothing || isempty(nm)) ? spin :
+                             (i = findfirst(==(nm), WHEEL_NAMES); i === nothing ? spin : -WBODY[].angle[i])
 const WRECK_PX     = Ref(0.0); const WRECK_PZ = Ref(0.0); const WRECK_PT = Ref(0.0)
 const WRECK_PH = Ref(NaN); const WRECK_PIN = get(ENV, "JM_WRECK_PIN", "1") != "0"   # HEDGEJOLT-1: a frozen wreck rests ON the ground, still
 const WRECK_DAMP   = parse(Float64, get(ENV, "JM_WRECK_DAMP", "6.0"))   # E95e: 1/s; raised from 2.2 -- a totalled car should stop in a car length or two, not coast on
@@ -11181,6 +11195,39 @@ end
 const ARM_INTO_STRAIGHT = 0.12               # TD261016-1 (c1): near straight ahead (fades to ARM_INTO at lock)
 const ARM_INTO = 0.06                        # COCKPIT-2 S4: sleeve runs 6 cm into the glove (sweep 0/3/6/9 cm, WG 2026-10-09); JM_ARM_INTO
 const SLEEVE_NREF = Any[nothing, nothing]          # per side: the face normal with the wheel straight (set on first draw)
+# WRISTS-4 (PO 2026-10-20: "it looks as if the driver's hands were cut off just below the wrists - compare to GPL gold
+# standard"): in GPL the sleeve runs INTO the glove's dark gauntlet cuff, which wraps over its end (gold Monza cockpit t 20).
+# Ours was aimed at the ARM mesh's own wrist point -- since TD261016-1 (c1) turned each fist half round about its centre
+# (fistrot) that is not where the glove's cuff is, and the 6-12 cm ARM_INTO that closed the gap ran the sleeve over the
+# glove: the cuff and the lower fist hidden, a fingertip stub above a sleeve cut off at the rim. Aim the sleeve at the
+# glove's cuff itself -- its vertices nearest the shoulder, after the fist's turn -- and end it just inside, so the glove
+# covers the sleeve's end as GPL's does. JM_CUFF=0 = before.
+const CUFF = get(ENV, "JM_CUFF", "1") != "0"
+# how far the sleeve runs into the glove: its texture fades out ~10 cm before its geometric end, so 14 cm straight ahead
+# meets the cuff (sweep 2/8/12/16 cm, 261020/wrists4); at lock that reaches past the rim (the white sail), so it fades
+# to 4 cm between 15 and 60 deg of wheel (the arms' own schedule starts at 50: at half lock the crossing sleeve overshot
+# the upper glove). JM_CUFF_INTO=<m> fixes one value.
+const CUFF_LOCK_DEG = Tuple(parse.(Float64, split(get(ENV, "JM_CUFF_LOCK_DEG", "15,60"), ",")))
+const CUFF_INTO = (parse(Float64, get(ENV, "JM_CUFF_INTO_STRAIGHT", "0.14")), parse(Float64, get(ENV, "JM_CUFF_INTO_LOCK", "0.04")))
+const CUFF_RAW = let out = Any[nothing, nothing]
+    sw0 = Render.translate(SWCENTER) * Render.rotaxis(SWAXIS, Float32(SW_ROT)) * Render.translate(-SWCENTER[1], -SWCENTER[2], -SWCENTER[3])
+    for (k, sgn) in ((1, 1), (2, -1))
+        Q = Vector{Float32}[]
+        for p in HANDP, t in 1:33:length(p.verts)-32                 # per triangle, split as FIST_C (k = 1: mesh z > 0)
+            v = p.verts; ((v[t+2] + v[t+13] + v[t+24])/3 > 0 ? 1 : 2) == k || continue
+            for j in (t, t+11, t+22); push!(Q, (fistrot(k) * Float32[v[j], v[j+1], v[j+2], 1f0])[1:3]); end
+        end
+        isempty(Q) && continue
+        Sraw = (inv(sw0 * gripmat(sgn)) * Float32[SHOULDER[1], SHOULDER[2], sgn*SHOULDER[3], 1f0])[1:3]   # the shoulder, glove frame
+        c = sum(Q) ./ length(Q); d = Sraw .- c; d ./= sqrt(sum(d .^ 2))
+        pr = [sum((q .- c) .* d) for q in Q]; lo, hi = extrema(pr)
+        sel = [Q[i] for i in eachindex(Q) if pr[i] >= hi - 0.25*(hi - lo)]
+        out[k] = Tuple(Float64.(sum(sel) ./ length(sel)))
+    end
+    println("  [cuff] sleeves end at the gloves' cuffs: ", out[1] === nothing ? "-" : round.(out[1], digits = 3), " / ",
+            out[2] === nothing ? "-" : round.(out[2], digits = 3), CUFF ? "" : "  (off: JM_CUFF=0)")
+    Tuple(out)
+end
 function sleeve_mat(W, E, H, S, nf; target = nothing)
     a = collect(W .- E); la = sqrt(sum(a .^ 2)); a ./= la
     b = collect(H .- S); lb = sqrt(sum(b .^ 2)); b ./= lb
@@ -11678,6 +11725,9 @@ function camera(cs, pitch=0.0, roll=0.0)
     # too far back) vs gold_crop.png. FOV (JM_FOV 80) untouched -- the gold's dash may want it narrower.
     ex,ey,ez,drop = parse(Float32,get(ENV,"JM_EYE_X","0.25")), parse(Float32,get(ENV,"JM_EYE_Y","0.40")), 0.0f0, parse(Float32,get(ENV,"JM_EYE_DROP","0.12"))   # GPL: low seat just behind the wheel, ~level gaze (see the road), dash fills the lower frame; tunable via JM_EYE_*
     R = Render.roty(Float32(cs.θ)) * Render.rotz(Float32(pitch)) * Render.rotx(Float32(roll))   # = the chassis rotation
+    if WBODY[] !== nothing        # CRASHBODY-1: in a wreck the head goes where the tub goes -- the rigid body's own rotation
+        _m = WreckBody.model_matrix(WBODY[]); R = Render.M4(_m[1:12]..., 0f0, 0f0, 0f0, 1f0)
+    end
     R3(a,b,c) = (w = R * Float32[a,b,c,0f0]; Float32[w[1],w[2],w[3]])     # rotate a body-frame direction into the world
     eye = Float32[wx,wy,wz] + R3(BODY_OFF[1]+ex, BODY_OFF[2]+ey, BODY_OFF[3]+ez)   # eye fixed in the body frame
     ctr = eye + R3(4f0, -drop, 0f0)                                       # look forward + a slight downward drop
@@ -14323,6 +14373,11 @@ function main()
             # E56 ALL-MODELICA human car: feed the trackside spring-damper CONTACT force (wall = bounce,
             # hedge/hay = bury & stick) + last frame's draft drag-scale into the chassis ODE BEFORE the
             # step, so both are forces the solver INTEGRATES — no post-step bumpX!/containX! state hack.
+            WRECKED[] || (WBODY[] = nothing)
+            if CAR3D && CRASHBODY && WRECKED[]      # CRASHBODY-1: the wreck is a free rigid body (wreck_body.jl), not the driving model
+                wreck_body_step!(cs, inp, dt, groundz_phys, roll_ter)
+                _tgc = time()                       # read by the GPLWALL cost line below
+            else
             if CAR3D
                 (cfx, cfy, cpk, ffb_jolt) = player_step3d!(cs, dt, rst, inp, groundz, ffb_jolt, groundz_phys, race_go, BND_FX, BND_FY, BND_MZ,
                                                            OFFDIST, OFFTRACK_PROBE, ONTRACK, PLAYER_CDA)
@@ -14359,6 +14414,7 @@ function main()
             # nothing within 2 m before the step (it moves <= 1.33 m): no clamp, but keep the obstacle "came from" fresh --
             # a stale one would mis-side a fence the car has since driven round the end of
             (GPLW_PHYS && CAR3D && !rst && !GPLW_NEAR[] && OBS_ON) && (OBS_PREV[] = (cs.x, cs.z))
+            end   # CRASHBODY-1
             jolt_report!(cs, frames, CLINE, STEP_GUARD_HITS, dt, rst)
             GPLW_PHYS && (GPLW_T[] = (GPLW_T[][1] + time() - _tgc, GPLW_T[][2]))
             if CRASH_ON && !isempty(CRASHES) && crash_i[] <= length(CRASHES) && frames >= 2
@@ -14437,6 +14493,9 @@ function main()
         carModel = Render.translate(cs.x, cs.y, -cs.z) * Render.roty(Float32(cs.θ)) *
                    Render.rotz(Float32(pitch_ter)) * Render.rotx(Float32(roll_ter))   # whole car follows the hill (pitch + cross-slope roll)
         tiltModel = carModel * Render.rotz(Float32(pitch_dyn)) * Render.rotx(Float32(rollv))   # full body tilt (terrain + dynamic)
+        if WBODY[] !== nothing    # CRASHBODY-1: a wreck is drawn exactly as its rigid body lies -- the whole car, wheels too
+            carModel = Render.M4(WreckBody.model_matrix(WBODY[])...); tiltModel = carModel
+        end
         bodyModel = tiltModel * Render.translate(BODY_OFF) * CARHAND  # body dives/squats + rolls (3-D); CARHAND-1: GPL's handedness
         δ = Float32(inp.steer * (CAR3D ? DriveRT3D.MAXSTEER : SKIDPAD ? 0.30 : CAR.max_steer))
         # WHEELS FLOAT ON THE SUSPENSION (PO): the wheels stay PLANTED on the road (carModel = terrain
@@ -14445,8 +14504,8 @@ function main()
         # front wheels appear to RISE relative to the cockpit; squat on power → they drop; roll right →
         # the body leans onto the planted right wheel (it rises) and lifts off the left (it drops).  The
         # wheels stay UPRIGHT/level (they never get the body lean) — they're not bolted to the chassis.
-        wheelmat(wx,wz,steer,r) = carModel * CARHAND * Render.translate(wx, r, wz) *
-                     (steer ? Render.roty(Float32(HSIGN)*δ) : Render.ident()) * Render.rotz(Float32(spin))
+        wheelmat(wx,wz,steer,r,nm="") = carModel * CARHAND * Render.translate(wx, r, wz) *
+                     (steer ? Render.roty(Float32(HSIGN)*δ) : Render.ident()) * Render.rotz(Float32(wheel_spin_angle(nm, spin)))
         # E95: a torn-off wheel is in the WORLD, not on the car -- so it gets its own transform
         # rather than carModel's. Render axes are (x, up, -z), matching the trackside placement.
         loosemat(lx,ly,lz,sp) = Render.translate(lx, ly, -lz) * Render.rotz(Float32(sp)) * CARHAND
@@ -14555,6 +14614,9 @@ function main()
         # R's ~300 ms was mostly the replay bookkeeping it does -- Dates.format, the writer task -- now in warm_statements.jl.)
         if frames == 1
             precompile(loose_cars_step!, typeof.((cs, ai_poses, ddt, AICARS, AILINE, GPLAI_T, PLAYER_G, aibankP, frames, gplai_field!, groundz, groundz_ai)))
+            # CRASHBODY-1: the crash body first runs at the moment of a wreck -- compiled here, not at the impact
+            (CRASHBODY && CAR3D) && wreck_body_step!(cs, inp, dt, groundz_phys, roll_ter; dry = true)   # a scratch body, nothing written back
+            (CRASHBODY && CAR3D) && precompile(wreck_body_step!, typeof.((cs, inp, dt, groundz_phys, roll_ter)))   # + the keyword-free entry
             precompile(restart_session!, typeof.((cs, cs0, groundz, groundz_phys, AICARS, AILINE, CLINE, DO_QUAL, HOLD_START, FUEL1, FUEL_ON, GPLAI_F, PLAYER_G, REPLAY_NCAR, ai_best, ai_lap_prev, ai_lapt0, burn_lap, fuel_laps, fuel, cd_armed, cd_left, cd_said, cd_t0, flush_ibt!, form_grid!, ibt_samples, launch_done, new_replay_path, phase, player_finpos, player_grid, player_laps, race_go, replay_buf, replay_names, replay_out, replay_saved, replay_t, tele_buf, player_s_prev)))
         end
         if !isempty(LOOSE_OF) && !REPLAY && !isempty(ai_poses)
@@ -14658,7 +14720,7 @@ function main()
             for it in carItems; Render.draw_depth(dp, it, bodyModel); end
             for (wx,wz,steer,r,nm) in WHEELS, it in WHEELITEMS[nm]
                 is_loose(nm) && continue                                   # E95: this one came off
-                Render.draw_depth(dp, it, wheelmat(wx,wz,steer,r))
+                Render.draw_depth(dp, it, wheelmat(wx,wz,steer,r,nm))
             end
             for (lx,ly,lz,_,_,_,sp,_,nm) in LOOSE_WHEELS, it in WHEELITEMS[nm]
                 Render.draw_depth(dp, it, loosemat(lx,ly,lz,sp))
@@ -14816,7 +14878,7 @@ function main()
         for (wx,wz,steer,r,nm) in WHEELS, it in WHEELITEMS[nm]
             is_loose(nm) && continue
             get(ENV,"JM_NO_WHEELS","0") != "0" && continue
-            Render.draw(prog, it, vp, wheelmat(wx,wz,steer,r); bright=1.0, ambfill=0.75)
+            Render.draw(prog, it, vp, wheelmat(wx,wz,steer,r,nm); bright=1.0, ambfill=0.75)
         end
         for (lx,ly,lz,_,_,_,sp,_,nm) in LOOSE_WHEELS, it in WHEELITEMS[nm]
             Render.draw(prog, it, vp, loosemat(lx,ly,lz,sp); bright=1.0, ambfill=0.75)
