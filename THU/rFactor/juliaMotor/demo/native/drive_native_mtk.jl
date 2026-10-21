@@ -13575,6 +13575,11 @@ function main()
     # so an armed countdown there would both fight that key and stage a start nobody can give.
     HOLD_START = IS_RACE && N_AI > 0 && !SKIDPAD && !SMOKE && isempty(REPLAY_FILE)
     race_go    = Ref(!HOLD_START)
+    # 2026-10-20: JM_SMOKE_HOLD=<s> -- a smoke race starts as the PO's does: the field holds on the grid and the race goes
+    # green at s seconds (as at the player's launch). Without it a smoke race is green from frame 0, so every path that
+    # first runs at the green light compiled during the hidden warm-up frames and no gate saw the PO's start stall.
+    SMOKE_HOLD = SMOKE ? parse(Float64, get(ENV, "JM_SMOKE_HOLD", "0")) : 0.0
+    SMOKE_HOLD > 0 && (race_go[] = false)
     cd_armed   = Ref(false)     # STARTSEQ-1: SPACE pressed, countdown may run
     cd_said    = Ref(false)     # the prompt has been printed to stdout once
     cd_t0      = Ref(-1.0)      # wall time the countdown began (-1 = not started)
@@ -14188,6 +14193,10 @@ function main()
         # seconds; at zero the race goes green for the whole field at once, with no throttle gate --
         # that is the difference between a countdown and the old "green when you decide to go".
         lap_t0 = countdown_step!(cs, AICARS, HOLD_START, ai_release, cd_armed, cd_left, cd_said, cd_t0, phase, race_go, lap_t0)   # LOOPSPLIT-1 S6: moved to main_loop.jl (returns lap_t0: it sets it at the green)
+        if SMOKE_HOLD > 0 && !race_go[] && cs.t >= SMOKE_HOLD   # JM_SMOKE_HOLD: the smoke race's green light
+            race_go[] = true; lap_t0 = cs.t; ai_release[] = cs.t + AI_HEADSTART
+            println("  [smoke] green light at t=", round(cs.t, digits = 2)); flush(stdout)
+        end
         # green light: the field launches the moment you ask for throttle (standing start)
         if COUNTDOWN <= 0 && HOLD_START && !race_go[] && phase[] == :race && inp.throttle > 0.15
             race_go[] = true; lap_t0 = cs.t          # start the clock at the launch
@@ -14684,52 +14693,25 @@ function main()
             end
             [(b=aibankP(pc); (pc.x, isfinite(pc.y) ? pc.y : groundz(pc.x, pc.z), pc.z, pc.θ, b[1], b[2])) for pc in AIPHYS]   # pc.y = 3-D height → AI visibly jump/heave; pitch/roll → list + roll
         elseif GPLAI_T !== nothing
-            # AIGPL-2: the field steps in GPL's frame at GPL's 36 Hz; the human is a car in the same frame
-            f = gplai_field!()
-            (ps, pdl, GPLAI_PH[]) = GPLAI.tlocate(GPLAI_T, cs.x, cs.z, GPLAI_PH[])
-            pdv = ddt > 1e-4 ? (pdl - GPLAI_PD[][2])/ddt : 0.0
-            abs(ps - GPLAI_PD[][1]) > 30 && (pdv = 0.0)
-            GPLAI_PD[] = (ps, pdl)
-            poses, hit = GPLAI.step!(f, ddt; player = (ps, pdl, clamp(pdv, -15.0, 15.0), cs.v), scale = GPLAI_SC,
-                                     vrel = isfinite(AI_REL) ? max(cs.v*AI_REL, 6.0) : Inf)
-            ai_hit[] = hit
-            if AI_OFFROAD_DIAG && race_go[]                       # SPATD-1 S4: AI centres off the drawn road, by 100 m of lap
-                for gc in f.cars
-                    (wx, wz, _) = GPLAI.tworld(GPLAI_T, gc.s, gc.d); AI_OFF[2] += 1
-                    if !JuliaMotor.hat3d(ROADHAT, wx, wz; ref = Inf)[3]
-                        AI_OFF[1] += 1; b = floor(Int, gc.s/100); AI_OFFBIN[b] = get(AI_OFFBIN, b, 0) + 1
-                    end
-                    # WGTD-1 S4: the car's EDGES too (centre +- 0.95 m along the frame's lateral) -- "a little off the track"
-                    (lx, lz, _) = GPLAI.tworld(GPLAI_T, gc.s, gc.d + 0.95); (rx, rz, _) = GPLAI.tworld(GPLAI_T, gc.s, gc.d - 0.95)
-                    if !(JuliaMotor.hat3d(ROADHAT, lx, lz; ref = Inf)[3] && JuliaMotor.hat3d(ROADHAT, rx, rz; ref = Inf)[3])
-                        AI_OFF[3] += 1; b = floor(Int, gc.s/100); AI_EDGEBIN[b] = get(AI_EDGEBIN, b, 0) + 1
-                    end
-                    if AI_OFF_POS !== nothing                     # WGTD-1 S7: the same edge test, the car moved AI_OFF_POS m
-                        (lx2, lz2, _) = GPLAI.tworld(GPLAI_T, gc.s, gc.d + AI_OFF_POS + 0.95); (rx2, rz2, _) = GPLAI.tworld(GPLAI_T, gc.s, gc.d + AI_OFF_POS - 0.95)
-                        (JuliaMotor.hat3d(ROADHAT, lx2, lz2; ref = Inf)[3] && JuliaMotor.hat3d(ROADHAT, rx2, rz2; ref = Inf)[3]) || (AI_OFF[4] += 1)
-                    end
-                end
-            end
-            crossed = falses(length(AICARS))
-            for (i, gc) in enumerate(f.cars)                      # keep the race bookkeeping (laps, order, HUD) in our frame
-                i > length(AICARS) && break
-                prevs = AICARS[i].s
-                s, lat = RaceAI.project(AILINE, poses[i][1], poses[i][3]; hint = prevs)
-                AICARS[i].s = s; AICARS[i].lane = lat; AICARS[i].v = gc.v
-                (prevs > AILINE.total*0.7 && s < AILINE.total*0.3) && (AICARS[i].lap += 1; crossed[i] = true)
-            end
-            # WGTD-1 (e) (PO 2026-10-08: "after the race the AI do one slow lap and stop in the pits, as GPL"): once any car
-            # has run the race distance the flag is out, and each AI car's next crossing ends ITS race (lapped cars too, as in
-            # racing). It then drives one cool-down lap at AI_COOL_PACE of its pace; at the line after that it moves to the outer edge of the
-            # corridor (GPL's own line transition, held there) and slows to a stop over 300 m. (GPL brings them into the pit
-            # lane; our AI have no pit line yet, so they stop at the edge of the straight.) JM_AI_COOLDOWN=0: racing on.
-            ai_cooldown_step!(f, AICARS, GPLAI_T, crossed, ent_name, phase, race_done, race_go)   # LOOPSPLIT-1 cycle 2 S2: moved to main_loop.jl
-            poses
+            gplai_poses!(cs, ddt, ai_hit, AICARS, AILINE, GPLAI_PD, GPLAI_PH, GPLAI_SC, GPLAI_T, ent_name, gplai_field!, phase, race_done, race_go)
         else
             pp = RaceAI.project(AILINE, cs.x, cs.z)                # the human as a racecraft object (s, lateral, speed)
             poses, hit = RaceAI.step_field!(AICARS, AILINE, ddt; scale = AI_SCALE, player = (pp[1], pp[2], cs.v), rel = AI_REL)
             ai_hit[] = hit
             [(b=aibankK(p); ai_ground((p[1],p[2],p[3],p[4],b[1],b[2]))) for p in poses]   # E104-S4: re-grounded at the DRAWN position; add terrain bank (kinematic has no body roll)
+        end
+        # LOOPSPLIT-1 cycle 4: functions moved out of the loop that first run at the GREEN LIGHT (the field holds on the grid
+        # until the player launches) compiled there -- an 815 ms freeze at the PO's every race start (JM_SMOKE_HOLD shows it:
+        # gplai_poses! 392, ai_cooldown_step! 245, ai_contact_step! 164 ms). Compiled here instead, on a hidden warm-up frame.
+        if frames == 1
+            precompile(gplai_poses!, typeof.((cs, ddt, ai_hit, AICARS, AILINE, GPLAI_PD, GPLAI_PH, GPLAI_SC, GPLAI_T, ent_name, gplai_field!, phase, race_done, race_go)))
+            precompile(ai_cooldown_step!, (GPLAI.Field, typeof(AICARS), typeof(GPLAI_T), BitVector, typeof(ent_name), typeof(phase),
+                                           typeof(race_done), typeof(race_go)))
+            precompile(ai_contact_step!, typeof.((cs, ai_poses, AICARS, AIPHYS, PLAYER_CDA, ffb_jolt)))
+            # a car knocked loose: its attitude closure and the Car3D step with the AI's ground closure (closure-typed)
+            precompile(aibankP, (typeof(cs),))
+            precompile(Core.kwcall, (NamedTuple{(:manual, :groundz), Tuple{Bool, typeof(groundz_ai)}}, typeof(DriveRT3D.step_car3d!),
+                                     typeof(cs), Float64, Float64, Float64, Float64))
         end
         # C: time each AI lap — works for BOTH the physics and kinematic fields (we watch AICARS[i].lap,
         # which both paths bump as the car crosses start/finish).  ai_best[i] = that car's fastest lap.
@@ -15005,6 +14987,7 @@ function main()
         mirror_live = MIRROR_RTT && CTL.view == 0 && _mir_noreplay &&
                       (_mir_alt || _mir_every <= 1 || (frames % _mir_every) == 0)
         (MIRROR_RTT && CTL.view == 0 && _mir_noreplay && !mirror_live) && (MIRROR_SKIPPED[] += 1)
+        frames == 1 && precompile(mirror_render!, typeof.((drawworld, cs, cam_pitch, cam_roll, frames, _mir_alt, lightVP, bodyModel, wheelmat, loosemat)))
         if mirror_live
             mirror_render!(drawworld, cs, cam_pitch, cam_roll, frames, _mir_alt, lightVP, bodyModel, wheelmat, loosemat)   # LOOPSPLIT-1: main_loop.jl
         end
@@ -15152,6 +15135,7 @@ function main()
         # The lotarms mesh is authored in a positioner-local frame (D12 posmat-clamp family): raw it
         # sits FORWARD of the wheel (x 0.68…1.01) and too high (y→0.52) → the old "giant silver arms".
         # ARMFIX mirrors it back through the wheel plane toward the driver + squashes it under the eye.
+        frames == 1 && precompile(hands_draw!, typeof.((cs, inp, vp, bodyModel, swModel)))   # first cockpit-view frame may come mid-race
         if HANDS && CTL.view == 0 && !_tm
             hands_draw!(cs, inp, vp, bodyModel, swModel)
         end

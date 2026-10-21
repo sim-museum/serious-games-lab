@@ -1549,3 +1549,50 @@ function loose_cars_step!(cs, ai_poses, ddt, AICARS, AILINE, GPLAI_T, PLAYER_G, 
     end
     nothing
 end
+
+"""The GPL AI field, one frame (AIGPL-2): step the field with the player's position, the off-road diagnostic, the race
+bookkeeping (laps, order) in our frame, the cool-down. Returns the field's poses. LOOPSPLIT-1 cycle 4 S1: moved unchanged
+(in the loop its `(ps, ...) =` wrote main()'s own `ps`)."""
+function gplai_poses!(cs, ddt, ai_hit, AICARS, AILINE, GPLAI_PD, GPLAI_PH, GPLAI_SC, GPLAI_T, ent_name, gplai_field!, phase, race_done, race_go)
+    # AIGPL-2: the field steps in GPL's frame at GPL's 36 Hz; the human is a car in the same frame
+    f = gplai_field!()
+    (ps, pdl, GPLAI_PH[]) = GPLAI.tlocate(GPLAI_T, cs.x, cs.z, GPLAI_PH[])
+    pdv = ddt > 1e-4 ? (pdl - GPLAI_PD[][2])/ddt : 0.0
+    abs(ps - GPLAI_PD[][1]) > 30 && (pdv = 0.0)
+    GPLAI_PD[] = (ps, pdl)
+    poses, hit = GPLAI.step!(f, ddt; player = (ps, pdl, clamp(pdv, -15.0, 15.0), cs.v), scale = GPLAI_SC,
+                             vrel = isfinite(AI_REL) ? max(cs.v*AI_REL, 6.0) : Inf)
+    ai_hit[] = hit
+    if AI_OFFROAD_DIAG && race_go[]                       # SPATD-1 S4: AI centres off the drawn road, by 100 m of lap
+        for gc in f.cars
+            (wx, wz, _) = GPLAI.tworld(GPLAI_T, gc.s, gc.d); AI_OFF[2] += 1
+            if !JuliaMotor.hat3d(ROADHAT, wx, wz; ref = Inf)[3]
+                AI_OFF[1] += 1; b = floor(Int, gc.s/100); AI_OFFBIN[b] = get(AI_OFFBIN, b, 0) + 1
+            end
+            # WGTD-1 S4: the car's EDGES too (centre +- 0.95 m along the frame's lateral) -- "a little off the track"
+            (lx, lz, _) = GPLAI.tworld(GPLAI_T, gc.s, gc.d + 0.95); (rx, rz, _) = GPLAI.tworld(GPLAI_T, gc.s, gc.d - 0.95)
+            if !(JuliaMotor.hat3d(ROADHAT, lx, lz; ref = Inf)[3] && JuliaMotor.hat3d(ROADHAT, rx, rz; ref = Inf)[3])
+                AI_OFF[3] += 1; b = floor(Int, gc.s/100); AI_EDGEBIN[b] = get(AI_EDGEBIN, b, 0) + 1
+            end
+            if AI_OFF_POS !== nothing                     # WGTD-1 S7: the same edge test, the car moved AI_OFF_POS m
+                (lx2, lz2, _) = GPLAI.tworld(GPLAI_T, gc.s, gc.d + AI_OFF_POS + 0.95); (rx2, rz2, _) = GPLAI.tworld(GPLAI_T, gc.s, gc.d + AI_OFF_POS - 0.95)
+                (JuliaMotor.hat3d(ROADHAT, lx2, lz2; ref = Inf)[3] && JuliaMotor.hat3d(ROADHAT, rx2, rz2; ref = Inf)[3]) || (AI_OFF[4] += 1)
+            end
+        end
+    end
+    crossed = falses(length(AICARS))
+    for (i, gc) in enumerate(f.cars)                      # keep the race bookkeeping (laps, order, HUD) in our frame
+        i > length(AICARS) && break
+        prevs = AICARS[i].s
+        s, lat = RaceAI.project(AILINE, poses[i][1], poses[i][3]; hint = prevs)
+        AICARS[i].s = s; AICARS[i].lane = lat; AICARS[i].v = gc.v
+        (prevs > AILINE.total*0.7 && s < AILINE.total*0.3) && (AICARS[i].lap += 1; crossed[i] = true)
+    end
+    # WGTD-1 (e) (PO 2026-10-08: "after the race the AI do one slow lap and stop in the pits, as GPL"): once any car
+    # has run the race distance the flag is out, and each AI car's next crossing ends ITS race (lapped cars too, as in
+    # racing). It then drives one cool-down lap at AI_COOL_PACE of its pace; at the line after that it moves to the outer edge of the
+    # corridor (GPL's own line transition, held there) and slows to a stop over 300 m. (GPL brings them into the pit
+    # lane; our AI have no pit line yet, so they stop at the edge of the straight.) JM_AI_COOLDOWN=0: racing on.
+    ai_cooldown_step!(f, AICARS, GPLAI_T, crossed, ent_name, phase, race_done, race_go)   # LOOPSPLIT-1 cycle 2 S2: moved to main_loop.jl
+    poses
+end

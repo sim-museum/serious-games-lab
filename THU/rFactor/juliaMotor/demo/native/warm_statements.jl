@@ -72,3 +72,8 @@ precompile(Tuple{typeof(Base.getindex), Base.ReinterpretArray{UInt8, 1, Int32, A
 precompile(Tuple{typeof(Base.print), Base.IOStream, String, String, String, Int64, String, Int64, String, String})
 precompile(Tuple{Base.var"#bind##0#bind##1"{Base.Channel{Int64}, Task}})
 precompile(Tuple{typeof(Base.print), Base.IOStream, String, Base.Dict{Symbol, Int64}, String})
+# 2026-10-20 (LOOPSPLIT-1 cycle 4): the green light of a held start (JM_SMOKE_HOLD): the GPL field's bookkeeping
+precompile(Tuple{typeof(Base.Iterators.enumerate), Array{GPLAI.Car, 1}})
+precompile(Tuple{typeof(Base.iterate), Base.Iterators.Enumerate{Array{GPLAI.Car, 1}}, Tuple{Int64}})
+precompile(Tuple{typeof(Base.iterate), Base.Iterators.Enumerate{Array{GPLAI.Car, 1}}, Tuple{Int64, Int64}})
+precompile(Tuple{typeof(Core.kwcall), NamedTuple{(:hint,), Tuple{Float64}}, typeof(RaceAI.project), RaceAI.AILine, Float64, Float64})

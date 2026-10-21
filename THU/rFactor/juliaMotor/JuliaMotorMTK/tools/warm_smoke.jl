@@ -15,7 +15,10 @@ println("\n  PERF-4 — no compile stalls at the race start (Watkins Glen, 5 AI,
 log = tempname()
 env = Dict("TRACK" => "watglen", "JM_MODE" => "race", "JM_AI" => "5", "JM_LAPS" => "3", "JM_AUTODRIVE" => "1",
            "JM_AUTODRIVE_MANUAL" => "1", "ZAND_SHIFT" => "manual", "JM_SMOKE" => "1", "JM_SMOKE_FRAMES" => "3600",
-           "JM_NOREPLAY" => "1", "JM_NOIBT" => "1", "JM_NOSOUND" => "1")
+           "JM_NOREPLAY" => "1", "JM_NOIBT" => "1", "JM_NOSOUND" => "1",
+           # 2026-10-20: the PO's start -- the field holds on the grid and goes green at 3 s. A smoke race is otherwise green
+           # from frame 0, so the green-light compiles (815 ms after LOOPSPLIT-1 moved the AI step out of main) never showed.
+           "JM_SMOKE_HOLD" => "3")
 open(log, "w") do io
     run(pipeline(setenv(`julia -t 2 --gcthreads=3,1 --project=$D $(joinpath(D, "drive_native_mtk.jl"))`, merge(copy(ENV), env));
                  stdout = io, stderr = io); wait = true)
