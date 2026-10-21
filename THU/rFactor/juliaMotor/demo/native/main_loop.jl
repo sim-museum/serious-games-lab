@@ -431,6 +431,14 @@ function autodrive_step!(cs, CLINE, frames, dt, groundz, inp, ONTRACK)
             _k = clamp(floor(Int, mod(s0 + 2.0*cs.v, CLINE.total) / (ps[2] - ps[1])) + 1, 1, length(pv))
             _vt = min(_vt, AUTODRIVE_PROF_PACE * pv[_k])
         end
+        if AUTODRIVE_TRAFFIC                    # AUTODRIVE-TRAFFIC-1: follow the car ahead, ~12 m gap
+            for (ax, az, av) in AD_TRAFFIC[]
+                (as_, al) = RaceAI.project(CLINE, ax, az)
+                gap = mod(as_ - s0 + CLINE.total/2, CLINE.total) - CLINE.total/2
+                (0.0 < gap < 40.0 && abs(al - lat0) < 2.2) || continue
+                _vt = min(_vt, max(0.0, av + (gap - 12.0)/2.0))
+            end
+        end
         thr, brk, st = RaceAI.controller(CLINE, s0, lat0, AUTODRIVE_LAT, _vt,
                                          cs.x, cs.z, cs.θ, cs.v, yawrate; power = 1.0)
         # E106-S15 (PO: "ensure nurburgring and spa can be driven without obstacles

@@ -1154,6 +1154,12 @@ const AUTODRIVE_LAT = parse(Float64, get(ENV, "JM_AUTODRIVE_LAT", "0"))
 # detect a pinned or stuck car keep seeing it.
 const AUTODRIVE_RECOVER = parse(Float64, get(ENV, "JM_AUTODRIVE_RECOVER", "0"))
 const AD_SLOW_T = Ref(0.0)
+# AUTODRIVE-TRAFFIC-1 (2026-10-20): JM_AUTODRIVE_TRAFFIC=1 -- the headless driver follows traffic: a car ahead within 40 m
+# along the line and 2.2 m across caps the target speed so the gap settles near 12 m (last frame's AI poses). Without it
+# the driver rams the field at the start and from behind, and integration races end in a wreck. Off by default: the gates
+# keep the driving they were tuned with.
+const AUTODRIVE_TRAFFIC = get(ENV, "JM_AUTODRIVE_TRAFFIC", "0") != "0"
+const AD_TRAFFIC = Ref(NTuple{3,Float64}[])      # (x, z, speed) of every AI car, from the previous frame
 const AUTODRIVE_PROF_PACE = parse(Float64, get(ENV, "JM_AUTODRIVE_PROFILE", "0"))   # AUTODRIVE-RING-1: 0 = off
 const AUTODRIVE_PROF = Ref{Any}(nothing)
 const GROUND_LAT_SMOOTH = get(ENV, "JM_GROUND_LAT_SMOOTH", "0") != "0"   # TD261016-1: 1 = lateral from the smoothed ribbon
@@ -14769,6 +14775,8 @@ function main()
             ai_poses = NTuple{6,Float64}[ai_smooth(k, ai_poses[k], dt > 1e-4 ? dt : 1/60) for k in eachindex(ai_poses)]
         end
         AICAM_R[] > 0 && (ai_poses_prev[] = NTuple{6,Float64}[ntuple(j -> Float64(p[j]), 6) for p in ai_poses])
+        AUTODRIVE_TRAFFIC && (AD_TRAFFIC[] = NTuple{3,Float64}[(Float64(p[1]), Float64(p[3]), k <= length(AICARS) ? Float64(AICARS[k].v) : 0.0)
+                                                             for (k, p) in enumerate(ai_poses)])
         # AIJIT-1 probe: JM_AIPOSE_TRACE=<i> prints AI car i's drawn pose every frame (t s lane x y z yaw pitch roll)
         if AIPOSE_TRACE != 0
             for k in (AIPOSE_TRACE > 0 ? (AIPOSE_TRACE:AIPOSE_TRACE) : (1:min(length(ai_poses), length(AICARS))))
