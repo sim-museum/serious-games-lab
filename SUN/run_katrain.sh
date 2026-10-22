@@ -23,6 +23,8 @@ if ! venv_has_katrain; then
 fi
 
 source "$SCRIPT_DIR/katrain_venv/bin/activate"
+# GO-SABAKI-1 (PO 10-22): KaTrain's menu "Review in Sabaki" opens the game in Sabaki through this launcher
+export KATRAIN_SABAKI="$SCRIPT_DIR/sabaki.sh"
 # A venv made before 2026-10-05 holds upstream KaTrain 1.17.1; replace it once with the sim-museum fork, which adds
 # network play through the Serious Games Week matchmaker.
 # Backlog 30 (2026-10-09): a fork installed before the Learn menu (lessons and problems) is replaced the same way.

@@ -91,7 +91,8 @@ fi
 type capture_marker_epoch &>/dev/null && capture_marker_epoch
 
 chmod +x "$SABAKI_PATH" 2>/dev/null
-"$SABAKI_PATH" --no-sandbox 2>/dev/null 1>/dev/null
+# GO-SABAKI-1 (PO 10-22): KaTrain's "Review in Sabaki" passes the finished game's SGF -- Sabaki opens it
+"$SABAKI_PATH" --no-sandbox "$@" 2>/dev/null 1>/dev/null
 
 # Run KataGo analysis on any new SGF files
 analyze_new_sgf_files
