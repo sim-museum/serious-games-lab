@@ -15306,50 +15306,7 @@ function main()
                     (MIRROR_ADAPT && MIRROR_STARVED[] ? MIRROR_ADAPT_N : MIRROR_EVERY),
                     " frame(s);  mirror renders skipped ", MIRROR_SKIPPED[]); flush(stdout)
         end
-        if now - titleT > 0.25 && REPLAY
-            carname = rep_focus[] == 0 ? (isempty(repd.names) ? "Player" : repd.names[1]) :
-                      (rep_focus[] < length(repd.names) ? repd.names[rep_focus[]+1] : "AI $(rep_focus[])")
-            GLFW.SetWindowTitle(win, "▶ REPLAY — $(uppercasefirst(TRACKSEL)) — 📷 $(REPLAY_CAM_LABEL[rep_cam[]]) — 🏎 $carname [$(rep_focus[]+1)/$(repd.ncar)]" *
-                "  —  $(round(rep_rt[],digits=1))/$(round(rep_dur,digits=1))s  $(rep_play[] ? "▶" : "⏸")×$(rep_speed[])   ·  V angle · C car · SPACE play · ←/→ seek · ↑/↓ speed")
-            titleT = now
-        elseif now - titleT > 0.25
-            # STANDINGS-1 S3 (2026-09-16): CAPTURE THE LIVE READOUT. S2 measured the arithmetic the
-            # position indicator interpolates but said plainly that the indicator itself "was not
-            # captured", because it lives in the GLFW window title and a headless run does not
-            # record it. Scraping it from outside does not work either: this desktop is WAYLAND and
-            # `xdotool search --name "Julia Racer"` finds nothing (only XWayland/GNOME windows
-            # enumerate), which is the same wall [[no-synthetic-keys-under-wayland]] recorded from
-            # the other direction. So the program prints it, which is what that note actually
-            # prescribes -- an env hook, with the title as the trace.
-            #
-            # Sampled HERE, at the title site, deliberately: this branch is rate-limited to 0.25 s,
-            # so what is printed is what a player can actually SEE, quantised exactly as the title
-            # is. A per-frame sample would measure the expression rather than the readout.
-            # JM_TRACE_POS=1.
-            if TRACE_POS && IS_RACE && race_go[] && !isempty(AICARS)
-                _p = findfirst(e -> e[1] == 0, standings())
-                if _p !== nothing && _p != POS_LAST[]
-                    println("  [pos] t=", round(cs.t, digits=2), "s  lap=", cs.laps + 1,
-                            "  title shows P", _p, "/", length(AICARS) + 1,
-                            POS_LAST[] < 0 ? "   (first sample)" : "   (was P$(POS_LAST[]))")
-                    flush(stdout)
-                    POS_LAST[] = _p
-                end
-            end
-            GLFW.SetWindowTitle(win, "Julia Racer — $(uppercasefirst(TRACKSEL)) — $(round(Int,cs.v*3.6)) km/h — gear $(cs.gear == 0 ? "N" : string(cs.gear)) ($(CTL.auto ? "AUTO" : "MANUAL")) — $(round(Int,cs.rpm)) rpm" *
-                (phase[] == :qual ? "  ⏱ QUALIFYING — drive a lap, then press ENTER to start the race" :
-                 (!race_go[]) ? ((START_ARM && !cd_armed[] && COUNTDOWN > 0) ?
-                                 "  🏁 PRESS ANY KEY TO START COUNTDOWN" :
-                                 cd_left[] > 0 ? "  🏁 $(ceil(Int, cd_left[]))..." :
-                                 "  🏁 GET READY — floor the throttle to start (the field launches with you)") :
-                 IS_RACE ? (race_done ? "  ✦ FINISHED P$(player_finpos[])/$(length(AICARS)+1) — best $(fmt_lap(best_lap)) (started P$(player_grid[]))" :
-                            "  — lap $(min(cs.laps+1,RACE_LAPS))/$RACE_LAPS" *
-                            (isempty(AICARS) ? "" : "  Pos P$(findfirst(e->e[1]==0, standings()))/$(length(AICARS)+1)")) :
-                           "  [$(uppercasefirst(MODE))]") *
-                (FUEL_ON ? "  — fuel $(round(Int,fuel[]))L ($(round(burn_lap>0 ? fuel[]/burn_lap : 0,digits=1)) laps)" : "") *
-                (cs.ontrack ? "" : "  [OFF TRACK]"))
-            titleT = now
-        end
+        titleT = title_step!(cs, win, now, titleT, REPLAY, FUEL_ON, repd, rep_focus, rep_cam, rep_rt, rep_dur, rep_play, rep_speed, AICARS, standings, race_go, phase, cd_armed, cd_left, race_done, player_finpos, best_lap, fmt_lap, player_grid, fuel, burn_lap)   # LOOPSPLIT-1 cycle 5 S1: moved to main_loop.jl
     end
     telem !== nothing && close(telem)
     flush_ibt!(ibt_samples)
