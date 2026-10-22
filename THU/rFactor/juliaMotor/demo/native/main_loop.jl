@@ -440,6 +440,71 @@ function recover_step!(cs, CLINE, groundz, PLAYER_G)
     nothing
 end
 
+"""The player's driving step, one frame: the wreck / launched car as the free rigid body, or the trackside contact
+forces, the chassis step, the launch hand-over and the GPL-wall / drawn-obstacle clamps. LOOPSPLIT-1 cycle 4 S6: moved
+unchanged from the frame loop; returns (ffb_jolt, _tgc) -- `_tgc` = when the wall work began (the GPLWALL cost line)."""
+function player_drive_step!(cs, inp, dt, rst, groundz, groundz_phys, roll_ter, ffb_jolt, race_go, BND_FX, BND_FY, BND_MZ, OFFDIST, OFFTRACK_PROBE, ONTRACK, PLAYER_CDA, PLAYER_HDG, STEP_GUARD_HITS)
+    local cfx, cfy, cpk, _tgc
+    (WRECKED[] || AIRBORNE[]) || (WBODY[] = nothing)
+    if CAR3D && CRASHBODY && (WRECKED[] || AIRBORNE[])   # CRASHBODY-1 / CARLAUNCH-1: a wreck or a launched car is the free rigid body
+        # WRECKJIT-1 S1: the jolt log's "before" for this frame -- set only on the driving path, it kept the last
+        # driving frame's velocity, so every wreck frame logged a false jolt and used up the log's 60 lines.
+        # The handover starts from the velocity AFTER the wrecking step: WVX/WVZ were read before it, so the body
+        # began at the pre-impact velocity and hit the wall a second time (the same dv logged twice)
+        WBODY[] === nothing && ((WVX[], WVZ[]) = DriveRT3D.world_velocity(cs))
+        (JOLT_MS > 0 && !SKIDPAD && !rst) && (JOLT_PRE[] = (WVX[], WVZ[], 0.0, 0.0, 0.0, GPLW_STAT[].hits, GPLW_STAT[].clamps,
+                                      OBS_STAT[].hits, OBS_STAT[].clamps, STEP_GUARD_HITS[]))
+        wreck_body_step!(cs, inp, dt, groundz_phys, roll_ter)
+        _tgc = time()                       # read by the GPLWALL cost line below
+    else
+    if CAR3D
+        (cfx, cfy, cpk, ffb_jolt) = player_step3d!(cs, dt, rst, inp, groundz, ffb_jolt, groundz_phys, race_go, BND_FX, BND_FY, BND_MZ,
+                                                   OFFDIST, OFFTRACK_PROBE, ONTRACK, PLAYER_CDA)
+    end
+    # E94-P4 S3: a damaged engine makes less power for the same pedal, and a dead one
+    # makes none. Applied to the THROTTLE rather than inside the model so it cannot
+    # disturb the ibt-derived engine curve -- the PO's constraint is that the physics
+    # comes from the data, and this is the driver's input being throttled, not the
+    # engine being re-specified. With a dead engine the revs fall and E98's stall rule
+    # drops MANUAL to AUTO on its own, which is what a driver would want.
+    PLAYER_HDG[] = cs.θ   # TRACKSMOOTH-2: the crease filter samples along this heading
+    (JOLT_MS > 0 && CAR3D && !SKIDPAD && !rst) && (JOLT_PRE[] = (WVX[], WVZ[], cfx, cfy, cpk, GPLW_STAT[].hits, GPLW_STAT[].clamps,
+                                  OBS_STAT[].hits, OBS_STAT[].clamps, STEP_GUARD_HITS[]))   # SPATD-1
+    _tps = time()
+    step_carX!(cs, inp.throttle * DriveRT3D.engine_power(), inp.brake, inp.steer, dt > 1e-4 ? dt : 1/60; lock = STEER_LIM[],
+                clutch=inp.clutch, up=inp.shift_up, dn=inp.shift_down, manual=!inp.autoshift,
+                groundz=groundz_phys)
+    DS_SIM[1] += time() - _tps
+    # WRECKJIT-1 S1 (JM_CRASHBODY=0 only): the frozen wreck was pinned BEFORE the step, so each step started from the pin
+    # and the smashed car jumped (57-104 m/s, up to 0.7 m) for the frame that is drawn -- pin it after the step too
+    (WRECKED[] && WRECK_FROZEN[] && WRECK_PIN && CAR3D) && DriveRT3D.pin3d!(cs, WRECK_PX[], WRECK_PZ[], WRECK_PT[], WRECK_PH[])
+    # CARLAUNCH-1: launched past the driving model's range -- the rigid body from the next frame
+    if AIRBODY && CRASHBODY && CAR3D && !WRECKED[] && !rst && !SKIDPAD && maximum(cs.rh) > AIRBODY_RH
+        AIRBORNE[] = true; AIR_LAND[] = 0.0; AIR_PEAK[] = (0.0, 0.0); ctrace_start!("launch")
+        println(launch_msg(Float64(cs.v), cs.rh)); flush(stdout)
+    end
+    if VDIAG && CAR3D && cs.t - VDIAG_T[] >= 0.5     # TD261016-1: the car's height vs the road it is on
+        VDIAG_T[] = cs.t
+        println("  [vdiag] t ", round(cs.t, digits = 1), " s ", round(cs.lapdist, digits = 0), " v ", round(cs.v*3.6, digits = 0),
+            "  y-road ", round(cs.y - groundz_phys(cs.x, cs.z), digits = 2), "  zref-road ", round(cs.zref - groundz_phys(cs.x, cs.z), digits = 2),
+            "  heave ", round(cs.heave, digits = 3), "  vref ", round(get(DriveRT3D._VREF, cs, NaN), digits = 2),
+            "  yaw ", round(rad2deg(cs.θ), digits = 2), " vmm ", round(1000cs.v, digits = 1), " brk ", round(inp.brake, digits = 2), " st ", round(inp.steer, digits = 3),
+            "  y-mesh ", (let r = JuliaMotor.hat3d(ROADHAT, cs.x, cs.z; ref = cs.y + 3.0); r[3] ? round(cs.y - r[1], digits = 2) : NaN end)); flush(stdout)
+    end
+    _tgc = time()
+    if GPLW_PHYS && CAR3D && !rst && GPLW_NEAR[] && !(WRECK_FROZEN[] && WRECK_NOCLAMP)   # GPLWALL-1: never through a GPL wall nor any drawn obstacle (PERF-5: not a frozen wreck). Two alternating rounds:
+        for _ in 1:2                # each clamp can nudge the car a few cm back into what the other just cleared
+            gplwall_clamp!(cs)
+            OBS_ON && obs_clamp!(cs)
+        end
+    end
+    # nothing within 2 m before the step (it moves <= 1.33 m): no clamp, but keep the obstacle "came from" fresh --
+    # a stale one would mis-side a fence the car has since driven round the end of
+    (GPLW_PHYS && CAR3D && !rst && !GPLW_NEAR[] && OBS_ON) && (OBS_PREV[] = (cs.x, cs.z))
+    end   # CRASHBODY-1
+    (ffb_jolt, _tgc)
+end
+
 """E85-S6 HEADLESS AUTODRIVE (JM_AUTODRIVE=1): the AI controller drives the player on the centreline; returns the
 frame's input. LOOPSPLIT-1 cycle 2 S2: moved unchanged from the frame loop -- in the loop its `let` wrote main()'s own
 `ps` and `step` (and the loop's `up` / `dn` / `thr` / `brk` / `st`) as a side effect; here they are its own."""

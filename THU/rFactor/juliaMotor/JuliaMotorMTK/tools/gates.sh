@@ -65,7 +65,7 @@ for g in $SMOKES; do
   gproj="$PROJ"; case "$g" in susp_pose_smoke|netplay_smoke|setup_tab_smoke|reground_smoke|netplay_dr_smoke|netplay_dr2_smoke|wheel_hubs_smoke|offroad_track_smoke|seam_smoke|gplroad_smoke|gpldlat_smoke|gplplan_smoke|gplwall_smoke|texcold_smoke|datfix_smoke|jrrender_smoke|tarmacmu_smoke|lodswitch_smoke|wreckbody_smoke) gproj="$PROJ/../demo/native" ;; esac
   # road_clear_smoke sweeps Spa and the Ring end to end (four census runs): ~15 min alone on this box,
   # so it gets its own cap; everything else stays at 900 s.
-  tmo=900; case "$g" in road_clear_smoke|gplwall_smoke|netcollide_smoke) tmo=1800 ;; esac   # netcollide: two sims
+  tmo=900; case "$g" in road_clear_smoke|gplwall_smoke|netcollide_smoke|carlaunch_smoke) tmo=1800 ;; esac   # netcollide: two sims; carlaunch: three (~610 s alone)
   # MP-5 S1 (2026-09-17): netai_smoke.jl CANNOT RUN ON THIS BOX. It holds a parent julia while
   # spawning each sim as a child, and every attempt was killed for memory (three times, including
   # once at MemoryMax=12G with 11 GB free) -- the spike is the child's track/car asset load. Its own

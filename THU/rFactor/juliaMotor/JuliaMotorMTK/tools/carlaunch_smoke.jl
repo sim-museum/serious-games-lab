@@ -14,8 +14,10 @@ function race(extra)
     env = merge(Dict(ENV), Dict("TRACK" => "monza", "JM_SMOKE" => "1", "JM_MODE" => "race", "JM_AI" => "3", "JM_LAPS" => "1",
                                 "JM_RAM_AI" => "1:5.1:-1.53:6:-3.3", "JM_SMOKE_FRAMES" => "900",
                                 "JM_FIXED_DT" => string(1/60)), extra)
-    log = tempname()
+    log = tempname(); t0 = time()
     run(pipeline(ignorestatus(setenv(`julia -t 2 --project=$D $(joinpath(D, "drive_native_mtk.jl"))`, env)); stdout = log, stderr = log))
+    # 2026-10-22: the suite once timed out in the 3rd race (900 s cap; ~200 s each alone) -- each race names its own time
+    println("  (race ", join(sort!(["$k=$v" for (k, v) in extra]), " "), ": ", round(Int, time() - t0), " s)"); flush(stdout)
     read(log, String)
 end
 println("CARLAUNCH gate: a wheel-on-wheel launch flies as a rigid body and lands")
