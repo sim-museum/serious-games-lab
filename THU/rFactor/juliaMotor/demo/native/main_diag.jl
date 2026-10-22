@@ -808,3 +808,56 @@ function mirror_ema_step!(frames)
     end
     nothing
 end
+
+"""The end-of-run reports: JM_AI_OFFROAD's census of AI car-frames off the drawn road, JM_DRIVECHECK's driveability
+verdict (LOOPSPLIT-1 cycle 5 S5: moved unchanged from main(), after the frame loop)."""
+function end_reports()
+    if AI_OFFROAD_DIAG && AI_OFF[2] > 0
+        println("  [ai offroad] ", AI_OFF[1], " of ", AI_OFF[2], " AI car-frames had the car centre off the drawn road (",
+                round(100*AI_OFF[1]/AI_OFF[2], digits = 2), " %); worst 100 m bins (s: frames): ",
+                join(["$(100k)-$(100k+100): $(v)" for (k, v) in sort(collect(AI_OFFBIN), by = x -> -x[2])[1:min(end, 8)]], ", "))
+        AI_OFF_POS === nothing || println("  [ai offroad] CONTROL: the cars moved ", AI_OFF_POS, " m sideways: ", AI_OFF[4], " of ", AI_OFF[2],
+                                          " car-frames with an edge off the road (", round(100*AI_OFF[4]/AI_OFF[2], digits = 2), " %)")
+        println("  [ai offroad] ", AI_OFF[3], " car-frames with a car EDGE (centre ± 0.95 m) off the drawn road (",
+                round(100*AI_OFF[3]/AI_OFF[2], digits = 2), " %); worst 100 m bins: ",
+                join(["$(100k)-$(100k+100): $(v)" for (k, v) in sort(collect(AI_EDGEBIN), by = x -> -x[2])[1:min(end, 8)]], ", "))
+    end
+    if DRIVECHECK
+        d = DC[]
+        println("\n  ══ DRIVEABILITY (", TRACKSEL, ") — autodrive reached s=", round(d.maxs, digits=1), " m ══")
+        println("    max height above ground : ", round(d.airmax, digits=2), " m at s=", round(d.air_s, digits=1),
+                "   (", d.air_bad, " frames over ", DC_AIR_MAX, " m)")
+        println("    max upward velocity     : ", round(d.vzmax, digits=2), " m/s at s=", round(d.vz_s, digits=1),
+                "   (", d.vz_bad, " frames over ", DC_VZ_MAX, " m/s)")
+        println("    longest slow spell      : ", round(d.stuckmax, digits=1), " s at s=", round(d.stuck_s, digits=1),
+                "   (stuck threshold ", DC_STUCK_S, " s under ", DC_STUCK_V, " m/s)")
+        # OFFROAD-1: report the frames the height test could not see, and say so plainly. A verdict
+        # that stayed silent about them is how "both tracks are survivable" was believed.
+        println("    lowest groundz seen     : ", round(d.ghmin, digits=2),
+                d.ghmin > -900 ? "   (the -999 off-HAT sentinel NEVER reached the physics)" : "   (sentinel seen)")
+        println("    frames OFF the mesh     : ", d.off_bad,
+                d.off_bad == 0 ? "   (the car never left the ground mesh)" :
+                string("   highest y=", round(d.off_y, digits=2), " m at s=", round(d.off_s, digits=1),
+                       "  — height there is measured against a STALE held reference, not real ground"))
+        if !isempty(d.offevents)
+            println("    off-mesh sites (s, y, km/h):")
+            for (es, ey, ekmh) in d.offevents
+                println("      s=", round(es, digits=1), "  y=", round(ey, digits=2), " m  ",
+                        round(ekmh, digits=1), " km/h")
+            end
+        end
+        if !isempty(d.events)
+            println("    launch SITES (each distinct excursion above ", DC_AIR_MAX, " m; height = that excursion's PEAK):")
+            for (es, eair, ekmh, ex, ez) in d.events
+                println("      s=", lpad(round(es, digits=1), 9), " m   air ", lpad(round(eair, digits=2), 6),
+                        " m   at ", lpad(round(ekmh, digits=0), 4), " km/h   world (",
+                        round(ex, digits=1), ", ", round(ez, digits=1), ")")
+            end
+        end
+        bad = (d.airmax > DC_AIR_MAX) + (d.vzmax > DC_VZ_MAX) + (d.stuckmax > DC_STUCK_S)
+        println(bad == 0 ? "    VERDICT: CLEAN — no levitation, no bounce, never stuck" :
+                           "    VERDICT: $(bad) FAILURE MODE(S) SEEN — see the lines above")
+        flush(stdout)
+    end
+    nothing
+end
