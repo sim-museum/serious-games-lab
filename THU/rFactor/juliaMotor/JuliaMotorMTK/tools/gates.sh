@@ -75,17 +75,26 @@ for g in $SMOKES; do
   # client disables / host announces / JM_NET_AI overrides) by reading the startup guard line, which
   # prints at module load before any asset is touched -- 4/4 PASS, ~1 min per arm, no spike.
   if [ "$g" = netai_smoke ] && [ -x "$HERE/netai_gate_fast.sh" ]; then
-      timeout $tmo bash "$HERE/netai_gate_fast.sh" > "$log" 2>&1
+      timeout $tmo bash "$HERE/netai_gate_fast.sh" > "$log" 2>&1 & tpid=$!
   else
-      timeout $tmo julia --project="$gproj" "$HERE/$g.jl" > "$log" 2>&1
+      timeout $tmo julia --project="$gproj" "$HERE/$g.jl" > "$log" 2>&1 & tpid=$!
   fi
-  rc=$?
+  wait $tpid; rc=$?
+  # GATEORPHAN-1 (2026-10-22): on a timeout, `timeout` TERMs its process group, but a sim the gate spawned can deadlock in
+  # Julia's exit (main thread compiling an atexit hook): carlaunch_smoke's 3rd race sat orphaned 5.3 h holding 2.6 GB.
+  # timeout leads its own process group (pgid = its pid), so whatever of the gate is left gets SIGKILL here.
+  orph=""
+  if [ "$rc" -eq 124 ]; then
+    left=$(ps -eo pid=,pgid= | awk -v g="$tpid" '$2 == g' | wc -l)
+    [ "$left" -gt 0 ] && { kill -KILL -- -"$tpid" 2>/dev/null; orph="      (timed out: killed $left leftover process(es) of the gate)"; }
+  fi
   # Exit status FIRST -- it is the only signal a crashed run gives. The text is a second
   # opinion for the smokes that report "✓ OK" rather than an exit code they set themselves.
   if [ "$rc" -eq 0 ]; then echo "PASS   ($log)"; pass=$((pass+1))
   else
     echo "FAIL rc=$rc   ($log)"; fail=$((fail+1)); failed="$failed $g"
     sed -n '$p' "$log" | sed 's/^/      /'
+    [ -n "$orph" ] && echo "$orph"
   fi
 done
 echo "----------------------------------------"

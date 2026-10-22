@@ -722,6 +722,31 @@ function player_car_draw!(cs, inp, vp, bodyModel, wheelmat, loosemat, REPLAY, re
     nothing
 end
 
+"""AI lap timing (both the physics and kinematic fields): each AI lap as it completes -> ai_best; JM_AI_LAPDIAG prints it.
+LOOPSPLIT-1 cycle 5 S3: moved unchanged from the frame loop."""
+function ai_lap_step!(cs, phase, race_go, AICARS, ai_lap_prev, ai_lapt0, ai_best, ent_name, fmt_lap)
+    if phase[] == :race && race_go[]
+        for i in 1:length(AICARS)
+            if AICARS[i].lap > ai_lap_prev[i]
+                lt = cs.t - ai_lapt0[i]; ai_lapt0[i] = cs.t
+                ai_lap_prev[i] > 0 && (ai_best[i] = min(ai_best[i], lt))   # skip lap 0→1 (the grid launch)
+                # JM_AI_LAPDIAG=1: report each AI lap as it completes. Until now an AI lap time
+                # existed only in `last_race_result.txt`, written when the RACE ENDS -- so a
+                # session that is quit early (or any headless pace check) recorded nothing, and
+                # "the AI lap at 1:40" could only ever be quoted from the pacing arithmetic
+                # rather than measured. This makes the claim checkable in one run.
+                if AI_LAPDIAG && ai_lap_prev[i] > 0
+                    println("  [ailap] ", rpad(ent_name(i), 9), " lap ", AICARS[i].lap,
+                            "  ", fmt_lap(lt), "   best ", fmt_lap(ai_best[i]))
+                    flush(stdout)
+                end
+                ai_lap_prev[i] = AICARS[i].lap
+            end
+        end
+    end
+    nothing
+end
+
 """E85-S6 HEADLESS AUTODRIVE (JM_AUTODRIVE=1): the AI controller drives the player on the centreline; returns the
 frame's input. LOOPSPLIT-1 cycle 2 S2: moved unchanged from the frame loop -- in the loop its `let` wrote main()'s own
 `ps` and `step` (and the loop's `up` / `dn` / `thr` / `brk` / `st`) as a side effect; here they are its own."""

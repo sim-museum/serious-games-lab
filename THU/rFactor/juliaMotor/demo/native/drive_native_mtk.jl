@@ -14760,25 +14760,7 @@ function main()
         end
         # C: time each AI lap — works for BOTH the physics and kinematic fields (we watch AICARS[i].lap,
         # which both paths bump as the car crosses start/finish).  ai_best[i] = that car's fastest lap.
-        if phase[] == :race && race_go[]
-            for i in 1:length(AICARS)
-                if AICARS[i].lap > ai_lap_prev[i]
-                    lt = cs.t - ai_lapt0[i]; ai_lapt0[i] = cs.t
-                    ai_lap_prev[i] > 0 && (ai_best[i] = min(ai_best[i], lt))   # skip lap 0→1 (the grid launch)
-                    # JM_AI_LAPDIAG=1: report each AI lap as it completes. Until now an AI lap time
-                    # existed only in `last_race_result.txt`, written when the RACE ENDS -- so a
-                    # session that is quit early (or any headless pace check) recorded nothing, and
-                    # "the AI lap at 1:40" could only ever be quoted from the pacing arithmetic
-                    # rather than measured. This makes the claim checkable in one run.
-                    if AI_LAPDIAG && ai_lap_prev[i] > 0
-                        println("  [ailap] ", rpad(ent_name(i), 9), " lap ", AICARS[i].lap,
-                                "  ", fmt_lap(lt), "   best ", fmt_lap(ai_best[i]))
-                        flush(stdout)
-                    end
-                    ai_lap_prev[i] = AICARS[i].lap
-                end
-            end
-        end
+        ai_lap_step!(cs, phase, race_go, AICARS, ai_lap_prev, ai_lapt0, ai_best, ent_name, fmt_lap)   # LOOPSPLIT-1 cycle 5 S3: moved to main_loop.jl
         # GD: rigid-body collision — when the player and an AI overlap and are CLOSING, apply a
         # momentum-exchange impulse: the player (real vehicle physics) is knocked off line + spun
         # via bumpX!, the AI is shoved aside + spun + scrubbed.  The wheels keep spinning with motion.
@@ -14841,14 +14823,7 @@ function main()
         AUTODRIVE_TRAFFIC && (AD_TRAFFIC[] = NTuple{3,Float64}[(Float64(p[1]), Float64(p[3]), k <= length(AICARS) ? Float64(AICARS[k].v) : 0.0)
                                                              for (k, p) in enumerate(ai_poses)])
         # AIJIT-1 probe: JM_AIPOSE_TRACE=<i> prints AI car i's drawn pose every frame (t s lane x y z yaw pitch roll)
-        if AIPOSE_TRACE != 0
-            for k in (AIPOSE_TRACE > 0 ? (AIPOSE_TRACE:AIPOSE_TRACE) : (1:min(length(ai_poses), length(AICARS))))
-                (k <= length(ai_poses) && k <= length(AICARS)) || continue
-                p = ai_poses[k]; c = AICARS[k]
-                println("   [aipose] ", round(cs.t, digits = 4), " ", round(c.s, digits = 3), " ", round(c.lane, digits = 4), " ",
-                        join((round(Float64(p[j]), digits = 4) for j in 1:6), " "), " ", k)
-            end
-        end
+        aipose_trace(cs, ai_poses, AICARS)   # LOOPSPLIT-1 cycle 5 S3: moved to main_diag.jl
         if !REPLAY && race_go[] && !rst && !isempty(ai_poses)
             ffb_jolt = ai_contact_step!(cs, ai_poses, AICARS, AIPHYS, PLAYER_CDA, ffb_jolt)
         end

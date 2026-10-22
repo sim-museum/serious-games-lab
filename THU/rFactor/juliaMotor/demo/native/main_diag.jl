@@ -709,3 +709,16 @@ function allocsites_report!(cs, frames)
     end
     nothing
 end
+
+"""JM_AIPOSE_TRACE=<i>|all: AI car i's drawn pose every frame (LOOPSPLIT-1 cycle 5 S3: moved unchanged from the frame loop)."""
+function aipose_trace(cs, ai_poses, AICARS)
+    if AIPOSE_TRACE != 0
+        for k in (AIPOSE_TRACE > 0 ? (AIPOSE_TRACE:AIPOSE_TRACE) : (1:min(length(ai_poses), length(AICARS))))
+            (k <= length(ai_poses) && k <= length(AICARS)) || continue
+            p = ai_poses[k]; c = AICARS[k]
+            println("   [aipose] ", round(cs.t, digits = 4), " ", round(c.s, digits = 3), " ", round(c.lane, digits = 4), " ",
+                    join((round(Float64(p[j]), digits = 4) for j in 1:6), " "), " ", k)
+        end
+    end
+    nothing
+end
