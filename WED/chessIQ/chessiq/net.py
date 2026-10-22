@@ -4,12 +4,14 @@ The host listens, picks the colours and starts each game; the guest connects. Bo
 engine, and every move travels as SAN with its ply number, so each side checks the other's move is legal at that
 point in the game -- a mismatch ends the connection instead of letting two boards silently diverge.
 
-  guest -> host   {"t":"hello", "name":..., "version":..., "build":...}   (build: $SGW_BUILD, the git commit)
+  guest -> host   {"t":"hello", "name":..., "version":..., "build":..., "pw":...}   (build: $SGW_BUILD, the git commit;
+                                                                          pw: SHA-256 of the table password, "" = none)
   host  -> guest  {"t":"start", "name":..., "you":"w"|"b"}            (also each later "new game")
   either way      {"t":"move", "ply":n, "san":"Nf3"}
                   {"t":"draw_offer"} {"t":"draw_accept"} {"t":"draw_decline"} {"t":"resign"}
                   {"t":"chat", "text":...}  {"t":"bye"}
 """
+import hashlib
 import json
 import os
 
@@ -18,6 +20,13 @@ from PyQt6.QtNetwork import QHostAddress, QTcpServer, QTcpSocket
 
 DEFAULT_PORT = 47810
 PROTOCOL = 1
+
+
+def password_hash(password):
+    """Backlog 55: the table password travels as a hash, "" for none. A host with a password refuses a guest whose hash
+    differs; a host without one is an open table -- the same rule as the other Serious Games Week games."""
+    p = (password or "").strip()
+    return hashlib.sha256(p.encode()).hexdigest() if p else ""
 
 
 class Link(QObject):
@@ -31,7 +40,7 @@ class Link(QObject):
     chat = pyqtSignal(str)
     closed = pyqtSignal(str)                # why
 
-    def __init__(self, name, parent=None):
+    def __init__(self, name, parent=None, password=""):
         # Backlog 28: the build this copy runs ($SGW_BUILD, the git commit the launcher stamps). A host that has one
         # refuses a guest from a different (or unknown) build, so a game joined by typing an address follows the
         # same rule as one found through the Serious Games Week matchmaker.
@@ -44,6 +53,7 @@ class Link(QObject):
         self.buf = b""
         self.is_host = False
         self.port = 0
+        self.pw = password_hash(password)
 
     # ---- host ----
     def host(self, port=DEFAULT_PORT):
@@ -66,7 +76,8 @@ class Link(QObject):
     # ---- guest ----
     def join(self, host, port=DEFAULT_PORT):
         self._attach(QTcpSocket(self))
-        self.sock.connected.connect(lambda: self.send(t="hello", name=self.name, version=PROTOCOL, build=self.build))
+        self.sock.connected.connect(lambda: self.send(t="hello", name=self.name, version=PROTOCOL, build=self.build,
+                                                                    pw=self.pw))
         self.sock.connectToHost(host, port)
 
     # ---- both ----
@@ -131,6 +142,11 @@ class Link(QObject):
                              "build of chessIQ." % (self.build, peer_build or "an unknown build"),
                              "Refused %s: a different build (%s)." % (str(msg.get("name", "Guest"))[:24],
                                                                       peer_build or "unknown"))
+                return
+            if self.pw and str(msg.get("pw") or "") != self.pw:
+                who = str(msg.get("name", "Guest"))[:24]
+                self._refuse("This table needs a password." if not msg.get("pw") else "Wrong password for this table.",
+                             "Refused %s: wrong password." % who)
                 return
             self.peer_name = str(msg.get("name", "Guest"))[:24]
             self.connected.emit(self.peer_name)

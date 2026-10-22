@@ -104,3 +104,36 @@ class BuildTest(unittest.TestCase):
             for w in (guest, host):
                 w.close()
             pump(lambda: False, 0.3)
+
+
+class PasswordTest(unittest.TestCase):
+    """Backlog 55: a table password (blank host = open table), as in the other Serious Games Week games."""
+    def _try(self, port, host_pw, guest_pw):
+        host, guest = MainWindow(), MainWindow()
+        try:
+            self.assertTrue(host.start_hosting("Ann", port, "w", host_pw))
+            told = []
+            guest.start_joining("Bob", "127.0.0.1", port, guest_pw)
+            guest.link.closed.connect(told.append)
+            joined = pump(lambda: guest.game.mode == "net" and host.link.peer_name == "Bob" or told, 5.0) and not told
+            return joined, (told[0] if told else "")
+        finally:
+            for w in (guest, host):
+                w.close()
+            pump(lambda: False, 0.3)
+
+    def test_open_table_takes_anyone(self):
+        self.assertEqual(self._try(PORT + 2, "", "x"), (True, ""))
+
+    def test_right_password_joins(self):
+        self.assertEqual(self._try(PORT + 3, "abc", "abc"), (True, ""))
+
+    def test_wrong_password_is_refused_and_told(self):
+        joined, why = self._try(PORT + 4, "abc", "x")
+        self.assertFalse(joined)
+        self.assertIn("Wrong password", why)
+
+    def test_no_password_is_refused_and_told(self):
+        joined, why = self._try(PORT + 5, "abc", "")
+        self.assertFalse(joined)
+        self.assertIn("needs a password", why)

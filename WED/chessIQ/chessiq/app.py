@@ -246,6 +246,10 @@ class HostDialog(QDialog):
         f.addRow("Your name:", self.name)
         f.addRow("Port (TCP):", self.port)
         f.addRow("You play:", self.colour)
+        self.password = QLineEdit()           # backlog 55: optional; blank = an open table
+        self.password.setEchoMode(QLineEdit.EchoMode.Password)
+        self.password.setPlaceholderText("optional -- blank = open table")
+        f.addRow("Password:", self.password)
         note = QLabel("Your game is listed on Serious Games Week while you wait." if serious_games_week.configured() else
                       "No Serious Games Week matchmaker is set up (sgw url ...): give your opponent this computer's address.")
         note.setWordWrap(True)
@@ -282,6 +286,10 @@ class JoinDialog(QDialog):
         f.addRow("Your name:", self.name)
         f.addRow("Host address:", self.host)
         f.addRow("Port (TCP):", self.port)
+        self.password = QLineEdit()           # backlog 55: the host's password, if the table has one
+        self.password.setEchoMode(QLineEdit.EchoMode.Password)
+        self.password.setPlaceholderText("only if the host set one")
+        f.addRow("Password:", self.password)
         v.addLayout(f)
         bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         bb.accepted.connect(self.accept)
@@ -1018,12 +1026,12 @@ class MainWindow(QMainWindow):
         d = HostDialog(self)
         if d.exec():
             colour = {0: "w", 1: "b"}.get(d.colour.currentIndex(), random.choice("wb"))
-            self.start_hosting(d.name.text().strip() or "Host", d.port.value(), colour)
+            self.start_hosting(d.name.text().strip() or "Host", d.port.value(), colour, d.password.text())
 
     def join_dialog(self):
         d = JoinDialog(self)
         if d.exec():
-            self.start_joining(d.name.text().strip() or "Guest", d.host.text().strip(), d.port.value())
+            self.start_joining(d.name.text().strip() or "Guest", d.host.text().strip(), d.port.value(), d.password.text())
 
     def _net_ui(self, on):
         for w in (self.mode, self.side, self.undo_btn):
@@ -1033,9 +1041,9 @@ class MainWindow(QMainWindow):
         self.leave_act.setEnabled(on)
         self.chat_box.setVisible(on)
 
-    def start_hosting(self, name, port, colour):
+    def start_hosting(self, name, port, colour, password=""):
         self.my_name = name
-        link = Link(name, self)
+        link = Link(name, self, password)
         if not link.host(port):
             QMessageBox.warning(self, "Host", "Could not listen on TCP port %d." % port)
             return False
@@ -1067,9 +1075,9 @@ class MainWindow(QMainWindow):
         self.link.start_game(E.opp(self.host_colour))
         self._start_net_game(self.host_colour)
 
-    def start_joining(self, name, host, port):
+    def start_joining(self, name, host, port, password=""):
         self.my_name = name
-        link = Link(name, self)
+        link = Link(name, self, password)
         self.link = link
         link.started.connect(self._start_net_game)
         link.connected.connect(lambda peer: self.chat_log.appendPlainText("Playing %s." % peer))
