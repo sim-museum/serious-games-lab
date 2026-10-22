@@ -1644,8 +1644,24 @@ function extract_gpl_car(path3do; exclude=("ltraymap","lshad"), only=(), grey=(0
             nsum[k]=(s[1]+n[1], s[2]+n[2], s[3]+n[3])
         end
     end
+    # MONZAWALL-1 (PO 2026-10-21: "side wall on left before lesmos flickers"): a track wall drawn as two back-to-back layers
+    # (Monza's brush_s before Lesmo: same plane, opposite windings, different triangulations) summed +n and -n at every
+    # shared corner -- they cancel and the leftover (the grass on top) pointed the wall's normals UP: lit as a floor in
+    # patches. Track meshes average only the normals within TRACK_CREASE degrees of the vertex's own (JM_TRACK_CREASE=180
+    # = the old plain average).
+    crease = track ? Float32(cosd(parse(Float64, get(ENV, "JM_TRACK_CREASE", "60")))) : -2f0   # read here: a const is frozen into JRRender
+    nlist = Dict{NTuple{3,Int32},Vector{NTuple{3,Float32}}}()
+    if smooth && crease > -1
+        for t in kept, i in 1:3; push!(get!(() -> NTuple{3,Float32}[], nlist, qk(t.p[i])), t.n[i]); end
+    end
     sm(p,fallback) = begin
-        s = get(nsum, qk(p), (0f0,0f0,0f0)); l = sqrt(s[1]^2+s[2]^2+s[3]^2)
+        if crease > -1
+            s = (0f0,0f0,0f0)
+            for n in get(nlist, qk(p), ()); (n[1]*fallback[1] + n[2]*fallback[2] + n[3]*fallback[3] >= crease) && (s = (s[1]+n[1], s[2]+n[2], s[3]+n[3])); end
+        else
+            s = get(nsum, qk(p), (0f0,0f0,0f0))
+        end
+        l = sqrt(s[1]^2+s[2]^2+s[3]^2)
         l < 1f-6 ? fallback : (s[1]/l, s[2]/l, s[3]/l)
     end
     texplanes = flatcol ? [_triplane(t) for t in kept if !t.flat && t.tex != ""] : NTuple{4,Float32}[]   # E60-S8

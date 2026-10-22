@@ -3579,6 +3579,28 @@ else
         end
         rc
     end
+    # MONZAWALL-1 diagnostic: JM_TRIDUMP_AT="tex,x,z,r" prints that part's triangles within r m of (x, z) -- vertices, winding
+    # normal, uv -- and exits (which layers overlap inside one part?)
+    if haskey(ENV, "JM_TRIDUMP_AT")
+        let a = split(ENV["JM_TRIDUMP_AT"], ","), tx = lowercase(a[1]), (x0, z0, r0) = parse.(Float64, a[2:4])
+            println("  [tri] dump ", tx, " near (", x0, ", ", z0, ") r ", r0, " over ", count(p -> lowercase(p.tex) == tx, TRACK), " parts; track ", sum(length(p.verts) for p in TRACK) ÷ 33, " triangles")
+            tx == "__parts__" && for p in sort(TRACK, by = p -> -length(p.verts)); println("  [tri] part ", rpad(p.tex, 14), length(p.verts) ÷ 33); end
+            for (pi, p) in enumerate(TRACK)
+                lowercase(p.tex) == tx || continue
+                v = p.verts
+                for k in 1:33:length(v)-32
+                    cx = (v[k] + v[k+11] + v[k+22])/3; cz = (v[k+2] + v[k+13] + v[k+24])/3
+                    hypot(cx - x0, cz - z0) <= r0 || continue
+                    ax, ay, az = v[k+11]-v[k], v[k+12]-v[k+1], v[k+13]-v[k+2]; bx, by, bz = v[k+22]-v[k], v[k+23]-v[k+1], v[k+24]-v[k+2]
+                    n = (ay*bz - az*by, az*bx - ax*bz, ax*by - ay*bx); l = sqrt(sum(abs2, n)); l < 1e-9 && continue
+                    println("  [tri] part ", pi, " #", (k-1)÷33, " n ", round.(n ./ l, digits = 2), " area ", round(l/2, digits = 1),
+                            " v ", join((string(round.((v[j], v[j+1], v[j+2]), digits = 2), " uv ", round.((v[j+9], v[j+10]), digits = 2)) for j in (k, k+11, k+22)), " | "),
+                            " vn ", round.((v[k+3], v[k+4], v[k+5]), digits = 2))
+                end
+            end
+        end
+        exit(0)
+    end
 end
 # E108 helper: JM_SHARP=<n> prints the n sharpest corners of the road line (3-point radius over +-8 m), lapdist + radius
 if !SKIDPAD && haskey(ENV, "JM_SHARP")

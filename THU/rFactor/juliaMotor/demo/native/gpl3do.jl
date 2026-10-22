@@ -16,6 +16,8 @@ export Mesh3DO, parse_3do, gpl_placements
 
 # E64 S4: walk every LOD child (the pre-fix behaviour) instead of only the highest-detail one
 const LOD_ALL = get(ENV,"JM_LOD_ALL","0") != "0"
+# MONZAWALL-1 diag, read per parse (a const here is frozen into the JRRender image at precompile time)
+track_slots() = Set(parse.(Int, filter(!isempty, split(get(ENV, "JM_TRACK_SLOTS", ""), ","))))
 # WRISTS-4 S2: JM_SWITCH_VARS="14,..." resolves op-5 switches (src 4: child = int(table[idx])) on those GPL switch-table
 # variables from the 0x14 "set" nodes met earlier in the walk (gpl.exe: 0x14 = table[idx & 0x3ff] = val at 0x4cfa50; op 5
 # at 0x4cf9b0); "14=0" forces a value. Unlisted variables (wheel frames, gauges, ... set by the game per frame) keep walking
@@ -77,6 +79,7 @@ tag(b, o) = String(b[o+1:o+4])
 
 """Parse a GPL .3do file into a `Mesh3DO` (triangulated, textured)."""
 function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}=nothing, Mroot=nothing, extdepth::Int=0, lappos::Float64=NaN, laplen::Float64=NaN)
+    TRACK_SLOTS = track_slots()
     b = read(path)
     String(b[1:4]) == "4OD3" || error("not a 3DO4 file: $path (magic=$(String(b[1:4])))")
 
@@ -257,7 +260,11 @@ function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}
         push!(PATH, typ)
         if typ == 0x04                              # group: 4, count, child*
             cnt = Int(u32(b, p+4))
+            # MONZAWALL-1 diagnostic: JM_TRACK_SLOTS="1,2,3,4" walks only those slots of a segment tree (a group of 8
+            # whose slot 8 is the 0x10 table; GPL draws slots 1-4 near, 5-6 mid, 7 far -- one band per segment).
+            segtree = !isempty(TRACK_SLOTS) && cnt == 8 && (c8 = Int(i32(b, p + 36)); c8 >= 0 && u32(b, prim_off + c8) == 0x10)
             for k in 1:cnt
+                (segtree && k <= 7 && !(k in TRACK_SLOTS)) && continue
                 walk(Int(i32(b, p + 4 + k*4)), curtex, depth+1, M, grp)
             end
         elseif typ == 0x05                          # selector: 5, child, subtype, ...
