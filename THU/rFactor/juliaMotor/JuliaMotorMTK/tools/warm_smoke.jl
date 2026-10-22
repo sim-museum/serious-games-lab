@@ -24,7 +24,10 @@ env = Dict("TRACK" => "watglen", "JM_MODE" => "race", "JM_AI" => "5", "JM_LAPS" 
            "JM_SMOKE_COUNTDOWN" => "1", "JM_ARM_KEY" => "2", "JM_ARM_KEY_NAME" => "V", "JM_REPLAY_REC" => "1",
            # RESTARTJIT-1 (2026-10-21): and R once in the race -- the respawn's keyword call compiled 61.6 ms at the press
            # (the PO's 10-20 Monza restart: 526 ms compiling). Known positive: 61.6 ms, before.
-           "JM_RESTART_AT" => "40")
+           "JM_RESTART_AT" => "40",
+           # MIDRACEJIT-1 (2026-10-22): a start crash can pin the car on a roadside obstacle (1 run in 4); without a recover
+           # the STUCK watchdog ended the run at 39 s, before the R. Stuck 5 s = SHIFT-R, as the PO does (and its compiles count).
+           "JM_AUTODRIVE_RECOVER" => "5")
 open(log, "w") do io
     run(pipeline(setenv(`julia -t 2 --gcthreads=3,1 --project=$D $(joinpath(D, "drive_native_mtk.jl"))`, merge(copy(ENV), env));
                  stdout = io, stderr = io); wait = true)
@@ -42,7 +45,8 @@ comp = sum((s[3] for s in late); init = 0.0)
 for s in late; s[3] > 0 && println("    stall at frame ", s[1], ": ", s[2], " ms, compile ", s[3], " ms"); end
 chk("compiling inside race stalls <= $(BUDGET) ms", comp <= BUDGET, "$(round(comp, digits = 1)) ms in $(length(late)) stall(s)")
 chk("the race ran (window revealed)", occursin("window revealed", txt), "")
-chk("the restart ran (R)", occursin("[restart] session reset", txt), "")
+chk("the restart ran (R)", occursin("[restart] session reset", txt), occursin("[STUCK]", txt) ? "the STUCK watchdog ended the run first" : "")
 chk("the PO's start ran (key pressed, green)", occursin("COUNTDOWN ARMED", txt) && occursin("→ GREEN", txt), "")
+chk("compiles are traced for the whole race (MIDRACEJIT-1)", occursin("green: tracing compiles for Inf s", txt), "")
 println(fails[] == 0 ? "\n  WARM GATE: PASS ✓" : "\n  WARM GATE: FAIL ✗")
 exit(fails[] == 0 ? 0 : 1)

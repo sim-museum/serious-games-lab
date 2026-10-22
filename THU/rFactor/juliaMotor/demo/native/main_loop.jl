@@ -228,7 +228,7 @@ function countdown_step!(cs, AICARS, HOLD_START, ai_release, cd_armed, cd_left, 
             end
             if cd_left[] <= 0 && !(START_ARM && !cd_armed[])
                 cd_left[] = 0.0
-                ctrace_start!("green")
+                ctrace_start!("green", CTRACE_RACE)
                 race_go[] = true; lap_t0 = cs.t
                 ai_release[] = cs.t + AI_HEADSTART
                 println("  → GREEN"); flush(stdout)

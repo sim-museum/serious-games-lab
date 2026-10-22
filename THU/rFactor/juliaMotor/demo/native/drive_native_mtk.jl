@@ -347,7 +347,14 @@ const ARM_AFTER = max(0.0, parse(Float64, get(ENV, "JM_ARM_AFTER", "0")))   # te
 # after the green, Julia prints each method it compiles to stderr (`#= ms =# precompile(...)`, into the race log).
 # Costs nothing while nothing compiles. JM_CTRACE=0 = off.
 const CTRACE = get(ENV, "JM_CTRACE", "1") != "0"
+# MIDRACEJIT-1: SHIFT-R's road-edge scan, top-level so it is compiled at load (as a closure in main() it compiled 8 ms
+# at the first SHIFT-R, and warm_statements.jl cannot name a closure)
+onroad_at(x::Float64, z::Float64) = JuliaMotor.hat3d(TERRAIN0, x, z; ref = Inf)[3]
 const CTRACE_UNTIL = Ref(0.0)
+# MIDRACEJIT-1 (2026-10-22): the PO's 10-21 Monza races still froze mid-race on compiles (169 ms at 126.6 s, 64 ms at
+# 186.5 s, 38 ms at 35 s) that no 2 s window saw. From the green the trace now runs for the whole race, so every compile
+# in the PO's own log is named next to its [stall] line. JM_CTRACE_RACE=<s> limits it (2 = before).
+const CTRACE_RACE = parse(Float64, get(ENV, "JM_CTRACE_RACE", "Inf"))
 # JM_CTRACE_PROF=1 (tests): also a sampling profile over the window, printed as a tree -- a compile that is runtime type
 # inference (Core.Compiler.return_type from a comprehension/broadcast) never shows as a precompile line (the green, 2026-10-21)
 # JM_CTRACE_PROF=<why> profiles only that window ("green", "countdown armed"); "ready" (the load-time call) warms the profiler.
@@ -358,7 +365,7 @@ function ctrace_start!(why, secs = 2.0)
     CTRACE_UNTIL[] == 0.0 && ccall(:jl_force_trace_compile_timing_enable, Cvoid, ())
     (!isempty(CTRACE_PROF) && CTRACE_UNTIL[] == 0.0 && (why == CTRACE_PROF || why == "ready")) &&
         Base.invokelatest(() -> (Main.Profile.clear(); Main.Profile.start_timer()))
-    CTRACE_UNTIL[] = time() + secs
+    CTRACE_UNTIL[] = max(CTRACE_UNTIL[], time() + secs)     # a short window never cuts the race-long one
     println(stderr, "  [ctrace] ", why, ": tracing compiles for ", secs, " s"); flush(stderr)
     nothing
 end
@@ -11955,7 +11962,8 @@ function camera(cs, pitch=0.0, roll=0.0)
     ex,ey,ez,drop = parse(Float32,get(ENV,"JM_EYE_X","0.25")), parse(Float32,get(ENV,"JM_EYE_Y","0.40")), 0.0f0, parse(Float32,get(ENV,"JM_EYE_DROP","0.12"))   # GPL: low seat just behind the wheel, ~level gaze (see the road), dash fills the lower frame; tunable via JM_EYE_*
     R = Render.roty(Float32(cs.θ)) * Render.rotz(Float32(pitch)) * Render.rotx(Float32(roll))   # = the chassis rotation
     if WBODY[] !== nothing        # CRASHBODY-1: in a wreck the head goes where the tub goes -- the rigid body's own rotation
-        _m = WreckBody.model_matrix(WBODY[]); R = Render.M4(_m[1:12]..., 0f0, 0f0, 0f0, 1f0)
+        # MIDRACEJIT-1: ntuple(.., Val(16)) keeps the length (a `_m[1:12]...` splat, or ntuple(.., 16), is Vararg{Any}: M4 compiled 23 ms in the wreck)
+        _m = WreckBody.model_matrix(WBODY[]); R = Render.M4(ntuple(i -> i <= 12 ? _m[i] : i == 16 ? 1f0 : 0f0, Val(16))...)
     end
     R3(a,b,c) = (w = R * Float32[a,b,c,0f0]; Float32[w[1],w[2],w[3]])     # rotate a body-frame direction into the world
     eye = Float32[wx,wy,wz] + R3(BODY_OFF[1]+ex, BODY_OFF[2]+ey, BODY_OFF[3]+ez)   # eye fixed in the body frame
@@ -14578,9 +14586,8 @@ function main()
             # centred — so this is safe everywhere.)
             cx0, cz0, θ0 = pR[1], pR[3], pR[4]
             nLx = -sin(θ0); nLz = cos(θ0)                              # left-hand normal
-            onroadR(x, z) = JuliaMotor.hat3d(TERRAIN0, x, z; ref = Inf)[3]
-            hiR = 0.0; while hiR < 10.0 && onroadR(cx0 + nLx*(hiR+0.5), cz0 + nLz*(hiR+0.5)); hiR += 0.5; end
-            loR = 0.0; while loR < 10.0 && onroadR(cx0 - nLx*(loR+0.5), cz0 - nLz*(loR+0.5)); loR += 0.5; end
+            hiR = 0.0; while hiR < 10.0 && onroad_at(cx0 + nLx*(hiR+0.5), cz0 + nLz*(hiR+0.5)); hiR += 0.5; end
+            loR = 0.0; while loR < 10.0 && onroad_at(cx0 - nLx*(loR+0.5), cz0 - nLz*(loR+0.5)); loR += 0.5; end
             offR = clamp((hiR - loR)/2, -5.0, 5.0)
             cxR = cx0 + nLx*offR; czR = cz0 + nLz*offR
             println("  [recover] placed at s ", round(sR, digits = 1), ": road ", -loR, " .. +", hiR, " m about the line, offset ",
@@ -14887,6 +14894,8 @@ function main()
                 precompile(WreckBody.LinearAlgebra.cross, (V, V)); precompile(WreckBody.LinearAlgebra.norm, (V,))
                 precompile(WreckBody.LinearAlgebra.dot, (V, V)); precompile(*, (V, Float64))
                 precompile(setindex!, (WreckBody.StaticArrays.MArray{Tuple{4},Float64,1,4}, Float64, Int))
+                # MIDRACEJIT-1: the wreck's model matrix and cockpit eye -- M4 from 16 Float32s (23 ms in the wreck)
+                precompile(Render.M4, ntuple(_ -> Float32, 16)); precompile(WreckBody.StaticArrays.Args, (NTuple{16,Float32},))
             end
             if CRASHBODY && !isempty(LOOSE_CARS)       # CARLAUNCH-2: a loose AI car's flight -- one scratch step, nothing written back
                 let pc = LOOSE_CARS[1]
