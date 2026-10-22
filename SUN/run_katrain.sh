@@ -26,7 +26,7 @@ source "$SCRIPT_DIR/katrain_venv/bin/activate"
 # A venv made before 2026-10-05 holds upstream KaTrain 1.17.1; replace it once with the sim-museum fork, which adds
 # network play through the Serious Games Week matchmaker.
 # Backlog 30 (2026-10-09): a fork installed before the Learn menu (lessons and problems) is replaced the same way.
-if ! python3 -c "import katrain.core.serious_games_week, katrain.core.learn" 2>/dev/null; then
+if ! python3 -c "import katrain.core.serious_games_week, katrain.core.learn, pysgf" 2>/dev/null; then   # pysgf: the fork imports it at start (10-22: a venv without it could not start KaTrain)
     echo "Installing the sim-museum KaTrain fork (network play, lessons and problems)..."
     pip install -q websocket-client certifi pysgf && \
     pip install -q --no-deps --force-reinstall "git+https://github.com/sim-museum/katrain.git@main" || \
