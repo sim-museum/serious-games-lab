@@ -41,6 +41,16 @@ const BUILDTAG = isempty(strip(get(ENV, "SGW_BUILD", ""))) ? UInt32(0) : fnv1a32
 passwordtag(s::AbstractString) = isempty(strip(s)) ? UInt32(0) : fnv1a32(strip(s))
 const PKTSIZE = 4 + 4 + 4 + 1 + 4 + 2 + 6*4  # magic + build tag + password tag + car id + tick + listen port + 6 Float32
 const DEFAULT_PORT = 47700
+# JR-REFUSE-1 (PO 2026-10-22: a refused racer must see why, on screen; "wrong version" must be an explicit error in every
+# game). A host that ignores a racer also REPLIES, at most once a second, with a refusal packet: REFMAGIC + reason byte +
+# the host's version text (length byte + bytes). Keep this layout fixed in every future build -- it is how two different
+# builds tell each other they differ. A racer that gets one stops sending and says why; a racer that hears nothing at
+# all says that too (NOREPLY_S), so a refused or unreachable racer is never left looking at an empty track.
+const REFMAGIC = UInt32(0x4A4D5246)       # "JMRF"
+const REF_VERSION, REF_NEEDPW, REF_BADPW = UInt8(1), UInt8(2), UInt8(3)
+const NOREPLY_S = 10.0
+const OLDPKTSIZE = PKTSIZE - 4             # before backlog 55 (no password tag): listen port at byte 13, not 17
+buildname() = (b = strip(get(ENV, "SGW_BUILD", "")); isempty(b) ? "unknown" : String(b))
 
 """One peer's view of the session. `remote` maps car id -> the last pose received for it."""
 # TWO SOCKETS PER PEER, and this is not tidiness — it is the whole reason this module works.
@@ -73,6 +83,9 @@ mutable struct NetLink
     pwbad::Int                                 # packets rejected for the password
     open::Bool
     readererr::String                          # non-empty if the reader task died (see poll!)
+    refused::String                            # racer: why the host refused us (shown on screen); "" = not refused
+    reftime::Dict{Tuple{IPAddr,Int},Float64}   # host: when each refused racer was last told
+    t0::Float64                                # when the link opened (for the no-reply message)
 end
 
 """    netopen(; port, peer) -> NetLink
@@ -93,7 +106,8 @@ function netopen(; port::Int = DEFAULT_PORT, peer = nothing, password::AbstractS
     peers = Tuple{IPAddr,Int}[]
     peer === nothing || push!(peers, (getaddrinfo(String(peer[1])), Int(peer[2])))
     n = NetLink(r, sk, port, peers, Dict{UInt8,NamedTuple}(), Dict{UInt8,Float64}(),
-                Channel{Tuple{IPAddr,Int,Vector{UInt8}}}(256), nothing, 0, 0, 0, passwordtag(password), peer === nothing, 0, true, "")
+                Channel{Tuple{IPAddr,Int,Vector{UInt8}}}(256), nothing, 0, 0, 0, passwordtag(password), peer === nothing, 0, true, "",
+                "", Dict{Tuple{IPAddr,Int},Float64}(), time())
     n.task = @async begin
         while n.open
             try
@@ -133,10 +147,45 @@ function send_pose!(n::NetLink, id::Integer, tick::Integer, x, y, z, yaw, v = 0.
     write(io, UInt16(n.port))                 # our LISTEN port — ssock's source port is ephemeral
     for f in (x, y, z, yaw, v, steer); write(io, Float32(f)); end
     buf = take!(io)
+    isempty(n.refused) || return 0             # refused: stop knocking (the host has told us why)
     for (h, p) in n.peers
         send(n.ssock, h, p, buf)
     end
     length(n.peers)
+end
+
+"""Host: tell the racer at (host, its listen port) why it is ignored -- at most once a second per racer."""
+function refuse!(n::NetLink, host::IPAddr, lport::Int, reason::UInt8)
+    (n.ishost && lport > 0) || return false
+    k = (host, lport)
+    time() - get(n.reftime, k, -Inf) < 1.0 && return false
+    n.reftime[k] = time()
+    v = codeunits(buildname())[1:min(end, 255)]
+    io = IOBuffer(); write(io, REFMAGIC); write(io, reason); write(io, UInt8(length(v))); write(io, v)
+    try; send(n.ssock, host, lport, take!(io)); catch; return false; end
+    true
+end
+
+"""The text a refused racer reads: what is wrong and what to do about it."""
+function refusal_text(reason::Integer, hostver::AbstractString)
+    reason == REF_VERSION ? (hostver == buildname() ?
+                             "Different version: the host runs another version of Julia Racer. Both players need the same version." :
+                             string("Different version: the host runs Julia Racer ", hostver, ", you run ", buildname(),
+                                    ". Both players need the same version.")) :
+    reason == REF_NEEDPW  ? "This race needs a password. Leave, then join again with the host's password." :
+    reason == REF_BADPW   ? "Wrong password for this race. Leave, then join again with the host's password." :
+                            string("The host refused this racer (reason ", reason, ").")
+end
+
+"""What a racer's screen should say about the link, or "" when all is well (host: always "")."""
+function status_text(n::NetLink, now::Float64 = time())
+    n.ishost && return ""
+    isempty(n.refused) || return n.refused
+    if n.rx == 0 && now - n.t0 > NOREPLY_S && !isempty(n.peers)
+        h, p = n.peers[1]
+        return string("No reply from the host at ", h, ":", p, ". Check the address and port, and that the host's race has started.")
+    end
+    ""
 end
 
 """Drain whatever has arrived. NEVER blocks — it takes only what the reader task has already queued.
@@ -149,7 +198,16 @@ function poll!(n::NetLink; maxpkts::Int = 64)
     got = 0
     while got < maxpkts && isready(n.inbox)
         (host, port, buf) = take!(n.inbox)
-        if length(buf) != PKTSIZE
+        if length(buf) >= 6 && reinterpret(UInt32, buf[1:4])[1] == REFMAGIC
+            if !n.ishost && isempty(n.refused)
+                nv = Int(buf[6]); hv = String(buf[7:min(end, 6 + nv)])
+                n.refused = refusal_text(buf[5], hv)
+                println("  netplay: refused by ", host, ": ", n.refused); flush(stdout)
+            end
+            continue
+        end
+        old = length(buf) == OLDPKTSIZE         # a build from before the password tag: a different version
+        if length(buf) != PKTSIZE && !old
             n.dropped += 1; continue
         end
         io = IOBuffer(buf)
@@ -157,11 +215,11 @@ function poll!(n::NetLink; maxpkts::Int = 64)
             n.dropped += 1; continue
         end
         tag = read(io, UInt32)
-        if tag != BUILDTAG
+        if old || tag != BUILDTAG
             n.skew += 1
-            n.skew == 1 && println("  netplay: ignoring ", host, ": that racer is a different build of Julia Racer ",
-                                   "(yours: ", isempty(strip(get(ENV, "SGW_BUILD", ""))) ? "unknown" : strip(ENV["SGW_BUILD"]),
-                                   "). Both players need the same build.")
+            n.skew == 1 && println("  netplay: ignoring ", host, ": that racer runs a different version of Julia Racer ",
+                                   "(yours: ", buildname(), "). Both players need the same version.")
+            refuse!(n, host, Int(reinterpret(UInt16, buf[(old ? 14 : 18):(old ? 15 : 19)])[1]), REF_VERSION)
             continue
         end
         pw = read(io, UInt32)
@@ -170,6 +228,7 @@ function poll!(n::NetLink; maxpkts::Int = 64)
             n.pwbad == 1 && println("  netplay: ignoring ", host, ": ", n.ishost ?
                 "that racer has the wrong race password." :
                 (n.pwtag == 0 ? "that race needs a password." : "wrong race password for that race."))
+            refuse!(n, host, Int(reinterpret(UInt16, buf[18:19])[1]), pw == 0 ? REF_NEEDPW : REF_BADPW)
             continue
         end
         id = read(io, UInt8); tick = read(io, UInt32)
