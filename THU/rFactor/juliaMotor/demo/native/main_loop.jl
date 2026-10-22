@@ -1256,13 +1256,23 @@ function drawworld_impl!(vp_, eye_, flip::Bool, cs, AICHASSIS, _tp_d, aiBody, ai
             b, a = cat === :road ? (MZ_ROAD_B, MZ_ROAD_A) : cat === :dark ? (MZ_DARK_B, MZ_DARK_A) :
                    cat === :bank ? (MZ_BANK_B, MZ_BANK_A) : (MZ_OTHER_B, MZ_OTHER_A)
             gg = ti <= length(TRACKGAIN) ? TRACKGAIN[ti] : 1f0
-            Render.draw(prog, it, vp_, Render.IDENT; bright=b*gg, ambfill=a*gg)
+            if _LW !== nothing && ti <= length(TRACKLAPOFF) && length(TRACKLAPOFF[ti]) > LAPNB + 1   # TRACKBAND-1: one band per tree
+                for (f0, n0) in bandranges!(BANDR, TRACKLAPOFF[ti], _clap, true)
+                    n0 > 0 && Render.draw(prog, it, vp_, Render.IDENT; bright=b*gg, ambfill=a*gg, first=f0, count=n0)
+                end
+            else
+                Render.draw(prog, it, vp_, Render.IDENT; bright=b*gg, ambfill=a*gg)
+            end
         else
             # E69-S7: make the track-draw lighting tunable so the warm cast measured against
             # gold (asphalt R-B: gold -2.5..-5.3, native +7.8..+12.7 across three tracks
             # each) can be attributed rather than guessed at.
             gg = ti <= length(TRACKGAIN) ? TRACKGAIN[ti] : 1f0   # GRADEGOLD-1
-            if _LW !== nothing && ti <= length(TRACKLAPOFF)     # BLINDTURN-1 S5: GPL's lap window
+            if _LW !== nothing && ti <= length(TRACKLAPOFF) && length(TRACKLAPOFF[ti]) > LAPNB + 1   # TRACKBAND-1: one band per tree
+                for (f0, n0) in bandranges!(BANDR, TRACKLAPOFF[ti], _clap)
+                    n0 > 0 && Render.draw(prog, it, vp_, Render.IDENT; bright=TRACK_BRIGHT*gg, ambfill=TRACK_AMB*gg, first=f0, count=n0)
+                end
+            elseif _LW !== nothing && ti <= length(TRACKLAPOFF)     # BLINDTURN-1 S5: GPL's lap window
                 for (f0, n0) in lapranges(TRACKLAPOFF[ti], _clap)
                     n0 > 0 && Render.draw(prog, it, vp_, Render.IDENT; bright=TRACK_BRIGHT*gg, ambfill=TRACK_AMB*gg, first=f0, count=n0)
                 end

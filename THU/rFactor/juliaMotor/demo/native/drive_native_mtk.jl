@@ -6985,18 +6985,51 @@ const LAPNB = _LW === nothing ? 0 : ceil(Int, _LW.L / LAPBIN)
 const NDUP2 = Ref(0)
 const TRACKLAPOFF = Vector{Int32}[]                       # per part: vertex offset where each bin starts (LAPNB + 1)
 const OBJLAP = Float64[]                                  # per object: its lap distance (filled on the first frame)
+# TRACKBAND-1 S2 (2026-10-21): GPL draws one band of each segment tree by its lap distance from the camera -- near (slots
+# 1-4) within 117 m, mid (5-6) to 312 m, far (7) to the window (gpl.exe FUN_00485ff0) -- and we drew all three, ~40 % of
+# Monza's track mesh twice or three times over (MONZAWALL-1). The parser tags each tree triangle (GPL3DO.BANDTAG, by
+# vertex sum); a part holding tagged triangles is sorted band-major -- untagged, near, mid, far, each in lap bins -- with a
+# tagged triangle in its TREE's bin (the circular median of the tree's triangles), so one tree's bands share a bin and the
+# band boundary leaves no hole; bandranges! then draws per band only its bins. JM_TRACKBAND=0 draws every band.
+const TRACKBAND = get(ENV, "JM_TRACKBAND", "1") != "0" && LAPWIN >= 312.0 + LAPBIN
+const TRACKBAND_NEAR = 117.0; const TRACKBAND_MID = 312.0    # 2,304,000 and 6,144,000 TRK units
+const TRACKBAND_N = Ref((tagged = 0, untagged = 0, trees = 0))
 if _LW !== nothing
-    let t0 = time()
-        for tp in TRACK
+    let t0 = time(), L = _LW.L
+        bin(s) = clamp(floor(Int32, mod(s, L) / LAPBIN), Int32(0), Int32(LAPNB - 1))
+        # pass 1: each triangle's lap position (and the other leg's) and band tag; each tree's triangles' positions
+        tri = map(TRACK) do tp
             v = tp.verts; nt = length(v) ÷ 33
-            b = Vector{Int32}(undef, nt); dup = Tuple{Int,Int32}[]
+            SL = Vector{Float64}(undef, nt); S2 = similar(SL); tg = zeros(Int32, nt)
             for t in 0:nt-1
                 o = 33t
                 cx = (v[o+1] + v[o+12] + v[o+23]) / 3; cz = (v[o+3] + v[o+14] + v[o+25]) / 3
                 sl, dsq = lapnear_d(cx, -cz)
-                b[t+1] = isnan(sl) ? Int32(0) : clamp(floor(Int32, sl / LAPBIN), Int32(0), Int32(LAPNB - 1))
                 s2 = lapnear2(cx, -cz, sl, dsq)                  # TD261013-1: a copy in the other leg's bin
-                isnan(s2) || push!(dup, (t, clamp(floor(Int32, s2 / LAPBIN), Int32(0), Int32(LAPNB - 1))))
+                SL[t+1] = sl; S2[t+1] = s2
+                if TRACKBAND
+                    k = Render.GPL3DO.bandkey((v[o+1], -v[o+3], v[o+2]), (v[o+12], -v[o+14], v[o+13]), (v[o+23], -v[o+25], v[o+24]))
+                    tg[t+1] = max(get(Render.GPL3DO.BANDTAG, k, Int32(0)), Int32(0))
+                end
+            end
+            (SL, S2, tg)
+        end
+        tpos = Dict{Int32,Vector{Float64}}()
+        for (sl, _, tg) in tri, t in eachindex(tg); tg[t] > 0 && !isnan(sl[t]) && push!(get!(() -> Float64[], tpos, tg[t] >> 2), sl[t]); end
+        tree = Dict{Int32,Float64}()                     # circular median: offsets from the circular mean
+        for (k, s) in tpos
+            m = atan(sum(sin, 2pi .* s ./ L), sum(cos, 2pi .* s ./ L)) * L / 2pi
+            q = sort!(mod.(s .- m .+ L/2, L) .- L/2); tree[k] = m + q[(length(q) + 1) ÷ 2]
+        end
+        TRACKBAND_N[] = (tagged = sum(count(>(0), x[3]) for x in tri), untagged = sum(count(==(0), x[3]) for x in tri), trees = length(tree))
+        for (pi, tp) in enumerate(TRACK)
+            v = tp.verts; nt = length(v) ÷ 33; sl, s2, tg = tri[pi]
+            banded = any(>(0), tg); NB = Int32(LAPNB)
+            b = Vector{Int32}(undef, nt); dup = Tuple{Int,Int32}[]
+            for t in 0:nt-1
+                bd = tg[t+1] & Int32(3); s = bd > 0 ? get(tree, tg[t+1] >> 2, sl[t+1]) : sl[t+1]
+                b[t+1] = (isnan(s) ? Int32(0) : bin(s)) + bd*NB
+                isnan(s2[t+1]) || push!(dup, (t, bin(s2[t+1]) + bd*NB))
             end
             if !isempty(dup)
                 resize!(v, 33*(nt + length(dup)))
@@ -7006,12 +7039,15 @@ if _LW !== nothing
             ord = sortperm(b; alg = MergeSort)
             w = similar(v); for (k, t) in enumerate(ord); copyto!(w, 33(k-1) + 1, v, 33(t-1) + 1, 33); end
             v .= w
-            off = zeros(Int32, LAPNB + 1); for x in b; off[x + 2] += 3; end
+            off = zeros(Int32, (banded ? 4LAPNB : LAPNB) + 1); for x in b; off[x + 2] += 3; end
             push!(TRACKLAPOFF, cumsum(off))
         end
         println("  [lapwin] track drawn ", LAPWIN, " m ahead/behind along the lap (GPL); ", length(TRACK), " parts in ",
                 LAPNB, " bins of ", LAPBIN, " m (", round(time() - t0, digits = 1), " s; JM_LAPWIN=0 reverts); ",
                 NDUP2[], " triangles near two legs of the lap drawn with either (JM_LAPWIN_TWOLEG=0 off)")
+        TRACKBAND && println("  [trackband] ", TRACKBAND_N[].tagged, " track triangles in ", TRACKBAND_N[].trees, " segment trees drawn one band ",
+                             "by lap distance (near ", TRACKBAND_NEAR, " m, mid ", TRACKBAND_MID, " m), ", TRACKBAND_N[].untagged,
+                             " always (JM_TRACKBAND=0: every band); parser ", Render.GPL3DO.BANDSTAT[])
         # BLINDTURN-1 S7: JM_LAPWIN_DIAG=1 -- for an eye on the centreline every 50 m, the NEAREST triangle the window hides.
         # GPL hides far-along-the-lap geometry by design; a hidden triangle within ~150 m of the eye is a candidate HOLE
         # (our nearest-centreline binning giving a fold of the track -- a hairpin's other leg -- to the wrong stretch).
@@ -7023,8 +7059,8 @@ if _LW !== nothing
             who = Dict{String,Tuple{Int,Float64,Set{Int}}}()
             for (pi, tp) in enumerate(TRACK)
                 v = tp.verts; off = TRACKLAPOFF[pi]
-                for b in 0:LAPNB-1
-                    lapwin_in(b*LAPBIN + LAPBIN/2, c) && continue
+                for b in 0:length(off)-2
+                    lapwin_in((b % LAPNB)*LAPBIN + LAPBIN/2, c) && continue
                     for t in div(off[b+1], 3):div(off[b+2], 3)-1
                         o = 33t; cx = (v[o+1] + v[o+12] + v[o+23])/3; cz = -(v[o+3] + v[o+14] + v[o+25])/3
                         d = hypot(cx - ex, cz - ez); d <= R || continue
@@ -7046,14 +7082,14 @@ if _LW !== nothing
                     v = tp.verts; off = TRACKLAPOFF[pi]
                     # TD261013-1: a triangle near two legs has a copy in the other leg's bin -- if that copy is drawn, it is not hidden
                     shown = Set{NTuple{3,Int32}}()
-                    for b in 0:LAPNB-1
-                        lapwin_in(b*LAPBIN + LAPBIN/2, c) || continue
+                    for b in 0:length(off)-2
+                        lapwin_in((b % LAPNB)*LAPBIN + LAPBIN/2, c) || continue
                         for t in div(off[b+1], 3):div(off[b+2], 3)-1
                             o = 33t; push!(shown, (round(Int32, 100*(v[o+1]+v[o+12]+v[o+23])), round(Int32, 100*(v[o+2]+v[o+13]+v[o+24])), round(Int32, 100*(v[o+3]+v[o+14]+v[o+25]))))
                         end
                     end
-                    for b in 0:LAPNB-1
-                        lapwin_in(b*LAPBIN + LAPBIN/2, c) && continue
+                    for b in 0:length(off)-2
+                        lapwin_in((b % LAPNB)*LAPBIN + LAPBIN/2, c) && continue
                         for t in div(off[b+1], 3):div(off[b+2], 3)-1
                             o = 33t; cx = (v[o+1] + v[o+12] + v[o+23])/3; cz = -(v[o+3] + v[o+14] + v[o+25])/3
                             (round(Int32, 100*(v[o+1]+v[o+12]+v[o+23])), round(Int32, 100*(v[o+2]+v[o+13]+v[o+24])), round(Int32, 100*(v[o+3]+v[o+14]+v[o+25]))) in shown && continue
@@ -7075,6 +7111,32 @@ if _LW !== nothing
         end
     end
 end
+"""TRACKBAND-1: a banded part's vertex ranges round lap distance `c` -- untagged geometry over the window; near bins
+(within 117 m) of the near band, mid bins (to 312 m) of the mid band, the rest of the window of the far band. `whole`:
+the untagged and far geometry over the whole lap (Monza's graded track draw has no lap window)"""
+function bandranges!(r, off, c, whole = false)
+    empty!(r); N = LAPNB; L = _LW.L
+    bin(s) = clamp(floor(Int, mod(s, L) / LAPBIN), 0, N - 1)
+    function span!(bd, a, n)                 # n bins from bin a (wrapping) of band bd
+        (n <= 0 || n > N) && return
+        o = bd*N
+        if a + n <= N; push!(r, (Int(off[o+a+1]), Int(off[o+a+n+1] - off[o+a+1])))
+        else; push!(r, (Int(off[o+a+1]), Int(off[o+N+1] - off[o+a+1]))); push!(r, (Int(off[o+1]), Int(off[o+a+n-N+1] - off[o+1]))); end
+    end
+    if isnan(c); for bd in 0:3; span!(bd, 0, N); end; return r; end
+    b0 = bin(c - LAPWIN); b1 = bin(c + LAPWIN); n0 = bin(c - TRACKBAND_NEAR); n1 = bin(c + TRACKBAND_NEAR)
+    m0 = bin(c - TRACKBAND_MID); m1 = bin(c + TRACKBAND_MID); d(a, b) = mod(b - a, N)
+    span!(1, n0, d(n0, n1) + 1)
+    span!(2, m0, d(m0, n0)); span!(2, mod(n1 + 1, N), d(n1, m1))
+    if whole                                 # untagged: the whole lap; far: everything outside the mid range
+        span!(0, 0, N); span!(3, mod(m1 + 1, N), d(m1, m0) - 1)
+    else
+        span!(0, b0, d(b0, b1) + 1)
+        span!(3, b0, d(b0, m0)); span!(3, mod(m1 + 1, N), d(m1, b1))
+    end
+    r
+end
+const BANDR = Tuple{Int,Int}[]
 "the part's vertex ranges inside the lap window round lap distance `c` (one, or two across the line)"
 function lapranges(off, c)
     isnan(c) && return ((0, Int(off[end])), (0, 0))
@@ -7082,6 +7144,28 @@ function lapranges(off, c)
     b1 = clamp(floor(Int, mod(c + LAPWIN, _LW.L) / LAPBIN), 0, LAPNB - 1)
     b0 <= b1 ? ((Int(off[b0+1]), Int(off[b1+2] - off[b0+1])), (0, 0)) :
                ((Int(off[b0+1]), Int(off[end] - off[b0+1])), (0, Int(off[b1+2])))
+end
+# TRACKBAND-1: JM_TRACKBAND_DIAG="<lap m>,..." -- per eye lap position, the track triangles drawn with one band per tree
+# against every band in the same window (the non-Monza draw; Monza's whole-lap draw in brackets), then exit
+if _LW !== nothing && get(ENV, "JM_TRACKBAND_DIAG", "") != ""
+    for c in parse.(Float64, split(ENV["JM_TRACKBAND_DIAG"], ","))
+        n1 = n0 = w1 = w0 = 0
+        for off in TRACKLAPOFF
+            if length(off) > LAPNB + 1
+                n1 += sum(x -> x[2], bandranges!(BANDR, off, c); init = 0) ÷ 3
+                w1 += sum(x -> x[2], bandranges!(BANDR, off, c, true); init = 0) ÷ 3
+                for bd in 0:3                    # a section's offsets are absolute: a range "from 0" starts at its first
+                    vw = view(off, bd*LAPNB+1:bd*LAPNB+LAPNB+1)
+                    for (f, n) in lapranges(vw, c); n > 0 && (n0 += (f == 0 ? n - Int(vw[1]) : n) ÷ 3); end
+                end
+                w0 += off[end] ÷ 3
+            else
+                n1 += (k = sum(x -> x[2], lapranges(off, c)) ÷ 3); n0 += k; w1 += off[end] ÷ 3; w0 += off[end] ÷ 3
+            end
+        end
+        println("  [trackband diag] eye at s ", round(Int, c), ": ", n1, " of ", n0, " triangles drawn (", w1, " of ", w0, " whole lap)")
+    end
+    exit(0)
 end
 const trackItems = Render.build_gpl(TRACK, TEXIDX)   # PERF-3: const -- an untyped global boxed every per-frame read
 tstamp("  build_gpl done (GL uploads)")   # E80

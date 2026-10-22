@@ -18,6 +18,16 @@ export Mesh3DO, parse_3do, gpl_placements
 const LOD_ALL = get(ENV,"JM_LOD_ALL","0") != "0"
 # MONZAWALL-1 diag, read per parse (a const here is frozen into the JRRender image at precompile time)
 track_slots() = Set(parse.(Int, filter(!isempty, split(get(ENV, "JM_TRACK_SLOTS", ""), ","))))
+# TRACKBAND-1 S2: GPL draws ONE band of each segment tree (a group of 8 whose slot 8 is the 0x10 table): near (slots 1-4)
+# within 117 m along the lap of the camera, mid (5-6) to 312 m, far (7) beyond (gpl.exe FUN_00485ff0); we walk all three.
+# Each triangle under a tree carries tag = tree*4 + band (1 near, 2 mid, 3 far) in bits 40+ of its group while parsing
+# (the road post-pass carries groups along); a top-level parse holding trees then fills BANDTAG -- key: the triangle's
+# GPL-frame vertex sum in cm, value: its tag, 0 where triangles of different tags share a key -- and returns plain groups.
+# The sim's lap-window binning looks its track triangles up here (drive_native_mtk.jl TRACKBAND).
+const BANDTAG = Dict{NTuple{3,Int32},Int32}()
+const BANDSHIFT = 40
+const BANDSTAT = Ref((trees = 0, tris = 0, keys = 0, shared = 0))   # the last fill: trees walked, tagged tris, keys, shared keys
+bandkey(p1, p2, p3) = ntuple(j -> round(Int32, 100*(Float64(p1[j]) + Float64(p2[j]) + Float64(p3[j]))), 3)
 # WRISTS-4 S2: JM_SWITCH_VARS="14,..." resolves op-5 switches (src 4: child = int(table[idx])) on those GPL switch-table
 # variables from the 0x14 "set" nodes met earlier in the walk (gpl.exe: 0x14 = table[idx & 0x3ff] = val at 0x4cfa50; op 5
 # at 0x4cf9b0); "14=0" forces a value. Unlisted variables (wheel frames, gauges, ... set by the game per frame) keep walking
@@ -127,6 +137,7 @@ function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}
 
     tris = Tri[]
     groups = Int[]
+    CURTAG = Ref(0); TREEID = Dict{Int,Int}()        # TRACKBAND-1: the segment tree/band being walked, tree ids by node
     used_tex = Set{String}()
     # E106-S6 diagnostic: for polys reaching emit with NO selector-set texture, record the raw
     # header words -- the suspected texture-SLOT reference lives in one of them. JM_SLOTDIAG=<file>.
@@ -195,7 +206,7 @@ function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}
         if !(get(ENV, "JM_HIDE_PARKED", "0") != "0" && PARKDEPTH[] > 0) && !(hidegrp != "" && string(grp) in split(hidegrp, ",")) && !(grp in HIDE_GROUPS[])
             for k in 2:length(P)-1                      # fan: (1, k, k+1)
                 push!(tris, Tri((P[1],P[k],P[k+1]), (N[1],N[k],N[k+1]), (UV[1],UV[k],UV[k+1]), tex, col, isflat, ptype))
-                push!(groups, grp)
+                push!(groups, grp + (CURTAG[] << BANDSHIFT))
             end
         end
         push!(ALL_GROUPS, grp); PARKDEPTH[] > 0 && push!(PARKED_GROUPS, grp)
@@ -262,10 +273,13 @@ function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}
             cnt = Int(u32(b, p+4))
             # MONZAWALL-1 diagnostic: JM_TRACK_SLOTS="1,2,3,4" walks only those slots of a segment tree (a group of 8
             # whose slot 8 is the 0x10 table; GPL draws slots 1-4 near, 5-6 mid, 7 far -- one band per segment).
-            segtree = !isempty(TRACK_SLOTS) && cnt == 8 && (c8 = Int(i32(b, p + 36)); c8 >= 0 && u32(b, prim_off + c8) == 0x10)
+            segtree = cnt == 8 && (c8 = Int(i32(b, p + 36)); c8 >= 0 && u32(b, prim_off + c8) == 0x10)
+            tid = (segtree && CURTAG[] == 0) ? get!(() -> length(TREEID) + 1, TREEID, off) : 0   # TRACKBAND-1
             for k in 1:cnt
-                (segtree && k <= 7 && !(k in TRACK_SLOTS)) && continue
+                (segtree && !isempty(TRACK_SLOTS) && k <= 7 && !(k in TRACK_SLOTS)) && continue
+                t0 = CURTAG[]; tid > 0 && (CURTAG[] = k <= 4 ? 4tid + 1 : k <= 6 ? 4tid + 2 : k == 7 ? 4tid + 3 : 0)
                 walk(Int(i32(b, p + 4 + k*4)), curtex, depth+1, M, grp)
+                CURTAG[] = t0
             end
         elseif typ == 0x05                          # selector: 5, child, subtype, ...
             child = Int(i32(b, p+4)); sub = u32(b, p+8)
@@ -577,7 +591,20 @@ function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}
     # ROADCURVE-1: a caller-installed post-pass (the sim rounds the track's road polygons onto its
     # racing curve). Applied to top-level parses only, so every consumer of this file -- the physics
     # HAT and the render extraction alike -- sees the same geometry.
-    (extdepth == 0 && POSTPROC[] !== nothing) ? POSTPROC[](path, m_out) : m_out
+    m_out = (extdepth == 0 && POSTPROC[] !== nothing) ? POSTPROC[](path, m_out) : m_out
+    if !isempty(TREEID)                          # TRACKBAND-1: publish the tags, return the plain groups
+        if extdepth == 0
+            empty!(BANDTAG)
+            for (t, g) in zip(m_out.tris, m_out.groups)
+                k = bandkey(t.p...); tg = Int32(g >> BANDSHIFT)
+                BANDTAG[k] = haskey(BANDTAG, k) && BANDTAG[k] != tg ? Int32(0) : tg
+            end
+            BANDSTAT[] = (trees = length(TREEID), tris = count(g -> g >> BANDSHIFT > 0, m_out.groups), keys = length(BANDTAG),
+                          shared = count(==(0), values(BANDTAG)))
+        end
+        m_out = Mesh3DO(m_out.tris, m_out.textures, [g & ((1 << BANDSHIFT) - 1) for g in m_out.groups])
+    end
+    m_out
 end
 
 """
