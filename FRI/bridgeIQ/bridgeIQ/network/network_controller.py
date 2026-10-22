@@ -197,7 +197,7 @@ class NetworkGameController(QObject):
 
     # Server mode
 
-    def start_server(self, port: int, name: str, seat: Seat) -> bool:
+    def start_server(self, port: int, name: str, seat: Seat, password: str = "") -> bool:
         """
         Start a server to host a game.
 
@@ -212,7 +212,7 @@ class NetworkGameController(QObject):
         if self._server is not None or self._client is not None:
             self.disconnect()
 
-        self._server = BridgeServer(self, app_version=APP_VERSION)
+        self._server = BridgeServer(self, app_version=APP_VERSION, password=password)
         self._server.client_connected.connect(self._on_client_connected)
         self._server.client_disconnected.connect(self._on_client_disconnected)
         self._server.seat_swap.connect(self._on_seat_swap)
@@ -282,7 +282,7 @@ class NetworkGameController(QObject):
 
     def connect_to_server(self, host: str, port: int, name: str,
                           requested_seat: str = "",
-                          role: str = "partner") -> bool:
+                          role: str = "partner", password: str = "") -> bool:
         """
         Connect to a server.
 
@@ -301,7 +301,7 @@ class NetworkGameController(QObject):
         if self._server is not None or self._client is not None:
             self.disconnect()
 
-        self._client = BridgeClient(self, app_version=APP_VERSION)
+        self._client = BridgeClient(self, app_version=APP_VERSION, password=password)
         self._client.connected.connect(self._on_connected_to_server)
         self._client.disconnected.connect(self._on_disconnected_from_server)
         self._client.connection_failed.connect(self._on_connection_failed)

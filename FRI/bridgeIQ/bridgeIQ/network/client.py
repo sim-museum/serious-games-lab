@@ -36,12 +36,14 @@ class BridgeClient(QObject):
     game_starting = pyqtSignal()  # Host has closed the lobby
     seat_request_rejected = pyqtSignal(str)  # Soft "seat_taken" rejection
 
-    def __init__(self, parent=None, app_version: str = ""):
+    def __init__(self, parent=None, app_version: str = "", password: str = ""):
         super().__init__(parent)
 
         # Build identifier sent in CONNECT_REQUEST so the host can reject
         # mismatched clients with code "version_mismatch".
         self.app_version: str = (app_version or "").strip()
+        from .protocol import password_hash
+        self.pw: str = password_hash(password)   # backlog 55
 
         self._socket: Optional[QTcpSocket] = None
         self._buffer = b""
@@ -214,6 +216,7 @@ class BridgeClient(QObject):
             requested_seat=self._requested_seat,
             role=self._role,
             app_version=self.app_version,
+            pw=self.pw,
         )
         data = request.to_bytes()
         self._socket.write(data)

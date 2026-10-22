@@ -100,6 +100,13 @@ class ConnectServerDialog(QDialog):
         self.name_edit = QLineEdit()
         self.name_edit.setText("Guest")
         settings_layout.addWidget(self.name_edit, 2, 1)
+
+        # Backlog 55: the host's password, if the table has one
+        settings_layout.addWidget(QLabel("Password:"), 3, 0)
+        self.password_edit = QLineEdit()
+        self.password_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.password_edit.setPlaceholderText("only if the host set one")
+        settings_layout.addWidget(self.password_edit, 3, 1)
         layout.addWidget(settings_group)
 
         hint = QLabel(

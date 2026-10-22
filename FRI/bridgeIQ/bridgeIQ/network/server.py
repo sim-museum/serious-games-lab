@@ -40,13 +40,15 @@ class BridgeServer(QObject):
     server_started = pyqtSignal(int)  # port number
     server_stopped = pyqtSignal()
 
-    def __init__(self, parent=None, app_version: str = ""):
+    def __init__(self, parent=None, app_version: str = "", password: str = ""):
         super().__init__(parent)
 
         # Build identifier (typically a short git commit hash). When set,
         # the server rejects clients whose CONNECT_REQUEST carries a
         # different (or empty) app_version with code "version_mismatch".
         self.app_version: str = (app_version or "").strip()
+        from .protocol import password_hash
+        self.pw: str = password_hash(password)   # backlog 55: "" = an open table
 
         self._server: Optional[QTcpServer] = None
         self._buffer = b""
@@ -452,6 +454,21 @@ class BridgeServer(QObject):
             logger.info(
                 f"Rejected '{player_name}' — version mismatch "
                 f"(host {self.app_version!r} vs client {client_version!r})")
+            return
+
+        # Backlog 55: a table password (a host without one is an open table).
+        client_pw = str(payload.get("pw") or "")
+        if self.pw and client_pw != self.pw:
+            try:
+                sock.write(make_connect_reject(
+                    "Wrong password for this table." if client_pw else "This table needs a password.",
+                    code="wrong_password",
+                ).to_bytes())
+                sock.flush()
+                sock.disconnectFromHost()
+            except Exception:
+                pass
+            logger.info(f"Rejected '{player_name}' -- wrong password")
             return
 
         # Empty `requested_seat` is the post-connect-lobby flow: the guest

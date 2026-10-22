@@ -97,9 +97,17 @@ class NetworkMessage:
 
 # Connection protocol messages
 
+def password_hash(password: str) -> str:
+    """Backlog 55: the table password travels as a SHA-256 hash, "" for none. A host with a password refuses a guest
+    whose hash differs; a host without one is an open table -- the same rule as the other Serious Games Week games."""
+    import hashlib
+    p = (password or "").strip()
+    return hashlib.sha256(p.encode()).hexdigest() if p else ""
+
+
 def make_connect_request(player_name: str, requested_seat: str = "",
                           role: str = "partner",
-                          app_version: str = "") -> NetworkMessage:
+                          app_version: str = "", pw: str = "") -> NetworkMessage:
     """Create a connection request message.
 
     Args:
@@ -118,6 +126,7 @@ def make_connect_request(player_name: str, requested_seat: str = "",
             "requested_seat": requested_seat,
             "role": role,
             "app_version": app_version,
+            "pw": pw,
         }
     )
 

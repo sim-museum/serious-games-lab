@@ -5315,7 +5315,8 @@ For more information, see the README file."""
             if self.network_controller.start_server(
                 settings['port'],
                 settings['name'],
-                settings['seat']
+                settings['seat'],
+                settings.get('password', '')
             ):
                 self.status_label.setText(
                     f"Server started on port {settings['port']}. Waiting for players..."
@@ -5395,8 +5396,9 @@ For more information, see the README file."""
     def _do_connect_to_server(self, host: str, port: int, name: str):
         """Open the socket. The seat is claimed later from the lobby
         seat board via _on_lobby_seat_clicked → request_seat."""
+        pw = self._connect_dialog.password_edit.text() if getattr(self, "_connect_dialog", None) else ""
         self.network_controller.connect_to_server(host, port, name,
-                                                   requested_seat="")
+                                                   requested_seat="", password=pw)
 
     def _on_lobby_seat_clicked(self, seat: Seat):
         """Forward the guest's seat click to the server as SEAT_REQUEST."""

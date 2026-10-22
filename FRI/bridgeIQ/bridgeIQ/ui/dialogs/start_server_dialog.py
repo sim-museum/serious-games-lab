@@ -93,6 +93,13 @@ class StartServerDialog(QDialog):
         self.partner_label.setStyleSheet("font-style: italic;")
         settings_layout.addWidget(self.partner_label, 3, 1)
 
+        # Backlog 55: optional table password (blank = an open table)
+        settings_layout.addWidget(QLabel("Password:"), 4, 0)
+        self.password_edit = QLineEdit()
+        self.password_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.password_edit.setPlaceholderText("optional -- blank = open table")
+        settings_layout.addWidget(self.password_edit, 4, 1)
+
         layout.addWidget(settings_group)
 
         # Instructions
@@ -167,4 +174,5 @@ class StartServerDialog(QDialog):
             'port': self.port_spin.value(),
             'name': self.name_edit.text().strip() or "Host",
             'seat': self.seat_combo.currentData(),
+            'password': self.password_edit.text(),
         }
