@@ -87,6 +87,21 @@ function texthud_draw!(cs, W, H, AICARS, best_lap, fmt_lap, lap_t0, last_lap, pl
                     Render.text_draw(textprog, textvao, textvbo, SEGFONT, st, W, H)
                 end
             end
+            # JR-REFUSE-1 (PO 2026-10-22): a racer the host refused (password, version) or never answered reads why HERE,
+            # not only in a log. One sentence per line, amber on black, mid-frame, for as long as it holds.
+            netmsg = NETLINK === nothing ? "" : NetPlay.status_text(NETLINK)
+            if !isempty(netmsg)
+                lines = split(replace(netmsg, ". " => ".\n"), '\n'); sc = 1.6
+                lw = maximum(l -> Render.text_width(FONT, l; scale=sc), lines); lh = sc*FONT.lineh + 4
+                bx = (W - lw)/2 - 20; by = H*0.40
+                bg = Float32[]; Render.hquad!(bg, bx, by - 10, lw + 40, length(lines)*lh + 20, (0.0, 0.0, 0.0))
+                Render.hud_draw(hudprog, hudvao, hudvbo, bg, W, H)
+                fv = Float32[]
+                for (k, l) in enumerate(lines)
+                    Render.text!(fv, FONT, (W - Render.text_width(FONT, l; scale=sc))/2, by + (k - 1)*lh, l, (1.0, 0.7, 0.15); scale=sc)
+                end
+                Render.text_draw(textprog, textvao, textvbo, FONT, fv, W, H)
+            end
             # RACEEND-1 (PO 2026-09-19, WG race: "there should be a graphical signal when the race is
             # over"). Until now the finish was a small line in the standings box and the window title.
             # Now: a chequered strip across the frame under the HUD band and a large centred banner,
