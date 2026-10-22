@@ -15046,65 +15046,18 @@ function main()
         gc_step!(frames)   # LOOPSPLIT-1 S5: moved to main_loop.jl
         DSTAT && (GPUSYNC && glFinish(); DS_T[5] = time())
         GLFW.SwapBuffers(win)
-        if GPUQ > 0                                   # PERF-4 S3: at most one frame queued in the driver
-            _tq = time()
-            if GPUQ_FENCE[] != C_NULL
-                glClientWaitSync(GPUQ_FENCE[], GL_SYNC_FLUSH_COMMANDS_BIT, UInt64(100_000_000)); glDeleteSync(GPUQ_FENCE[])
-            end
-            GPUQ_FENCE[] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0)
-            _w = time() - _tq; GPUQ_WAIT[1] += _w; GPUQ_WAIT[2] += 1; GPUQ_WAIT[3] = max(GPUQ_WAIT[3], _w)
-            if GPUQ_DIAG > 0 && GPUQ_WAIT[2] >= GPUQ_DIAG
-                println("  [gpuq] fence wait mean ", round(1000GPUQ_WAIT[1]/GPUQ_WAIT[2], digits = 2), " ms  max ",
-                        round(1000GPUQ_WAIT[3], digits = 1), " ms  fps ", round(FRAME_FPS[], digits = 1)); flush(stdout)
-                fill!(GPUQ_WAIT, 0.0)
-            end
-        end
-        if DSTAT
-            DS_T[6] = time()
-            for k in 1:5; DS_ACC[k] += DS_T[k+1] - DS_T[k]; end
-            for k in 1:6; DS_NA[k] += DS_N[k]; end
-            DS_CNT[] += 1
-            if DS_CNT[] >= 240
-                c = DS_CNT[]; f(x) = round(1000x/c, digits=2)
-                println("  [drawstats] FRAME ", f(DS_LOOP[]), " ms  = SIM ", f(DS_SIMACC[1]), " (player phys ", f(DS_SIMACC[2]), ", AI phys ", f(DS_SIMACC[3]), ")  shadow ", f(DS_ACC[1]), "  mirror ", f(DS_ACC[2]), "  main ", f(DS_ACC[3]), "  hud ", f(DS_ACC[4]), "  swap ", f(DS_ACC[5]),
-                        "   draws: shadow ", DS_NA[1]÷c, " mirror ", (DS_NA[2]-DS_NA[1])÷c, " main ", (DS_NA[3]-DS_NA[2])÷c,
-                        "   ktris: shadow ", DS_NA[4]÷c÷1000, " mirror ", (DS_NA[5]-DS_NA[4])÷c÷1000, " main ", (DS_NA[6]-DS_NA[5])÷c÷1000, GPUSYNC ? "  (GPU-synced)" : "")
-                flush(stdout); fill!(DS_ACC, 0.0); fill!(DS_NA, 0); fill!(DS_SIMACC, 0.0); DS_LOOP[] = 0.0; DS_CNT[] = 0
-            end
-        end
+        frame_stats_step!()   # LOOPSPLIT-1 cycle 5 S4: moved to main_diag.jl
         # JM_FRAMEDUMP="<start>:<count>" dumps CONSECUTIVE frames, which the existing JM_SHOTS
         # cannot: it settles and dumps one frame per teleport, so it can photograph a scene but
         # never a TEMPORAL artefact. The PO's strobing mirrors are exactly that -- a single frame
         # cannot show them. Frames go to JM_FRAMEDUMP_DIR (default alongside the build tree, NOT
         # /tmp: 1920x1080 PPMs are ~6 MB each and /tmp here is a quota'd tmpfs that has already
         # broken a session).
-        if !isempty(FRAMEDUMP) && FRAMEDUMP[1] <= frames < FRAMEDUMP[1] + FRAMEDUMP[2]
-            buf=Vector{UInt8}(undef,W*H*3); glReadPixels(0,0,W,H,GL_RGB,GL_UNSIGNED_BYTE,buf)
-            fn = joinpath(FRAMEDUMP_DIR, "jmfd_" * lpad(frames, 5, '0') * ".ppm")
-            open(fn,"w") do io; write(io,"P6\n$W $H\n255\n")
-                for y in H:-1:1, x in 1:W; o=((y-1)*W+(x-1))*3; write(io,buf[o+1],buf[o+2],buf[o+3]); end; end
-            frames == FRAMEDUMP[1] + FRAMEDUMP[2] - 1 && (println("  JM_FRAMEDUMP: ", FRAMEDUMP[2],
-                " consecutive frames -> ", FRAMEDUMP_DIR); flush(stdout))
-        end
-        if SMOKE && frames == 38 && isempty(SHOTS)  # headless self-test: dump one frame
-            buf=Vector{UInt8}(undef,W*H*3); glReadPixels(0,0,W,H,GL_RGB,GL_UNSIGNED_BYTE,buf)
-            open(get(ENV,"JM_DUMP","/tmp/zand_hud.ppm"),"w") do io; write(io,"P6\n$W $H\n255\n")
-                for y in H:-1:1, x in 1:W; o=((y-1)*W+(x-1))*3; write(io,buf[o+1],buf[o+2],buf[o+3]); end; end
-        end
+        frame_dumps!(frames)   # LOOPSPLIT-1 cycle 5 S4: moved to main_diag.jl
         # JM_SHOT_AT: time-triggered captures (see SHOTS_AT). Arm on the trigger, dump SHOT_SETTLE
         # frames later so a view switch has settled; in a replay the clock is the replay clock.
         dx_shots!(cs, frames, REPLAY, eye, race_done, rep_rt, vp)
-        if SMOKE && !isempty(AICAM_SEQ) && frames >= 40
-            seg = (frames - 40) ÷ AICAM_SEG + 1
-            if seg <= length(AICAM_SEQ)
-                (AICAM_R[], AIVIEW_R[]) = AICAM_SEQ[seg]
-                if (frames - 40) % AICAM_SEG == AICAM_SEG - 1
-                    buf=Vector{UInt8}(undef,W*H*3); glReadPixels(0,0,W,H,GL_RGB,GL_UNSIGNED_BYTE,buf)
-                    open(joinpath(SHOTS_DIR, "aiseq_$(seg)_$(AICAM_R[])_$(AIVIEW_R[]).ppm"),"w") do io; write(io,"P6\n$W $H\n255\n")
-                        for y in H:-1:1, x in 1:W; o=((y-1)*W+(x-1))*3; write(io,buf[o+1],buf[o+2],buf[o+3]); end; end
-                end
-            end
-        end
+        aicam_seq_step!(frames)   # LOOPSPLIT-1 cycle 5 S4: moved to main_diag.jl
         # E59 multi-shot: dump the settled frame for the current shot, then teleport to the next.
         shots_step!(frames, vp, eye, W, H, place_at_s!, shot_idx, shot_t0, shots_done)   # LOOPSPLIT-1 cycle 2 S3: moved to main_diag.jl
 
@@ -15121,22 +15074,7 @@ function main()
         # SPA-FPS-1 S6: smoothed frame time for the adaptive mirror decision above. An EMA rather
         # than the instantaneous dt so one slow frame (a texture upload, a GC pause) cannot flip the
         # mirror off and on, which would itself look like strobing.
-        let _nowt = time()
-            if MIRROR_T0[] > 0
-                dtf = _nowt - MIRROR_T0[]
-                MIRROR_EMA[] = MIRROR_EMA[] == 0.0 ? dtf : (0.9 * MIRROR_EMA[] + 0.1 * dtf)
-            end
-            MIRROR_T0[] = _nowt
-        end
-        # S6b: report in BOTH arms. The first version gated this on MIRROR_ADAPT, so the control arm
-        # (JM_MIRROR_ADAPT=0) printed nothing and there was no frame time to compare against -- an
-        # instrument that cannot speak in the arm it is being compared to. Gate on FPSDIAG alone.
-        if FPSDIAG > 0 && frames % FPSDIAG == 0
-            println("  [mirror] adapt=", MIRROR_ADAPT ? 1 : 0,
-                    "  frame EMA ", round(MIRROR_EMA[]*1000, digits=1), " ms   marks ", MIRROR_RESUME_MS, "/", MIRROR_ADAPT_MS, " ms   -> every ",
-                    (MIRROR_ADAPT && MIRROR_STARVED[] ? MIRROR_ADAPT_N : MIRROR_EVERY),
-                    " frame(s);  mirror renders skipped ", MIRROR_SKIPPED[]); flush(stdout)
-        end
+        mirror_ema_step!(frames)   # LOOPSPLIT-1 cycle 5 S4: moved to main_diag.jl
         titleT = title_step!(cs, win, now, titleT, REPLAY, FUEL_ON, repd, rep_focus, rep_cam, rep_rt, rep_dur, rep_play, rep_speed, AICARS, standings, race_go, phase, cd_armed, cd_left, race_done, player_finpos, best_lap, fmt_lap, player_grid, fuel, burn_lap)   # LOOPSPLIT-1 cycle 5 S1: moved to main_loop.jl
     end
     telem !== nothing && close(telem)
