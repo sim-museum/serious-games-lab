@@ -42,5 +42,23 @@ case("abc", "x",   false, 47783)
 case("abc", "abc", true,  47785)
 case("abc", "",    false, 47787)
 case("",    "",    true,  47789)
+# The sim calls netopen(port=...) / netopen(port=..., peer=...) with no password argument (drive_native_mtk.jl), so
+# the launcher's password reaches it only through JM_NET_PASSWORD: the same two cases with the env default.
+function envcase(pw_host_env, cpw, expect, hp)
+    ENV["JM_NET_PASSWORD"] = pw_host_env
+    host = NetPlay.netopen(port = hp)
+    delete!(ENV, "JM_NET_PASSWORD")
+    racer = NetPlay.netopen(port = hp + 1, peer = ("127.0.0.1", hp), password = cpw)
+    try
+        for k in 1:5; NetPlay.send_pose!(racer, 2, k, 1.0, 0.0, 2.0, 0.1); sleep(0.01); end
+        pump(host, 0.3)
+        chk("env host \"$pw_host_env\" / racer \"$cpw\" -> " * (expect ? "joined" : "refused"),
+            haskey(host.remote, UInt8(2)) == expect, "host pwtag=$(host.pwtag) pwbad=$(host.pwbad)")
+    finally
+        NetPlay.netclose(host); NetPlay.netclose(racer)
+    end
+end
+envcase("abc", "abc", true,  47791)
+envcase("abc", "x",   false, 47793)
 println(fails[] == 0 ? "ALL PASS" : "$(fails[]) FAIL")
 exit(fails[] == 0 ? 0 : 1)
