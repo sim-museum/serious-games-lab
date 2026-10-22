@@ -6993,7 +6993,7 @@ const OBJLAP = Float64[]                                  # per object: its lap 
 # band boundary leaves no hole; bandranges! then draws per band only its bins. JM_TRACKBAND=0 draws every band.
 const TRACKBAND = get(ENV, "JM_TRACKBAND", "1") != "0" && LAPWIN >= 312.0 + LAPBIN
 const TRACKBAND_NEAR = 117.0; const TRACKBAND_MID = 312.0    # 2,304,000 and 6,144,000 TRK units
-const TRACKBAND_N = Ref((tagged = 0, untagged = 0, trees = 0))
+const TRACKBAND_N = Ref((tagged = 0, untagged = 0, trees = 0)); const NBANDDROP = Ref(0)
 if _LW !== nothing
     let t0 = time(), L = _LW.L
         bin(s) = clamp(floor(Int32, mod(s, L) / LAPBIN), Int32(0), Int32(LAPNB - 1))
@@ -7015,7 +7015,7 @@ if _LW !== nothing
             (SL, S2, tg)
         end
         tpos = Dict{Int32,Vector{Float64}}()
-        for (sl, _, tg) in tri, t in eachindex(tg); tg[t] > 0 && !isnan(sl[t]) && push!(get!(() -> Float64[], tpos, tg[t] >> 2), sl[t]); end
+        for (sl, _, tg) in tri, t in eachindex(tg); tg[t] > 0 && !isnan(sl[t]) && push!(get!(() -> Float64[], tpos, tg[t] >> 3), sl[t]); end
         tree = Dict{Int32,Float64}()                     # circular median: offsets from the circular mean
         for (k, s) in tpos
             m = atan(sum(sin, 2pi .* s ./ L), sum(cos, 2pi .* s ./ L)) * L / 2pi
@@ -7026,20 +7026,32 @@ if _LW !== nothing
             v = tp.verts; nt = length(v) ÷ 33; sl, s2, tg = tri[pi]
             banded = any(>(0), tg); NB = Int32(LAPNB)
             b = Vector{Int32}(undef, nt); dup = Tuple{Int,Int32}[]
+            seen = Set{NTuple{9,Float32}}()              # S3: a copy shared by bands is drawn once, in each of its bands
             for t in 0:nt-1
-                bd = tg[t+1] & Int32(3); s = bd > 0 ? get(tree, tg[t+1] >> 2, sl[t+1]) : sl[t+1]
-                b[t+1] = (isnan(s) ? Int32(0) : bin(s)) + bd*NB
-                isnan(s2[t+1]) || push!(dup, (t, bin(s2[t+1]) + bd*NB))
+                g = tg[t+1]; m = g & Int32(7); s = m > 0 ? get(tree, g >> 3, sl[t+1]) : sl[t+1]
+                bs = isnan(s) ? Int32(0) : bin(s)
+                if count_ones(m) > 1
+                    o = 33t; key = ntuple(j -> v[o + 11*((j-1)÷3) + (j-1)%3 + 1], 9)
+                    key in seen && (b[t+1] = Int32(-1); NBANDDROP[] += 1; continue)
+                    push!(seen, key)
+                end
+                first = true
+                for bd in Int32(0):Int32(3)
+                    (bd == 0 ? m == 0 : m & (Int32(1) << (bd - 1)) != 0) || continue
+                    first ? (b[t+1] = bs + bd*NB; first = false) : push!(dup, (t, bs + bd*NB))
+                    isnan(s2[t+1]) || (push!(dup, (t, bin(s2[t+1]) + bd*NB)); NDUP2[] += 1)
+                end
             end
             if !isempty(dup)
                 resize!(v, 33*(nt + length(dup)))
                 for (k, (t, bb)) in enumerate(dup); copyto!(v, 33*(nt + k - 1) + 1, v, 33t + 1, 33); push!(b, bb); end
-                nt += length(dup); NDUP2[] += length(dup)
+                nt += length(dup)
             end
             ord = sortperm(b; alg = MergeSort)
+            nd = count(<(0), b)                          # the dropped copies sort first
             w = similar(v); for (k, t) in enumerate(ord); copyto!(w, 33(k-1) + 1, v, 33(t-1) + 1, 33); end
-            v .= w
-            off = zeros(Int32, (banded ? 4LAPNB : LAPNB) + 1); for x in b; off[x + 2] += 3; end
+            resize!(v, length(w) - 33nd); copyto!(v, 1, w, 33nd + 1, length(v))
+            off = zeros(Int32, (banded ? 4LAPNB : LAPNB) + 1); for x in b; x >= 0 && (off[x + 2] += 3); end
             push!(TRACKLAPOFF, cumsum(off))
         end
         println("  [lapwin] track drawn ", LAPWIN, " m ahead/behind along the lap (GPL); ", length(TRACK), " parts in ",
@@ -7047,7 +7059,7 @@ if _LW !== nothing
                 NDUP2[], " triangles near two legs of the lap drawn with either (JM_LAPWIN_TWOLEG=0 off)")
         TRACKBAND && println("  [trackband] ", TRACKBAND_N[].tagged, " track triangles in ", TRACKBAND_N[].trees, " segment trees drawn one band ",
                              "by lap distance (near ", TRACKBAND_NEAR, " m, mid ", TRACKBAND_MID, " m), ", TRACKBAND_N[].untagged,
-                             " always (JM_TRACKBAND=0: every band); parser ", Render.GPL3DO.BANDSTAT[])
+                             " always, ", NBANDDROP[], " copies shared by bands drawn once (JM_TRACKBAND=0: every band); parser ", Render.GPL3DO.BANDSTAT[])
         # BLINDTURN-1 S7: JM_LAPWIN_DIAG=1 -- for an eye on the centreline every 50 m, the NEAREST triangle the window hides.
         # GPL hides far-along-the-lap geometry by design; a hidden triangle within ~150 m of the eye is a candidate HOLE
         # (our nearest-centreline binning giving a fold of the track -- a hairpin's other leg -- to the wrong stretch).

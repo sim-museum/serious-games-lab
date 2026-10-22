@@ -48,7 +48,7 @@ function diag(extra)
 end
 t = diag(Dict{String,String}())
 m = match(r"\[trackband\] (\d+) track triangles in (\d+) segment trees", t)
-check("Monza: the trees' triangles are tagged", m !== nothing && parse(Int, m[1]) >= 50_000 && parse(Int, m[2]) >= 60,   # 56,342 in 67 of 89 (2026-10-21): copies shared by bands stay untagged
+check("Monza: the trees' triangles are tagged", m !== nothing && parse(Int, m[1]) >= 50_000 && parse(Int, m[2]) >= 85,   # 63,784 in 89 of 89 (S3, 2026-10-21)
       m === nothing ? "no [trackband] line" : "$(m[1]) in $(m[2]) trees")
 rows = [parse.(Int, (x[1], x[2], x[3], x[4])) for x in eachmatch(r"\[trackband diag\] eye at s \d+: (\d+) of (\d+) triangles drawn \((\d+) of (\d+) whole lap\)", t)]
 check("three eye positions measured", length(rows) == 3)

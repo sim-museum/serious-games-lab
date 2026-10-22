@@ -22,11 +22,12 @@ track_slots() = Set(parse.(Int, filter(!isempty, split(get(ENV, "JM_TRACK_SLOTS"
 # within 117 m along the lap of the camera, mid (5-6) to 312 m, far (7) beyond (gpl.exe FUN_00485ff0); we walk all three.
 # Each triangle under a tree carries tag = tree*4 + band (1 near, 2 mid, 3 far) in bits 40+ of its group while parsing
 # (the road post-pass carries groups along); a top-level parse holding trees then fills BANDTAG -- key: the triangle's
-# GPL-frame vertex sum in cm, value: its tag, 0 where triangles of different tags share a key -- and returns plain groups.
+# GPL-frame vertex sum in cm, value: tree*8 + a mask of its bands (1 near, 2 mid, 4 far; S3: a copy shared by bands of
+# one tree carries them all), 0 where untagged triangles or another tree share the key -- and returns plain groups.
 # The sim's lap-window binning looks its track triangles up here (drive_native_mtk.jl TRACKBAND).
 const BANDTAG = Dict{NTuple{3,Int32},Int32}()
 const BANDSHIFT = 40
-const BANDSTAT = Ref((trees = 0, tris = 0, keys = 0, shared = 0))   # the last fill: trees walked, tagged tris, keys, shared keys
+const BANDSTAT = Ref((trees = 0, tris = 0, keys = 0, shared = 0, untagged = 0))   # the last fill: trees walked, tagged tris, keys, by kind
 bandkey(p1, p2, p3) = ntuple(j -> round(Int32, 100*(Float64(p1[j]) + Float64(p2[j]) + Float64(p3[j]))), 3)
 # WRISTS-4 S2: JM_SWITCH_VARS="14,..." resolves op-5 switches (src 4: child = int(table[idx])) on those GPL switch-table
 # variables from the 0x14 "set" nodes met earlier in the walk (gpl.exe: 0x14 = table[idx & 0x3ff] = val at 0x4cfa50; op 5
@@ -596,11 +597,13 @@ function parse_3do(path::AbstractString; textable::Union{Nothing,Vector{String}}
         if extdepth == 0
             empty!(BANDTAG)
             for (t, g) in zip(m_out.tris, m_out.groups)
-                k = bandkey(t.p...); tg = Int32(g >> BANDSHIFT)
-                BANDTAG[k] = haskey(BANDTAG, k) && BANDTAG[k] != tg ? Int32(0) : tg
+                k = bandkey(t.p...); g2 = g >> BANDSHIFT
+                tg = g2 == 0 ? Int32(0) : Int32(((g2 >> 2) << 3) | (1 << ((g2 & 3) - 1)))
+                old = get(BANDTAG, k, nothing)
+                BANDTAG[k] = old === nothing ? tg : (old != 0 && tg != 0 && old >> 3 == tg >> 3) ? (old | tg) : Int32(0)
             end
             BANDSTAT[] = (trees = length(TREEID), tris = count(g -> g >> BANDSHIFT > 0, m_out.groups), keys = length(BANDTAG),
-                          shared = count(==(0), values(BANDTAG)))
+                          shared = count(x -> count_ones(x & 7) > 1, values(BANDTAG)), untagged = count(==(0), values(BANDTAG)))
         end
         m_out = Mesh3DO(m_out.tris, m_out.textures, [g & ((1 << BANDSHIFT) - 1) for g in m_out.groups])
     end
