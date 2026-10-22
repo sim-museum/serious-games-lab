@@ -14747,17 +14747,7 @@ function main()
         # LOOPSPLIT-1 cycle 4: functions moved out of the loop that first run at the GREEN LIGHT (the field holds on the grid
         # until the player launches) compiled there -- an 815 ms freeze at the PO's every race start (JM_SMOKE_HOLD shows it:
         # gplai_poses! 392, ai_cooldown_step! 245, ai_contact_step! 164 ms). Compiled here instead, on a hidden warm-up frame.
-        if frames == 1
-            precompile(gplai_poses!, typeof.((cs, ddt, ai_hit, AICARS, AILINE, GPLAI_PD, GPLAI_PH, GPLAI_SC, GPLAI_T, ent_name, gplai_field!, phase, race_done, race_go)))
-            precompile(ai_cooldown_step!, (GPLAI.Field, typeof(AICARS), typeof(GPLAI_T), BitVector, typeof(ent_name), typeof(phase),
-                                           typeof(race_done), typeof(race_go)))
-            precompile(ai_contact_step!, typeof.((cs, ai_poses, AICARS, AIPHYS, PLAYER_CDA, ffb_jolt)))
-            AI_PHYSICS && precompile(aiphys_poses!, typeof.((cs, ddt, ai_hit, AICARS, AILINE, AIPHYS, ai_onroad, ai_stuck, groundz_ai, aibankP, groundz)))
-            # a car knocked loose: its attitude closure and the Car3D step with the AI's ground closure (closure-typed)
-            precompile(aibankP, (typeof(cs),))
-            precompile(Core.kwcall, (NamedTuple{(:manual, :groundz), Tuple{Bool, typeof(groundz_ai)}}, typeof(DriveRT3D.step_car3d!),
-                                     typeof(cs), Float64, Float64, Float64, Float64))
-        end
+        frames == 1 && warm_ai_compile!(cs, ddt, ai_hit, AICARS, AILINE, GPLAI_PD, GPLAI_PH, GPLAI_SC, GPLAI_T, ent_name, gplai_field!, phase, race_done, race_go, ai_poses, AIPHYS, PLAYER_CDA, ffb_jolt, ai_onroad, ai_stuck, groundz_ai, aibankP, groundz)   # LOOPSPLIT-1 cycle 5 S6: moved to main_loop.jl
         # C: time each AI lap — works for BOTH the physics and kinematic fields (we watch AICARS[i].lap,
         # which both paths bump as the car crosses start/finish).  ai_best[i] = that car's fastest lap.
         ai_lap_step!(cs, phase, race_go, AICARS, ai_lap_prev, ai_lapt0, ai_best, ent_name, fmt_lap)   # LOOPSPLIT-1 cycle 5 S3: moved to main_loop.jl
@@ -14773,44 +14763,8 @@ function main()
         # warm_statements.jl cannot list them: compile them here, on a hidden warm-up frame, from the real types. (The first
         # R's ~300 ms was mostly the replay bookkeeping it does -- Dates.format, the writer task -- now in warm_statements.jl.)
         if frames == 1
-            precompile(loose_cars_step!, typeof.((cs, ai_poses, ddt, AICARS, AILINE, GPLAI_T, PLAYER_G, aibankP, frames, gplai_field!, groundz, groundz_ai)))
-            CLINE !== nothing && precompile(recover_step!, typeof.((cs, CLINE, groundz, PLAYER_G)))   # LOOPSPLIT-1 cycle 4 S5: the first SHIFT+R
-            # CRASHBODY-1: the crash body first runs at the moment of a wreck -- compiled here, not at the impact
-            (CRASHBODY && CAR3D) && wreck_body_step!(cs, inp, dt, groundz_phys, roll_ter; dry = true)   # a scratch body, nothing written back
-            (CRASHBODY && CAR3D) && attrates3d(cs)                                                     # CARLAUNCH-1: the handover's rates
-            (CRASHBODY && CAR3D) && (precompile(launch_msg, (Float64, NTuple{4,Float64}));   # and its log lines (a call here was
-                                     precompile(body_msg, (Bool, Float64, Int, Float64, Float64, Float64));   # inlined: launch_msg
-                                     precompile(landed_msg, (Float64, Float64, Float64, Tuple{Float64,Float64})))   # still compiled 30 ms)
-            (CRASHBODY && CAR3D) && precompile(airbody_land!, (typeof(cs), WreckBody.Body, typeof(groundz_phys), Int, Int, WreckBody.V3, Float64))
-            (CRASHBODY && CAR3D) && (precompile(WreckBody.kick!, (WreckBody.Body, WreckBody.V3, Float64));   # WRECKJIT-1 S2: an AI car
-                                     precompile(player_bump!, (typeof(cs), ntuple(_ -> Float64, 6)...)))           # hitting the wreck
-            (CRASHBODY && CAR3D) && precompile(wreck_body_step!, typeof.((cs, inp, dt, groundz_phys, roll_ter)))   # + the keyword-free entry
-            # CARLAUNCH-2: a hull point on the ground (a car on its side or roof) -- the scratch steps never reach it: 75 ms
-            # compiled at an AI car's launch (ctrace "ai launch"); the same for the player's car when it rolls
-            CRASHBODY && let V = WreckBody.V3
-                precompile(WreckBody._contact, (WreckBody.Body, V, Float64, V, Float64, Float64, Float64))
-                precompile(WreckBody.LinearAlgebra.cross, (V, V)); precompile(WreckBody.LinearAlgebra.norm, (V,))
-                precompile(WreckBody.LinearAlgebra.dot, (V, V)); precompile(*, (V, Float64))
-                precompile(setindex!, (WreckBody.StaticArrays.MArray{Tuple{4},Float64,1,4}, Float64, Int))
-                # MIDRACEJIT-1: the wreck's model matrix and cockpit eye -- M4 from 16 Float32s (23 ms in the wreck)
-                precompile(Render.M4, ntuple(_ -> Float32, 16)); precompile(WreckBody.StaticArrays.Args, (NTuple{16,Float32},))
-            end
-            if CRASHBODY && !isempty(LOOSE_CARS)       # CARLAUNCH-2: a loose AI car's flight -- one scratch step, nothing written back
-                let pc = LOOSE_CARS[1]
-                    loose_body_step!(1, 1, pc, 1/60, groundz; dry = true)
-                    attrates3d(pc); loose_wvel(1); loose_yawrate(1)
-                    precompile(loose_body_step!, (Int, Int, typeof(pc), Float64, typeof(groundz)))
-                    precompile(loose_body_start!, (Int, Int, typeof(pc), Float64))
-                    precompile(ai_launch_msg, (Int, Float64, Float64, Float64, Float64))
-                    precompile(ai_landed_msg, (Int, Bool, Float64, Float64, Float64, Tuple{Float64,Float64}))
-                    precompile(DriveRT3D.pin3d!, (typeof(pc), Float64, Float64, Float64, Float64))
-                end
-            end
+            warm_midrace_compile!(cs, inp, dt, ai_poses, ddt, AICARS, AILINE, GPLAI_T, PLAYER_G, aibankP, frames, gplai_field!, groundz, groundz_ai, groundz_phys, roll_ter, CLINE)   # LOOPSPLIT-1 cycle 5 S6: moved to main_loop.jl
             precompile(restart_session!, typeof.((cs, cs0, groundz, groundz_phys, AICARS, AILINE, CLINE, DO_QUAL, HOLD_START, FUEL1, FUEL_ON, GPLAI_F, PLAYER_G, REPLAY_NCAR, ai_best, ai_lap_prev, ai_lapt0, burn_lap, fuel_laps, fuel, cd_armed, cd_left, cd_said, cd_t0, flush_ibt!, form_grid!, ibt_samples, launch_done, new_replay_path, phase, player_finpos, player_grid, player_laps, race_go, replay_buf, replay_names, replay_out, replay_saved, replay_t, tele_buf, player_s_prev)))
-            # RESTARTJIT-1: restart_session! only PASSES groundz_phys on (respawnX!(cs; groundz)), so Julia does not specialise
-            # on it and the keyword call compiled at the R press (61.5 ms; the PO's 10-20 Monza restart: 526 ms compiling)
-            CAR3D && precompile(Core.kwcall, (NamedTuple{(:groundz,), Tuple{typeof(groundz_phys)}}, typeof(DriveRT3D.respawn3d!), typeof(cs)))
-            precompile(Render.translate, (NTuple{3,Float32},))   # ARMFREEZE-1's leftover: 13 ms once in the race
         end
         if !isempty(LOOSE_OF) && !REPLAY && !isempty(ai_poses)
             loose_cars_step!(cs, ai_poses, ddt, AICARS, AILINE, GPLAI_T, PLAYER_G, aibankP, frames, gplai_field!, groundz, groundz_ai)
