@@ -33,7 +33,13 @@ chassis_slot(id::Integer, nmodels::Integer) =
 # the racer says so once -- a race joined by address follows the same rule as the Serious Games Week matchmaker.
 fnv1a32(s::AbstractString) = (h = 0x811c9dc5; for b in codeunits(s); h = (h ⊻ UInt32(b)) * 0x01000193; end; h)
 const BUILDTAG = isempty(strip(get(ENV, "SGW_BUILD", ""))) ? UInt32(0) : fnv1a32(strip(ENV["SGW_BUILD"]))
-const PKTSIZE = 4 + 4 + 1 + 4 + 2 + 6*4  # magic + build tag + car id + tick + listen port + 6 Float32
+# Backlog 55 (2026-10-22): an optional race password, as in the other Serious Games Week games: every packet also carries
+# PASSWORD TAG, a 32-bit hash of the password (0 = none). A host with a password takes only racers whose tag matches; a
+# host without one is an open race and takes anyone; a racer takes its host's packets when the tags match or the host
+# is open. Each side says once why it is ignoring the other. The tag is a hash, not the text, but FNV-1a is no
+# cryptography -- this keeps strangers out of a LAN race, it does not secure anything.
+passwordtag(s::AbstractString) = isempty(strip(s)) ? UInt32(0) : fnv1a32(strip(s))
+const PKTSIZE = 4 + 4 + 4 + 1 + 4 + 2 + 6*4  # magic + build tag + password tag + car id + tick + listen port + 6 Float32
 const DEFAULT_PORT = 47700
 
 """One peer's view of the session. `remote` maps car id -> the last pose received for it."""
@@ -62,6 +68,9 @@ mutable struct NetLink
     rx::Int                                    # packets accepted
     dropped::Int                               # packets rejected (bad magic / wrong size)
     skew::Int                                  # packets rejected because they come from a different build
+    pwtag::UInt32                              # our password tag (0 = none)
+    ishost::Bool                               # no peer given: we host and learn racers from their packets
+    pwbad::Int                                 # packets rejected for the password
     open::Bool
     readererr::String                          # non-empty if the reader task died (see poll!)
 end
@@ -77,14 +86,14 @@ arrived — and the obvious workaround (spawn a task per poll and abandon it on 
 dangling reader that eats the NEXT packet. One long-lived reader, one channel, and `poll!` never
 blocks.
 """
-function netopen(; port::Int = DEFAULT_PORT, peer = nothing)
+function netopen(; port::Int = DEFAULT_PORT, peer = nothing, password::AbstractString = get(ENV, "JM_NET_PASSWORD", ""))
     r = UDPSocket()
     bind(r, ip"0.0.0.0", port) || error("netopen: cannot bind UDP port $port")
     sk = UDPSocket()
     peers = Tuple{IPAddr,Int}[]
     peer === nothing || push!(peers, (getaddrinfo(String(peer[1])), Int(peer[2])))
     n = NetLink(r, sk, port, peers, Dict{UInt8,NamedTuple}(), Dict{UInt8,Float64}(),
-                Channel{Tuple{IPAddr,Int,Vector{UInt8}}}(256), nothing, 0, 0, 0, true, "")
+                Channel{Tuple{IPAddr,Int,Vector{UInt8}}}(256), nothing, 0, 0, 0, passwordtag(password), peer === nothing, 0, true, "")
     n.task = @async begin
         while n.open
             try
@@ -120,7 +129,7 @@ end
 """Broadcast one car's pose to every known peer. Six Float32: x, y, z, yaw, speed, steer."""
 function send_pose!(n::NetLink, id::Integer, tick::Integer, x, y, z, yaw, v = 0.0, steer = 0.0)
     io = IOBuffer()
-    write(io, MAGIC); write(io, BUILDTAG); write(io, UInt8(id)); write(io, UInt32(tick))
+    write(io, MAGIC); write(io, BUILDTAG); write(io, n.pwtag); write(io, UInt8(id)); write(io, UInt32(tick))
     write(io, UInt16(n.port))                 # our LISTEN port — ssock's source port is ephemeral
     for f in (x, y, z, yaw, v, steer); write(io, Float32(f)); end
     buf = take!(io)
@@ -153,6 +162,14 @@ function poll!(n::NetLink; maxpkts::Int = 64)
             n.skew == 1 && println("  netplay: ignoring ", host, ": that racer is a different build of Julia Racer ",
                                    "(yours: ", isempty(strip(get(ENV, "SGW_BUILD", ""))) ? "unknown" : strip(ENV["SGW_BUILD"]),
                                    "). Both players need the same build.")
+            continue
+        end
+        pw = read(io, UInt32)
+        if !(pw == n.pwtag || (n.ishost ? n.pwtag == 0 : pw == 0))
+            n.pwbad += 1
+            n.pwbad == 1 && println("  netplay: ignoring ", host, ": ", n.ishost ?
+                "that racer has the wrong race password." :
+                (n.pwtag == 0 ? "that race needs a password." : "wrong race password for that race."))
             continue
         end
         id = read(io, UInt8); tick = read(io, UInt32)

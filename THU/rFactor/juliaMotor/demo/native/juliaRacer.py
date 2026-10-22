@@ -1345,10 +1345,20 @@ class DriveTab(QWidget):
         self.net_port.setToolTip("The race uses this UDP port and the launcher lobby the next one; "
                                  "allow both through a firewall on the host.")
         lay.addWidget(self.net_port, 2, 1)
+        # Backlog 55: an optional race password (blank = open race), as in the other Serious Games Week games.
+        # Not saved to the settings file, so no password sits on disk in plain text.
+        self.net_pw_l = QLabel("Password:")
+        lay.addWidget(self.net_pw_l, 3, 0)
+        self.net_pw = QLineEdit("")
+        self.net_pw.setEchoMode(QLineEdit.EchoMode.Password)
+        self.net_pw.setPlaceholderText("optional -- blank = open race")
+        self.net_pw.setToolTip("Host: racers must type this password to join; leave it blank for an open race.\n"
+                               "Join: the host's password, if the race has one.")
+        lay.addWidget(self.net_pw, 3, 1)
         self.net_info = QLabel("")
         self.net_info.setWordWrap(True)
         self.net_info.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        lay.addWidget(self.net_info, 3, 0, 1, 3)
+        lay.addWidget(self.net_info, 4, 0, 1, 3)
         self._lobby_sock = None
         self._lobby_timer = QTimer(self)
         self._lobby_timer.timeout.connect(self._lobby_poll)
@@ -1382,7 +1392,8 @@ class DriveTab(QWidget):
         join, host = idx == 2, idx == 1
         for w in (self.net_host_l, self.net_host, self.net_fetch):
             w.setVisible(join)
-        for w in (self.net_port_l, self.net_port, self.net_info):   # GUI-1: LAN details only when playing over LAN
+        for w in (self.net_port_l, self.net_port, self.net_info,   # GUI-1: LAN details only when playing over LAN
+                  self.net_pw_l, self.net_pw):
             w.setVisible(idx != 0)
         self._lobby_close()
         port = self.net_port.value()
@@ -1473,6 +1484,8 @@ class DriveTab(QWidget):
         if idx == 0:
             return
         qenv.insert("JM_NET_PORT", str(self.net_port.value()))
+        if self.net_pw.text().strip():
+            qenv.insert("JM_NET_PASSWORD", self.net_pw.text().strip())
         if idx == 1:
             qenv.insert("JM_NET", "host")
         else:
