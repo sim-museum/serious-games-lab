@@ -19,6 +19,7 @@ mc = match(r"const TRACK_RAILCULL = Bool\[(.*?) for p in TRACK\]", src)
 check("TRACK_RAILCULL is defined", mc !== nothing)
 if m !== nothing && mc !== nothing
     GROOVE_DEDUP = true
+    _cull_tex = Set{String}()   # JM_TRACK_CULL_TEX (MONZAWALL-1 A/B), unset
     railfam = eval(Meta.parse("tx -> " * m.captures[1]))
     cull = eval(Meta.parse("p -> " * mc.captures[1]))
     P(t) = (tex = t,)

@@ -470,9 +470,13 @@ function loose_hit!(k, p, aθ, avx, avz, pc0, pvx, pvz, pr, t)
     sl = get(LOOSE_OF, k, 0)
     if sl > 0
         pc = LOOSE_CARS[sl]
-        a = pc.getall(pc.integ); vx = a[4]*cos(pc.θ) - a[5]*sin(pc.θ); vz = a[4]*sin(pc.θ) + a[5]*cos(pc.θ)
-        ib = car_contact_impulse(pc.x, pc.z, pc.θ, vx, vz, DriveRT3D.yawrate3d(pc), pc0.x, pc0.z, pvx, pvz; θb = pc0.θ, rb = pr)
-        ib === nothing || (DriveRT3D.bump3d!(pc, ib[1], ib[2], ib[3], ib[5], ib[6], ib[7]); LOOSE_HITS[sl] += 1)
+        (vx, vz) = loose_wvel(sl)
+        ib = car_contact_impulse(pc.x, pc.z, pc.θ, vx, vz, loose_yawrate(sl), pc0.x, pc0.z, pvx, pvz; θb = pc0.θ, rb = pr)
+        ib === nothing && return true
+        b = LOOSE_BODY[sl]                            # CARLAUNCH-2: in the air the hit moves its rigid body
+        b === nothing ? DriveRT3D.bump3d!(pc, ib[1], ib[2], ib[3], ib[5], ib[6], ib[7]) :
+                        WreckBody.kick!(b, WreckBody.V3(ib[1], ib[5], -ib[2]), Float64(ib[3]))
+        LOOSE_HITS[sl] += 1
         return true
     end
     ib = car_contact_impulse(p[1], p[3], aθ, avx, avz, 0.0, pc0.x, pc0.z, pvx, pvz; θb = pc0.θ, rb = pr)
@@ -481,10 +485,11 @@ function loose_hit!(k, p, aθ, avx, avz, pc0, pvx, pvz, pr, t)
     used = Set(values(LOOSE_OF)); sl = findfirst(i -> !(i in used), eachindex(LOOSE_CARS))
     sl === nothing && return false
     pc = LOOSE_CARS[sl]
-    DriveRT3D.place3d!(pc, p[1], p[3], aθ; v = hypot(avx, avz))
-    pc.zref = p[2]; pc.y = p[2]; pc.heave = 0.0; pc.pitch = 0.0; pc.roll = 0.0
+    # CARLAUNCH-2: pin3d! (was place3d!) also clears the yaw, roll, pitch and heave rates the pool car kept from its last use
+    DriveRT3D.pin3d!(pc, p[1], p[3], aθ, p[2])
+    pc.s_vel(pc.integ, [hypot(avx, avz), 0.0]); pc.v = hypot(avx, avz)
     DriveRT3D.bump3d!(pc, ib[1], ib[2], ib[3], ib[5], ib[6], ib[7])
-    LOOSE_OF[k] = sl; LOOSE_T0[sl] = t; LOOSE_REC[sl] = false; LOOSE_HITS[sl] = 0
+    LOOSE_OF[k] = sl; LOOSE_T0[sl] = t; LOOSE_REC[sl] = false; LOOSE_HITS[sl] = 0; LOOSE_BODY[sl] = nothing
     st = LOOSE_STAT[]; LOOSE_STAT[] = (n = st.n + 1, maxdr = max(st.maxdr, abs(ib[3])), maxup = max(st.maxup, ib[5]))
     println("  [loose] t=", round(t, digits = 2), " AI ", k, " knocked loose: dv ", round(hypot(ib[1], ib[2]), digits = 2),
             " m/s, yaw kick ", round(ib[3], digits = 2), " rad/s, launch ", round(ib[5], digits = 2), " m/s"); flush(stdout)
@@ -3510,8 +3515,11 @@ else
     # railfam for its coplanar dedup -- and railfam also picks the parts drawn single-sided here, so every groove triangle
     # whose winding faces away was culled: no marks on any track from 10-08. The groove keeps the dedup, never the cull.
     # (Planted check: with the asphalt hidden no groove showed even over the grass; JM_GROOVE_DEDUP=0 brought it back.)
-    const TRACK_RAILCULL = Bool[railfam(p.tex) && !startswith(lowercase(p.tex), "groove") for p in TRACK]
+    # MONZAWALL-1 A/B: JM_TRACK_CULL_TEX="tex,tex" (any case) draws those track parts single-sided too
+    _cull_tex = Set(lowercase.(filter(!isempty, split(get(ENV, "JM_TRACK_CULL_TEX", ""), ","))))
+    const TRACK_RAILCULL = Bool[(railfam(p.tex) && !startswith(lowercase(p.tex), "groove")) || lowercase(p.tex) in _cull_tex for p in TRACK]
     const BOARDCULL_MIN = parse(Float64, get(ENV, "JM_BOARDCULL_MIN", "0.2"))
+    const BOARDCULL_SELF = get(ENV, "JM_BOARDCULL_SELF", "0") == "1"
     const TRACK_BOARDCULL = let rc0 = TRACK_RAILCULL, rc = falses(length(TRACK))
         # BOARDCULL-1 (2026-10-16; threshold JM_BOARDCULL_MIN 0.2): advertising boards in the track mesh are a FRONT part and a BACK part in one plane
         # (Spa's Eau Rouge FERODO: puFR1/2 + pubk1/2, both drawn two-sided) -- from some angles the brown back won the
@@ -3536,19 +3544,22 @@ else
             nb = 0
             for (pi, p) in enumerate(TRACK)
                 (rc0[pi] || pi >= SEC_FROM) && continue
-                tot = 0.0; pa = 0.0
+                tot = 0.0; pa = 0.0; ps = 0.0
                 for k in 1:33:length(p.verts)-32
                     n = nrm(p.verts, k); n[4] > 0 || continue
-                    tot += n[4]; c = key(cen(p.verts, k)); hit = false
+                    tot += n[4]; c = key(cen(p.verts, k)); hit = false; hs = false
                     for dx in -1:1, dy in -1:1, dz in -1:1
                         for (qi, m) in get(grid, (c[1]+dx, c[2]+dy, c[3]+dz), ())
-                            (qi != pi && n[1]*m[1] + n[2]*m[2] + n[3]*m[3] < -0.98) && (hit = true; break)
+                            n[1]*m[1] + n[2]*m[2] + n[3]*m[3] < -0.98 || continue
+                            qi != pi ? (hit = true; break) : (hs = true)
                         end
                         hit && break
                     end
-                    hit && (pa += n[4])
+                    hit && (pa += n[4]); (hs && !hit) && (ps += n[4])
                 end
-                (haskey(ENV, "JM_BOARDCULL_DIAG") && tot > 0 && pa/tot > 0.02) && println("  [boardcull] ", rpad(p.tex, 14), " back-to-back ", round(pa/tot, digits = 2), "  area ", round(tot, digits = 1), " m2")
+                # MONZAWALL-1: back-to-back WITHIN the part (Monza's brush_s wall before Lesmo), counted apart (JM_BOARDCULL_SELF=1 adds it)
+                BOARDCULL_SELF && (pa += ps)
+                (haskey(ENV, "JM_BOARDCULL_DIAG") && tot > 0 && (pa + ps)/tot > 0.02) && println("  [boardcull] ", rpad(p.tex, 14), " back-to-back ", round(pa/tot, digits = 2), " self ", round(ps/tot, digits = 2), "  area ", round(tot, digits = 1), " m2")
                 (tot > 0 && pa/tot >= BOARDCULL_MIN) && (rc[pi] = true; nb += 1)
             end
             println("  [boardcull] ", nb, " track parts back-to-back with another part -> single-sided (JM_BOARDCULL=0 = both faces)")
@@ -6387,17 +6398,31 @@ const AIRBODY_RH = parse(Float64, get(ENV, "JM_AIRBODY_RH", "0.40"))
 const AIRBORNE = Ref(false)        # the player car is the rigid body (not wrecked) until it lands
 const AIR_LAND = Ref(0.0)          # seconds it has stood on its four tyres
 const AIR_PEAK = Ref((0.0, 0.0))   # the flight's largest roll (lean right +) and pitch (nose up +), signed [rad]
-const _ATTR_GET = Ref{Any}(nothing)
+const _ATTR_GET = IdDict{Any,Any}()   # per compiled system: the player's car and each loose-car pool car are built apart
 """The driving model's roll rate (left side up +), pitch rate (nose up +) and heave rate (up +), for a handover."""
 function attrates3d(cs)
-    g = _ATTR_GET[]
+    g = get(_ATTR_GET, cs.sys, nothing)
     if g === nothing
         MT = DriveRT3D.ModelingToolkit
-        g = _ATTR_GET[] = (MT.getsym(cs.sys, cs.sys.pp), MT.getsym(cs.sys, cs.sys.q), MT.getsym(cs.sys, cs.sys.w))
+        g = _ATTR_GET[cs.sys] = (MT.getsym(cs.sys, cs.sys.pp), MT.getsym(cs.sys, cs.sys.q), MT.getsym(cs.sys, cs.sys.w))
     end
     (Float64(g[1](cs.integ)), Float64(g[2](cs.integ)), Float64(g[3](cs.integ)))
 end
 const WBODY_PLANE = Ref{WreckBody.Plane}(WreckBody.Plane(0.0))   # the last good ground plane under it (kept over a hole in the mesh)
+# CARLAUNCH-2 (PO 2026-10-21: "Make the struck AI car roll too"): a car knocked loose (CARCOLLIDE-2 S4) runs as a pool
+# Car3D -- the same small-angle driving model the player's car had before CARLAUNCH-1 -- so a hit that lifted a corner
+# only tipped it a few degrees. Now it too becomes a free rigid body once a corner is AIRBODY_RH up, is drawn exactly as the
+# body lies, and goes back onto its pool car once it stands on its four tyres. One that comes to rest any other way (side,
+# roof) lies there LOOSE_UPRIGHT s, is then set back on its wheels where it lies, and drives back to its line.
+const LOOSE_BODY = Union{Nothing,WreckBody.Body}[nothing for _ in 1:LOOSE_N]
+const LOOSE_BPLANE = [WreckBody.Plane(0.0) for _ in 1:LOOSE_N]
+const LOOSE_LAND = zeros(LOOSE_N)              # seconds the flying car has stood on its four tyres
+const LOOSE_DOWN = zeros(LOOSE_N)              # seconds it has lain at rest off its wheels
+const LOOSE_PEAK = [(0.0, 0.0) for _ in 1:LOOSE_N]   # the flight's largest roll and pitch, signed [rad]
+const LOOSE_UPRIGHT = parse(Float64, get(ENV, "JM_LOOSE_UPRIGHT", "5.0"))
+"""World velocity (vx, vz) of pool slot `sl`'s car: its rigid body's while it flies, else its driving model's."""
+loose_wvel(sl::Int) = (b = LOOSE_BODY[sl]; b === nothing ? DriveRT3D.world_velocity(LOOSE_CARS[sl]) : (b.v[1], -b.v[3]))
+loose_yawrate(sl::Int) = (b = LOOSE_BODY[sl]; b === nothing ? Float64(DriveRT3D.yawrate3d(LOOSE_CARS[sl])) : (b.R * b.ω)[2])
 "Wheel `nm`'s drawn rotation: its own spin while the wreck is a rigid body, else the shared driving spin."
 wheel_spin_angle(nm, spin) = (WBODY[] === nothing || isempty(nm)) ? spin :
                              (i = findfirst(==(nm), WHEEL_NAMES); i === nothing ? spin : -WBODY[].angle[i])
@@ -9886,6 +9911,7 @@ end
 # A :wall contact keeps the side the car came from (last frame's centre), so a 0.9 m armco or a 2 cm fence can no
 # longer be crossed in one frame or pushed through; obs_clamp! holds penetration to GPLW_PEN. JM_OBSTACLES=0 disables.
 const OBS_ON   = GPLW_ON && get(ENV, "JM_OBSTACLES", "1") != "0"
+const OBS_NOBACKDROP = get(ENV, "JM_OBS_BACKDROP", "0") == "0"   # FALSEWRECK-1: backdrop banks (`*bk<n>`) are not solid
 const OBS_SEG  = NTuple{5,Float64}[]          # ax, az, bx, bz, r   (r > 0 and a == b: a disc)
 const OBS_KIND = Symbol[]
 const OBS_NAME = String[]
@@ -9965,7 +9991,17 @@ the caller every vertex/matrix access dispatched dynamically (Spa's build took 3
 function obs_build_part!(p, M, oname, ground, softname, bump)
         isempty(p.tex) && return                            # untextured debug overlays (JM_GPLWALL_SHOW)
         tx = lowercase(p.tex); ground(tx) && (bump(:ground); return)
-        kind = (is_foliage_tex(p.tex) || softname(tx) || softname(oname)) ? :soft : :wall
+        # FALSEWRECK-1 (PO 2026-10-21: "car starts fishtailing, then comes to stop on hill, but no crash, yet message says it's
+        # a wreck"): Monza's `brbk2`, a backdrop bank (GPL's `bk` tail: paper-thin painted panels, E95h-S2), stopped the car
+        # dead from 198 km/h on open grass at Serraglio -- its faces are not seen from there. E95h-S2 kept backdrops out of
+        # the object discs ("must NOT become solid"); this face path (GPLWALL-1 S5) predates E108 S11 drawing them again and
+        # never applied the rule. JM_OBS_BACKDROP=1 = before.
+        (!isempty(oname) && OBS_NOBACKDROP && occursin(r"bk\d*$", lowercase(oname))) && (bump(:backdrop); return)
+        # FALSEWRECK-1 probe: JM_OBSWHO=<texture> names the track part / placed object each obstacle of that texture comes from
+        get(ENV, "JM_OBSWHO", "") == tx && println("  [obswho] ", tx, " from ", isempty(oname) ? "the track mesh" : "object $(oname)",
+            M === nothing ? "" : " at render ($(round(M[1,4], digits=1)), $(round(M[2,4], digits=1)), $(round(M[3,4], digits=1)))",
+            ", ", length(p.verts) ÷ 33, " triangles")
+        kind =(is_foliage_tex(p.tex) || softname(tx) || softname(oname)) ? :soft : :wall
         v = p.verts
         for k in 1:33:length(v)-32
             P = ntuple(3) do q
@@ -14726,6 +14762,25 @@ function main()
             (CRASHBODY && CAR3D) && (precompile(WreckBody.kick!, (WreckBody.Body, WreckBody.V3, Float64));   # WRECKJIT-1 S2: an AI car
                                      precompile(player_bump!, (typeof(cs), ntuple(_ -> Float64, 6)...)))           # hitting the wreck
             (CRASHBODY && CAR3D) && precompile(wreck_body_step!, typeof.((cs, inp, dt, groundz_phys, roll_ter)))   # + the keyword-free entry
+            # CARLAUNCH-2: a hull point on the ground (a car on its side or roof) -- the scratch steps never reach it: 75 ms
+            # compiled at an AI car's launch (ctrace "ai launch"); the same for the player's car when it rolls
+            CRASHBODY && let V = WreckBody.V3
+                precompile(WreckBody._contact, (WreckBody.Body, V, Float64, V, Float64, Float64, Float64))
+                precompile(WreckBody.LinearAlgebra.cross, (V, V)); precompile(WreckBody.LinearAlgebra.norm, (V,))
+                precompile(WreckBody.LinearAlgebra.dot, (V, V)); precompile(*, (V, Float64))
+                precompile(setindex!, (WreckBody.StaticArrays.MArray{Tuple{4},Float64,1,4}, Float64, Int))
+            end
+            if CRASHBODY && !isempty(LOOSE_CARS)       # CARLAUNCH-2: a loose AI car's flight -- one scratch step, nothing written back
+                let pc = LOOSE_CARS[1]
+                    loose_body_step!(1, 1, pc, 1/60, groundz; dry = true)
+                    attrates3d(pc); loose_wvel(1); loose_yawrate(1)
+                    precompile(loose_body_step!, (Int, Int, typeof(pc), Float64, typeof(groundz)))
+                    precompile(loose_body_start!, (Int, Int, typeof(pc), Float64))
+                    precompile(ai_launch_msg, (Int, Float64, Float64, Float64, Float64))
+                    precompile(ai_landed_msg, (Int, Bool, Float64, Float64, Float64, Tuple{Float64,Float64}))
+                    precompile(DriveRT3D.pin3d!, (typeof(pc), Float64, Float64, Float64, Float64))
+                end
+            end
             precompile(restart_session!, typeof.((cs, cs0, groundz, groundz_phys, AICARS, AILINE, CLINE, DO_QUAL, HOLD_START, FUEL1, FUEL_ON, GPLAI_F, PLAYER_G, REPLAY_NCAR, ai_best, ai_lap_prev, ai_lapt0, burn_lap, fuel_laps, fuel, cd_armed, cd_left, cd_said, cd_t0, flush_ibt!, form_grid!, ibt_samples, launch_done, new_replay_path, phase, player_finpos, player_grid, player_laps, race_go, replay_buf, replay_names, replay_out, replay_saved, replay_t, tele_buf, player_s_prev)))
             # RESTARTJIT-1: restart_session! only PASSES groundz_phys on (respawnX!(cs; groundz)), so Julia does not specialise
             # on it and the keyword call compiled at the R press (61.5 ms; the PO's 10-20 Monza restart: 526 ms compiling)

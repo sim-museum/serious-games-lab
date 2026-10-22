@@ -791,8 +791,11 @@ function ffb_step!(ffb, cs, inp, dt, fy_lp, ffb_f, ffb_jolt)
     # tuned (raw ±1 = ±450° on the TX): with physical steering (STEER_GAIN) inp.steer is road angle / lock,
     # 2.6x more per wheel degree, which silently stiffened the spring 2.6x (2026-10-03). Divide it back out.
     spr = FFB_SPRING * clamp(STEER_GAIN[] > 0 ? inp.steer / STEER_GAIN[] : inp.steer, -1, 1)
+    # FFBSTILL-1 (PO 2026-10-21: "After car spun out, ff wheel rocked back and forth"): at a standstill the tyre's slip
+    # angle IS the steering angle, so the column torque was a stiff, undamped centring spring -- hands off, the wheel swung
+    # ±70° every 0.85 s (Monza 16:13 log, t 69.8 on, v 0). The rim torque fades in over 0-2.5 m/s, as the legacy law's does.
     target = if FFB_IRMODE && τrim !== nothing           # PHYSFID-1 S1: iRacing's linear law (see FFB_IRMODE)
-        clamp(FFB_SIGN * (mz * FFB_TREF / FFB_MAXNM) + FFB_SIGN * FFB_SPRING_IR * clamp(STEER_GAIN[] > 0 ? inp.steer / STEER_GAIN[] : inp.steer, -1, 1), -1.0, 1.0)
+        clamp(FFB_SIGN * (mz * spd * FFB_TREF / FFB_MAXNM) + FFB_SIGN * FFB_SPRING_IR * clamp(STEER_GAIN[] > 0 ? inp.steer / STEER_GAIN[] : inp.steer, -1, 1), -1.0, 1.0)
     else
         tanh(FFB_SIGN * (FFB_GAIN * mz * spd + spr))
     end
@@ -838,8 +841,7 @@ function ai_contact_step!(cs, ai_poses, AICARS, AIPHYS, PLAYER_CDA, ffb_jolt)
         ffb_jolt = clamp(-sign(lat)*0.6, -1.0, 1.0)
         avx = ac.v*cos(aθ); avz = ac.v*sin(aθ)
         if haskey(LOOSE_OF, k)                        # CARCOLLIDE-2 S4: a loose car moves as its Car3D does
-            lc = LOOSE_CARS[LOOSE_OF[k]]; la = lc.getall(lc.integ)
-            avx = la[4]*cos(lc.θ) - la[5]*sin(lc.θ); avz = la[4]*sin(lc.θ) + la[5]*cos(lc.θ)
+            (avx, avz) = loose_wvel(LOOSE_OF[k])      # (CARLAUNCH-2: or as its rigid body, in the air)
         end
         # HANDLING-1 S3: a rigid-body impulse at the contact point (car_contact_impulse) -- no amplification, no
         # side-only yaw kick, no invented hop/roll/scrub; the bodywork friction bleeds speed on a side-swipe.
@@ -1528,28 +1530,39 @@ function loose_cars_step!(cs, ai_poses, ddt, AICARS, AILINE, GPLAI_T, PLAYER_G, 
         # line back round in half a second) drive it slowly round to the line with the physics AI's controller
         (lrs, _) = RaceAI.project(AILINE, pc.x, pc.z; hint = AICARS[k].s)
         lherr = RaceAI.wrapπ(pc.θ - RaceAI.pose_at(AILINE, lrs, 0.0)[4])
-        if !LOOSE_REC[sl] && ((pc.v < 4.0 && abs(DriveRT3D.yawrate3d(pc)) < 0.5) || cs.t - LOOSE_T0[sl] > 4.0)
+        flying = LOOSE_BODY[sl] !== nothing           # CARLAUNCH-2: in the air (or lying off its wheels) as a rigid body
+        if !flying && !LOOSE_REC[sl] && ((pc.v < 4.0 && abs(DriveRT3D.yawrate3d(pc)) < 0.5) || cs.t - LOOSE_T0[sl] > 4.0)
             LOOSE_REC[sl] = true; LOOSE_T0[sl] = cs.t
         end
-        if LOOSE_REC[sl]
-            (lthr, lbrk, lst) = RaceAI.controller(AILINE, lrs, 0.0, 0.0, 6.0, pc.x, pc.z, pc.θ, pc.v, DriveRT3D.yawrate3d(pc))
-            DriveRT3D.step_car3d!(pc, lthr, lbrk, lst, ddt; manual = false, groundz = groundz_ai)
+        if flying
+            ai_poses[k] = loose_body_step!(k, sl, pc, ddt > 1e-4 ? Float64(ddt) : 1/60, groundz)
         else
-            DriveRT3D.step_car3d!(pc, 0.0, LOOSE_BRAKE, 0.0, ddt; manual = true, groundz = groundz_ai)
+            if LOOSE_REC[sl]
+                (lthr, lbrk, lst) = RaceAI.controller(AILINE, lrs, 0.0, 0.0, 6.0, pc.x, pc.z, pc.θ, pc.v, DriveRT3D.yawrate3d(pc))
+                DriveRT3D.step_car3d!(pc, lthr, lbrk, lst, ddt; manual = false, groundz = groundz_ai)
+            else
+                DriveRT3D.step_car3d!(pc, 0.0, LOOSE_BRAKE, 0.0, ddt; manual = true, groundz = groundz_ai)
+            end
+            LOOSE_DIAG && (frames % 6 == 0) && println("   [loosediag] t ", round(cs.t, digits = 2), " v ", round(pc.v, digits = 2),
+                " r ", round(DriveRT3D.yawrate3d(pc), digits = 2), " θ ", round(pc.θ, digits = 2), " grounded ", pc.grounded,
+                " rh ", round.(pc.rh, digits = 3), " heave ", round(pc.heave, digits = 3), " ddt ", round(ddt, digits = 4), " rec ", LOOSE_REC[sl])
+            bk = aibankP(pc)
+            gy = isfinite(pc.y) ? pc.y : groundz(pc.x, pc.z)
+            ai_poses[k] = (pc.x, gy, pc.z, pc.θ, bk[1], bk[2])
+            # (as the player's, CARLAUNCH-1: after a step of the driving model, whose ground and springs take the contact's
+            # one-instant kick -- started AT the hit, a climbing car took the impulse's 30 rad/s roll rate and flew 9 m up)
+            if AIRBODY && CRASHBODY && maximum(pc.rh) > AIRBODY_RH   # a corner thrown up: it flies from here
+                loose_body_start!(k, sl, pc, ai_poses[k][6])
+                flying = true
+            end
         end
-        LOOSE_DIAG && (frames % 6 == 0) && println("   [loosediag] t ", round(cs.t, digits = 2), " v ", round(pc.v, digits = 2),
-            " r ", round(DriveRT3D.yawrate3d(pc), digits = 2), " θ ", round(pc.θ, digits = 2), " grounded ", pc.grounded,
-            " rh ", round.(pc.rh, digits = 3), " heave ", round(pc.heave, digits = 3), " ddt ", round(ddt, digits = 4), " rec ", LOOSE_REC[sl])
-        bk = aibankP(pc)
-        gy = isfinite(pc.y) ? pc.y : groundz(pc.x, pc.z)
-        ai_poses[k] = (pc.x, gy, pc.z, pc.θ, bk[1], bk[2])
-        done = (LOOSE_REC[sl] && ((abs(lherr) < 0.35 && pc.v > 2.0) || cs.t - LOOSE_T0[sl] > 10.0)) || !isfinite(pc.x)
+        done = (!flying && LOOSE_REC[sl] && ((abs(lherr) < 0.35 && pc.v > 2.0) || cs.t - LOOSE_T0[sl] > 10.0)) || !isfinite(pc.x)
         if GPLAI_T !== nothing
             gc = gplai_field!().cars[k]
             (gs, gd, _) = GPLAI.tlocate(GPLAI_T, pc.x, pc.z, 0)
             (lo, hi) = GPLAI.corridor(GPLAI_T, gs)
             gc.s = gs; gc.d = done ? clamp(gd, lo + 0.5, hi - 0.5) : gd; gc.v = pc.v; gc.dv = 0.0
-            gc.yaw = pc.θ; gc.yawr = DriveRT3D.yawrate3d(pc); gc.pose = ai_poses[k]; gc.prev = gc.pose
+            gc.yaw = pc.θ; gc.yawr = loose_yawrate(sl); gc.pose = ai_poses[k]; gc.prev = gc.pose
             (rs, rl) = RaceAI.project(AILINE, pc.x, pc.z; hint = AICARS[k].s); AICARS[k].s = rs; AICARS[k].lane = rl; AICARS[k].v = pc.v
         else
             (rs, rl) = RaceAI.project(AILINE, pc.x, pc.z; hint = AICARS[k].s)
@@ -1564,6 +1577,72 @@ function loose_cars_step!(cs, ai_poses, ddt, AICARS, AILINE, GPLAI_T, PLAYER_G, 
     end
     nothing
 end
+
+"""CARLAUNCH-2: loose AI car k (pool slot sl, its Car3D `pc`, drawn roll `roll`) had a corner thrown up -- from here it is
+a free rigid body, taking the driving model's pose, velocity and roll, pitch, heave and yaw rates."""
+function loose_body_start!(k::Int, sl::Int, pc, roll::Float64)
+    WB = WreckBody; V3 = WB.V3
+    b = WB.Body(WB.Geometry(m = DriveRT3D.MASS[]))
+    (pp, q, w) = attrates3d(pc)
+    (vx, vz) = DriveRT3D.world_velocity(pc)
+    WB.start!(b, pc.x, pc.z, pc.y, pc.θ, pc.pitch, roll, V3(vx, w, -vz), V3(pp, Float64(DriveRT3D.yawrate3d(pc)), q))
+    b.brake = LOOSE_BRAKE
+    LOOSE_BODY[sl] = b; LOOSE_BPLANE[sl] = WB.Plane(pc.x, -pc.z, pc.y, 0.0, 0.0)
+    LOOSE_LAND[sl] = 0.0; LOOSE_DOWN[sl] = 0.0; LOOSE_PEAK[sl] = (0.0, 0.0); ctrace_start!("ai launch")
+    println(ai_launch_msg(k, Float64(pc.v), pp, q, w)); flush(stdout)
+    nothing
+end
+
+"""CARLAUNCH-2: a loose AI car's flight, one frame -- the rigid body steps on the terrain under each point (as the player's
+does, CRASHBODY-1), and once it stands on its four tyres, upright and settled, for 0.15 s, it goes back onto its pool
+Car3D at its speed, slip and yaw rate. At rest off its wheels it lies LOOSE_UPRIGHT s and is set back on them where it lies
+(stopped). Returns the drawn pose (x, y, z, heading, pitch, roll)."""
+function loose_body_step!(k::Int, sl::Int, pc, gdt::Float64, groundz::G; dry::Bool = false) where {G}
+    WB = WreckBody; V3 = WB.V3
+    b = dry ? WB.Body(WB.Geometry(m = DriveRT3D.MASS[])) : LOOSE_BODY[sl]
+    dry && WB.start!(b, pc.x, pc.z, pc.y, pc.θ, 0.0, 0.0, V3(pc.v*cos(pc.θ), 0.0, -pc.v*sin(pc.θ)), V3(0.0, 0.0, 0.0))
+    hq(X, Z) = (y = groundz(X, -Z); y > -900 ? Float64(y) : NaN)
+    pl = WB.fit_plane(hq, b.p[1], b.p[3])
+    (isfinite(pl.h0) && isfinite(pl.gx) && isfinite(pl.gz)) ? (dry || (LOOSE_BPLANE[sl] = pl)) : (pl = LOOSE_BPLANE[sl])
+    th(X, Z, yref) = (r = JuliaMotor.hat3d(TERRAIN, X, -Z; ref = yref); r[3] ? Float64(r[1]) : NaN)
+    ter = WB.Terrain(th, pl)
+    WB.step!(b, gdt, ter)
+    (nt, nh) = WB.touching(b, ter)
+    (θ, pitch, roll) = WB.attitude(b)
+    o = b.p - b.R * V3(0.0, b.g.hcg, 0.0)                 # the model's origin: the ground point under the CG
+    pose = (o[1], o[2], -o[3], θ, pitch, roll)
+    dry && return pose
+    pc.x = o[1]; pc.z = -o[3]; pc.y = o[2]; pc.θ = θ; pc.v = hypot(b.v[1], b.v[3]); pc.pitch = pitch; pc.roll = roll
+    pk = LOOSE_PEAK[sl]
+    LOOSE_PEAK[sl] = (abs(roll) > abs(pk[1]) ? roll : pk[1], abs(pitch) > abs(pk[2]) ? pitch : pk[2])
+    n = WB.plane_n(pl); up = dot(b.R[:, 2], n)
+    settled = nt == 4 && nh == 0 && up > cos(deg2rad(6.0)) && abs(b.ω[1]) < 0.6 && abs(b.ω[3]) < 0.6 && abs(dot(b.v, n)) < 0.6
+    LOOSE_LAND[sl] = settled ? LOOSE_LAND[sl] + gdt : 0.0
+    LOOSE_DOWN[sl] = (b.rest && !settled) ? LOOSE_DOWN[sl] + gdt : 0.0
+    landed = LOOSE_LAND[sl] >= 0.15 || (b.rest && settled)
+    (landed || LOOSE_DOWN[sl] >= LOOSE_UPRIGHT) || return pose
+    # back onto the pool car: where it is, its heading, its body-frame speed and slip and its yaw rate -- or, righted, stopped
+    wvx = landed ? b.v[1] : 0.0; wvz = landed ? -b.v[3] : 0.0
+    u = wvx*cos(θ) + wvz*sin(θ); vl = -wvx*sin(θ) + wvz*cos(θ)
+    r = landed ? (b.R * b.ω)[2] : 0.0
+    h = groundz(o[1], -o[3])
+    DriveRT3D.pin3d!(pc, o[1], -o[3], θ, h > -900 ? Float64(h) : o[2])
+    pc.s_vel(pc.integ, [u, vl]); pc.v = hypot(u, vl)
+    DriveRT3D._RSET3D[pc.sys][2](pc.integ, r)              # (pin3d! filled the setter cache)
+    DriveRT3D.OrdinaryDiffEq.SciMLBase.u_modified!(pc.integ, true)
+    LOOSE_BODY[sl] = nothing
+    println(ai_landed_msg(k, landed, b.t, b.peak_h, Float64(pc.v), LOOSE_PEAK[sl])); flush(stdout)
+    (pc.x, pc.y, pc.z, θ, 0.0, 0.0)
+end
+
+# CARLAUNCH-2: its log lines as Strings, compiled on the hidden frame (see launch_msg)
+ai_launch_msg(k::Int, v::Float64, pp::Float64, q::Float64, w::Float64) = string("  [airbody] AI ", k, " thrown up: a free rigid body at ",
+    round(v*3.6, digits = 0), " km/h: roll rate ", round(pp, digits = 2), " pitch rate ", round(q, digits = 2), " heave ", round(w, digits = 2),
+    " -- until it stands on its wheels")
+ai_landed_msg(k::Int, landed::Bool, t::Float64, h::Float64, v::Float64, pk::Tuple{Float64,Float64}) = string("  [airbody] AI ", k,
+    landed ? " landed on its wheels after " : " lay off its wheels and was set back on them after ", round(t, digits = 2),
+    " s (highest CG ", round(h, digits = 2), " m, roll to ", round(rad2deg(pk[1]), digits = 0), " deg, pitch to ",
+    round(rad2deg(pk[2]), digits = 0), " deg): back on its driving model at ", round(v*3.6, digits = 0), " km/h")
 
 """The GPL AI field, one frame (AIGPL-2): step the field with the player's position, the off-road diagnostic, the race
 bookkeeping (laps, order) in our frame, the cool-down. Returns the field's poses. LOOPSPLIT-1 cycle 4 S1: moved unchanged
