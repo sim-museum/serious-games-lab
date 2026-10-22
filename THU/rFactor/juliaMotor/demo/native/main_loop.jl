@@ -403,6 +403,43 @@ function restart_session!(cs, cs0, groundz, groundz_phys, AICARS, AILINE, CLINE,
      player_prog = player_prog, player_s_prev = player_s_prev)
 end
 
+"""SHIFT+R: back onto the road at the current lap position, upright and stopped -- a new car (the wreck cleared).
+LOOPSPLIT-1 cycle 4 S5: moved unchanged from the frame loop. In the loop its θ0 / nLx / nLz were main() locals shared
+with the JM_OFFTRACK_PROBE block (nothing read them after either)."""
+function recover_step!(cs, CLINE, groundz, PLAYER_G)
+    # SHIFT-R: drop back onto the centreline at the CURRENT lap position, upright + stopped.
+    sR = RaceAI.project(CLINE, cs.x, cs.z)[1]; pR = RaceAI.pose_at(CLINE, sR, 0.0)
+    # PO round 4: "SH-R never puts you in the CENTRE of the track, always off to one side."  On Monza
+    # the recentre is OFF, so lane-0 is the raw .trk GROOVE — which hugs the road edge.  Drop on the
+    # road's GEOMETRIC centre instead: scan left+right along the lateral normal to the road-mesh edges
+    # and offset to the midpoint.  (On recentred tracks the offset comes out ≈0 — lane-0 is already
+    # centred — so this is safe everywhere.)
+    cx0, cz0, θ0 = pR[1], pR[3], pR[4]
+    nLx = -sin(θ0); nLz = cos(θ0)                              # left-hand normal
+    hiR = 0.0; while hiR < 10.0 && onroad_at(cx0 + nLx*(hiR+0.5), cz0 + nLz*(hiR+0.5)); hiR += 0.5; end
+    loR = 0.0; while loR < 10.0 && onroad_at(cx0 - nLx*(loR+0.5), cz0 - nLz*(loR+0.5)); loR += 0.5; end
+    offR = clamp((hiR - loR)/2, -5.0, 5.0)
+    cxR = cx0 + nLx*offR; czR = cz0 + nLz*offR
+    println("  [recover] placed at s ", round(sR, digits = 1), ": road ", -loR, " .. +", hiR, " m about the line, offset ",
+            round(offR, digits = 2), " m"); flush(stdout)
+    DriveRT3D.place3d!(cs, cxR, czR, θ0; v=0.0)
+    pR = (cxR, pR[2], czR, θ0)
+    cs.s_vreset(cs.integ, zeros(14))
+    hR = groundz(pR[1], pR[3]; acquire=true); isfinite(hR) && (cs.zref = Float64(hR))
+    cs.heave = 0.0; cs.pitch = 0.0; cs.roll = 0.0; cs.y = cs.zref
+    # TD261013-1 (c3) (PO 2026-10-13, the Ring: "the car doesn't respond to either downshifting or SHIFT R"): this
+    # branch and the respawn below are one if/elseif, and `rst` IS `recover` -- so SHIFT+R took this branch and never
+    # reached the respawn's reset. After a wreck the car was put on the road, then the still-latched WRECK_FROZEN
+    # pinned it back at the crash spot, with the engine out and every shift refused. A recovered car is a new car
+    # (E94-P4), as for the respawn. JM_RECOVER_KEEPWRECK=1 = before.
+    if get(ENV, "JM_RECOVER_KEEPWRECK", "0") == "0"
+        PLAYER_G[] = NaN; DriveRT3D.damage_reset!(); DC[].lastz = 0.0
+        WRECKED[] && println("  [recover] SHIFT+R: the wreck is cleared -- engine and gearbox back"); flush(stdout)
+        WRECKED[] = false; WRECK_FROZEN[] = false; AIRBORNE[] = false; empty!(LOOSE_WHEELS); CLUTCH_GATE[] = -1.0
+    end
+    nothing
+end
+
 """E85-S6 HEADLESS AUTODRIVE (JM_AUTODRIVE=1): the AI controller drives the player on the centreline; returns the
 frame's input. LOOPSPLIT-1 cycle 2 S2: moved unchanged from the frame loop -- in the loop its `let` wrote main()'s own
 `ps` and `step` (and the loop's `up` / `dn` / `thr` / `brk` / `st`) as a side effect; here they are its own."""
