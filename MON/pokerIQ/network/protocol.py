@@ -118,7 +118,15 @@ class NetworkMessage:
 
 # Helper functions for creating common messages
 
-def make_connect_request(player_name: str, app_version: str = '') -> NetworkMessage:
+def password_hash(password: str) -> str:
+    """Backlog 55: the table password travels as a SHA-256 hash, '' for none. A host with a password refuses a client
+    whose hash differs; a host without one is an open table -- the same rule as the other Serious Games Week games."""
+    import hashlib
+    p = (password or '').strip()
+    return hashlib.sha256(p.encode()).hexdigest() if p else ''
+
+
+def make_connect_request(player_name: str, app_version: str = '', pw: str = '') -> NetworkMessage:
     """Create a connection request message.
 
     Args:
@@ -128,7 +136,7 @@ def make_connect_request(player_name: str, app_version: str = '') -> NetworkMess
     """
     return NetworkMessage(
         type=MessageType.CONNECT_REQUEST,
-        payload={'player_name': player_name, 'app_version': app_version}
+        payload={'player_name': player_name, 'app_version': app_version, 'pw': pw}
     )
 
 

@@ -52,8 +52,10 @@ class PokerServer(QObject):
 
     def __init__(self, server_name: str = "Poker Table", num_seats: int = 6,
                  host_seat: int = 0, host_name: str = "Hero (Server)",
-                 app_version: str = "", parent=None):
+                 app_version: str = "", parent=None, password: str = ""):
         super().__init__(parent)
+        from .protocol import password_hash
+        self.pw = password_hash(password)      # backlog 55: '' = an open table
         self.server_name = server_name
         self.num_seats = num_seats
         self.host_seat = host_seat
@@ -192,6 +194,15 @@ class PokerServer(QObject):
                     f"you are on '{shown_client}'. Update both to the same "
                     "pokerIQ revision and reconnect.",
                     "version_mismatch")
+                return
+
+            # Backlog 55: a table password (a host without one is an open table).
+            client_pw = str(msg.payload.get('pw') or '')
+            if self.pw and client_pw != self.pw:
+                self._reject_and_close(
+                    client_id,
+                    "Wrong password for this table." if client_pw else "This table needs a password.",
+                    "wrong_password")
                 return
 
             # Name validation: non-empty, short, unique.

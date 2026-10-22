@@ -62,8 +62,10 @@ class PokerClient(QObject):
     error_occurred = pyqtSignal(str)
 
     def __init__(self, player_name: str = "Player", app_version: str = "",
-                 parent=None):
+                 parent=None, password: str = ""):
         super().__init__(parent)
+        from .protocol import password_hash
+        self.pw = password_hash(password)      # backlog 55
         self.player_name = player_name
         self.app_version = (app_version or '').strip()
         self.client_id: Optional[str] = None
@@ -152,7 +154,7 @@ class PokerClient(QObject):
 
         # Send connect request (include our app version so the host can
         # reject mismatched clients).
-        msg = make_connect_request(self.player_name, app_version=self.app_version)
+        msg = make_connect_request(self.player_name, app_version=self.app_version, pw=self.pw)
         self._send(msg)
 
     def _on_disconnected(self):

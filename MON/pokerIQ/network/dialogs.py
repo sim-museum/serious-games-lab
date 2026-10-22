@@ -109,6 +109,12 @@ class HostGameDialog(QDialog):
         self.seats_spin.setValue(6)
         settings_layout.addWidget(self.seats_spin, 4, 1)
 
+        settings_layout.addWidget(QLabel("Password:"), 5, 0)     # backlog 55: optional, blank = open table
+        self.password_edit = QLineEdit("")
+        self.password_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.password_edit.setPlaceholderText("optional -- blank = open table")
+        settings_layout.addWidget(self.password_edit, 5, 1)
+
         settings_group.setLayout(settings_layout)
         layout.addWidget(settings_group)
 
@@ -174,7 +180,7 @@ class HostGameDialog(QDialog):
             APP_VERSION = ""
         self.server = PokerServer(server_name=table_name, num_seats=num_seats,
                                    host_seat=0, host_name=host_name,
-                                   app_version=APP_VERSION)
+                                   app_version=APP_VERSION, password=self.password_edit.text())
 
         if self.server.start(port):
             # Serious Games Week: list the table on the player's matchmaker while it is open (withdrawn in PokerServer.stop)
@@ -246,6 +252,12 @@ class JoinGameDialog(QDialog):
         self.port_spin.setValue(DEFAULT_PORT)
         conn_layout.addWidget(self.port_spin, 2, 1)
 
+        conn_layout.addWidget(QLabel("Password:"), 3, 0)     # backlog 55: the host's, if the table has one
+        self.password_edit = QLineEdit("")
+        self.password_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.password_edit.setPlaceholderText("only if the host set one")
+        conn_layout.addWidget(self.password_edit, 3, 1)
+
         conn_group.setLayout(conn_layout)
         layout.addWidget(conn_group)
 
@@ -299,7 +311,7 @@ class JoinGameDialog(QDialog):
             from pokerIQ import APP_VERSION
         except Exception:
             APP_VERSION = ""
-        self.client = PokerClient(player_name=name, app_version=APP_VERSION)
+        self.client = PokerClient(player_name=name, app_version=APP_VERSION, password=self.password_edit.text())
         self.client.connected.connect(self._on_connected)
         self.client.connection_failed.connect(self._on_connection_failed)
 
