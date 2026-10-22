@@ -460,10 +460,12 @@ class PreferencesDialog(QDialog):
         layout.addStretch()
         return widget
 
-    # Carding presets surfaced in the dialog. "" = derive from the signalling
-    # convention; the rest match teaching_view.CARDING_PRESETS.
+    # Carding presets surfaced in the dialog. "" = what biq's defenders play
+    # (teaching_view.AS_BIQ_PLAYS: the signalling convention above, Lavinthal
+    # discards, plain count in trumps); the rest match
+    # teaching_view.CARDING_PRESETS.
     _CARDING_CHOICES = [
-        ("Auto (from signalling convention)", ""),
+        ("As biq plays (convention above, Lavinthal discards)", ""),
         ("Standard", "Standard"),
         ("Upside-down (UDCA)", "Upside-down"),
         ("Std + Lavinthal", "Std + Lavinthal"),
@@ -532,10 +534,11 @@ class PreferencesDialog(QDialog):
         gl.addLayout(sm_row)
 
         note = QLabel(
-            "These set how the instrumented view reads attitude / count / "
-            "suit-preference / Smith signals for each pair. You can also change "
-            "them live from the instrumented view's header; both share this "
-            "setting.")
+            "These set how the analysis view reads attitude / count / "
+            "suit-preference / Smith signals for each pair, and so where it "
+            "places the defenders' unseen cards; Claude's hints and analyses "
+            "are told the same agreements. You can also change them live from "
+            "the analysis view's header; both share this setting.")
         note.setWordWrap(True)
         gl.addWidget(note)
         grp.setLayout(gl)

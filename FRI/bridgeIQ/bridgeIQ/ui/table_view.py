@@ -639,6 +639,7 @@ class TrickAreaWidget(QFrame):
     AREA_HEIGHT = DESIGN_GREEN_H + 2 * DESIGN_BAND
     MIN_SCALE = 0.74         # floor — keeps the green ≥ the bidding overlay
     BID_W, BID_H = 320, 260  # bidding overlay (fixed; centred in the green)
+    MIN_PLAY_H = 240         # minimum height (play phase; see __init__)
 
     # Emitted (seat, card) when a played card is clicked while the
     # "explain biq's actions" mode is on.
@@ -647,8 +648,12 @@ class TrickAreaWidget(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._explain_enabled = False
-        self.setMinimumSize(round(self.AREA_WIDTH * self.MIN_SCALE),
-                            round(self.AREA_HEIGHT * self.MIN_SCALE))
+        # Minimum HEIGHT is low enough for the play phase on a ~1000 px
+        # window with dummy's tall fan on the table: with the old 332 px
+        # floor the layout ran out of room, the South label overlapped the
+        # felt and South's played card was cut off. The cards scale to fit
+        # (_relayout); the bidding overlay only shows before dummy is down.
+        self.setMinimumSize(round(self.AREA_WIDTH * self.MIN_SCALE), self.MIN_PLAY_H)
         # Take the vertical space the layout offers (so a taller window
         # gives bigger cards); keep a preferred width so the side columns
         # aren't squeezed.
@@ -696,13 +701,17 @@ class TrickAreaWidget(QFrame):
         # Full-size cross footprint (before any fit-shrink), plus a small pad
         # and room for the compass arrows around the felt.
         chev0 = self.ARROW_CHEVRON
-        pad = chev0 + 6
+        # Room outside the cross: the arrow band (chevron + gap) and the felt's
+        # own margin on each side. The cross must fit INSIDE the felt — fitting
+        # it to the bare widget let a short window clamp the felt smaller than
+        # the cards, and South's card hung off the bottom of the table.
+        pad = (chev0 + 6) + 14
         full_w = CARD_WIDTH * (1 + 2 * self.CROSS_H_OFF_F)
         full_h = CARD_HEIGHT * (1 + 2 * self.CROSS_V_OFF_F)
         # Shrink only when the widget genuinely can't fit full-size cards; at
         # 1080p+ this stays 1.0, so trick cards equal the hands exactly.
         fit = min(1.0, (W - 2 * pad) / full_w, (H - 2 * pad) / full_h)
-        scale = max(0.5, fit)
+        scale = max(0.35, fit)
 
         cw, ch = round(CARD_WIDTH * scale), round(CARD_HEIGHT * scale)
         h_off = round(cw * self.CROSS_H_OFF_F)

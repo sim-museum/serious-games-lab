@@ -64,6 +64,14 @@ _IMPTAB = [20, 50, 90, 130, 170, 220, 270, 320, 370, 430, 500, 600, 750,
 # Rule explanations that mark a convention or a slam sequence: the rules own
 # these; a natural alternative would be misread.
 _CONVENTIONAL = (
+    # sprints 132-133 (the sim passed them away from Q-Plus's call):
+    "is a cue below game", "in competition after my negative x",
+    # sprints 141-142:
+    "hcp, no shortness", "pass the weak two: misfit",
+    # sprints 141 / 147 (sim check 02:35):
+    "three trumps opposite a six-card major", ": four h and five", ": four s and five",
+    # sprint 167 (sim check 07:10): the LAW jump raise over their 2-level overcall
+    "competitive jump raise (4 trumps",
     "rkc", "blackwood", "keycard", "key card", "king", "gerber", "cuebid",
     "cue-bid", "cue bid", "control", "asking", "relay", "stayman", "transfer",
     "jacoby", "lebensohl", "michaels", "landy", "ghestem", "unusual",
@@ -78,6 +86,23 @@ _CONVENTIONAL = (
     "preference to partner's first suit", "instead of a takeout double",
     "no raise to the",                                            # sprints 64 / 80 / 82 (10-21 sim check)
     "accept the invitation (",                                    # sprint 96
+    "passed-hand limit raise",                                    # sprint 105
+    "Stayman over 1C-1H-1NT", "Stayman answer", "after Stayman",  # sprint 106
+    "(Stayman first)",                                            # sprint 114
+    "2NT inquiry (feature ask), balanced",                        # sprint 116
+    "over the forcing 1NT", "opposite 18-19", "opposite the jump rebid",
+    "preference, doubleton", "Pass 1NT: 5-3-3-2 minimum",          # sprint 117
+    "over the double: 4-card major", "over the double: 5-card major",  # sprint 113
+    "(partner's both majors)", "both majors (5+S, 4+H)", "opener chose the major",  # sprint 119
+    "natural over the balanced 1H",                               # sprint 123
+    "Cue raise: ", "opposite the cue raise", "accept the cue raise",  # sprint 127
+    "six-card suit over their 1NT, to play",                      # sprint 126
+    "balanced with four clubs", "game try after the raise (",     # sprints 103 / 99
+    "control, fit for partner's",                                 # sprint 130
+    "slam try after opener's jump raise",                         # sprint 108
+    "No weak jump overcall", "Pass the raise: 4 trumps",          # sprints 100 / 99
+    "weak 5-5", "weak two-suiter", "weak, six-card suit over 1NT", "weak, five of partner's minor",  # sprint 110
+    "checkback over the 2NT rebid", "Checkback answer",          # sprint 102
 )
 
 
@@ -246,7 +271,7 @@ def should_simulate(state, rule_bid: Bid, system) -> bool:
     if rule_bid.alert:
         return False
     why = (rule_bid.explanation or "").lower()
-    if any(k in why for k in _CONVENTIONAL):
+    if any(k.lower() in why for k in _CONVENTIONAL):   # entries with capitals matched nothing before 10-21
         return False
     ours = (state.seat, state.seat.partner())
     for s, b in state.bids:

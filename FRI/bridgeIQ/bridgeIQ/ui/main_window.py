@@ -846,7 +846,7 @@ class MainWindow(QMainWindow):
         content_layout.setContentsMargins(5, 5, 5, 5)
 
         # Left side: Table view, with an instrumented (teaching) view as an
-        # alternate page selected by the "Instrumented" toolbar button.
+        # alternate page selected by the "Analysis view" toolbar button.
         self.table_view = TableView()
         from .teaching_view import TeachingView
         self.teaching_view = TeachingView()
@@ -1709,12 +1709,13 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.closed_room_btn)
         self.ingame_buttons.append(self.closed_room_btn)
 
-        # Toggle between the normal table and the instrumented teaching view.
-        self.teaching_btn = ToolbarButton("Instrumented")
+        # Toggle between the normal table and the analysis (teaching) view.
+        # The label names the view a click switches TO.
+        self.teaching_btn = ToolbarButton("Analysis view")
         self.teaching_btn.setCheckable(True)
         self.teaching_btn.setToolTip(
-            "Toggle the instrumented teaching/analysis view: per-hand "
-            "Known/Other suit grid, count, entries, plan and coaching.")
+            "Toggle the analysis view: per-hand Known/Other suit grid, "
+            "count, signals, entries, plan and coaching.")
         self.teaching_btn.toggled.connect(self._on_toggle_teaching_view)
         layout.addWidget(self.teaching_btn)
         self.ingame_buttons.append(self.teaching_btn)
@@ -4453,6 +4454,7 @@ For more information, see the README file."""
         stack = getattr(self, 'table_stack', None)
         if stack is None:
             return
+        self.teaching_btn.setText("Default view" if checked else "Analysis view")
         stack.setCurrentIndex(1 if checked else 0)
         if checked:
             self._refresh_teaching_view()
@@ -6322,9 +6324,19 @@ For more information, see the README file."""
                 # Config / spec lookup failed — fall back to a
                 # system-agnostic prompt rather than crashing the hint.
                 pass
+        # Card play: tell Claude the carding agreements so it reads the
+        # defenders' spot cards (and places their unseen cards) the way the
+        # analysis view does, not by some default convention of its own.
+        signal_clause = ""
+        if phase == 'play':
+            try:
+                from .teaching_view import signalling_conventions_text
+                signal_clause = "\n\n" + signalling_conventions_text()
+            except Exception:
+                signal_clause = ""
         return (
             f"You are a bridge teacher advising {seat_names[seat]} on the next {action}."
-            f"{system_clause}{play_clause}\n\n"
+            f"{system_clause}{play_clause}{signal_clause}\n\n"
             "OUTPUT FORMAT — strictly required:\n"
             "  • Echo the BDL block below VERBATIM, line by line, "
             "preserving spacing.\n"
@@ -6545,7 +6557,8 @@ For more information, see the README file."""
             return
 
         # Progress dialog
-        progress = QDialog(self)
+        from PyQt6.QtWidgets import QApplication as _QApp
+        progress = QDialog(_QApp.activeModalWidget() or self)   # Cancel usable beside a modal Compare
         progress.setWindowTitle(title)
         progress.setFixedSize(420, 110)
         progress.setStyleSheet("background-color: #e8e8f0; color: #000;")
@@ -6903,7 +6916,8 @@ For more information, see the README file."""
                 + "\n"
             )
 
-        dialog = QDialog(self)
+        from PyQt6.QtWidgets import QApplication as _QApp
+        dialog = QDialog(_QApp.activeModalWidget() or self)   # usable beside a modal Compare
         dialog.setWindowTitle(title)
         # Maximizable + large default so the analysis can fill a 1920×1080 screen.
         dialog.setWindowFlags(dialog.windowFlags()
@@ -7054,25 +7068,35 @@ For more information, see the README file."""
                                       QScrollArea)
         from PyQt6.QtGui import QFont
 
-        dialog = QDialog(self)
+        # Parent to whatever modal window is up (the Compare dialog when it
+        # was opened with exec() from the score table): a child of the main
+        # window gets no input while a modal dialog is open, so the scrollbar
+        # "did not work" until Compare was closed.
+        from PyQt6.QtWidgets import QApplication as _QApp
+        dialog = QDialog(_QApp.activeModalWidget() or self)
         dialog.setWindowTitle(title)
         dialog.setMinimumSize(700, 350)
         dialog.resize(800, 450)
         dialog.setStyleSheet("QDialog { background-color: #e8e8f0; color: #000; }")
         layout = QVBoxLayout(dialog)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea { border: 1px solid #aaa; background-color: #f8f8f8; }")
-        label = QLabel(body)
-        label.setFont(QFont("Arial", 16 if error else 20))
-        label.setWordWrap(True)
-        label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        label.setStyleSheet(
-            f"color: {'#803030' if error else '#000'}; background-color: #f8f8f8; padding: 15px;"
+        # A read-only QTextBrowser scrolls on its own (wheel, scrollbar drag,
+        # keys). The old word-wrapped QLabel inside a QScrollArea got its
+        # height wrong, so the scrollbar did not scroll the text. Claude's
+        # replies are Markdown, so render them as such (errors stay plain).
+        from PyQt6.QtWidgets import QTextBrowser
+        view = QTextBrowser()
+        view.setOpenExternalLinks(True)
+        view.setFont(QFont("Arial", 14 if error else 16))
+        view.setStyleSheet(
+            f"QTextBrowser {{ color: {'#803030' if error else '#000'};"
+            " background-color: #f8f8f8; border: 1px solid #aaa; padding: 10px; }"
         )
-        scroll.setWidget(label)
-        layout.addWidget(scroll)
+        if error:
+            view.setPlainText(body)
+        else:
+            view.setMarkdown(body)
+        layout.addWidget(view, stretch=1)
 
         ok_btn = QPushButton("OK")
         ok_btn.setFixedSize(120, 40)
@@ -9372,6 +9396,16 @@ For more information, see the README file."""
                 "and comment on who did better and why."
             )
 
+        try:
+            from .teaching_view import signalling_conventions_text
+            signals_text = signalling_conventions_text() + "\n"
+            if closed_run:
+                signals_text += ("  (These are the open room's agreements; "
+                                 "a Q-Plus closed room cards by Q-Plus's own "
+                                 "agreements.)\n")
+        except Exception:
+            signals_text = ""
+
         def _run_claude():
             try:
                 analysis_prompt = (
@@ -9415,6 +9449,7 @@ For more information, see the README file."""
                     "lenses — bidding AND cardplay — and explain which side did "
                     "better and why, in instrumented-view terms.\n\n"
                     f"SYSTEMS: {systems_text}\n"
+                    f"{signals_text}"
                     f"The human player(s) at the open room: {human_desc}."
                     f"{comparison_note}\n\n"
                     f"INSTRUMENTATION — OPEN ROOM (biq's reads):\n"

@@ -232,6 +232,12 @@ class DealAnalysisDialog(QDialog):
                 w = (f"  (won by {t.winner.to_char()})"
                      if getattr(t, 'winner', None) is not None else "")
                 lines.append(f"  #{ti:02d} {leader}: {cs}{w}")
+        try:
+            from ui.teaching_view import signalling_conventions_text
+            lines.append("")
+            lines.extend(signalling_conventions_text().split("\n"))
+        except Exception:
+            pass
         lines.append("")
         lines.append(f"Seat to grade: {seat_char}")
         lines.append("")
