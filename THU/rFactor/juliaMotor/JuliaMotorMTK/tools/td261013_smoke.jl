@@ -15,7 +15,7 @@ println("TD261013-1 / PHYSFID-1 gate")
 chk("(c3) SHIFT+R recovers a wrecked car (clears WRECKED + WRECK_FROZEN)",
     occursin("WRECKED[] && println(\"  [recover] SHIFT+R: the wreck is cleared", src))
 chk("WHEELOFF-1: SHIFT+R refused with a wheel off (recover and rst both cleared)",
-    occursin("if recover && WRECKED[] && !isempty(LOOSE_WHEELS) && WHEELOFF_RULE\n            recover = false; rst = false", src))
+    occursin(r"if recover && WRECKED\[\] && !isempty\(LOOSE_WHEELS\) && WHEELOFF_RULE\n\s+recover = false; rst = false", src))   # LOOPSPLIT-1 cycle 6 S4: any indent
 chk("WHEELOFF-1: the refusal sits after the test hooks (they exercise it)",
     (i = findfirst("if recover && WRECKED[] && !isempty(LOOSE_WHEELS)", src); j = findfirst("recover = true; rst = true; RECOVER_I[] += 1", src);
      i !== nothing && j !== nothing && first(j) < first(i)))

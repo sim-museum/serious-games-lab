@@ -14417,52 +14417,8 @@ function main()
         last = now
         GEAR_NOW[] = cs.gear; RPM_NOW[] = cs.rpm; V_NOW[] = cs.v        # for the rev-matched shift gate
         inp, rst, recover, restart = read_input()
-        if SMOKE && LASTZ_AT !== nothing && !LASTZ_SET[] && cs.t >= LASTZ_AT[1]   # RESTARTGROUND-1 S2 test hook (see LASTZ_AT)
-            LASTZ[] = LASTZ_AT[2]; LASTZ_SET[] = true; println("  [test] LASTZ set to ", LASTZ_AT[2], " m at t=", round(cs.t, digits = 2)); flush(stdout)
-        end
-        if SMOKE && !isempty(RESTART_AT) && RESTART_I[] <= length(RESTART_AT) && cs.t >= RESTART_AT[RESTART_I[]]
-            restart = true; RESTART_I[] += 1; println("  [test] restart (R) at t=", round(cs.t, digits = 2)); flush(stdout)
-        end
-        if SMOKE && !isempty(RECOVER_AT) && RECOVER_I[] <= length(RECOVER_AT) && cs.t >= RECOVER_AT[RECOVER_I[]]
-            recover = true; rst = true; RECOVER_I[] += 1; println("  [test] recover (SHIFT+R) at t=", round(cs.t, digits = 2)); flush(stdout)
-        end
-        if AUTODRIVE && AUTODRIVE_RECOVER > 0 && race_go[] && cs.t > 3.0 && !WRECKED[]   # a wreck ends the race: no recover loop
-            AD_SLOW_T[] = abs(cs.v) < 0.5 ? AD_SLOW_T[] + max(dt, 0.0) : 0.0
-            if AD_SLOW_T[] >= AUTODRIVE_RECOVER
-                recover = true; rst = true; AD_SLOW_T[] = 0.0
-                println("  [auto] stuck ", AUTODRIVE_RECOVER, " s at lapdist ", round(cs.lapdist, digits = 1), " -- recover (SHIFT+R) at t=",
-                        round(cs.t, digits = 2)); flush(stdout)
-            end
-        end
-        if SMOKE && WRECK_AT > 0 && cs.t >= WRECK_AT && !WRECK_AT_DONE[]
-            WRECK_AT_DONE[] = true; wreck!(max(cs.v, 20.0); closing = 20.0, x = cs.x, z = cs.z)
-            haskey(ENV, "JM_WRECK_LOOSE") && push!(LOOSE_WHEELS, (cs.x, cs.y, cs.z, 0.0, 0.0, 0.0, 0.0, 0.0, "lotwlf"))   # WHEELOFF-1 test hook
-        end
-        # WHEELOFF-1 (PO 2026-10-14: "SHIFT R should not clear a wreck if any wheels have come off - only R to restart should
-        # be allowed"): with a wheel gone, SHIFT+R does nothing (neither recover nor respawn); R restarts. JM_WHEELOFF_RULE=0 = S1.
-        if recover && WRECKED[] && !isempty(LOOSE_WHEELS) && WHEELOFF_RULE
-            recover = false; rst = false; WHEELOFF_MSG[] = 3.0
-            println("  [recover] SHIFT+R refused: a wheel has come off -- R restarts the race"); flush(stdout)
-        end
-        (rst || restart) && GPLW_ON && gplw_teleported!()
-        CRASH_ON && (inp = JuliaMotor.DriveInput(throttle = 0.0, brake = 0.0, steer = 0.0, clutch = inp.clutch,
-                                                 shift_up = false, shift_down = false, autoshift = true))
-        # WRISTS-3: JM_SHOT_STEER=<-1..1> holds the steering for smoke photographs (env or a shot's K=V) -- the hands at lock
-        if SMOKE && haskey(ENV, "JM_SHOT_STEER")
-            inp = JuliaMotor.DriveInput(throttle = 0.0, brake = 1.0, steer = parse(Float64, ENV["JM_SHOT_STEER"]), clutch = inp.clutch,
-                                        shift_up = false, shift_down = false, autoshift = true)
-        end
-        # CARCOLLIDE-2 S4 test hook: after the ram the player's driver brakes for 3 s (an undriven car kept shoving the
-        # struck car from behind -- 99 more impulses in 4 s -- which is the harness, not the contact law)
-        (RAM_AI !== nothing && RAM_STATE[].done && cs.t - RAM_STATE[].t0 - RAM_AI[4] < 3.0) &&
-            (inp = JuliaMotor.DriveInput(throttle = 0.0, brake = 1.0, steer = 0.0, clutch = inp.clutch,
-                                         shift_up = false, shift_down = false, autoshift = true))
-        # STARTSEQ-3 (PO 2026-09-07): "don't allow the car to move until a key has been pressed to start the
-        # countdown" -- until the countdown is armed the car is held: throttle ignored, brakes on.
-        if START_ARM && HOLD_START && !cd_armed[] && phase[] == :race && !race_go[]
-            inp = JuliaMotor.DriveInput(throttle = 0.0, brake = 1.0, steer = inp.steer, clutch = inp.clutch,
-                                        shift_up = inp.shift_up, shift_down = inp.shift_down, autoshift = inp.autoshift)
-        end
+        (rst, recover, restart) = input_hooks_step!(cs, dt, rst, recover, restart, race_go, LASTZ)   # LOOPSPLIT-1 cycle 6 S4: moved to main_loop.jl
+        inp = input_overrides(cs, inp, cd_armed, phase, race_go, HOLD_START)   # LOOPSPLIT-1 cycle 6 S4: moved to main_loop.jl
         # ── RESTART-1 (PO 2026-09-04): CTRL+R restarts the session on the CURRENT track ─────────
         # "This should be instantaneous - otherwise you have to wait for the track to reload after
         # goofing up." Nothing the loader built is invalidated by a restart: the GPL parse, the HAT,
@@ -14493,21 +14449,7 @@ function main()
         # SKIDPAD-GOLD-1 S3: the constant-input driver. Overrides whatever the human or the AI
         # produced, holds the clutch engaged and leaves autoshift on so the car actually pulls.
         if SKIDDRIVE !== nothing
-            sd_t = Float64(cs.t); sd_i = 1; sd_t0 = 0.0
-            while sd_i < length(SKIDDRIVE) && sd_t >= sd_t0 + SKIDDRIVE[sd_i].dur
-                sd_t0 += SKIDDRIVE[sd_i].dur; sd_i += 1
-            end
-            sd_prev = sd_i == 1 ? 0.0 : SKIDDRIVE[sd_i-1].steer
-            sd_k = clamp((sd_t - sd_t0) / SKIDRAMP, 0.0, 1.0)
-            inp = DriveInput(throttle = SKIDDRIVE[sd_i].throttle, brake = 0.0,
-                             steer = sd_prev + (SKIDDRIVE[sd_i].steer - sd_prev) * sd_k,
-                             clutch = 0.0, shift_up = false, shift_down = false, autoshift = true)
-            if AUTODRIVE_DIAG > 0 && (frames % AUTODRIVE_DIAG) == 0
-                println("  [skid] seg ", sd_i, "/", length(SKIDDRIVE), "  t=", round(cs.t,digits=1),
-                        " v=", round(cs.v*3.6,digits=1), " km/h  thr=", round(inp.throttle,digits=2),
-                        " steer=", round(inp.steer,digits=3))
-                flush(stdout)
-            end
+            inp = skiddrive_input(cs, frames)   # LOOPSPLIT-1 cycle 6 S4: moved to main_loop.jl
         end
         if REPLAY                                   # E18 PLAYBACK: VCR + set poses from the recording, skip the sim
             (inp, rep_ai_raw) = replay_step!(cs, inp, dt, REP_AICOCKPIT, REP_NT, REP_TEAMCOCKPIT, rep_ai_inputs, rep_ai_lotus, rep_cam, rep_dur, rep_focus, rep_pdn, rep_pend, rep_phome, rep_play, rep_pn, rep_ppd, rep_ppu, rep_psp, rep_pup, rep_pv, rep_pw, rep_rt, rep_speed, rep_swap, rep_team, rep_team_items, rep_tyres, rep_tyshow, repd, replay_poses, replay_tele)

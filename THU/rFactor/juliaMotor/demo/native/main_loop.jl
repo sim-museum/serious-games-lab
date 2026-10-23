@@ -959,6 +959,85 @@ function warm_replay_record!(cs, inp, AICARS, ai_poses, CLINE, REPLAY_AUTOSAVE, 
     nothing
 end
 
+# LOOPSPLIT-1 cycle 6 S4: the frame loop's input hooks after read_input() -- the smoke test hooks (JM_LASTZ_AT,
+# JM_RESTART_AT, JM_RECOVER_AT, JM_WRECK_AT), the autodrive's stuck recover, WHEELOFF-1's SHIFT+R refusal and the GPL
+# wall teleport notice -- moved unchanged. Returns the frame's (rst, recover, restart).
+function input_hooks_step!(cs, dt, rst, recover, restart, race_go, LASTZ)
+    if SMOKE && LASTZ_AT !== nothing && !LASTZ_SET[] && cs.t >= LASTZ_AT[1]   # RESTARTGROUND-1 S2 test hook (see LASTZ_AT)
+        LASTZ[] = LASTZ_AT[2]; LASTZ_SET[] = true; println("  [test] LASTZ set to ", LASTZ_AT[2], " m at t=", round(cs.t, digits = 2)); flush(stdout)
+    end
+    if SMOKE && !isempty(RESTART_AT) && RESTART_I[] <= length(RESTART_AT) && cs.t >= RESTART_AT[RESTART_I[]]
+        restart = true; RESTART_I[] += 1; println("  [test] restart (R) at t=", round(cs.t, digits = 2)); flush(stdout)
+    end
+    if SMOKE && !isempty(RECOVER_AT) && RECOVER_I[] <= length(RECOVER_AT) && cs.t >= RECOVER_AT[RECOVER_I[]]
+        recover = true; rst = true; RECOVER_I[] += 1; println("  [test] recover (SHIFT+R) at t=", round(cs.t, digits = 2)); flush(stdout)
+    end
+    if AUTODRIVE && AUTODRIVE_RECOVER > 0 && race_go[] && cs.t > 3.0 && !WRECKED[]   # a wreck ends the race: no recover loop
+        AD_SLOW_T[] = abs(cs.v) < 0.5 ? AD_SLOW_T[] + max(dt, 0.0) : 0.0
+        if AD_SLOW_T[] >= AUTODRIVE_RECOVER
+            recover = true; rst = true; AD_SLOW_T[] = 0.0
+            println("  [auto] stuck ", AUTODRIVE_RECOVER, " s at lapdist ", round(cs.lapdist, digits = 1), " -- recover (SHIFT+R) at t=",
+                    round(cs.t, digits = 2)); flush(stdout)
+        end
+    end
+    if SMOKE && WRECK_AT > 0 && cs.t >= WRECK_AT && !WRECK_AT_DONE[]
+        WRECK_AT_DONE[] = true; wreck!(max(cs.v, 20.0); closing = 20.0, x = cs.x, z = cs.z)
+        haskey(ENV, "JM_WRECK_LOOSE") && push!(LOOSE_WHEELS, (cs.x, cs.y, cs.z, 0.0, 0.0, 0.0, 0.0, 0.0, "lotwlf"))   # WHEELOFF-1 test hook
+    end
+    # WHEELOFF-1 (PO 2026-10-14: "SHIFT R should not clear a wreck if any wheels have come off - only R to restart should
+    # be allowed"): with a wheel gone, SHIFT+R does nothing (neither recover nor respawn); R restarts. JM_WHEELOFF_RULE=0 = S1.
+    if recover && WRECKED[] && !isempty(LOOSE_WHEELS) && WHEELOFF_RULE
+        recover = false; rst = false; WHEELOFF_MSG[] = 3.0
+        println("  [recover] SHIFT+R refused: a wheel has come off -- R restarts the race"); flush(stdout)
+    end
+    (rst || restart) && GPLW_ON && gplw_teleported!()
+    (rst, recover, restart)
+end
+
+# LOOPSPLIT-1 cycle 6 S4: the frame loop's input overrides (JM_CRASH, JM_SHOT_STEER, the ram test's braking, the held
+# start before the countdown is armed), moved unchanged. Returns the frame's input.
+function input_overrides(cs, inp, cd_armed, phase, race_go, HOLD_START)
+    CRASH_ON && (inp = JuliaMotor.DriveInput(throttle = 0.0, brake = 0.0, steer = 0.0, clutch = inp.clutch,
+                                             shift_up = false, shift_down = false, autoshift = true))
+    # WRISTS-3: JM_SHOT_STEER=<-1..1> holds the steering for smoke photographs (env or a shot's K=V) -- the hands at lock
+    if SMOKE && haskey(ENV, "JM_SHOT_STEER")
+        inp = JuliaMotor.DriveInput(throttle = 0.0, brake = 1.0, steer = parse(Float64, ENV["JM_SHOT_STEER"]), clutch = inp.clutch,
+                                    shift_up = false, shift_down = false, autoshift = true)
+    end
+    # CARCOLLIDE-2 S4 test hook: after the ram the player's driver brakes for 3 s (an undriven car kept shoving the
+    # struck car from behind -- 99 more impulses in 4 s -- which is the harness, not the contact law)
+    (RAM_AI !== nothing && RAM_STATE[].done && cs.t - RAM_STATE[].t0 - RAM_AI[4] < 3.0) &&
+        (inp = JuliaMotor.DriveInput(throttle = 0.0, brake = 1.0, steer = 0.0, clutch = inp.clutch,
+                                     shift_up = false, shift_down = false, autoshift = true))
+    # STARTSEQ-3 (PO 2026-09-07): "don't allow the car to move until a key has been pressed to start the
+    # countdown" -- until the countdown is armed the car is held: throttle ignored, brakes on.
+    if START_ARM && HOLD_START && !cd_armed[] && phase[] == :race && !race_go[]
+        inp = JuliaMotor.DriveInput(throttle = 0.0, brake = 1.0, steer = inp.steer, clutch = inp.clutch,
+                                    shift_up = inp.shift_up, shift_down = inp.shift_down, autoshift = inp.autoshift)
+    end
+    inp
+end
+
+# LOOPSPLIT-1 cycle 6 S4: SKIDPAD-GOLD-1 S3's constant-input driver (JM_SKIDDRIVE), moved unchanged. Returns the input.
+function skiddrive_input(cs, frames)
+    sd_t = Float64(cs.t); sd_i = 1; sd_t0 = 0.0
+    while sd_i < length(SKIDDRIVE) && sd_t >= sd_t0 + SKIDDRIVE[sd_i].dur
+        sd_t0 += SKIDDRIVE[sd_i].dur; sd_i += 1
+    end
+    sd_prev = sd_i == 1 ? 0.0 : SKIDDRIVE[sd_i-1].steer
+    sd_k = clamp((sd_t - sd_t0) / SKIDRAMP, 0.0, 1.0)
+    inp = DriveInput(throttle = SKIDDRIVE[sd_i].throttle, brake = 0.0,
+                     steer = sd_prev + (SKIDDRIVE[sd_i].steer - sd_prev) * sd_k,
+                     clutch = 0.0, shift_up = false, shift_down = false, autoshift = true)
+    if AUTODRIVE_DIAG > 0 && (frames % AUTODRIVE_DIAG) == 0
+        println("  [skid] seg ", sd_i, "/", length(SKIDDRIVE), "  t=", round(cs.t,digits=1),
+                " v=", round(cs.v*3.6,digits=1), " km/h  thr=", round(inp.throttle,digits=2),
+                " steer=", round(inp.steer,digits=3))
+        flush(stdout)
+    end
+    inp
+end
+
 """E85-S6 HEADLESS AUTODRIVE (JM_AUTODRIVE=1): the AI controller drives the player on the centreline; returns the
 frame's input. LOOPSPLIT-1 cycle 2 S2: moved unchanged from the frame loop -- in the loop its `let` wrote main()'s own
 `ps` and `step` (and the loop's `up` / `dn` / `thr` / `brk` / `st`) as a side effect; here they are its own."""
