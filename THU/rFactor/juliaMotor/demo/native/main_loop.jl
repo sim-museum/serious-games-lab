@@ -2365,7 +2365,8 @@ function loose_body_step!(k::Int, sl::Int, pc, gdt::Float64, groundz::G; dry::Bo
     hq(X, Z) = (y = groundz(X, -Z); y > -900 ? Float64(y) : NaN)
     pl = WB.fit_plane(hq, b.p[1], b.p[3])
     (isfinite(pl.h0) && isfinite(pl.gx) && isfinite(pl.gz)) ? (dry || (LOOSE_BPLANE[sl] = pl)) : (pl = LOOSE_BPLANE[sl])
-    th(X, Z, yref) = (r = JuliaMotor.hat3d(TERRAIN, X, -Z; ref = yref); r[3] ? Float64(r[1]) : NaN)
+    # SKIDPADCRASH-1 S1: the skidpad has no TERRAIN mesh -- its pad is flat at 0, as groundz() answers there
+    th(X, Z, yref) = SKIDPAD ? 0.0 : (r = JuliaMotor.hat3d(TERRAIN, X, -Z; ref = yref); r[3] ? Float64(r[1]) : NaN)
     ter = WB.Terrain(th, pl)
     WB.step!(b, gdt, ter)
     (nt, nh) = WB.touching(b, ter)
@@ -2850,7 +2851,8 @@ function wreck_body_step!(cs, inp, dt, groundz_phys::G, roll_ter; dry::Bool = fa
     end
     # each touching point asks the TERRAIN mesh for the surface just below it (a pure query: groundz_phys keeps the
     # driving car's step-guard and layer state, which 24 points a substep would scramble)
-    th(X, Z, yref) = (r = JuliaMotor.hat3d(TERRAIN, X, -Z; ref = yref); r[3] ? Float64(r[1]) : NaN)
+    # SKIDPADCRASH-1 S1: the skidpad has no TERRAIN mesh -- its pad is flat at 0, as groundz() answers there
+    th(X, Z, yref) = SKIDPAD ? 0.0 : (r = JuliaMotor.hat3d(TERRAIN, X, -Z; ref = yref); r[3] ? Float64(r[1]) : NaN)
     ter = WB.Terrain(th, pl)
     WB.step!(b, gdt, ter; walls = walls)
     dry && (WB.touching(b, ter); return nothing)   # (CARLAUNCH-1: the landing test compiled here too)

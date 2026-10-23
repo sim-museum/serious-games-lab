@@ -7421,6 +7421,10 @@ if _OBJ_SKIP
     global STATICTREES = Tuple{Render.Item,NTuple{3,Float32},Float32,Float32,Float32}[]
     global SOLIDS = Tuple{Float64,Float64,Float64,Symbol}[]   # no collidable trackside objects on skidpad / Nürburgring (scenery baked in) — without this solid_hit()/solid_contact() throws UndefVarError on the first collision check
     global OBJINSTS = Tuple{String,Float32,Float32,Float32,Symbol,Bool}[]   # no placed objects here, but JM_SWEEP/JM_SPOT still need it defined to run the HAT/molasses checks
+    # SKIDPADCRASH-1 S1 (2026-10-23): the world draw asks gplvis_seg() for the camera's GPL segment, and it is defined in the
+    # object build below (`if !_OBJ_SKIP`), so the skidpad threw `UndefVarError: gplvis_seg` on the first drawn frame.
+    # 0 = unknown segment (draw everything), what the real one answers when GPLVIS is off.
+    gplvis_seg(ex, ez) = 0
     global OBJ_LVERTS = Dict{String,Vector{Tuple{Float32,Float32}}}(); global OBJ_YAW = Dict{Tuple{Float64,Float64},Float64}(); global OBJ_YMN = Dict{String,Float32}(); global OBJ_YMX = Dict{String,Float32}(); global OBJ_RECZ = Dict{Tuple{Float64,Float64},Float64}(); global OBJ_VERTS = Dict{String,Any}()
     # E76-S8: THE RING'S MISSING BILLBOARDS.  The Ring does not use the GPL object pipeline below —
     # it loads scenery through its own gpl_scenery(), which had no billboard path at all, so every
@@ -14827,9 +14831,9 @@ function main()
     # _exit terminates the process cleanly at the OS level, so the post-race exit is no longer a crash.
     # TMPLEAK-1 (2026-10-15): skipping atexit also skipped mktempdir's cleanup -- every race left its extracted track
     # files in /tmp (11 MB at Spa; 1,127 dirs / 3.7 GB had piled up here). Remove them by hand first.
-    for d in (TMPTRK, TMPOBJ)
-        try rm(d; recursive = true, force = true) catch end
-    end
+    # SKIDPADCRASH-1 S1: TMPOBJ is made by the object build, which the skidpad skips (UndefVarError here, past "bye")
+    (@isdefined TMPTRK) && try rm(TMPTRK; recursive = true, force = true) catch end
+    (@isdefined TMPOBJ) && try rm(TMPOBJ; recursive = true, force = true) catch end
     ccall(:_exit, Cvoid, (Cint,), 0)
 end
 end   # _MAIN_Q (E80-S13)
