@@ -14834,22 +14834,7 @@ function main()
         DSTAT && (GPUSYNC && glFinish(); DS_T[1] = time(); Render.NDRAW[] = 0; Render.NTRI[] = 0; DS_SIMACC[1] += DS_T[1] - now; DS_SIMACC[2] += DS_SIM[1]; DS_SIMACC[3] += DS_SIM[2]; fill!(DS_SIM, 0.0))
         # ---- shadow pass: scene depth from the sun, light box on the car ----
         _tp_d = time()
-        lightVP = Render.light_vp(Float32[cs.x, cs.y, -cs.z], LIGHTDIR)
-        Render.shadow_pass(depthprog, shadowfbo, lightVP) do dp
-            for (ti, it) in enumerate(trackItems)
-                TRACKCULL_SH && !inlightbox(lightVP, TRACKBOUND[ti][1], TRACKBOUND[ti][2]) && continue   # PERF-3
-                Render.draw_depth(dp, it, Render.IDENT)
-            end
-            for it in carItems; Render.draw_depth(dp, it, bodyModel); end
-            for (wx,wz,steer,r,nm) in WHEELS, it in WHEELITEMS[nm]
-                is_loose(nm) && continue                                   # E95: this one came off
-                Render.draw_depth(dp, it, wheelmat(wx,wz,steer,r,nm))
-            end
-            for (lx,ly,lz,_,_,_,sp,_,nm) in LOOSE_WHEELS, it in WHEELITEMS[nm]
-                Render.draw_depth(dp, it, loosemat(lx,ly,lz,sp))
-            end
-            draw_ai_depth!(dp, ai_poses, AICHASSIS, spin)     # AI cars cast shadows too (PERF-3: typed barrier)
-        end
+        lightVP = shadow_pass_step!(cs, depthprog, shadowfbo, bodyModel, wheelmat, loosemat, ai_poses, AICHASSIS, spin)   # LOOPSPLIT-1 cycle 6 S2: main_loop.jl
         # ---- shared world draw: everything both the main pass and the E64 mirror pass see.
         # flip=true = the X-mirrored rear view: the clip-space flip reverses winding, so the
         # object-pass face cull swaps its culled side (same faces kept, opposite GL name).
@@ -14868,11 +14853,6 @@ function main()
         # JM_MIRROR_RTT=0's static discs.
         # S6: `every` is MIRROR_EVERY normally, but MIRROR_ADAPT_N once the smoothed frame time says
         # there is no headroom. MIRROR_EMA is updated at the end of the frame loop.
-        if MIRROR_ADAPT
-            _ms = MIRROR_EMA[] * 1000
-            MIRROR_STARVED[] = MIRROR_STARVED[] ? (_ms > MIRROR_RESUME_MS) : (_ms > MIRROR_ADAPT_MS)
-        end
-        _mir_every = (MIRROR_ADAPT && MIRROR_STARVED[]) ? MIRROR_ADAPT_N : MIRROR_EVERY
         # SPA-FPS-1 S10: the `!REPLAY` term is why S9's mirror glass was black in every capture --
         # the RTT pass does not run in a replay AT ALL, so there was nothing in the mirror to
         # strobe and the "hidden window may not run the RTT" reading was wrong. The PO's report is
@@ -14880,15 +14860,11 @@ function main()
         # headlessly from a replay, which is the only way to take it without the display.
         # COCKPIT-2 S1 (PO 2026-10-07: "the mirrors are black" in replay): now ON by default -- the mirror camera follows
         # the replayed pose like everything else. JM_MIRROR_IN_REPLAY=0 restores the old dark glass.
-        _mir_noreplay = !REPLAY || get(ENV, "JM_MIRROR_IN_REPLAY", "1") != "0"
         # PACE-1 (2026-09-25, PO: "why does motion seem jerky"): when starved, the old back-off rendered BOTH
         # mirror halves on one frame in three -- a long frame every third frame, i.e. judder by construction.
         # Now the mirror stays live every frame and renders ONE half per frame, alternating: each mirror at
         # 30 Hz, the cost spread evenly. JM_MIRROR_ALT=0 restores the every-Nth behaviour.
-        _mir_alt = MIRROR_ADAPT && MIRROR_STARVED[] && get(ENV, "JM_MIRROR_ALT", "1") != "0"
-        mirror_live = MIRROR_RTT && CTL.view == 0 && _mir_noreplay &&
-                      (_mir_alt || _mir_every <= 1 || (frames % _mir_every) == 0)
-        (MIRROR_RTT && CTL.view == 0 && _mir_noreplay && !mirror_live) && (MIRROR_SKIPPED[] += 1)
+        (mirror_live, _mir_alt) = mirror_gate(REPLAY, frames)   # LOOPSPLIT-1 cycle 6 S2: the decision above, moved to main_loop.jl
         frames == 1 && precompile(mirror_render!, typeof.((drawworld, cs, cam_pitch, cam_roll, frames, _mir_alt, lightVP, bodyModel, wheelmat, loosemat)))
         if mirror_live
             mirror_render!(drawworld, cs, cam_pitch, cam_roll, frames, _mir_alt, lightVP, bodyModel, wheelmat, loosemat)   # LOOPSPLIT-1: main_loop.jl

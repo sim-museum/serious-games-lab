@@ -865,6 +865,44 @@ function body_camera_step!(cs, inp, dt, v_prev, pitch_ter, roll_ter, pitch_dyn, 
     (; v_prev, pitch_ter, roll_ter, pitch_dyn, rollv, cam_pitch, cam_roll, vp, eye, carModel, tiltModel, bodyModel)
 end
 
+# LOOPSPLIT-1 cycle 6 S2: the frame loop's shadow pass, moved unchanged. Scene depth from the sun, light box on the car;
+# returns the light matrix the mirror and main passes bind.
+function shadow_pass_step!(cs, depthprog, shadowfbo, bodyModel, wheelmat, loosemat, ai_poses, AICHASSIS, spin)
+    lightVP = Render.light_vp(Float32[cs.x, cs.y, -cs.z], LIGHTDIR)
+    Render.shadow_pass(depthprog, shadowfbo, lightVP) do dp
+        for (ti, it) in enumerate(trackItems)
+            TRACKCULL_SH && !inlightbox(lightVP, TRACKBOUND[ti][1], TRACKBOUND[ti][2]) && continue   # PERF-3
+            Render.draw_depth(dp, it, Render.IDENT)
+        end
+        for it in carItems; Render.draw_depth(dp, it, bodyModel); end
+        for (wx,wz,steer,r,nm) in WHEELS, it in WHEELITEMS[nm]
+            is_loose(nm) && continue                                   # E95: this one came off
+            Render.draw_depth(dp, it, wheelmat(wx,wz,steer,r,nm))
+        end
+        for (lx,ly,lz,_,_,_,sp,_,nm) in LOOSE_WHEELS, it in WHEELITEMS[nm]
+            Render.draw_depth(dp, it, loosemat(lx,ly,lz,sp))
+        end
+        draw_ai_depth!(dp, ai_poses, AICHASSIS, spin)     # AI cars cast shadows too (PERF-3: typed barrier)
+    end
+    lightVP
+end
+
+# LOOPSPLIT-1 cycle 6 S2: the frame loop's E64 mirror refresh decision, moved unchanged (the history of each term is at
+# the call site). Returns whether the mirror RTT renders this frame and whether it renders one half (PACE-1).
+function mirror_gate(REPLAY, frames)
+    if MIRROR_ADAPT
+        _ms = MIRROR_EMA[] * 1000
+        MIRROR_STARVED[] = MIRROR_STARVED[] ? (_ms > MIRROR_RESUME_MS) : (_ms > MIRROR_ADAPT_MS)
+    end
+    _mir_every = (MIRROR_ADAPT && MIRROR_STARVED[]) ? MIRROR_ADAPT_N : MIRROR_EVERY
+    _mir_noreplay = !REPLAY || get(ENV, "JM_MIRROR_IN_REPLAY", "1") != "0"
+    _mir_alt = MIRROR_ADAPT && MIRROR_STARVED[] && get(ENV, "JM_MIRROR_ALT", "1") != "0"
+    mirror_live = MIRROR_RTT && CTL.view == 0 && _mir_noreplay &&
+                  (_mir_alt || _mir_every <= 1 || (frames % _mir_every) == 0)
+    (MIRROR_RTT && CTL.view == 0 && _mir_noreplay && !mirror_live) && (MIRROR_SKIPPED[] += 1)
+    (mirror_live, _mir_alt)
+end
+
 """E85-S6 HEADLESS AUTODRIVE (JM_AUTODRIVE=1): the AI controller drives the player on the centreline; returns the
 frame's input. LOOPSPLIT-1 cycle 2 S2: moved unchanged from the frame loop -- in the loop its `let` wrote main()'s own
 `ps` and `step` (and the loop's `up` / `dn` / `thr` / `brk` / `st`) as a side effect; here they are its own."""
