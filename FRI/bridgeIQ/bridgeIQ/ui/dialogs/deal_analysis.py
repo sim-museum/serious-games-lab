@@ -167,6 +167,8 @@ class DealAnalysisDialog(QDialog):
         # parse the per-line response back into the table.
         prompt = self._build_claude_prompt(seat_char, actions_for_claude)
         claude_text, claude_err = self._run_claude(prompt)
+        if claude_err == "cancelled":
+            return
 
         if claude_err:
             # Surface the failure on every pending row so the user
@@ -284,7 +286,7 @@ class DealAnalysisDialog(QDialog):
         import subprocess
         import threading
         from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QLabel,
-                                     QProgressBar, QApplication)
+                                     QProgressBar, QApplication, QPushButton)
         from PyQt6.QtGui import QFont
 
         if not shutil.which('claude'):
@@ -292,7 +294,7 @@ class DealAnalysisDialog(QDialog):
 
         progress = QDialog(self)
         progress.setWindowTitle("Deal Analysis")
-        progress.setFixedSize(420, 110)
+        progress.setFixedSize(460, 140)
         p_layout = QVBoxLayout(progress)
         p_label = QLabel("Claude is grading your actions…")
         p_label.setFont(QFont("Arial", 12))
@@ -300,6 +302,23 @@ class DealAnalysisDialog(QDialog):
         p_bar = QProgressBar()
         p_bar.setRange(0, 0)
         p_layout.addWidget(p_bar)
+        state = {'cancelled': False, 'done': False, 'proc': None}
+
+        def _cancel():
+            # Closing the dialog after success also emits `rejected`.
+            if state['done']:
+                return
+            state['cancelled'] = True
+            proc = state['proc']
+            if proc is not None and proc.poll() is None:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(_cancel)
+        progress.rejected.connect(_cancel)
+        p_layout.addWidget(cancel_btn)
         progress.show()
         QApplication.processEvents()
 
@@ -307,29 +326,53 @@ class DealAnalysisDialog(QDialog):
 
         def _run():
             try:
-                r = subprocess.run(
+                # stdin closed: an inherited open stdin makes `claude -p`
+                # wait for piped input forever. Popen so Cancel can kill it.
+                proc = subprocess.Popen(
                     ['claude', '-p',
                      '--model', 'claude-opus-4-8',
                      '--max-turns', '1', prompt],
-                    capture_output=True, text=True, timeout=600,
-                )
-                if r.returncode == 0 and (r.stdout or '').strip():
-                    result['text'] = r.stdout.strip()
+                    stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE, text=True)
+                state['proc'] = proc
+                try:
+                    out, err = proc.communicate(timeout=600)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.communicate()
+                    result['error'] = "claude timed out (600 s)"
+                    return
+                if proc.returncode == 0 and (out or '').strip():
+                    result['text'] = out.strip()
                 else:
                     result['error'] = (
-                        (r.stderr or '').strip()[:160]
-                        or f"claude exit {r.returncode}")
-            except subprocess.TimeoutExpired:
-                result['error'] = "claude timed out (240s)"
+                        (err or '').strip()[:160]
+                        or f"claude exit {proc.returncode}")
             except Exception as ex:
                 result['error'] = f"{ex!r}"
 
+        import time
+        t0 = time.monotonic()
         thread = threading.Thread(target=_run, daemon=True)
         thread.start()
-        while thread.is_alive():
+        while thread.is_alive() and not state['cancelled']:
             QApplication.processEvents()
             thread.join(timeout=0.1)
-        progress.close()
+            el = int(time.monotonic() - t0)
+            try:
+                p_label.setText(f"Claude is grading your actions… "
+                                f"{el // 60}:{el % 60:02d} (usually 1-3 minutes)")
+            except RuntimeError:
+                # The window was closed under us: Qt deleted the dialog.
+                _cancel()
+                break
+        state['done'] = True
+        try:
+            progress.close()
+        except RuntimeError:
+            pass
+        if state['cancelled']:
+            return None, "cancelled"
         return result['text'], result['error']
 
     @staticmethod

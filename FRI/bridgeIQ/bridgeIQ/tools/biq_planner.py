@@ -255,6 +255,25 @@ FAMILIES = {
                   "S": {"shapes": _shapes(lambda x: x["S"] == 4 and x["H"] <= 3), "ok": _band(6, 10)},
                   "W": {"shapes": _shapes(lambda x: x["H"] >= 3), "ok": _band(5, 9)}}, "NESW",
                  lambda a: len(a) > 4 and a[1] == "1H" and a[2] == "X" and a[4] == "2S"),
+    # 2026-10-22 sprints 176-185.
+    "f1nt_lr": ("partner opens 1S, S has three spades and 10-12 (forcing 1NT, then the limit raise)", "N",
+                {"N": {"shapes": _shapes(lambda x: x["S"] == 5 and x["H"] <= 4), "ok": _band(11, 15)},
+                 "S": {"shapes": _shapes(lambda x: x["S"] == 3 and max(x["H"], x["D"], x["C"]) <= 4),
+                       "ok": _band(10, 12)}}, "NSEW",
+                lambda a: len(a) > 2 and a[0] == "1S" and a[2] == "1NT"),
+    "kokish": ("partner opens a strong 2C with 23-27, S is weak (2C-2D-2H Kokish relay)", "N",
+               {"N": {"shapes": _shapes(lambda x: x["H"] >= 4 and max(x.values()) <= 5), "ok": _band(23, 27)},
+                "S": {"ok": _band(0, 7)}}, "NSEW",
+               lambda a: len(a) > 4 and a[0] == "2C" and a[2] == "2D" and a[4] == "2H"),
+    "p1c_int": ("partner opens a strong 1C, East overcalls at the one level, S has 8-11 balanced", "N",
+                {"N": {"ok": _band(16, 20)},
+                 "E": {"shapes": _shapes(lambda x: max(x["D"], x["H"], x["S"]) >= 5), "ok": _band(8, 13)},
+                 "S": {"ok": _band(8, 11, _balanced)}}, "NESW",
+                lambda a: len(a) > 1 and a[0] == "1C" and a[1] in ("1D", "1H", "1S")),
+    "p2c_maj": ("partner opens a Precision 2C, S has five spades, four hearts and 11+", "N",
+                {"N": {"shapes": _shapes(lambda x: x["C"] >= 6 and max(x["S"], x["H"]) <= 3), "ok": _band(11, 15)},
+                 "S": {"shapes": _shapes(lambda x: x["S"] == 5 and x["H"] == 4), "ok": _band(11, 15)}}, "NSEW",
+                lambda a: len(a) > 2 and a[0] == "2C" and a[2] == "2D"),
 }
 VULS = ["None", "NS", "EW", "Both"]
 

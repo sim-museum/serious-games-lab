@@ -38,6 +38,7 @@ class SignalTrust:
         self.on_message = on_message
         self.total_mis = 0
         self.hands = 0
+        self.last_mis: List[dict] = []
 
     def reset(self):
         self.pressure = 0.0
@@ -62,6 +63,7 @@ class SignalTrust:
         (level, messages) and emits messages via on_message."""
         self.hands += 1
         mis = signal_read.mis_signals(records, partner_actual_remaining)
+        self.last_mis = list(mis)
         msgs: List[str] = []
         if mis:
             self.total_mis += len(mis)
@@ -121,3 +123,8 @@ def status_flag() -> Optional[str]:
 
 def review_hand(records, partner_actual_remaining):
     return _TRUST.review_hand(records, partner_actual_remaining)
+
+
+def last_mis_signals() -> List[dict]:
+    """The mis-signals found on the last reviewed hand (for the UI)."""
+    return list(_TRUST.last_mis)

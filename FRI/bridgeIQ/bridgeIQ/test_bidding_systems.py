@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
-"""Unit tests for the BiddingSystem spec / .RCE parser.
-
-Asserts the live values pulled out of the Q-Plus install (if present)
-AND the fallback values when no install is found. Run with:
+"""Unit tests for the BiddingSystem specs (biq's own system files in
+backend/data/systems). Run with:
 
     python test_bidding_systems.py
 """
@@ -14,65 +12,21 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from backend.bidding_systems import (  # noqa: E402
-    BiddingSystem, RCERule, get_system, list_systems, parse_rce_file,
+    BiddingSystem, RCERule, get_system, list_systems,
 )
 
 
-class TestRCEParser(unittest.TestCase):
-    """Parser-level tests: feed it raw text snippets, check the output."""
+class TestOwnSystemFiles(unittest.TestCase):
+    """biq's systems come from its own files, never from a Q-Plus install."""
 
-    def test_parse_simple_flag(self):
-        # No parameter → value is None, enabled is True.
-        import tempfile
-        with tempfile.NamedTemporaryFile("w", suffix=".RCE", delete=False) as f:
-            f.write("Conventions\nY A-1NT-Stayman\nN A-1MA-splinter\n")
-            path = f.name
-        try:
-            rules, _ = parse_rce_file(path)
-            self.assertIn("A-1NT-Stayman", rules)
-            self.assertTrue(rules["A-1NT-Stayman"].enabled)
-            self.assertIsNone(rules["A-1NT-Stayman"].value)
-            self.assertIn("A-1MA-splinter", rules)
-            self.assertFalse(rules["A-1MA-splinter"].enabled)
-        finally:
-            os.unlink(path)
-
-    def test_parse_param_value(self):
-        # `.pNN` parameter token is stripped from name, stored in value.
-        import tempfile
-        with tempfile.NamedTemporaryFile("w", suffix=".RCE", delete=False) as f:
-            f.write("Conventions\n"
-                    "Y B-1NT.v-1.min-hcp.p15\n"
-                    "Y B-1NT.v-1.max-hcp.p17\n"
-                    "Y A-2-over-1-min.hcp-10\n")
-            path = f.name
-        try:
-            rules, _ = parse_rce_file(path)
-            self.assertEqual(rules["B-1NT.v-1.min-hcp"].value, 15)
-            self.assertEqual(rules["B-1NT.v-1.max-hcp"].value, 17)
-            # `hcp-10` has no `.p` prefix so it stays in the name.
-            self.assertIn("A-2-over-1-min.hcp-10", rules)
-            self.assertIsNone(rules["A-2-over-1-min.hcp-10"].value)
-        finally:
-            os.unlink(path)
-
-    def test_parse_description(self):
-        import tempfile
-        with tempfile.NamedTemporaryFile("w", suffix=".RCE", delete=False) as f:
-            f.write('.version = 17.1\n'
-                    '.description.eng = "Test system"\n'
-                    'Conventions\nY A-1NT-Stayman\n')
-            path = f.name
-        try:
-            _, desc = parse_rce_file(path)
-            self.assertEqual(desc, "Test system")
-        finally:
-            os.unlink(path)
-
-    def test_missing_file(self):
-        rules, desc = parse_rce_file("/nonexistent/no.RCE")
-        self.assertEqual(rules, {})
-        self.assertEqual(desc, "")
+    def test_systems_load_from_biq_files(self):
+        from backend import bidding_systems as bs
+        bs._SYSTEM_CACHE.clear()
+        for name in list_systems():
+            spec = get_system(name)
+            self.assertTrue(spec.source_path.endswith(f"systems/{name}.json"),
+                            spec.source_path)
+            self.assertGreater(len(spec.conventions), 50)
 
 
 class TestSystemCatalog(unittest.TestCase):

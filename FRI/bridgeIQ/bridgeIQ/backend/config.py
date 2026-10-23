@@ -118,6 +118,9 @@ class PreferencesConfig:
     # silent table. Card-play blunder check is queued for a later
     # build that wires through DDS.
     blunder_check_enabled: bool = True
+    # Set once the "biq's signalling conventions" explainer has been shown
+    # (the first time the player's carding doesn't fit them).
+    signal_help_shown: bool = False
     # One Player + MiniBridge — Q-Plus .one-player. "off" plays
     # standard auction bridge; "minibridge" replaces the auction
     # with two simplified rounds (points then contract);
@@ -435,6 +438,9 @@ class ConfigManager:
         if "preference.blunder_check_enabled" in data:
             self.config.preferences.blunder_check_enabled = (
                 data["preference.blunder_check_enabled"] == "1")
+        if "preference.signal_help_shown" in data:
+            self.config.preferences.signal_help_shown = (
+                data["preference.signal_help_shown"] == "1")
         if "preference.play_mode" in data:
             v = data["preference.play_mode"].strip()
             if v in ("off", "minibridge", "one_player"):
@@ -511,6 +517,8 @@ class ConfigManager:
             "preference.ew_bidding_system": self.config.preferences.ew_bidding_system,
             "preference.blunder_check_enabled": (
                 "1" if self.config.preferences.blunder_check_enabled else "0"),
+            "preference.signal_help_shown": (
+                "1" if self.config.preferences.signal_help_shown else "0"),
             "preference.play_mode": self.config.preferences.play_mode,
             "preference.one_player_seat":
                 self.config.preferences.one_player_seat,

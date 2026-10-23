@@ -5658,6 +5658,7 @@ OVC_4M_ON = os.environ.get("BIQ_OVC_4M_ON", "1") == "1"
 P2C_ASK_MAJ = os.environ.get("BIQ_P2C_ASK_MAJ", "1") == "1"
 P2D_GAME_LONG = os.environ.get("BIQ_P2D_GAME_LONG", "1") == "1"
 DOUBLE_SLAM_SAVE = os.environ.get("BIQ_DOUBLE_SLAM_SAVE", "1") == "1"
+F1NT_MAJOR = os.environ.get("BIQ_F1NT_MAJOR", "1") == "1"
 MINOR_PROBE = os.environ.get("BIQ_MINOR_PROBE", "0") == "1"   # off: judge Precision +58 / 21, curve -0.032 (SE 0.012, +8 / -15) (sprint 183)
 
 
@@ -14602,6 +14603,18 @@ def _generic_responder_rebid(state, e, opener_rebid, system=None):
             and state.my_bids[0].level == 1
             and state.my_bids[0].suit == Suit.NOTRUMP):
         new_suit = opener_rebid.suit
+        # Three of opener's five-card major beats the minor fit: game in the
+        # major with 12+, else the jump preference (Q-Plus 4S on 1S-1NT-2C
+        # with J87.A973.A6.QJ74, biq 4C; 4S with 543.K973.A76.AK7, biq 3S).
+        if (F1NT_MAJOR and op.suit in (Suit.HEARTS, Suit.SPADES)
+                and e.suit_lengths.get(op.suit, 0) >= 3 and hcp >= 10):
+            if hcp >= 12:
+                return bid(4, op.suit,
+                           why=f"4{op.suit.to_char()}: three-card support "
+                               f"for opener's major and game values")
+            return bid(3, op.suit,
+                       why=f"3{op.suit.to_char()}: jump preference, "
+                           f"10-12 with 3-card support")
         if e.suit_lengths.get(new_suit, 0) >= 4:
             if hcp >= 11:
                 return bid(4, new_suit,

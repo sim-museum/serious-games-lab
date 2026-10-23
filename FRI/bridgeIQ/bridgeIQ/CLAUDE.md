@@ -1,5 +1,55 @@
 # biq — Claude Code project notes
 
+## STATUS — tester's laptop report fixes (2026-10-23, UNCOMMITTED)
+A strong player tested biq on a laptop (1366x768 + 1920x1080 HDMI) on 10-22. Bundle unpacked
+in the session scratchpad (laptop_bundle/). The laptop ran origin/main (a585eeaa), which split
+from this work on 09-22 (fd85220b): none of sprints 1-185 were in it. biq work lives on
+biq-qplus-strength. Also: with no Q-Plus install, get_system() uses the hand-coded fallbacks
+(0 RCE flags on vs 177 for 2/1, 199 for Precision; RKC 1430), so any machine without Q-Plus
+plays a much weaker biq. Fixed here:
+- bid_descriptions: WJO label only on a JUMP and only on the side's first action (1H-2C was
+  "weak jump overcall"; so were partner's raises). Advances: raise / own-suit rebid labels.
+- coach_notes: X/negative double only suggested when X is legal; partner-acted branch.
+- Available-bids list offered X/XX after partner's call; bidding box enabled XX over
+  partner's double. Both now need an opponent's call (0 or 2 passes since).
+- Hint used engine.get_card_play (lowest-card FALLBACK). Hint and blunder check now share
+  nopeek.decide via _biq_card_choice (cached per position); blunder measured vs that card.
+- Closed room (match_controller) played every card but the lead with get_card_play
+  (first legal = high cards). Now nopeek.decide (~1.5 s/card, runs during the human's play).
+- Claude calls: stdin=DEVNULL everywhere; hand analysis + deal analysis got Cancel + elapsed
+  time; deal_analysis crash (RuntimeError QDialog deleted, the 22:51 log) guarded.
+- Score table rows in play order (random boards carry random numbers 1-999).
+- After each hand, the score sheet no longer pops over the end-of-hand summary.
+- Trick counter reads "NS 5 – EW 4".
+Then (user: vector cards, layout pass, own convention settings, signalling dialog, merge):
+- Cards: public-domain vector deck (Byron Knoll via notpeter/Vector-Playing-Cards) in
+  ui/assets/deck/svg/*.svgz, rendered per size x devicePixelRatio; four-colour by swapping the
+  SVG fills; vector-drawn back. The 100x140 PNGs stay only as a fallback.
+- Layout (1920x1080 is the target): the bidding box is a table overlay beside the felt (next
+  to the auction), the bid-info panel runs top-left down to South's label with most of its
+  height for the available bids (labels were boxed by a cascading border style). The hidden
+  analysis view no longer forces the window's minimum height (it was 1061 px, taller than a
+  1080 screen); it sits in a scroll area. Cards scale below 1920x1080 (set_card_scale); at
+  1366x768 the bidding screen fits, East dummy still clips in play (laptop is nice-to-have).
+- Systems: biq NEVER reads Q-Plus files (user rule). get_system() loads biq's own
+  backend/data/systems/<name>.json (flags identical to the .RCE files they came from; 54 system
+  tests + 528 match checks pass without WINEPREFIX), else the hand-coded fallbacks. The .RCE
+  parser and Q-Plus path search were removed.
+- Signalling: the first time a human defender's card doesn't fit biq's conventions, a one-time
+  dialog (pref signal_help_shown) shows the card expected and biq's carding agreements.
+- BUILD INTEGRITY CHECK at startup (backend/build_check.py; `python3 main.py --check`): file
+  hashes vs BUILD_MANIFEST.json (in a git checkout only files git shows as edited may differ),
+  module origins (no second biq copy on the path), deps (PyQt6 + QtSvg, numpy, libdds), and
+  smoke tests (systems from biq's files, two known openings per system, DDS, a legal lead).
+  Any problem: an error dialog and exit; biq never plays a broken build.
+  BEFORE EVERY COMMIT: `python3 tools/write_build_manifest.py` (test_build_integrity.py fails
+  while the manifest is stale; a stale manifest would stop every user's biq).
+- signal_read.mis_signals (trust counter, the dialog, the analysis view's honesty log) now judges
+  DIRECTION (lowest spot vs a higher one), not the exact card: biq vs biq it flagged biq's own
+  6 from 10-8-6-4 (count, 4th seat; the exact rule wants the 8). consistent() (the sampler's
+  hard filter) still demands the exact card, so it can drop the true layout when biq keeps a
+  spot the play needs: worth a sprint.
+
 ## STATUS — analysis view reads the signalling convention (2026-10-21, UNCOMMITTED)
 - Toolbar button "Instrumented" is now "Analysis view"; it reads "Default view"
   while the analysis page is up (`_on_toggle_teaching_view`).
@@ -1172,6 +1222,15 @@ both systems, step vs the last commit); keep only if the judge gains and the cur
   our slams) cost 2/1 agreement -10: right after partner's slam Q-Plus mostly passes. 184b: judge
   2/1 +93 / 14 (agreement 0), Precision +127 / 15 (+1); curve 0; sim keeps all. Kept. Test
   T-dbl-slam-save.
+* Commit 6c9cdd0b (10-22 evening, pushed): sprints 174-184.
+* Sprint 185 - BIQ_F1NT_MAJOR (found writing the 2/1 guide, ~/Documents/261022): 1M-1NT-2m, responder
+  with three of the major and four of the minor jumped to 4m ("4+ fit + game values", K54.Q62.KJ74.Q52
+  4D). Now three of opener's major with 10+ comes first: 4M with 12+ (Q-Plus 4S with J87.A973.A6.QJ74,
+  biq 4C, -10; 543.K973.A76.AK7, biq 3S), else the 3M jump preference. Judge 2/1 +3 / 3 (agreement +1),
+  Precision 0; curve 2/1 +0.0017 (9 boards, +6 / -3), Precision 0; sim keeps all. Kept. Tests
+  T-f1nt-major-game, T-f1nt-major-lr. Rules 8ef931a6.
+* Live run 261022_qplus_prec_21_biqS (user: "set up a 10 hour run"), prepared 22:01 (10-22): Precision
+  first (100 boards), then 2/1; new planner families p1c_int, p2c_maj, f1nt_lr, kokish.
 * Checkpoint (10-22, after sprint 183), rules ac2eec57 (sprints 174-182 since commit 97637273;
   uncommitted): judge vs 261022d 2/1 +154 IMP / 32 calls, Precision +199 / 42; curve vs the commit
   (60359511) 2/1 +0.002 (+2 / -2), Precision +0.008 (+4 / -0); vs a2f62b24 (start of 10-21 night)

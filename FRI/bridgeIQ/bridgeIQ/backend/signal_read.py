@@ -172,12 +172,22 @@ def consistent(records: List[dict], remaining: set) -> bool:
 
 def mis_signals(records: List[dict], actual_remaining: set) -> List[dict]:
     """Signals partner's ACTUAL hand would NOT have produced under the
-    convention — end-of-hand teaching feedback / auto-disable counter. Each:
-    {trick, suit, played52, expected52}."""
+    convention, judged by direction (high vs low) — end-of-hand teaching
+    feedback / auto-disable counter. Each: {trick, suit, played52, expected52}."""
     out = []
     for rec in records:
-        conv = _convention_card(rec, _hand_at(rec, actual_remaining))
-        if conv is not None and conv != rec["card52"]:
-            out.append({"trick": rec["trick"], "suit": rec["suit"],
-                        "played52": rec["card52"], "expected52": conv})
+        hand = _hand_at(rec, actual_remaining)
+        conv = _convention_card(rec, hand)
+        if conv is None or conv == rec["card52"]:
+            continue
+        # Judge the DIRECTION (lowest spot = low / discourage / odd, any higher
+        # spot = high), not the exact card: from 10-8-6-4 the 6 is as clear a
+        # high-low as the 8, and biq itself keeps a spot the play needs.
+        in_suit = [c for c in hand if _suit_i(c) == rec["suit"]]
+        spots = [c for c in in_suit if _rank_i(c) > _HONOUR + 1] or in_suit
+        lowest = max(spots, key=_rank_i)
+        if (conv == lowest) == (rec["card52"] == lowest):
+            continue
+        out.append({"trick": rec["trick"], "suit": rec["suit"],
+                    "played52": rec["card52"], "expected52": conv})
     return out

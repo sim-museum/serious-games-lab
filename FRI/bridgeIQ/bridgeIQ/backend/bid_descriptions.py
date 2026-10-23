@@ -76,7 +76,8 @@ def describe_bid(bid: Bid,
 
     # --- Overcalls (RHO/LHO opened, we are overcalling) -------------------
     if not we_opened and state.opening_bid is not None:
-        res = _describe_overcall(bid, state.opening_bid, system, state)
+        res = _describe_overcall(bid, state.opening_bid, system, state,
+                                 auction)
         if res is not None:
             return res
 
@@ -460,8 +461,53 @@ def _describe_opener_rebid(bid, opening, partner_bids, system):
 # Overcalls
 # ---------------------------------------------------------------------------
 
-def _describe_overcall(bid, opening, system, state):
+_BID_ORDER = [Suit.CLUBS, Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES, Suit.NOTRUMP]
+
+
+def _is_jump(bid, auction) -> bool:
+    """True when `bid` is at least one level higher than the cheapest legal
+    bid of its denomination over the last contract bid."""
+    prev = next((b for b in reversed(auction)
+                 if not b.is_pass and not b.is_double and not b.is_redouble),
+                None)
+    if prev is None:
+        return False
+    cheapest = (prev.level
+                if _BID_ORDER.index(bid.suit) > _BID_ORDER.index(prev.suit)
+                else prev.level + 1)
+    return bid.level > cheapest
+
+
+def _describe_advance(bid, state):
+    """Later calls by the side that did not open: partner's raises of our
+    overcall and our own rebids. None falls through to the generic label."""
     level, suit = bid.level, bid.suit
+    if suit is None or suit == Suit.NOTRUMP:
+        return None
+    sym = suit.symbol()
+    partner_named = any(b.suit == suit for b in state.partner_bids
+                        if not b.is_double and not b.is_redouble)
+    i_named = any(b.suit == suit for b in state.my_bids
+                  if not b.is_double and not b.is_redouble)
+    if partner_named and i_named:
+        return ("", f"{sym} fit", "Competing further in the agreed suit",
+                False)
+    if partner_named:
+        return ("6-10" if level <= 2 else "8+", f"{sym} 3+",
+                "Raise of partner's overcall (competitive)", False)
+    if i_named:
+        return ("8-16", f"{sym} 6+",
+                "Rebid of own suit (competitive)", False)
+    return None
+
+
+def _describe_overcall(bid, opening, system, state, auction):
+    level, suit = bid.level, bid.suit
+
+    # Only our side's first action is an overcall; later calls are advances
+    # (partner's raise, our competitive rebid), never weak jump overcalls.
+    if state.my_bids or state.partner_bids:
+        return _describe_advance(bid, state)
 
     # Over 1NT openings: Landy / DONT / Cappelletti -----------------------
     if opening.level == 1 and opening.suit == Suit.NOTRUMP:
@@ -500,7 +546,7 @@ def _describe_overcall(bid, opening, system, state):
     if suit is not None and suit != Suit.NOTRUMP and level >= 2:
         if system.has("O-Weak-Jump-Overcall.all-suits") \
                 or system.has("O-Weak-Jump-Overcall"):
-            if level >= opening.level + 1:
+            if _is_jump(bid, auction):
                 return ("5-10", f"{suit.symbol()} 6+",
                         "Weak jump overcall", False)
 

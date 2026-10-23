@@ -1414,7 +1414,7 @@ class CompareReplayDialog(QDialog):
             r = subprocess.run(
                 ['claude', '-p', '--model', 'claude-opus-4-8',
                  '--thinking', 'enabled', '--max-turns', '1', prompt],
-                capture_output=True, text=True, timeout=900,
+                stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=900,
             )
             text = (r.stdout or '').strip()
         except Exception as ex:

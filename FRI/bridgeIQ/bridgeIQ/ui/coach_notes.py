@@ -222,13 +222,30 @@ def _bidding_role_note(board, seat, system, e) -> str:
                 f"strength, raise partner with support, or show a second suit; "
                 f"stay low when minimum.{comp}")
 
+    # Double is only on the menu when the last non-pass call is an
+    # opponent's contract bid (an undoubled one).
+    last_i = next((i for i in range(len(auction) - 1, -1, -1)
+                   if not getattr(auction[i], "is_pass", False)), None)
+    can_double = (last_i is not None
+                  and bidder(last_i) not in (seat, partner)
+                  and not getattr(auction[last_i], "is_double", False)
+                  and not getattr(auction[last_i], "is_redouble", False))
+    partner_calls = [b for i, b in enumerate(auction)
+                     if bidder(i) == partner and not getattr(b, "is_pass", False)]
+
     # Partner opened — you are RESPONDING.
     if opener == partner:
+        if my_calls:
+            return (f"Partner opened {oc} and you have already responded. With "
+                    f"{hcp} HCP, show the rest of your hand: support partner, "
+                    f"rebid a good suit, or bid notrump with the opponents' suit "
+                    f"stopped; stop low when you have shown your values.")
         if opp_acted:
+            dbl = (", a negative double shows the unbid major(s)"
+                   if can_double else "")
             return (f"Partner opened {oc} and the opponents overcalled. With {hcp} "
-                    f"HCP: a new suit is forcing, a negative double shows the unbid "
-                    f"major(s), a cue-bid is a strong raise, a simple raise is "
-                    f"competitive — pass a flat minimum.")
+                    f"HCP: a new suit is forcing{dbl}, a cue-bid is a strong "
+                    f"raise, a simple raise is competitive — pass a flat minimum.")
         return (f"Partner opened {oc}. Respond by your {hcp} HCP: 1NT (6-10), a new "
                 f"suit at the 1-level (6+ HCP, 4+ cards), or a raise with support. "
                 f"A new suit at the 2-level is game-forcing (~{two_one}+).")
@@ -238,13 +255,21 @@ def _bidding_role_note(board, seat, system, e) -> str:
                   if opener_call is not None
                   and getattr(opener_call, "suit", None) is not None
                   and opener_call.suit != Suit.NOTRUMP else "their suit")
+    if not my_calls and partner_calls:
+        pc = _call_sym(partner_calls[0])
+        return (f"{opener.to_char()} opened {oc} and partner acted with {pc}. "
+                f"With {hcp} HCP: raise partner with support (3+ for an "
+                f"overcall), bid a good suit of your own, or notrump with "
+                f"{their_suit} stopped; a cue-bid of {their_suit} is a good "
+                f"raise. Pass a weak hand without a fit.")
     if not my_calls:
-        return (f"{opener.to_char()} opened {oc}. Overcall a good 5+ suit (~8-16), "
-                f"double for takeout (short in {their_suit}, support for the "
-                f"others), or pass a flat minimum.")
+        dbl = (f", double for takeout (short in {their_suit}, support for the "
+               f"others)" if can_double else "")
+        return (f"{opener.to_char()} opened {oc}. Overcall a good 5+ suit "
+                f"(~8-16){dbl}, or pass a flat minimum.")
+    dbl = (" Double is takeout/penalty by agreement." if can_double else "")
     return ("Competitive auction — both sides are bidding. Compete to the level of "
-            f"your fit; don't push {hcp} HCP into their strength. Double is "
-            "takeout/penalty by agreement.")
+            f"your fit; don't push {hcp} HCP into their strength.{dbl}")
 
 
 def _call_glyph(call: str) -> str:

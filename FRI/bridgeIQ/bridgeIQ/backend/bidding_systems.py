@@ -1,68 +1,38 @@
-"""Bidding-system specifications, modelled on Q-Plus Bridge 17.1.
+"""Bidding-system specifications.
 
-Q-Plus's bidding logic lives in two layers:
+Each system is a set of named convention flags (on/off) with numeric
+parameters (1NT range, 2/1 minimum, RKC variant, ...). The flag names
+follow Q-Plus Bridge 17.1's convention declarations, where the settings
+were first taken from, but biq never reads Q-Plus's files: each system's
+settings live in biq's own `backend/data/systems/<name>.json`. If one is
+missing, the catalog falls back to hand-coded defaults.
 
-  * A binary rule engine (`BIDRULE/CMP/*.rl`) that we cannot read.
-  * Plain-text **convention declarations** in `CONFIG/BIDRULE/*.RCE`
-    that pick which conventions are turned on for the system, with
-    numeric parameters (1NT range, 2/1 minimum, RKC variant, …).
+This module exposes a `BiddingSystem` dataclass that captures the numeric
+knobs in structured fields plus the raw flag set, so the rule-based bidder
+can ask `system.has("A-1NT-Stayman")` for any convention we model.
 
-This module reads the second layer. It exposes a `BiddingSystem`
-dataclass that captures the numeric knobs in structured fields plus
-the raw flag set so the rule-based bidder can ask
-`system.has("A-1NT-Stayman")` for any convention we model.
+Systems shipped:
 
-The Q-Plus files describe several bundled systems; we ship support
-for the ones we can validate end-to-end against Q-Plus's gameplay:
-
-  * **`SAYC`** — *Standard American Yellow Card (Q-plus)*
-    (`A-SAYC-I.RCE`), 15-17 1NT, 5-card majors, 2/1 ≥ 10 HCP.
-  * **`TwoOverOne`** — *2-over-1 Game Forcing* (`A-2-1-A.RCE`).
-  * **`StandardAcol`** — *Standard Acol* (`B-ACL-S.RCE`).
-  * **`StandardFrench`** — *Standard French / SEF*
-    (`F-FRA-M.RCE`).
-  * **`Precision90M`** — *Precision Club 90 modern* (`P-P90M-A.RCE`),
-    14-16 1NT, light-opening 1-suit, Kokish, Bergen-3C, Ghestem.
-
-The other Precision flavours (`Precision90P`, `Precision70`) and
-the wbridge5-tuned SAYC variant were dropped — without a live
-opponent that bids those systems we have no way to validate
-them, and the maintenance burden outweighs the value.
-
-Adding more is a matter of dropping their `.RCE` paths into the
-catalog and (optionally) overriding any post-parse adjustments.
-
-If the Q-Plus install isn't present (no `.RCE` file at the expected
-path), the catalog falls back to hand-coded defaults so bridgeIQ
-keeps working on a clean machine.
+  * **`SAYC`** — *Standard American Yellow Card*, 15-17 1NT,
+    5-card majors, 2/1 ≥ 10 HCP.
+  * **`TwoOverOne`** — *2-over-1 Game Forcing*.
+  * **`StandardAcol`** — *Standard Acol*.
+  * **`StandardFrench`** — *Standard French / SEF*.
+  * **`Precision90M`** — *Precision Club 90 modern*, 14-16 1NT,
+    light-opening 1-suit, Kokish, Bergen-3C, Ghestem.
 """
 
 from __future__ import annotations
 
-import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
 
-# ---------------------------------------------------------------------------
-# .RCE flag parsing
-# ---------------------------------------------------------------------------
-
-# Match a Q-Plus parameter token: ".p15" (positive 15), ".p-1" (-1), etc.
-_PARAM_NUM_RE = re.compile(r"\.p(-?\d+)$")
-
-# A convention line looks like:
-#   "Y B-1NT.v-1.min-hcp.p15"
-#   "Y A-2-over-1-min.hcp-10"
-#   "N A-1MA-splinter"
-_RULE_LINE_RE = re.compile(r"^\s*([YN])\s+([\S]+)\s*$")
-
-
 @dataclass(frozen=True)
 class RCERule:
-    """One parsed line out of a .RCE convention file.
+    """One convention flag of a system (from backend/data/systems/*.json).
 
     `name` is the dotted key with the trailing `.p<NUM>` stripped if any
     (so multi-valued parameters land in `value` rather than the name).
@@ -78,54 +48,6 @@ class RCERule:
         """True if this rule's name starts with `prefix` (dot- or full-match)."""
         return self.name == prefix or self.name.startswith(prefix + ".") \
             or self.name.startswith(prefix + "-")
-
-
-def parse_rce_file(path: str | Path) -> Tuple[Dict[str, RCERule], str]:
-    """Parse a Q-Plus `.RCE` file. Returns `(rules_by_name, description)`.
-
-    `rules_by_name` is keyed by the canonical flag name (with `.pNN`
-    parameter stripped — see `RCERule.value`). `description` is the
-    `.description.eng = "..."` line if present.
-    """
-    rules: Dict[str, RCERule] = {}
-    description = ""
-
-    path = Path(path)
-    if not path.is_file():
-        return rules, description
-
-    with open(path, "r", encoding="latin-1", errors="replace") as f:
-        for raw in f:
-            line = raw.rstrip("\r\n")
-            stripped = line.strip()
-            if not stripped or stripped.startswith("#"):
-                continue
-            # Header fields like ".description.eng = \"...\""
-            if stripped.startswith(".description.eng"):
-                m = re.match(r'\.description\.eng\s*=\s*"(.*)"', stripped)
-                if m:
-                    description = m.group(1)
-                continue
-            if stripped.startswith("."):
-                continue
-            if stripped.lower() == "conventions":
-                continue
-            m = _RULE_LINE_RE.match(line)
-            if not m:
-                continue
-            yn, key = m.groups()
-            value: Optional[int] = None
-            pm = _PARAM_NUM_RE.search(key)
-            if pm:
-                value = int(pm.group(1))
-                key = key[: pm.start()]
-            rules[key] = RCERule(
-                name=key,
-                enabled=(yn.upper() == "Y"),
-                value=value,
-                raw=line,
-            )
-    return rules, description
 
 
 # ---------------------------------------------------------------------------
@@ -231,39 +153,6 @@ class BiddingSystem:
 # ---------------------------------------------------------------------------
 # Builders
 # ---------------------------------------------------------------------------
-
-
-def _qplus_dirs() -> List[Path]:
-    """Search paths where Q-Plus might have dropped its `.RCE` files."""
-    here = Path(__file__).resolve()
-    wp_candidates: List[Path] = []
-    # Walk up to find a sibling `WP` directory (FRI/.../WP).
-    for parent in here.parents:
-        cand = parent / "WP" / "drive_c" / "games"
-        if cand.is_dir():
-            wp_candidates.append(cand)
-            break
-    # Honour WINEPREFIX too.
-    env = os.environ.get("WINEPREFIX")
-    if env:
-        wp_candidates.append(Path(env) / "drive_c" / "games")
-
-    out: List[Path] = []
-    for base in wp_candidates:
-        for qb in ("qbridge17", "qbridge15"):
-            cand = base / qb / "CONFIG" / "BIDRULE"
-            if cand.is_dir():
-                out.append(cand)
-    return out
-
-
-def _find_rce(filename: str) -> Optional[Path]:
-    """Locate a specific `.RCE` filename inside any known Q-Plus install."""
-    for d in _qplus_dirs():
-        cand = d / filename
-        if cand.is_file():
-            return cand
-    return None
 
 
 def _apply_one_nt_range(sys_: BiddingSystem, rules: Dict[str, RCERule]) -> None:
@@ -424,15 +313,37 @@ def _apply_one_nt_style(sys_: BiddingSystem, rules: Dict[str, RCERule]) -> None:
     sys_.one_nt_allow_six_card_minor = "B-1NT-style.weak-6-minor" in rules
 
 
-def _build_from_rce(name: str, rce_path: Path) -> BiddingSystem:
-    rules, description = parse_rce_file(rce_path)
+# biq's own copy of each system's convention settings. biq never reads
+# Q-Plus's files: these JSON files are the systems' definitions.
+_SNAPSHOT_DIR = Path(__file__).resolve().parent / "data" / "systems"
+
+
+def _snapshot_path(name: str) -> Path:
+    return _SNAPSHOT_DIR / f"{name}.json"
+
+
+def _build_from_snapshot(name: str) -> Optional[BiddingSystem]:
+    import json
+    path = _snapshot_path(name)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    rules = {key: RCERule(name=key, enabled=bool(on), value=value)
+             for key, on, value in data.get("rules", [])}
+    return _build_from_rules(name, rules, data.get("description", ""),
+                             str(path))
+
+
+def _build_from_rules(name: str, rules: Dict[str, RCERule], description: str,
+                      source_path: str) -> BiddingSystem:
     enabled = {k for k, r in rules.items() if r.enabled}
     sys_ = BiddingSystem(
         name=name,
         description=description,
         conventions=enabled,
         raw_rules=rules,
-        source_path=str(rce_path),
+        source_path=source_path,
     )
     _apply_one_nt_range(sys_, rules)
     _apply_two_nt_range(sys_, rules)
@@ -676,11 +587,8 @@ def get_system(name: str) -> BiddingSystem:
 
     for cname, fname, fallback in _CATALOG:
         if cname == canonical:
-            rce_path = _find_rce(fname)
-            if rce_path is not None:
-                sys_ = _build_from_rce(cname, rce_path)
-            else:
-                sys_ = fallback()
+            # biq's own copy of the system; biq never reads Q-Plus's files.
+            sys_ = _build_from_snapshot(cname) or fallback()
             _SYSTEM_CACHE[cname] = sys_
             return sys_
 

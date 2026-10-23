@@ -35,6 +35,18 @@ def exception_hook(exc_type, exc_value, exc_tb):
                         f"An unexpected error occurred:\n\n{exc_value}\n\n"
                         "See the log file for details.")
 
+def run_check_only() -> int:
+    """`python3 main.py --check`: run the build integrity check and print it."""
+    from backend import build_check
+    problems, notes = build_check.run_all()
+    for n in notes:
+        print(f"note: {n}")
+    for p in problems:
+        print(f"PROBLEM: {p}")
+    print("build OK" if not problems else f"{len(problems)} problem(s)")
+    return 1 if problems else 0
+
+
 def main():
     # Set up logging (file + console)
     from logging_config import get_default_log_path
@@ -206,6 +218,32 @@ def main():
     splash.show()
     app.processEvents()
 
+    # Build integrity check: a broken build must not play (missing or stale
+    # files, a second copy of biq on the path, an engine on a fallback).
+    splash.showMessage("bridgeIQ\n\nChecking the build…",
+                       Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignBottom,
+                       Qt.GlobalColor.darkBlue)
+    app.processEvents()
+    try:
+        from backend import build_check
+        problems, notes = build_check.run_all()
+    except Exception as e:
+        problems, notes = [f"the build check itself failed: {e!r}"], []
+    for n in notes:
+        logger.info(f"build check: {n}")
+    if problems:
+        for p in problems:
+            logger.critical(f"build check: {p}")
+        splash.close()
+        QMessageBox.critical(
+            None, "bridgeIQ can't start: build problem",
+            "bridgeIQ found a problem with this installation and won't play "
+            "until it's fixed (it would bid and play wrongly):\n\n• "
+            + "\n• ".join(problems)
+            + "\n\nUpdate or reinstall bridgeIQ (git pull, or a fresh copy), "
+            "then start it again. Details are in the log file.")
+        os._exit(1)
+
     try:
         # Import main window (this triggers TensorFlow loading)
         logger.info("Loading bridgeIQ...")
@@ -306,4 +344,6 @@ def main():
 
 
 if __name__ == "__main__":
+    if "--check" in sys.argv[1:]:
+        sys.exit(run_check_only())
     main()

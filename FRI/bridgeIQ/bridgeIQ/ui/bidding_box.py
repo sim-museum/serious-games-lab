@@ -407,10 +407,12 @@ class BiddingBox(QWidget):
         last_real_bid = None
         last_action = None
         opponent_bid = False
+        opponent_action = False
 
         for i, bid in enumerate(auction):
             if not bid.is_pass:
                 last_action = bid
+                opponent_action = (len(auction) - i) % 2 == 1
                 if not bid.is_double and not bid.is_redouble:
                     last_real_bid = bid
                     opponent_bid = (len(auction) - i) % 2 == 1
@@ -425,8 +427,8 @@ class BiddingBox(QWidget):
         # Determine double/redouble availability
         if last_action:
             if last_action.is_double:
-                # Can redouble if opponent doubled
-                self.can_redouble = True
+                # Can redouble only an opponent's double
+                self.can_redouble = opponent_action
             elif last_action.is_redouble:
                 # Can't double or redouble
                 pass
