@@ -14491,15 +14491,7 @@ function main()
         if recover && CLINE !== nothing && CAR3D
             recover_step!(cs, CLINE, groundz, PLAYER_G)   # LOOPSPLIT-1 cycle 4 S5: moved to main_loop.jl
         # E94-P4: a respawn is a NEW car, not a repaired one.
-        elseif rst; groundz(cs0.x, cs0.z; acquire = true)   # RESTARTGROUND-1: re-anchor Monza's LASTZ (see the restart)
-            PLAYER_G[] = NaN; respawnX!(cs; groundz=groundz_phys); DriveRT3D.damage_reset!(); DC[].lastz = 0.0
-            WRECKED[] = false; WRECK_FROZEN[] = false; AIRBORNE[] = false; empty!(LOOSE_WHEELS); CLUTCH_GATE[] = -1.0   # ...and not a wreck
-            # LAPTIME-1: skip ONE frame of the bounce test after a respawn. The car settles onto the
-            # ground at a respawn exactly as it does at spawn -- a legitimate one-frame height step
-            # that the settle window (`cs.t > DC_SETTLE_S`) exists to ignore. That window used to
-            # re-arm here only BY ACCIDENT, because the respawn reset the clock to zero; now that the
-            # clock is monotonic it would not, and every respawn would be reported as a bounce.
-            # Clearing `lastz` skips the step directly, which is what was meant all along.
+        elseif rst; respawn_step!(cs, cs0, groundz, groundz_phys, PLAYER_G)   # LOOPSPLIT-1 cycle 6 S6: moved to main_loop.jl
         else
             # E56 ALL-MODELICA human car: feed the trackside spring-damper CONTACT force (wall = bounce,
             # hedge/hay = bury & stick) + last frame's draft drag-scale into the chassis ODE BEFORE the
@@ -14600,25 +14592,7 @@ function main()
         ai_height(x, z) = ground_road(x, z)   # TRACKSMOOTH-3 S3: spline on the tarmac, mesh elsewhere (was hat3d only)
         ai_ground(p) = RaceAI.reground(p, ai_height)
         AICAM_R[] > 0 && (aicam_pose[] = AICAM_R[] <= length(ai_poses_prev[]) ? ai_poses_prev[][AICAM_R[]] : nothing)
-        ai_poses = if REPLAY                                       # E18: AI poses straight from the recording
-            NTuple{6,Float64}[(a[1],a[2],a[3],a[4],0.0,0.0) for a in rep_ai_raw]
-        elseif AILINE === nothing || phase[] != :race              # AI hidden until the race starts (after qualifying)
-            NTuple{6,Float64}[]
-        elseif !race_go[] || (AI_HEADSTART > 0 && ai_release[] >= 0.0 && cs.t < ai_release[])
-            # standing on the grid -- not yet launched, or held by the PO's head start
-            AI_PHYSICS ? [(b=aibankP(pc); (pc.x, groundz(pc.x, pc.z), pc.z, pc.θ, b[1], b[2])) for pc in AIPHYS] :
-            GPLAI_T !== nothing ? NTuple{6,Float64}[c.pose for c in gplai_field!().cars] :
-                         [(p=RaceAI.pose_at(AILINE, c.s, c.lane); b=aibankK(p); ai_ground((p[1],p[2],p[3],p[4],b[1],b[2]))) for c in AICARS]
-        elseif AI_PHYSICS
-            aiphys_poses!(cs, ddt, ai_hit, AICARS, AILINE, AIPHYS, ai_onroad, ai_stuck, groundz_ai, aibankP, groundz)
-        elseif GPLAI_T !== nothing
-            gplai_poses!(cs, ddt, ai_hit, AICARS, AILINE, GPLAI_PD, GPLAI_PH, GPLAI_SC, GPLAI_T, ent_name, gplai_field!, phase, race_done, race_go)
-        else
-            pp = RaceAI.project(AILINE, cs.x, cs.z)                # the human as a racecraft object (s, lateral, speed)
-            poses, hit = RaceAI.step_field!(AICARS, AILINE, ddt; scale = AI_SCALE, player = (pp[1], pp[2], cs.v), rel = AI_REL)
-            ai_hit[] = hit
-            [(b=aibankK(p); ai_ground((p[1],p[2],p[3],p[4],b[1],b[2]))) for p in poses]   # E104-S4: re-grounded at the DRAWN position; add terrain bank (kinematic has no body roll)
-        end
+        ai_poses = ai_poses_step!(cs, ddt, ai_hit, REPLAY ? rep_ai_raw : nothing, AICARS, AIPHYS, GPLAI_T, phase, race_go, race_done, ai_release, aibankP, aibankK, ai_ground, groundz, groundz_ai, ai_onroad, ai_stuck, GPLAI_PD, GPLAI_PH, GPLAI_SC, ent_name, gplai_field!, REPLAY, AILINE, AI_SCALE)   # LOOPSPLIT-1 cycle 6 S6: moved to main_loop.jl
         # LOOPSPLIT-1 cycle 4: functions moved out of the loop that first run at the GREEN LIGHT (the field holds on the grid
         # until the player launches) compiled there -- an 815 ms freeze at the PO's every race start (JM_SMOKE_HOLD shows it:
         # gplai_poses! 392, ai_cooldown_step! 245, ai_contact_step! 164 ms). Compiled here instead, on a hidden warm-up frame.
@@ -14645,12 +14619,7 @@ function main()
             loose_cars_step!(cs, ai_poses, ddt, AICARS, AILINE, GPLAI_T, PLAYER_G, aibankP, frames, gplai_field!, groundz, groundz_ai)
         end
         CAR3D && (PLAYER_CDA[] = 1.0)             # E56: default = full drag; the draft below cuts it for next frame's step
-        if AIJIT_ON && !REPLAY && !isempty(ai_poses) && GPLAI_T === nothing   # AIJIT-1 (rail field only; GPLAI poses are GPL's own)
-            ai_poses = NTuple{6,Float64}[ai_smooth(k, ai_poses[k], dt > 1e-4 ? dt : 1/60) for k in eachindex(ai_poses)]
-        end
-        AICAM_R[] > 0 && (ai_poses_prev[] = NTuple{6,Float64}[ntuple(j -> Float64(p[j]), 6) for p in ai_poses])
-        AUTODRIVE_TRAFFIC && (AD_TRAFFIC[] = NTuple{3,Float64}[(Float64(p[1]), Float64(p[3]), k <= length(AICARS) ? Float64(AICARS[k].v) : 0.0)
-                                                             for (k, p) in enumerate(ai_poses)])
+        ai_poses = ai_poses_post(cs, dt, ai_poses, AICARS, REPLAY, ai_poses_prev, GPLAI_T)   # LOOPSPLIT-1 cycle 6 S6: moved to main_loop.jl
         # AIJIT-1 probe: JM_AIPOSE_TRACE=<i> prints AI car i's drawn pose every frame (t s lane x y z yaw pitch roll)
         aipose_trace(cs, ai_poses, AICARS)   # LOOPSPLIT-1 cycle 5 S3: moved to main_diag.jl
         if !REPLAY && race_go[] && !rst && !isempty(ai_poses)
