@@ -1107,6 +1107,75 @@ both systems, step vs the last commit); keep only if the judge gains and the cur
   doubled; Q-Plus 6S). An illegal GF raise of partner's suit now bids it at the cheapest legal level up
   to game (4S). Judge 0 / 0, curve 0 (no recorded case). Kept, deployed. Test T-legal-gf-raise.
   Still open: over 5H the raise passes (X or 5S would be better).
+* Committed 97637273 (10-22 09:00, sprints 97-173 + the analysis-view work). Offline sprints continue.
+* Cost maps 261022d (code 97637273) with EVERY Q-Plus run (adds 261017, 261018 to 2/1 and 261015 /
+  261017 / 261018 / 261021 to Precision): 2/1 -738 over 23423 calls, Precision -1356 over 25446. New
+  judge = scratchpad judge2.sh / sprint_eval2.sh, base 261022d (deltas read directly per sprint);
+  simcheck2.sh runs the sim over a sprint's changed calls.
+* Sprint 174 - BIQ_ADV_5M_VALUES: partner's four-level major overcall, their 4-level raise of their
+  preempt (3S-4H-4S, mostly probe deals): 5M with three+ trumps and 10+ (Q-Plus 5H with
+  A42.AQ9.J862.Q92, K8.J85.AK53.Q974; biq passed: the stale 4M game raise was illegal), 6M with two
+  trumps, a seven-card side suit and a void in theirs or 15+ (-.63.KT42.AKJ9654, AT5.A7.AKJT9873.-).
+  Judge 2/1 +33 / 3, Precision +84 / 12 (14 better, 1 worse); curve 0. Sim check: it passed 3 of the
+  5H (Q-Plus 5H / 6H) -> reasons "with values: " and "seven-card side suit," added to _CONVENTIONAL.
+  Kept. Test T-adv-5m-values.
+* Sprint 175 - BIQ_ADV_6M_VOID: partner's 5M over their 4-level preempt, their raise to five: a void
+  in their suit, two+ trumps and 10+ bid 6M (Q-Plus 6H on 6 / 6 over 4S-5H-5S: -.A72.KQ92.JT7652,
+  93.K5432.AKJ543.-; pass without the void or a trump). Judge 2/1 +75 / 7 (all better); curve 0; sim
+  keeps all (with 174: 2/1 10 / 10, Precision 12 / 12). Kept. Test T-adv-6m-void.
+* Sprint 176 - BIQ_KOKISH_21 (2/1 only): Q-Plus plays 2C-2D-2H as Kokish: responder relays 2S on 9 / 9
+  records whatever the hand (biq raised to 4H / 3H: K54.A642.975.872), and opener's 2NT after the relay
+  is the big balanced hand (with four or five hearts: AK5.AQT5.AK3.A63, KJ2.AKJ72.AJ.KQ8), answered
+  as over 2C-2D-2NT (3D transfer with T.98432.J7.K9542, 3C Stayman with Q.Q964.97642.A92): the step
+  replays decide_bid on the auction without 2H-2S. First version: judge 2/1 +40, curve -0.0140 (0 / 5):
+  biq's opener took responder's weak 4H after the relay as a slam try (4NT, 6H -1); the strong-2C
+  ask's weak-raise exception now treats the relay like the 3C second negative (176b): judge 2/1 +21
+  (agreement +11), curve 2/1 -0.0047 (2 boards: 2C-2D-2H-2S-3S-4S stopped short of 6S once). Kept:
+  live, Q-Plus's 2H can be a balanced 25 without five hearts, so raising it is a real mismatch.
+  Tests T-kokish-21, T-kokish-21-2nt.
+* Sprint 177 - BIQ_W2_OVC_GAME7: over their weak two a seven-card major (6+ HCP in it) with 14-17
+  bids game at once (Q-Plus 4H on 8 of 10 over 2S: 5.AKJT432.6.AK63, 4.AKQ8762.Q873.A; biq 3H).
+  Judge 2/1 +4, Precision +31 (agreement +2 / +4); curve +0.0067 / +0.0067 (2 boards each, +2 / -0).
+  Sim lowered one 4H to 3H (Q-Plus 4H) -> "seven-card major, " added to _CONVENTIONAL. Kept. Test
+  T-w2-game7.
+* Sprint 178 - BIQ_ADV_5M_2T: sprint 174's 5M also with two trumps, two or fewer of their suit and
+  8+ (Q-Plus 5H with KT.A6.JT2.T98763 over 2S-4H-4S, 6.T5.AT.AJ976543 over 3S-4H-4S; pass with
+  83.J4.AJT9853.93, 6 HCP); the "Pass their 4S" rule no longer catches those 8-9 counts (178b).
+  Judge 2/1 +5, Precision +34 (agreement +1 / +2); curve 0. Kept. Test T-adv-5m-2t.
+* Sprint 179 - BIQ_P1C_INT_1NT: Precision 1C-(one-level overcall) with 8-11 balanced and a stopper
+  answers 1NT, not 2NT (Q-Plus 8 / 8: QJ8.J93.A93.9854 over (1D), K43.QJ65.QJ2.Q97 over (1H)); opener
+  reads it like 1C-1NT. Judge Precision IMP 0, agreement +11 (12 calls); curve Precision +0.0013 (+2 /
+  -0). Kept. Test T-p1c-int-1nt. Also seen, not done: Q-Plus doubles 1C-(1x) with 5-7 HCP (8 records,
+  biq passes) and with 8+ and a five-card minor (biq bids it); 1C-(X) step answers (1D / 1H / XX).
+* Sprint 180 - BIQ_OVC_4M_ON: my four-level major overcall of their preempt, their raise to four,
+  partner silent: seven+ trumps, one or none of theirs and 15+ (or a void, a five-card side suit and
+  13+) bid five (Q-Plus acts on 7 / 7: 5H with -.AQJT872.QT95.AK, 7.AKJ8543.K95.KJ, 4NT twice; pass
+  with six trumps or a doubleton of theirs). Judge 2/1 +16 / 4 (all better), Precision +7 (agreement
+  +3 / +1); curve 0. Sim passed one 5H -> "-card suit, short in their" added to _CONVENTIONAL.
+  Kept. Test T-ovc-4m-on.
+* Sprint 181 - BIQ_P2C_ASK_MAJ: Precision 2C, responder with five spades and four hearts and 11+ asks
+  with 2D, not 2S (Q-Plus 3 / 3: KQ632.AQ92.A3.Q8, AQ842.KQ52.T75.2). Judge Precision +13 (agreement
+  +3); curve 0. Kept. Test T-p2c-ask-maj. Not done: Q-Plus also asks with 8-10 (QJT84.JT87.K4.JT,
+  54.KT53.Q975.KQ7) and relays again (2S) after 2C-2D-2H; biq's continuations after 2D are GF.
+* Sprint 182 - BIQ_P2D_GAME_LONG: Precision 2D-2NT-3m, responder bids game in the LONGER major with
+  four trumps and 12, or with six (Q-Plus 4H with J64.AJ93.J95.AJT, 4S with AKJ987.85.972.86; biq
+  "suggested" 3S on three spades). Judge Precision +30 (agreement +3); curve 0. Kept. Test
+  T-p2d-game-long.
+* Sprint 183 - BIQ_MINOR_PROBE: Precision, partner's three-level raise of my minor in a forcing
+  auction: probe 3H / 3S for 3NT instead of the sanity raise to 4m (Q-Plus 3H 5 / 5:
+  AJ86.AQ3.J.AJT65 1C-1H-2C-3C). Judge Precision +58 / 21 (agreement +4) but curve -0.032 (SE 0.012,
+  +8 / -15): biq's partner doesn't read the probe. OFF; would need the answer side first.
+* Looked at, not redone (261022d): Precision 1C-1H-1NT Stayman (= sprint 106, judge IMP 0).
+* Sprint 184 - BIQ_DOUBLE_SLAM_SAVE: I bid a six-level suit slam, LHO and partner passed, RHO saved
+  at the six level (their first call that high, undoubled): double (Q-Plus 8 / 8 in Precision:
+  -.753.AT54.AKQJ84 over 3S-4H-4S-6H-P-P-6S; 6 / 9 in 2/1; biq passed). The first version (any of
+  our slams) cost 2/1 agreement -10: right after partner's slam Q-Plus mostly passes. 184b: judge
+  2/1 +93 / 14 (agreement 0), Precision +127 / 15 (+1); curve 0; sim keeps all. Kept. Test
+  T-dbl-slam-save.
+* Checkpoint (10-22, after sprint 183), rules ac2eec57 (sprints 174-182 since commit 97637273;
+  uncommitted): judge vs 261022d 2/1 +154 IMP / 32 calls, Precision +199 / 42; curve vs the commit
+  (60359511) 2/1 +0.002 (+2 / -2), Precision +0.008 (+4 / -0); vs a2f62b24 (start of 10-21 night)
+  2/1 +0.046, Precision +0.085.
 * Live run 261021_qplus_21_prec_biqS ended 08:30 (10-22) on schedule, 200 boards, no errors, code swapped
   in after each accepted sprint: 2/1 150 boards -212 IMP (-1.41 / bd, SE 0.55; earlier runs -2.4),
   Precision 50 boards -180 (-3.60 / bd, SE 0.95; earlier -2.8). Worst Precision boards: 160 (fixed,

@@ -72,6 +72,12 @@ _CONVENTIONAL = (
     "three trumps opposite a six-card major", ": four h and five", ": four s and five",
     # sprint 167 (sim check 07:10): the LAW jump raise over their 2-level overcall
     "competitive jump raise (4 trumps",
+    # sprint 174: 5M / 6M over their 4-level raise of their preempt (Q-Plus's calls)
+    "with values: ", "seven-card side suit,",
+    # sprint 177: game over their weak two with a seven-card major
+    "seven-card major, ",
+    # sprint 180: the overcaller's five-level rebid after their raise
+    "-card suit, short in their",
     "rkc", "blackwood", "keycard", "key card", "king", "gerber", "cuebid",
     "cue-bid", "cue bid", "control", "asking", "relay", "stayman", "transfer",
     "jacoby", "lebensohl", "michaels", "landy", "ghestem", "unusual",
