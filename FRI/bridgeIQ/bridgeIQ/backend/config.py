@@ -103,7 +103,7 @@ class PreferencesConfig:
     # backend.bidding_systems.list_systems() (SAYC / TwoOverOne /
     # StandardAcol / StandardFrench / Precision90M / Precision90P /
     # Precision70) or an alias like "Precision", "2/1", "Wbridge5", etc.
-    native_bidding_system: str = "SAYC"
+    native_bidding_system: str = "Precision90M"
     # Per-pair systems — when set, override native_bidding_system on
     # the matching side. None / empty means "use native_bidding_system
     # for both pairs". Lets a teaching session run a different system

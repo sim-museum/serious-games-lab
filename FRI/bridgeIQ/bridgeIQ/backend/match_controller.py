@@ -87,7 +87,7 @@ class ClosedRoomWorker(QThread):
             if getattr(prefs, 'bidding_engine', 'BEN') == 'native':
                 from .native_bidder import NativeBiddingEngine
                 bidder = NativeBiddingEngine(
-                    system=getattr(prefs, 'native_bidding_system', 'SAYC')
+                    system=getattr(prefs, 'native_bidding_system', 'Precision90M')
                 )
         except Exception:
             bidder = self.engine

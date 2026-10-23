@@ -622,7 +622,7 @@ class PreferencesDialog(QDialog):
             self.bidding_engine_combo.setCurrentIndex(idx)
         self._populate_native_systems(engine)
         idx = self.native_system_combo.findData(
-            getattr(self.prefs, 'native_bidding_system', 'SAYC'))
+            getattr(self.prefs, 'native_bidding_system', 'Precision90M'))
         if idx >= 0:
             self.native_system_combo.setCurrentIndex(idx)
 

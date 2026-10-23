@@ -603,7 +603,7 @@ def system_for_prefs(prefs, side: Optional[str] = None) -> BiddingSystem:
         elif side == 'EW':
             name = getattr(prefs, 'ew_bidding_system', '') or ''
         if not name:
-            name = getattr(prefs, 'native_bidding_system', 'SAYC') or 'SAYC'
+            name = getattr(prefs, 'native_bidding_system', 'Precision90M') or 'Precision90M'
     except Exception:
         name = 'SAYC'
     return get_system(name)
