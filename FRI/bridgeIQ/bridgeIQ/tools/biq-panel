@@ -2,4 +2,12 @@
 # Launcher for the biq-vs-Q-Plus control panel. Kept as a wrapper so the
 # .desktop file (and any alias) points at one stable path; the GUI itself
 # resolves its project root from __file__, so the working dir is irrelevant.
-exec python3 /home/h/sgl/FRI/bridgeIQ/bridgeIQ/tools/qplus_control_panel.py "$@"
+#
+# Also runs tools/xtest_keepalive.sh for the panel's lifetime so GNOME's
+# Xwayland input-emulation session (needed by every synthetic click) doesn't
+# lapse while a run is paused.
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+"$HERE/xtest_keepalive.sh" 25 &
+KA=$!
+trap 'kill $KA 2>/dev/null' EXIT
+python3 "$HERE/qplus_control_panel.py" "$@"

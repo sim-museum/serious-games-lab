@@ -24,6 +24,7 @@ migrate at their own pace; the context is computed once per decide_bid
 and threaded through.
 """
 
+import os
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional, Set, Tuple, TYPE_CHECKING
@@ -150,6 +151,40 @@ class AuctionContext:
 
 _NT = Suit.NOTRUMP
 _MAJORS = (Suit.HEARTS, Suit.SPADES)
+
+# Strong 2C, opener rebid NT, then our side bid a suit at the 4 level: the
+# 4NT that follows asks keycards, as Q-Plus answers it (2C-2D-2H-2S-2NT-3D-
+# 3H-4C-4D-4H-4NT: 5C), not a quantitative invite to pass.
+STRONG_2C_4NT_RKC = os.environ.get("BIQ_STRONG_2C_4NT_RKC", "1") == "1"
+BERGEN_NOT_GF = os.environ.get("BIQ_BERGEN_OPENER", "1") == "1"
+A1_NOT_RAISE = os.environ.get("BIQ_FORCING_FIXES", "1") == "1"
+
+# The system of the decision being made (set by native_bidder.decide_bid), so
+# callers that pass no system still read 1NT-2D/2H right: natural weak
+# takeouts in Standard Acol (no transfers), Jacoby transfers elsewhere.
+_CURRENT_SYSTEM = None
+
+
+def set_current_system(system) -> None:
+    global _CURRENT_SYSTEM
+    _CURRENT_SYSTEM = system
+
+
+def _weak_minor_transfer(opening, b) -> bool:
+    """1NT-3C as the (weak) transfer to diamonds (Q-Plus F-FRA-M
+    `A-1NT-Jacoby-minor.clubs-for-diamonds`): alerted, not a jump shift."""
+    sy = _CURRENT_SYSTEM
+    return (opening is not None and opening.level == 1 and opening.suit == Suit.NOTRUMP
+            and b.level == 3 and b.suit == Suit.CLUBS and sy is not None
+            and hasattr(sy, "has") and sy.has("A-1NT-Jacoby-minor.clubs-for-diamonds"))
+
+
+def _plays_transfers(system, nt_level: int) -> bool:
+    rr = getattr(system, "raw_rules", None) if system is not None else None
+    if not rr:
+        return True
+    pre = "A-1NT-Jacoby-transfer" if nt_level == 1 else "A-2NT-transfer"
+    return any(k.startswith(pre) for k in rr)
 _SUITS_LO_TO_HI = (Suit.CLUBS, Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES)
 _CUEBID_SUIT_RANK = {Suit.CLUBS: 0, Suit.DIAMONDS: 1,
                      Suit.HEARTS: 2, Suit.SPADES: 3,
@@ -204,6 +239,7 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
     # natural — without the cut-off, the responder's `5♣ = 0/3 keys`
     # answer would mis-promote to trump candidate.
     first_4nt_idx = None
+    fallback_natural = False        # an unalerted suit bid seen by my side
     for idx, (s, b) in enumerate(state.bids):
         if b.level == 4 and b.suit == _NT and not b.is_pass:
             first_4nt_idx = idx
@@ -238,14 +274,34 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
         if b.is_pass or b.is_double or b.is_redouble:
             continue
 
+        # Strong artificial 1C: a positive NT answer (1C-1NT 8-13 bal,
+        # 1C-2NT, 1C-3NT) is game forcing too. It must be caught here,
+        # before NT bids are skipped below: 1C-1NT-2S-3S was passed out
+        # with 19 + 9 HCP (Q-Plus Precision match FRESH64H/I, boards 47
+        # and 2).
+        if (not ctx.gf_established
+                and ctx.opening_was_strong_artificial
+                and s == partner_of_opener and s in my_side
+                and b.suit == _NT
+                and len(opener_post_first_bids) == 0
+                and not any(not pb.is_pass for ps, pb in state.bids[:idx]
+                            if ps == s)):
+            ctx.gf_established = True
+
         # Skip artificial / NT for trump detection
         if b.suit is None or b.suit == _NT:
             continue
         if s not in my_side:
             continue  # opponents (from MY-side POV) — skip
 
-        # Fallback-last-suit tracking (used by _agreed_trump legacy path)
-        ctx.fallback_last_suit = b.suit
+        # Fallback-last-suit tracking (used by _agreed_trump legacy path).
+        # An alerted call after a natural suit is a feature / cue-bid, not
+        # a trump suggestion: 2S-2NT-3C(feature)-4NT is RKCB for spades.
+        if not b.alert:
+            ctx.fallback_last_suit = b.suit
+            fallback_natural = True
+        elif not fallback_natural:
+            ctx.fallback_last_suit = b.suit
 
         # --- Trump-set detection (only fires once) ---------------
         if ctx.trump is None:
@@ -314,6 +370,23 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
                     and b.suit != ctx.opening_bid.suit):
                 ctx.gf_established = True
 
+            # French (A-jump-shift-to-2.is-very-strong): responder's jump
+            # to two of a new suit is game forcing; biq passed 1D-2S-3D-3S
+            # (French run 261014 bd 137, Q-Plus made 6C).
+            sy = system if system is not None else _CURRENT_SYSTEM
+            if (ctx.opening_bid is not None
+                    and ctx.opening_bid.level == 1
+                    and ctx.opening_bid.suit not in (None, _NT)
+                    and s == partner_of_opener
+                    and len(opener_post_first_bids) == 0
+                    and b.level == 2 and b.suit not in (None, _NT)
+                    and _CUEBID_SUIT_RANK[b.suit] > _CUEBID_SUIT_RANK[ctx.opening_bid.suit]
+                    and not any(not (x.is_pass) for s2, x in state.bids[:idx]
+                                if s2 not in opener_side)
+                    and sy is not None and hasattr(sy, "has")
+                    and sy.has("A-jump-shift-to-2.is-very-strong")):
+                ctx.gf_established = True
+
             # Jump shift by responder: only alerted at level 3+ counts
             # as GF here. Level-2 new suits are already covered by the
             # 2/1-GF branch above. Unalerted level-3 jumps are weak
@@ -336,7 +409,13 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
                     and b.suit != _NT
                     and b.suit != ctx.opening_bid.suit
                     and b.level >= 3
-                    and b.alert):
+                    and b.alert
+                    and not _weak_minor_transfer(ctx.opening_bid, b)
+                    # Bergen 1M-3C / 3D: a constructive / limit raise, not a
+                    # jump shift (1S-3C-3S: Q-Plus passes, biq "raised").
+                    and not (BERGEN_NOT_GF and b.level == 3
+                             and ctx.opening_bid.suit in (Suit.HEARTS, Suit.SPADES)
+                             and b.suit in (Suit.CLUBS, Suit.DIAMONDS))):
                 ctx.gf_established = True
 
             # Strong artificial 1C opening: any positive response
@@ -435,7 +514,10 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
                         and b.alert
                         and b.level >= 3
                         and b.suit is not None
-                        and b.suit not in (_NT, opener_major)):
+                        and b.suit not in (_NT, opener_major)
+                        # Bergen 1M-3C / 3D is a raise, not a splinter.
+                        and not (BERGEN_NOT_GF and b.level == 3
+                                 and b.suit in (Suit.CLUBS, Suit.DIAMONDS))):
                     ctx.trump = TrumpAgreement(
                         suit=opener_major, level=b.level,
                         mechanism=TrumpMechanism.SPLINTER,
@@ -477,6 +559,9 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
                     and partner_first_response.level
                         == ctx.opening_bid.level + 1):
                 ctx.convention = "STAYMAN"
+            elif not _plays_transfers(system if system is not None else _CURRENT_SYSTEM,
+                                      ctx.opening_bid.level):
+                pass                        # natural (Standard Acol: no transfers)
             # Jacoby transfer to hearts: 2D over 1NT, 3D over 2NT.
             elif (partner_first_response.suit == Suit.DIAMONDS
                     and partner_first_response.level
@@ -560,7 +645,12 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
                 and resp[1][1].level == 3
                 and resp[1][1].suit not in (None, _NT)
                 and resp[1][1].suit not in (ctx.opening_bid.suit,
-                                            resp[0][1].suit)):
+                                            resp[0][1].suit)
+                # A raise of opener's rebid suit (1D-1H-2C-3C) is a limit
+                # raise, not a third suit.
+                and not (A1_NOT_RAISE and resp[1][1].suit in
+                         {b.suit for s, b in state.bids[:resp[1][0]]
+                          if s == ctx.opener_seat})):
             idx3, b3 = resp[1]
             prior = [b for s, b in state.bids[:idx3]
                      if not b.is_pass and not b.is_double
@@ -593,6 +683,11 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
         if not (ctx.opening_bid is not None
                 and ctx.opening_bid.suit == _NT
                 and ctx.opening_bid.level <= 3):
+            break
+        # Gambling 3NT (B-3NT.gambling): 4C is pass-or-correct, not Gerber.
+        sy = system if system is not None else _CURRENT_SYSTEM
+        if (ctx.opening_bid.level == 3 and sy is not None and hasattr(sy, "has")
+                and sy.has("B-3NT.gambling")):
             break
         # No opp intervention between opening and the 4C
         opp_acted = False
@@ -700,7 +795,9 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
         # wasn't strong artificial → quantitative (Deal 39 pattern).
         elif (ctx.trump is None
                 and ctx.opener_rebid_nt
-                and not ctx.opening_was_strong_artificial):
+                and not ctx.opening_was_strong_artificial
+                and not (STRONG_2C_4NT_RKC
+                         and _suit_at_4_after_strong_2c_nt(state, ctx, first_4nt_idx))):
             ctx.last_4nt_is_quantitative = True
         # Gate 3: no trump agreed and the call right before the 4NT was a
         # NT bid — the auction is in notrump (no fit), so 4NT is a
@@ -713,6 +810,23 @@ def derive_context(state: 'AuctionState', system=None) -> AuctionContext:
             ctx.last_4nt_is_rkc = True
 
     return ctx
+
+
+def _suit_at_4_after_strong_2c_nt(state: 'AuctionState', ctx: AuctionContext,
+                                  idx_4nt: int) -> bool:
+    """Strong (alerted) 2C opening, opener's NT rebid, then a suit bid at
+    the 4 level by the opening side before the 4NT at `idx_4nt`."""
+    op = ctx.opening_bid
+    if not (op is not None and op.level == 2 and op.suit == Suit.CLUBS and op.alert):
+        return False
+    side = {ctx.opener_seat, ctx.opener_seat.partner()}
+    nt = [i for i, (s, b) in enumerate(state.bids[:idx_4nt])
+          if s == ctx.opener_seat and b.suit == _NT and not b.is_pass
+          and not b.is_double and not b.is_redouble]
+    return bool(nt) and any(
+        s in side and b.level == 4 and b.suit not in (None, _NT)
+        and not b.is_pass and not b.is_double and not b.is_redouble
+        for s, b in state.bids[nt[-1] + 1:idx_4nt])
 
 
 def trump_set_via(state: 'AuctionState') -> Optional[TrumpAgreement]:

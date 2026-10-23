@@ -83,10 +83,20 @@ def _winner_seat(trick: List[Card], leader: Seat, trump: Optional[Suit]) -> Seat
     return Seat((leader.value + wi) % 4)
 
 
+# Never signal with an honour or the ten: with no spot to spend, play the
+# lowest card. K-T under declarer's ace used to "signal" with the KING (count:
+# even = high), throwing away a trick; live matches showed 22 such cards.
+_SAFE = os.environ.get("BIQ_SIGNAL_SAFE", "1") == "1"
+
+
 def _hl(cands: List[Card], high: bool) -> Card:
     """Among `cands`, return the high or low SPOT (keep honours back when there
     is a spot to spend). rank.value: 0=A (high) .. 12=2 (low)."""
-    spots = [c for c in cands if c.rank.value > _HONOUR + 1] or list(cands)
+    spots = [c for c in cands if c.rank.value > _HONOUR + 1]
+    if not spots:
+        if _SAFE:
+            return max(cands, key=lambda c: c.rank.value)   # lowest card
+        spots = list(cands)
     spots = sorted(spots, key=lambda c: c.rank.value)   # high card first
     return spots[0] if high else spots[-1]
 
@@ -130,6 +140,64 @@ def _discard_signal(cands: List[Card], board: BoardState, seat: Seat,
     return group[-1]                   # default: low (discouraging the pitch suit)
 
 
+# SELECTIVE signals (Q-Plus's carding, and the textbook advice "give count
+# only if partner needs it"): count only while the ace or king of the suit is
+# out of the signaller's sight, so partner may hold it and face a hold-up
+# decision; attitude only on our own side's lead, and "encourage" only with the
+# honour that matters opposite the card partner led. Otherwise play the lowest
+# spot, which then means "no signal". signal_read uses the same two helpers.
+_SELECTIVE = os.environ.get("BIQ_SIGNAL_SELECTIVE", "1") == "1"
+# Q-Plus's finer carding, measured with scripted probe deals (tools/
+# qplus_probe.py, Oct 2026): no doubleton "ruff" signal; after partner's K the
+# J encourages too (from J-x or J-x-x, not J-x-x-x); count is given while the
+# suit's A or K is out of the COMMON view (dummy and played cards), so an
+# honour in the signaller's own hand still calls for count; a high count card
+# keeps the 9 back (9-7 -> 7, 9-7-5-4 -> 7) except in fourth seat (9-6 -> 9).
+_QP = os.environ.get("BIQ_SIGNAL_QP", "1") == "1"
+
+
+def attitude_like(lead_rank: Optional[int], ranks: List[int],
+                  trump_contract: bool) -> bool:
+    """Encourage partner's lead? `lead_rank` is the rank.value partner led (A=0)
+    or None, `ranks` my rank.values in the suit. Selective: after an honour
+    lead only a higher honour or the next one down counts (A led: the K; K led:
+    the A or Q; Q/J/T led: an honour above it); after a spot lead any of A/K/Q.
+    A doubleton still asks for a ruff in a trump contract."""
+    if trump_contract and len(ranks) == 2 and not (_QP and _SELECTIVE):
+        return True
+    if not _SELECTIVE or lead_rank is None:
+        return any(r <= _HONOUR for r in ranks)
+    if lead_rank == 0:
+        return 1 in ranks
+    if lead_rank == 1:
+        if _QP and 3 in ranks and len(ranks) <= 3:
+            return True
+        return 0 in ranks or 2 in ranks
+    if lead_rank <= 4:
+        return any(r < lead_rank and r <= 2 for r in ranks)
+    return any(r <= 2 for r in ranks)
+
+
+def count_wanted(hidden_ak: int) -> bool:
+    """Give count? Only while partner may hold the ace or king (`hidden_ak` =
+    how many of the two the signaller cannot see)."""
+    return not _SELECTIVE or hidden_ak > 0
+
+
+def _hidden_ak(board: BoardState, seat: Seat, trick: List[Card],
+               declarer: Seat, led: Suit) -> int:
+    """How many of the led suit's A and K the signaller cannot see: not in its
+    own hand, not in dummy, not played to an earlier trick or this one."""
+    seen = set() if _QP else {c.rank.value for c in board.hands[seat].cards if c.suit == led}
+    dummy = declarer.partner()
+    if dummy != seat and board.hands.get(dummy) is not None:
+        seen |= {c.rank.value for c in board.hands[dummy].cards if c.suit == led}
+    for t in board.tricks:
+        seen |= {c.rank.value for c in t.cards if c.suit == led}
+    seen |= {c.rank.value for c in trick if c.suit == led}
+    return sum(1 for r in (0, 1) if r not in seen)
+
+
 def choose_signal_card(cands: List[Card], board: BoardState, seat: Seat,
                        trick: List[Card], declarer: Seat,
                        trump: Optional[Suit]) -> Card:
@@ -146,9 +214,26 @@ def choose_signal_card(cands: List[Card], board: BoardState, seat: Seat,
     led = trick[0].suit
     leader = Seat((seat.value - pos) % 4)
     winner = _winner_seat(trick, leader, trump)
+    suit_cards = [c for c in board.hands[seat].cards if c.suit == led]
+    if _SELECTIVE:
+        if any(t.cards and t.cards[0].suit == led for t in board.tricks):
+            return _hl(cands, high=False)    # signals are first-round only
+        if leader.is_ns() == seat.is_ns():                # ATTITUDE: our lead
+            like = attitude_like(trick[0].rank.value,
+                                 [c.rank.value for c in suit_cards],
+                                 trump is not None)
+            return _hl(cands, high=(like != _UDCA))
+        if not count_wanted(_hidden_ak(board, seat, trick, declarer, led)):
+            return _hl(cands, high=False)                 # no signal: lowest
+        even = (len(suit_cards) % 2 == 0)
+        high = even != _UDCA
+        if _QP and high and pos < 3:                     # 4th seat plays the 9
+            keep9 = [c for c in cands if c.rank.value != 5]          # 5 = the nine
+            if keep9 and any(c.rank.value > _HONOUR + 1 for c in keep9):
+                return _hl(keep9, high=True)
+        return _hl(cands, high=high)
     partner_context = leader.is_ns() == seat.is_ns() \
         or winner.is_ns() == seat.is_ns()
-    suit_cards = [c for c in board.hands[seat].cards if c.suit == led]
     if partner_context:                       # ATTITUDE
         like = _like_suit(suit_cards, trump)
         return _hl(cands, high=(like != _UDCA))          # UDCA flips encourage

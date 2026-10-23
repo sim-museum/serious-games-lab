@@ -66,3 +66,16 @@ def test_config_roundtrip(tmp_path):
         assert not signals.is_enabled()
     finally:
         signals.set_enabled(True)
+
+
+def test_never_signal_with_an_honour():
+    """K-T under declarer's ace used to 'signal' with the KING (count: even =
+    high), throwing away a trick (22 such cards in the Q-Plus matches). With no
+    spot card to spend, the signal is the lowest card."""
+    signals.set_enabled(True)
+    kt = [Card(Suit.DIAMONDS, Rank.KING), Card(Suit.DIAMONDS, Rank.TEN)]
+    assert signals._hl(kt, high=True).rank == Rank.TEN
+    assert signals._hl(kt, high=False).rank == Rank.TEN
+    spots = [Card(Suit.DIAMONDS, Rank.KING), Card(Suit.DIAMONDS, Rank.EIGHT),
+             Card(Suit.DIAMONDS, Rank.THREE)]
+    assert signals._hl(spots, high=True).rank == Rank.EIGHT

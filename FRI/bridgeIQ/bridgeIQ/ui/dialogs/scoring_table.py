@@ -251,23 +251,33 @@ class ScoringTableDialog(QDialog):
 
         ns_imps_total = 0
 
-        # Group results by board number, separating open and closed room
-        boards = {}
+        # Group results by board, separating open and closed room. Rows keep
+        # the order the boards were played (random deals carry random board
+        # numbers, so sorting by number dropped a new board mid-table), and a
+        # board number that comes round again starts a new row.
+        groups = []
+        latest = {}
         for result in self.scoring_table.results:
             bn = result.board_number
-            if bn not in boards:
-                boards[bn] = {'open': None, 'closed': None}
-            if result.notes and "Closed room" in result.notes:
-                boards[bn]['closed'] = result
-            elif boards[bn]['open'] is None:
-                boards[bn]['open'] = result
+            closed = bool(result.notes and "Closed room" in result.notes)
+            g = latest.get(bn)
+            if g is None or (not closed and g['open'] is not None
+                             and g['closed'] is not None):
+                g = {'open': None, 'closed': None}
+                groups.append(g)
+                latest[bn] = g
+            if closed:
+                g['closed'] = result
+            elif g['open'] is None:
+                g['open'] = result
             else:
-                boards[bn]['closed'] = result
+                g['closed'] = result
 
         num_boards = 0
-        for bn in sorted(boards.keys()):
-            open_r = boards[bn]['open']
-            closed_r = boards[bn]['closed']
+        for g in groups:
+            open_r = g['open']
+            closed_r = g['closed']
+            bn = (open_r or closed_r).board_number
             if not open_r and not closed_r:
                 continue
 

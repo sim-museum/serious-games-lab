@@ -1,7 +1,8 @@
 # The Instrumented (Teaching / Analysis) View
 
 The instrumented view is an alternative to the normal card table, toggled with
-the **Instrumented** toolbar button. Instead of fanned cards it shows a
+the **Analysis view** toolbar button (it reads **Default view** while the
+analysis view is up, and switches back). Instead of fanned cards it shows a
 four-hand *cross* — each hand is a grid of four suit rows (♠♥♦♣) × two columns
 (**Known | Other**) — surrounded by analysis panels:
 
@@ -148,10 +149,11 @@ expert.
 ### Carding N/S and Carding E/W
 The two sides can play **different** signalling agreements, and every signal is
 decoded under the **signaller's own** convention — so N/S's cards are read with
-the N/S setting and E/W's with the E/W setting. Each is one of four presets:
+the N/S setting and E/W's with the E/W setting. Each is one of five presets:
 
 | Preset | Attitude | Count | Discards |
 |--------|----------|-------|----------|
+| **As biq plays** (default) | Preferences convention, selective, first round only | Preferences convention; plain count in trumps | suit-preference (Lavinthal) |
 | **Standard** | high = encourage | hi-lo = even | attitude (about the suit thrown) |
 | **Upside-down** | low = encourage (UDCA) | lo-hi = even (reverse) | attitude |
 | **Std + Lavinthal** | high = encourage | hi-lo = even | **suit-preference** (Lavinthal) |
@@ -164,8 +166,20 @@ the N/S setting and E/W's with the E/W setting. Each is one of four presets:
   **Lavinthal** discards are suit-preference (a high discard asks for the higher
   of the two other side suits, a low one for the lower).
 
-The default preset follows the app's **Preferences → signalling convention**
-(Standard or UDCA).
+The default preset, **As biq plays**, is exactly the carding biq's defenders
+emit (`backend/signals.py`): the **Preferences → signalling convention**
+polarity (Standard or UDCA), Lavinthal discards, no trump echo, no Smith, and no
+signals at all when "Play defensive signals" is off. biq expects its human
+partner to card the same way, so it is the default for both pairs.
+
+### Signals place the unseen cards
+The Bayesian sampler (Expert) weights every sampled layout of the hidden hands
+by how well it explains the defenders' signals under their pair's preset: a
+world whose holding would have produced the card actually played keeps weight
+1, one that would not gets 0.2 (false-cards happen). A count signal therefore
+shifts the likely lengths, and an attitude or Lavinthal signal shifts the
+honour percentages. The same agreements are written into every Claude hint and
+analysis prompt, so Claude reads the cards the way the view does.
 
 ### Smith — `Off` / `Standard` / `Reverse`
 The **Smith echo** is a notrump-only agreement made by the *defending* side, so
@@ -188,8 +202,8 @@ count reads so the same card isn't reported twice.
 - All reads use **public information only** — biq never peeks at hidden cards to
   produce a read; the honesty (✗) flag only appears when the signaller's hand is
   actually face-up (your hand, dummy, or after Show All).
-- Honour-placement percentages are vacant-space estimates and update as the
-  count narrows; a *proven* honour (sole possible holder) moves into the Known
+- Honour-placement percentages are vacant-space estimates (Bayesian and
+  signal-weighted at Expert) and update as the count narrows; a *proven* honour (sole possible holder) moves into the Known
   column instead, with a dashed outline.
 - The view is safe to refresh at any point in a hand; everything degrades
   gracefully when state is missing.

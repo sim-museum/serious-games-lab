@@ -29,6 +29,7 @@ v1 scope: biq DECLARING (controls declarer + dummy). Defence (hidden partner)
 is a later phase; callers fall back to PIMC when biq is not declarer-side.
 """
 from __future__ import annotations
+import os
 import time
 from typing import Dict, List, Optional, Tuple
 from collections import defaultdict
@@ -66,6 +67,36 @@ def _legal(hand: frozenset, lead_suit: Optional[int]) -> List[int]:
         if follow:
             return sorted(follow)
     return sorted(hand)
+
+
+# Search only one card of each run of touching cards (KQJ -> one branch). They
+# score the same in every world, so this only saves time — time the 12 s
+# budget otherwise runs out on, leaving later candidates unevaluated.
+_COLLAPSE = os.environ.get("BIQ_AMU_COLLAPSE", "1") == "1"
+
+
+# Root ordering: score every candidate with a one-trick search first, then run
+# the full-depth search best-first, so a budget stop drops the least promising
+# cards instead of whichever came last in suit order (clubs).
+_ORDER = os.environ.get("BIQ_AMU_ORDER", "1") == "1"
+
+
+def _runs(cards: List[int]) -> Dict[int, List[int]]:
+    """{representative: all cards of its touching run} (rep = lowest card)."""
+    by: Dict[int, List[int]] = {}
+    for c in cards:
+        by.setdefault(c // 13, []).append(c % 13)
+    out: Dict[int, List[int]] = {}
+    for su, ranks in by.items():
+        ranks.sort()
+        i = 0
+        while i < len(ranks):
+            j = i
+            while j + 1 < len(ranks) and ranks[j + 1] == ranks[j] + 1:
+                j += 1
+            out[su * 13 + ranks[j]] = [su * 13 + r for r in ranks[i:j + 1]]
+            i = j + 1
+    return out
 
 
 def _collapse(cards: List[int]) -> List[int]:
@@ -114,6 +145,18 @@ def _pbn(hands: Dict[Seat, frozenset]) -> str:
     return "N:" + " ".join(one(hands[s]) for s in order)
 
 
+_SIGNAL_SAME_CLASS = __import__("os").environ.get("BIQ_SIGNAL_SAME_CLASS", "1") == "1"
+
+
+def _beats52(a: int, b: int, led: int, trump) -> bool:
+    """Does card code a beat the winning card code b? (code = suit*13+rank,
+    rank 0 = ace)."""
+    sa, sb = a // 13, b // 13
+    if sa == sb:
+        return a < b
+    return trump is not None and sa == trump
+
+
 class AlphaMu:
     """Single-dummy declarer search. One instance per decision is fine; it owns
     a DDS handle and a small cache."""
@@ -122,7 +165,7 @@ class AlphaMu:
                  dds: Optional[DDSolver] = None, depth: int = 2,
                  time_budget: float = 5.0, biq_seats=None,
                  defense_rollout_leaf: bool = False, vul=None,
-                 signal_margin: float = 0.0):
+                 signal_margin: float = 0.0, second_low_margin: float = 0.0):
         self.trump_suit = trump
         self.trump = None if trump is None else trump.value
         self.strain = _strain_i(trump)
@@ -149,6 +192,9 @@ class AlphaMu:
         # (~0.1-0.2 tr) makes biq a RELIABLE signaller — it always plays the
         # convention card among near-equal spots — at a bounded trick cost.
         self.signal_margin = signal_margin
+        # Second hand low (defence): how much better a lone A/K must score
+        # than a duck before biq rises with it. 0 = off. See choose().
+        self.second_low_margin = second_low_margin
         self.dds = dds or DDSolver()
         self.depth = depth
         self.time_budget = time_budget
@@ -240,7 +286,7 @@ class AlphaMu:
                 elif len(cands) == 1:
                     cards_to_try = [cands[0]]
                 else:
-                    cards_to_try = cands
+                    cards_to_try = _collapse(cands) if _COLLAPSE else cands
                 if len(cards_to_try) == 1:
                     c = cards_to_try[0]
                     for w, _ in group:
@@ -295,7 +341,7 @@ class AlphaMu:
                         whands[w][seat] = whands[w][seat] - {c}
                 else:
                     best_val, best_vals = None, None
-                    for c in cands:
+                    for c in (_collapse(cands) if _COLLAPSE else cands):
                         sub = [(w, {**whands[w], seat: whands[w][seat] - {c}},
                                 wtrick[w] + [(seat, c)]) for w, _ in order]
                         vals = self._continue_trick(sub, seat.next(), leader,
@@ -353,6 +399,9 @@ class AlphaMu:
         cands = _legal(my, lead_suit)
         if len(cands) <= 1:
             return Card.from_code52(cands[0]) if cands else None
+        runs = _runs(cands) if _COLLAPSE else {c: [c] for c in cands}
+        if _COLLAPSE:
+            cands = list(runs)
 
         leader = seat
         trick52: List[int] = []
@@ -366,6 +415,25 @@ class AlphaMu:
         group = [(i, dict(w)) for i, w in enumerate(worlds)]
         scored = []                      # (c52, mean) for every evaluated card
         best_c, best_val = None, None
+        if _ORDER and self.depth > 1 and len(cands) > 2:
+            # Cheap pass: one-trick lookahead + double-dummy leaf, at most a
+            # third of the budget; then search best-first.
+            self._deadline = time.time() + self.time_budget / 3
+            quick = {}
+            try:
+                for c in cands:
+                    partial = []
+                    for i, w in group:
+                        hh = dict(w)
+                        hh[seat] = hh[seat] - {c}
+                        tr = [(Seat((leader.value + k) % 4), cc)
+                              for k, cc in enumerate(trick52)] + [(seat, c)]
+                        partial.append((i, hh, tr))
+                    v = self._continue_trick(partial, seat.next(), leader, 0, 1)
+                    quick[c] = sum(v.values()) / len(v)
+            except _Budget:
+                pass
+            cands = sorted(cands, key=lambda c: -quick.get(c, -1.0))
         self._deadline = time.time() + self.time_budget
         for c in cands:
             # force biq's `seat` card = c, replay the rest of this trick + search
@@ -380,6 +448,11 @@ class AlphaMu:
                 vals = self._continue_trick(partial, seat.next(), leader, 0,
                                             self.depth)
             except _Budget:
+                import os as _os
+                if _os.environ.get("BIQ_AMU_DEBUG"):
+                    import sys as _sys
+                    print(f"[amu] budget hit after {len(scored)}/{len(cands)} cards",
+                          file=_sys.stderr, flush=True)
                 break                # out of time — keep the best evaluated so far
             mean = sum(vals.values()) / len(vals)
             scored.append((c, mean))
@@ -387,12 +460,59 @@ class AlphaMu:
                 best_val, best_c = mean, c
         if best_c is None:
             return None
+        # SECOND HAND LOW: a spot led, biq second to play, the search's best
+        # is a lone A or K (no touching honour). The DD leaves let declarer
+        # read every card, so they never credit the guess a duck leaves him.
+        # Played out no-peek on 130 Q-Plus probe positions, rising cost 0.9
+        # tr when it scored < 0.05 better and 0.2-0.3 tr up to 0.65; it paid
+        # only above ~0.65 (2026-10-07). Duck unless the A/K clears the margin.
+        if self.second_low_margin > 0 and len(trick52) == 1 \
+                and trick52[0] % 13 >= 4 and best_c // 13 == trick52[0] // 13 \
+                and best_c % 13 <= 1 and best_c + 1 not in my \
+                and not (best_c % 13 == 1 and best_c - 1 in my):
+            lows = [(c, m) for c, m in scored
+                    if c // 13 == best_c // 13 and c % 13 >= 5
+                    and m >= best_val - self.second_low_margin]
+            if lows:
+                top = max(m for _, m in lows)
+                ducks = [Card.from_code52(x) for c, m in lows
+                         if m >= top - (self.signal_margin or 1e-9)
+                         for x in runs.get(c, [c])]
+                pick = tiebreak(ducks) if tiebreak is not None and \
+                    len(ducks) > 1 else None
+                return pick or max(ducks, key=lambda c: c.rank.value)
         # TIE-BREAK by signal: among cards that tie for the best value (no trick
         # cost), let the caller pick the one carrying the standard signal.
         if tiebreak is not None and best_val is not None:
             margin = self.signal_margin if self.signal_margin > 0 else 1e-9
-            tied = [Card.from_code52(c) for c, m in scored
-                    if m >= best_val - margin]
+            if _SIGNAL_SAME_CLASS:
+                # The margin may swap one SPOT for another, never a card that
+                # does something else: winning the trick instead of losing it,
+                # an honour or ten for a spot, or (on lead) another suit. biq
+                # ducked A84, A975, A32 for a signal (2026-10-05 Q-Plus runs:
+                # 41 costly signals against Q-Plus's 12).
+                led52 = trick52[0] // 13 if trick52 else None
+
+                def _wins(x):
+                    if not trick52:
+                        return None
+                    w = trick52[0]
+                    for y in trick52[1:]:
+                        if _beats52(y, w, led52, self.trump):
+                            w = y
+                    return _beats52(x, w, led52, self.trump)
+
+                def _cls(x):
+                    return (_wins(x), x % 13 <= 4,
+                            x // 13 if not trick52 else None)
+                bc = _cls(best_c)
+                tied = [Card.from_code52(x) for c, m in scored
+                        for x in runs.get(c, [c])
+                        if m >= best_val - 1e-9
+                        or (m >= best_val - margin and _cls(x) == bc)]
+            else:
+                tied = [Card.from_code52(x) for c, m in scored
+                        if m >= best_val - margin for x in runs.get(c, [c])]
             if len(tied) > 1:
                 pick = tiebreak(tied)
                 if pick is not None:

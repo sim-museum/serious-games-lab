@@ -347,6 +347,20 @@ def _annotate_opening(c: SeatConstraints, b: Bid, system,
         return
 
     if b.level == 2:
+        # Acol strong twos (`B-2D.strong` / `B-2MA.strong`): 6+ suit, 18-22.
+        if ((b.suit == Suit.DIAMONDS and "B-2D.strong" in raw_rules)
+                or (b.suit in (Suit.HEARTS, Suit.SPADES) and "B-2MA.strong" in raw_rules)):
+            c.tighten_hcp(17, 23, f"Strong 2{suit_c} = 18-22 HCP, 6+ {suit_c} (forcing)")
+            c.set_suit_len(b.suit, 6, 8, f"Strong 2{suit_c} promises 6+ {suit_c}")
+            return
+        # Benjamin (F-FRA-M): 2C = 22-23 balanced or a strong suit, 2D = 24+
+        # or equivalent, game forcing.
+        if "B-strong-artificial.bid-2C.Benjamin" in raw_rules and b.suit in (Suit.CLUBS, Suit.DIAMONDS):
+            if b.suit == Suit.CLUBS:
+                c.tighten_hcp(19, 24, "Benjamin 2♣ = 22-23 balanced or a strong suit")
+            else:
+                c.tighten_hcp(21, 37, "Benjamin 2♦ = 24+ or equivalent (game force)")
+            return
         if b.suit == Suit.CLUBS:
             if strong_call == "2C":
                 c.tighten_hcp(22, 37,
@@ -375,8 +389,10 @@ def _annotate_opening(c: SeatConstraints, b: Bid, system,
                                "Weak 2♦ promises 6+ ♦")
             return
         if b.suit == Suit.NOTRUMP:
-            c.tighten_hcp(20, 22,
-                          "2NT opening = 20-21 HCP balanced")
+            lo2 = getattr(system, "two_nt_min_hcp", 20) if system else 20
+            hi2 = getattr(system, "two_nt_max_hcp", 21) if system else 21
+            c.tighten_hcp(lo2, hi2 + 1,
+                          f"2NT opening = {lo2}-{hi2} HCP balanced")
             for su in (Suit.SPADES, Suit.HEARTS,
                        Suit.DIAMONDS, Suit.CLUBS):
                 c.set_suit_len(su, 2, 5,
@@ -978,6 +994,14 @@ def _annotate_response(c: SeatConstraints, opening: Bid,
             # specific suit unconstrained and rely on the "≥1
             # 4-card major" intent in the HCP reason for teaching.
             return
+        # No transfers (Standard Acol): 2D/2H/2S are natural weak takeouts.
+        from .auction_context import _plays_transfers
+        if (response.level == 2 and response.suit in (Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES)
+                and not _plays_transfers(system, 1)):
+            c.tighten_hcp(0, 11, f"1NT-2{_suit_char(response.suit)} = weak takeout")
+            c.set_suit_len(response.suit, 5, 13,
+                           f"1NT-2{_suit_char(response.suit)} weak takeout = 5+ cards")
+            return
         # 1NT - 2D (Jacoby transfer to hearts): 5+ hearts, any HCP.
         if response.level == 2 and response.suit == Suit.DIAMONDS:
             c.set_suit_len(Suit.HEARTS, 5, 13,
@@ -1015,7 +1039,21 @@ def _annotate_response(c: SeatConstraints, opening: Bid,
         # 1NT - 3C / 3D (some styles = minor invite or 6+ minor).
         # Leave loose.
 
-    # ---- Strong 2C responses ----
+    # ---- Benjamin 2D responses (F-FRA-M) ----
+    if (opening.level == 2 and opening.suit == Suit.DIAMONDS
+            and getattr(system, "benjamin", False)):
+        if response.level == 2 and response.suit == Suit.HEARTS:
+            c.tighten_hcp(0, 7, "2♥ over Benjamin 2♦ = 0-7 HCP")
+        elif response.level == 2 and response.suit == Suit.SPADES:
+            c.tighten_hcp(8, 21, "2♠ over Benjamin 2♦ = 8+ HCP")
+        elif response.level == 2 and response.suit == Suit.NOTRUMP:
+            c.tighten_hcp(8, 10, "2NT over Benjamin 2♦ = 8-10 balanced")
+        elif response.level == 3 and response.suit == Suit.NOTRUMP:
+            c.tighten_hcp(11, 13, "3NT over Benjamin 2♦ = 11-13 balanced")
+        elif response.level == 3 and response.suit is not None:
+            c.tighten_hcp(3, 8, "3-level answer to Benjamin 2♦ = good six-card suit, 0-8")
+            c.set_suit_len(response.suit, 6, 6, "good six-card suit")
+        return
     # 2C - 2D = waiting (could be 0-7 OR 8+ without a 5-card suit).
     if (opening.level == 2 and opening.suit == Suit.CLUBS
             and getattr(system, "strong_open_call", "2C") == "2C"
@@ -1304,7 +1342,9 @@ def _annotate_responder_rebid(c: SeatConstraints, opening: Bid,
             return
 
     # ---- After Jacoby transfer: responder's rebid clarifies length+HCP
+    from .auction_context import _plays_transfers
     if (opening.level == 1 and opening.suit == Suit.NOTRUMP
+            and _plays_transfers(system, 1)
             and first_response is not None
             and first_response.level == 2
             and first_response.suit in (Suit.DIAMONDS, Suit.HEARTS)):

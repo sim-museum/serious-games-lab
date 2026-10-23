@@ -156,6 +156,11 @@ class BridgeEngine:
         each `get_bid` call. We just record the name.
         """
         self.current_system = system_name
+        try:                                  # card-play sampler's auction model
+            from . import bid_sim
+            bid_sim.set_play_system(system_name)
+        except Exception:
+            pass
         if self.verbose:
             print(f"Bidding system set to: {system_name}")
         return True
@@ -252,6 +257,15 @@ class BridgeEngine:
                 r for r in (getattr(decision, "suit_choice_reason", ""),
                             getattr(decision, "card_choice_reason", ""))
                 if r).strip()
+            # Simulated lead (leader's own hand + auction only): replaces the
+            # table lead when another lead does better on sampled layouts.
+            from . import lead_sim
+            sim = lead_sim.choose_opening_lead(board, leader, decision.card)
+            if sim is not None:
+                return EngineResponse(
+                    action=sim[0], who="sim-lead",
+                    candidates=[CardCandidate(card=sim[0], score=1.0)],
+                    reason=sim[1], reason_tag="Opening lead")
             return EngineResponse(
                 action=decision.card,
                 who="native-lead",

@@ -93,7 +93,7 @@ CASES = [
      "bid 4S; passing concedes a cold game."),
     ("RANDOM-043 advance partner's Michaels", "S", "None",
      "p 1d 2d 3c", "S", "T87.A843.JT73.65", "SAYC",
-     "P", {"3H", "4H"},
+     "3H", {"3H", "4H"},  # FIXED 2026-09-25: Michaels advance
      "Fix#1: partner's 2D is Michaels (both majors); with 4 hearts + 3 spades "
      "compete in the heart fit, do not pass the opponents' 3C."),
     ("RANDOM-039 show slam heart-raise not penalty-X", "S", "All",
@@ -108,7 +108,7 @@ CASES = [
      "spades), never introduce 3H on a singleton (the 3H-5 wrong-strain disaster)."),
     ("RANDOM-020 show 6-card suit not 2NT on a freak", "W", "All",
      "p 1c p 1h p 1s p", "S", "8.AQ962.KQT874.6", "SAYC",
-     "2D", {"2D", "3D"},  # FIXED: was 2N (freak)
+     "3D", {"2D", "3D"},  # FIXED: was 2N (freak); 3D natural (2D would be 4th-suit forcing)
      "Fix#4: 1-5-6-1 shape (singleton in partner's spades + own club) — rebid "
      "the 6-card diamond suit, not 2NT."),
     ("RANDOM-004 slam try over a limit raise", "W", "All",

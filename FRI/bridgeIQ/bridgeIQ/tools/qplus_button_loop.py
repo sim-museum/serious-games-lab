@@ -28,6 +28,10 @@ import json
 import random
 import re
 import subprocess
+try:
+    from tools import qplus_geom as _geom
+except ImportError:
+    import qplus_geom as _geom
 import sys
 import time
 from pathlib import Path
@@ -47,10 +51,13 @@ def _get_mouse() -> Tuple[int, int, int]:
     for line in out.splitlines():
         k, _, v = line.partition("=")
         env[k.strip()] = v.strip()
-    return int(env["X"]), int(env["Y"]), int(env.get("WINDOW", 0))
+    nx, ny = _geom.norm(int(env["X"]), int(env["Y"]))   # capture frame
+    return nx, ny, int(env.get("WINDOW", 0))
 
 
 def _click_at(x: int, y: int, *, delay_ms: int = 80) -> None:
+    x, y = _geom.shift(x, y)              # capture frame -> window's place now
+    _geom.activate_qplus()                # a click on an unfocused window is eaten
     _xdo("mousemove", str(x), str(y))
     time.sleep(delay_ms / 1000.0)
     _xdo("click", "1")
@@ -186,8 +193,8 @@ def do_transition(targets: dict, next_minor: int, *,
         print(f"    [trans] clicked {name} ({x},{y})", flush=True)
         time.sleep(pause)
 
-    tap("deal_menu", settle)
-    tap("match_control", settle * 1.5)          # dialog must render
+    _geom.menu_pick("deal_match_control")       # keyboard: menus ignore clicks
+    time.sleep(settle * 1.5)                    # dialog must render
     x, y = targets["minor_field"]               # set the minor field
     _do_click(x, y, win, dry_run)
     if not dry_run:
@@ -361,9 +368,8 @@ def do_set_systems(pos, ns, ew, *, window_id=0, dry_run=False):
     # open the dialog with verification
     opened = False
     for _ in range(3):
-        tap("config_menu", _SYS_STEP)
-        tap("bidding_system_item", _SYS_CLOSE)
-        time.sleep(0.2)
+        _geom.menu_pick("config_bidding_system")   # keyboard: menus ignore clicks
+        time.sleep(_SYS_CLOSE + 0.2)
         if _dialog_visible(["Bidding system", "Bidding-system",
                             "idding system"]):
             opened = True

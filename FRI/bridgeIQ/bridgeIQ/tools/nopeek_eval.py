@@ -24,14 +24,17 @@ from backend.native_bidder import parse_auction, evaluate_hand, decide_bid  # no
 from backend.bidding_systems import get_system                      # noqa
 
 
-def _play(dds, hands, contract, vul, dd_side):
+def _play(dds, hands, contract, vul, dd_side, dealer=None, auction=None):
     """dd_side ('declarer'/'defense') plays double-dummy; the other side plays
     the no-peek engine. Returns declarer tricks."""
     trump = None if contract.suit == Suit.NOTRUMP else contract.suit
-    board = BoardState(board_number=1, dealer=contract.declarer,
+    # The real auction (when given) lets the engine use the bidding: the
+    # simulated opening lead and auction-consistent card play.
+    board = BoardState(board_number=1,
+                       dealer=dealer if dealer is not None else contract.declarer,
                        vulnerability=vul,
                        hands={s: Hand(cards=list(hands[s].cards)) for s in hands},
-                       auction=[], contract=contract)
+                       auction=list(auction or []), contract=contract)
     decl_ns = contract.declarer.is_ns()
     decl_tricks, leader = 0, contract.declarer.next()
     for _ in range(13):
@@ -69,6 +72,8 @@ def main():
     ap.add_argument("--rng", type=int, default=None,
                     help="sampler seed (default=--seed); vary it (same --seed) "
                          "to gauge Monte-Carlo variance on the SAME deals")
+    ap.add_argument("--no-auction", action="store_true",
+                    help="play without the auction (the old measurement)")
     a = ap.parse_args()
     import random
     random.seed(a.seed if a.rng is None else a.rng)   # reproducible sampler
@@ -92,15 +97,17 @@ def main():
             continue
         t = dds.solve_dd_table(_pbn(hands))
         dd = t["NESW"[c.declarer.value]][_STRAIN[c.suit]]
-        boards.append((hands, c, vul, dd))
+        boards.append((hands, c, vul, dd, dealer, list(auction)))
 
     n = len(boards)
     print(f"NO-PEEK engine — {n} contracts (seed {a.seed}, "
           f"{a.ns_system}/{a.ew_system}). Each side vs DD-perfect yardstick:")
     decl_leak = def_leak = decl_b = def_b = 0
-    for hands, c, vul, dd in boards:
-        d = _play(dds, hands, c, vul, "defense")     # no-peek DECLARES
-        f = _play(dds, hands, c, vul, "declarer")    # no-peek DEFENDS
+    for hands, c, vul, dd, dealer, auction in boards:
+        if a.no_auction:
+            dealer, auction = None, None
+        d = _play(dds, hands, c, vul, "defense", dealer, auction)   # no-peek DECLARES
+        f = _play(dds, hands, c, vul, "declarer", dealer, auction)  # no-peek DEFENDS
         decl_leak += dd - d
         def_leak += f - dd
         decl_b += (d < dd)

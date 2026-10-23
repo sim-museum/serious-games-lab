@@ -33,6 +33,7 @@ class _ReplayPanel(QWidget):
 
     def __init__(self, run: BenBoardRun, title: str, parent=None):
         super().__init__(parent)
+        self.fallback_hands = {}
         self.run = run
 
         layout = QVBoxLayout(self)
@@ -265,6 +266,11 @@ class _ReplayPanel(QWidget):
         for seat, w in [(Seat.NORTH, self.north), (Seat.EAST, self.east),
                         (Seat.SOUTH, self.south), (Seat.WEST, self.west)]:
             hand = self.run.original_hands.get(seat)
+            # The human's own record can hold only the hands visible at the
+            # table (the other pair's are empty); it is the same deal in both
+            # rooms, so show them from the other room's record.
+            if (not hand or not hand.cards) and self.fallback_hands.get(seat):
+                hand = self.fallback_hands[seat]
             if hand:
                 w.set_hand(
                     hand, played[seat], winning.get(seat, []))
@@ -648,6 +654,9 @@ class CompareReplayDialog(QDialog):
         splitter = QSplitter(Qt.Orientation.Horizontal)
         self.left_panel = _ReplayPanel(left, left_label)
         self.right_panel = _ReplayPanel(right, right_label)
+        # Show all four hands on both sides (same deal in both rooms).
+        self.left_panel.fallback_hands = dict(right.original_hands or {})
+        self.right_panel.fallback_hands = dict(left.original_hands or {})
         splitter.addWidget(self.left_panel)
         splitter.addWidget(self.right_panel)
         splitter.setSizes([1, 1])
@@ -995,6 +1004,14 @@ class CompareReplayDialog(QDialog):
         left_bdl = self._run_to_bdl(self.left_run) or "(no left BDL available)"
         right_bdl = self._run_to_bdl(self.right_run) or "(no right BDL available)"
         task = self._TASK_BLOCKS.get(scope, self._TASK_BLOCKS['full'])
+        try:
+            from ui.teaching_view import signalling_conventions_text
+            signals = (signalling_conventions_text()
+                       + "\n  (These apply wherever biq or the human "
+                       "defended; a Q-Plus room cards by Q-Plus's own "
+                       "agreements.)\n\n")
+        except Exception:
+            signals = ""
         return (
             "You are reviewing the SAME bridge deal played at two different "
             "tables in a teams match. Compare the two rooms side by side and "
@@ -1004,6 +1021,7 @@ class CompareReplayDialog(QDialog):
             "one or more seats. Closed room = the bot reference table "
             "(Q-Plus, BridgeIQ, etc.) for the same deal — it's the "
             "yardstick.\n\n"
+            f"{signals}"
             f"=== OPEN ROOM ({self._left_label}) ===\n"
             f"{left_bdl}\n\n"
             f"=== CLOSED ROOM ({self._right_label}) ===\n"
@@ -1396,7 +1414,7 @@ class CompareReplayDialog(QDialog):
             r = subprocess.run(
                 ['claude', '-p', '--model', 'claude-opus-4-8',
                  '--thinking', 'enabled', '--max-turns', '1', prompt],
-                capture_output=True, text=True, timeout=900,
+                stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=900,
             )
             text = (r.stdout or '').strip()
         except Exception as ex:

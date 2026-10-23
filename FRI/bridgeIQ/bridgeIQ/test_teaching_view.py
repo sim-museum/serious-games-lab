@@ -390,6 +390,56 @@ def test_bayes_distribution():
     assert Seat.EAST in post["length"] and Seat.WEST in post["length"]
 
 
+def test_signals_weight_the_posterior():
+    """A count signal under the pair's carding moves the Bayesian length
+    estimate: East's high diamond under dummy's ace shows an even number."""
+    import random as _r
+    holdings = {Seat.NORTH: "DA D4", Seat.SOUTH: "D2 D5", Seat.EAST: "D8 D7",
+                Seat.WEST: "DK DQ DJ DT D9 D6 D3"}
+    hands = {s: [_c(x[0], x[1]) for x in v.split()] for s, v in holdings.items()}
+    rest = [Card(su, r) for su in (Suit.SPADES, Suit.HEARTS, Suit.CLUBS)
+            for r in Rank]
+    _r.Random(3).shuffle(rest)
+    for s in Seat:
+        while len(hands[s]) < 13:
+            hands[s].append(rest.pop())
+    b = BoardState(board_number=1, dealer=Seat.SOUTH,
+                   vulnerability=Vulnerability.NONE,
+                   hands={s: Hand(cards=list(h)) for s, h in hands.items()})
+    b.contract = Contract(level=3, suit=Suit.NOTRUMP, declarer=Seat.SOUTH)
+    t = Trick(cards=[_c('D', 'A'), _c('D', '8'), _c('D', '2'), _c('D', '3')],
+              leader=Seat.NORTH, winner=Seat.NORTH)
+    b.tricks = [t]
+    for seat, c in zip([Seat.NORTH, Seat.EAST, Seat.SOUTH, Seat.WEST], t.cards):
+        b.hands[seat].cards.remove(c)
+    vis = {Seat.NORTH, Seat.SOUTH}
+    layout = tv.known_layout(b, vis)
+    std = lambda s: tv.CARDING_PRESETS["Std + Lavinthal"]
+
+    def p_even(sw):
+        post = tv.bayes_distribution(b, vis, layout, {}, samples=300,
+                                     max_attempts=20000, rng=_r.Random(7),
+                                     signal_weight=sw)
+        dist = post["length"][Seat.EAST][Suit.DIAMONDS]   # remaining (D8 gone)
+        return sum(p for ln, p in dist.items() if ln % 2 == 1)
+
+    sw = tv.signal_likelihood(b, Seat.SOUTH, None, std, [Seat.EAST, Seat.WEST])
+    assert sw is not None
+    assert p_even(sw) > p_even(None) + 0.25
+    # A pair that gives no signals says nothing.
+    silent = lambda s: tv.replace(tv.CARDING_PRESETS["Standard"], signals=False)
+    assert tv.signal_likelihood(b, Seat.SOUTH, None, silent,
+                                [Seat.EAST, Seat.WEST]) is None
+    assert tv.signal_reads(b, Seat.SOUTH, None, silent, vis) == []
+
+
+def test_signalling_conventions_text():
+    txt = tv.signalling_conventions_text()
+    assert ("Both pairs" in txt or "E/W" in txt) and "attitude" in txt
+    assert "Lavinthal" in tv.carding_text(tv.CARDING_PRESETS["UDCA + Lavinthal"])
+    assert "upside-down" in tv.carding_text(tv.CARDING_PRESETS["Upside-down"])
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):

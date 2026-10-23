@@ -167,33 +167,24 @@ class PreferencesDialog(QDialog):
         play_group.setLayout(play_layout)
         layout.addWidget(play_group)
 
-        # Defensive signalling convention (biq plays this AND expects it from
-        # partner; the partner-signal reader stays in sync).
-        sig_group = QGroupBox("Defensive Signalling")
-        sig_outer = QVBoxLayout()
-        self.signalling_enabled_check = QCheckBox(
-            "Play defensive signals (attitude / count / suit-preference)")
-        self.signalling_enabled_check.setToolTip(
-            "Off: biq never spends a card on a signal — it plays the plain\n"
-            "lowest card when it can't win and chooses every other card on\n"
-            "trick value alone. Partner-signal reading is off too.")
-        sig_outer.addWidget(self.signalling_enabled_check)
-        sig_layout = QHBoxLayout()
-        sig_layout.addWidget(QLabel("Convention:"))
-        self.signalling_combo = QComboBox()
-        self.signalling_combo.addItem("Standard (high = encourage, hi-lo = even)",
-                                      "standard")
-        self.signalling_combo.addItem("Upside-down (UDCA: low = encourage)",
-                                      "udca")
-        self.signalling_combo.setToolTip(
-            "Attitude/count signals biq gives and reads from partner.\n"
-            "Standard or Upside-Down Count & Attitude (UDCA).")
-        sig_layout.addWidget(self.signalling_combo, 1)
-        sig_outer.addLayout(sig_layout)
-        self.signalling_enabled_check.toggled.connect(
-            self.signalling_combo.setEnabled)
-        sig_group.setLayout(sig_outer)
-        layout.addWidget(sig_group)
+        sim_group = QGroupBox("Simulation (stronger, slower)")
+        sim_layout = QVBoxLayout()
+        self.sim_bidding_check = QCheckBox(
+            "Check bids by simulation at judgment points")
+        self.sim_bidding_check.setToolTip(
+            "When competing, doubling, inviting or choosing a game, biq deals\n"
+            "out many hands consistent with the auction, finishes the auction\n"
+            "for each candidate call and keeps the call that scores best.\n"
+            "Adds a few seconds to those calls.")
+        self.sim_leads_check = QCheckBox("Choose opening leads by simulation")
+        self.sim_leads_check.setToolTip(
+            "biq tries every opening lead against layouts consistent with the\n"
+            "auction and leads the one that does best. Adds a few seconds.")
+        sim_layout.addWidget(self.sim_bidding_check)
+        sim_layout.addWidget(self.sim_leads_check)
+        sim_group.setLayout(sim_layout)
+        layout.addWidget(sim_group)
+
 
         layout.addStretch()
         return widget
@@ -469,10 +460,12 @@ class PreferencesDialog(QDialog):
         layout.addStretch()
         return widget
 
-    # Carding presets surfaced in the dialog. "" = derive from the signalling
-    # convention; the rest match teaching_view.CARDING_PRESETS.
+    # Carding presets surfaced in the dialog. "" = what biq's defenders play
+    # (teaching_view.AS_BIQ_PLAYS: the signalling convention above, Lavinthal
+    # discards, plain count in trumps); the rest match
+    # teaching_view.CARDING_PRESETS.
     _CARDING_CHOICES = [
-        ("Auto (from signalling convention)", ""),
+        ("As biq plays (convention above, Lavinthal discards)", ""),
         ("Standard", "Standard"),
         ("Upside-down (UDCA)", "Upside-down"),
         ("Std + Lavinthal", "Std + Lavinthal"),
@@ -484,6 +477,34 @@ class PreferencesDialog(QDialog):
         the instrumented (teaching) view decodes signals with."""
         widget = QWidget()
         layout = QVBoxLayout(widget)
+
+        # Defensive signalling convention (biq plays this AND expects it from
+        # partner; the partner-signal reader stays in sync).
+        sig_group = QGroupBox("Defensive Signalling")
+        sig_outer = QVBoxLayout()
+        self.signalling_enabled_check = QCheckBox(
+            "Play defensive signals (attitude / count / suit-preference)")
+        self.signalling_enabled_check.setToolTip(
+            "Off: biq never spends a card on a signal — it plays the plain\n"
+            "lowest card when it can't win and chooses every other card on\n"
+            "trick value alone. Partner-signal reading is off too.")
+        sig_outer.addWidget(self.signalling_enabled_check)
+        sig_layout = QHBoxLayout()
+        sig_layout.addWidget(QLabel("Convention:"))
+        self.signalling_combo = QComboBox()
+        self.signalling_combo.addItem("Standard (high = encourage, hi-lo = even)",
+                                      "standard")
+        self.signalling_combo.addItem("Upside-down (UDCA: low = encourage)",
+                                      "udca")
+        self.signalling_combo.setToolTip(
+            "Attitude/count signals biq gives and reads from partner.\n"
+            "Standard or Upside-Down Count & Attitude (UDCA).")
+        sig_layout.addWidget(self.signalling_combo, 1)
+        sig_outer.addLayout(sig_layout)
+        self.signalling_enabled_check.toggled.connect(
+            self.signalling_combo.setEnabled)
+        sig_group.setLayout(sig_outer)
+        layout.addWidget(sig_group)
 
         grp = QGroupBox("Defensive carding agreements")
         gl = QVBoxLayout()
@@ -513,10 +534,11 @@ class PreferencesDialog(QDialog):
         gl.addLayout(sm_row)
 
         note = QLabel(
-            "These set how the instrumented view reads attitude / count / "
-            "suit-preference / Smith signals for each pair. You can also change "
-            "them live from the instrumented view's header; both share this "
-            "setting.")
+            "These set how the analysis view reads attitude / count / "
+            "suit-preference / Smith signals for each pair, and so where it "
+            "places the defenders' unseen cards; Claude's hints and analyses "
+            "are told the same agreements. You can also change them live from "
+            "the analysis view's header; both share this setting.")
         note.setWordWrap(True)
         gl.addWidget(note)
         grp.setLayout(gl)
@@ -543,6 +565,11 @@ class PreferencesDialog(QDialog):
             self.play_dd_radio.setChecked(True)
         else:
             self.play_engine_radio.setChecked(True)
+
+        self.sim_bidding_check.setChecked(
+            bool(getattr(self.prefs, 'sim_bidding_enabled', True)))
+        self.sim_leads_check.setChecked(
+            bool(getattr(self.prefs, 'sim_leads_enabled', True)))
 
         # Defensive signalling switch + convention
         enabled = bool(getattr(self.prefs, 'signalling_enabled', True))
@@ -660,6 +687,15 @@ class PreferencesDialog(QDialog):
         self.prefs.use_nopeek_play = self.play_nopeek_radio.isChecked()
         self.prefs.use_monte_carlo_play = self.play_mc_radio.isChecked()
         self.prefs.use_double_dummy_play = self.play_dd_radio.isChecked()
+
+        self.prefs.sim_bidding_enabled = self.sim_bidding_check.isChecked()
+        self.prefs.sim_leads_enabled = self.sim_leads_check.isChecked()
+        try:
+            from backend import bid_sim as _bs, lead_sim as _ls
+            _bs.set_enabled(self.prefs.sim_bidding_enabled)
+            _ls.set_enabled(self.prefs.sim_leads_enabled)
+        except Exception:
+            pass
 
         # Defensive signalling convention — apply to the live engine now so the
         # emitter and the partner-signal reader both switch together.

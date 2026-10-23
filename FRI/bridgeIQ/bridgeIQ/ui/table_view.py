@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QFrame, QPushButton, QSizePolicy, QSpacerItem
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QSize, QTimer, QRect, QPoint
+from PyQt6.QtCore import Qt, pyqtSignal, QSize, QTimer, QRect, QPoint, QRectF, QPointF
 from PyQt6.QtGui import (
     QFont, QColor, QPalette, QPainter, QBrush, QPen, QPolygon, QFontMetrics,
     QPixmap, QImage, QRadialGradient
@@ -63,6 +63,22 @@ CARD_OVERLAP = 84  # How much cards overlap (shows ~76px per card — proportion
 SUIT_GAP = 105  # Extra gap between suits — creates clear visible gap
 
 
+def set_card_scale(scale: float) -> None:
+    """Size the cards for the screen before the table is built. 1.0 is the
+    1920x1080 design; a 1366x768 laptop needs about 0.68, or the 13-card
+    fan (~1400 px at full size) and the table don't fit the screen."""
+    global CARD_WIDTH, CARD_HEIGHT, CARD_OVERLAP, SUIT_GAP
+    scale = max(0.55, min(1.0, scale))
+    CARD_WIDTH = round(160 * scale)
+    CARD_HEIGHT = round(224 * scale)
+    CARD_OVERLAP = round(84 * scale)
+    SUIT_GAP = round(105 * scale)
+
+
+def card_scale() -> float:
+    return CARD_WIDTH / 160
+
+
 class CardWidget(QWidget):
     """Playing card widget using traditional card images from tmcgui deck."""
 
@@ -97,71 +113,130 @@ class CardWidget(QWidget):
         return cls._images_dir
 
     @classmethod
-    def _get_card_pixmap(cls, card: 'Card') -> Optional[QPixmap]:
-        """Load and cache a card image.
-
-        The bundled deck (deckofcards, 4-color) already has diamonds in
-        blue and clubs in green, so no runtime recoloring is needed. The
-        ``legacy_colors`` preference still recolors blue→red diamonds /
-        green→black clubs on the fly for users who want a traditional
-        2-color look.
-        """
-        suit_char = {Suit.SPADES: 'S', Suit.HEARTS: 'H',
-                     Suit.DIAMONDS: 'D', Suit.CLUBS: 'C'}[card.suit]
-        # Image naming: rank 2-10=2-10, J=11, Q=12, K=13, A=14
-        rank_num = 14 - card.rank.value  # ACE=0→14, KING=1→13, ..., TWO=12→2
-        key = f"{suit_char}{rank_num}"
-
-        if key not in cls._image_cache:
-            path = os.path.join(cls._get_images_dir(), f"{key}.png")
-            if not os.path.exists(path):
-                return None
-
-            img = QImage(path)
-            # Scale to card size
-            img = img.scaled(CARD_WIDTH, CARD_HEIGHT,
-                             Qt.AspectRatioMode.IgnoreAspectRatio,
-                             Qt.TransformationMode.SmoothTransformation)
-
-            # Optional: legacy 2-color override.  The bundled images are
-            # already 4-color, so when the user asks for legacy we have
-            # to invert the recolor (blue→red diamonds, green→black
-            # clubs).  Defaults to 4-color (no recolor pass).
-            from backend.config import get_config_manager
-            try:
-                legacy = get_config_manager().config.preferences.legacy_colors
-            except Exception:
-                legacy = False
-            if legacy:
-                if card.suit == Suit.DIAMONDS:
-                    cls._recolor_blue_to_red(img)
-                elif card.suit == Suit.CLUBS:
-                    cls._recolor_green_to_black(img)
-
-            cls._image_cache[key] = QPixmap.fromImage(img)
-
-        return cls._image_cache.get(key)
+    def _legacy_colors(cls) -> bool:
+        from backend.config import get_config_manager
+        try:
+            return bool(get_config_manager().config.preferences.legacy_colors)
+        except Exception:
+            return False
 
     @classmethod
-    def _get_back_pixmap(cls) -> QPixmap:
-        if cls._back_pixmap is None:
-            # The bundled deck ships its back image as back.png.  Older
-            # forks of this code looked for blue_back.png; we still fall
-            # back to that name so a custom replacement deck can use
-            # either filename.
-            for filename in ('back.png', 'blue_back.png'):
-                path = os.path.join(cls._get_images_dir(), filename)
-                if os.path.exists(path):
-                    img = QImage(path).scaled(
-                        CARD_WIDTH, CARD_HEIGHT,
-                        Qt.AspectRatioMode.IgnoreAspectRatio,
-                        Qt.TransformationMode.SmoothTransformation)
-                    cls._back_pixmap = QPixmap.fromImage(img)
-                    break
-            else:
-                cls._back_pixmap = QPixmap(CARD_WIDTH, CARD_HEIGHT)
-                cls._back_pixmap.fill(QColor('#1a3a8c'))
-        return cls._back_pixmap
+    def _svg_card_bytes(cls, card: 'Card') -> Optional[bytes]:
+        """The card's vector face (public-domain deck, assets/deck/svg),
+        recoloured for the four-colour deck unless legacy colours are on."""
+        import gzip
+        suit_char = {Suit.SPADES: 'S', Suit.HEARTS: 'H',
+                     Suit.DIAMONDS: 'D', Suit.CLUBS: 'C'}[card.suit]
+        rank = card.rank.to_char()
+        rank = '10' if rank == 'T' else rank
+        path = os.path.join(os.path.dirname(cls._get_images_dir()), 'svg',
+                            f"{rank}{suit_char}.svgz")
+        try:
+            with gzip.open(path, 'rb') as f:
+                text = f.read().decode('utf-8')
+        except OSError:
+            return None
+        if not cls._legacy_colors():
+            # The deck is drawn red/black; the four-colour deck turns
+            # diamonds blue and clubs green (pips, indices and figures).
+            # The black card border is a stroke, so it is left alone.
+            if card.suit == Suit.DIAMONDS:
+                text = text.replace('fill:#df0000', 'fill:#0000cc')
+            elif card.suit == Suit.CLUBS:
+                for red_or_black in ('fill:#000000', 'fill:#df0000',
+                                     'fill:#a6152a'):
+                    text = text.replace(red_or_black, 'fill:#006400')
+        return text.encode('utf-8')
+
+    @classmethod
+    def _get_card_pixmap(cls, card: 'Card', w: int = None, h: int = None,
+                         dpr: float = 1.0) -> Optional[QPixmap]:
+        """The card face at w x h logical pixels, rendered from the vector
+        deck at the screen's pixel ratio so it stays sharp at any size.
+        Falls back to the bundled 100x140 PNGs if the SVGs are missing."""
+        w = w or CARD_WIDTH
+        h = h or CARD_HEIGHT
+        suit_char = {Suit.SPADES: 'S', Suit.HEARTS: 'H',
+                     Suit.DIAMONDS: 'D', Suit.CLUBS: 'C'}[card.suit]
+        rank_num = 14 - card.rank.value  # ACE=0→14, KING=1→13, ..., TWO=12→2
+        key = f"{suit_char}{rank_num}"
+        cache_key = (key, w, h, round(dpr, 2))
+        if cache_key in cls._image_cache:
+            return cls._image_cache[cache_key]
+
+        data = cls._svg_card_bytes(card)
+        if data is not None:
+            from PyQt6.QtSvg import QSvgRenderer
+            from PyQt6.QtCore import QByteArray, QRectF
+            renderer = QSvgRenderer(QByteArray(data))
+            if renderer.isValid():
+                pw, ph = max(1, round(w * dpr)), max(1, round(h * dpr))
+                img = QImage(pw, ph, QImage.Format.Format_ARGB32_Premultiplied)
+                img.fill(Qt.GlobalColor.transparent)
+                painter = QPainter(img)
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                renderer.render(painter, QRectF(0, 0, pw, ph))
+                painter.end()
+                pm = QPixmap.fromImage(img)
+                pm.setDevicePixelRatio(dpr)
+                cls._image_cache[cache_key] = pm
+                return pm
+
+        path = os.path.join(cls._get_images_dir(), f"{key}.png")
+        if not os.path.exists(path):
+            return None
+        img = QImage(path)
+        img = img.scaled(CARD_WIDTH, CARD_HEIGHT,
+                         Qt.AspectRatioMode.IgnoreAspectRatio,
+                         Qt.TransformationMode.SmoothTransformation)
+        # The bundled PNGs are already 4-colour; legacy mode recolours them
+        # back to red diamonds / black clubs.
+        if cls._legacy_colors():
+            if card.suit == Suit.DIAMONDS:
+                cls._recolor_blue_to_red(img)
+            elif card.suit == Suit.CLUBS:
+                cls._recolor_green_to_black(img)
+        cls._image_cache[cache_key] = QPixmap.fromImage(img)
+        return cls._image_cache[cache_key]
+
+    @classmethod
+    def _get_back_pixmap(cls, w: int = None, h: int = None,
+                         dpr: float = 1.0) -> QPixmap:
+        """A vector-drawn card back (white rim, blue lattice), sharp at any
+        size; the old 100x140 back.png blurred when scaled up."""
+        w = w or CARD_WIDTH
+        h = h or CARD_HEIGHT
+        cache_key = ('back', w, h, round(dpr, 2))
+        if cache_key in cls._image_cache:
+            return cls._image_cache[cache_key]
+        pw, ph = max(1, round(w * dpr)), max(1, round(h * dpr))
+        img = QImage(pw, ph, QImage.Format.Format_ARGB32_Premultiplied)
+        img.fill(Qt.GlobalColor.transparent)
+        p = QPainter(img)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.scale(dpr, dpr)
+        radius = w * 0.06
+        p.setPen(QPen(QColor('#555555'), 1))
+        p.setBrush(QBrush(QColor('#ffffff')))
+        p.drawRoundedRect(QRectF(0.5, 0.5, w - 1, h - 1), radius, radius)
+        inset = w * 0.07
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(QColor('#1a3a8c')))
+        p.drawRoundedRect(QRectF(inset, inset, w - 2 * inset, h - 2 * inset),
+                          radius * 0.6, radius * 0.6)
+        p.setClipRect(QRectF(inset, inset, w - 2 * inset, h - 2 * inset))
+        p.setPen(QPen(QColor('#4f6fc4'), max(1.0, w / 90)))
+        step = w / 9
+        x = -h
+        while x < w + h:
+            p.drawLine(QPointF(x, 0), QPointF(x + h, h))
+            p.drawLine(QPointF(x + h, 0), QPointF(x, h))
+            x += step
+        p.end()
+        pm = QPixmap.fromImage(img)
+        pm.setDevicePixelRatio(dpr)
+        cls._image_cache[cache_key] = pm
+        return pm
 
     @staticmethod
     def _recolor_blue_to_red(img: QImage):
@@ -329,13 +404,14 @@ class CardWidget(QWidget):
 
         if not self.card or not self.face_up:
             # Face-down card
-            back = self._get_back_pixmap()
-            painter.drawPixmap(0, 0, w, h, back)
+            back = self._get_back_pixmap(w, h, self.devicePixelRatioF())
+            painter.drawPixmap(0, 0, back)
         else:
             # Face-up card — use traditional card images
-            pixmap = self._get_card_pixmap(self.card)
+            pixmap = self._get_card_pixmap(self.card, w, h,
+                                           self.devicePixelRatioF())
             if pixmap:
-                painter.drawPixmap(0, 0, w, h, pixmap)
+                painter.drawPixmap(0, 0, pixmap)
             else:
                 # Fallback: plain white card with rank/suit text
                 painter.setBrush(QBrush(QColor('#fffff8')))
@@ -639,6 +715,7 @@ class TrickAreaWidget(QFrame):
     AREA_HEIGHT = DESIGN_GREEN_H + 2 * DESIGN_BAND
     MIN_SCALE = 0.74         # floor — keeps the green ≥ the bidding overlay
     BID_W, BID_H = 320, 260  # bidding overlay (fixed; centred in the green)
+    MIN_PLAY_H = 240         # minimum height (play phase; see __init__)
 
     # Emitted (seat, card) when a played card is clicked while the
     # "explain biq's actions" mode is on.
@@ -647,8 +724,12 @@ class TrickAreaWidget(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._explain_enabled = False
-        self.setMinimumSize(round(self.AREA_WIDTH * self.MIN_SCALE),
-                            round(self.AREA_HEIGHT * self.MIN_SCALE))
+        # Minimum HEIGHT is low enough for the play phase on a ~1000 px
+        # window with dummy's tall fan on the table: with the old 332 px
+        # floor the layout ran out of room, the South label overlapped the
+        # felt and South's played card was cut off. The cards scale to fit
+        # (_relayout); the bidding overlay only shows before dummy is down.
+        self.setMinimumSize(round(self.AREA_WIDTH * self.MIN_SCALE), self.MIN_PLAY_H)
         # Take the vertical space the layout offers (so a taller window
         # gives bigger cards); keep a preferred width so the side columns
         # aren't squeezed.
@@ -696,13 +777,17 @@ class TrickAreaWidget(QFrame):
         # Full-size cross footprint (before any fit-shrink), plus a small pad
         # and room for the compass arrows around the felt.
         chev0 = self.ARROW_CHEVRON
-        pad = chev0 + 6
+        # Room outside the cross: the arrow band (chevron + gap) and the felt's
+        # own margin on each side. The cross must fit INSIDE the felt — fitting
+        # it to the bare widget let a short window clamp the felt smaller than
+        # the cards, and South's card hung off the bottom of the table.
+        pad = (chev0 + 6) + 14
         full_w = CARD_WIDTH * (1 + 2 * self.CROSS_H_OFF_F)
         full_h = CARD_HEIGHT * (1 + 2 * self.CROSS_V_OFF_F)
         # Shrink only when the widget genuinely can't fit full-size cards; at
         # 1080p+ this stays 1.0, so trick cards equal the hands exactly.
         fit = min(1.0, (W - 2 * pad) / full_w, (H - 2 * pad) / full_h)
-        scale = max(0.5, fit)
+        scale = max(0.35, fit)
 
         cw, ch = round(CARD_WIDTH * scale), round(CARD_HEIGHT * scale)
         h_off = round(cw * self.CROSS_H_OFF_F)
@@ -1585,7 +1670,8 @@ class TableView(QWidget):
         self.tricks_title = QLabel("Tricks:")
         self.tricks_title.setFont(QFont("Arial", 12))
         tl.addWidget(self.tricks_title)
-        self.tricks_label = QLabel("0 : 0")
+        self._decl_ns = None
+        self.tricks_label = QLabel("NS 0 – EW 0")
         self.tricks_label.setFont(QFont("Arial", 16, QFont.Weight.Bold))
         tl.addWidget(self.tricks_label)
         bottom_bar.addWidget(self.tricks_panel)
@@ -1754,7 +1840,8 @@ class TableView(QWidget):
         # deal — otherwise the next board opens with the auction-complete
         # message showing before a single bid has been made.
         self.trick_area.set_bidding_status("")
-        self.tricks_label.setText("0 : 0")
+        self._decl_ns = None
+        self.tricks_label.setText("NS 0 – EW 0")
         self.contract_label.setText("")
 
         # Hide tricks during bidding
@@ -1876,6 +1963,7 @@ class TableView(QWidget):
                 label.setStyleSheet(styles['ai'])
 
         self.contract_label.setText(f"{contract.declarer.to_char()} {contract.to_str()}")
+        self._decl_ns = contract.declarer.is_ns()
         self.trick_area.set_show_bidding(False)
         self.tricks_panel.setVisible(True)
 
@@ -2003,7 +2091,13 @@ class TableView(QWidget):
         self.trick_area.clear_trick()
 
     def update_tricks(self, dec_tricks: int, def_tricks: int):
-        self.tricks_label.setText(f"{dec_tricks} : {def_tricks}")
+        # Name the sides: a bare "5 : 4" left players guessing which was theirs.
+        decl_ns = getattr(self, '_decl_ns', None)
+        if decl_ns is None:
+            self.tricks_label.setText(f"Decl {dec_tricks} – Def {def_tricks}")
+            return
+        ns, ew = (dec_tricks, def_tricks) if decl_ns else (def_tricks, dec_tricks)
+        self.tricks_label.setText(f"NS {ns} – EW {ew}")
 
     def show_end_of_hand_view(self, original_hands, tricks):
         """Q-Plus-style end-of-hand display: re-populate every hand
@@ -2185,3 +2279,5 @@ class TableView(QWidget):
 
     def set_contract(self, contract_str: str, declarer: str):
         self.contract_label.setText(f"{declarer} {contract_str}")
+        if declarer and declarer[0] in "NSEW":
+            self._decl_ns = declarer[0] in "NS"

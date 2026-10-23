@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
     QDockWidget, QPushButton, QFrame, QSizePolicy, QInputDialog,
     QDialog, QStackedWidget, QTextEdit
 )
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QThread, pyqtSlot
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QThread, pyqtSlot, QPoint
 from PyQt6.QtGui import QAction, QKeySequence, QFont, QIcon
 
 from .table_view import TableView, COLORS
@@ -806,6 +806,15 @@ class MainWindow(QMainWindow):
         else:
             set_suit_color_mode(SuitColorMode.FOUR_COLOR)
 
+        # Card size for this screen: full size from 1920x1080 up, smaller on
+        # a laptop so the 13-card fan and the table fit.
+        try:
+            from . import table_view as _tv
+            _scr = QApplication.primaryScreen().availableGeometry()
+            _tv.set_card_scale(min(_scr.width() / 1920, (_scr.height() + 40) / 1080))
+        except Exception:
+            pass
+
         # Setup UI
         self._setup_ui()
         self._setup_menus()
@@ -846,13 +855,21 @@ class MainWindow(QMainWindow):
         content_layout.setContentsMargins(5, 5, 5, 5)
 
         # Left side: Table view, with an instrumented (teaching) view as an
-        # alternate page selected by the "Instrumented" toolbar button.
+        # alternate page selected by the "Analysis view" toolbar button.
         self.table_view = TableView()
         from .teaching_view import TeachingView
         self.teaching_view = TeachingView()
         self.table_stack = QStackedWidget()
         self.table_stack.addWidget(self.table_view)      # page 0 = normal
-        self.table_stack.addWidget(self.teaching_view)   # page 1 = instrumented
+        # The instrumented view needs ~920 px; in a scroll area it no longer
+        # forces that minimum height on the window (a stacked widget takes
+        # the largest page minimum, which pushed the window past the screen).
+        from PyQt6.QtWidgets import QScrollArea as _QScrollArea, QFrame as _QFrame
+        self._teaching_scroll = _QScrollArea()
+        self._teaching_scroll.setWidgetResizable(True)
+        self._teaching_scroll.setFrameShape(_QFrame.Shape.NoFrame)
+        self._teaching_scroll.setWidget(self.teaching_view)
+        self.table_stack.addWidget(self._teaching_scroll)  # page 1 = instrumented
         content_layout.addWidget(self.table_stack, stretch=3)
         # While the instrumented view is up, refresh it on a light timer so
         # it tracks play without threading a call through every play site.
@@ -874,8 +891,15 @@ class MainWindow(QMainWindow):
         right_layout = QVBoxLayout(self.right_panel)
         right_layout.setContentsMargins(5, 5, 5, 5)
 
-        self.bidding_box = BiddingBox()
-        right_layout.addWidget(self.bidding_box)
+        # The bidding box is an overlay on the table, right beside the felt
+        # (and the auction on it); placed by _place_bidding_overlays.
+        self.bidding_box = BiddingBox(self.table_view)
+        self.bidding_box.setObjectName("biddingBoxPanel")
+        self.bidding_box.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.bidding_box.setStyleSheet(
+            "#biddingBoxPanel { background-color: #f4f6f8;"
+            " border: 1px solid #d9b25b; border-radius: 6px; }"
+            " #biddingBoxPanel QLabel { color: #1a1f29; }")
 
         # Analysis info area
         self.analysis_label = QLabel("")
@@ -1709,12 +1733,13 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.closed_room_btn)
         self.ingame_buttons.append(self.closed_room_btn)
 
-        # Toggle between the normal table and the instrumented teaching view.
-        self.teaching_btn = ToolbarButton("Instrumented")
+        # Toggle between the normal table and the analysis (teaching) view.
+        # The label names the view a click switches TO.
+        self.teaching_btn = ToolbarButton("Analysis view")
         self.teaching_btn.setCheckable(True)
         self.teaching_btn.setToolTip(
-            "Toggle the instrumented teaching/analysis view: per-hand "
-            "Known/Other suit grid, count, entries, plan and coaching.")
+            "Toggle the analysis view: per-hand Known/Other suit grid, "
+            "count, signals, entries, plan and coaching.")
         self.teaching_btn.toggled.connect(self._on_toggle_teaching_view)
         layout.addWidget(self.teaching_btn)
         self.ingame_buttons.append(self.teaching_btn)
@@ -1981,8 +2006,8 @@ class MainWindow(QMainWindow):
         from PyQt6.QtWidgets import QScrollArea
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setMinimumHeight(200)
-        scroll.setStyleSheet("border: 1px solid #ccc;")
+        scroll.setMinimumHeight(90)
+        scroll.setStyleSheet("QScrollArea { border: 1px solid #ccc; }")
 
         self.bid_history_widget = QWidget()
         self.bid_history_layout = QVBoxLayout(self.bid_history_widget)
@@ -1991,7 +2016,7 @@ class MainWindow(QMainWindow):
         self.bid_history_layout.addStretch()
 
         scroll.setWidget(self.bid_history_widget)
-        bid_info_layout.addWidget(scroll)
+        bid_info_layout.addWidget(scroll, stretch=2)
 
         # Available bids section with meanings
         self.avail_label = QLabel("Available bids:")
@@ -2003,20 +2028,24 @@ class MainWindow(QMainWindow):
         avail_scroll = QScrollArea()
         avail_scroll.setWidgetResizable(True)
         avail_scroll.setMinimumHeight(120)
-        avail_scroll.setMaximumHeight(180)
-        avail_scroll.setStyleSheet("border: 1px solid #ccc; background-color: #fff;")
+        # Selector-scoped: a bare "border: ..." cascaded onto every label and
+        # boxed each cell, doubling the row height.
+        avail_scroll.setStyleSheet(
+            "QScrollArea { border: 1px solid #ccc; background-color: #fff; }")
 
         self.available_bids_widget = QWidget()
+        self.available_bids_widget.setStyleSheet("background-color: #fff;")
         self.available_bids_layout = QVBoxLayout(self.available_bids_widget)
-        self.available_bids_layout.setContentsMargins(5, 5, 5, 5)
-        self.available_bids_layout.setSpacing(2)
+        self.available_bids_layout.setContentsMargins(5, 3, 5, 3)
+        self.available_bids_layout.setSpacing(0)
 
         avail_scroll.setWidget(self.available_bids_widget)
-        bid_info_layout.addWidget(avail_scroll)
+        # The available bids get most of the panel's height (the tester had
+        # to scroll a 180-px list).
+        bid_info_layout.addWidget(avail_scroll, stretch=5)
 
-        # Compact panel sized to sit at the upper-left of the bidding screen.
-        self.bid_info_dock.setFixedWidth(430)
-        self.bid_info_dock.setMaximumHeight(560)
+        # Size and position come from _place_bidding_overlays (top-left, as
+        # tall as the room above South's hand).
 
     def _setup_statusbar(self):
         """Setup the status bar"""
@@ -2059,8 +2088,84 @@ class MainWindow(QMainWindow):
             from backend import signal_trust
             self.status_label.setText(msg)
             self.signal_flag.setText(signal_trust.status_flag() or "")
+            mis = signal_trust.last_mis_signals()
         except Exception:
-            pass
+            return
+        prefs = self.config_manager.config.preferences
+        if mis and not getattr(prefs, 'signal_help_shown', False):
+            prefs.signal_help_shown = True
+            try:
+                self.config_manager.save_preferences()
+            except Exception:
+                pass
+            # After the end-of-hand summary has opened, so it sits on top.
+            QTimer.singleShot(700, lambda m=mis: self._show_signal_help(m))
+
+    def _show_signal_help(self, mis):
+        """Shown once, the first time the player's defensive carding doesn't
+        fit biq's conventions: what biq expected on this hand, and the
+        conventions biq plays and reads (so its partner can follow them)."""
+        from backend import signals
+        ranks = "AKQJT98765432"
+        syms = {0: "♠", 1: "♥", 2: "♦", 3: "♣"}
+
+        def card(c52):
+            r = ranks[c52 % 13]
+            return syms[c52 // 13] + ("10" if r == "T" else r)
+
+        this_hand = "".join(
+            f"<li>Trick {m['trick'] + 1}: you played <b>{card(m['played52'])}</b>; "
+            f"biq's conventions call for <b>{card(m['expected52'])}</b>.</li>"
+            for m in mis[:3])
+        if signals.is_udca():
+            att = "a <b>low</b> spot encourages, a <b>high</b> spot discourages"
+            cnt = "<b>low-high</b> shows an even number, high-low an odd number"
+        else:
+            att = "a <b>high</b> spot encourages, a <b>low</b> spot discourages"
+            cnt = "<b>high-low</b> shows an even number, low-high an odd number"
+        text = (
+            "<p>biq reads its partner's defensive signals to defend better, so it "
+            "helps to know what it expects. On this hand:</p>"
+            f"<ul>{this_hand}</ul>"
+            "<p><b>biq's signalling conventions</b> (first round of a suit only):</p>"
+            "<ul>"
+            f"<li><b>Attitude</b>, when partner leads a suit: {att}. biq encourages "
+            "only with the honour that matters: after the ace, the king; after "
+            "the king, the ace or queen (or the jack from J-x / J-x-x); after a "
+            "spot lead, the A, K or Q.</li>"
+            f"<li><b>Count</b>, when declarer leads a suit: {cnt}. Given only while "
+            "the suit's ace or king is out of sight (not in dummy, not yet played). "
+            "A high count card keeps the 9 back, except in fourth seat.</li>"
+            "<li><b>Discards</b>: Lavinthal suit preference (a high discard asks "
+            "for the higher of the other two suits).</li>"
+            "<li>No trump echo, no Smith echo. Honours, the ten, and cards that "
+            "could win the trick are never signals. With nothing to show, play "
+            "your lowest spot.</li>"
+            "</ul>"
+            "<p>If several of your signals in a row don't fit, biq stops reading "
+            "them (the ⛔ note at the bottom right) until your carding fits again. "
+            "Standard or upside-down carding is set in "
+            "Configuration ▸ Preferences ▸ Carding.</p>"
+            "<p style='color:#555'>This explanation is shown once.</p>")
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QDialogButtonBox
+        dlg = QDialog(self)
+        dlg.setWindowTitle("biq's signalling conventions")
+        dlg.setStyleSheet("QDialog { background-color: #f4f6f8; }"
+                          " QLabel { color: #1a1f29; }")
+        lay = QVBoxLayout(dlg)
+        lbl = QLabel(text)
+        lbl.setTextFormat(Qt.TextFormat.RichText)
+        lbl.setWordWrap(True)
+        lbl.setFont(QFont("Arial", 12))
+        lbl.setFixedWidth(640)
+        lay.addWidget(lbl)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+        buttons.accepted.connect(dlg.accept)
+        lay.addWidget(buttons)
+        dlg.setModal(False)
+        dlg.show()
+        dlg.raise_()
+        self._signal_help_box = dlg
 
     def _connect_signals(self):
         """Connect UI signals"""
@@ -4453,6 +4558,7 @@ For more information, see the README file."""
         stack = getattr(self, 'table_stack', None)
         if stack is None:
             return
+        self.teaching_btn.setText("Default view" if checked else "Analysis view")
         stack.setCurrentIndex(1 if checked else 0)
         if checked:
             self._refresh_teaching_view()
@@ -4504,6 +4610,37 @@ For more information, see the README file."""
             dock.raise_()
         except Exception:
             pass
+        self._place_bidding_overlays()
+
+    def _place_bidding_overlays(self):
+        """Lay the two bidding overlays around the felt: the bid-info panel
+        top-left, as tall as the room above South's hand (most of it for the
+        available bids), and the bidding box just right of the felt, level
+        with the auction, so the buttons sit next to the bidding history."""
+        host = getattr(self, 'table_view', None)
+        if host is None:
+            return
+        try:
+            ta = host.trick_area
+            green = ta._green_rect.translated(ta.mapTo(host, QPoint(0, 0)))
+            bottom = host.south_label.mapTo(host, QPoint(0, 0)).y() - 8
+        except Exception:
+            return
+        if bottom < 200:
+            bottom = host.height() - 10
+        dock = getattr(self, 'bid_info_dock', None)
+        if dock is not None and dock.parent() is host:
+            width = max(320, min(440, green.left() - 24))
+            dock.setGeometry(10, 10, width, max(260, bottom - 10))
+            dock.raise_()
+        bb = getattr(self, 'bidding_box', None)
+        if bb is not None and bb.parent() is host:
+            hint = bb.sizeHint()
+            x = min(green.right() + 14, host.width() - hint.width() - 10)
+            y = green.center().y() - hint.height() // 2
+            y = max(10, min(y, bottom - hint.height()))
+            bb.setGeometry(x, y, hint.width(), hint.height())
+            bb.raise_()
 
     def _bid_info_pref(self) -> bool:
         try:
@@ -4533,11 +4670,8 @@ For more information, see the README file."""
             dock.raise_()
         # Shift the table right while the panel overlays the top-left, so the
         # West column / label isn't clipped behind it; restore when hidden.
-        try:
-            inset = (dock.width() + 22) if want else 0
-            self.table_view.set_left_inset(inset)
-        except Exception:
-            pass
+        if want:
+            self._place_bidding_overlays()
 
     def _on_toggle_bid_info(self, checked: bool):
         """Toggle the embedded bidding-information panel (respects the
@@ -4857,13 +4991,14 @@ For more information, see the README file."""
             if bid.is_pass:
                 passes_after_last += 1
             elif bid.is_double:
-                can_redouble = passes_after_last < 2
+                # 0 or 2 passes since: an opponent doubled (1 = partner).
+                can_redouble = passes_after_last in (0, 2)
                 break
             elif bid.is_redouble:
                 break
             else:
                 last_non_pass = bid
-                can_double = passes_after_last < 2
+                can_double = passes_after_last in (0, 2)
                 break
 
         # Find minimum valid bid
@@ -4898,6 +5033,8 @@ For more information, see the README file."""
                     bid = Bid(level=level, suit=suit)
                     pts, suit_len, help_txt, is_art = self._get_bid_interpretation(bid, auction, next_seat)
                     bid_str = bid.symbol()
+                    if suit_len == "Balanced":
+                        suit_len = "bal."
                     display_pts = f"{pts}  {suit_len}" if suit_len else pts
                     if is_art:
                         help_txt = f"[Art] {help_txt}"
@@ -4912,10 +5049,11 @@ For more information, see the README file."""
         for bid_str, pts, help_txt in available_bids:
             row = QHBoxLayout()
             row.setSpacing(5)
+            row.setContentsMargins(2, 1, 2, 1)
 
             bid_lbl = QLabel(bid_str)
             bid_lbl.setFont(QFont("Arial", 14, QFont.Weight.Bold))
-            bid_lbl.setFixedWidth(60)
+            bid_lbl.setFixedWidth(48)
             # Color suits using centralized colors
             from .styles import get_suit_color
             if '♠' in bid_str:
@@ -4941,6 +5079,7 @@ For more information, see the README file."""
             row_widget = QWidget()
             row_widget.setLayout(row)
             self.available_bids_layout.addWidget(row_widget)
+        self.available_bids_layout.addStretch()
 
     def _clear_bid_info(self):
         """Clear the bid info window"""
@@ -5948,16 +6087,14 @@ For more information, see the README file."""
                 hand = board.hands.get(seat)
                 if hand and hand.cards:
                     trick_cards = board.current_trick.cards if board.current_trick else []
-                    resp = self.engine.get_card_play(board, seat, trick_cards)
-                    if resp and resp.action:
-                        engine_text = f"biq suggests: play {resp.action.to_str()}"
-                        if resp.candidates:
-                            cands = ", ".join(f"{c.card.to_str()} ({c.score:.2f})"
-                                              for c in resp.candidates[:5])
-                            engine_text += (
-                                f"\nBridgeIQ candidates (score = MC "
-                                f"confidence 0–1): {cands}"
-                            )
+                    # The card the robots would play (no-peek engine), not the
+                    # lowest-card fallback, so the hint agrees with the
+                    # blunder check (which measures against this card).
+                    card, reason = self._biq_card_choice(board, seat, trick_cards)
+                    if card is not None:
+                        engine_text = f"biq suggests: play {card.to_str()}"
+                        if reason:
+                            engine_text += f"\nWhy: {reason}"
         except Exception as e:
             engine_text = f"(BEN engine error: {e!r})"
 
@@ -6324,9 +6461,19 @@ For more information, see the README file."""
                 # Config / spec lookup failed — fall back to a
                 # system-agnostic prompt rather than crashing the hint.
                 pass
+        # Card play: tell Claude the carding agreements so it reads the
+        # defenders' spot cards (and places their unseen cards) the way the
+        # analysis view does, not by some default convention of its own.
+        signal_clause = ""
+        if phase == 'play':
+            try:
+                from .teaching_view import signalling_conventions_text
+                signal_clause = "\n\n" + signalling_conventions_text()
+            except Exception:
+                signal_clause = ""
         return (
             f"You are a bridge teacher advising {seat_names[seat]} on the next {action}."
-            f"{system_clause}{play_clause}\n\n"
+            f"{system_clause}{play_clause}{signal_clause}\n\n"
             "OUTPUT FORMAT — strictly required:\n"
             "  • Echo the BDL block below VERBATIM, line by line, "
             "preserving spacing.\n"
@@ -6547,7 +6694,8 @@ For more information, see the README file."""
             return
 
         # Progress dialog
-        progress = QDialog(self)
+        from PyQt6.QtWidgets import QApplication as _QApp
+        progress = QDialog(_QApp.activeModalWidget() or self)   # Cancel usable beside a modal Compare
         progress.setWindowTitle(title)
         progress.setFixedSize(420, 110)
         progress.setStyleSheet("background-color: #e8e8f0; color: #000;")
@@ -6617,7 +6765,7 @@ For more information, see the README file."""
             cmd += ['--max-turns', '1', prompt]
             try:
                 proc = subprocess.Popen(
-                    cmd,
+                    cmd, stdin=subprocess.DEVNULL,
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                 proc_holder['proc'] = proc
                 try:
@@ -6905,7 +7053,8 @@ For more information, see the README file."""
                 + "\n"
             )
 
-        dialog = QDialog(self)
+        from PyQt6.QtWidgets import QApplication as _QApp
+        dialog = QDialog(_QApp.activeModalWidget() or self)   # usable beside a modal Compare
         dialog.setWindowTitle(title)
         # Maximizable + large default so the analysis can fill a 1920×1080 screen.
         dialog.setWindowFlags(dialog.windowFlags()
@@ -7056,25 +7205,35 @@ For more information, see the README file."""
                                       QScrollArea)
         from PyQt6.QtGui import QFont
 
-        dialog = QDialog(self)
+        # Parent to whatever modal window is up (the Compare dialog when it
+        # was opened with exec() from the score table): a child of the main
+        # window gets no input while a modal dialog is open, so the scrollbar
+        # "did not work" until Compare was closed.
+        from PyQt6.QtWidgets import QApplication as _QApp
+        dialog = QDialog(_QApp.activeModalWidget() or self)
         dialog.setWindowTitle(title)
         dialog.setMinimumSize(700, 350)
         dialog.resize(800, 450)
         dialog.setStyleSheet("QDialog { background-color: #e8e8f0; color: #000; }")
         layout = QVBoxLayout(dialog)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea { border: 1px solid #aaa; background-color: #f8f8f8; }")
-        label = QLabel(body)
-        label.setFont(QFont("Arial", 16 if error else 20))
-        label.setWordWrap(True)
-        label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        label.setStyleSheet(
-            f"color: {'#803030' if error else '#000'}; background-color: #f8f8f8; padding: 15px;"
+        # A read-only QTextBrowser scrolls on its own (wheel, scrollbar drag,
+        # keys). The old word-wrapped QLabel inside a QScrollArea got its
+        # height wrong, so the scrollbar did not scroll the text. Claude's
+        # replies are Markdown, so render them as such (errors stay plain).
+        from PyQt6.QtWidgets import QTextBrowser
+        view = QTextBrowser()
+        view.setOpenExternalLinks(True)
+        view.setFont(QFont("Arial", 14 if error else 16))
+        view.setStyleSheet(
+            f"QTextBrowser {{ color: {'#803030' if error else '#000'};"
+            " background-color: #f8f8f8; border: 1px solid #aaa; padding: 10px; }"
         )
-        scroll.setWidget(label)
-        layout.addWidget(scroll)
+        if error:
+            view.setPlainText(body)
+        else:
+            view.setMarkdown(body)
+        layout.addWidget(view, stretch=1)
 
         ok_btn = QPushButton("OK")
         ok_btn.setFixedSize(120, 40)
@@ -7364,6 +7523,13 @@ For more information, see the README file."""
             from PyQt6.QtCore import QEvent
             if event.type() == QEvent.Type.KeyPress and self._handle_play_key(event):
                 return True
+            if (event.type() in (QEvent.Type.Resize, QEvent.Type.Move,
+                                 QEvent.Type.Show)
+                    and obj in (getattr(self, 'table_view', None),
+                                getattr(getattr(self, 'table_view', None),
+                                        'trick_area', None),
+                                getattr(self, 'bidding_box', None))):
+                QTimer.singleShot(0, self._place_bidding_overlays)
         except Exception:
             pass
         return super().eventFilter(obj, event)
@@ -7777,10 +7943,43 @@ For more information, see the README file."""
         if loss < self.BLUNDER_TRICK_THRESHOLD:
             return True  # not substantially worse
 
+        # Measure against the card biq itself would play (what Hint shows),
+        # so a warned card is never the hint's suggestion.
+        biq_card, _ = self._biq_card_choice(board, seat, trick_cards)
+        if biq_card is None or biq_card == card:
+            return True
+        biq = next((c for c in resp.candidates
+                    if getattr(c, 'card', None) == biq_card), None)
+        if biq is None:
+            return True
+        loss = biq.score - user.score
+        if loss < self.BLUNDER_TRICK_THRESHOLD:
+            return True
+        best = biq
+
         # Mark warned BEFORE showing the dialog so a re-click after
         # Cancel/Hint goes straight through.
         self._blunder_warned_cards.add(key)
         return self._show_card_blunder_dialog(seat, card, best.card, loss)
+
+    def _biq_card_choice(self, board, seat, trick_cards):
+        """(card, reason) from the no-peek engine the robots play with,
+        cached per position so Hint and the blunder check see one answer."""
+        key = (seat, sum(len(t.cards) for t in board.tricks),
+               tuple(c.to_str() for c in trick_cards))
+        cache = getattr(self, '_biq_card_cache', None)
+        if cache is None or cache[0] != id(board):
+            cache = self._biq_card_cache = (id(board), {})
+        if key not in cache[1]:
+            try:
+                from backend import nopeek
+                explain = {}
+                card = nopeek.decide(board, seat, list(trick_cards),
+                                     explain=explain)
+                cache[1][key] = (card, explain.get("reason", ""))
+            except Exception:
+                return None, ""
+        return cache[1][key]
 
     def _show_card_blunder_dialog(self, seat, user_card, best_card,
                                    trick_loss) -> bool:
@@ -7978,8 +8177,9 @@ For more information, see the README file."""
                 getattr(self, 'book_note', None)
                 and self.book_note.toPlainText().strip())
             self.right_panel.setVisible(has_book_note)
+            # The bidding box is a table overlay now, not in the right panel.
+            self.bidding_box.setVisible(False)
             if has_book_note:
-                self.bidding_box.setVisible(False)
                 self.analysis_label.setVisible(False)
                 self.book_note.setVisible(True)
             self.next_deal_btn.setVisible(False)
@@ -9082,7 +9282,14 @@ For more information, see the README file."""
                     'score': score,
                     'analyzed': False,
                 }
-            self._on_show_scores()
+            # Don't pop the score sheet over the end-of-hand summary (its
+            # Score button opens it); just refresh a sheet that's already open.
+            sd = getattr(self, '_scores_dialog', None)
+            try:
+                if sd is not None and sd.isVisible() and hasattr(sd, '_populate_table'):
+                    sd._populate_table()
+            except RuntimeError:
+                self._scores_dialog = None
 
     def _launch_qplus_harness(self, board, closed_room: bool = False):
         """Spawn the guiHarness (bridgeHarness.sh) preloaded with this deal's
@@ -9186,6 +9393,10 @@ For more information, see the README file."""
             return
 
         if not shutil.which('claude'):
+            self._show_plain_dialog("Claude Analysis",
+                                    "Claude CLI is not installed on this machine.\n"
+                                    "Install it to enable this feature.",
+                                    error=True)
             return
 
         # Build hand summary for Claude as a full BDL snapshot. Claude
@@ -9335,7 +9546,7 @@ For more information, see the README file."""
         # Show progress dialog while Claude thinks
         progress = QDialog(self)
         progress.setWindowTitle("Claude Analysis")
-        progress.setFixedSize(400, 100)
+        progress.setFixedSize(460, 130)
         progress.setStyleSheet("background-color: #e8e8f0; color: #000;")
         p_layout = QVBoxLayout(progress)
         p_label = QLabel("Claude is analyzing the hand...")
@@ -9347,6 +9558,26 @@ For more information, see the README file."""
         p_bar.setStyleSheet("QProgressBar { border: 1px solid #aaa; border-radius: 3px; }"
                             "QProgressBar::chunk { background-color: #4a9; }")
         p_layout.addWidget(p_bar)
+        cancel_holder = {'cancelled': False}
+        done_holder = {'done': False}
+        proc_holder = {'proc': None}
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setStyleSheet("QPushButton { padding: 6px 18px; }")
+
+        def _cancel_analysis():
+            # Closing the dialog after success also emits `rejected`.
+            if done_holder['done']:
+                return
+            cancel_holder['cancelled'] = True
+            proc = proc_holder.get('proc')
+            if proc is not None and proc.poll() is None:
+                try:
+                    proc.terminate()
+                except Exception:
+                    pass
+        cancel_btn.clicked.connect(_cancel_analysis)
+        progress.rejected.connect(_cancel_analysis)
+        p_layout.addWidget(cancel_btn)
         progress.show()
         QApplication.processEvents()
 
@@ -9373,6 +9604,16 @@ For more information, see the README file."""
                 "with the closed-room result (Q-Plus, manual replay) "
                 "and comment on who did better and why."
             )
+
+        try:
+            from .teaching_view import signalling_conventions_text
+            signals_text = signalling_conventions_text() + "\n"
+            if closed_run:
+                signals_text += ("  (These are the open room's agreements; "
+                                 "a Q-Plus closed room cards by Q-Plus's own "
+                                 "agreements.)\n")
+        except Exception:
+            signals_text = ""
 
         def _run_claude():
             try:
@@ -9417,6 +9658,7 @@ For more information, see the README file."""
                     "lenses — bidding AND cardplay — and explain which side did "
                     "better and why, in instrumented-view terms.\n\n"
                     f"SYSTEMS: {systems_text}\n"
+                    f"{signals_text}"
                     f"The human player(s) at the open room: {human_desc}."
                     f"{comparison_note}\n\n"
                     f"INSTRUMENTATION — OPEN ROOM (biq's reads):\n"
@@ -9427,13 +9669,26 @@ For more information, see the README file."""
                 )
                 # Opus 4.7 with extended thinking, longer timeout to
                 # accommodate think-then-write for full hand annotations.
-                r = subprocess.run(
+                # stdin closed: an inherited open stdin makes `claude -p`
+                # wait for piped input forever. Popen so Cancel can kill it.
+                proc = subprocess.Popen(
                     ['claude', '-p',
                      '--model', 'claude-opus-4-8',
                      '--thinking', 'enabled',
                      '--max-turns', '1', analysis_prompt],
-                    capture_output=True, text=True, timeout=900
-                )
+                    stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE, text=True)
+                proc_holder['proc'] = proc
+                try:
+                    out, err = proc.communicate(timeout=600)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.communicate()
+                    raise
+                if cancel_holder['cancelled']:
+                    return
+                r = subprocess.CompletedProcess(proc.args, proc.returncode,
+                                                out, err)
                 stdout = (r.stdout or '').strip()
                 stderr = (r.stderr or '').strip()
                 if r.returncode == 0 and len(stdout) > 10:
@@ -9446,19 +9701,45 @@ For more information, see the README file."""
                         parts.append(f"stdout: {stdout[:500]}")
                     result_holder['error'] = "\n".join(parts)
             except subprocess.TimeoutExpired:
-                result_holder["error"] = "claude timed out after 900 seconds."
+                result_holder["error"] = "claude timed out after 600 seconds."
             except Exception as e:
                 result_holder['error'] = f"claude call failed: {e!r}"
 
         thread = threading.Thread(target=_run_claude, daemon=True)
         thread.start()
 
-        # Poll until thread finishes (keeps UI responsive)
+        # Poll until thread finishes (keeps UI responsive); show the elapsed
+        # time so a slow answer doesn't look like a hang.
+        import time as _time
+        t0 = _time.monotonic()
         while thread.is_alive():
             QApplication.processEvents()
             thread.join(timeout=0.1)
+            if cancel_holder['cancelled']:
+                break
+            el = int(_time.monotonic() - t0)
+            p_label.setText(f"Claude is analyzing the hand... {el // 60}:{el % 60:02d}"
+                            f" (usually 1-3 minutes)")
 
+        done_holder['done'] = True
         progress.close()
+        if cancel_holder['cancelled']:
+            proc = proc_holder.get('proc')
+            if proc is not None and proc.poll() is None:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+            if pidfile:
+                try:
+                    os.unlink(pidfile)
+                except OSError:
+                    pass
+            try:
+                self.status_label.setText("Claude analysis cancelled.")
+            except Exception:
+                pass
+            return
 
         critique = result_holder['critique']
         error = result_holder['error']

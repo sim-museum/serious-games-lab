@@ -99,6 +99,10 @@ def _kill_prior_instances(my_seat: Optional[str] = None) -> None:
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+# The opponents here are always Q-Plus: read their calls with Q-Plus's own
+# recorded bidding (backend/qplus_model.py) wherever it has data.
+os.environ.setdefault("BIQ_OPP_MODEL", "qplus")
+
 from backend.engine import BridgeEngine
 from backend.models import (BoardState, Hand, Card, Suit, Rank, Seat,
                               Bid, Vulnerability, Contract, Trick)
@@ -338,6 +342,8 @@ class BiqClient:
         self.verbose = verbose
         self._logfh = None
         if log_path:
+            os.makedirs(os.path.dirname(os.path.abspath(log_path)) or ".",
+                        exist_ok=True)                 # tools/runs/ may not exist yet
             self._logfh = open(log_path, "a", buffering=1)   # line-buffered so
             #          log-watchers (the cardplay clicker) see events at once
             # Fingerprint the bidder this run is ACTUALLY using — content hash
@@ -443,9 +449,42 @@ class BiqClient:
                 self._apply_server_config(r[1][0] if len(r[1]) >= 1 else "")
                 break
         self.log(f"handshake complete; joined as {seat_name}")
+        self._joined = True
         return True
 
+    def leave(self) -> None:
+        """Tell Q-Plus we are leaving (`leave_game`, the counterpart of
+        join_game) and close the socket. Without this a client that is
+        terminated leaves a GHOST seat: Q-Plus keeps showing it as connected
+        and Q-NET stops answering new handshakes until the bridge server is
+        stopped and restarted (seen repeatedly 2026-09-23). Best effort, once,
+        parent process only (card-play forks share the socket fd)."""
+        if getattr(self, "_left", False) or os.getpid() != getattr(self, "_pid", os.getpid()):
+            return
+        self._left = True
+        sock = getattr(self, "sock", None)
+        if sock is None:
+            return
+        try:
+            if getattr(self, "_joined", False):
+                seat_name = self.my_seat.name.title()
+                self.send("leave_game", seat_name, self.my_name)
+                time.sleep(0.3)               # let it hit the wire before close
+        except Exception as ex:
+            self.log(f"leave_game not sent: {ex}")
+        try:
+            sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        try:
+            sock.close()
+        except OSError:
+            pass
+        self.log("left the game; socket closed")
+
     def run(self) -> None:
+        self._pid = os.getpid()
+        self._joined = False
         self.initialize_engine()
         self.connect()
         if not self.handshake():
@@ -690,6 +729,12 @@ class BiqClient:
             return
         seat = _SEAT_FROM_NAME[args[0]]
         bid = parse_bid_token(args[1])
+        if self.contract is not None or self._auction_complete():
+            # Seen live (FRESH64G, board 24 re-dealt by Q-Plus in the middle
+            # of board 25): a stale call from the previous deal arrives after
+            # this auction already ended. Q-Plus ignores it too; keep ours.
+            self.log(f"ignoring {seat.name}'s call after the auction ended")
+            return
         self.auction.append(bid)
         # Q-Plus echoes our own bid back; advance bidder pointer
         # regardless of who originated it.
@@ -771,7 +816,11 @@ class BiqClient:
                 vulnerability=self.board.vulnerability)
             e = evaluate_hand(self.board.hands[self.my_seat])
             sys_ = get_system(self.system)
-            bid = decide_bid(state, e, sys_)
+            # Hybrid: rules + simulation at judgment points (BIQ_BID_SIM=0
+            # for rules only).
+            bid = decide_bid(state, e, sys_, hand=self.board.hands[self.my_seat])
+            if "Simulation:" in (bid.explanation or ""):
+                self.log(f"  {bid.explanation}")
         except Exception as ex:
             self.log(f"bidder error: {ex}; defaulting to pass")
             bid = Bid.make_pass()
@@ -815,7 +864,7 @@ class BiqClient:
             return seat.is_ns() == self.my_seat.is_ns()
         return seat == self.my_seat
 
-    def _ensure_forced_contract(self) -> None:
+    def _ensure_forced_contract(self, leader: Optional[Seat] = None) -> None:
         """Recover the contract from the forced PBN when Q-Plus runs cardplay-
         only and never sent it via bidding. Idempotent. Called from both
         begin_play AND the first card — Q-Plus does not always send begin_play
@@ -825,6 +874,7 @@ class BiqClient:
             return
         c = self._forced.get(self._cur_deal_sig)
         if c is None:
+            self._recover_contract(leader)
             return
         self.contract = c
         self.declarer = c.declarer
@@ -833,6 +883,31 @@ class BiqClient:
         self.log(f"FORCED CONTRACT (no bidding): {c.level}"
                  f"{c.suit.to_char()} by {c.declarer.name} "
                  f"(opening lead from {self.trick_leader.name})")
+
+    def _recover_contract(self, leader: Optional[Seat]) -> None:
+        """Play started but our auction never completed (calls lost when
+        Q-Plus re-dealt a board mid-auction). Assume the missing calls were
+        passes, and trust the opening leader's seat for the declarer."""
+        if not self.auction or self._auction_complete():
+            return
+        padded = list(self.auction)
+        while True:
+            self.auction.append(parse_bid_token("p"))
+            if self._auction_complete():
+                break
+        c = self._derive_contract()
+        if c is None:
+            self.auction = padded
+            return
+        if leader is not None:
+            c.declarer = Seat((leader.value + 3) % 4)
+        self.contract = c
+        self.declarer = c.declarer
+        self.board.contract = c
+        self.board.auction = list(self.auction)
+        self.trick_leader = Seat((c.declarer.value + 1) % 4)
+        self.log(f"RECOVERED CONTRACT (auction lost messages): {c.level}"
+                 f"{c.suit.to_char()} by {c.declarer.name}")
 
     def _on_begin_play(self, args: List[str]) -> None:
         # Cardplay-only game (forced-contract PBN): there was no bidding, so
@@ -855,8 +930,19 @@ class BiqClient:
             return
         # Cardplay-only deals can start (opening lead) with NO begin_play, so
         # recover the contract here too before we touch trick_leader.
-        self._ensure_forced_contract()
         seat = _SEAT_FROM_NAME[args[0]]
+        self._ensure_forced_contract(
+            seat if not self.current_trick and not self.completed_tricks
+            else None)
+        if (self.contract is not None and not self.current_trick
+                and not self.completed_tricks and seat != self.trick_leader):
+            # Q-Plus decides who leads; a wrong leader means our auction
+            # drifted from Q-Plus's. Follow Q-Plus.
+            self.contract.declarer = Seat((seat.value + 3) % 4)
+            self.declarer = self.contract.declarer
+            self.trick_leader = seat
+            self.log(f"opening lead came from {seat.name}: declarer is "
+                     f"{self.declarer.name}")
         card = parse_card_token(args[1])
         try:
             self.board.hands[seat].cards.remove(card)
@@ -924,7 +1010,7 @@ class BiqClient:
         except OSError as e:
             self.log(f"dummy IPC write failed: {e}")
 
-    def _read_dummy_ipc(self, timeout: float = 30.0) -> Optional[Card]:
+    def _read_dummy_ipc(self, timeout: float = 60.0) -> Optional[Card]:
         p = self._ipc_path()
         deadline = time.time() + timeout
         while time.time() < deadline:
@@ -1022,7 +1108,9 @@ class BiqClient:
         import select
         os.close(w)
         data = b""
-        deadline = time.time() + getattr(self, "card_timeout", 30.0)
+        # 60 s: the card search takes up to 12 s and a simulated opening
+        # lead several more; a timeout here plays the fallback card.
+        deadline = time.time() + getattr(self, "card_timeout", 60.0)
         try:
             while time.time() < deadline:
                 rl, _, _ = select.select([r], [], [], deadline - time.time())
@@ -1122,6 +1210,9 @@ class BiqClient:
         if not self.nopeek or self.contract is None \
                 or len(self.completed_tricks) < 1:
             return
+        from backend import signals as _sig
+        if not _sig.is_enabled():
+            return          # signalling OFF: partner doesn't signal — nothing to grade
         if self.my_seat.is_ns() == self.contract.declarer.is_ns():
             return                                    # biq declared — nothing to read
         try:
@@ -1217,7 +1308,14 @@ def main(argv=None) -> int:
         system_file=args.system_file, auto_system=args.auto_system,
         random_system=args.random_system, pair_mode=args.pair,
         nopeek=args.nopeek, pbn=args.pbn)
-    client.run()
+    def _on_term(signum, _frame):
+        raise SystemExit(128 + signum)
+    signal.signal(signal.SIGTERM, _on_term)
+    signal.signal(signal.SIGINT, _on_term)
+    try:
+        client.run()
+    finally:
+        client.leave()                 # free our seat on ANY exit path
     return 0
 
 

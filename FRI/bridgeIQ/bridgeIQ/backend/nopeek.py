@@ -142,6 +142,13 @@ def _opening_lead(board: BoardState, seat: Seat,
             auction=board.auction, dealer=board.dealer, leader=seat,
             vulnerability=board.vulnerability)
         if d is not None and d.card is not None:
+            # Simulation checks the table lead against layouts consistent
+            # with the auction and replaces it when another lead is better.
+            from . import lead_sim
+            sim = lead_sim.choose_opening_lead(board, seat, d.card)
+            if sim is not None:
+                _why(explain, "Opening lead", sim[1])
+                return sim[0]
             # native_lead records the ACTUAL reasons: why this suit, why this
             # card within it. Surface both verbatim.
             reason = " ".join(r for r in (getattr(d, "suit_choice_reason", ""),
@@ -516,9 +523,17 @@ def _discard(board: BoardState, seat: Seat, legal: List[Card],
 # ------------------------------------------------------------------- entry
 
 import os
-_AMU_WORLDS = int(os.environ.get("BIQ_AMU_WORLDS", "6"))   # sampled layouts/decision
+# 10 layouts / 12 s: measured 2026-09-26 (nopeek_eval with auction, 2 seeds x
+# 40 deals): 106 tricks lost vs DD, against 121 with 6 / 5 s — the user asked
+# for strength over speed.
+# 40 layouts (2026-10-10, qplus_agreement card benchmark, 4000 Q-Plus cards):
+# defence after the opening lead gave up 56 DD tricks vs 78 / 74 with 10 (two
+# runs; noise ~6), Q-Plus 45; 3rd/4th seat 14 vs 28 / 24. At the live 12 s
+# budget a defensive card took 2.6 s mean, 7 s p90, budget hit on 2 of 150.
+# Declarer uses the Monte-Carlo branch (_DECL_PIMC), so this is defence only.
+_AMU_WORLDS = int(os.environ.get("BIQ_AMU_WORLDS", "40"))  # sampled layouts/decision
 _AMU_DEPTH = int(os.environ.get("BIQ_AMU_DEPTH", "2"))     # alpha-mu depth in tricks
-_AMU_BUDGET = float(os.environ.get("BIQ_AMU_BUDGET", "5")) # per-decision seconds
+_AMU_BUDGET = float(os.environ.get("BIQ_AMU_BUDGET", "12"))  # per-decision seconds
 _AMU_DEFENSE = os.environ.get("BIQ_AMU_DEFENSE", "1") == "1"  # defence alpha-mu
 _DEF_ROLLOUT = os.environ.get("BIQ_DEF_ROLLOUT", "0") == "1"  # defence rollout
 # (realistic no-peek partner) INSTEAD of alpha-mu defence's perfect-DD partner
@@ -533,6 +548,21 @@ _SIGNAL_MARGIN = float(os.environ.get("BIQ_SIGNAL_MARGIN", "0.15"))  # trick
 # the convention card among cards it rates within 0.15 tr of best (alpha-mu's
 # near-ties are noise; the signal heuristic is a better arbiter). A/B 3 seeds:
 # trick-neutral-to-positive vs margin 0 (0.786 vs 0.797). 0 = exact ties only.
+_SIGNAL_SAFE = os.environ.get("BIQ_SIGNAL_SAFE", "1") == "1"
+_SECOND_LOW = float(os.environ.get("BIQ_SECOND_LOW", "0.8"))  # NT defence: a
+# lone A/K in 2nd seat over a led spot must beat a duck by this many tricks
+# (0 = off). Q-Plus's way in 3NT (probes 2026-10-05/07: it ducks a lone A/K,
+# rises with A-K); +0.037 tr on those positions. NOTRUMP ONLY: on 695 random
+# SAYC deals played no-peek in all four seats it lost in suit contracts
+# (96 diverged, -0.22 tr) and was level in NT (40, -0.03 tr SE 0.14, -26 IMP).
+# Q-Plus's suit-contract habit is unprobed (BACKLOG).
+_DECL_PIMC = int(os.environ.get("BIQ_DECL_PIMC", "60"))  # declarer: plain
+# Monte-Carlo (DD average over this many sampled layouts) instead of alpha-mu;
+# 0 = alpha-mu. 3NT probe decl1 (96 deals vs scripted Q-Plus defence): 987
+# tricks / 89 made vs alpha-mu 945 / 83 (Q-Plus 1005 / 93, DD 978); alpha-mu
+# size/depth/tie-break variants were all 939-952. 298 random SAYC deals, biq
+# no-peek in all four seats, paired: +0.218 tr/deal (SE 0.056), +185 IMP,
+# NT +0.27 (SE 0.12), suit +0.19 (SE 0.06). About 8x faster than alpha-mu.
 _DDS = None
 
 
@@ -542,6 +572,43 @@ def _get_dds():
         from .dds import DDSolver
         _DDS = DDSolver()
     return _DDS
+
+
+def _natural_declarer_card(tied: List[Card], b: BoardState, seat: Seat,
+                           trick: List[Card],
+                           trump: Optional[Suit]) -> Optional[Card]:
+    """Human-natural choice among cards the search rates exactly equal.
+    Following suit: win as cheaply as possible, else play the lowest.
+    Discarding: the lowest spot, never an honour when a spot will do.
+    Leading: a master card from the top (cash winners top-down), else the
+    lowest card of the suit the search liked."""
+    if not tied:
+        return None
+    # Rank.value: ACE=0 .. TWO=12, so a HIGHER value is a LOWER card.
+    if trick:
+        lead = trick[0].suit
+        follow = [c for c in tied if c.suit == lead]
+        if follow:
+            wi = _winning_index(trick, trump)
+            leader = Seat((seat.value - len(trick)) % 4)
+            ours = Seat((leader.value + wi) % 4).is_ns() == seat.is_ns()
+            winners = [c for c in follow if _beats(c, trick[wi], lead, trump)]
+            pool = winners if (winners and not ours) else follow
+            return max(pool, key=lambda c: c.rank.value)
+        ruffs = [c for c in tied if trump is not None and c.suit == trump]
+        if ruffs and len(ruffs) == len(tied):
+            return max(ruffs, key=lambda c: c.rank.value)
+        non_trump = [c for c in tied if c.suit != trump] or tied
+        return max(non_trump, key=lambda c: c.rank.value)
+    # Leading. (Only declarer's and dummy's hands are visible here.)
+    gone = {(c.suit, c.rank) for t in b.tricks for c in t.cards}
+    gone |= {(x.suit, x.rank) for h in b.hands.values() for x in h.cards}
+    for c in sorted(tied, key=lambda c: c.rank.value):
+        if all((c.suit, r) in gone for r in Rank if r.value < c.rank.value):
+            return c                                  # a master: cash it
+    first_suit = tied[0].suit
+    same = [c for c in tied if c.suit == first_suit]
+    return max(same, key=lambda c: c.rank.value)
 
 
 def _alphamu_card(b: BoardState, seat: Seat, trick: List[Card],
@@ -568,6 +635,34 @@ def _alphamu_card(b: BoardState, seat: Seat, trick: List[Card],
         known_seats, biq_seats = {seat, dummy}, {seat}
     else:
         known_seats, biq_seats = {declarer, dummy}, {declarer, dummy}
+        if _DECL_PIMC > 0:
+            # Plain Monte-Carlo declarer: DD-score every legal card in K
+            # sampled layouts, play the best average (natural tie-break).
+            samples, hidden = declarer_search._sample_defenders(
+                b, seat, trick, declarer, _DECL_PIMC, known_seats=known_seats)
+            if samples:
+                pbns = []
+                for a in samples:
+                    w = {s: (frozenset(a[s]) if s in hidden else
+                             frozenset(c.code52() for c in b.hands[s].cards))
+                         for s in (Seat.NORTH, Seat.EAST, Seat.SOUTH, Seat.WEST)}
+                    pbns.append(alphamu._pbn(w))
+                leader = Seat((seat.value - len(trick)) % 4)
+                res = _get_dds().solve(alphamu._strain_i(trump), leader.value,
+                                       [c.code52() for c in trick], pbns,
+                                       solutions=3)
+                if res:
+                    n = min(len(v) for v in res.values())
+                    if n > 0:
+                        avg = {c: sum(v[:n]) / n for c, v in res.items()}
+                        best = max(avg.values())
+                        tied = [Card.from_code52(c) for c, m in avg.items()
+                                if m >= best - 1e-9]
+                        pick = _natural_declarer_card(tied, b, seat, trick, trump) \
+                            if len(tied) > 1 else tied[0]
+                        _why(explain, "Monte-Carlo search",
+                             f"Double-dummy average over {len(pbns)} sampled layouts.")
+                        return pick
     from . import signal_trust, signals as _signals
     signalling = _signals.is_enabled()
     if defending and _READ_SIGNALS and signalling and signal_trust.reading_active():
@@ -606,7 +701,10 @@ def _alphamu_card(b: BoardState, seat: Seat, trick: List[Card],
                           time_budget=_AMU_BUDGET, biq_seats=biq_seats,
                           defense_rollout_leaf=(defending and _DEF_ROLLOUT_LEAF),
                           vul=b.vulnerability,
-                          signal_margin=_SIGNAL_MARGIN if signalling else 0.0)
+                          signal_margin=(_SIGNAL_MARGIN if signalling
+                                         and defending else 0.0),
+                          second_low_margin=(_SECOND_LOW if defending
+                                             and trump is None else 0.0))
     # When DEFENDING, break trick-equivalent ties by the standard signal so the
     # carding reads like a real defender (zero trick cost — these tie for best).
     # Signalling OFF: no tie-break and no margin — alpha-mu's best card stands.
@@ -615,6 +713,12 @@ def _alphamu_card(b: BoardState, seat: Seat, trick: List[Card],
         from . import signals
         tb = lambda tied: signals.choose_signal_card(
             tied, b, seat, trick, declarer, trump)
+    elif not defending:
+        # Declaring: among EXACTLY tied cards play the natural one. Without
+        # this the search's first-listed card won ties, so dummy discarded
+        # the heart ACE on a spade (RUN2-004 trick 2): double-dummy neutral,
+        # absurd to a human watching.
+        tb = lambda tied: _natural_declarer_card(tied, b, seat, trick, trump)
     chosen = amu.choose(b, seat, trick, worlds, tiebreak=tb)
     if chosen is not None:
         side = "defence" if defending else "declarer play"
@@ -697,8 +801,13 @@ def decide(board: BoardState, seat: Seat,
         # Bypass alpha-mu for this card only. Skipped when signalling is OFF
         # (preference): alpha-mu then picks the card on trick value alone.
         from . import signals as _sigsw
+        # With BIQ_SIGNAL_SAFE the shortcut is only for small spots (8 and
+        # below): a nine, ten or honour can still take or protect a trick,
+        # so those holdings go to the search (ties still broken by signal).
+        spots_only = (not _SIGNAL_SAFE
+                      or all(c.rank.value >= 6 for c in legal))   # 8..2
         if (defending and _sigsw.is_enabled() and lead_suit is not None
-                and legal and legal[0].suit == lead_suit):
+                and legal and legal[0].suit == lead_suit and spots_only):
             wi = _winning_index(trick, trump)
             if not any(_beats(c, trick[wi], lead_suit, trump) for c in legal):
                 from . import signals as _sig

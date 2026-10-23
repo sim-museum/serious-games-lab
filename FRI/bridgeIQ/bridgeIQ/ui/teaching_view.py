@@ -103,6 +103,7 @@ class CardingConfig:
     discards: str = "attitude"   # attitude (about the suit thrown) | lavinthal (suit-pref)
     trump_echo: str = "standard" # standard (hi-lo in trumps = odd / 3) | off
     smith: str = "off"           # off | standard (hi = liked the lead) | reverse (NT only)
+    signals: bool = True         # False = the pair gives no signals (cards say nothing)
 
 
 # Named presets surfaced in the view's per-pair carding selectors.
@@ -112,6 +113,49 @@ CARDING_PRESETS = {
     "Std + Lavinthal":   CardingConfig("standard", "standard", "lavinthal"),
     "UDCA + Lavinthal":  CardingConfig("udca",     "reverse",  "lavinthal"),
 }
+
+
+# The preset that follows what biq's own defenders actually play
+# (backend.signals): polarity from Preferences → signalling convention,
+# Lavinthal discards, plain count in trumps (no trump echo), no Smith echo, and
+# no signals at all when "Play defensive signals" is off. It is the default for
+# both pairs, because biq expects its human partner to card the same way.
+AS_BIQ_PLAYS = "As biq plays"
+
+
+def _app_signalling_enabled() -> bool:
+    try:
+        from backend.config import get_config_manager
+        return bool(getattr(get_config_manager().config.preferences,
+                            "signalling_enabled", True))
+    except Exception:
+        return _signals.is_enabled() if _signals is not None else True
+
+
+def biq_carding() -> CardingConfig:
+    """The carding agreement biq's defenders play, as a CardingConfig."""
+    udca = _app_default_udca()
+    return CardingConfig(attitude="udca" if udca else "standard",
+                         count="reverse" if udca else "standard",
+                         discards="lavinthal", trump_echo="off", smith="off",
+                         signals=_app_signalling_enabled())
+
+
+def carding_preset(name: str) -> CardingConfig:
+    """Resolve a carding selector name (AS_BIQ_PLAYS or a CARDING_PRESETS key)."""
+    if name in CARDING_PRESETS:
+        return CARDING_PRESETS[name]
+    return biq_carding()
+
+
+def _pref_value(name: str) -> str:
+    """Preferences store "" for AS_BIQ_PLAYS (the Preferences dialog's
+    first choice), so the two selectors stay one setting."""
+    return "" if name == AS_BIQ_PLAYS else name
+
+
+def carding_names() -> List[str]:
+    return [AS_BIQ_PLAYS] + list(CARDING_PRESETS)
 
 
 def _app_default_udca() -> bool:
@@ -153,9 +197,9 @@ def _default_preset_name(side: str = "ns") -> str:
     if p is not None:
         v = (getattr(p, "carding_ns", "") if side == "ns"
              else getattr(p, "carding_ew", "")) or ""
-        if v in CARDING_PRESETS:
+        if v in CARDING_PRESETS or v == AS_BIQ_PLAYS:
             return v
-    return "Upside-down" if _app_default_udca() else "Standard"
+    return AS_BIQ_PLAYS
 
 
 def _default_smith() -> str:
@@ -568,8 +612,130 @@ def squeeze_threats(board, declarer, dummy, visible, layout, trump=None):
 _HCP_VAL = {Rank.ACE: 4, Rank.KING: 3, Rank.QUEEN: 2, Rank.JACK: 1}
 
 
+def signal_likelihood(board, declarer, trump, carding_for, hidden):
+    """Weight function for a sampled world from the defenders' SIGNALS, read
+    under each signaller's own carding agreement (`carding_for`).
+
+    For each hidden defender, every free follow signal (signal_read.read) and
+    every Lavinthal discard on a completed trick is replayed against the
+    sampled hand: the hand the defender held at that trick is the sample's
+    cards plus what it played from then on. A world whose holding would have
+    produced the card actually played (same high/low choice under the
+    convention) keeps weight 1; one that would not gets SIGNAL_MISS_WEIGHT,
+    since partners sometimes false-card or misjudge. A holding with no free
+    choice says nothing. Returns None when there is nothing to read, else
+    f(hand: {seat: [Card]}) -> weight."""
+    if declarer is None or _signal_read is None or _signals is None:
+        return None
+    if carding_for is None:
+        carding_for = lambda s: _default_carding()
+    defenders = [s for s in hidden if s.is_ns() != declarer.is_ns()]
+    tricks = getattr(board, "tricks", None) or []
+    checks = []          # (seat, kind, payload)
+    for d in defenders:
+        cfg = carding_for(d)
+        if not cfg.signals:
+            continue
+        smith_used = set()
+        if cfg.smith != "off":
+            try:
+                _, smith_used = smith_reads(board, declarer, trump,
+                                            carding_for, set())
+            except Exception:
+                smith_used = set()
+        try:
+            recs = _signal_read.read(board, d.partner(), declarer, trump)
+        except Exception:
+            recs = []
+        for rec in recs:
+            if (rec["trick"], rec["card52"]) in smith_used:
+                continue
+            is_trump = trump is not None and rec["suit"] == int(trump)
+            if (is_trump and cfg.trump_echo != "off"
+                    and not rec["attitude"]):
+                continue     # a trump echo reads odd-high: not the emitter's rule
+            checks.append((d, "follow", (rec, cfg)))
+        # Lavinthal discards (trump contracts: two candidate suits).
+        if cfg.discards == "lavinthal" and trump is not None:
+            for j, t in enumerate(tricks):
+                cards = getattr(t, "cards", None) or []
+                if len(cards) < 4 or t.leader is None:
+                    continue
+                p = (int(d) - int(t.leader)) % 4
+                c = cards[p]
+                if c.suit == cards[0].suit or c.suit == trump:
+                    continue
+                cands = [x for x in SUIT_ROWS if x != c.suit and x != trump]
+                if len(cands) != 2:
+                    continue
+                live = _live_ranks_of_suit(board, c.suit, j, cards[:p])
+                checks.append((d, "lavinthal",
+                               (j, cands, _is_high(c, live))))
+    if not checks:
+        return None
+
+    played_from = {}     # (seat, trick) -> c52 ids the seat played from then on
+    for d in defenders:
+        for j in range(len(tricks)):
+            ids = set()
+            for t in tricks[j:]:
+                cards = getattr(t, "cards", None) or []
+                if t.leader is None or len(cards) < 4:
+                    continue
+                ids.add(_cid(cards[(int(d) - int(t.leader)) % 4]))
+            ct = getattr(board, "current_trick", None)
+            if ct is not None and ct.leader is not None and ct.cards:
+                p = (int(d) - int(ct.leader)) % 4
+                if p < len(ct.cards):
+                    ids.add(_cid(ct.cards[p]))
+            played_from[(d, j)] = ids
+
+    def weight(hand):
+        w = 1.0
+        for seat, kind, pay in checks:
+            held = {_cid(x) for x in hand.get(seat, [])}
+            if kind == "follow":
+                rec, cfg = pay
+                at = held | played_from.get((seat, rec["trick"]), set())
+                prev = _signals.is_udca()
+                try:
+                    _signals.set_convention(cfg.attitude == "udca")
+                    exp = _signal_read._convention_card(rec, at)
+                finally:
+                    _signals.set_convention(prev)
+                if exp is None or exp == rec["card52"]:
+                    continue
+                suit = rec["suit"]
+                in_suit = [x for x in at if x // 13 == suit]
+                spots = ([x for x in in_suit if x % 13 > _HONOUR_VAL + 1]
+                         or in_suit)                 # as signal_read does
+                low = max(spots, key=lambda x: x % 13) if spots else None
+                # Same direction (both "high" = not the lowest spot) agrees.
+                if exp != low and rec["card52"] != low:
+                    continue
+                w *= SIGNAL_MISS_WEIGHT
+            else:
+                j, cands, high = pay
+                at = held | played_from.get((seat, j), set())
+                def likes(su):
+                    cs = [Card(su, Rank(x % 13)) for x in at
+                          if x // 13 == int(su)]
+                    return _signals._like_suit(cs, trump)
+                hi_like, lo_like = likes(cands[0]), likes(cands[1])
+                emit_high = hi_like and not lo_like
+                if emit_high != high:
+                    w *= SIGNAL_MISS_WEIGHT
+        return w
+    return weight
+
+
+# Weight of a sampled world that contradicts one signal (false-card / misjudged).
+SIGNAL_MISS_WEIGHT = 0.2
+
+
 def bayes_distribution(board, visible, layout, constraints,
-                       samples=120, max_attempts=4000, rng=None):
+                       samples=120, max_attempts=4000, rng=None,
+                       signal_weight=None):
     """Monte-Carlo posterior over the hidden hands — a real card-by-card
     distribution, not just vacant-space counting.
 
@@ -583,7 +749,9 @@ def bayes_distribution(board, visible, layout, constraints,
     Returns {"samples": k, "length": {seat:{suit:{len:p}}},
              "honour": {(suit,rank):{seat:p}}} or None when too few valid worlds
     were found (the caller then falls back to the vacant-space estimate).
-    `rng` may be a seeded random.Random for reproducible tests."""
+    `rng` may be a seeded random.Random for reproducible tests.
+    `signal_weight` (from signal_likelihood) weights each world by how well
+    it explains the defenders' signals under their carding agreement."""
     from collections import Counter
     rng = rng or random.Random()
     hidden = [s for s in Seat if s not in visible]
@@ -624,6 +792,7 @@ def bayes_distribution(board, visible, layout, constraints,
     length_acc = {s: {su: Counter() for su in SUIT_ROWS} for s in hidden}
     honour_acc = {(c.suit, c.rank): Counter() for c in unseen_honours}
     valid = attempts = 0
+    total_w = 0.0
     while valid < samples and attempts < max_attempts:
         attempts += 1
         hand = {s: list(fixed[s]) for s in hidden}
@@ -664,21 +833,24 @@ def bayes_distribution(board, visible, layout, constraints,
         if not good:
             continue
         valid += 1
+        w = signal_weight(hand) if signal_weight is not None else 1.0
+        total_w += w
         for s in hidden:
             for su in SUIT_ROWS:
-                length_acc[s][su][per_suit[s][su]] += 1
+                length_acc[s][su][per_suit[s][su]] += w
             ids = {_cid(x) for x in hand[s]}
             for hc in unseen_honours:
                 if _cid(hc) in ids:
-                    honour_acc[(hc.suit, hc.rank)][s] += 1
-    if valid < max(8, samples // 5):
+                    honour_acc[(hc.suit, hc.rank)][s] += w
+    if valid < max(8, samples // 5) or total_w <= 0:
         return None
-    length = {s: {su: {ln: round(c / valid, 3)
+    length = {s: {su: {ln: round(c / total_w, 3)
                        for ln, c in length_acc[s][su].items()}
                   for su in SUIT_ROWS} for s in hidden}
-    honour = {k: {s: round(c / valid, 3) for s, c in v.items()}
+    honour = {k: {s: round(c / total_w, 3) for s, c in v.items()}
               for k, v in honour_acc.items() if v}
-    return {"samples": valid, "length": length, "honour": honour}
+    return {"samples": valid, "length": length, "honour": honour,
+            "signals": signal_weight is not None}
 
 
 def honour_placement(board: BoardState, visible: Set[Seat], layout,
@@ -893,6 +1065,9 @@ def signal_reads(board, declarer: Optional[Seat], trump: Optional[Suit],
                                         defenders, carding_for, visible))
     # Suit-preference on ruff-giving leads (trump contracts).
     out.extend(ruff_lead_reads(board, declarer, trump, carding_for, visible))
+    # A pair that gives no signals (biq with "Play defensive signals" off):
+    # its spot cards say nothing, so nothing is read from them.
+    out = [r for r in out if carding_for(r["seat"]).signals]
     out.sort(key=lambda r: r["trick"])
     return out
 
@@ -1203,6 +1378,8 @@ def current_trick_reads(board, declarer: Optional[Seat], trump: Optional[Suit],
             continue                            # declaring side — no signal
         c = cards[p]
         cfg = carding_for(seat)
+        if not cfg.signals:
+            continue                            # this pair gives no signals
         if c.suit == led:
             if c.rank.value <= _HONOUR_VAL:
                 continue                        # honour follow — not a spot signal
@@ -1482,7 +1659,7 @@ class TeachingView(QWidget):
 
         # Header: title + detail selector + systems.
         header = QHBoxLayout()
-        h = QLabel("Instrumented view")
+        h = QLabel("Analysis view")
         h.setStyleSheet("color:#d9b25b; font-weight:bold; font-size:14px;")
         header.addWidget(h)
         header.addSpacing(12)
@@ -1498,13 +1675,13 @@ class TeachingView(QWidget):
         header.addSpacing(12)
         header.addWidget(self._mk_label("Carding N/S:"))
         self.ns_carding_combo = QComboBox()
-        self.ns_carding_combo.addItems(list(CARDING_PRESETS.keys()))
+        self.ns_carding_combo.addItems(carding_names())
         self.ns_carding_combo.setCurrentText(_default_preset_name("ns"))
         self.ns_carding_combo.currentTextChanged.connect(self._on_carding_changed)
         header.addWidget(self.ns_carding_combo)
         header.addWidget(self._mk_label("E/W:"))
         self.ew_carding_combo = QComboBox()
-        self.ew_carding_combo.addItems(list(CARDING_PRESETS.keys()))
+        self.ew_carding_combo.addItems(carding_names())
         self.ew_carding_combo.setCurrentText(_default_preset_name("ew"))
         self.ew_carding_combo.currentTextChanged.connect(self._on_carding_changed)
         header.addWidget(self.ew_carding_combo)
@@ -1622,8 +1799,8 @@ class TeachingView(QWidget):
             return
         try:
             from backend.config import get_config_manager
-            p.carding_ns = self.ns_carding_combo.currentText()
-            p.carding_ew = self.ew_carding_combo.currentText()
+            p.carding_ns = _pref_value(self.ns_carding_combo.currentText())
+            p.carding_ew = _pref_value(self.ew_carding_combo.currentText())
             p.smith_echo = self.smith_combo.currentText()
             get_config_manager().save_preferences()
         except Exception:
@@ -1650,7 +1827,7 @@ class TeachingView(QWidget):
         setting overlaid (a defending-side agreement shared by the controls)."""
         name = (self.ns_carding_combo.currentText() if seat.is_ns()
                 else self.ew_carding_combo.currentText())
-        base = CARDING_PRESETS.get(name, _default_carding())
+        base = carding_preset(name)
         smith = {"Off": "off", "Standard": "standard",
                  "Reverse": "reverse"}.get(self.smith_combo.currentText(), "off")
         return replace(base, smith=smith)
@@ -1714,8 +1891,11 @@ class TeachingView(QWidget):
         self._posterior = None
         if self.detail == EXPERT and not all(s in visible for s in Seat):
             try:
+                hidden = [s for s in Seat if s not in visible]
                 self._posterior = bayes_distribution(
-                    board, visible, layout, constraints)
+                    board, visible, layout, constraints,
+                    signal_weight=signal_likelihood(
+                        board, declarer, trump, self._carding_for, hidden))
             except Exception:
                 self._posterior = None
 
@@ -2610,11 +2790,78 @@ def _review_carding_for():
     """carding_for callback using the configured Preferences → Carding defaults."""
     def f(seat: Seat) -> CardingConfig:
         name = _default_preset_name("ns" if seat.is_ns() else "ew")
-        base = CARDING_PRESETS.get(name, _default_carding())
+        base = carding_preset(name)
         smith = {"Off": "off", "Standard": "standard",
                  "Reverse": "reverse"}.get(_default_smith(), "off")
         return replace(base, smith=smith)
     return f
+
+
+def carding_text(cfg: CardingConfig, as_biq: bool = False) -> str:
+    """Plain-English statement of one pair's carding agreement. `as_biq` adds
+    the selective first-round rules biq's own defenders follow."""
+    if not cfg.signals:
+        return ("gives NO defensive signals: when it cannot win it plays its "
+                "lowest card, so spot cards carry no message.")
+    parts = [
+        "attitude: " + ("a high spot encourages, a low spot discourages"
+                        if cfg.attitude == "standard" else
+                        "upside-down (a LOW spot encourages, a high spot "
+                        "discourages)"),
+        "count: " + ("high-low shows an even number, low-high an odd number"
+                     if cfg.count == "standard" else
+                     "upside-down (low-high shows an even number, high-low "
+                     "an odd number)"),
+        "discards: " + ("attitude about the suit thrown"
+                        if cfg.discards == "attitude" else
+                        "Lavinthal suit-preference (in a suit contract a "
+                        "high spot asks for the higher-ranking of the other "
+                        "two side suits, a low spot for the lower one or "
+                        "shows no preference; at notrump the same, between "
+                        "the two highest-ranking other suits)"),
+        "trumps: " + ("trump echo (high-low in trumps shows three)"
+                      if cfg.trump_echo != "off" else
+                      "ordinary count, no trump echo"),
+        "Smith echo: " + {"off": "not played",
+                          "standard": "on (high on declarer's first suit "
+                                      "in NT = liked the opening lead)",
+                          "reverse": "reverse (low = liked the opening "
+                                     "lead)"}.get(cfg.smith, "not played"),
+    ]
+    out = "; ".join(parts) + "."
+    if as_biq:
+        out += (" biq signals selectively and on the FIRST round of a suit "
+                "only: attitude when partner leads, encouraging only with "
+                "the honour that matters (after the ace, the king; after "
+                "the king, the ace or queen, or the jack from J-x / J-x-x; "
+                "after a spot lead, the A, K or Q); count when declarer "
+                "leads, and only while the suit's ace or king is out of "
+                "sight (not in dummy, not yet played); a high count card "
+                "keeps the 9 back (9-7 shows with the 7) except in fourth "
+                "seat. Otherwise it plays its lowest spot, which means no "
+                "signal. Honours played to a trick and cards that could win "
+                "the trick are not signals.")
+    return out
+
+
+def signalling_conventions_text() -> str:
+    """The defensive carding each pair uses (Preferences → Carding, the same
+    agreements the analysis view decodes with), for Claude prompts."""
+    smith = {"Off": "off", "Standard": "standard",
+             "Reverse": "reverse"}.get(_default_smith(), "off")
+    names = {side: _default_preset_name(side) for side in ("ns", "ew")}
+    sides = ([("ns", "Both pairs")] if names["ns"] == names["ew"]
+             else [("ns", "N/S"), ("ew", "E/W")])
+    lines = []
+    for side, label in sides:
+        name = names[side]
+        cfg = replace(carding_preset(name), smith=smith)
+        lines.append(f"  • {label} ({name}): "
+                     f"{carding_text(cfg, as_biq=(name == AS_BIQ_PLAYS))}")
+    return ("DEFENSIVE SIGNALLING CONVENTIONS (the carding agreements in use; "
+            "read every defender's spot card through its OWN pair's "
+            "agreement, and draw your inferences about the defenders' "
+            "unseen cards from them):\n" + "\n".join(lines))
 
 
 def instrumentation_summary(original_hands, played_board, contract,

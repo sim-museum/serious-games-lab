@@ -139,6 +139,14 @@ class ClosedRoomWorker(QThread):
 
         trump = contract.suit if contract.suit.value < 4 else None  # Not NT
 
+        use_nopeek = True
+        try:
+            from .config import get_config_manager
+            use_nopeek = getattr(get_config_manager().config.preferences,
+                                 'use_nopeek_play', True)
+        except Exception:
+            pass
+
         for trick_num in range(13):
             if self._stop_requested:
                 break
@@ -153,20 +161,24 @@ class ClosedRoomWorker(QThread):
                 # Get card play
                 trick_cards = trick.cards if trick.cards else []
 
-                if card_num == 0:
-                    # Opening lead or lead to trick
-                    if trick_num == 0:
+                # The same no-peek engine the open-room robots play with
+                # (get_card_play is only the lowest-card fallback).
+                card = None
+                if use_nopeek:
+                    try:
+                        from . import nopeek
+                        card = nopeek.decide(board, current_player,
+                                             list(trick_cards))
+                    except Exception:
+                        card = None
+                if card is None:
+                    if card_num == 0 and trick_num == 0:
                         response = self.engine.get_opening_lead(board)
                     else:
-                        response = self.engine.get_card_play(
+                        response = self.engine.get_mc_card_play(
                             board, current_player, trick_cards
                         )
-                else:
-                    response = self.engine.get_card_play(
-                        board, current_player, trick_cards
-                    )
-
-                card = response.action
+                    card = response.action
                 if card is None:
                     # Fallback: play first legal card
                     hand = board.hands.get(current_player)

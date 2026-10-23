@@ -77,19 +77,95 @@ def _suit_token_string(cards: List[Card]) -> str:
 
 def _partner_suits(auction: List[Bid], leader: Seat, dealer: Seat
                    ) -> List[Suit]:
-    """Suits partner naturally bid (excludes notrump and doubles)."""
-    return _bid_suits_by_seat(auction, dealer, leader.partner())
+    """Suits partner showed: natural bids, plus the two suits promised by an
+    Unusual 2NT or a Michaels cue-bid overcall of the opponents' opening.
+    (RUN2-062: partner's Unusual 2NT showed clubs, South led a spade from
+    Q984 against 3NT instead and the contract made; a club beat it.)"""
+    partner = leader.partner()
+    out = _bid_suits_by_seat(auction, dealer, partner)
+    order = [Suit.CLUBS, Suit.DIAMONDS, Suit.HEARTS, Suit.SPADES]
+    seat, opening = dealer, None
+    for b in auction:
+        if not b.is_pass and opening is None:
+            opening = (seat, b)
+        elif (seat == partner and opening is not None
+              and opening[0] not in (partner, leader)
+              and not b.is_pass and not b.is_double and not b.is_redouble
+              and opening[1].suit not in (None, Suit.NOTRUMP)
+              and opening[1].level == 1):
+            op_suit = opening[1].suit
+            shown: List[Suit] = []
+            if b.level == 2 and b.suit == Suit.NOTRUMP:      # Unusual 2NT
+                shown = [x for x in order if x != op_suit][:2]
+            elif b.level == 2 and b.suit == op_suit:         # Michaels
+                if op_suit in (Suit.CLUBS, Suit.DIAMONDS):
+                    shown = [Suit.HEARTS, Suit.SPADES]
+                else:
+                    shown = [Suit.SPADES if op_suit == Suit.HEARTS
+                             else Suit.HEARTS]
+                if op_suit in shown:
+                    shown = []
+            for x in shown:
+                if x not in out:
+                    out.append(x)
+            if op_suit in out and b.suit == op_suit:
+                out.remove(op_suit)                         # the cue isn't a suit
+            break
+        seat = seat.next()
+    return out
 
 
 def _opp_suits(auction: List[Bid], leader: Seat, dealer: Seat
                ) -> List[Suit]:
-    """Suits the opponents (declarer + dummy) bid."""
+    """Suits the opponents (declarer + dummy) bid NATURALLY.
+
+    Q-NET does not carry alerts, so artificial calls are inferred: a cue-bid
+    of a suit my side bid first; any suit bid after that side has already
+    bid notrump (Stayman, transfers, relays, fourth-suit probes); answers
+    after their own 4NT; and a strong 2C opening with its 2D waiting reply.
+    Treating those as real suits steered leads away from the right suit
+    (run 5: RANDOM-033 would not lead its own KT432 after the opponents
+    cue-bid clubs; RANDOM-018 avoided AT92 of spades after a relay 2S)."""
+    opps = (leader.next(), leader.next().next().next())
+    ours = (leader, leader.partner())
     out: List[Suit] = []
-    for opp in (leader.next(), leader.next().next().next()):
-        for s in _bid_suits_by_seat(auction, dealer, opp):
-            if s not in out:
-                out.append(s)
+    our_suits: List[Suit] = []
+    their_nt = False
+    their_4nt = False
+    seat = dealer
+    first_call = True
+    strong_2c = False
+    for b in auction:
+        natural = (not b.is_pass and not b.is_double and not b.is_redouble
+                   and b.suit is not None)
+        if natural and seat in ours and b.suit != Suit.NOTRUMP:
+            if b.suit not in our_suits:
+                our_suits.append(b.suit)
+        elif natural and seat in opps:
+            if b.suit == Suit.NOTRUMP:
+                their_nt = True
+                if b.level == 4:
+                    their_4nt = True
+            else:
+                artificial = (b.suit in our_suits or their_nt or their_4nt
+                              or (first_call and b.level == 2
+                                  and b.suit == Suit.CLUBS)
+                              or (strong_2c and b.level == 2
+                                  and b.suit == Suit.DIAMONDS))
+                if first_call and b.level == 2 and b.suit == Suit.CLUBS:
+                    strong_2c = True
+                if not artificial and b.suit not in out:
+                    out.append(b.suit)
+        if not b.is_pass:
+            first_call = False
+        seat = seat.next()
     return out
+
+
+def _declarer_suits(auction: List[Bid], dealer: Seat, declarer: Seat
+                    ) -> List[Suit]:
+    """Suits declarer itself bid (leading these is worse than dummy's)."""
+    return _bid_suits_by_seat(auction, dealer, declarer)
 
 
 def _bid_suits_by_seat(auction: List[Bid], dealer: Seat,
@@ -362,11 +438,24 @@ def select_opening_lead(hand: Hand, contract: Contract,
     opp_suits = _opp_suits(auction, leader, dealer)
     vul = vulnerability.is_vulnerable(leader)
 
+    decl_suits = [x for x in _declarer_suits(auction, dealer, contract.declarer)
+                  if x in opp_suits]
+    my_suits = _bid_suits_by_seat(auction, dealer, leader)
     candidates: List[_SuitScore] = []
     for suit in (Suit.SPADES, Suit.HEARTS, Suit.DIAMONDS, Suit.CLUBS):
         sc = _score_suit_for_lead(hand, suit, contract,
                                   partner_suits, opp_suits, vul)
         if sc is not None:
+            # Leading into DECLARER's own suit is worse than into dummy's
+            # (run 5 RANDOM-018: dQ from QJ7 into declarer's 1D opening).
+            if suit in decl_suits and suit not in partner_suits:
+                sc.score -= 12
+                sc.explanation += ", declarer's suit"
+            # Against NT my own bid suit is the natural attack.
+            if (contract.suit == Suit.NOTRUMP and suit in my_suits
+                    and suit not in opp_suits and len(_suit_cards(hand, suit)) >= 5):
+                sc.score += 10
+                sc.explanation += ", my suit"
             candidates.append(sc)
 
     if not candidates:

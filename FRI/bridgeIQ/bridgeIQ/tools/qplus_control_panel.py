@@ -52,9 +52,34 @@ SYSTEMS = ["SAYC", "TwoOverOne", "StandardAcol", "StandardFrench",
 # Calibrated screen positions. closed_room -> our own file; the lower-left
 # cycle button shares qplus_button_loop.py's file so the clicker reads it.
 SERVER_BTN_FILE = Path.home() / ".qplus_server_buttons.json"
+try:
+    from tools import qplus_geom as _geom          # run from BIQ_ROOT
+except ImportError:                                 # run from tools/
+    import qplus_geom as _geom
+_HINT_SINK = []      # the LiveMatchWidget registers itself here (see __init__)
+_geom.on_hint = lambda msg: [w._append("[panel] " + msg) or w.hint.setText(msg)
+                             for w in _HINT_SINK[:1]]
 CYCLE_BTN_FILE = Path.home() / ".qplus_button_loop.json"
 TRANSITION_FILE = Path.home() / ".qplus_transition.json"
 SYS_CAL_FILE = Path.home() / ".qplus_mixed_corpus.json"
+
+
+def _system_wine() -> str:
+    """System wine loader for the Q-Plus SERVER (q-net needs system wine, not
+    the TkG runner). Ubuntu's wine 10 makes /usr/bin/wine a wow64-only 64-bit
+    loader that refuses the 32-bit prefix; /usr/bin/wine32 runs it."""
+    return "/usr/bin/wine32" if Path("/usr/bin/wine32").exists() else "/usr/bin/wine"
+
+
+def _wineserver() -> str:
+    """wineserver for the system wine: Ubuntu's package keeps it off PATH."""
+    import shutil
+    for cand in (shutil.which("wineserver"),
+                 "/usr/lib/i386-linux-gnu/wine/wineserver",
+                 "/usr/lib/x86_64-linux-gnu/wine/wineserver"):
+        if cand and Path(cand).exists():
+            return cand
+    return "wineserver"
 PANEL_LOG = BIQ_ROOT / "tools/runs/panel.log"   # persisted panel actions
 AB_REF_FILE = BIQ_ROOT / "tools/runs/ab/ab_reference.json"  # Run-A deal id
 
@@ -167,14 +192,18 @@ def _xdotool(*args):
 
 
 def _mouse_xy():
+    """Mouse position in the CAPTURE frame (window-relative offset applied,
+    see tools/qplus_geom.py) — so captures stay valid if Q-Plus moves."""
     r = _xdotool("getmouselocation", "--shell")
     if not r or r.returncode != 0:
         return None
     env = dict(l.split("=", 1) for l in r.stdout.splitlines() if "=" in l)
-    return int(env["X"]), int(env["Y"])
+    return _geom.norm(int(env["X"]), int(env["Y"]))
 
 
 def _click_xy(x, y):
+    x, y = _geom.shift(x, y)          # capture frame -> current window place
+    _geom.activate_qplus()            # else the click only focuses the window
     _xdotool("mousemove", str(x), str(y))
     _xdotool("click", "1")
 
@@ -200,6 +229,8 @@ def _menu_pick(top, item, gap="0.3"):
     and `item` are (x, y); returns False if either is missing."""
     if not (top and item):
         return False
+    top, item = _geom.shift(*top), _geom.shift(*item)
+    _geom.activate_qplus()
     _xdotool("mousemove", str(top[0]), str(top[1]), "click", "1",
              "sleep", gap,
              "mousemove", str(item[0]), str(item[1]), "click", "1")
@@ -256,23 +287,90 @@ def _dismiss_qplus_splash(blind: bool = False) -> bool:
             nm = _xdotool("getwindowname", wid)
             name = (nm.stdout if nm else "") or ""
             if blind or "login" in name.lower():
-                _xdotool("windowactivate", wid)
+                # a freshly launched splash normally HAS focus (GNOME focuses
+                # new windows); if not, don't press Return into another app
+                if not _geom.qplus_has_focus():
+                    return False
                 _xdotool("key", "--clearmodifiers", "Return")
                 return True
     return False
 
 
-def _server_listening() -> bool:
-    """True if something holds a LISTEN socket on :5555. Uses `ss`, NOT
-    an actual connect — a real connect that the server doesn't accept
-    lingers in Q-Plus's accept backlog, and a 1.5s health poll would
-    slowly fill it and lock out the real client."""
-    try:
-        r = subprocess.run(["ss", "-tln"], capture_output=True,
-                           text=True, timeout=2)
-        return bool(re.search(rf":{SERVER_PORT}(?:\s|$)", r.stdout))
-    except (OSError, subprocess.SubprocessError):
+def _qplus_window_id():
+    """X window id of Q-Plus's main window (QBRIDGE.EXE under Xwayland), or
+    None. xdotool CAN find Wine windows by class/name here."""
+    for args in (("--class", "qbridge"), ("--name", "Q-plus Bridge")):
+        r = _xdotool("search", *args)
+        if r and r.returncode == 0 and (r.stdout or "").strip():
+            return (r.stdout or "").split()[0]
+    return None
+
+
+def _keys_to_qplus(*keys) -> bool:
+    """Send keystrokes to Q-PLUS ONLY: activate its window first, and send
+    nothing when it can't be found. Bare `xdotool key` goes to whatever has
+    focus — after the user clicks ▶ Start that is THIS panel, so a stray
+    Return re-pressed Start ('already running' over and over) and Escape
+    dismissed the panel's own widgets."""
+    wid = _geom.qplus_client_id() or _qplus_window_id()
+    if not wid:
         return False
+    # Keys go to the COMPOSITOR's focused window; xdotool can't move that
+    # focus, so only send when Q-Plus really has it (else a stray Return/
+    # Escape lands in the panel — the 'already running' loop of 2026-09-23).
+    if not _geom.wait_for_qplus_focus(3.0, "Click into Q-Plus (it needs "
+                                           "keyboard focus for this step)…"):
+        return False
+    for k in keys:
+        _xdotool("key", "--window", wid, "--clearmodifiers", k)
+    return True
+
+
+_ACTIVE_PORT = None       # the port Q-Plus's bridge server was last seen on
+
+
+def _detect_server_port():
+    """The port Q-Plus's bridge server is LISTENING on, or None. Prefers
+    SERVER_PORT (5555, the documented rig) but accepts any other LISTEN socket
+    owned by wineserver — this Q-Plus install auto-starts its server on 1100
+    at launch and the harness must follow it rather than wait for 5555 forever.
+    Uses `ss -tlnp`, NOT a connect (a real connect the server doesn't accept
+    lingers in its backlog and would slowly lock out the real client).
+    QPLUS_SERVER_PORT=<n> in the environment pins a port instead."""
+    global _ACTIVE_PORT
+    pinned = os.environ.get("QPLUS_SERVER_PORT")
+    try:
+        r = subprocess.run(["ss", "-tlnp"], capture_output=True,
+                           text=True, timeout=2)
+        out = r.stdout or ""
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if pinned:
+        found = bool(re.search(rf":{int(pinned)}(?:\s|$)", out, re.M))
+        if found:
+            _ACTIVE_PORT = int(pinned)
+        return int(pinned) if found else None
+    if re.search(rf":{SERVER_PORT}(?:\s|$)", out, re.M):
+        _ACTIVE_PORT = SERVER_PORT
+        return SERVER_PORT
+    for line in out.splitlines():
+        if "wineserver" in line or "QBRIDGE" in line or "Q-NET" in line:
+            m = re.search(r":(\d+)\s", line)
+            if m:
+                _ACTIVE_PORT = int(m.group(1))
+                return _ACTIVE_PORT
+    return None
+
+
+def _server_port() -> int:
+    """Port to hand the biq clients: the detected one, else the default."""
+    return _detect_server_port() or _ACTIVE_PORT or SERVER_PORT
+
+
+def _server_listening() -> bool:
+    """True if Q-Plus's bridge server holds a LISTEN socket (see
+    _detect_server_port for which port)."""
+    return _detect_server_port() is not None
 
 
 class Dot(QLabel):
@@ -442,11 +540,11 @@ class CalibrationManagerDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Calibration manager — all click captures")
-        self.resize(700, 780)
+        self.resize(980, 780)
         outer = QVBoxLayout(self)
         intro = QLabel(
             "Every click position the panel can use. Press Capture, then move "
-            "the mouse over that Q-Plus control before the 3-second countdown "
+            "the mouse over that Q-Plus control before the 5-second countdown "
             "ends. Q-Plus must be on-screen with the relevant menu/dialog open. "
             "Rows marked ‘extra’ were captured by an earlier version or a "
             "sibling tool.")
@@ -456,6 +554,10 @@ class CalibrationManagerDialog(QDialog):
         scroll.setWidgetResizable(True)
         inner = QWidget()
         g = QGridLayout(inner)
+        # Long labels wrap so the Capture button (column 2) stays on screen
+        # instead of scrolling off the right edge.
+        g.setColumnStretch(0, 1)
+        g.setColumnMinimumWidth(2, 120)
         self._labels = {}            # (file_str, key) -> value QLabel
         row = 0
         seen = set()
@@ -494,7 +596,9 @@ class CalibrationManagerDialog(QDialog):
         return "(not set)"
 
     def _add_row(self, g, row, path, key, label, val):
-        g.addWidget(QLabel(label), row, 0)
+        lab = QLabel(label)
+        lab.setWordWrap(True)
+        g.addWidget(lab, row, 0)
         vlab = QLabel(self._fmt(val))
         self._labels[(str(path), key)] = vlab
         g.addWidget(vlab, row, 1)
@@ -790,6 +894,7 @@ class LiveMatchWidget(QWidget):
         self.hint = QLabel("Configure (1), pick a Mode (2), press ▶ Start "
                            "or Step ▷ (3); Export when done (4). "
                            "Setup / Tools are in the menu bar.")
+        _HINT_SINK[:] = [self]
         self.hint.setWordWrap(True)
         self.hint.setStyleSheet("color:#555;")
         rvl.addWidget(self.hint)
@@ -1008,9 +1113,13 @@ class LiveMatchWidget(QWidget):
 
         cfg = QGroupBox("Unattended-run knobs")
         g = QGridLayout(cfg)
-        self.idle = QSpinBox(); self.idle.setRange(3, 60); self.idle.setValue(10)
+        # 45s, not 10: the no-peek engine can think ~5s/card and the biq+biq
+        # pair IPC adds more, so a 10s backstop clicked INTO live play (seen
+        # 2026-09-23, deal 17 — Q-Plus stopped scoring the closed room after).
+        self.idle = QSpinBox(); self.idle.setRange(3, 120); self.idle.setValue(45)
         self.idle.setToolTip("Idle backstop seconds before the autoclicker "
-                             "fires a fallback click.")
+                             "fires a fallback click. Keep ABOVE biq's worst "
+                             "per-card think time (no-peek: ~5s/card + pair IPC).")
         self.reset_every = QSpinBox(); self.reset_every.setRange(0, 64)
         self.reset_every.setValue(0)
         self.reset_every.setToolTip(
@@ -1808,7 +1917,7 @@ class LiveMatchWidget(QWidget):
                     "Exit Q-Plus / kill wine, or kill the process on 5555) "
                     "and try Launch again.")
                 return
-        env = dict(os.environ, WINE_BIN_SERVER="/usr/bin/wine")
+        env = dict(os.environ, WINE_BIN_SERVER=_system_wine())
         if _qplus_running():
             # already loading (e.g. stuck behind the splash) — don't spawn a
             # second instance; just resume the poll to clear it and Start.
@@ -1866,8 +1975,7 @@ class LiveMatchWidget(QWidget):
                 # the server never starts. Clear it first: Return = OK any
                 # dialog, Escape = cancel the bidding box. Sent to the focused
                 # window (xdotool can't find Wine windows to target).
-                _xdotool("key", "Return")
-                _xdotool("key", "Escape")
+                _keys_to_qplus("Return", "Escape")
                 time.sleep(0.3)
                 nm = _load_server_btn("network_menu")
                 nsi = _load_server_btn("net_start_item")
@@ -1876,7 +1984,7 @@ class LiveMatchWidget(QWidget):
                 # as one atomic chained action so the menu can't close in
                 # between. (Just retrying the dialog ‘Start’ click is useless
                 # if the dialog never opened.)
-                if _menu_pick(nm, nsi):
+                if _geom.menu_pick("network_start_server"):
                     self._append(f"[panel] Network {nm} → Start-server {nsi} "
                                  "(atomic)")
                     time.sleep(1.0)         # let the bridge-server dialog open
@@ -1924,7 +2032,7 @@ class LiveMatchWidget(QWidget):
         self.stop_all(silent=True)   # biq + clicker + pkill biq_qnet_client
         try:
             subprocess.run(["bash", "-c",
-                            f'WINEPREFIX="{WP_SERVER}" wineserver -k'],
+                            f'WINEPREFIX="{WP_SERVER}" {_wineserver()} -k'],
                            timeout=10)
         except (OSError, subprocess.SubprocessError):
             pass
@@ -2113,7 +2221,7 @@ class LiveMatchWidget(QWidget):
         if _server_listening():
             self._step_done(True, ":5555 already up — Q-Plus already launched")
             return
-        env = dict(os.environ, WINE_BIN_SERVER="/usr/bin/wine")
+        env = dict(os.environ, WINE_BIN_SERVER=_system_wine())
         if _qplus_running():
             self._append("[step] Q-Plus already running — not spawning a 2nd")
         else:
@@ -2152,6 +2260,9 @@ class LiveMatchWidget(QWidget):
         if _server_listening():
             self._step_done(True, ":5555 already listening")
             return
+        # A locally auto-dealt board leaves a MODAL bidding box up, which eats
+        # every menu click (seen 2026-09-23). Cancel it before navigating.
+        _keys_to_qplus("Escape")
         self._srv_wait = 0
 
         def poll():
@@ -2163,14 +2274,13 @@ class LiveMatchWidget(QWidget):
             self._srv_wait += 1
             # Clear any auto-dealt bidding box / 'No bid entered' modal FIRST
             # (this is the out-of-order pop-up): Return = OK, Escape = cancel.
-            _xdotool("key", "Return")
-            _xdotool("key", "Escape")
+            _keys_to_qplus("Return", "Escape")
             time.sleep(0.3)
             if self._srv_wait == 1 or self._srv_wait % 6 == 0:
                 nm = _load_server_btn("network_menu")
                 nsi = _load_server_btn("net_start_item")
                 xy = _load_server_btn("start_item")
-                if _menu_pick(nm, nsi):
+                if _geom.menu_pick("network_start_server"):
                     self._append(f"[step] Network {nm} → Start-server {nsi} "
                                  "(atomic)")
                     time.sleep(1.0)
@@ -2231,10 +2341,17 @@ class LiveMatchWidget(QWidget):
             if (self._step_running and self._cur_step_key() == "biq"
                     and self._await_biq_join):
                 self._await_biq_join = False
+                # FAIL (not succeed) so the stepper RETRIES this step instead of
+                # marching on to deal/clicker with no biq — that produced a
+                # ‘biq not running’ dead end at step 8. Most common cause: a
+                # stale seat on the Q-Plus side (a previous client that died
+                # without leaving) — Network ▸ Stop then Start clears it.
                 self._step_done(
-                    True, "biq started (no ‘joined’ line in ~20s — check the "
-                    "log and the server seat config: N/S=Extern, E/W=Computer)")
-        QTimer.singleShot(20000, grace)
+                    False, "no ‘joined’ line in ~30s — biq did not join. Check "
+                    "the log; if Q-Plus still shows an old client on the seat, "
+                    "Network ▸ Stop bridge server ▸ Start, then Step again. "
+                    "Seat config: N/S=Extern, E/W=Computer.")
+        QTimer.singleShot(30000, grace)
 
     def _step_set_systems(self):
         ns_mode = self.ns_sys.currentText()
@@ -2341,7 +2458,7 @@ class LiveMatchWidget(QWidget):
         if not _server_listening():
             QMessageBox.warning(
                 self, "No server",
-                f"Nothing is listening on :{SERVER_PORT}.\n\nStart the "
+                f"Nothing is listening on :{SERVER_PORT} (or any wineserver port).\n\nStart the "
                 "Q-Plus server under wine-9.0 and Start the bridge server "
                 "on 5555 first:\n\n  WINE_BIN=/usr/bin/wine "
                 "tools/qplus_dual_instance.sh server")
@@ -2380,8 +2497,8 @@ class LiveMatchWidget(QWidget):
             # relaunch rejoins cleanly. The autoclicker watches the first
             # seat's log. Side (N/S Room 1 vs E/W Room 2) per _pair_seats().
             ps = self._pair_seats()
-            a1 = self._biq_args(ps["s1"], SERVER_PORT, ps["log1"]) + ["--pair"]
-            a2 = self._biq_args(ps["s2"], SERVER_PORT, ps["log2"]) + ["--pair"]
+            a1 = self._biq_args(ps["s1"], _server_port(), ps["log1"]) + ["--pair"]
+            a2 = self._biq_args(ps["s2"], _server_port(), ps["log2"]) + ["--pair"]
             self.biq = self._mk_proc("biq")
             self.biq.setArguments(a1)
             self._arm_biq_watchdog(self.biq, a1, "biq")
@@ -2393,7 +2510,7 @@ class LiveMatchWidget(QWidget):
             who = f"biq+biq Room {ps['room']} ({ps['s1']}/{ps['s2']}, direct on :5555)"
             extra = f" — server needs {ps['extern']}"
         else:
-            a1 = self._biq_args(self.seat.currentText(), SERVER_PORT, BIQ_LOG)
+            a1 = self._biq_args(self.seat.currentText(), _server_port(), BIQ_LOG)
             self.biq = self._mk_proc("biq")
             self.biq.setArguments(a1)
             self._arm_biq_watchdog(self.biq, a1, "biq")
@@ -2484,7 +2601,9 @@ class LiveMatchWidget(QWidget):
             return
         self._append("[panel] resetting East = Computer "
                      "(Configuration ▸ Players ▸ OK)…")
-        for p in pts:
+        _geom.menu_pick("config_players")        # keyboard: menus ignore clicks
+        time.sleep(0.8)
+        for p in pts[2:]:                        # East=Computer radio, OK
             _click_xy(*p)
             time.sleep(0.6)
 
@@ -2499,7 +2618,9 @@ class LiveMatchWidget(QWidget):
             return False
         self._append("[panel] resetting South = Computer "
                      "(Configuration ▸ Players ▸ OK)…")
-        for p in pts:
+        _geom.menu_pick("config_players")
+        time.sleep(0.8)
+        for p in pts[2:]:
             _click_xy(*p)
             time.sleep(0.6)
         return True
@@ -2803,7 +2924,7 @@ class LiveMatchWidget(QWidget):
                 return False
             self._append("[panel] exporting score sheet (View ▸ Scoring "
                          "Table ▸ Save and send ▸ OK)…")
-            _menu_pick(vm, vst)
+            _geom.menu_pick("view_scoring_table")
             self._append(f"[panel]   View {vm} → Scoring Table {vst} (atomic)")
             time.sleep(2.0)
         _click_xy(*ss)
@@ -2958,8 +3079,17 @@ class ControlPanel(QMainWindow):
         # Clean slate on startup: kill any leftover wine so the :5555 socket
         # and Q-Plus's 64-board scoring cap start fresh. Runs once after the
         # window is up (no confirm). Standalone-only — not the embedded tab.
+        # …but NOT when Q-Plus is already up: the user may have prepared it by
+        # hand (deck loaded, match configured) before opening the panel.
+        def _startup_cleanup():
+            if _qplus_running():
+                self.live._append("[panel] Q-Plus already running — leaving "
+                                  "it as is (no startup wine cleanup)")
+                self.live.hint.setText("Q-Plus is running — press ▶ Start.")
+                return
+            self.live.kill_all_wine(confirm=False)
         self.live.hint.setText("Cleaning up any leftover wine…")
-        QTimer.singleShot(250, lambda: self.live.kill_all_wine(confirm=False))
+        QTimer.singleShot(250, _startup_cleanup)
 
     def _build_menu(self):
         mb = self.menuBar()
@@ -3018,6 +3148,15 @@ class ControlPanel(QMainWindow):
 
 
 def main():
+    # PyQt6 aborts the whole process (qFatal) on an unhandled Python exception
+    # inside a slot/timer unless sys.excepthook is replaced. Log it instead so
+    # one bad tick can't silently take the panel down mid-run.
+    import traceback
+
+    def _log_exc(exc_type, exc, tb):
+        traceback.print_exception(exc_type, exc, tb, file=sys.stderr)
+        sys.stderr.flush()
+    sys.excepthook = _log_exc
     app = QApplication(sys.argv)
     app.setApplicationName("bridgeIQ-test-harness")
     app.setStyle("Fusion")

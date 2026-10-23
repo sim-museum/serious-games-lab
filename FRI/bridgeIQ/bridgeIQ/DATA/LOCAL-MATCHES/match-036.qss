@@ -1,0 +1,23 @@
+# BridgeIQ score sheet
+.version = 17.1
+.date = 2026-09-09
+scoring.method = Teams
+# Coach — Competitive auction — both sides are bidding. Compete to the level of your fit; don't push 14 HCP into their strength. Double is takeout/penalty by agreement.
+
+board.1.number = 501
+board.1.pavlicek = 4eW1))TKa(hE6HOG
+board.1.tricks = 7
+board.1.ns_score = 50
+board.1.ew_score = -50
+board.1.ns_system = BEN-NN
+board.1.ew_system = BEN-NN
+
+board.2.number = 28
+board.2.pavlicek = 35rnCk9W8)MQU0rl
+board.2.contract = 3S
+board.2.declarer = W
+board.2.tricks = 8
+board.2.ns_score = 50
+board.2.ew_score = -50
+board.2.ns_system = BEN-NN
+board.2.ew_system = BEN-NN
