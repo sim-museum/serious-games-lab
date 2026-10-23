@@ -797,6 +797,9 @@ function warm_midrace_compile!(cs, inp, dt, ai_poses, ddt, AICARS, AILINE, GPLAI
             precompile(ai_launch_msg, (Int, Float64, Float64, Float64, Float64))
             precompile(ai_landed_msg, (Int, Bool, Float64, Float64, Float64, Tuple{Float64,Float64}))
             precompile(DriveRT3D.pin3d!, (typeof(pc), Float64, Float64, Float64, Float64))
+            # MIDRACEJIT-1 S2: loose_cars_step!'s `maximum(pc.rh)` -- pc comes from LOOSE_CARS (Any[]), so the call
+            # dispatches at run time and compiled at the first car knocked loose (10.6 ms)
+            precompile(maximum, (typeof(pc.rh),))
         end
     end
     # RESTARTJIT-1: restart_session! only PASSES groundz_phys on (respawnX!(cs; groundz)), so Julia does not specialise
