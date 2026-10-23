@@ -12,6 +12,7 @@ const PARAM_MAP = Dict(
     "cabl" => (:veh, :c_abl), "trail" => (:col, :trail), "nsh" => ((:FL, :FR, :RL, :RR), :nsh),
     "nshf" => ((:FL, :FR), :nsh), "nshr" => ((:RL, :RR), :nsh), "rho" => (:veh, :ρair),
     "nsf" => ((:FL, :FR), :ns), "nsr" => ((:RL, :RR), :ns),
+    "musc" => ((:FL, :FR, :RL, :RR), :μscale),   # IRGOLD-1 S23: a SURFACE grip scale (μ and μx alike), as the game's wheelmu3d!
     "cbf" => ((:sFL, :sFR), :cb), "crf" => ((:sFL, :sFR), :cr), "cbr" => ((:sRL, :sRR), :cb), "crr" => ((:sRL, :sRR), :cr),
     "clo" => ((:sFL, :sFR, :sRL, :sRR), :clo), "vk" => ((:sFL, :sFR, :sRL, :sRR), :vk),
     "ixx" => (:veh, :Ixx), "csf" => ((:sFL, :sFR), :cs), "csr" => ((:sRL, :sRR), :cs),
