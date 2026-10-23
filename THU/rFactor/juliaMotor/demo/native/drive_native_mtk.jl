@@ -1146,6 +1146,11 @@ const AI_SEED = something(tryparse(Int, get(ENV, "JM_AI_SEED", "")), haskey(ENV,
 const AI_RNG  = Ref{Any}(nothing)
 const RESTART_AT  = Float64[parse(Float64, x) for x in split(get(ENV, "JM_RESTART_AT", ""), ",") if !isempty(strip(x))]   # REPLAY-4 test hook (smoke)
 const RESTART_I   = Ref(1)
+# RESTARTGROUND-1 S2 test hook: JM_LASTZ_AT="<t>:<m>" sets Monza's held ground height (groundz's LASTZ) to <m> once at
+# sim time <t> -- the stale value a wreck off the road leaves (the PO's 10-18 Parabolica wreck: -4.17 m). With
+# JM_RESTART_AT at the same time it shows whether the restart re-anchors the guard. Smoke-only.
+const LASTZ_AT = (f = split(get(ENV, "JM_LASTZ_AT", ""), ":"); length(f) == 2 ? (parse(Float64, f[1]), parse(Float64, f[2])) : nothing)
+const LASTZ_SET = Ref(false)
 # SPATD-1 (PO 2026-10-08, Spa: "three strong jolts, like an earthquake, while riding along in the middle of the road").
 # The PO's .ibt shows each as ONE frame in which the car lost ~6.5 m/s and gained ~4 m/s sideways at a normal frame time --
 # an impulse. Every frame whose world velocity changes by more than JM_JOLT_MS (3 m/s, ~18 g) in one step is logged with
@@ -14412,6 +14417,9 @@ function main()
         last = now
         GEAR_NOW[] = cs.gear; RPM_NOW[] = cs.rpm; V_NOW[] = cs.v        # for the rev-matched shift gate
         inp, rst, recover, restart = read_input()
+        if SMOKE && LASTZ_AT !== nothing && !LASTZ_SET[] && cs.t >= LASTZ_AT[1]   # RESTARTGROUND-1 S2 test hook (see LASTZ_AT)
+            LASTZ[] = LASTZ_AT[2]; LASTZ_SET[] = true; println("  [test] LASTZ set to ", LASTZ_AT[2], " m at t=", round(cs.t, digits = 2)); flush(stdout)
+        end
         if SMOKE && !isempty(RESTART_AT) && RESTART_I[] <= length(RESTART_AT) && cs.t >= RESTART_AT[RESTART_I[]]
             restart = true; RESTART_I[] += 1; println("  [test] restart (R) at t=", round(cs.t, digits = 2)); flush(stdout)
         end
