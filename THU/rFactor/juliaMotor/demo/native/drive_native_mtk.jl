@@ -14640,49 +14640,12 @@ function main()
         end
 
         @label skipsim   # E18 replay jumps here — cs pose is already set from the recording
-        # ---- body pitch: accel→squat (nose up), brake→dive (nose down); + terrain slope ----
-        acc = clamp((cs.v - v_prev)/max(dt,1e-3), -15.0, 15.0); v_prev = cs.v
-        pitch_ter += (terrain_pitch(cs) - pitch_ter) * min(1.0, dt*6)
-        roll_ter  += (terrain_roll(cs)  - roll_ter)  * min(1.0, dt*6)   # car lists with the cross-slope (3-D)
-        if TILTDIAG && (abs(roll_ter) > deg2rad(10) || abs(pitch_ter) > deg2rad(10)) && TILT_N[] < 40   # RINGTD-1
-            TILT_N[] += 1; _ts = CLINE === nothing ? (NaN, NaN) : RaceAI.project(CLINE, cs.x, cs.z)
-            println("  [tilt] t=", round(cs.t, digits = 2), " s=", round(_ts[1], digits = 1), " lat=", round(_ts[2], digits = 2),
-                    "  drawn roll ", round(rad2deg(roll_ter), digits = 1), " deg  pitch ", round(rad2deg(pitch_ter), digits = 1),
-                    " deg  (physics roll ", round(rad2deg(cs.roll), digits = 1), ")"); flush(stdout)
-        end
-        rollv = 0.0
-        if CAR3D
-            pitch_dyn = (cs.pitch - pitch_ter) * SUSP_GAIN   # REAL body pitch (minus the slope carModel already applies), visually amplified
-            rollv = cs.roll * SUSP_GAIN                      # REAL body roll
-        else
-            # planar model has no 3-D body state — synthesise dive/squat + corner roll from the
-            # longitudinal accel / steering so the chassis still pitches/rolls over the planted wheels.
-            pitch_dyn += (clamp(-0.010*acc, -0.06, 0.06)*SUSP_GAIN - pitch_dyn) * min(1.0, dt*4.0)   # brake → nose DOWN
-            rollv     += (clamp(-0.05*inp.steer*min(cs.v/20,1.0), -0.05, 0.05)*SUSP_GAIN - rollv) * min(1.0, dt*4.0)  # corner lean
-        end
-        pitch_dyn = clamp(pitch_dyn, -0.11, 0.11); rollv = clamp(rollv, -0.10, 0.10)   # ±~6° cap (no over-rotate)
-        REPLAY && (pitch_dyn = 0.0; rollv = 0.0)      # replay: body follows the terrain only (no recorded suspension state)
-        # E53: the cockpit camera follows only the LOW-FREQUENCY chassis tilt — slow banks roll the view
-        # with the car (chassis fixed on screen, horizon tilts); fast jolts are rejected so the head stays
-        # toward vertical and the CHASSIS rocks on screen instead (no headache-inducing landscape strobe).
-        αcam = 1.0 - exp(-(dt > 1e-4 ? dt : 1/60)/CAM_TILT_TAU)
-        cam_pitch += ((pitch_ter + pitch_dyn) - cam_pitch) * αcam
-        cam_roll  += ((roll_ter  + rollv    ) - cam_roll ) * αcam
-        vp, eye = camera(cs, cam_pitch, cam_roll)     # head = low-pass tilt; body keeps full tilt → high-freq rock shows on the chassis
-        if REPLAY     # E25: cinematic cameras follow the FOCUS car (player or any AI) from its recorded pose
-            fp = (rep_focus[] == 0 || rep_swap[]) ? (cs.x, cs.y, cs.z, cs.θ) :
-                 (rf = rep_ai_raw[rep_focus[]]; (rf[1], rf[2], rf[3], rf[4]))
-            vp, eye = replay_camera(REPLAY_CAMS[rep_cam[]], fp[1], fp[2], fp[3], fp[4])
-        end
-        AICAM_R[] > 0 && aicam_pose[] !== nothing && ((vp, eye) = AIVIEW_R[] === :gplchase ? aicam_camera(aicam_pose[]) :
-                                                       replay_camera(AIVIEW_R[], aicam_pose[][1], aicam_pose[][2], aicam_pose[][3], aicam_pose[][4]))
-        carModel = Render.translate(cs.x, cs.y, -cs.z) * Render.roty(Float32(cs.θ)) *
-                   Render.rotz(Float32(pitch_ter)) * Render.rotx(Float32(roll_ter))   # whole car follows the hill (pitch + cross-slope roll)
-        tiltModel = carModel * Render.rotz(Float32(pitch_dyn)) * Render.rotx(Float32(rollv))   # full body tilt (terrain + dynamic)
-        if WBODY[] !== nothing    # CRASHBODY-1: a wreck is drawn exactly as its rigid body lies -- the whole car, wheels too
-            carModel = Render.M4(WreckBody.model_matrix(WBODY[])...); tiltModel = carModel
-        end
-        bodyModel = tiltModel * Render.translate(BODY_OFF) * CARHAND  # body dives/squats + rolls (3-D); CARHAND-1: GPL's handedness
+        # ---- body pitch, camera tilt, view, model matrices: LOOPSPLIT-1 cycle 6 S1: moved to main_loop.jl ----
+        _bc = body_camera_step!(cs, inp, dt, v_prev, pitch_ter, roll_ter, pitch_dyn, cam_pitch, cam_roll, CLINE, REPLAY,
+                                rep_focus, rep_swap, REPLAY ? rep_ai_raw : nothing, rep_cam, aicam_pose)
+        v_prev = _bc.v_prev; pitch_ter = _bc.pitch_ter; roll_ter = _bc.roll_ter; pitch_dyn = _bc.pitch_dyn
+        cam_pitch = _bc.cam_pitch; cam_roll = _bc.cam_roll; vp = _bc.vp; eye = _bc.eye
+        carModel = _bc.carModel; tiltModel = _bc.tiltModel; bodyModel = _bc.bodyModel
         δ = Float32(inp.steer * (CAR3D ? DriveRT3D.MAXSTEER : SKIDPAD ? 0.30 : CAR.max_steer))
         # WHEELS FLOAT ON THE SUSPENSION (PO): the wheels stay PLANTED on the road (carModel = terrain
         # follow only, NO dynamic dive/squat/roll), while the CHASSIS pitches/rolls/heaves above them
