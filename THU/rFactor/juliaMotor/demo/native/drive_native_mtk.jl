@@ -14462,38 +14462,15 @@ function main()
         # END PRACTICE → go to the race grid: press T (accelerate time) or ENTER, or the practice clock
         # runs out (PRACTICE_SEC).  Your grid slot = your best practice lap (none → back of the grid).
         accelNow = key(GLFW.KEY_T) || key(GLFW.KEY_ENTER) || key(GLFW.KEY_KP_ENTER)
-        if phase[] == :practice && ((accelNow && !enterPrev) || cs.t >= PRACTICE_SEC)
-            qt = best_lap > 0.0 ? best_lap : Inf       # no clean practice lap ⇒ start at the back
-            player_grid[] = form_grid!(qt)
-            phase[] = :race
-            cd_t0[] = cs.t                              # countdown starts when the grid forms
-            cs.laps = 0; last_lap = 0.0; best_lap = 0.0; race_done = false; lap_t0 = cs.t
-            launch_done[] = false                       # re-arm the launch assist for the actual race start
-            FUEL_ON && refuel!()   # always start the race on a FULL tank (no practice carry-over)
-        end
+        _pe = practice_end_step!(cs, accelNow, enterPrev, last_lap, best_lap, race_done, lap_t0, phase, player_grid, cd_t0, launch_done, FUEL_ON, form_grid!, refuel!)   # LOOPSPLIT-1 cycle 6 S5: moved to main_loop.jl
+        last_lap = _pe.last_lap; best_lap = _pe.best_lap; race_done = _pe.race_done; lap_t0 = _pe.lap_t0
         enterPrev = accelNow
         # COUNTDOWN start (PO 2026-08-31). While it runs, nobody moves and the HUD shows the
         # seconds; at zero the race goes green for the whole field at once, with no throttle gate --
         # that is the difference between a countdown and the old "green when you decide to go".
         ctrace_tick!()
         lap_t0 = countdown_step!(cs, AICARS, HOLD_START, ai_release, cd_armed, cd_left, cd_said, cd_t0, phase, race_go, lap_t0)   # LOOPSPLIT-1 S6: moved to main_loop.jl (returns lap_t0: it sets it at the green)
-        if SMOKE_HOLD > 0 && !race_go[] && cs.t >= SMOKE_HOLD   # JM_SMOKE_HOLD: the smoke race's green light
-            race_go[] = true; lap_t0 = cs.t; ai_release[] = cs.t + AI_HEADSTART
-            println("  [smoke] green light at t=", round(cs.t, digits = 2)); flush(stdout)
-        end
-        # green light: the field launches the moment you ask for throttle (standing start)
-        if COUNTDOWN <= 0 && HOLD_START && !race_go[] && phase[] == :race && inp.throttle > 0.15
-            race_go[] = true; lap_t0 = cs.t          # start the clock at the launch
-            ai_release[] = cs.t + AI_HEADSTART        # PO head start: field held this long
-            AI_HEADSTART > 0 && println("  → HEAD START: you go now, the field launches in ",
-                                        round(AI_HEADSTART, digits=1), " s")
-            # PO: the AI must NOT all launch perfectly — some bog / fluff a shift / spin up at the getaway.
-            # Each car independently has a chance to fumble (a brief mishap = crawl), varying in severity, so
-            # the field doesn't magically sail away in formation; the rest get clean launches.
-            for c in AICARS
-                rand() < 0.45 && (c.mishap = 0.4 + 1.4*rand())
-            end
-        end
+        lap_t0 = green_light_step!(cs, inp, AICARS, HOLD_START, ai_release, phase, race_go, lap_t0, SMOKE_HOLD)   # LOOPSPLIT-1 cycle 6 S5: moved to main_loop.jl
         # LAUNCH ASSIST: the on-screen prompt is "floor the throttle to start", so flooring it MUST get
         # you rolling even in MANUAL — auto-engage the gearbox + drop the clutch for the initial getaway
         # only (until the car first reaches speed), then hand fully back to manual shifting.  Without it
@@ -14502,22 +14479,7 @@ function main()
         # engaged the WHOLE way there (no speed ceiling) — the old assist cut out at 6 km/h while the
         # latch was at 9, leaving a 6–9 km/h dead gap where, on the uphill Spa/Nürburgring starts, the
         # clutch returned to manual, the engine fell to idle (~1950 rpm pinned) and the car bogged/oscillated.
-        race_go[] && cs.v > 12.0 && (launch_done[] = true)
-        # E93 (PO 2026-08-29): "Make manual right." This assist fired ONLY in MANUAL (!CTL.auto) and
-        # replaced the driver's clutch with 0.0 (engaged) plus autoshift=true for every throttle
-        # application below 12 km/h, latching launch_done for the session. That is what made the
-        # slider look reversed at a standing start: the axis was not inverted, it was DISCARDED.
-        # It also contradicted the PO's standing instruction ("I like the clutch attached to a
-        # slider -- that way I can ride the clutch"), removing the axis at the one manoeuvre where
-        # riding the clutch matters most.
-        # AUTO is untouched and still launches itself (step_car3d!'s auto-clutch), which is what the
-        # PO asked for: "make auto easy, I never use it so I don't care".
-        # JM_LAUNCH_ASSIST=1 restores the old behaviour for an A/B.
-        if race_go[] && !rst && !CTL.auto && !launch_done[] && inp.throttle > 0.05 &&
-           get(ENV, "JM_LAUNCH_ASSIST", "0") != "0"
-            inp = DriveInput(throttle=inp.throttle, brake=inp.brake, steer=inp.steer,
-                             clutch=0.0, shift_up=false, shift_down=false, autoshift=true)
-        end
+        inp = launch_assist(cs, inp, rst, race_go, launch_done)   # LOOPSPLIT-1 cycle 6 S5: moved to main_loop.jl
         # E10: burn fuel by distance (only once the race is GREEN — never while you sit on the grid
         # waiting to launch, or you could starve the tank before you've even pressed the throttle).
         inp = fuel_step!(cs, inp, dt, FUEL1, FUEL_ON, fuel, fuel_mass_t, race_go, rst)   # LOOPSPLIT-1 cycle 2 S4: moved to main_loop.jl (returns inp: an empty tank cuts the throttle)

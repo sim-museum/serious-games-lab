@@ -1038,6 +1038,66 @@ function skiddrive_input(cs, frames)
     inp
 end
 
+# LOOPSPLIT-1 cycle 6 S5: the frame loop's end of practice (T / ENTER or PRACTICE_SEC: form the grid, start the race and
+# its countdown), moved unchanged. Returns the lap state it resets.
+function practice_end_step!(cs, accelNow, enterPrev, last_lap, best_lap, race_done, lap_t0, phase, player_grid, cd_t0, launch_done, FUEL_ON, form_grid!, refuel!)
+    if phase[] == :practice && ((accelNow && !enterPrev) || cs.t >= PRACTICE_SEC)
+        qt = best_lap > 0.0 ? best_lap : Inf       # no clean practice lap ⇒ start at the back
+        player_grid[] = form_grid!(qt)
+        phase[] = :race
+        cd_t0[] = cs.t                              # countdown starts when the grid forms
+        cs.laps = 0; last_lap = 0.0; best_lap = 0.0; race_done = false; lap_t0 = cs.t
+        launch_done[] = false                       # re-arm the launch assist for the actual race start
+        FUEL_ON && refuel!()   # always start the race on a FULL tank (no practice carry-over)
+    end
+    (; last_lap, best_lap, race_done, lap_t0)
+end
+
+# LOOPSPLIT-1 cycle 6 S5: the frame loop's green lights that are not the countdown (JM_SMOKE_HOLD's, and COUNTDOWN=0's
+# standing start on throttle with the AI's launch mishaps), moved unchanged. Returns lap_t0.
+function green_light_step!(cs, inp, AICARS, HOLD_START, ai_release, phase, race_go, lap_t0, SMOKE_HOLD)
+    if SMOKE_HOLD > 0 && !race_go[] && cs.t >= SMOKE_HOLD   # JM_SMOKE_HOLD: the smoke race's green light
+        race_go[] = true; lap_t0 = cs.t; ai_release[] = cs.t + AI_HEADSTART
+        println("  [smoke] green light at t=", round(cs.t, digits = 2)); flush(stdout)
+    end
+    # green light: the field launches the moment you ask for throttle (standing start)
+    if COUNTDOWN <= 0 && HOLD_START && !race_go[] && phase[] == :race && inp.throttle > 0.15
+        race_go[] = true; lap_t0 = cs.t          # start the clock at the launch
+        ai_release[] = cs.t + AI_HEADSTART        # PO head start: field held this long
+        AI_HEADSTART > 0 && println("  → HEAD START: you go now, the field launches in ",
+                                    round(AI_HEADSTART, digits=1), " s")
+        # PO: the AI must NOT all launch perfectly — some bog / fluff a shift / spin up at the getaway.
+        # Each car independently has a chance to fumble (a brief mishap = crawl), varying in severity, so
+        # the field doesn't magically sail away in formation; the rest get clean launches.
+        for c in AICARS
+            rand() < 0.45 && (c.mishap = 0.4 + 1.4*rand())
+        end
+    end
+    lap_t0
+end
+
+# LOOPSPLIT-1 cycle 6 S5: the frame loop's launch latch + E93's opt-in launch assist (JM_LAUNCH_ASSIST), moved unchanged.
+# Returns the input.
+function launch_assist(cs, inp, rst, race_go, launch_done)
+    race_go[] && cs.v > 12.0 && (launch_done[] = true)
+    # E93 (PO 2026-08-29): "Make manual right." This assist fired ONLY in MANUAL (!CTL.auto) and
+    # replaced the driver's clutch with 0.0 (engaged) plus autoshift=true for every throttle
+    # application below 12 km/h, latching launch_done for the session. That is what made the
+    # slider look reversed at a standing start: the axis was not inverted, it was DISCARDED.
+    # It also contradicted the PO's standing instruction ("I like the clutch attached to a
+    # slider -- that way I can ride the clutch"), removing the axis at the one manoeuvre where
+    # riding the clutch matters most.
+    # AUTO is untouched and still launches itself (step_car3d!'s auto-clutch), which is what the
+    # PO asked for: "make auto easy, I never use it so I don't care".
+    # JM_LAUNCH_ASSIST=1 restores the old behaviour for an A/B.
+    if race_go[] && !rst && !CTL.auto && !launch_done[] && inp.throttle > 0.05 &&
+       get(ENV, "JM_LAUNCH_ASSIST", "0") != "0"
+        inp = DriveInput(throttle=inp.throttle, brake=inp.brake, steer=inp.steer,
+                         clutch=0.0, shift_up=false, shift_down=false, autoshift=true)
+    end
+    inp
+end
+
 """E85-S6 HEADLESS AUTODRIVE (JM_AUTODRIVE=1): the AI controller drives the player on the centreline; returns the
 frame's input. LOOPSPLIT-1 cycle 2 S2: moved unchanged from the frame loop -- in the loop its `let` wrote main()'s own
 `ps` and `step` (and the loop's `up` / `dn` / `thr` / `brk` / `st`) as a side effect; here they are its own."""
