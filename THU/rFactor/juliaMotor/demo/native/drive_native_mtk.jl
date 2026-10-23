@@ -14782,13 +14782,7 @@ function main()
         end
         # REPLAY-6: the tyres' force/grip/slip for the replay's per-wheel panel, smoothed like the HUD's traction circle
         # (0.1 s: the coarse-mesh Fz spikes would otherwise flicker the rings at the 15 Hz the replay samples them)
-        if replay_buf !== nothing && CAR3D
-            tg = DriveRT3D.tyregrip3d(cs)
-            if tg !== nothing
-                α_ty = clamp(dt/0.10, 0.0, 1.0)
-                tyre_lp[] = ntuple(i -> ntuple(j -> tyre_lp[][i][j] + (tg[i][j] - tyre_lp[][i][j])*α_ty, 5), 4)
-            end
-        end
+        replay_tyre_lp_step!(cs, dt, replay_buf, tyre_lp)   # LOOPSPLIT-1 cycle 6 S3: moved to main_loop.jl
         # E18: record all car poses (player + AI) at ~15 Hz once the race is GREEN, for replay
         cs.t < replay_t[] && (replay_t[] = cs.t - 1.0)   # REPLAY-2: a session restart (R) rewinds the clock -- keep recording
         # ARMFREEZE-1 S2: the recording's first frame is at the green, and replay_saved was stamped before the load (> 20 s),
@@ -14796,13 +14790,8 @@ function main()
         # race records none, so no gate saw it). Run one recorded frame + its autosave on a hidden warm-up frame, into scratch
         # buffers and a temp file. (Scratch AI poses too: on frame 1 the field's are not filled yet, and the recorder skips a
         # frame without them.)
-        if frames == 1 && replay_buf !== nothing && !race_go[]
-            _rb = Float32[]; _ro = Ref(joinpath(mktempdir(), "warm.jmr"))
-            replay_record!(cs, inp, AICARS, fill!(similar(ai_poses, length(AICARS)), ntuple(_ -> 0.0, 6)), CLINE, REPLAY_AUTOSAVE,
-                           REPLAY_NCAR, phase, Ref(true), false, _rb, replay_names, _ro, Ref(-Inf), Ref(-1.0), Float32[], tyre_lp)
-            println("  [warm] replay recorder: dry frame of ", length(_rb), " values, autosave ", isfile(_ro[]) ? "written" : "MISSING")
-            flush(stdout); rm(dirname(_ro[]); recursive = true, force = true)
-        end
+        frames == 1 && replay_buf !== nothing && !race_go[] &&   # LOOPSPLIT-1 cycle 6 S3: moved to main_loop.jl
+            warm_replay_record!(cs, inp, AICARS, ai_poses, CLINE, REPLAY_AUTOSAVE, REPLAY_NCAR, phase, replay_names, tyre_lp)
         replay_record!(cs, inp, AICARS, ai_poses, CLINE, REPLAY_AUTOSAVE, REPLAY_NCAR, phase, race_go, rst, replay_buf, replay_names, replay_out, replay_saved, replay_t, tele_buf, tyre_lp)   # LOOPSPLIT-1 cycle 2 S1: moved to main_loop.jl
         # PERF-1: one fused matrix per call (was 4 matrices + 3 products), and the body matrix is computed once
         # per car per pass below (it was recomputed for every body PART) -- the top allocation site.
@@ -14813,22 +14802,7 @@ function main()
         # LOOPSPLIT-1 cycle 4 S4: the network link (send / receive poses, prediction error, closest approach) -> main_loop.jl
         NETLINK !== nothing && netlink_step!(cs, inp, frames, ai_poses, AICARS, CLINE, aibankK, ai_ground, net_last)
         # E104-S4: the measurement the eye is actually making. See JM_WHEELGAP above.
-        if WHEELGAP > 0 && (frames % WHEELGAP) == 0
-            # ⚠️ MUST NOT call groundz(): it MUTATES LASTZ[] and ONTRACK[], the player's own
-            # ground-tracking state. The first cut of this probe did, so querying five AI positions
-            # per sample rewrote the height and on-track flag the PLAYER's next physics step reads --
-            # an instrument that changes the thing it measures. hat3d is the pure query underneath
-            # groundz; `ref=Inf` and the (x,z) order are copied from groundz itself so the probe and
-            # the sim ask the terrain exactly the same question.
-            wgap(y, x, z) = (h = JuliaMotor.hat3d(TERRAIN, x, z; ref=Inf);
-                             h[3] ? round(y - Float64(h[1]), digits=3) : NaN)
-            println("  [wheelgap] t=", round(cs.t, digits=1), "  player ", wgap(cs.y, cs.x, cs.z), " m",
-                    isempty(ai_poses) ? "   (no AI on track yet)" : "")
-            for (k, p) in enumerate(ai_poses)
-                println("  [wheelgap]      AI ", k, "  ", wgap(p[2], p[1], p[3]), " m")
-            end
-            flush(stdout)
-        end
+        WHEELGAP > 0 && (frames % WHEELGAP) == 0 && wheelgap_probe(cs, ai_poses)   # LOOPSPLIT-1 cycle 6 S3: moved to main_diag.jl
         ALLOCPROF > 0 && (ALLOC_MARK[2] = Base.gc_bytes())   # sim (input, physics, AI, contacts)
         DSTAT && (DS_LOOP[] += (DS_PREV[] > 0 ? now - DS_PREV[] : 0.0); DS_PREV[] = now)
         DSTAT && (GPUSYNC && glFinish(); DS_T[1] = time(); Render.NDRAW[] = 0; Render.NTRI[] = 0; DS_SIMACC[1] += DS_T[1] - now; DS_SIMACC[2] += DS_SIM[1]; DS_SIMACC[3] += DS_SIM[2]; fill!(DS_SIM, 0.0))
@@ -14871,14 +14845,7 @@ function main()
         end
         DSTAT && (GPUSYNC && glFinish(); DS_T[3] = time(); DS_N[2] = Render.NDRAW[]; DS_N[5] = Render.NTRI[])
         # ---- main pass (reversed-Z: [0,1] clip, near→1/far→0, GEQUAL, clear 0) ----
-        glViewport(0,0,W,H)
-        glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE); glDepthFunc(GL_GEQUAL); glClearDepth(0.0)
-        glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
-        Render.draw_sky(skyprog, skyvao, inv(vp), eye, LIGHTDIR;
-                        cloud = GRADE.cloud, zenith = GRADE.zenith, horizon = GRADE.horizon)
-        Render.set_scene_uniforms(prog, eye; fognear=400f0, fogfar=2800f0,
-                                  fogcol=GRADE.horizon, suncol=GRADE.suncol, ambsky=GRADE.ambsky, sat=GRADE.sat)
-        Render.bind_shadow(prog, shadowtex, lightVP)
+        main_pass_begin!(vp, eye, lightVP)   # LOOPSPLIT-1 cycle 6 S3: moved to main_loop.jl
         # E80: per-phase FRAME profiler. The entry pointed at JM_TIMING, which is a LAUNCH-phase
         # stopwatch ("cumulative seconds at each load phase") -- it profiles loading, not frames, and
         # JM_FPSDIAG times the whole frame as one number. So nothing could say where the ~65 ms goes.
@@ -14898,19 +14865,7 @@ function main()
         ALLOCPROF > 0 && (ALLOC_MARK[4] = Base.gc_bytes())   # main world pass
         DSTAT && (GPUSYNC && glFinish(); DS_T[4] = time(); DS_N[3] = Render.NDRAW[]; DS_N[6] = Render.NTRI[])
         _t_hud = time()
-        Render.hud_draw(hudprog, hudvao, hudvbo,
-            Render.compose_hud(W, H, cs.v*3.6, cs.gear, cs.rpm, 9500.0, inp.throttle, inp.brake, inp.clutch, tc_hud;
-                               lastlap=(FONT === nothing ? (SMOKE ? 94.3 : last_lap) : 0.0),   # TEXTHUD-1: the text rows carry these; no double readout
-                               bestlap=(FONT === nothing ? (SMOKE ? 92.1 : best_lap) : 0.0), manual=!CTL.auto,
-                               countdown=cd_left[],
-                               # STARTSEQ-1: the spacebar keycap, pulsing at 1 Hz, while unarmed.
-                               startprompt=(START_ARM && !cd_armed[] && HOLD_START && !race_go[] &&
-                                            phase[] == :race && COUNTDOWN > 0) ? mod(cs.t, 1.0) : -1.0,
-                               clutchgate=(CLUTCH_GATE[] > 0 ? inp.clutch : -1.0),
-                               # PO 2026-09-04: "no indication that race is over". The finish was
-                               # announced only in the window title and on stdout; show it in the
-                               # game. player_finpos is set when race_done latches.
-                               finished=(race_done ? player_finpos[] : 0)), W, H)
+        hud_draw_step!(cs, inp, tc_hud, last_lap, best_lap, cd_armed, cd_left, race_go, phase, race_done, player_finpos, HOLD_START)   # LOOPSPLIT-1 cycle 6 S3: moved to main_loop.jl
         # REPLAY-6: zandracer's per-wheel panel on the replay screen -- each tyre's grip ellipse (the effective contact
         # patch: μ·Fz, grows with load, a point when the wheel is in the air) and its force dot (the traction budget used;
         # red = the patch is sliding). The player's car only (the AI cars run no tyre model); W hides it.

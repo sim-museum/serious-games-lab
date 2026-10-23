@@ -903,6 +903,62 @@ function mirror_gate(REPLAY, frames)
     (mirror_live, _mir_alt)
 end
 
+# LOOPSPLIT-1 cycle 6 S3: the frame loop's main-pass setup (reversed-Z: [0,1] clip, near→1/far→0, GEQUAL, clear 0; sky,
+# scene uniforms, the shadow map), moved unchanged.
+function main_pass_begin!(vp, eye, lightVP)
+    glViewport(0,0,W,H)
+    glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE); glDepthFunc(GL_GEQUAL); glClearDepth(0.0)
+    glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
+    Render.draw_sky(skyprog, skyvao, inv(vp), eye, LIGHTDIR;
+                    cloud = GRADE.cloud, zenith = GRADE.zenith, horizon = GRADE.horizon)
+    Render.set_scene_uniforms(prog, eye; fognear=400f0, fogfar=2800f0,
+                              fogcol=GRADE.horizon, suncol=GRADE.suncol, ambsky=GRADE.ambsky, sat=GRADE.sat)
+    Render.bind_shadow(prog, shadowtex, lightVP)
+    nothing
+end
+
+# LOOPSPLIT-1 cycle 6 S3: the frame loop's HUD draw (speed, gear, rpm, pedals, traction circles, lap times, countdown,
+# start prompt, clutch gate, finish), moved unchanged.
+function hud_draw_step!(cs, inp, tc_hud, last_lap, best_lap, cd_armed, cd_left, race_go, phase, race_done, player_finpos, HOLD_START)
+    Render.hud_draw(hudprog, hudvao, hudvbo,
+        Render.compose_hud(W, H, cs.v*3.6, cs.gear, cs.rpm, 9500.0, inp.throttle, inp.brake, inp.clutch, tc_hud;
+                           lastlap=(FONT === nothing ? (SMOKE ? 94.3 : last_lap) : 0.0),   # TEXTHUD-1: the text rows carry these; no double readout
+                           bestlap=(FONT === nothing ? (SMOKE ? 92.1 : best_lap) : 0.0), manual=!CTL.auto,
+                           countdown=cd_left[],
+                           # STARTSEQ-1: the spacebar keycap, pulsing at 1 Hz, while unarmed.
+                           startprompt=(START_ARM && !cd_armed[] && HOLD_START && !race_go[] &&
+                                        phase[] == :race && COUNTDOWN > 0) ? mod(cs.t, 1.0) : -1.0,
+                           clutchgate=(CLUTCH_GATE[] > 0 ? inp.clutch : -1.0),
+                           # PO 2026-09-04: "no indication that race is over". The finish was
+                           # announced only in the window title and on stdout; show it in the
+                           # game. player_finpos is set when race_done latches.
+                           finished=(race_done ? player_finpos[] : 0)), W, H)
+    nothing
+end
+
+# LOOPSPLIT-1 cycle 6 S3: REPLAY-6's smoothed tyre force/grip/slip for the replay's per-wheel panel, moved unchanged.
+function replay_tyre_lp_step!(cs, dt, replay_buf, tyre_lp)
+    if replay_buf !== nothing && CAR3D
+        tg = DriveRT3D.tyregrip3d(cs)
+        if tg !== nothing
+            α_ty = clamp(dt/0.10, 0.0, 1.0)
+            tyre_lp[] = ntuple(i -> ntuple(j -> tyre_lp[][i][j] + (tg[i][j] - tyre_lp[][i][j])*α_ty, 5), 4)
+        end
+    end
+    nothing
+end
+
+# LOOPSPLIT-1 cycle 6 S3: ARMFREEZE-1 S2's dry recorded frame + autosave on the hidden warm-up frame (why: at the call
+# site), moved unchanged.
+function warm_replay_record!(cs, inp, AICARS, ai_poses, CLINE, REPLAY_AUTOSAVE, REPLAY_NCAR, phase, replay_names, tyre_lp)
+    _rb = Float32[]; _ro = Ref(joinpath(mktempdir(), "warm.jmr"))
+    replay_record!(cs, inp, AICARS, fill!(similar(ai_poses, length(AICARS)), ntuple(_ -> 0.0, 6)), CLINE, REPLAY_AUTOSAVE,
+                   REPLAY_NCAR, phase, Ref(true), false, _rb, replay_names, _ro, Ref(-Inf), Ref(-1.0), Float32[], tyre_lp)
+    println("  [warm] replay recorder: dry frame of ", length(_rb), " values, autosave ", isfile(_ro[]) ? "written" : "MISSING")
+    flush(stdout); rm(dirname(_ro[]); recursive = true, force = true)
+    nothing
+end
+
 """E85-S6 HEADLESS AUTODRIVE (JM_AUTODRIVE=1): the AI controller drives the player on the centreline; returns the
 frame's input. LOOPSPLIT-1 cycle 2 S2: moved unchanged from the frame loop -- in the loop its `let` wrote main()'s own
 `ps` and `step` (and the loop's `up` / `dn` / `thr` / `brk` / `st`) as a side effect; here they are its own."""

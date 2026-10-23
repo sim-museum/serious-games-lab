@@ -861,3 +861,22 @@ function end_reports()
     end
     nothing
 end
+
+# LOOPSPLIT-1 cycle 6 S3: E104-S4's JM_WHEELGAP probe (player + AI height above the terrain), moved unchanged.
+function wheelgap_probe(cs, ai_poses)
+    # ⚠️ MUST NOT call groundz(): it MUTATES LASTZ[] and ONTRACK[], the player's own
+    # ground-tracking state. The first cut of this probe did, so querying five AI positions
+    # per sample rewrote the height and on-track flag the PLAYER's next physics step reads --
+    # an instrument that changes the thing it measures. hat3d is the pure query underneath
+    # groundz; `ref=Inf` and the (x,z) order are copied from groundz itself so the probe and
+    # the sim ask the terrain exactly the same question.
+    wgap(y, x, z) = (h = JuliaMotor.hat3d(TERRAIN, x, z; ref=Inf);
+                     h[3] ? round(y - Float64(h[1]), digits=3) : NaN)
+    println("  [wheelgap] t=", round(cs.t, digits=1), "  player ", wgap(cs.y, cs.x, cs.z), " m",
+            isempty(ai_poses) ? "   (no AI on track yet)" : "")
+    for (k, p) in enumerate(ai_poses)
+        println("  [wheelgap]      AI ", k, "  ", wgap(p[2], p[1], p[3]), " m")
+    end
+    flush(stdout)
+    nothing
+end
