@@ -17,6 +17,7 @@ export WINEPREFIX="$BASE_DIR/WP"
 export WINEARCH=win32
 # Set Windows XP mode silently (no GUI)
 wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
+wine reg delete "HKEY_CURRENT_USER\\Software\\Wine\\Explorer" /v Desktop /f &>/dev/null
 
 # GUI harness directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

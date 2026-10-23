@@ -1,0 +1,83 @@
+[Event "Chessmaster: Grandmaster Edition Rated Game"]
+[Site ""]
+[Date "2026.8.20"]
+[Round ""]
+[White "Test"]
+[Black "Seb"]
+[TimeControl "600+3"]
+[Result "1-0"]
+[ECO " "]
+
+1.a3 e5 2.c4 Nf6 3.b4 Ng4 4.Bb2 Qh4 5.g3 Qf6 6.Nf3 Qh6 7.Nxe5 Nxe5 8.Bxe5 Bxb4 9.axb4 Nc6 10.Bf4 g5 11.Bxc7 Qg6 12.b5 Nd4 13.d3 
+O-O 14.Bg2 d6 15.Ba5 Bg4 16.Nc3 Rae8 17.Ra2 b6 18.Bb4 Re6 19.O-O Kh8 20.Qd2 Qg7 21.Ne4 f6 22.e3 Ne2+ 23.Kh1 Rd8 24.f3 d5 25.fxg4
+dxc4 26.Qxe2 cxd3 27.Qb2 Rc8 28.Bc3 Qc7 29.Bxf6+ Kg8 30.Bxg5 h6 31.Nf6+ Kg7 32.Nd5+ Kh7 33.Bf4 Qf7 34.g5 a5 35.bxa6ep Rc2 
+36.Qxc2 dxc2 37.Rxc2 Kg6 38.gxh6 b5 39.Rc7 Qxc7 40.Nxc7 Re7 41.Nxb5 Re8 42.a7 Kf6 43.Be4 Ke7 44.h7 Kd7 45.a8=Q Rxa8 46.Bxa8 Ke7 
+47.h8=Q Kd7 48.Qh7+ Ke6 49.Qh6+ Kd7 50.Bc6+ Kc8 51.Qh8# 1-0
+
+[Event "Chessmaster: Grandmaster Edition Rated Game"]
+[Site ""]
+[Date "2026.9.8"]
+[Round ""]
+[White "Test"]
+[Black "Eric"]
+[TimeControl "600+3"]
+[Result "1/2-1/2"]
+[ECO " "]
+
+1.b3 c5 2.g3 c4 3.Bb2 Qb6 4.Nf3 Na6 5.Na3 d5 6.Bd4 Qa5 7.Qc1 e5 8.Bxe5 Bxa3 9.Bb2 Bxb2 10.Qxb2 Nb4 11.a3 Nxc2+ 12.Qxc2 Bg4 
+13.bxc4 Bxf3 14.exf3 dxc4 15.Bxc4 Ne7 16.Qb3 Qe5+ 17.Be2 Qxa1+ 18.Qd1 Qxd1+ 19.Bxd1 Nf5 20.O-O Rc8 21.Re1+ Kd8 22.Bb3 Re8 23.Rd1
+Nd4 24.Bd5 Ne2+ 25.Kg2 Rc1 26.Rxc1 Nxc1 27.Bxf7 Nd3 28.Bxe8 Kxe8 29.f4 Ne1+ 30.Kf1 Nc2 31.a4 Nd4 32.h4 Nf3 33.Ke2 Nh2 34.d4 Ke7 
+35.Ke3 Ng4+ 36.Ke4 Nf6+ 37.Kf5 g6+ 38.Kg5 Ne4+ 39.Kh6 Kf7 40.Kxh7 Nxf2 41.Kh6 Ng4+ 42.Kg5 Nf6 43.f5 gxf5 44.Kxf5 b6 45.g4 Nd5 
+46.g5 b5 47.axb5 Ne7+ 48.Ke5 Ng6+ 49.Kd6 Nxh4 50.d5 Nf3 51.Kd7 Nd4 52.d6 Nxb5 53.Kc6 Nd4+ 54.Kc5 Ne6+ 55.Kb5 Kg6 56.Ka6 Kxg5 
+57.d7 Kg4 58.Kxa7 Kf4 59.Kb6 Ke3 60.Kc6 Nd8+ 61.Kc7 Ne6+ 62.Kc8 Kd4 63.d8=Q+ Nxd8 1/2-1/2
+
+[Event "Chessmaster: Grandmaster Edition Rated Game"]
+[Site ""]
+[Date "2026.9.22"]
+[Round ""]
+[White "Cole"]
+[Black "Test"]
+[TimeControl "600+3"]
+[Result "1-0"]
+[ECO " "]
+
+1.d4 d6 2.e4 Nf6 3.Bb5+ c6 4.Bc4 d5 5.exd5 cxd5 6.Bd3 Nc6 7.Nf3 Bg4 8.c3 g6 9.Bb5 a6 10.Be2 Bg7 11.h3 Bxf3 12.Bxf3 e5 13.dxe5 
+Nxe5 14.Bg5 Nxf3+ 15.Qxf3 O-O 16.Nd2 Re8+ 17.Kd1 b5 18.Kc2 Rc8 19.a4 d4 20.axb5 axb5 21.Ra6 Re6 22.Rxe6 fxe6 23.Ne4 Kf7 24.Ra1 
+Rc7 25.Ra6 b4 26.Bxf6 Bxf6 27.Ng5+ Kg8 28.Nxe6 Qe7 29.Nxc7 Qxc7 30.Qxf6 bxc3 31.Ra8+ 1-0
+
+[Event "Chessmaster: Grandmaster Edition Rated Game"]
+[Site ""]
+[Date "2026.9.23"]
+[Round ""]
+[White "Buddy"]
+[Black "Test"]
+[TimeControl "600+3"]
+[Result "0-1"]
+[ECO " "]
+
+1.e3 Nf6 2.Nc3 e5 3.Bc4 Nc6 4.Nd5 Bc5 5.Nxf6+ Qxf6 6.Qf3 O-O 7.Qxf6 gxf6 8.Bxf7+ Rxf7 9.d4 exd4 10.exd4 Nxd4 11.Nf3 Nxc2+ 12.Kd1
+Nxa1 13.b4 Bxb4 14.Bb2 d5 15.a3 Nb3 16.axb4 Bg4 17.Kc2 c5 18.Kxb3 c4+ 19.Kc2 a5 20.Rd1 Be6 21.bxa5 Rxa5 22.Re1 Bf5+ 23.Kc1 b5 
+24.Re8+ Kg7 25.Nd4 Bd7 26.Re3 b4 27.Rg3+ Kf8 28.Nc2 Bf5 29.Nxb4 Bd7 30.Nxd5 Rxd5 31.Ba3+ Re7 32.Re3 Re5 33.Rxe5 fxe5 34.Kd2 Kf7 
+35.Kc1 Re6 36.Kc2 Bb5 37.Kc3 Re8 38.Bd6 Kf6 39.Kb4 Ba6 40.g4 Rd8 41.Bc7 Rd4 42.g5+ Kxg5 43.Bxe5 Rd2 44.h4+ Kxh4 45.Bf6+ Kg4 
+46.f3+ Kxf3 47.Be5 Ke4 48.Bg7 Kd3 49.Be5 Bb7 50.Kc5 c3 51.Bxc3 Kxc3 52.Kb6 Rb2+ 53.Kc5 Bc8 54.Kd5 Rb4 55.Ke5 Kd3 56.Kd5 Rb5+ 
+57.Kc6 Kc4 58.Kd6 Bd7 59.Kxd7 Kd5 60.Ke7 Rb6 61.Kd7 Rb7+ 62.Kd8 Kc6 63.Ke8 Kd6 64.Kf8 Ke6 65.Kg8 Kf6 66.Kh8 Kg6 67.Kg8 Rb8# 0-1
+
+[Event "Chessmaster: Grandmaster Edition Rated Game"]
+[Site ""]
+[Date "2026.9.27"]
+[Round ""]
+[White "Test"]
+[Black "Josh - Age 8"]
+[TimeControl "600+3"]
+[Result "1-0"]
+[ECO " "]
+
+1.c4 e5 2.Nf3 e4 3.Nd4 Bc5 4.Nb3 Bb4 5.a3 Be7 6.Nc3 Nf6 7.g3 d5 8.cxd5 Nxd5 9.Bg2 Nxc3 10.bxc3 Nd7 11.Bxe4 Nc5 12.Bg2 Nxb3 
+13.Qxb3 c5 14.O-O Qb6 15.Qxb6 axb6 16.c4 Bd7 17.Bb2 f6 18.Bxb7 Ra7 19.Bd5 Kf8 20.d4 Be8 21.Rfb1 h6 22.Bg2 cxd4 23.Bxd4 Ra4 
+24.Bd5 b5 25.Rc1 bxc4 26.Rxc4 Ra5 27.Bg2 Rxa3 28.Rxa3 Bxa3 29.Bc5+ Bxc5 30.Rxc5 Bd7 31.Rd5 Ke7 32.e4 Bg4 33.h3 Bc8 34.f4 Rd8 
+35.Rxd8 Kxd8 36.Kf2 Be6 37.Ke3 g5 38.Kd4 gxf4 39.gxf4 Ke7 40.h4 Kd6 41.f5 Bd7 42.Bf3 Bb5 43.Bh5 Ba4 44.Bf7 Bb5 45.Bd5 Bd7 46.Ke3
+Be8 47.Kf3 Ke5 48.Kg4 Kd6 49.Kf4 Kc5 50.Ke3 Ba4 51.Kf4 Kd4 52.Kg4 Bb5 53.Kh5 Be8+ 54.Kxh6 Ke5 55.h5 Kd6 56.Kg7 Bxh5 57.Kxf6 Be8 
+58.Ba8 Bh5 59.e5+ Kd7 60.e6+ Kd6 61.Bh1 Bg4 62.Bg2 Bd1 63.Bf1 Bf3 64.Bb5 Bh5 65.e7 Kd5 66.e8=Q Bxe8 67.Bxe8 Kd6 68.Ba4 Kd5 
+69.Bb3+ Kd6 70.Kf7 Ke5 71.f6 Kd6 72.Ke8 Kc5 73.f7 Kb4 74.f8=Q+ Kxb3 75.Qc5 Kb2 76.Ke7 Kb3 77.Kd6 Kb2 78.Kd5 Kb3 79.Kd4 Kb2 
+80.Kd3 Kb3 81.Qb5+ Ka2 82.Kc3 Ka3 83.Qa6# 1-0
+
