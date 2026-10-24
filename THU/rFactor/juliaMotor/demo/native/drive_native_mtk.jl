@@ -749,6 +749,17 @@ const REPLAY_TELE_P  = ["lap", "lapdist", "speed", "throttle", "brake", "steer",
                         [string(q, "_", w) for w in ("FL", "FR", "RL", "RR") for q in ("fx", "fy", "gx", "gy", "xi")]...]
 const REPLAY_TYRE_CH = [string(q, "_", w) for w in ("FL", "FR", "RL", "RR") for q in ("fx", "fy", "gx", "gy", "xi")]
 const REPLAY_TELE_AI = ["s", "speed", "lap", "lane"]
+# REPLAYROLL-1 (PO 2026-10-23: the car rolled over and lay upside down in the race, but "the replay shows the car levitating
+# after hitting the hedge, and coming to a stop in midair 1-2 m above the ground"): the pose block holds x, y, z, heading
+# only, so a wreck's roll and pitch were never recorded and the replay drew it upright, at the height of its CG. A wreck's
+# pose block is now its rigid body's (the ground point under the CG), with its pitch and roll as channels, `body` = 1 while
+# it is the free body; each AI car's pitch and roll too (a struck, rolling AI car). Appended, by name, as REPLAY-6 did.
+# JM_REPLAY_ROLL=0 plays a recording upright (as before).
+append!(REPLAY_TELE_P, ["pitch", "roll", "body"]); append!(REPLAY_TELE_AI, ["pitch", "roll"])
+const REPLAY_ROLL = get(ENV, "JM_REPLAY_ROLL", "1") != "0"
+const REP_BODY = Ref((NaN, NaN))                  # the replayed player's recorded (pitch, roll) while a wreck; NaN = none
+const REPLAY_BODYDIAG = get(ENV, "JM_REPLAY_BODYDIAG", "0") != "0"   # print the drawn car's up axis every 15 frames (tests)
+const REP_DIAGN = Ref(0)
 _jstr(x::AbstractString) = "\"" * replace(x, "\\" => "\\\\", "\"" => "\\\"") * "\""
 _jarr(v) = "[" * join((x isa AbstractString ? _jstr(x) : string(x) for x in v), ",") * "]"
 """REPLAY-2: write the session's replay -- the .jmr (Julia, played back by the sim) and the .jrt (one JSON header line,
@@ -1141,6 +1152,7 @@ const RECOVER_AT  = Float64[parse(Float64, x) for x in split(get(ENV, "JM_RECOVE
 const RECOVER_I   = Ref(1)
 const WRECK_AT    = parse(Float64, get(ENV, "JM_WRECK_AT", "0"))   # TD261013-1 (c3) test hook: force a wreck at this sim time
 const WRECK_AT_DONE = Ref(false)
+const WRECK_ROLL  = parse(Float64, get(ENV, "JM_WRECK_ROLL", "0"))   # REPLAYROLL-1 test hook: a wreck starts rolling (rad/s, JM_SMOKE only)
 import Random
 const AI_SEED = something(tryparse(Int, get(ENV, "JM_AI_SEED", "")), haskey(ENV, "JM_SMOKE") ? 1967 : rand(1:typemax(Int32)))   # TD261013-1 (a1)
 const AI_RNG  = Ref{Any}(nothing)
@@ -1193,6 +1205,9 @@ const AUTODRIVE_V = parse(Float64, get(ENV, "JM_AUTODRIVE_V", "45"))   # target 
 # to follow the racing line, which is the one path that never reproduces an off-road defect -- so a
 # deliberate excursion needs its own knob. Positive = one side, negative = the other.
 const AUTODRIVE_LAT = parse(Float64, get(ENV, "JM_AUTODRIVE_LAT", "0"))
+const AUTODRIVE_ROAD = get(ENV, "JM_AUTODRIVE_ROAD", "1") != "0"   # AUTODRIVE-MONZA-1: keep the line on GPL's road (0 = CLINE as is)
+const AD_OFF = Ref{Union{Nothing,Tuple{Float64,Vector{Float64}}}}(nothing)   # (step, per-step lateral offset), autodrive_offsets
+const ADLINE = Ref{Any}(nothing)   # AUTODRIVE-MONZA-1: the autodriver's own line where CLINE leaves GPL's road (autodrive_line)
 # 2026-10-20: JM_AUTODRIVE_RECOVER=<s> -- the headless driver presses SHIFT+R (recover to track) after s seconds below
 # 0.5 m/s once the race is under way, as a driver who has spun, gone wide into a fence or been pinned by a car would
 # (not after a wreck: that ends the race). The driver still has no traffic awareness -- it rams AI cars and can wreck.
@@ -11973,6 +11988,8 @@ function camera(cs, pitch=0.0, roll=0.0)
     if WBODY[] !== nothing        # CRASHBODY-1: in a wreck the head goes where the tub goes -- the rigid body's own rotation
         # MIDRACEJIT-1: ntuple(.., Val(16)) keeps the length (a `_m[1:12]...` splat, or ntuple(.., 16), is Vararg{Any}: M4 compiled 23 ms in the wreck)
         _m = WreckBody.model_matrix(WBODY[]); R = Render.M4(ntuple(i -> i <= 12 ? _m[i] : i == 16 ? 1f0 : 0f0, Val(16))...)
+    elseif isfinite(REP_BODY[][1])    # REPLAYROLL-1: and in its replay
+        R = Render.roty(Float32(cs.θ)) * Render.rotz(Float32(REP_BODY[][1])) * Render.rotx(Float32(REP_BODY[][2]))
     end
     R3(a,b,c) = (w = R * Float32[a,b,c,0f0]; Float32[w[1],w[2],w[3]])     # rotate a body-frame direction into the world
     eye = Float32[wx,wy,wz] + R3(BODY_OFF[1]+ex, BODY_OFF[2]+ey, BODY_OFF[3]+ez)   # eye fixed in the body frame
@@ -12737,7 +12754,38 @@ function main()
         end
         exit(0)
     end
+    # AUTODRIVE-MONZA-1 probe: JM_GPLWPROF="<s0>:<s1>" walks the centreline (CLINE, the autodriver's line) every 5 m and prints
+    # where it lies in GPL's wall frame -- section, lateral, GPL's ROAD interval and the walls bracketing the point -- then exits.
+    if GPLW_ON && CLINE !== nothing && haskey(ENV, "JM_GPLWPROF")
+        let f = split(ENV["JM_GPLWPROF"], ":"), s0 = parse(Float64, f[1]), s1 = parse(Float64, f[2])
+            println("  [gplwprof] s  x  z | GPL section f lat | road interval | walls around the point | autodrive offset -> target lat, walls")
+            _ado = autodrive_offsets(CLINE)
+            _adtgt(s) = (o = _ado[2][mod1(round(Int, s / _ado[1]) + 1, length(_ado[2]))]; q = RaceAI.pose_at(CLINE, s, o);
+                         l = gplw_locate_any(q[1], q[3]); l === nothing ? "" : (w = GPLWall.free_interval(GPLWALLS, l[1], l[2], l[3], l[3]; hmin = GPLW_HMIN);
+                         string(" | ", round(o, digits = 2), " -> ", round(l[3], digits = 2), " [", round(w[1], digits = 2), ", ", round(w[2], digits = 2), "]")))
+            for s in s0:5.0:s1
+                p = RaceAI.pose_at(CLINE, s, 0.0); loc = gplw_locate_any(p[1], p[3])
+                loc === nothing && (println("  [gplwprof] ", s, "  not located"); continue)
+                (sec, fr, lat, _, _) = loc
+                (rlo, rhi, _, _) = gplw_road_interval(sec, fr)
+                (wlo, whi, _, _) = GPLWall.free_interval(GPLWALLS, sec, fr, lat, lat; hmin = GPLW_HMIN)
+                println("  [gplwprof] ", s, "  ", round(p[1], digits = 1), " ", round(p[3], digits = 1), " | ", sec, " ",
+                        round(fr, digits = 3), " ", round(lat, digits = 2), " | [", round(rlo, digits = 2), ", ", round(rhi, digits = 2),
+                        "] | [", round(wlo, digits = 2), ", ", round(whi, digits = 2), "]", _adtgt(s))
+            end
+        end
+        exit(0)
+    end
     CLINE !== nothing && println("  CLINE: centreline length = ", round(Int, CLINE.total), " m  (", TRACKSEL, ")")
+    if AUTODRIVE && AUTODRIVE_ROAD && GPLW_ON && CLINE !== nothing     # AUTODRIVE-MONZA-1: the autodriver's line on GPL's road
+        AD_OFF[] = autodrive_offsets(CLINE)
+        ADLINE[] = autodrive_line(CLINE, AD_OFF[], (x, z) -> (r = ground_road(x, z); r[2] ? r[1] : NaN))
+        let o = AD_OFF[][2], st = AD_OFF[][1], m = findall(x -> abs(x) > 0.1, o)
+            println("  [autodrive] line kept on GPL's road: ", round(Int, st*length(m)), " m shifted",
+                    isempty(m) ? "" : string(", max ", round(maximum(abs.(o)), digits = 2), " m at s ", round(Int, st*(argmax(abs.(o)) - 1))),
+                    " (JM_AUTODRIVE_ROAD=0: CLINE as is)")
+        end
+    end
     # BNDWRECK-1 S10: vertex DENSITY per 50 m. S9's other candidate for the bad projection is that
     # the line is sparse around lapdist 1750-1849 -- the band where |lat| reads 47-58 m and where
     # all four wrecks land (lapdist 1818). A brute-force nearest-VERTEX search has exactly the
@@ -14154,16 +14202,44 @@ function main()
         end
         exit(0)
     end
-    # interpolated poses at replay time rt → (player (x,y,z,θ), Vector of AI (x,y,z,θ))
+    # REPLAYROLL-1: where the recorded attitudes are -- the tele channels pitch / roll / body (player), pitch / roll (AI);
+    # all 0 in an older recording (or with JM_REPLAY_ROLL=0): played upright, as before
+    rep_np, rep_na = REPLAY && hasproperty(repd, :tele) && !isempty(repd.tele) ? (length(repd.tele_p), length(repd.tele_ai)) : (0, 0)
+    rep_nt0 = rep_np + rep_na*((REPLAY ? repd.ncar : 1) - 1)
+    _rch(v, nm) = (k = findfirst(==(nm), v); k === nothing ? 0 : k)
+    rep_kp = (REPLAY_ROLL && rep_np > 0) ? (_rch(repd.tele_p, "pitch"), _rch(repd.tele_p, "roll"), _rch(repd.tele_p, "body"),
+                                            _rch(repd.tele_ai, "pitch"), _rch(repd.tele_ai, "roll")) : (0, 0, 0, 0, 0)
+    # interpolated poses at replay time rt → (player (x,y,z,θ,pitch,roll), Vector of AI (x,y,z,θ,pitch,roll)); the player's
+    # pitch/roll are NaN unless the recording has it as a wreck's free body there (REPLAYROLL-1)
     function replay_poses(rt)
         d = repd.data; nf = repd.nframes; f = clamp(rt*repd.fps, 0.0, nf-1.0)
         i0 = floor(Int, f); i1 = min(i0+1, nf-1); g = f - i0
         b0 = i0*rep_st; b1 = i1*rep_st
         lerp(o) = d[b0+o]*(1-g) + d[b1+o]*g
         lerpθ(o) = (a=d[b0+o]; a + (mod(d[b1+o]-a+π, 2π)-π)*g)   # shortest-arc heading lerp
-        player = (lerp(2), lerp(3), lerp(4), lerpθ(5))
-        ais = NTuple{4,Float64}[]
-        for k in 1:(repd.ncar-1); o = 5 + 4*(k-1); push!(ais, (lerp(o+1), lerp(o+2), lerp(o+3), lerpθ(o+4))); end
+        tl = rep_np > 0 ? repd.tele : d; t0 = i0*rep_nt0; t1 = i1*rep_nt0
+        player = (lerp(2), lerp(3), lerp(4), lerpθ(5), NaN, NaN)
+        if rep_kp[3] > 0
+            w0 = tl[t0+rep_kp[3]] > 0.5f0; w1 = tl[t1+rep_kp[3]] > 0.5f0
+            if w0 || w1                                            # a wreck: its body's attitude, slerped
+                A0 = (Float64(d[b0+5]), Float64(tl[t0+rep_kp[1]]), Float64(tl[t0+rep_kp[2]]))
+                A1 = (Float64(d[b1+5]), Float64(tl[t1+rep_kp[1]]), Float64(tl[t1+rep_kp[2]]))
+                A = (w0 && w1) ? replay_att_lerp(A0, A1, g) : w0 ? A0 : A1
+                player = (lerp(2), lerp(3), lerp(4), A[1], A[2], A[3])
+            end
+        end
+        ais = NTuple{6,Float64}[]
+        for k in 1:(repd.ncar-1)
+            o = 5 + 4*(k-1)
+            if rep_kp[4] > 0
+                oa = rep_np + rep_na*(k-1)
+                A = replay_att_lerp((Float64(d[b0+o+4]), Float64(tl[t0+oa+rep_kp[4]]), Float64(tl[t0+oa+rep_kp[5]])),
+                                    (Float64(d[b1+o+4]), Float64(tl[t1+oa+rep_kp[4]]), Float64(tl[t1+oa+rep_kp[5]])), g)
+                push!(ais, (lerp(o+1), lerp(o+2), lerp(o+3), A[1], A[2], A[3]))
+            else
+                push!(ais, (lerp(o+1), lerp(o+2), lerp(o+3), lerpθ(o+4), 0.0, 0.0))
+            end
+        end
         (player, ais)
     end
     # COCKPIT-2 S5 (PO 2026-10-07: "ALL cockpits incl. AI cockpits in replay"): with the replay camera in COCKPIT on an AI

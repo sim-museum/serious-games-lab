@@ -258,19 +258,46 @@ function countdown_step!(cs, AICARS, HOLD_START, ai_release, cd_armed, cd_left, 
     lap_t0
 end
 
+# REPLAYROLL-1: a recorded attitude between two frames. The car's rotation R = Ry(θ) Rz(pitch) Rx(roll) (Render.pose_matrix,
+# WreckBody.start!) is slerped as a quaternion -- a tumbling wreck passes pitch ±90°, where the angles themselves jump --
+# and returned as (θ, pitch, roll) in WreckBody.attitude's conventions.
+function att_quat(θ::Float64, p::Float64, r::Float64)
+    cy, sy = cos(θ/2), sin(θ/2); cz, sz = cos(p/2), sin(p/2); cx, sx = cos(r/2), sin(r/2)
+    (w, x, y, z) = (cy*cz, sy*sz, sy*cz, cy*sz)                       # qy * qz
+    (w*cx - x*sx, w*sx + x*cx, y*cx + z*sx, z*cx - y*sx)              # * qx
+end
+function replay_att_lerp(a0::NTuple{3,Float64}, a1::NTuple{3,Float64}, g::Float64)
+    q0 = att_quat(a0...); q1 = att_quat(a1...)
+    d = sum(q0 .* q1); d < 0 && (q1 = .-q1; d = -d)
+    q = d > 0.9995 ? q0 .+ g .* (q1 .- q0) : (ω = acos(min(d, 1.0)); (sin((1 - g)*ω) .* q0 .+ sin(g*ω) .* q1) ./ sin(ω))
+    (w, x, y, z) = q ./ sqrt(sum(q .^ 2))
+    f1 = 1 - 2(y*y + z*z); f2 = 2(x*y + w*z); f3 = 2(x*z - w*y); u2 = 1 - 2(x*x + z*z); r2 = 2(y*z - w*x)
+    (atan(-f3, f1), asin(clamp(f2, -1.0, 1.0)), atan(-r2, u2))
+end
+
 """E18 / REPLAY-2 / REPLAY-6: record every car's pose and the analysis channels at ~15 Hz once the race is green, with the
 crash-safe autosave. (LOOPSPLIT-1 cycle 2 S1: moved unchanged from main(); its buffers and Refs are shared.)"""
 function replay_record!(cs, inp, AICARS, ai_poses, CLINE, REPLAY_AUTOSAVE, REPLAY_NCAR, phase, race_go, rst, replay_buf, replay_names, replay_out, replay_saved, replay_t, tele_buf, tyre_lp)
         if replay_buf !== nothing && race_go[] && !rst && length(ai_poses) == length(AICARS) && (cs.t - replay_t[]) >= 1/15
             replay_t[] = cs.t
-            push!(replay_buf, Float32(cs.t), Float32(cs.x), Float32(cs.y), Float32(cs.z), Float32(cs.θ))
+            b = WBODY[]                                            # REPLAYROLL-1: a wreck is recorded as its body lies
+            bp, br = 0.0, 0.0
+            if b === nothing
+                push!(replay_buf, Float32(cs.t), Float32(cs.x), Float32(cs.y), Float32(cs.z), Float32(cs.θ))
+            else
+                o = b.p - b.R * WreckBody.V3(0.0, b.g.hcg, 0.0); (bθ, bp, br) = WreckBody.attitude(b)
+                push!(replay_buf, Float32(cs.t), Float32(o[1]), Float32(o[2]), Float32(-o[3]), Float32(bθ))
+            end
             for p in ai_poses; push!(replay_buf, Float32(p[1]), Float32(p[2]), Float32(p[3]), Float32(p[4])); end
             # REPLAY-2: analysis channels, REPLAY_TELE_P for the player then REPLAY_TELE_AI per AI car
             push!(tele_buf, Float32(cs.laps), Float32(cs.lapdist), Float32(cs.v), Float32(inp.throttle), Float32(inp.brake),
                   Float32(inp.steer), Float32(inp.clutch), Float32(cs.gear), Float32(cs.rpm), Float32(cs.lateral),
                   Float32(cs.ontrack ? 1 : 0), Float32(phase[] == :race ? 1 : 0))
             for w in tyre_lp[], q in w; push!(tele_buf, Float32(q)); end             # REPLAY-6
-            for a in AICARS; push!(tele_buf, Float32(a.s), Float32(a.v), Float32(a.lap), Float32(a.lane)); end
+            push!(tele_buf, Float32(bp), Float32(br), Float32(b === nothing ? 0 : 1))   # REPLAYROLL-1
+            for (k, a) in enumerate(AICARS)
+                push!(tele_buf, Float32(a.s), Float32(a.v), Float32(a.lap), Float32(a.lane), Float32(ai_poses[k][5]), Float32(ai_poses[k][6]))
+            end
             if time() - replay_saved[] > REPLAY_AUTOSAVE           # crash-safe: the session so far is on disk
                 replay_saved[] = time(); write_replay(replay_out[], replay_buf, tele_buf, REPLAY_NCAR, replay_names, CLINE; final = false)
             end
@@ -771,6 +798,7 @@ function warm_midrace_compile!(cs, inp, dt, ai_poses, ddt, AICARS, AILINE, GPLAI
     # CRASHBODY-1: the crash body first runs at the moment of a wreck -- compiled here, not at the impact
     (CRASHBODY && CAR3D) && wreck_body_step!(cs, inp, dt, groundz_phys, roll_ter; dry = true)   # a scratch body, nothing written back
     (CRASHBODY && CAR3D) && attrates3d(cs)                                                     # CARLAUNCH-1: the handover's rates
+    (CRASHBODY && CAR3D) && WreckBody.attitude(WreckBody.Body(WreckBody.Geometry()))              # REPLAYROLL-1: the recorder's wreck pose
     (CRASHBODY && CAR3D) && (precompile(launch_msg, (Float64, NTuple{4,Float64}));   # and its log lines (a call here was
                              precompile(body_msg, (Bool, Float64, Int, Float64, Float64, Float64));   # inlined: launch_msg
                              precompile(landed_msg, (Float64, Float64, Float64, Tuple{Float64,Float64})))   # still compiled 30 ms)
@@ -864,7 +892,11 @@ function body_camera_step!(cs, inp, dt, v_prev, pitch_ter, roll_ter, pitch_dyn, 
     tiltModel = carModel * Render.rotz(Float32(pitch_dyn)) * Render.rotx(Float32(rollv))   # full body tilt (terrain + dynamic)
     if WBODY[] !== nothing    # CRASHBODY-1: a wreck is drawn exactly as its rigid body lies -- the whole car, wheels too
         carModel = Render.M4(WreckBody.model_matrix(WBODY[])...); tiltModel = carModel
+    elseif isfinite(REP_BODY[][1])   # REPLAYROLL-1: a replayed wreck as its body lay (the recorded ground point, heading, pitch, roll)
+        carModel = Render.pose_matrix(cs.x, cs.y, -cs.z, cs.θ, REP_BODY[][1], REP_BODY[][2]); tiltModel = carModel
     end
+    REPLAY_BODYDIAG && (REP_DIAGN[] += 1) % 15 == 1 && (println("  [replaybody] frame ", REP_DIAGN[], " up_y ", round(carModel[2, 2], digits = 3),
+                                                               " at (", round(cs.x, digits = 1), ", ", round(cs.z, digits = 1), ") y ", round(cs.y, digits = 2)); flush(stdout))
     bodyModel = tiltModel * Render.translate(BODY_OFF) * CARHAND  # body dives/squats + rolls (3-D); CARHAND-1: GPL's handedness
     (; v_prev, pitch_ter, roll_ter, pitch_dyn, rollv, cam_pitch, cam_roll, vp, eye, carModel, tiltModel, bodyModel)
 end
@@ -1121,7 +1153,7 @@ end
 # the physics field, the GPL field, the kinematic rail field; E104-S4's re-grounding is at the call site), moved unchanged.
 function ai_poses_step!(cs, ddt, ai_hit, rep_ai_raw, AICARS, AIPHYS, GPLAI_T, phase, race_go, race_done, ai_release, aibankP, aibankK, ai_ground, groundz, groundz_ai, ai_onroad, ai_stuck, GPLAI_PD, GPLAI_PH, GPLAI_SC, ent_name, gplai_field!, REPLAY, AILINE, AI_SCALE)
     ai_poses = if REPLAY                                       # E18: AI poses straight from the recording
-        NTuple{6,Float64}[(a[1],a[2],a[3],a[4],0.0,0.0) for a in rep_ai_raw]
+        NTuple{6,Float64}[(a[1], a[2], a[3], a[4], isfinite(a[5]) ? a[5] : 0.0, isfinite(a[6]) ? a[6] : 0.0) for a in rep_ai_raw]   # REPLAYROLL-1
     elseif AILINE === nothing || phase[] != :race              # AI hidden until the race starts (after qualifying)
         NTuple{6,Float64}[]
     elseif !race_go[] || (AI_HEADSTART > 0 && ai_release[] >= 0.0 && cs.t < ai_release[])
@@ -1153,6 +1185,86 @@ function ai_poses_post(cs, dt, ai_poses, AICARS, REPLAY, ai_poses_prev, GPLAI_T)
                                                          for (k, p) in enumerate(ai_poses)])
     ai_poses
 end
+
+"""AUTODRIVE-MONZA-1 (2026-10-23): the autodriver follows CLINE, the centreline re-centred on the visible road (each node
+moved at most 4 m). At Monza's pit exit (s 345-440) that leaves CLINE in the walled pit-exit channel beside GPL's road
+(road [+3.8, +20] m, CLINE at -1.4..+2 in GPL's frame), so the autodriver hit its walls at s 409/437 every run.
+* GPL's ROAD at each point is the free interval (between GPL's walls) holding GPL's own racing line (race.lp) -- neither
+  the widest interval (the pit lane is wider in places) nor continuity (before the split CLINE is already on the pit-exit
+  side) picks it; race.lp's lateral sign is the one under which the line and CLINE share an interval most often.
+* Marked: CLINE off GPL's road in a channel narrower than `narrow` (a lane that closes) and the wider part of the same
+  lane before it, or on the road within `inner` of its walls. A wide lane (Monza's pit lane before the line) is driven
+  as it is: an offset there carried over the line and started the car with a lane change that ended in a spin.
+* The TARGET is built in GPL's frame, not as an offset smoothed along CLINE (CLINE kinks 5.5 m in 10 m into the fork;
+  a smooth offset on a kinked line is a kinked path): `margin` inside GPL's road on the marked points, that lateral held
+  `hold` metres before and after while the road allows it, then averaged +-`ramp` metres back onto CLINE.
+Returns (step, offsets in CLINE's frame); all zero without a race.lp or where nothing is marked (every other track)."""
+function autodrive_offsets(CLINE; step = 2.0, margin = 2.5, inner = 1.0, narrow = 9.0, hold = 120.0, ramp = 120.0)
+    n = max(1, floor(Int, CLINE.total / step)); off = zeros(n)
+    lpf = joinpath(ZD, "race.lp"); isfile(lpf) || return (step, off)
+    dl = Float64.(GPLLP.read_lp(lpf).dlat); N = length(dl)
+    L = GPLWALLS.seclen; c0 = cumsum(L) .- L; lap = sum(L)
+    racelat(sec, f) = dl[mod1(round(Int, (c0[sec] + f*L[sec]) / lap * N) + 1, N)]
+    fi(sec, f, lat) = GPLWall.free_interval(GPLWALLS, sec, f, lat, lat; hmin = GPLW_HMIN)
+    lat = fill(NaN, n); sg = zeros(n); sec_ = zeros(Int, n); f_ = zeros(n)
+    for k in 1:n
+        s = (k - 1)*step
+        p0 = RaceAI.pose_at(CLINE, s, 0.0); p1 = RaceAI.pose_at(CLINE, s, 1.0)
+        l0 = gplw_locate_any(p0[1], p0[3]); l1 = gplw_locate_any(p1[1], p1[3])
+        (l0 === nothing || l1 === nothing || l0[1] != l1[1]) && continue
+        g = l1[3] - l0[3]; abs(g) < 0.5 && continue                  # GPL lateral per metre of CLINE lateral (+-1)
+        lat[k] = l0[3]; sg[k] = g; sec_[k] = l0[1]; f_[k] = l0[2]
+    end
+    ok = findall(isfinite, lat); isempty(ok) && return (step, off)
+    same(sgn) = count(k -> fi(sec_[k], f_[k], lat[k])[1:2] == fi(sec_[k], f_[k], sgn*racelat(sec_[k], f_[k]))[1:2], ok)
+    sgn = same(1.0) >= same(-1.0) ? 1.0 : -1.0
+    road = Dict{Int,Tuple{Float64,Float64}}(); kind = Dict{Int,Symbol}()
+    for k in ok
+        (lo, hi, _, _) = fi(sec_[k], f_[k], sgn*racelat(sec_[k], f_[k]))
+        (isfinite(lo) && isfinite(hi) && hi - lo > 2margin + 1.0) || continue
+        road[k] = (lo, hi); (wlo, whi, _, _) = fi(sec_[k], f_[k], lat[k])
+        kind[k] = lo + inner <= lat[k] <= hi - inner ? :road : (wlo, whi) == (lo, hi) ? :near : whi - wlo >= narrow ? :lane : :narrow
+    end
+    want(k) = clamp(lat[k], road[k][1] + margin, road[k][2] - margin)
+    tg = Dict{Int,Float64}()                                          # GPL-frame target where it is not CLINE
+    for k in 1:n
+        get(kind, k, :none) in (:near, :narrow) || continue
+        tg[k] = want(k); j = mod1(k - 1, n)
+        while get(kind, j, :none) === :lane && !haskey(tg, j); tg[j] = want(j); j = mod1(j - 1, n); end
+    end
+    isempty(tg) && return (step, off)
+    nh = round(Int, hold/step)
+    for k in collect(keys(tg)), d in (-1, 1)                          # hold the lateral where the road allows it
+        haskey(tg, mod1(k + d, n)) && continue                        # (only from the ends of a marked run)
+        v = tg[k]; j = mod1(k + d, n)
+        for _ in 1:nh
+            (haskey(road, j) && !haskey(tg, j) && road[j][1] + margin <= v <= road[j][2] - margin) || break
+            tg[j] = v; j = mod1(j + d, n)
+        end
+    end
+    nr = round(Int, ramp/step)
+    for k in ok                                                       # average +-ramp: CLINE's lateral outside the target
+        any(d -> haskey(tg, mod1(k + d, n)), -nr:nr) || continue
+        m = 0.0; c = 0
+        for d in -nr:nr
+            j = mod1(k + d, n); isfinite(lat[j]) || continue
+            m += get(tg, j, lat[j]); c += 1
+        end
+        off[k] = (m/c - lat[k]) / sg[k]
+    end
+    (step, off)
+end
+"""AUTODRIVE-MONZA-1: the autodriver's own line -- CLINE moved by autodrive_offsets (RaceAI's lane is capped at +-3.8 m,
+so the shift cannot be a lane); `nothing` where every offset is 0 (the autodriver then follows CLINE exactly)."""
+function autodrive_line(CLINE, off, groundfn)
+    any(!iszero, off[2]) || return nothing
+    st, o = off
+    RaceAI.build_line([(p = RaceAI.pose_at(CLINE, (k - 1)*st, o[k]); (p[1], p[3])) for k in eachindex(o)], groundfn)
+end
+ad_offset(s) = (o = AD_OFF[]; o === nothing ? 0.0 : (n = length(o[2]); o[2][mod1(round(Int, s / o[1]) + 1, n)]))
+"the controller on the autodriver's own line (a function barrier: ADLINE is a Ref{Any})"
+ad_control(L, cs, vt, yawrate) = (p = RaceAI.project(L, cs.x, cs.z);
+    RaceAI.controller(L, p[1], p[2], AUTODRIVE_LAT, vt, cs.x, cs.z, cs.θ, cs.v, yawrate; power = 1.0))
 
 """E85-S6 HEADLESS AUTODRIVE (JM_AUTODRIVE=1): the AI controller drives the player on the centreline; returns the
 frame's input. LOOPSPLIT-1 cycle 2 S2: moved unchanged from the frame loop -- in the loop its `let` wrote main()'s own
@@ -1193,8 +1305,11 @@ function autodrive_step!(cs, CLINE, frames, dt, groundz, inp, ONTRACK)
                 _vt = min(_vt, max(0.0, av + (gap - 12.0)/2.0))
             end
         end
-        thr, brk, st = RaceAI.controller(CLINE, s0, lat0, AUTODRIVE_LAT, _vt,
-                                         cs.x, cs.z, cs.θ, cs.v, yawrate; power = 1.0)
+        # AUTODRIVE-MONZA-1: where CLINE leaves GPL's road the autodriver steers along its own line (ADLINE), else CLINE
+        _adl = ADLINE[]
+        thr, brk, st = _adl === nothing ?
+            RaceAI.controller(CLINE, s0, lat0, AUTODRIVE_LAT, _vt, cs.x, cs.z, cs.θ, cs.v, yawrate; power = 1.0) :
+            ad_control(_adl, cs, _vt, yawrate)
         # E106-S15 (PO: "ensure nurburgring and spa can be driven without obstacles
         # (levitation, bouncing) etc on the part of the human driver"). While autodrive is
         # running the lap, WATCH for the three failures the PO named, per frame:
@@ -1273,7 +1388,8 @@ function autodrive_step!(cs, CLINE, frames, dt, groundz, inp, ONTRACK)
         if AUTODRIVE_DIAG > 0 && (frames % AUTODRIVE_DIAG) == 0
             println("  [auto] t=", round(cs.t,digits=1), " v=", round(cs.v*3.6,digits=1),
                     " km/h  thr=", round(thr,digits=2), " brk=", round(brk,digits=2),
-                    " steer=", round(st,digits=2), " s=", round(s0,digits=1))
+                    " steer=", round(st,digits=2), " s=", round(s0,digits=1), " lat=", round(lat0,digits=2),
+                    " off=", round(ad_offset(s0),digits=2))   # AUTODRIVE-MONZA-1: the lateral, and ADLINE's shift from CLINE
             flush(stdout)
         end
         if AUTODRIVE_MANUAL && !CTL.auto           # (a stall drops the car to AUTO: then drive as AUTO does)
@@ -1333,6 +1449,7 @@ function replay_step!(cs, inp, dt, REP_AICOCKPIT, REP_NT, REP_TEAMCOCKPIT, rep_a
         k_ = rep_focus[]; rep_ai_raw = copy(rep_ai_raw); (pp, rep_ai_raw[k_]) = (rep_ai_raw[k_], pp)
     end
     cs.x = pp[1]; cs.y = pp[2]; cs.z = pp[3]; cs.θ = pp[4]; cs.v = 0.0; cs.pitch = 0.0; cs.roll = 0.0
+    REP_BODY[] = (!rep_swap[] && isfinite(pp[5])) ? (pp[5], pp[6]) : (NaN, NaN)   # REPLAYROLL-1: a recorded wreck's attitude
     if REP_NT > 0     # COCKPIT-2 S1: wheel, gloves, needles and HUD follow the recording, not the live controller
         rt_ = replay_tele(rep_rt[])
         cs.v = rt_.speed; cs.rpm = rt_.rpm; cs.gear = rt_.gear
@@ -2818,6 +2935,7 @@ function wreck_body_step!(cs, inp, dt, groundz_phys::G, roll_ter; dry::Bool = fa
         (pp, q, w) = attrates3d(cs)
         WB.start!(b, cs.x, cs.z, cs.y, cs.θ, cs.pitch, roll_ter + cs.roll, V3(WVX[], w, -WVZ[]),
                   V3(pp, Float64(DriveRT3D.yawrate3d(cs)), q); on = on, dmu = ntuple(i -> DriveRT3D.damage_mu(i), 4))
+        (SMOKE && WRECK_ROLL != 0) && (b.ω = b.ω + V3(WRECK_ROLL, 0.0, 0.0); b.v = b.v + V3(0.0, 2.0, 0.0))   # REPLAYROLL-1 test hook
         WBODY[] = b; WBODY_PLANE[] = WB.Plane(cs.x, -cs.z, cs.y, 0.0, 0.0)
         println(body_msg(WRECKED[], Float64(cs.v), count(on), pp, q, w)); flush(stdout)
     end
