@@ -149,6 +149,9 @@ authors who cannot be found only keep the community's work from being seen)
   geometry, parts, LODs, DOFs, textures (TIFF / SGI RGB / INTA) and the damage / part properties.
 - Convert to glTF plus a part / damage-property sidecar; refuse anything matching the Parsoft stock list.
 - Test on 3 community fighters (WWII) and 1 WWI aircraft, side by side with screenshots from SDOE.
+- Sprint 1 (2026-10-29): the .sm chunk format decoded (no public description found) and a first converter,
+  geometry and part names only: the Hurricane Mk I exports with the right span and length (40 ft, about
+  31 ft). Next: textures, the cockpit file, the provenance check, three more aircraft.
 
 ### WW2SIM-7 JSBSim flight models + tuning harness
 - JSBSim as a library; load FlightGear's P-51D and Bf 109G definitions; collect historical test data
