@@ -152,6 +152,108 @@ authors who cannot be found only keep the community's work from being seen)
 - Sprint 1 (2026-10-29): the .sm chunk format decoded (no public description found) and a first converter,
   geometry and part names only: the Hurricane Mk I exports with the right span and length (40 ft, about
   31 ft). Next: textures, the cockpit file, the provenance check, three more aircraft.
+- Sprint 2 (2026-10-29): the Milestone 1 pair extracted and converted: the Bf 109G-6 is clean (32 ft span,
+  29 ft); the P-51B's geometry is fine but one wing is placed about 5.5 ft too far out (a placement rule
+  still to decode). Shadow planes, hit boxes and marker parts are left out of the clean export.
+- PO idea (2026-10-29): use the P-51B art for a P-51D too, with the D's engine ("The two aircraft look
+  about the same"). Worth doing as a stand-in until a D model exists; what differs: bubble canopy and
+  cut-down rear fuselage, dorsal fillet, six guns vs four, the V-1650-7's altitude ratings, weight. The
+  flight model can be the D's from IL-2 1946 test flights (both are flyable there).
+
+- Sprint 3 (2026-10-29): `--strip-stock` leaves out every part that is 50% or more Parsoft geometry and
+  lists textures from Parsoft's folders (Bf 109G-6: 5 parts, 5 textures; P-47D: none); chunk 14 decoded
+  (moving-part hinges / slides with limits). Placement solved: chunk 11 is each part's offset in its node
+  (vertices are stored centred on the part); the Bf 109G-6 exports whole and the P-51B's wings are
+  symmetric (the old "5.5 ft wing offset"). With --strip-stock the P-51B loses 37 parts, wings included:
+  confirmed stock-derived, not shippable. `--normalise` centres a model on its fuselage and levels it by
+  the propeller's spin axis (the P-47D was built 2.5 ft off centre and 17 degrees nose-down; now 40.8 ft
+  span, 36 ft long, level). Textures now go into the glTF (one material per texture, embedded PNG; never
+  from a Parsoft folder); the Bf 109G-6 renders with its camouflage and crosses in place
+  (~/Documents/261029/ww2sim_bf109g6_textured_top.png). Next: redraw the 5 Parsoft-folder textures and
+  model the 5 stripped parts for the 109; then WW2SIM-14's first roster.
+
+### WW2SIM-13 Stand-ins for the Parsoft stock aircraft (PO 2026-10-29)
+PO: "For WW2SIM do this for all the off-limits Parasoft stock aircraft - substitute a similar aircraft,
+use the il2fb flight data for the actual aircraft. Only aviation experts will notice the difference."
+Then: "but parsoft made these components available to the mod community via openplane".
+- **Licence (SDOE's own help/sla.html, Activision):** the program's utilities and assets may be used to make
+  "New Game Materials" for personal use, free of charge, and "New Game Materials may be created only if such
+  New Game Materials can be used exclusively in combination with the retail version of the Program. New Game
+  Materials may not be designed to be used as a stand-alone product." OpenPlane gave modders Parsoft's parts
+  for SDOE add-ons, not for a separate game; the PO decides how WW2SIM treats them (options below).
+- **Provenance check (2026-10-29, ~/ww2sim_re/scripts/sm_provenance.py, table in
+  ~/Documents/261029/sdoe_model_provenance.tsv):** share of each model's vertices identical to a stock model.
+  Unrelated models share 0-4%. Of 199 SDOE models: 84 clean (73 community aircraft + 9 Parsoft stock + 2 non-aircraft), 40 sharing only Parsoft's kit parts (cockpit
+  panels, gun sights, canopy glass, wheels, propellers, turrets) or coarse proxies (low-detail / airfoil
+  sections), 75 built on a stock airframe (all community Spitfires, Mosquitos, Ju 88s, the P-51B / C and
+  A-36, P-38L, B-17F (= the stock mesh), B-24, Tempest, Fw 190A-3 / A-8, Beaufighters ...). The P-51B of
+  Milestone 1 uses the stock P-51D's wings; the Bf 109G-6 is the modeller's own airframe (kit parts only).
+- **Stand-ins** (art from a model whose airframe is the modeller's own; kit parts and proxies replaced by
+  ours; flight model = the real type's, from IL-2 1946 test flights where IL-2 flies it):
+
+| Stock type | Stand-in art | IL-2 1946 flight data |
+|---|---|---|
+| P-51D | no clean P-51 in SDOE: FlightGear's GPL P-51D model, or the P-51B art if the PO accepts the licence risk | P-51D-20NA, P-51D-5NT |
+| Fw 190A | Fw 190A-5/U13 or A-6/R15 (detailed, only proxies shared) | Fw 190A-5 / A-6 / A-8 |
+| Ju 88A-4 | He 111H-2 (clean; a different shape) or a FlightGear Ju 88 if one exists | Ju 88A-4 |
+| Me 262A | Sukhoi Su-9 (1946, a Me 262 look-alike; clean) or Meteor F.4 | Me 262A-1a |
+| Mosquito | no clean Mosquito in SDOE: FlightGear's GPL Mosquito, else Blenheim IV / Beaufort | Mosquito FB VI |
+| P-38J | P-61 (twin-boom, larger) or a FlightGear P-38 | P-38J |
+| Spitfire | no clean Spitfire in SDOE: FlightGear's GPL Spitfires, else Hurricane Mk II | Spitfire variants |
+| Typhoon | Hurricane Mk XII / Mk II (clean airframes) | none (IL-2 flies the Tempest only): historical trials |
+| Lancaster | Lancaster B Mk II (community, 38k vertices, proxies shared) | none: historical trials |
+| B-17G | no clean B-17 in SDOE: FlightGear's GPL B-17 | none: historical trials |
+| V-1 | our own simple model (a target, not flown) | none |
+
+- **Textures of the 73 clean community aircraft (2026-10-29, scripts/tex_provenance.py, table
+  ~/Documents/261029/sdoe_clean_models_textures_il2.tsv):** 28 use only their own textures; 30 use or copy
+  small Parsoft kit textures (gauges, spars, sidewalls, gun barrels; 64 px and under) that are easily
+  redrawn; 15 map large Parsoft images (stock skins or main panels: Do 335 and Meteors on Me262.tif,
+  Il-2 and MiG-3 on P51D.TIF, P-61 on P-38J's) and need new skins. IL-2 1946 (guides 4.07-4.12):
+  34 exact type flyable, 15 a close variant, 24 none or AI only.
+- **Free models (2026-10-29, ~/Documents/261029/ww2sim_free_models_survey.md):** FlightGear FGAddon (GPLv2+)
+  has 36 of the 43 main IL-2 types surveyed (none: Ki-43, LaGG-3, Pe-2, A-20, Typhoon, SBD, G4M);
+  Sketchfab CC-BY / CC0 fills Ki-43, LaGG-3, SBD, G4M. helijah = Baranger's CC-BY copies of his FlightGear
+  models. Excluded: game rips (69 hits) and manilov.ap's IL-2-like set. Gaps everywhere: Pe-2, A-20, Typhoon.
+- **Options for the PO:** (a) as the licence reads: distribute only clean art; stock and stock-derived art
+  only through the importer reading the player's own SDOE installation (nothing of Parsoft's shipped);
+  (b) ask the rights holder (Activision, now part of Microsoft) for permission; (c) treat OpenPlane parts as
+  free to use (a licence risk). Recommended: (a), with FlightGear's GPL models where SDOE has no clean
+  stand-in; it also moves Milestone 1 to Bf 109G-6 vs P-47D (both clean, both flown in IL-2).
+
+### WW2SIM-14 Aircraft roster and asset sources (PO decisions 2026-10-29)
+PO: "no commercial release ever"; on the survey of free models: "OK, good enough. Add this to the WW2SIM plans."
+- **Licence:** WW2SIM is free and never sold. Its code is GPLv2-or-later (matches FlightGear's aircraft;
+  JSBSim is LGPL; MIT Julia packages are compatible). The sgl repo has no licence file yet: add one.
+- **Parsoft content:** option (a) of WW2SIM-13. Nothing of Parsoft's ships: not the 10 stock types, not
+  stock-derived community models, not Parsoft's kit parts or textures inside otherwise clean models
+  (deleted and remodelled / redrawn). The importer may still read a player's own SDOE install.
+- **Art sources, in order:**
+  1. Clean SDOE community models (WW2SIM-13 provenance + texture checks), Parsoft parts removed, under the
+     asset policy (readme credits, a good-faith author search, removal on request).
+  2. FlightGear FGAddon models (GPLv2+), kept in their own folder with COPYING / AUTHORS. Eleven folders have
+     no licence file of their own (P47, Hurricane, A6M2, Ki-84, yak3, Ju-88, He-111, mosquito, sm79, me163,
+     He162): confirm each before use. Detlef Faber's are the most finished; most of Baranger's are alpha.
+  3. Sketchfab CC0 / CC-BY / CC-BY-SA (CC-BY-SA only under GPLv3). Never game rips or unsourced sets
+     (manilov.ap). helijah's CC-BY copies of Baranger's FlightGear models: confirm with him that helijah is
+     him. mgg8's CC0 models are AI-assisted, details approximate.
+- **Flight data:** IL-2 1946 test flights (WW2SIM-5 / -8) for the type or a close variant, corrected from
+  historical data where the variant differs (P-40F: Merlin; F4U-2 / Bf 110G-4: radar weight and drag;
+  Bf 109G-5: pressurised cockpit; Ju 87G-2: D-5 wing). Historical trials only where IL-2 does not fly it
+  (B-17, Lancaster, Mosquito bombers, Typhoon).
+- **First roster (SDOE models, by wartime production):** Bf 109E-4, G-5; P-47D x2, P-47C; P-40F; F4U-2;
+  Pe-2; A6M2 / A6M3 / A6M5; LaG-5 (new skin); Ju 87B-2, Picchiatello, G-2; Bf 110G-2, C-5, G-4 NJ; He 111H-2;
+  Blenheim I, IV, Finnish I. Parsoft parts to replace: F4U-2 cockpit, wheels and gear pistons (largest);
+  Bf 109G-5 panel, barrels, pod, pylons; LaG-5 small parts + skin; Bf 109E-4 barrels; Bf 110 tail wheel /
+  barrels. The rest (P-47s, P-40F, Pe-2, Zeros, Ju 87s, He 111, Blenheims) are clean as they are.
+- **Famous types from FlightGear / Sketchfab:** Spitfire IX, P-51D, Bf 109G-14, Fw 190A-8, Hurricane,
+  Mosquito FB VI, P-38, F6F, F4F, Il-2, MiG-3, La-5, Yak-3, Ju 88, Me 262, Tempest V, B-25, B-17, Lancaster;
+  Ki-43, LaGG-3, SBD, G4M from Sketchfab only. 40 of 43 main IL-2 types covered.
+- **Gaps:** Yak-1/7/9 (Yak-3 stands in), Typhoon (Hurricane Mk XII art or the Tempest V), A-20 (new art).
+- **Every non-SDOE model needs splitting into SDOE-style parts** (with damaged versions) for WW2SIM-9.
+- **Milestone 1 pair** (the P-51B uses Parsoft's wings): P-51D from FlightGear (production status) vs the
+  SDOE Bf 109G-6 (own airframe, kit parts replaced): one model through each import path, both flown in IL-2.
+  Alternative: P-47D (clean SDOE) vs Bf 109G-6.
 
 ### WW2SIM-7 JSBSim flight models + tuning harness
 - JSBSim as a library; load FlightGear's P-51D and Bf 109G definitions; collect historical test data
@@ -184,7 +286,8 @@ authors who cannot be found only keep the community's work from being seen)
   and other aircraft from FlightGear for the first flying milestone.
 
 ### WW2SIM-10 Milestone 1 prototype
-- P-51B vs Bf 109G-6 (both community models in SDOE, both flyable in IL-2; the P-51D is Parsoft stock in SDOE),
+- P-51D (FlightGear model) vs Bf 109G-6 (SDOE community model), per WW2SIM-14 (was P-51B vs Bf 109G-6; the
+  P-51B's wings are Parsoft's), both flyable in IL-2,
   one map, the flight model chosen in WW2SIM-11, per-part damage (WW2SIM-9), the imported community models
   (WW2SIM-6), a basic AI.
 - Proves every pillar together before scaling up.
