@@ -19,10 +19,17 @@ GAMEDIR="$WINEPREFIX/drive_c/rowan/mig"
 SAVEDIR="$GAMEDIR/SaveGame"
 MAX_BACKUPS=5
 
-# Wine runner configuration
-LUTRIS_WINE_ROOT="$HOME/.local/share/lutris/runners/wine/lutris-5.21-x86_64"
+# Wine runner configuration — must match the pin in migAlley.sh and
+# config/wine_runners.csv. This previously named lutris-5.21-x86_64, which is
+# not installed on any current box; every wine call below then resolved to a
+# non-existent binary, so `restart`/`kill` silently did nothing.
+LUTRIS_WINE_ROOT="$HOME/.local/share/lutris/runners/wine/lutris-fshack-7.2-x86_64"
 
 setup_wine_env() {
+    if [ ! -x "$LUTRIS_WINE_ROOT/bin/wine" ]; then
+        echo "ERROR: wine runner missing: $LUTRIS_WINE_ROOT" >&2
+        exit 1
+    fi
     export PATH="$LUTRIS_WINE_ROOT/bin:$PATH"
     export WINE="$LUTRIS_WINE_ROOT/bin/wine"
     export WINELOADER="$LUTRIS_WINE_ROOT/bin/wine"
@@ -86,7 +93,10 @@ start_mig() {
 
     echo "Starting MiG Alley..."
     cd "$GAMEDIR"
-    "$WINE" explorer /desktop=MigAlley,1440x1050 "C:\\rowan\\mig\\Mig.exe" &>/dev/null &
+    # 1024x768 (not the old 1440x1050): Mig Alley only ships UI artwork for
+    # 800x600, 1024x768 and 1280x1024 — see the resolution note in migAlley.sh.
+    "$WINE" explorer "/desktop=MigAlley,${MA_WIDTH:-1024}x${MA_HEIGHT:-768}" \
+        "C:\\rowan\\mig\\Mig.exe" >"${MA_LOG_DIR:-/tmp}/mig_helper_$(date +%Y%m%d_%H%M%S).log" 2>&1 &
     notify-send "MiG Alley" "Game restarted" 2>/dev/null
     echo "MiG Alley started."
 }

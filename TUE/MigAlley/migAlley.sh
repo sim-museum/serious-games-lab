@@ -142,6 +142,21 @@ if [[ "${1:-}" == "--select-mode" ]]; then
     MODE=$(cat "$MODE_FILE")
 fi
 
+# --- Game resolution -------------------------------------------------------
+# Mig Alley resolves its 2D UI artwork through Res640.dir, which maps art sets
+# for exactly four widths: dial640, dial800, dial1024, dial1280. Artwork/DIAL640
+# and Artwork/SCRN640 ship empty, so the usable set is 800x600, 1024x768 and
+# 1280x1024. Anything else has no artwork: the engine falls back to the 800x600
+# set and centres it in the larger surface (a mostly-black screen with a small
+# image in one corner), and 3D entry can wedge from there.
+#
+# This is why INSTALL/lowres.sh exists — it sets every monitor to 1024x768. It
+# was never wired into this script, and the install text below used to tell the
+# user to pick 1440x1050, which has no art set and is not even a mode most
+# panels offer. Override with e.g. MA_WIDTH=1280 MA_HEIGHT=1024 ./migAlley.sh.
+MA_WIDTH="${MA_WIDTH:-1024}"
+MA_HEIGHT="${MA_HEIGHT:-768}"
+
 launch_mig() {
     # Disable winegstreamer to prevent crash when exiting 3D view
     # winegstreamer=d  → avoids the documented 3D-exit crash
@@ -175,12 +190,16 @@ launch_mig() {
         touch "$SGL_GAME_STARTED_MARKER"
     fi
 
+    # Keep the wine output. A failed session used to redirect everything to
+    # /dev/null, which left nothing at all to diagnose afterwards.
+    local log="${MA_LOG_DIR:-/tmp}/mig_$(date +%Y%m%d_%H%M%S).log"
+    echo "Wine output -> $log"
     if [[ "$MODE" == "advanced" ]]; then
         # Use double-width virtual desktop so the spurious DirectDraw window
         # is pushed to the right half, away from the visible 3D game area.
-        wine explorer /desktop=MigAlley,2880x1050 Mig.exe &>/dev/null
+        wine explorer "/desktop=MigAlley,$((MA_WIDTH * 2))x$MA_HEIGHT" Mig.exe >"$log" 2>&1
     else
-        wine Mig.exe &>/dev/null
+        wine Mig.exe >"$log" 2>&1
     fi
     # collect_after_game_report deletes pre_existing_path when it's done.
 }
@@ -297,9 +316,12 @@ fi
 #   - Single monitor - spurious window overlaps game window
 #
 # RESOLUTION:
-#   Both games benefit from running at the maximum resolution possible.
-#   For Mig Alley, the max resolution appears to be 1440x1050. If you
-#   haven't achieved this, ask Claude Code or similar to achieve it for you.
+#   Mig Alley is NOT a "max resolution wins" game. Its 2D UI is bitmap art,
+#   indexed by Res640.dir, and only three sets are usable: 800x600, 1024x768
+#   and 1280x1024. Running at any other size makes the engine fall back to the
+#   800x600 art centred in a much larger surface, which reads as a black screen
+#   with a small image in one corner. 1280x1024 is the sharpest usable mode.
+#   (This block previously recommended 1440x1050, which has no art set at all.)
 #
 # FOR FUTURE DEBUGGING:
 #   The fix requires Wine to either:
@@ -378,9 +400,11 @@ clear
 echo "Select 'CANCEL' in the DirectX(R) Setup dialog box, then press ENTER to continue."
 read -r replyString
 clear
-echo "When Mig Alley starts, select PREFERENCES and set graphics resolution to 1440x1050."
-echo "If 1440x1050 is not listed, use an agent like Claude Code to add it for you."
-echo "Higher resolution is better! Max resolution for Mig Alley is 1440x1050."
+echo "When Mig Alley starts, select PREFERENCES and set graphics resolution to ${MA_WIDTH}x${MA_HEIGHT}."
+echo "Mig Alley only has UI artwork for 800x600, 1024x768 and 1280x1024 (see"
+echo "Res640.dir). Picking anything else gives a mostly-black screen, because the"
+echo "engine falls back to the 800x600 art and centres it in a larger surface."
+echo "1280x1024 is the sharpest of the three; 1024x768 is the safe default."
 echo "Set all other graphics options to maximum values."
 
 # Launch Mig Alley and copy necessary files
