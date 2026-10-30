@@ -14,7 +14,7 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FGADDON_DIR="$(ls -d "$SCRIPT_DIR"/Aircraft/org.flightgear.fgaddon.* "$HOME"/.fgfs/Aircraft/org.flightgear.fgaddon.* 2>/dev/null | head -1)"
 
-if [ -z "$FGADDON_DIR" ]; then
+if [ -z "$FGADDON_DIR" ] || ! ls "$FGADDON_DIR"/Aircraft/*/bf109g-set.xml &>/dev/null; then
 	bash "$SCRIPT_DIR/installFlightgear.sh"
 	exit 1
 fi
