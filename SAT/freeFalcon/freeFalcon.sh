@@ -53,29 +53,35 @@ if [[ ! -d "$GAME_DATA" ]]; then
     echo "FreeFalcon game data not found. Installing..."
     echo ""
 
-    echo "Step 1 of 4: Installing Free Falcon 6"
+    echo "Step 1 of 5: Installing Free Falcon 6"
     echo "When you reach the final install screen, deselect 'Launch Free Falcon 6 Config Editor'"
     echo ""
     cd "$INSTALL_DIR/FF6d"
     wine FreeFalcon6.0_Installer.exe 2>/dev/null 1>/dev/null
 
     echo ""
-    echo "Step 2 of 4: Installing Cockpit art"
+    echo "Step 2 of 5: Installing Cockpit art"
     echo ""
     cd "$INSTALL_DIR/FF6_FreeFalcon5_Cockpit_Pack_www.g4g.it/FreeFalcon5_Cockpit_Pack"
     wine 'FreeFalcon5 Cockpit Pack v1.5.exe' 2>/dev/null 1>/dev/null
 
     echo ""
-    echo "Step 3 of 4: Installing Israel Theater"
+    echo "Step 3 of 5: Installing Israel Theater"
     echo ""
     cd "$INSTALL_DIR/FF6_ITOv4c_www.g4g.it/ITO V4c"
     wine 'ITO2 V4c.exe' 2>/dev/null 1>/dev/null
 
     echo ""
-    echo "Step 4 of 4: Installing Balkans Theater"
+    echo "Step 4 of 5: Installing Balkans Theater"
     echo ""
     cd "$INSTALL_DIR/FF6_Balkans3_www.g4g.it/BalkansFF6-3/"
     wine 'Balkans 2.exe' 2>/dev/null 1>/dev/null
+
+    echo ""
+    echo "Step 5 of 5: Installing Taiwan Theater"
+    echo ""
+    cd "$INSTALL_DIR/FF6_Taiwan3_www.g4g.it/TaiwanFF6-3/"
+    wine 'Taiwan 6.exe' 2>/dev/null 1>/dev/null
 
     if [[ ! -d "$GAME_DATA" ]]; then
         echo ""
