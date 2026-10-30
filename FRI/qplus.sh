@@ -18,9 +18,7 @@ export WINEARCH=win32
 # Set Windows XP mode silently (no GUI)
 wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
 
-# GUI harness directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-HARNESS_VENV="$HARNESS_DIR/venv"
 
 # Check if Qplus Bridge is installed (17.1 installs to qbridge17, 15 to qbridge15)
 QBRIDGE_DIR=""

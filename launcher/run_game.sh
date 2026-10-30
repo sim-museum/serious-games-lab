@@ -12,6 +12,7 @@ REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 if [[ $# -lt 1 ]]; then
     echo "Usage: $0 <game_name>"
     echo ""
+    echo "Source games: mathquiz, dual_nback, chess, go, katrain, poker, freefalcon"
     echo "Binary games: Use the Lutris name from the CSV"
     exit 1
 fi
@@ -44,8 +45,6 @@ sgw_build_for() {
 }
 
 case "$GAME_NAME" in
-    bridge)
-        ;;
     claudemath)
         cd "$REPO_ROOT/FRI/mathQuiz" && source venv/bin/activate && python3 main.py "$@"
         ;;
@@ -60,8 +59,6 @@ case "$GAME_NAME" in
         ;;
     katrain)
         exec "$REPO_ROOT/SUN/run_katrain.sh" "$@"
-        ;;
-    poker)
         ;;
     freefalcon)
         cd "$REPO_ROOT/SAT/freeFalconSource"

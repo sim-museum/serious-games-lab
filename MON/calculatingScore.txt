@@ -7,6 +7,7 @@ calculate your score as described below, and then enter your score
 using the launcher.
 
 Note: these OKRs can be completed with any of the poker programs
+available on MON (PokerTH, PokerStove, generalPokerEvaluator).
 
 OBJECTIVE #1: LEARN POKER WELL ENOUGH TO PLAY IN A HOME GAME
 OBJECTIVE #2: (ASPIRATIONAL) ACHIEVE CONSISTENT POSITIVE RESULTS
@@ -31,6 +32,7 @@ score=0 otherwise.
 ---------------------------------------------------------------
 OKR #1, 3
 
+Use a poker program to study one poker concept (pot odds, implied odds,
 position play, hand reading).  Apply that concept in a 50-hand
 session.
 

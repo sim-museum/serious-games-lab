@@ -88,6 +88,7 @@ is_source_game() {
     local script="$1"
     case "$script" in
         # PyQt source apps
+        mathQuiz/run.sh|dual_nback/run.sh) return 0 ;;
         openingRepertoire/run_opening_repertoire.sh) return 0 ;;
         # Downloadable / pip-installable / apt-installable
         bcalc.sh) return 0 ;;
@@ -98,7 +99,6 @@ is_source_game() {
         flightgear/*.sh) return 0 ;;
         # apt-installable chess/go/board tools
         scid.sh|nibbler.sh|banksiaGui.sh) return 0 ;;
-        # self-contained HTML app (opens in the browser)
         q5go.sh|sabaki.sh|goreviewpartner.sh) return 0 ;;
         # Buildable from source
         generalPokerEvaluator.sh) return 0 ;;

@@ -282,18 +282,8 @@ create_venv "$REPO_ROOT/FRI/mathQuiz" -r "$REPO_ROOT/FRI/mathQuiz/requirements.t
 # FRI/dual_nback - dual n-back trainer (PyQt6 + pyttsx3)
 create_venv "$REPO_ROOT/FRI/dual_nback" -r "$REPO_ROOT/FRI/dual_nback/requirements.txt"
 
-
 # WED/openingRepertoire - chess opening trainer (PyQt6 + python-chess)
 create_venv "$REPO_ROOT/WED/openingRepertoire" -r "$REPO_ROOT/WED/openingRepertoire/requirements.txt"
-
-# eval7 has no Python 3.14 wheel and its setup.py imports Cython at
-# build time without declaring it as a PEP 517 build-system requires.
-# Pre-install Cython+wheel into the venv and build with
-# --no-build-isolation so eval7 can see them.
-else
-    ERRORS=$((ERRORS + 1))
-fi
-
 
 echo "  All virtual environments processed."
 

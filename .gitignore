@@ -59,8 +59,6 @@ downloads/sglBinaries_*/
 *.tiff
 *.odg
 
-# part of the shipped game; kept on the dev machine only.
-
 # Binary files - executables and libraries
 *.exe
 *.dll
