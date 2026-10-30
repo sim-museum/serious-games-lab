@@ -38,9 +38,6 @@ _game_output_patterns() {
             echo ".|*.ppl"
             echo ".|*.bdl"
             ;;
-            echo ".|*.pbn"
-            echo ".|*.bdl"
-            ;;
         bcalc.sh|qplus.sh|tenace.sh)
             echo ".|*.pbn"
             echo ".|*.bdl"
@@ -52,7 +49,6 @@ _game_output_patterns() {
         pokerth.sh)
             echo "HOMESCAN|pokerth-log*"
             echo "HOMESCAN|PokerTH*Log*"
-            ;;
             ;;
         generalPokerEvaluator.sh)
             echo ".|ps_eval_log_*.txt"
@@ -145,6 +141,7 @@ _game_save_label() {
         wBridge5.sh|qplus.sh|bcalc.sh|tenace.sh)                    echo "PBN/BDL deal file" ;;
         bb12/bb12.sh)                                                echo "PPL deal file" ;;
         run_katrain.sh|q5go.sh|sabaki.sh|igowin.sh|goreviewpartner.sh) echo "SGF game file" ;;
+        pokerth.sh|generalPokerEvaluator.sh|pokerStove.sh) echo "session log" ;;
         *) ;;
     esac
 }

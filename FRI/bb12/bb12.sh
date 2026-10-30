@@ -58,19 +58,6 @@ if [ -f "$WINEPREFIX/Bridge Baron/Baron.exe" ]; then
         if [[ "$(dirname "$ppl_file")" != "$_bb12_dest" ]]; then
             cp "$ppl_file" "$_bb12_dest/${base}.ppl"
         fi
-        # Convert to BDL and PBN
-        if [[ -f "$HARNESS_DIR/ppl_to_pbn.py" && -x "$HARNESS_DIR/venv/bin/python3" ]]; then
-            PYTHONPATH="$HARNESS_DIR" "$HARNESS_DIR/venv/bin/python3" -c "
-import ppl_to_pbn
-bdl = ppl_to_pbn.ppl_to_bdl('$_bb12_dest/${base}.ppl')
-with open('$_bb12_dest/${base}.bdl', 'w') as f:
-    f.write(bdl)
-pbn = ppl_to_pbn.ppl_to_pbn('$_bb12_dest/${base}.ppl')
-with open('$_bb12_dest/${base}.pbn', 'w') as f:
-    f.write(pbn)
-print('  Converted ${base}.ppl -> ${base}.bdl + ${base}.pbn')
-" 2>/dev/null && _bb12_last_pbn="$_bb12_dest/${base}.pbn" || true
-        fi
         # Add Claude annotation alongside the converted BDL.
         if [[ -f "$_bb12_dest/${base}.bdl" && -x "$FRI_DIR/claude_annotate_bridge_single.sh" ]]; then
             echo "Running Claude annotation on Bridge Baron deal log..."
@@ -79,41 +66,6 @@ print('  Converted ${base}.ppl -> ${base}.bdl + ${base}.pbn')
         fi
     done < <(find "$WINEPREFIX/Bridge Baron" "$FRI_DIR" "$FRI_DIR/bb12" "$REPORT_DIR" "$_bb12_dest" \
                  -maxdepth 1 -name "*.ppl" -type f -print0 2>/dev/null)
-
-    # Q-Plus gold-standard comparison flow.
-    # Extract base-72 code from the last hand played, then auto-launch
-    # Q-Plus Bridge + the GUI harness with the deal pre-loaded so the
-    # user doesn't have to re-enter the hand.  Q-Plus lives in a
-    # separate wineprefix (FRI/WP) — override WINEPREFIX in the subshell.
-          && -x "$HARNESS_DIR/venv/bin/python3" ]]; then
-        _bb12_b72=$(PYTHONPATH="$HARNESS_DIR" "$HARNESS_DIR/venv/bin/python3" -c "
-print(bh.pbn_file_to_base72('$_bb12_last_pbn'))
-" 2>/dev/null)
-
-        QBRIDGE_DIR=""
-        QPLUS_PREFIX="$FRI_DIR/WP"
-        [[ -d "$QPLUS_PREFIX/drive_c/games/qbridge17" ]] && QBRIDGE_DIR="$QPLUS_PREFIX/drive_c/games/qbridge17"
-        [[ -z "$QBRIDGE_DIR" && -d "$QPLUS_PREFIX/drive_c/games/qbridge15" ]] && QBRIDGE_DIR="$QPLUS_PREFIX/drive_c/games/qbridge15"
-
-        if [[ -n "$_bb12_b72" ]]; then
-            echo ""
-            if [[ -n "$QBRIDGE_DIR" ]]; then
-                echo "Launching Q-Plus Bridge + GUI Harness for comparison..."
-                echo "  Hand pre-loaded (base-72): $_bb12_b72"
-                (
-                    export WINEPREFIX="$QPLUS_PREFIX"
-                    cd "$QBRIDGE_DIR"
-                    wine QBRIDGE.EXE 2>/dev/null 1>/dev/null
-                ) &
-            else
-                echo "Q-Plus not installed; launching GUI Harness only."
-                echo "  Hand pre-loaded (base-72): $_bb12_b72"
-            fi
-            (cd "$HARNESS_DIR" && \
-                PYTHONPATH="$HARNESS_DIR" "$HARNESS_DIR/venv/bin/python3" \
-                    2>/dev/null)
-        fi
-    fi
 
     restore_marker_epoch
     exit 0

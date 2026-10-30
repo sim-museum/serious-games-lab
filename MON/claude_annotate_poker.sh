@@ -55,6 +55,7 @@ You are a poker coach specialising in helping intermediate players improve their
 
 You are given a poker session log or evaluation output. This could be:
 - A PokerTH hand history log
+- A poker training session log
 - A PokerStove equity calculation output
 - A ps-eval equity evaluation session
 

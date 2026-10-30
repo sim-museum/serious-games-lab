@@ -17,11 +17,10 @@ export WINEPREFIX="$BASE_DIR/WP"
 export WINEARCH=win32
 # Set Windows XP mode silently (no GUI)
 wine reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d winxp /f &>/dev/null
+# Hand play never uses Wine's virtual desktop; clear it in case another tool turned it on.
 wine reg delete "HKEY_CURRENT_USER\\Software\\Wine\\Explorer" /v Desktop /f &>/dev/null
 
-# GUI harness directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-HARNESS_VENV="$HARNESS_DIR/venv"
 
 # Check if Qplus Bridge is installed (17.1 installs to qbridge17, 15 to qbridge15)
 QBRIDGE_DIR=""
@@ -32,9 +31,6 @@ elif [ -d "$WINEPREFIX/drive_c/games/qbridge15" ]; then
 fi
 
 if [ -n "$QBRIDGE_DIR" ]; then
-    # after each hand with the deal pre-loaded, so launching another
-    # one from here just produced an empty duplicate window. Use
-
     # Snapshot existing BDL log files before launching
     _qp_snapshot_time=$(date +%s)
 

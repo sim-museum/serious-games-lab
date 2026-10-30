@@ -17,12 +17,6 @@ Test Date:    February 2026
 
 === FRI: Contract Bridge ===
 
-   Technology:  Native Linux (Python/PyQt6, venv, libdds.so)
-   Wine:        Not used
-   Status:      PLATINUM — runs perfectly out of the box
-   Notes:       Installs via pip into a Python venv. No binary dependencies
-                beyond standard Python packages.
-
 2. mental math training (mathQuiz/run.sh)
    Game:        Math Quiz (adaptive PyQt6 math trainer)
    Technology:  Native Linux (Python/PyQt6, venv)
@@ -175,7 +169,3 @@ Test Date:    February 2026
    Status:      Not yet tested
    Notes:       Clones and builds from GitHub if binary not present.
 
-   Technology:  Native Linux (Python/venv)
-   Wine:        Not used
-   Status:      Not yet tested
-   Notes:       Pure Python application using TexasSolver for analysis.
